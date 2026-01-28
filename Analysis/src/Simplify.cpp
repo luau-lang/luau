@@ -20,6 +20,7 @@ LUAU_FASTINT(LuauTypeReductionRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
+LUAU_FASTFLAGVARIABLE(LuauUnionOfTablesPreservesReadWrite)
 
 namespace Luau
 {
@@ -690,9 +691,11 @@ TypeId TypeSimplifier::mkNegation(TypeId ty) const
     return result;
 }
 
-namespace {
+namespace
+{
 
-enum class Inhabited {
+enum class Inhabited
+{
     Yes,
     No
 };
@@ -770,7 +773,7 @@ Inhabited intersectOneWithIntersection(TypeSimplifier& simplifier, TypeIds& sour
 
     return Inhabited::Yes;
 }
-}
+} // namespace
 
 TypeId TypeSimplifier::intersectFromParts(TypeIds parts)
 {
@@ -810,7 +813,6 @@ TypeId TypeSimplifier::intersectFromParts(TypeIds parts)
         ib.add(ty);
 
     return ib.build();
-
 }
 
 TypeId TypeSimplifier::intersectUnionWithType(TypeId left, TypeId right)
@@ -886,7 +888,6 @@ TypeId TypeSimplifier::intersectUnions(TypeId left, TypeId right)
     }
 
     return ub.build();
-
 }
 
 TypeId TypeSimplifier::intersectNegatedUnion(TypeId left, TypeId right)
@@ -1590,12 +1591,67 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
             if (rightPropName != propName)
                 return arena->addType(UnionType{{left, right}});
 
-            if (leftProp.readTy && rightProp.readTy)
+            if (FFlag::LuauUnionOfTablesPreservesReadWrite)
             {
-                Relation r = relate(*leftProp.readTy, *rightProp.readTy);
+                // Consider:
+                //
+                //  { prop: number? } | { prop: string? }
+                //
+                // Even though these two tables share a property, we cannot
+                // simplify this type any further, otherwise we can, say,
+                // launder a `{ prop: number? }` into a `{ prop: string? }`
+                // and then write a string to it.
+                //
+                // We also elect to not simplify unsealed tables.
+                if (!leftProp.isReadOnly() || !rightProp.isReadOnly() || lt->state != TableState::Sealed || rt->state != TableState::Sealed)
+                    return arena->addType(UnionType{{left, right}});
 
-                switch (r)
+                // At this point, we have two read-only singleton tables, e.g.:
+                //
+                //  { read prop: number? } | { read prop: string? }
+                //
+                // We can relate these two properties and produce a simplified
+                // version, with some special cases.
+
+                switch (relate(*leftProp.readTy, *rightProp.readTy))
                 {
+                case Relation::Coincident:
+                case Relation::Superset:
+                    // The left property is a superset (or coincident) of the
+                    // right, for example:
+                    //
+                    //  { read prop: number? } | { read prop: number }
+                    //
+                    return left;
+                case Relation::Subset:
+                    // The left property is a subset of the right, for example:
+                    //
+                    //  { read prop: nil } | { read prop: false? }
+                    //
+                    return right;
+                case Relation::Disjoint:
+                case Relation::Intersects:
+                    // If we are disjoint *or* there's some overlap, then
+                    // we can create a new read-only singleton table with
+                    // a single property.
+                    //
+                    // We probably could do something quicker here for disjoint,
+                    // given that the union should just mint a new union type
+                    // anyhow.
+                    TableType result;
+                    result.state = TableState::Sealed;
+                    result.props[propName] = Property::readonly(union_(*leftProp.readTy, *rightProp.readTy));
+                    return arena->addType(std::move(result));
+                }
+            }
+            else
+            {
+                if (leftProp.readTy && rightProp.readTy)
+                {
+                    Relation r = relate(*leftProp.readTy, *rightProp.readTy);
+
+                    switch (r)
+                    {
                     case Relation::Disjoint:
                     {
                         TableType result;
@@ -1610,6 +1666,7 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
                         return right;
                     default:
                         break;
+                    }
                 }
             }
         }

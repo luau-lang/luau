@@ -4,7 +4,7 @@
 #include "Luau/IrUtils.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenChainedSpills)
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 
 namespace Luau
 {
@@ -34,9 +34,9 @@ bool IrValueLocationTracking::canRematerializeArguments(IrInst& inst)
 {
     CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
 
-    if (canBeRematerialized(inst.cmd) && inst.a.kind == IrOpKind::Inst)
+    if (canBeRematerialized(inst.cmd) && OP_A(inst).kind == IrOpKind::Inst)
     {
-        IrInst& depInst = function.instOp(inst.a);
+        IrInst& depInst = function.instOp(OP_A(inst));
 
         // If this argument is last used in the current instructions, there's no point in preserving it
         if (depInst.lastUse != function.getInstIndex(inst))
@@ -52,11 +52,11 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     {
     case IrCmd::STORE_TAG:
         // Tag update is a bit tricky, restore operations of values are not affected
-        invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ true);
+        invalidateRestoreOp(OP_A(inst), /*skipValueInvalidation*/ true);
         break;
     case IrCmd::STORE_EXTRA:
         // While extra field update doesn't invalidate some of the values, it can invalidate a vector type field
-        invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
+        invalidateRestoreOp(OP_A(inst), /*skipValueInvalidation*/ false);
         break;
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
@@ -64,56 +64,56 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::STORE_VECTOR:
     case IrCmd::STORE_TVALUE:
     case IrCmd::STORE_SPLIT_TVALUE:
-        invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
+        invalidateRestoreOp(OP_A(inst), /*skipValueInvalidation*/ false);
         break;
     case IrCmd::ADJUST_STACK_TO_REG:
-        invalidateRestoreVmRegs(vmRegOp(inst.a), -1);
+        invalidateRestoreVmRegs(vmRegOp(OP_A(inst)), -1);
         break;
     case IrCmd::FASTCALL:
-        invalidateRestoreVmRegs(vmRegOp(inst.b), function.intOp(inst.d));
+        invalidateRestoreVmRegs(vmRegOp(OP_B(inst)), function.intOp(OP_D(inst)));
         break;
     case IrCmd::INVOKE_FASTCALL:
         // Multiple return sequences (count == -1) are defined by ADJUST_STACK_TO_REG
-        if (int count = function.intOp(inst.g); count != -1)
-            invalidateRestoreVmRegs(vmRegOp(inst.b), count);
+        if (int count = function.intOp(OP_G(inst)); count != -1)
+            invalidateRestoreVmRegs(vmRegOp(OP_B(inst)), count);
         break;
     case IrCmd::DO_ARITH:
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
     case IrCmd::GET_CACHED_IMPORT:
-        invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
+        invalidateRestoreOp(OP_A(inst), /*skipValueInvalidation*/ false);
         break;
     case IrCmd::CONCAT:
-        invalidateRestoreVmRegs(vmRegOp(inst.a), function.uintOp(inst.b));
+        invalidateRestoreVmRegs(vmRegOp(OP_A(inst)), function.uintOp(OP_B(inst)));
         break;
     case IrCmd::GET_UPVALUE:
-        if (!FFlag::LuauCodegenUpvalueLoadProp)
-            invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
+        if (!FFlag::LuauCodegenUpvalueLoadProp2)
+            invalidateRestoreOp(OP_A(inst), /*skipValueInvalidation*/ false);
         break;
     case IrCmd::CALL:
         // Even if result count is limited, all registers starting from function (ra) might be modified
-        invalidateRestoreVmRegs(vmRegOp(inst.a), -1);
+        invalidateRestoreVmRegs(vmRegOp(OP_A(inst)), -1);
         break;
     case IrCmd::FORGLOOP:
     case IrCmd::FORGLOOP_FALLBACK:
         // Even if result count is limited, all registers starting from iteration index (ra+2) might be modified
-        invalidateRestoreVmRegs(vmRegOp(inst.a) + 2, -1);
+        invalidateRestoreVmRegs(vmRegOp(OP_A(inst)) + 2, -1);
         break;
     case IrCmd::FALLBACK_GETGLOBAL:
     case IrCmd::FALLBACK_GETTABLEKS:
-        invalidateRestoreOp(inst.b, /*skipValueInvalidation*/ false);
+        invalidateRestoreOp(OP_B(inst), /*skipValueInvalidation*/ false);
         break;
     case IrCmd::FALLBACK_NAMECALL:
-        invalidateRestoreVmRegs(vmRegOp(inst.b), 2);
+        invalidateRestoreVmRegs(vmRegOp(OP_B(inst)), 2);
         break;
     case IrCmd::FALLBACK_GETVARARGS:
-        invalidateRestoreVmRegs(vmRegOp(inst.b), function.intOp(inst.c));
+        invalidateRestoreVmRegs(vmRegOp(OP_B(inst)), function.intOp(OP_C(inst)));
         break;
     case IrCmd::FALLBACK_DUPCLOSURE:
-        invalidateRestoreOp(inst.b, /*skipValueInvalidation*/ false);
+        invalidateRestoreOp(OP_B(inst), /*skipValueInvalidation*/ false);
         break;
     case IrCmd::FALLBACK_FORGPREP:
-        invalidateRestoreVmRegs(vmRegOp(inst.b), 3);
+        invalidateRestoreVmRegs(vmRegOp(OP_B(inst)), 3);
         break;
 
         // Make sure all VmReg referencing instructions are handled explicitly (only register reads here)
@@ -168,13 +168,8 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
 
     default:
         // All instructions which reference registers have to be handled explicitly
-        CODEGEN_ASSERT(inst.a.kind != IrOpKind::VmReg);
-        CODEGEN_ASSERT(inst.b.kind != IrOpKind::VmReg);
-        CODEGEN_ASSERT(inst.c.kind != IrOpKind::VmReg);
-        CODEGEN_ASSERT(inst.d.kind != IrOpKind::VmReg);
-        CODEGEN_ASSERT(inst.e.kind != IrOpKind::VmReg);
-        CODEGEN_ASSERT(inst.f.kind != IrOpKind::VmReg);
-        CODEGEN_ASSERT(inst.g.kind != IrOpKind::VmReg);
+        for (auto& op : inst.ops)
+            CODEGEN_ASSERT(op.kind != IrOpKind::VmReg);
         break;
     }
 }
@@ -188,10 +183,10 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
     case IrCmd::LOAD_DOUBLE:
     case IrCmd::LOAD_INT:
     case IrCmd::LOAD_TVALUE:
-        if (inst.a.kind == IrOpKind::VmReg)
-            invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
+        if (OP_A(inst).kind == IrOpKind::VmReg)
+            invalidateRestoreOp(OP_A(inst), /*skipValueInvalidation*/ false);
 
-        recordRestoreOp(instIdx, inst.a);
+        recordRestoreOp(instIdx, OP_A(inst));
         break;
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
@@ -201,19 +196,19 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
         {
             // If this is not the last use of the stored value, we can restore it from this new location
             // Additionally, even if it's a last use, it might allow its argument to be restored
-            if (inst.b.kind == IrOpKind::Inst)
+            if (OP_B(inst).kind == IrOpKind::Inst)
             {
-                IrInst& source = function.instOp(inst.b);
+                IrInst& source = function.instOp(OP_B(inst));
 
                 if (source.lastUse != instIdx || canRematerializeArguments(source))
-                    recordRestoreOp(inst.b.index, inst.a);
+                    recordRestoreOp(OP_B(inst).index, OP_A(inst));
             }
         }
         else
         {
             // If this is not the last use of the stored value, we can restore it from this new location
-            if (inst.b.kind == IrOpKind::Inst && function.instOp(inst.b).lastUse != instIdx)
-                recordRestoreOp(inst.b.index, inst.a);
+            if (OP_B(inst).kind == IrOpKind::Inst && function.instOp(OP_B(inst)).lastUse != instIdx)
+                recordRestoreOp(OP_B(inst).index, OP_A(inst));
         }
         break;
     case IrCmd::STORE_SPLIT_TVALUE:
@@ -221,19 +216,19 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
         {
             // If this is not the last use of the stored value, we can restore it from this new location
             // Additionally, even if it's a last use, it might allow its argument to be restored
-            if (inst.c.kind == IrOpKind::Inst)
+            if (OP_C(inst).kind == IrOpKind::Inst)
             {
-                IrInst& source = function.instOp(inst.c);
+                IrInst& source = function.instOp(OP_C(inst));
 
                 if (source.lastUse != instIdx || canRematerializeArguments(source))
-                    recordRestoreOp(inst.c.index, inst.a);
+                    recordRestoreOp(OP_C(inst).index, OP_A(inst));
             }
         }
         else
         {
             // If this is not the last use of the stored value, we can restore it from this new location
-            if (inst.c.kind == IrOpKind::Inst && function.instOp(inst.c).lastUse != instIdx)
-                recordRestoreOp(inst.c.index, inst.a);
+            if (OP_C(inst).kind == IrOpKind::Inst && function.instOp(OP_C(inst)).lastUse != instIdx)
+                recordRestoreOp(OP_C(inst).index, OP_A(inst));
         }
         break;
     default:
@@ -262,9 +257,9 @@ void IrValueLocationTracking::recordRestoreOp(uint32_t instIdx, IrOp location)
 
             vmRegValue[reg] = instIdx;
 
-            if (canBeRematerialized(inst.cmd) && inst.a.kind == IrOpKind::Inst)
+            if (canBeRematerialized(inst.cmd) && OP_A(inst).kind == IrOpKind::Inst)
             {
-                uint32_t depInstIdx = inst.a.index;
+                uint32_t depInstIdx = OP_A(inst).index;
 
                 if (!captured)
                     function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd});
@@ -338,9 +333,9 @@ void IrValueLocationTracking::invalidateRestoreOp(IrOp location, bool skipValueI
                 instIdx = kInvalidInstIdx;
 
                 // Chained instruction special case
-                if (canBeRematerialized(inst.cmd) && inst.a.kind == IrOpKind::Inst)
+                if (canBeRematerialized(inst.cmd) && OP_A(inst).kind == IrOpKind::Inst)
                 {
-                    uint32_t depInstIdx = inst.a.index;
+                    uint32_t depInstIdx = OP_A(inst).index;
                     IrInst& depInst = function.instructions[depInstIdx];
 
                     if (depInst.needsReload)

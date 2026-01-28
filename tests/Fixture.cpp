@@ -29,7 +29,6 @@ LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceAllNewSolverTests);
-LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
 LUAU_FASTINT(LuauStackGuardThreshold)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
@@ -331,6 +330,7 @@ CheckResult Fixture::check(Mode mode, const std::string& source, std::optional<F
     configResolver.defaultConfig.mode = mode;
     fileResolver.source[mm] = std::move(source);
     getFrontend().markDirty(mm);
+    getFrontend().clearStats();
 
     CheckResult result = getFrontend().check(mm, options);
 
@@ -562,12 +562,7 @@ TypeId Fixture::requireExportedType(const ModuleName& moduleName, const std::str
 TypeId Fixture::parseType(std::string_view src)
 {
     return getFrontend().parseType(
-        NotNull{&allocator},
-        NotNull{&nameTable},
-        NotNull{&getFrontend().iceHandler},
-        TypeCheckLimits{},
-        NotNull{&arena},
-        src
+        NotNull{&allocator}, NotNull{&nameTable}, NotNull{&getFrontend().iceHandler}, TypeCheckLimits{}, NotNull{&arena}, src
     );
 }
 
@@ -693,7 +688,7 @@ NotNull<BuiltinTypes> Fixture::getBuiltins()
 
 const BuiltinTypeFunctions& Fixture::getBuiltinTypeFunctions()
 {
-    return FFlag::LuauBuiltinTypeFunctionsArentGlobal ? *getBuiltins()->typeFunctions : builtinTypeFunctions_DEPRECATED();
+    return *getBuiltins()->typeFunctions;
 }
 
 Frontend& Fixture::getFrontend()

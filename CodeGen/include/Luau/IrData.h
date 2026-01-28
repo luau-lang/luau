@@ -6,12 +6,21 @@
 #include "Luau/Label.h"
 #include "Luau/RegisterX64.h"
 #include "Luau/RegisterA64.h"
+#include "Luau/SmallVector.h"
 
 #include <optional>
 #include <vector>
 
 #include <stdint.h>
 #include <string.h>
+
+#define OP_A(inst) getOp(inst, 0)
+#define OP_B(inst) getOp(inst, 1)
+#define OP_C(inst) getOp(inst, 2)
+#define OP_D(inst) getOp(inst, 3)
+#define OP_E(inst) getOp(inst, 4)
+#define OP_F(inst) getOp(inst, 5)
+#define OP_G(inst) getOp(inst, 6)
 
 struct Proto;
 
@@ -410,7 +419,14 @@ enum class IrCmd : uint8_t
     // Convert integer into a double number
     // A: int
     INT_TO_NUM,
+
+    // Convert unsigned integer into a double number
+    // A: uint
     UINT_TO_NUM,
+
+    // Convert unsigned integer into a float number
+    // A: uint
+    UINT_TO_FLOAT,
 
     // Converts a double number to an integer. 'A' may be any representable integer in a double.
     // A: double
@@ -603,6 +619,13 @@ enum class IrCmd : uint8_t
     // C: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_USERDATA_TAG,
+
+    // Guard against the result of integer comparison being false
+    // A, B: int
+    // C: condition
+    // D: block/vmexit/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
+    CHECK_CMP_INT,
 
     // Special operations
 
@@ -994,18 +1017,15 @@ enum class IrValueKind : uint8_t
     Count
 };
 
+using IrOps = SmallVector<IrOp, 6>;
+
 struct IrInst
 {
     IrCmd cmd;
 
     // Operands
-    IrOp a;
-    IrOp b;
-    IrOp c;
-    IrOp d;
-    IrOp e;
-    IrOp f;
-    IrOp g;
+    // All frequiently used instructions use only A-D slots.
+    IrOps ops;
 
     uint32_t lastUse = 0;
     uint16_t useCount = 0;
@@ -1017,6 +1037,20 @@ struct IrInst
     bool spilled = false;
     bool needsReload = false;
 };
+
+inline IrOp& getOp(IrInst& inst, uint32_t idx)
+{
+    if (LUAU_UNLIKELY(idx >= inst.ops.size()))
+    {
+        inst.ops.resize(idx + 1);
+    }
+    return inst.ops[idx];
+}
+
+inline IrOp& getOp(IrInst* inst, uint32_t idx)
+{
+    return getOp(*inst, idx);
+}
 
 // When IrInst operands are used, current instruction index is often required to track lifetime
 inline constexpr uint32_t kInvalidInstIdx = ~0u;
@@ -1054,13 +1088,8 @@ struct IrInstHash
         uint32_t h = 25;
 
         h = mix(h, uint32_t(key.cmd));
-        h = mix(h, key.a);
-        h = mix(h, key.b);
-        h = mix(h, key.c);
-        h = mix(h, key.d);
-        h = mix(h, key.e);
-        h = mix(h, key.f);
-        h = mix(h, key.g);
+        for (size_t i = 0; i < 7; i++)
+            h = mix(h, i < uint32_t(key.ops.size()) ? key.ops[i] : IrOp{});
 
         // MurmurHash2 tail
         h ^= h >> 13;
@@ -1075,7 +1104,35 @@ struct IrInstEq
 {
     bool operator()(const IrInst& a, const IrInst& b) const
     {
-        return a.cmd == b.cmd && a.a == b.a && a.b == b.b && a.c == b.c && a.d == b.d && a.e == b.e && a.f == b.f && a.g == b.g;
+        if (a.cmd != b.cmd)
+            return false;
+        if (a.ops.size() == b.ops.size())
+        {
+            for (size_t i = 0; i < a.ops.size(); i++)
+                if (a.ops[i] != b.ops[i])
+                    return false;
+        }
+        else if (a.ops.size() < b.ops.size())
+        {
+            size_t i = 0;
+            for (; i < a.ops.size(); i++)
+                if (a.ops[i] != b.ops[i])
+                    return false;
+            for (; i < b.ops.size(); i++)
+                if (b.ops[i].kind != IrOpKind::None)
+                    return false;
+        }
+        else
+        {
+            size_t i = 0;
+            for (; i < b.ops.size(); i++)
+                if (a.ops[i] != b.ops[i])
+                    return false;
+            for (; i < a.ops.size(); i++)
+                if (a.ops[i].kind != IrOpKind::None)
+                    return false;
+        }
+        return true;
     }
 };
 
@@ -1092,6 +1149,7 @@ inline constexpr uint32_t kBlockNoStartPc = ~0u;
 
 inline constexpr uint8_t kBlockFlagSafeEnvCheck = 1 << 0;
 inline constexpr uint8_t kBlockFlagSafeEnvClear = 1 << 1;
+inline constexpr uint8_t kBlockFlagEntryArgCheck = 1 << 2;
 
 struct IrBlock
 {

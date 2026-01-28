@@ -14,8 +14,12 @@ LUAU_FASTFLAG(LuauMorePermissiveNewtableType)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauUserTypeFunctionsNoUninhabitedError)
 LUAU_FASTFLAG(LuauUnionofIntersectionofFlattens)
+LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
+LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks)
 LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
+LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
+LUAU_FASTFLAG(LuauUdtfIndirectAliases)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2446,6 +2450,62 @@ local y: foo<{b: number}> = { b = 2 }
     CHECK(toString(requireType("y"), ToStringOptions{true}) == "{ b: number }?");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_indirect")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauUdtfIndirectAliases{FFlag::LuauUdtfIndirectAliases, true};
+
+    CheckResult result = check(R"(
+type Test<T> = T?
+
+type function foo(t)
+    return Test(t)
+end
+
+type function bar(t)
+    return foo(t)
+end
+
+local x: bar<{a: number}> = { a = 2 }
+local y: bar<{b: number}> = { b = 2 }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireType("x"), ToStringOptions{true}) == "{ a: number }?");
+    CHECK(toString(requireType("y"), ToStringOptions{true}) == "{ b: number }?");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_indirect_levels")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauUdtfIndirectAliases{FFlag::LuauUdtfIndirectAliases, true};
+
+    CheckResult result = check(R"(
+type Test<T> = T?
+
+type function foo(t)
+    return Test(t)
+end
+
+do
+    type function bar(t)
+        return foo(t)
+    end
+
+    local x: bar<{a: number}> = { a = 2 }
+    local y: bar<{b: number}> = { b = 2 }
+
+    print(x, y)
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireTypeAtPosition(Position{15, 10}), ToStringOptions{true}) == "{ a: number }?");
+    CHECK(toString(requireTypeAtPosition(Position{15, 13}), ToStringOptions{true}) == "{ b: number }?");
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_values")
 {
     ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
@@ -2465,6 +2525,34 @@ local y: foo<string> = "a"
 
     CHECK(toString(requireType("x"), ToStringOptions{true}) == "{ a: number }?");
     CHECK(toString(requireType("y"), ToStringOptions{true}) == "string | { a: number }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_unordered")
+{
+    ScopedFastFlag newSolver{FFlag::LuauSolverV2, true};
+    ScopedFastFlag luauUdtfIndirectAliases{FFlag::LuauUdtfIndirectAliases, true};
+
+    CheckResult result = check(R"(
+type function foobar(ty)
+    if ty:is("number") then
+        return ty
+    end
+    return TableOf(ty)
+end
+
+type TableOf<T> = { prop: T }
+
+type ShouldBeNumber = foobar<number>
+type ShouldBeTableOfString = foobar<string>
+
+local x: ShouldBeNumber = 2
+local y: ShouldBeTableOfString = { prop = "a" }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireType("x"), ToStringOptions{true}) == "number");
+    CHECK(toString(requireType("y"), ToStringOptions{true}) == "{ prop: string }");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_with_reduction")
@@ -2512,6 +2600,42 @@ return {}
     CheckResult bResult = check(R"(
 local Test = require(game.A);
 local y: Test.foo<{ a: string }> = "x"
+    )");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    CHECK(toString(requireType("y")) == R"(string)");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_implicit_export_indirect")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag luauUdtfIndirectAliases{FFlag::LuauUdtfIndirectAliases, true};
+
+    fileResolver.source["game/A"] = R"(
+type Test<T> = rawget<T, "a">
+
+type function foo(t)
+    return Test(t)
+end
+
+export type function bar(t)
+    return foo(t)
+end
+
+local x: bar<{ a: number }> = 2
+return {}
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CHECK(toString(requireType("game/A", "x")) == R"(number)");
+
+    CheckResult bResult = check(R"(
+local Test = require(game.A);
+local y: Test.bar<{ a: string }> = "x"
     )");
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
@@ -2803,5 +2927,96 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
     LUAU_REQUIRE_NO_ERRORS(results);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "externs_are_extern")
+{
+    ScopedFastFlag _[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true}};
+
+    loadDefinition(R"(
+        declare extern type Bar with
+        end
+    )");
+
+    CheckResult results = check(R"(
+        type function foo(t: type)
+            assert(t.tag == "extern")
+            return t
+        end
+
+        type T = foo<Bar>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_cannot_try_to_mutate_type_aliases")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag frozen{FFlag::LuauTypeFunctionSupportsFrozen, true};
+    ScopedFastFlag noDupeError{FFlag::LuauUserTypeFunctionsNoUninhabitedError, true};
+
+    CheckResult result = check(R"(
+        type myType = {}
+
+        type function create_table_with_key()
+            myType:setproperty(types.singleton "key", types.optional(types.number))
+            return myType
+        end
+        local my_tbl: create_table_with_key<> = {key = "123"}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(
+        toString(result.errors[0]) ==
+        R"('create_table_with_key' type function errored at runtime: [string "create_table_with_key"]:5: type.setproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy)"
+    );
+    auto err = get<TypeMismatch>(result.errors[1]);
+    REQUIRE(err);
+    CHECK_EQ("{ key: string }", toString(err->givenType));
+    CHECK_EQ("create_table_with_key<>", toString(err->wantedType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_can_mutate_cloned_type_aliases")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag frozen{FFlag::LuauTypeFunctionSupportsFrozen, true};
+
+    CheckResult result = check(R"(
+        type myType = { woof: string }
+
+        type function create_table_with_key()
+            local tbl = types.copy(myType)
+            tbl:setproperty(types.singleton "key", types.optional(types.number))
+            return tbl
+        end
+        local my_tbl: create_table_with_key<> = { key = 123, woof = "woof" }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss2164_table_subtyping_bug")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag fix{FFlag::LuauSubtypingMissingPropertiesAsNil, true};
+
+    CheckResult results = check(R"(
+        export type function tblpartial(tbl: type)
+            assert(tbl:is("table"), "tblpartial can only be applied to tables")
+            local new = types.newtable()
+
+            for k, v in tbl:properties() do
+                local read = assert(v.read, "properties cannot be write-only")
+                new:setreadproperty(k, types.optional(read))
+            end
+
+            return new
+        end
+
+        local function tblmerge<T>(base: T, override: tblpartial<T>): T error("unimplemented") end
+        tblmerge({ a = 1 }, {}) -- Type '{  }' could not be converted into '{ read a: number? }'
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+}
 
 TEST_SUITE_END();

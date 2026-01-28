@@ -20,6 +20,7 @@ LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
 LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
 LUAU_FASTFLAGVARIABLE(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -209,7 +210,12 @@ struct ErrorConverter
         if (get<TableType>(t))
             return "Key '" + e.key + "' not found in table '" + Luau::toString(t) + "'";
         else if (get<ExternType>(t))
-            return "Key '" + e.key + "' not found in class '" + Luau::toString(t) + "'";
+        {
+            if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
+                return "Key '" + e.key + "' not found in external type '" + Luau::toString(t) + "'";
+            else
+                return "Key '" + e.key + "' not found in class '" + Luau::toString(t) + "'";
+        }
         else
             return "Type '" + Luau::toString(e.table) + "' does not have key '" + e.key + "'";
     }
@@ -381,7 +387,12 @@ struct ErrorConverter
 
         TypeId t = follow(e.table);
         if (get<ExternType>(t))
-            s += "class";
+        {
+            if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
+                s += "external type";
+            else
+                s += "class";
+        }
         else
             s += "table";
 
@@ -781,7 +792,7 @@ struct ErrorConverter
     std::string operator()(const CheckedFunctionCallError& e) const
     {
         return "the function '" + e.checkedFunctionName + "' expects to get a " + toString(e.expected) + " as its " +
-            toHumanReadableIndex(e.argumentIndex) + " argument, but is being given a " + toString(e.passed) + "";
+               toHumanReadableIndex(e.argumentIndex) + " argument, but is being given a " + toString(e.passed) + "";
     }
 
     std::string operator()(const NonStrictFunctionDefinitionError& e) const
@@ -809,7 +820,7 @@ struct ErrorConverter
     {
 
         return "the function '" + e.functionName + "' will error at runtime if it is not called with " + std::to_string(e.expected) +
-            " arguments, but we are calling it here with " + std::to_string(e.actual) + " arguments";
+               " arguments, but we are calling it here with " + std::to_string(e.actual) + " arguments";
     }
 
     std::string operator()(const UnexpectedTypeInSubtyping& e) const

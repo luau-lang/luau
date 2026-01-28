@@ -19,7 +19,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
-LUAU_FASTFLAGVARIABLE(DebugLuauStringSingletonBasedOnQuotes)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauStandaloneParseType)
 LUAU_FASTFLAGVARIABLE(LuauCstStatDoWithStatsStart)
@@ -3921,38 +3920,17 @@ AstExpr* Parser::parseString()
     Location location = lexer.current().location;
 
     AstExprConstantString::QuoteStyle style;
-    if (FFlag::DebugLuauStringSingletonBasedOnQuotes)
+    switch (lexer.current().type)
     {
-        switch (lexer.current().type)
-        {
-        case Lexeme::InterpStringSimple:
-            style = AstExprConstantString::QuotedSimple;
-            break;
-        case Lexeme::RawString:
-            style = AstExprConstantString::QuotedRaw;
-            break;
-        case Lexeme::QuotedString:
-            style = lexer.current().getQuoteStyle() == Lexeme::QuoteStyle::Single ? AstExprConstantString::QuotedSingle
-                                                                                  : AstExprConstantString::QuotedSimple;
-            break;
-        default:
-            LUAU_ASSERT(false && "Invalid string type");
-        }
-    }
-    else
-    {
-        switch (lexer.current().type)
-        {
-        case Lexeme::QuotedString:
-        case Lexeme::InterpStringSimple:
-            style = AstExprConstantString::QuotedSimple;
-            break;
-        case Lexeme::RawString:
-            style = AstExprConstantString::QuotedRaw;
-            break;
-        default:
-            LUAU_ASSERT(false && "Invalid string type");
-        }
+    case Lexeme::QuotedString:
+    case Lexeme::InterpStringSimple:
+        style = AstExprConstantString::QuotedSimple;
+        break;
+    case Lexeme::RawString:
+        style = AstExprConstantString::QuotedRaw;
+        break;
+    default:
+        LUAU_ASSERT(false && "Invalid string type");
     }
 
     CstExprConstantString::QuoteStyle fullStyle;
@@ -4061,8 +4039,7 @@ AstExpr* Parser::parseInterpString()
         {
             AstArray<AstArray<char>> stringsArray = copy(strings);
             AstArray<AstExpr*> exprs = copy(expressions);
-            AstExprInterpString* node =
-                allocator.alloc<AstExprInterpString>(Location{startLocation, lexer.previousLocation()}, stringsArray, exprs);
+            AstExprInterpString* node = allocator.alloc<AstExprInterpString>(Location{startLocation, lexer.previousLocation()}, stringsArray, exprs);
             if (options.storeCstData)
                 cstNodeMap[node] = allocator.alloc<CstExprInterpString>(copy(sourceStrings), copy(stringPositions));
             if (auto top = lexer.peekBraceStackTop())

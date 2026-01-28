@@ -8,6 +8,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
+LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
@@ -109,9 +110,24 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
         f<<number | boolean>>(1, "a")
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        if (FFlag::LuauSolverV2)
+        if (FFlag::LuauSolverV2 && FFlag::LuauMorePreciseErrorSuppression)
         {
+            LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+            // clang-format off
+            std::string expected =
+                "Expected this to be 'boolean | number', but got 'string';\n"
+                "this is because\n"
+                "\t * the 1st component of the union is `number`, and `string` is not a subtype of `number`\n"
+                "\t * the 2nd component of the union is `boolean`, and `string` is not a subtype of `boolean`"
+            ;
+            // clang-format on
+
+            CHECK_LONG_STRINGS_EQ(expected, toString(result.errors.at(0)));
+        }
+        else if (FFlag::LuauSolverV2)
+        {
+            LUAU_REQUIRE_ERROR_COUNT(1, result);
             if (FFlag::LuauBetterTypeMismatchErrors)
                 REQUIRE_EQ(toString(result.errors[0]), "Expected this to be 'boolean | number', but got 'string'");
             else
@@ -119,13 +135,15 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
         }
         else
         {
+            LUAU_REQUIRE_ERROR_COUNT(1, result);
             if (FFlag::LuauBetterTypeMismatchErrors)
                 REQUIRE_EQ(
                     toString(result.errors[0]), "Expected this to be 'boolean | number', but got 'string'; none of the union options are compatible"
                 );
             else
                 REQUIRE_EQ(
-                    toString(result.errors[0]), "Type 'string' could not be converted into 'boolean | number'; none of the union options are compatible"
+                    toString(result.errors[0]),
+                    "Type 'string' could not be converted into 'boolean | number'; none of the union options are compatible"
                 );
         }
     }
@@ -178,8 +196,8 @@ TEST_CASE_FIXTURE(Fixture, "anonymous_type_inferred")
 
 TEST_CASE_FIXTURE(Fixture, "type_packs")
 {
-        ScopedFastFlag syntax{FFlag::LuauExplicitTypeInstantiationSyntax, true};
-        ScopedFastFlag semantics{FFlag::LuauExplicitTypeInstantiationSupport, true};
+    ScopedFastFlag syntax{FFlag::LuauExplicitTypeInstantiationSyntax, true};
+    ScopedFastFlag semantics{FFlag::LuauExplicitTypeInstantiationSupport, true};
 
     // FIXME: This triggers a GenericTypePackCountMismatch error, and it's not obvious if the
     // code for explicit types is broken, or if subtyping is broken.

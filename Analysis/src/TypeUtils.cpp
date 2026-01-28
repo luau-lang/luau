@@ -15,6 +15,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauUseIterativeTypeVisitor)
+LUAU_FASTFLAGVARIABLE(LuauContainsAnyGenericDoesntTraverseIntoExtern)
 
 namespace Luau
 {
@@ -900,6 +901,12 @@ ContainsAnyGeneric::ContainsAnyGeneric()
     : TypeOnceVisitor("ContainsAnyGeneric", /* skipBoundTypes */ true)
 {
 }
+
+bool ContainsAnyGeneric::visit(TypeId ty, const ExternType&)
+{
+    return !FFlag::LuauContainsAnyGenericDoesntTraverseIntoExtern;
+}
+
 bool ContainsAnyGeneric::visit(TypeId ty)
 {
     found = found || is<GenericType>(ty);
@@ -992,6 +999,16 @@ bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics)
         cg.traverse(ty);
         return cg.found;
     }
+}
+
+bool isBlocked(TypeId ty)
+{
+    ty = follow(ty);
+
+    if (auto tfit = get<TypeFunctionInstanceType>(ty))
+        return tfit->state == TypeFunctionInstanceState::Unsolved;
+
+    return is<BlockedType, PendingExpansionType>(ty);
 }
 
 

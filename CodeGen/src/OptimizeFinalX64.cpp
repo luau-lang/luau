@@ -26,31 +26,31 @@ static void optimizeMemoryOperandsX64(IrFunction& function, IrBlock& block)
         {
         case IrCmd::CHECK_TAG:
         {
-            if (inst.a.kind == IrOpKind::Inst)
+            if (OP_A(inst).kind == IrOpKind::Inst)
             {
-                IrInst& tag = function.instOp(inst.a);
+                IrInst& tag = function.instOp(OP_A(inst));
 
-                if (tag.useCount == 1 && tag.cmd == IrCmd::LOAD_TAG && (tag.a.kind == IrOpKind::VmReg || tag.a.kind == IrOpKind::VmConst))
-                    replace(function, inst.a, tag.a);
+                if (tag.useCount == 1 && tag.cmd == IrCmd::LOAD_TAG && (OP_A(tag).kind == IrOpKind::VmReg || OP_A(tag).kind == IrOpKind::VmConst))
+                    replace(function, OP_A(inst), OP_A(tag));
             }
             break;
         }
         case IrCmd::CHECK_TRUTHY:
         {
-            if (inst.a.kind == IrOpKind::Inst)
+            if (OP_A(inst).kind == IrOpKind::Inst)
             {
-                IrInst& tag = function.instOp(inst.a);
+                IrInst& tag = function.instOp(OP_A(inst));
 
-                if (tag.useCount == 1 && tag.cmd == IrCmd::LOAD_TAG && (tag.a.kind == IrOpKind::VmReg || tag.a.kind == IrOpKind::VmConst))
-                    replace(function, inst.a, tag.a);
+                if (tag.useCount == 1 && tag.cmd == IrCmd::LOAD_TAG && (OP_A(tag).kind == IrOpKind::VmReg || OP_A(tag).kind == IrOpKind::VmConst))
+                    replace(function, OP_A(inst), OP_A(tag));
             }
 
-            if (inst.b.kind == IrOpKind::Inst)
+            if (OP_B(inst).kind == IrOpKind::Inst)
             {
-                IrInst& value = function.instOp(inst.b);
+                IrInst& value = function.instOp(OP_B(inst));
 
                 if (value.useCount == 1 && value.cmd == IrCmd::LOAD_INT)
-                    replace(function, inst.b, value.a);
+                    replace(function, OP_B(inst), OP_A(value));
             }
             break;
         }
@@ -63,48 +63,48 @@ static void optimizeMemoryOperandsX64(IrFunction& function, IrBlock& block)
         case IrCmd::MIN_NUM:
         case IrCmd::MAX_NUM:
         {
-            if (inst.b.kind == IrOpKind::Inst)
+            if (OP_B(inst).kind == IrOpKind::Inst)
             {
-                IrInst& rhs = function.instOp(inst.b);
+                IrInst& rhs = function.instOp(OP_B(inst));
 
-                if (rhs.useCount == 1 && rhs.cmd == IrCmd::LOAD_DOUBLE && (rhs.a.kind == IrOpKind::VmReg || rhs.a.kind == IrOpKind::VmConst))
-                    replace(function, inst.b, rhs.a);
+                if (rhs.useCount == 1 && rhs.cmd == IrCmd::LOAD_DOUBLE && (OP_A(rhs).kind == IrOpKind::VmReg || OP_A(rhs).kind == IrOpKind::VmConst))
+                    replace(function, OP_B(inst), OP_A(rhs));
             }
             break;
         }
         case IrCmd::JUMP_EQ_TAG:
         {
-            if (inst.a.kind == IrOpKind::Inst)
+            if (OP_A(inst).kind == IrOpKind::Inst)
             {
-                IrInst& tagA = function.instOp(inst.a);
+                IrInst& tagA = function.instOp(OP_A(inst));
 
-                if (tagA.useCount == 1 && tagA.cmd == IrCmd::LOAD_TAG && (tagA.a.kind == IrOpKind::VmReg || tagA.a.kind == IrOpKind::VmConst))
+                if (tagA.useCount == 1 && tagA.cmd == IrCmd::LOAD_TAG && (OP_A(tagA).kind == IrOpKind::VmReg || OP_A(tagA).kind == IrOpKind::VmConst))
                 {
-                    replace(function, inst.a, tagA.a);
+                    replace(function, OP_A(inst), OP_A(tagA));
                     break;
                 }
             }
 
-            if (inst.b.kind == IrOpKind::Inst)
+            if (OP_B(inst).kind == IrOpKind::Inst)
             {
-                IrInst& tagB = function.instOp(inst.b);
+                IrInst& tagB = function.instOp(OP_B(inst));
 
-                if (tagB.useCount == 1 && tagB.cmd == IrCmd::LOAD_TAG && (tagB.a.kind == IrOpKind::VmReg || tagB.a.kind == IrOpKind::VmConst))
+                if (tagB.useCount == 1 && tagB.cmd == IrCmd::LOAD_TAG && (OP_A(tagB).kind == IrOpKind::VmReg || OP_A(tagB).kind == IrOpKind::VmConst))
                 {
-                    std::swap(inst.a, inst.b);
-                    replace(function, inst.a, tagB.a);
+                    std::swap(OP_A(inst), OP_B(inst));
+                    replace(function, OP_A(inst), OP_A(tagB));
                 }
             }
             break;
         }
         case IrCmd::JUMP_CMP_NUM:
         {
-            if (inst.a.kind == IrOpKind::Inst)
+            if (OP_A(inst).kind == IrOpKind::Inst)
             {
-                IrInst& num = function.instOp(inst.a);
+                IrInst& num = function.instOp(OP_A(inst));
 
                 if (num.useCount == 1 && num.cmd == IrCmd::LOAD_DOUBLE)
-                    replace(function, inst.a, num.a);
+                    replace(function, OP_A(inst), OP_A(num));
             }
             break;
         }
@@ -114,12 +114,12 @@ static void optimizeMemoryOperandsX64(IrFunction& function, IrBlock& block)
         case IrCmd::SQRT_NUM:
         case IrCmd::ABS_NUM:
         {
-            if (inst.a.kind == IrOpKind::Inst)
+            if (OP_A(inst).kind == IrOpKind::Inst)
             {
-                IrInst& arg = function.instOp(inst.a);
+                IrInst& arg = function.instOp(OP_A(inst));
 
-                if (arg.useCount == 1 && arg.cmd == IrCmd::LOAD_DOUBLE && (arg.a.kind == IrOpKind::VmReg || arg.a.kind == IrOpKind::VmConst))
-                    replace(function, inst.a, arg.a);
+                if (arg.useCount == 1 && arg.cmd == IrCmd::LOAD_DOUBLE && (OP_A(arg).kind == IrOpKind::VmReg || OP_A(arg).kind == IrOpKind::VmConst))
+                    replace(function, OP_A(inst), OP_A(arg));
             }
             break;
         }

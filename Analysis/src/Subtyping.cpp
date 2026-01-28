@@ -23,9 +23,14 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauSubtypingRecursionLimit, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauIndexInMetatableSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingPackRecursionLimits)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAGVARIABLE(LuauTryFindSubstitutionReturnOptional)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingHandlesExternTypesWithIndexers)
+LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
+LUAU_FASTFLAG(LuauUnifyWithSubtyping)
+LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 
 namespace Luau
 {
@@ -175,13 +180,7 @@ static void assertReasoningValid(TID subTy, TID superTy, const SubtypingResult& 
 }
 
 template<>
-void assertReasoningValid<TableIndexer>(
-    TableIndexer,
-    TableIndexer,
-    const SubtypingResult&,
-    NotNull<BuiltinTypes>,
-    NotNull<TypeArena>
-)
+void assertReasoningValid<TableIndexer>(TableIndexer, TableIndexer, const SubtypingResult&, NotNull<BuiltinTypes>, NotNull<TypeArena>)
 {
     // This specialization exists so that we can invoke methods like
     // isInvariantWith() on a pair of TableIndexers.
@@ -232,7 +231,7 @@ static SubtypingReasonings mergeReasonings(const SubtypingReasonings& a, const S
     return result;
 }
 
-SubtypingResult& SubtypingResult::andAlso(const SubtypingResult& other)
+SubtypingResult& SubtypingResult::andAlso(const SubtypingResult& other, SubtypingSuppressionPolicy policy)
 {
     // If the other result is not a subtype, we want to join all of its
     // reasonings to this one. If this result already has reasonings of its own,
@@ -241,6 +240,13 @@ SubtypingResult& SubtypingResult::andAlso(const SubtypingResult& other)
         reasoning = isSubtype ? other.reasoning : mergeReasonings(reasoning, other.reasoning);
 
     isSubtype &= other.isSubtype;
+    if (FFlag::LuauMorePreciseErrorSuppression)
+    {
+        if (policy == SubtypingSuppressionPolicy::All)
+            isErrorSuppressing &= other.isErrorSuppressing;
+        else
+            isErrorSuppressing |= other.isErrorSuppressing;
+    }
     normalizationTooComplex |= other.normalizationTooComplex;
     isCacheable &= other.isCacheable;
     errors.insert(errors.end(), other.errors.begin(), other.errors.end());
@@ -267,7 +273,18 @@ SubtypingResult& SubtypingResult::orElse(const SubtypingResult& other)
         else
         {
             reasoning = mergeReasonings(reasoning, other.reasoning);
+            if (FFlag::LuauMorePreciseErrorSuppression)
+                isErrorSuppressing |= other.isErrorSuppressing;
         }
+    }
+    else if (FFlag::LuauUnifyWithSubtyping && other.isSubtype)
+    {
+        // If the other result has assumed constraints, we drop ours (given
+        // we represent a failed subtype) and then take the constraints of
+        // the other check.
+        //
+        // It would also be nice to `std::move` this.
+        assumedConstraints = other.assumedConstraints;
     }
 
     isSubtype |= other.isSubtype;
@@ -371,8 +388,18 @@ SubtypingResult SubtypingResult::negate(const SubtypingResult& result)
 SubtypingResult SubtypingResult::all(const std::vector<SubtypingResult>& results)
 {
     SubtypingResult acc{true};
+
+    if (FFlag::LuauMorePreciseErrorSuppression)
+    {
+        if (results.empty())
+            return acc;
+
+        acc.isErrorSuppressing = true;
+    }
+
     for (const SubtypingResult& current : results)
-        acc.andAlso(current);
+        acc.andAlso(current, SubtypingSuppressionPolicy::All);
+
     return acc;
 }
 
@@ -662,12 +689,7 @@ SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope
     return result;
 }
 
-SubtypingResult Subtyping::isSubtype(
-    TypePackId subTp,
-    TypePackId superTp,
-    NotNull<Scope> scope,
-    const std::vector<TypeId>& bindableGenerics
-)
+SubtypingResult Subtyping::isSubtype(TypePackId subTp, TypePackId superTp, NotNull<Scope> scope, const std::vector<TypeId>& bindableGenerics)
 {
     const std::vector<TypePackId> bindableGenericPacks;
     return isSubtype(subTp, superTp, scope, bindableGenerics, bindableGenericPacks);
@@ -725,6 +747,13 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     RecursionCounter rc(&counters.recursionCount);
     if (DFInt::LuauSubtypingRecursionLimit > 0 && DFInt::LuauSubtypingRecursionLimit < counters.recursionCount)
         return SubtypingResult{false, true};
+
+    if (FFlag::LuauUnifyWithSubtyping)
+    {
+        env.iterationCount++;
+        if (FInt::LuauSubtypingIterationLimit > 0 && env.iterationCount >= FInt::LuauSubtypingIterationLimit)
+            return SubtypingResult{false, true};
+    }
 
     subTy = follow(subTy);
     superTy = follow(superTy);
@@ -793,19 +822,83 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 
         return res;
     }
+
     ScopedSeenSet ssp{seenTypes, typePair};
 
     // Within the scope to which a generic belongs, that generic should be
     // tested as though it were its upper bounds.  We do not yet support bounded
     // generics, so the upper bound is always unknown.
-    if (auto subGeneric = get<GenericType>(subTy); subGeneric && subsumes(subGeneric->scope, scope))
-        return isCovariantWith(env, builtinTypes->neverType, superTy, scope);
-    if (auto superGeneric = get<GenericType>(superTy); superGeneric && subsumes(superGeneric->scope, scope))
-        return isCovariantWith(env, subTy, builtinTypes->unknownType, scope);
+    if (!FFlag::LuauUnifyWithSubtyping)
+    {
+        if (auto subGeneric = get<GenericType>(subTy); subGeneric && subsumes(subGeneric->scope, scope))
+            return isCovariantWith(env, builtinTypes->neverType, superTy, scope);
+        if (auto superGeneric = get<GenericType>(superTy); superGeneric && subsumes(superGeneric->scope, scope))
+            return isCovariantWith(env, subTy, builtinTypes->unknownType, scope);
+    }
 
     SubtypingResult result;
 
-    if (get<AnyType>(superTy))
+    if (FFlag::LuauUnifyWithSubtyping && get2<FreeType, FreeType>(subTy, superTy))
+    {
+        // Any two free types are potentially subtypes of one another because
+        // both of them could be narrowed to never.
+        result = {true};
+        result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
+    }
+    else if (auto superFree = get<FreeType>(superTy); FFlag::LuauUnifyWithSubtyping && superFree)
+    {
+        // FIXME CLI-185582: See comment below with the same ticket number.
+
+        // Given SubTy <: (LB <: SuperTy <: UB)
+        //
+        // If SubTy <: UB, then it is possible that SubTy <: SuperTy.
+        // If SubTy </: UB, then it is definitely the case that SubTy </: SuperTy.
+        //
+        // It's always possible for SuperTy's upper bound to later be
+        // constrained, so this relation may not actually hold.
+
+        result = isCovariantWith(env, subTy, superFree->upperBound, scope);
+
+        if (result.isSubtype)
+            result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
+    }
+    else if (auto subFree = get<FreeType>(subTy); FFlag::LuauUnifyWithSubtyping && subFree)
+    {
+        // FIXME CLI-185582: When combined with unification via subtyping, this
+        // can allow generics to appear upper bounds, but unless this is used
+        // to resolve function calls (which the linked ticket is for) said
+        // generics will be from within the scope of said generic, for example:
+        //
+        //  local function foo<T>(x): T
+        //      -- `T` will appear in the upper bound of `x`, but that's
+        //      -- fine, as we are within the scope of T
+        //      return x
+        //  end
+
+        // Given (LB <: SubTy <: UB) <: SuperTy
+        //
+        // If UB <: SuperTy, then it is certainly the case that SubTy <: SuperTy.
+        // If SuperTy <: UB and LB <: SuperTy, then it is possible that UB will later be narrowed such that SubTy <: SuperTy.
+        // If LB </: SuperTy, then SubTy </: SuperTy
+
+        if (isCovariantWith(env, subFree->lowerBound, superTy, scope).isSubtype)
+        {
+            result = {true};
+            result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
+        }
+        else
+            result = {false};
+    }
+    else if (FFlag::LuauUnifyWithSubtyping && (is<BlockedType>(subTy) || is<BlockedType>(superTy)))
+    {
+        result = {true};
+        result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
+    }
+    else if (auto subGeneric = get<GenericType>(subTy); FFlag::LuauUnifyWithSubtyping && subGeneric && subsumes(subGeneric->scope, scope))
+        return isCovariantWith(env, builtinTypes->neverType, superTy, scope);
+    else if (auto superGeneric = get<GenericType>(superTy); FFlag::LuauUnifyWithSubtyping && superGeneric && subsumes(superGeneric->scope, scope))
+        return isCovariantWith(env, subTy, builtinTypes->unknownType, scope);
+    else if (get<AnyType>(superTy))
         result = {true};
 
     // We have added this as an exception - the set of inhabitants of any is exactly the set of inhabitants of unknown (since error has no
@@ -818,6 +911,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         // As per TAPL: A | B <: T iff A <: T && B <: T
         result =
             isCovariantWith(env, builtinTypes->unknownType, superTy, scope).andAlso(isCovariantWith(env, builtinTypes->errorType, superTy, scope));
+        if (FFlag::LuauMorePreciseErrorSuppression)
+            result.isErrorSuppressing = true;
     }
     else if (get<UnknownType>(superTy) && !get<UnionType>(subTy) && !get<IntersectionType>(subTy))
     {
@@ -826,14 +921,24 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         LUAU_ASSERT(!get<IntersectionType>(subTy)); // TODO: replace with ice.
 
         bool errorSuppressing = nullptr != get<ErrorType>(subTy);
-        result = {!errorSuppressing};
+        if (FFlag::LuauMorePreciseErrorSuppression)
+        {
+            result.isSubtype = !errorSuppressing;
+            result.isErrorSuppressing = errorSuppressing;
+        }
+        else
+            result = {!errorSuppressing};
     }
     else if (get<NeverType>(subTy))
         result = {true};
     else if (get<ErrorType>(superTy))
         result = {false};
     else if (get<ErrorType>(subTy))
+    {
         result = {true};
+        if (FFlag::LuauMorePreciseErrorSuppression)
+            result.isErrorSuppressing = true;
+    }
     else if (auto subTypeFunctionInstance = get<TypeFunctionInstanceType>(subTy))
     {
         bool mappedGenericsApplied = false;
@@ -889,14 +994,14 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         if (!result.isSubtype && !result.normalizationTooComplex)
             result = trySemanticSubtyping(env, subTy, superTy, scope, result);
     }
-    else if (auto pair = get2<FreeType, FreeType>(subTy, superTy))
+    else if (auto pair = get2<FreeType, FreeType>(subTy, superTy); !FFlag::LuauUnifyWithSubtyping && pair)
     {
         // Any two free types are potentially subtypes of one another because
         // both of them could be narrowed to never.
         result = {true};
         result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
     }
-    else if (auto superFree = get<FreeType>(superTy))
+    else if (auto superFree = get<FreeType>(superTy); !FFlag::LuauUnifyWithSubtyping && superFree)
     {
         // Given SubTy <: (LB <: SuperTy <: UB)
         //
@@ -911,7 +1016,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         if (result.isSubtype)
             result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
     }
-    else if (auto subFree = get<FreeType>(subTy))
+    else if (auto subFree = get<FreeType>(subTy); !FFlag::LuauUnifyWithSubtyping && subFree)
     {
         // Given (LB <: SubTy <: UB) <: SuperTy
         //
@@ -919,18 +1024,31 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         // If SuperTy <: UB and LB <: SuperTy, then it is possible that UB will later be narrowed such that SubTy <: SuperTy.
         // If LB </: SuperTy, then SubTy </: SuperTy
 
-        if (isCovariantWith(env, subFree->lowerBound, superTy, scope).isSubtype)
+        if (FFlag::LuauMorePreciseErrorSuppression)
         {
-            result = {true};
-            result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
+            SubtypingResult r = isCovariantWith(env, subFree->lowerBound, superTy, scope);
+            result.isSubtype = r.isSubtype;
+            result.isErrorSuppressing = r.isErrorSuppressing;
+            if (r.isSubtype)
+                result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
         }
         else
-            result = {false};
+        {
+            if (isCovariantWith(env, subFree->lowerBound, superTy, scope).isSubtype)
+            {
+                result = {true};
+                result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
+            }
+            else
+                result = {false};
+        }
     }
     else if (auto p = get2<NegationType, NegationType>(subTy, superTy))
+    {
         // We use `isContravariantWith` here in order to make sure that the
         // type paths still look coherent.
         result = isContravariantWith(env, p.first->ty, p.second->ty, scope).withBothComponent(TypePath::TypeField::Negated);
+    }
     else if (auto subNegation = get<NegationType>(subTy))
     {
         result = isCovariantWith(env, subNegation, superTy, scope);
@@ -960,11 +1078,33 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     {
         const bool forceCovariantTest = uniqueTypes != nullptr && uniqueTypes->contains(subTy);
         result = isCovariantWith(env, p.first, p.second, forceCovariantTest, scope);
+        if (FFlag::LuauUnifyWithSubtyping)
+        {
+            if (result.isSubtype && !p.first->indexer && p.second->indexer && p.first->state != TableState::Sealed)
+            {
+                // FIXME CLI-182960
+                //
+                // Currently, unification is also the mechanism by which unsealed
+                // tables may receive an indexer. If we've observed that this is
+                // already a subtype and this is something of the form:
+                //
+                //  {| ... |} <: { [A]: B ... }
+                //
+                // Then add an assumed constraint stating such.
+                result.assumedConstraints.emplace_back(SubtypeConstraint{subTy, superTy});
+            }
+        }
     }
     else if (auto p = get2<MetatableType, MetatableType>(subTy, superTy))
         result = isCovariantWith(env, p, scope);
     else if (auto p = get2<MetatableType, TableType>(subTy, superTy))
         result = isCovariantWith(env, p, scope);
+    else if (FFlag::LuauTableFreezeCheckIsSubtype && get2<MetatableType, PrimitiveType>(subTy, superTy))
+    {
+        // When FFlag::LuauTableFreezeCheckIsSubtype is clipped, will update the `if` to follow the same pattern of `auto p = get2<...>` as above.
+        auto p = get2<MetatableType, PrimitiveType>(subTy, superTy);
+        result = isCovariantWith(env, p, scope);
+    }
     else if (auto p = get2<ExternType, ExternType>(subTy, superTy))
         result = isCovariantWith(env, p, scope);
     else if (auto p = get2<ExternType, TableType>(subTy, superTy))
@@ -1079,11 +1219,18 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
         {
             results.push_back(isTailCovariantWithTail(env, scope, *subTail, p.first, *superTail, p.second));
         }
+        else if (FFlag::LuauUnifyWithSubtyping && (is<FreeTypePack>(*subTail) || is<FreeTypePack>(*superTail)))
+        {
+            results.push_back(
+                SubtypingResult{true}.withBothComponent(TypePath::PackField::Tail).withAssumedConstraint(PackSubtypeConstraint{*subTail, *superTail})
+            );
+        }
         else if (get<ErrorTypePack>(*subTail) || get<ErrorTypePack>(*superTail))
             // error type is fine on either side
             results.push_back(SubtypingResult{true}.withBothComponent(TypePath::PackField::Tail));
         else if (get<FreeTypePack>(*subTail) || get<FreeTypePack>(*superTail))
         {
+            // This seems incorrect in the event that the heads don't match ...
             return SubtypingResult{true}
                 .withBothComponent(TypePath::PackField::Tail)
                 .withAssumedConstraint(PackSubtypeConstraint{*subTail, *superTail});
@@ -1103,6 +1250,17 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
         else if (auto g = get<GenericTypePack>(*subTail))
         {
             return isTailCovariantWithTail(env, scope, *subTail, g, Nothing{});
+        }
+        else if (FFlag::LuauUnifyWithSubtyping && is<FreeTypePack>(*subTail))
+        {
+            // This is the case where:
+            // 1. Both the `superTp` and `subTp` have the same number of types in the head
+            // 2. `superTp` does not have a tail (as if it did we'd hit a different branch)
+            // 3. `subTp` has a free tail
+            // We can treat the lack of a tail as the empty type pack.
+            return SubtypingResult{true}
+                .withBothComponent(TypePath::PackField::Tail)
+                .withAssumedConstraint(PackSubtypeConstraint{*subTail, builtinTypes->emptyTypePack});
         }
         else
             return SubtypingResult{false}
@@ -1126,6 +1284,16 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
         else if (auto g = get<GenericTypePack>(*superTail))
         {
             results.push_back(isTailCovariantWithTail(env, scope, Nothing{}, *superTail, g));
+        }
+        else if (FFlag::LuauUnifyWithSubtyping && is<FreeTypePack>(*superTail))
+        {
+            // This is the case where:
+            // 1. Both the `superTp` and `subTp` have the same number of types in the head
+            // 2. `subTp` does not have a tail
+            // 3. `superTp` has a free tail
+            return SubtypingResult{true}
+                .withBothComponent(TypePath::PackField::Tail)
+                .withAssumedConstraint(PackSubtypeConstraint{builtinTypes->emptyTypePack, *superTail});
         }
         else
             return SubtypingResult{false}
@@ -1171,8 +1339,8 @@ std::optional<SubtypingResult> Subtyping::isSubTailCovariantWith(
     {
         for (size_t i = superHeadStartIndex; i < superHead.size(); ++i)
             outputResults.push_back(isCovariantWith(env, vt->ty, superHead[i], scope)
-                                    .withSubPath(TypePath::PathBuilder().tail().variadic().build())
-                                    .withSuperComponent(TypePath::Index{i, TypePath::Index::Variant::Pack}));
+                                        .withSubPath(TypePath::PathBuilder().tail().variadic().build())
+                                        .withSuperComponent(TypePath::Index{i, TypePath::Index::Variant::Pack}));
         return std::nullopt;
     }
     else if (get<GenericTypePack>(subTail))
@@ -1216,6 +1384,11 @@ std::optional<SubtypingResult> Subtyping::isSubTailCovariantWith(
     }
     else if (get<ErrorTypePack>(subTail))
         return SubtypingResult{true}.withSubComponent(TypePath::PackField::Tail);
+    else if (FFlag::LuauUnifyWithSubtyping && get<FreeTypePack>(subTail))
+    {
+        TypePackId superTailPack = sliceTypePack(superHeadStartIndex, superTp, superHead, superTail, builtinTypes, arena);
+        return SubtypingResult{true}.withSubComponent(TypePath::PackField::Tail).withAssumedConstraint(PackSubtypeConstraint{subTail, superTailPack});
+    }
     else
         return SubtypingResult{false}
             .withSubComponent(TypePath::PackField::Tail)
@@ -1238,8 +1411,8 @@ std::optional<SubtypingResult> Subtyping::isCovariantWithSuperTail(
     {
         for (size_t i = subHeadStartIndex; i < subHead.size(); ++i)
             results.push_back(isCovariantWith(env, subHead[i], vt->ty, scope)
-                                    .withSubComponent(TypePath::Index{i, TypePath::Index::Variant::Pack})
-                                    .withSuperPath(TypePath::PathBuilder().tail().variadic().build()));
+                                  .withSubComponent(TypePath::Index{i, TypePath::Index::Variant::Pack})
+                                  .withSuperPath(TypePath::PathBuilder().tail().variadic().build()));
         return std::nullopt;
     }
     else if (get<GenericTypePack>(superTail))
@@ -1282,6 +1455,13 @@ std::optional<SubtypingResult> Subtyping::isCovariantWithSuperTail(
     }
     else if (get<ErrorTypePack>(superTail))
         return SubtypingResult{true}.withSuperComponent(TypePath::PackField::Tail);
+    else if (FFlag::LuauUnifyWithSubtyping && is<FreeTypePack>(superTail))
+    {
+        TypePackId subTailPack = sliceTypePack(subHeadStartIndex, subTp, subHead, subTail, builtinTypes, arena);
+        return SubtypingResult{true}
+            .withSuperComponent(TypePath::PackField::Tail)
+            .withAssumedConstraint({PackSubtypeConstraint{subTailPack, superTail}});
+    }
     else
         return SubtypingResult{false}
             .withSuperComponent(TypePath::PackField::Tail)
@@ -1355,7 +1535,14 @@ SubtypingResult Subtyping::isTailCovariantWithTail(
     }
 }
 
-SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const VariadicTypePack* sub, TypePackId superTp, const GenericTypePack* super)
+SubtypingResult Subtyping::isTailCovariantWithTail(
+    SubtypingEnvironment& env,
+    NotNull<Scope> scope,
+    TypePackId subTp,
+    const VariadicTypePack* sub,
+    TypePackId superTp,
+    const GenericTypePack* super
+)
 {
     MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(superTp);
     if (const TypePackId* currMapping = get_if<TypePackId>(&lookupResult))
@@ -1376,7 +1563,14 @@ SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, No
     }
 }
 
-SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const GenericTypePack* sub, TypePackId superTp, const VariadicTypePack* super)
+SubtypingResult Subtyping::isTailCovariantWithTail(
+    SubtypingEnvironment& env,
+    NotNull<Scope> scope,
+    TypePackId subTp,
+    const GenericTypePack* sub,
+    TypePackId superTp,
+    const VariadicTypePack* super
+)
 {
     if (TypeId t = follow(super->ty); get<AnyType>(t) || get<UnknownType>(t))
     {
@@ -1393,8 +1587,8 @@ SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, No
         if (const TypePackId* currMapping = get_if<TypePackId>(&lookupResult))
         {
             return isCovariantWith(env, *currMapping, superTp, scope)
-                                    .withSubPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*currMapping}}))
-                                    .withSuperComponent(TypePath::PackField::Tail);
+                .withSubPath(Path({TypePath::PackField::Tail, TypePath::GenericPackMapping{*currMapping}}))
+                .withSuperComponent(TypePath::PackField::Tail);
         }
         else if (get_if<MappedGenericEnvironment::Unmapped>(&lookupResult))
         {
@@ -1404,14 +1598,18 @@ SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, No
         else
         {
             LUAU_ASSERT(get_if<MappedGenericEnvironment::NotBindable>(&lookupResult));
-            return SubtypingResult{false, /* normalizationTooComplex */ false, /* isCacheable */ false}.withBothComponent(
-                    TypePath::PackField::Tail
-                );
+            return SubtypingResult{false, /* normalizationTooComplex */ false, /* isCacheable */ false}.withBothComponent(TypePath::PackField::Tail);
         }
     }
 }
 
-SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, TypePackId subTp, const GenericTypePack* sub, Nothing)
+SubtypingResult Subtyping::isTailCovariantWithTail(
+    SubtypingEnvironment& env,
+    NotNull<Scope> scope,
+    TypePackId subTp,
+    const GenericTypePack* sub,
+    Nothing
+)
 {
     MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(subTp);
     if (const TypePackId* currMapping = get_if<TypePackId>(&lookupResult))
@@ -1429,7 +1627,13 @@ SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, No
     }
 }
 
-SubtypingResult Subtyping::isTailCovariantWithTail(SubtypingEnvironment& env, NotNull<Scope> scope, Nothing, TypePackId superTp, const GenericTypePack* super)
+SubtypingResult Subtyping::isTailCovariantWithTail(
+    SubtypingEnvironment& env,
+    NotNull<Scope> scope,
+    Nothing,
+    TypePackId superTp,
+    const GenericTypePack* super
+)
 {
     MappedGenericEnvironment::LookupResult lookupResult = env.lookupGenericPack(superTp);
     if (const TypePackId* currMapping = get_if<TypePackId>(&lookupResult))
@@ -1550,6 +1754,9 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 {
     // As per TAPL: T <: A | B iff T <: A || T <: B
 
+    SubtypingResult result{false};
+
+    size_t index = 0;
     for (TypeId ty : superUnion)
     {
         SubtypingResult next = isCovariantWith(env, subTy, ty, scope);
@@ -1558,15 +1765,16 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
             return SubtypingResult{false, /* normalizationTooComplex */ true};
 
         if (next.isSubtype)
-            return SubtypingResult{true};
+            return FFlag::LuauUnifyWithSubtyping ? next : SubtypingResult{true};
+
+        if (FFlag::LuauMorePreciseErrorSuppression)
+        {
+            result.andAlso(next.withSuperComponent(TypePath::Index{index, TypePath::Index::Variant::Union}));
+            ++index;
+        }
     }
 
-    /*
-     * TODO: Is it possible here to use the context produced by the above
-     * isCovariantWith() calls to produce a richer, more helpful result in the
-     * case that the subtyping relation does not hold?
-     */
-    return SubtypingResult{false};
+    return result;
 }
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const UnionType* subUnion, TypeId superTy, NotNull<Scope> scope)
@@ -1712,7 +1920,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
     else if (is<AnyType>(negatedTy))
     {
         // ¬any ~ any
-        result = isSubtype(subTy, negatedTy, scope);
+        result = FFlag::LuauUnifyWithSubtyping ? isCovariantWith(env, subTy, negatedTy, scope) : isSubtype(subTy, negatedTy, scope);
     }
     else if (auto u = get<UnionType>(negatedTy))
     {
@@ -1885,11 +2093,45 @@ SubtypingResult Subtyping::isCovariantWith(
                 }
             }
         }
+        else if (FFlag::LuauSubtypingMissingPropertiesAsNil)
+        {
+            SubtypingResult result = isCovariantWith(env, Property::readonly(builtinTypes->nilType), superProp, name, forceCovariantTest, scope);
+            // We must ignore the actual reasoning from here because the subtype doesn't have a property to traverse into later.
+            // If there is a type error, we want to point at this spot as being responsible for it!
+            result.reasoning.clear();
+            results.push_back(result);
+        }
 
         if (results.empty())
             return SubtypingResult{false};
 
-        result.andAlso(SubtypingResult::all(results));
+        if (FFlag::LuauMorePreciseErrorSuppression)
+        {
+            bool isSubtype = true;
+            for (const SubtypingResult& sr : results)
+                isSubtype &= sr.isSubtype;
+
+            // If the first failed subtype test is a suppressing failure, then
+            // we set the suppression bit in case there are no subsequent
+            // non-suppressing failures.
+            //
+            // If we at any point encounter a non-suppressing failure, then this
+            // whole subtype test is a non-suppressing failure.
+            if (result.isSubtype && !isSubtype)
+            {
+                for (const SubtypingResult& sr : results)
+                    result.andAlso(sr, SubtypingSuppressionPolicy::Any);
+            }
+            else
+            {
+                for (const SubtypingResult& sr : results)
+                    result.andAlso(sr, SubtypingSuppressionPolicy::All);
+            }
+        }
+        else
+        {
+            result.andAlso(SubtypingResult::all(results));
+        }
     }
 
     if (superTable->indexer)
@@ -2001,7 +2243,6 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Meta
             }
 
             return isCovariantWith(env, &fauxSubTable, superTable, /* forceCovariantTest */ false, scope);
-
         }
         else
         {
@@ -2022,6 +2263,31 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Meta
         // TODO: This may be a case we actually hit?
         return {false};
     }
+}
+
+SubtypingResult Subtyping::isCovariantWith(
+    SubtypingEnvironment& env,
+    const MetatableType* subMt,
+    const PrimitiveType* superPrim,
+    NotNull<Scope> scope
+)
+{
+    LUAU_ASSERT(FFlag::LuauTableFreezeCheckIsSubtype);
+
+    // Metatable types can be subtypes of primitive table types if their table component is a subtype of table.
+    if (superPrim->type == PrimitiveType::Table)
+    {
+        if (auto subTable = get<TableType>(follow(subMt->table)))
+        {
+            return isCovariantWith(env, subTable, superPrim, scope);
+        }
+        else if (auto subNestedMt = get<MetatableType>(follow(subMt->table)))
+        {
+            return isCovariantWith(env, subNestedMt, superPrim, scope);
+        }
+    }
+
+    return {false};
 }
 
 SubtypingResult Subtyping::isCovariantWith(
@@ -2064,7 +2330,7 @@ SubtypingResult Subtyping::isCovariantWith(
     {
         if (superTable->indexer && subExternType->indexer)
         {
-            // NOTE: despite the name, this will internally check that the two 
+            // NOTE: despite the name, this will internally check that the two
             // indexers are invariant with one another.
             result.andAlso(isCovariantWith(env, *subExternType->indexer, *superTable->indexer, scope));
         }
@@ -2087,7 +2353,7 @@ SubtypingResult Subtyping::isCovariantWith(
             //      local v_prime = cast(v)
             //      v_prime["well thats not good"] = 42
             //  end
-            result = { /* isSubtype */ false};
+            result = {/* isSubtype */ false};
         }
         // The remaining cases are:
         //  - The extern type has an indexer and the table does not: this is

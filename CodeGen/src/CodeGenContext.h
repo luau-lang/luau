@@ -70,12 +70,9 @@ class StandaloneCodeGenContext final : public BaseCodeGenContext
 public:
     StandaloneCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
 
-    [[nodiscard]] virtual std::optional<ModuleBindResult> tryBindExistingModule(
-        const ModuleId& moduleId,
-        const std::vector<Proto*>& moduleProtos
-    ) override;
+    [[nodiscard]] std::optional<ModuleBindResult> tryBindExistingModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) override;
 
-    [[nodiscard]] virtual ModuleBindResult bindModule(
+    [[nodiscard]] ModuleBindResult bindModule(
         const std::optional<ModuleId>& moduleId,
         const std::vector<Proto*>& moduleProtos,
         std::vector<NativeProtoExecDataPtr> nativeExecDatas,
@@ -85,8 +82,8 @@ public:
         size_t codeSize
     ) override;
 
-    virtual void onCloseState() noexcept override;
-    virtual void onDestroyFunction(void* execdata) noexcept override;
+    void onCloseState() noexcept override;
+    void onDestroyFunction(void* execdata) noexcept override;
 
 private:
 };
@@ -96,12 +93,9 @@ class SharedCodeGenContext final : public BaseCodeGenContext
 public:
     SharedCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
 
-    [[nodiscard]] virtual std::optional<ModuleBindResult> tryBindExistingModule(
-        const ModuleId& moduleId,
-        const std::vector<Proto*>& moduleProtos
-    ) override;
+    [[nodiscard]] std::optional<ModuleBindResult> tryBindExistingModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) override;
 
-    [[nodiscard]] virtual ModuleBindResult bindModule(
+    [[nodiscard]] ModuleBindResult bindModule(
         const std::optional<ModuleId>& moduleId,
         const std::vector<Proto*>& moduleProtos,
         std::vector<NativeProtoExecDataPtr> nativeExecDatas,
@@ -111,8 +105,8 @@ public:
         size_t codeSize
     ) override;
 
-    virtual void onCloseState() noexcept override;
-    virtual void onDestroyFunction(void* execdata) noexcept override;
+    void onCloseState() noexcept override;
+    void onDestroyFunction(void* execdata) noexcept override;
 
 private:
     SharedCodeAllocator sharedAllocator;

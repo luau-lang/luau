@@ -294,6 +294,19 @@ local function arraySizeInv1()
   return t[10]
 end
 
+local function fuzzfail28(...)
+  _,_.n0,_,_,_[_ // _],_[_ + _ % _],_,_,_,_,l255,_,_,_,_,_,_,_,_,_[_],_,_,_ = table.insert("")
+  _,_.n0,_,_,_[_ // _],_[_ + _ % _],_,_,_,_,l255,_,_,_,_,_,_,_,_,_[_],_,_,_ = table.insert("")
+end
+
+assert(pcall(fuzzfail28) == false)
+
+local function fuzzfail29(...)
+  return (vector.create(335572085, 4, 5) // 2) == ...
+end
+
+assert(fuzzfail29() == false)
+
 assert(arraySizeInv1() == true)
 
 local function arraySizeInv2()

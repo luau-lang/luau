@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauCloneForIntersectionsUnions)
+LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1945,6 +1946,149 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "instantiation_works_on_builtins")
         CHECK_EQ("Expected this to be 'string', but got 'number'", toString(result.errors[0]));
     else
         CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_on_any_should_not_error")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+
+    CheckResult result = check(R"(
+        local function foo(): any
+            return true
+        end
+
+        table.freeze(foo())
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_type_check_should_not_error")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+
+    CheckResult result = check(R"(
+        local function maybeFreeze(t: any)
+            if type(t) == "table" then
+                table.freeze(t)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_no_args")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+
+    CheckResult result = check(R"(
+        table.freeze()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Argument count mismatch. Function 'table.freeze' expects 1 argument, but none are specified", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_type_pack_should_error")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+
+    CheckResult result = check(R"(
+        table.freeze({x = 5}, {y = "hello"})
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Argument count mismatch. Function 'table.freeze' expects 1 argument, but 2 are specified", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_variadic_any_should_not_error")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+
+    CheckResult result = check(R"(
+        local function bar(): ...any
+            return true
+        end
+
+        table.freeze(bar())
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_with_variadic_non_error_suppressing_should_error")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+
+    CheckResult result = check(R"(
+        local function bar(): ...string
+            return
+        end
+
+        table.freeze(bar())
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    // TODO (CLI-185019): We probably want a count mismatch error here instead.
+    if (FFlag::LuauBetterTypeMismatchErrors)
+    {
+        CHECK_EQ("Expected this to be 'table', but got 'string'", toString(result.errors[0]));
+    }
+    else
+    {
+        CHECK_EQ("Type 'string' could not be converted into 'table'", toString(result.errors[0]));
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "variadic_return_to_single_parameter_function")
+{
+    CheckResult result = check(R"(
+        local function bar(): ...string
+            return
+        end
+
+        local function foo(x: string)
+            print(x) -- nil
+        end
+
+        foo(bar())
+    )");
+
+    // TODO (CLI-185019): We want to error here in some way, maybe a count mismatch?
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_generic_pack")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+
+    CheckResult result = check(R"(
+        local function foo<T...>(...: T...)
+            table.freeze(...)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK_EQ(toString(tpm->wantedTp), "table");
+    CHECK_EQ(toString(tpm->givenTp), "T...");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_function")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauTableFreezeCheckIsSubtype, true}};
+
+    CheckResult result = check(R"(
+        local function foo(f: () -> ())
+            table.freeze(f())
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Argument count mismatch. Function 'table.freeze' expects 1 argument, but none are specified", toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

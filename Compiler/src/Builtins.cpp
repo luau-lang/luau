@@ -8,6 +8,7 @@
 #include <array>
 
 LUAU_FASTFLAGVARIABLE(LuauCompileMathIsNanInfFinite)
+LUAU_FASTFLAGVARIABLE(LuauCompileFastcallsSurvivePolyfills)
 
 namespace Luau
 {
@@ -24,6 +25,32 @@ Builtin getBuiltin(AstExpr* node, const DenseHashMap<AstName, Global>& globals, 
     }
     else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
     {
+        if (FFlag::LuauCompileFastcallsSurvivePolyfills)
+        {
+            if (AstExprLocal* object = expr->expr->as<AstExprLocal>())
+            {
+                const Variable* v = variables.find(object->local);
+
+                // Local that is initialized and not modified might hold the built-in library itself
+                if (v && !v->written && v->init)
+                {
+                    AstExprGlobal* object = nullptr;
+
+                    // Look for patterns like 'local m = math' and 'local math = math or replacement'
+                    // Fastcall is used in safe env where libraries like 'math' are built-in
+                    // This means that if we are still in safe env, 'math' was truthy and local was initialized to the library value
+                    // If safe env is false, 'math' could be a polyfill or something else and fastcall takes the fallback, preserving the behavior
+                    if (AstExprGlobal* global = v->init->as<AstExprGlobal>())
+                        object = global;
+                    else if (AstExprBinary* cond = v->init->as<AstExprBinary>(); cond && cond->op == AstExprBinary::Or)
+                        object = cond->left->as<AstExprGlobal>();
+
+                    if (object)
+                        return getGlobalState(globals, object->name) == Global::Default ? Builtin{object->name, expr->index} : Builtin();
+                }
+            }
+        }
+
         if (AstExprGlobal* object = expr->expr->as<AstExprGlobal>())
         {
             return getGlobalState(globals, object->name) == Global::Default ? Builtin{object->name, expr->index} : Builtin();

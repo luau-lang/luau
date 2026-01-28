@@ -21,9 +21,9 @@ struct FileNavigationContext : Luau::Require::NavigationContext
     NavigateResult toChild(const std::string& component) override;
 
     ConfigStatus getConfigStatus() const override;
-    virtual ConfigBehavior getConfigBehavior() const override;
-    virtual std::optional<std::string> getAlias(const std::string& alias) const override;
-    virtual std::optional<std::string> getConfig() const override;
+    ConfigBehavior getConfigBehavior() const override;
+    std::optional<std::string> getAlias(const std::string& alias) const override;
+    std::optional<std::string> getConfig() const override;
 
     // Custom capabilities
     bool isModulePresent() const;
