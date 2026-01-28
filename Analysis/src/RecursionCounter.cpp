@@ -42,8 +42,9 @@ NonExceptionalRecursionLimiter::NonExceptionalRecursionLimiter(int* count)
 {
 }
 
-bool NonExceptionalRecursionLimiter::isOk(int limit) const {
+bool NonExceptionalRecursionLimiter::isOk(int limit) const
+{
     return nativeStackGuard.isOk() && !(limit > 0 && *count > limit);
 }
 
-}
+} // namespace Luau

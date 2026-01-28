@@ -70,10 +70,7 @@ class StandaloneCodeGenContext final : public BaseCodeGenContext
 public:
     StandaloneCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
 
-    [[nodiscard]] std::optional<ModuleBindResult> tryBindExistingModule(
-        const ModuleId& moduleId,
-        const std::vector<Proto*>& moduleProtos
-    ) override;
+    [[nodiscard]] std::optional<ModuleBindResult> tryBindExistingModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) override;
 
     [[nodiscard]] ModuleBindResult bindModule(
         const std::optional<ModuleId>& moduleId,
@@ -96,10 +93,7 @@ class SharedCodeGenContext final : public BaseCodeGenContext
 public:
     SharedCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
 
-    [[nodiscard]] std::optional<ModuleBindResult> tryBindExistingModule(
-        const ModuleId& moduleId,
-        const std::vector<Proto*>& moduleProtos
-    ) override;
+    [[nodiscard]] std::optional<ModuleBindResult> tryBindExistingModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) override;
 
     [[nodiscard]] ModuleBindResult bindModule(
         const std::optional<ModuleId>& moduleId,

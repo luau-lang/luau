@@ -13,7 +13,7 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenFloatOps)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSplitFloatExtra)
 LUAU_FASTFLAGVARIABLE(LuauCodegenVectorCreateXy)
 LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge2)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBit32Guards)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
@@ -1001,7 +1001,7 @@ static void translateBufferArgsAndCheckBounds(
     IrOp numIndex = builtinLoadDouble(build, args);
     intIndex = build.inst(IrCmd::NUM_TO_INT, numIndex);
 
-    if (FFlag::LuauCodegenBufferRangeMerge2 && FFlag::LuauCodegenNumIntFolds2)
+    if (FFlag::LuauCodegenBufferRangeMerge3 && FFlag::LuauCodegenNumIntFolds2)
         build.inst(IrCmd::CHECK_BUFFER_LEN, buf, intIndex, build.constInt(0), build.constInt(size), build.undef(), build.vmExit(pcpos));
     else
         build.inst(IrCmd::CHECK_BUFFER_LEN, buf, intIndex, build.constInt(size), build.vmExit(pcpos));

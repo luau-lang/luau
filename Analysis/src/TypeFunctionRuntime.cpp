@@ -530,7 +530,7 @@ static int createUnion(lua_State* L)
             components.push_back(getTypeUserData(L, i));
         }
     }
-    
+
     if (FFlag::LuauUnionofIntersectionofFlattens)
     {
         if (components.size() == 0)
@@ -576,7 +576,7 @@ static int createIntersection(lua_State* L)
             components.push_back(getTypeUserData(L, i));
         }
     }
-    
+
     if (FFlag::LuauUnionofIntersectionofFlattens)
     {
         if (components.size() == 0)

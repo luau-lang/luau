@@ -22,6 +22,8 @@ LUAU_FASTFLAG(LuauCodegenLinearAndOr)
 LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenTruncateFold)
 LUAU_FASTFLAG(LuauCodegenSplitFloat)
+LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 
 namespace Luau
 {
@@ -428,6 +430,11 @@ bool isCustomUserdataBytecodeType(uint8_t ty)
     return ty >= LBC_TYPE_TAGGED_USERDATA_BASE && ty < LBC_TYPE_TAGGED_USERDATA_END;
 }
 
+bool isExpectedOrUnknownBytecodeType(uint8_t ty, LuauBytecodeType expected)
+{
+    return ty == LBC_TYPE_ANY || ty == expected;
+}
+
 HostMetamethod tmToHostMetamethod(int tm)
 {
     switch (TMS(tm))
@@ -472,21 +479,9 @@ void kill(IrFunction& function, IrInst& inst)
 
     inst.cmd = IrCmd::NOP;
 
-    removeUse(function, inst.a);
-    removeUse(function, inst.b);
-    removeUse(function, inst.c);
-    removeUse(function, inst.d);
-    removeUse(function, inst.e);
-    removeUse(function, inst.f);
-    removeUse(function, inst.g);
-
-    inst.a = {};
-    inst.b = {};
-    inst.c = {};
-    inst.d = {};
-    inst.e = {};
-    inst.f = {};
-    inst.g = {};
+    for (auto& op : inst.ops)
+        removeUse(function, op);
+    inst.ops.clear();
 }
 
 void kill(IrFunction& function, uint32_t start, uint32_t end)
@@ -534,13 +529,8 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
     IrInst& inst = function.instructions[instIdx];
 
     // Add uses before removing new ones if those are the last ones keeping target operand alive
-    addUse(function, replacement.a);
-    addUse(function, replacement.b);
-    addUse(function, replacement.c);
-    addUse(function, replacement.d);
-    addUse(function, replacement.e);
-    addUse(function, replacement.f);
-    addUse(function, replacement.g);
+    for (auto& op : replacement.ops)
+        addUse(function, op);
 
     if (!FFlag::LuauCodegenBetterSccRemoval)
     {
@@ -560,13 +550,8 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
         // If killing that range killed the current block we have to undo replacement instruction uses and exit
         if (FFlag::LuauCodegenBetterSccRemoval && block.kind == IrBlockKind::Dead)
         {
-            removeUse(function, replacement.a);
-            removeUse(function, replacement.b);
-            removeUse(function, replacement.c);
-            removeUse(function, replacement.d);
-            removeUse(function, replacement.e);
-            removeUse(function, replacement.f);
-            removeUse(function, replacement.g);
+            for (auto& op : replacement.ops)
+                removeUse(function, op);
             return;
         }
 
@@ -583,23 +568,13 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
 
         inst = replacement;
 
-        removeUse(function, copy.a);
-        removeUse(function, copy.b);
-        removeUse(function, copy.c);
-        removeUse(function, copy.d);
-        removeUse(function, copy.e);
-        removeUse(function, copy.f);
-        removeUse(function, copy.g);
+        for (auto& op : copy.ops)
+            removeUse(function, op);
     }
     else
     {
-        removeUse(function, inst.a);
-        removeUse(function, inst.b);
-        removeUse(function, inst.c);
-        removeUse(function, inst.d);
-        removeUse(function, inst.e);
-        removeUse(function, inst.f);
-        removeUse(function, inst.g);
+        for (auto& op : inst.ops)
+            removeUse(function, op);
 
         // Inherit existing use count (last use is skipped as it will be defined later)
         replacement.useCount = inst.useCount;
@@ -620,21 +595,11 @@ void substitute(IrFunction& function, IrInst& inst, IrOp replacement)
 
     addUse(function, replacement);
 
-    removeUse(function, inst.a);
-    removeUse(function, inst.b);
-    removeUse(function, inst.c);
-    removeUse(function, inst.d);
-    removeUse(function, inst.e);
-    removeUse(function, inst.f);
-    removeUse(function, inst.g);
+    for (auto& op : inst.ops)
+        removeUse(function, op);
 
-    inst.a = replacement;
-    inst.b = {};
-    inst.c = {};
-    inst.d = {};
-    inst.e = {};
-    inst.f = {};
-    inst.g = {};
+    inst.ops.resize(1);
+    OP_A(inst) = replacement;
 }
 
 void applySubstitutions(IrFunction& function, IrOp& op)
@@ -645,8 +610,8 @@ void applySubstitutions(IrFunction& function, IrOp& op)
 
         if (src.cmd == IrCmd::SUBSTITUTE)
         {
-            op.kind = src.a.kind;
-            op.index = src.a.index;
+            op.kind = OP_A(src).kind;
+            op.index = OP_A(src).index;
 
             // If we substitute with the result of a different instruction, update the use count
             if (op.kind == IrOpKind::Inst)
@@ -663,8 +628,8 @@ void applySubstitutions(IrFunction& function, IrOp& op)
             if (src.useCount == 0)
             {
                 src.cmd = IrCmd::NOP;
-                removeUse(function, src.a);
-                src.a = {};
+                removeUse(function, OP_A(src));
+                src.ops.clear();
             }
         }
     }
@@ -672,13 +637,8 @@ void applySubstitutions(IrFunction& function, IrOp& op)
 
 void applySubstitutions(IrFunction& function, IrInst& inst)
 {
-    applySubstitutions(function, inst.a);
-    applySubstitutions(function, inst.b);
-    applySubstitutions(function, inst.c);
-    applySubstitutions(function, inst.d);
-    applySubstitutions(function, inst.e);
-    applySubstitutions(function, inst.f);
-    applySubstitutions(function, inst.g);
+    for (auto& op : inst.ops)
+        applySubstitutions(function, op);
 }
 
 bool compare(double a, double b, IrCondition cond)
@@ -759,291 +719,291 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
     switch (inst.cmd)
     {
     case IrCmd::ADD_INT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
             // We need to avoid signed integer overflow, but we also have to produce a result
             // So we add numbers as unsigned and use fixed-width integer types to force a two's complement evaluation
-            int32_t lhs = function.intOp(inst.a);
-            int32_t rhs = function.intOp(inst.b);
+            int32_t lhs = function.intOp(OP_A(inst));
+            int32_t rhs = function.intOp(OP_B(inst));
             int sum = int32_t(uint32_t(lhs) + uint32_t(rhs));
 
             substitute(function, inst, build.constInt(sum));
         }
         break;
     case IrCmd::SUB_INT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
             // We need to avoid signed integer overflow, but we also have to produce a result
             // So we subtract numbers as unsigned and use fixed-width integer types to force a two's complement evaluation
-            int32_t lhs = function.intOp(inst.a);
-            int32_t rhs = function.intOp(inst.b);
+            int32_t lhs = function.intOp(OP_A(inst));
+            int32_t rhs = function.intOp(OP_B(inst));
             int sum = int32_t(uint32_t(lhs) - uint32_t(rhs));
 
             substitute(function, inst, build.constInt(sum));
         }
         break;
     case IrCmd::SEXTI8_INT:
-        if (inst.a.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant)
         {
-            int32_t value = int8_t(function.intOp(inst.a));
+            int32_t value = int8_t(function.intOp(OP_A(inst)));
             substitute(function, inst, build.constInt(value));
         }
         break;
     case IrCmd::SEXTI16_INT:
-        if (inst.a.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant)
         {
-            int32_t value = int16_t(function.intOp(inst.a));
+            int32_t value = int16_t(function.intOp(OP_A(inst)));
             substitute(function, inst, build.constInt(value));
         }
         break;
     case IrCmd::ADD_NUM:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(function.doubleOp(inst.a) + function.doubleOp(inst.b)));
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(function.doubleOp(OP_A(inst)) + function.doubleOp(OP_B(inst))));
         break;
     case IrCmd::SUB_NUM:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(function.doubleOp(inst.a) - function.doubleOp(inst.b)));
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(function.doubleOp(OP_A(inst)) - function.doubleOp(OP_B(inst))));
         break;
     case IrCmd::MUL_NUM:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(function.doubleOp(inst.a) * function.doubleOp(inst.b)));
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(function.doubleOp(OP_A(inst)) * function.doubleOp(OP_B(inst))));
         break;
     case IrCmd::DIV_NUM:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(function.doubleOp(inst.a) / function.doubleOp(inst.b)));
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(function.doubleOp(OP_A(inst)) / function.doubleOp(OP_B(inst))));
         break;
     case IrCmd::IDIV_NUM:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(luai_numidiv(function.doubleOp(inst.a), function.doubleOp(inst.b))));
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(luai_numidiv(function.doubleOp(OP_A(inst)), function.doubleOp(OP_B(inst)))));
         break;
     case IrCmd::MOD_NUM:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(luai_nummod(function.doubleOp(inst.a), function.doubleOp(inst.b))));
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(luai_nummod(function.doubleOp(OP_A(inst)), function.doubleOp(OP_B(inst)))));
         break;
     case IrCmd::MIN_NUM:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            double a1 = function.doubleOp(inst.a);
-            double a2 = function.doubleOp(inst.b);
+            double a1 = function.doubleOp(OP_A(inst));
+            double a2 = function.doubleOp(OP_B(inst));
 
             substitute(function, inst, build.constDouble(a1 < a2 ? a1 : a2));
         }
         break;
     case IrCmd::MAX_NUM:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            double a1 = function.doubleOp(inst.a);
-            double a2 = function.doubleOp(inst.b);
+            double a1 = function.doubleOp(OP_A(inst));
+            double a2 = function.doubleOp(OP_B(inst));
 
             substitute(function, inst, build.constDouble(a1 > a2 ? a1 : a2));
         }
         break;
     case IrCmd::UNM_NUM:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(-function.doubleOp(inst.a)));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(-function.doubleOp(OP_A(inst))));
         break;
     case IrCmd::FLOOR_NUM:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(floor(function.doubleOp(inst.a))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(floor(function.doubleOp(OP_A(inst)))));
         break;
     case IrCmd::CEIL_NUM:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(ceil(function.doubleOp(inst.a))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(ceil(function.doubleOp(OP_A(inst)))));
         break;
     case IrCmd::ROUND_NUM:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(round(function.doubleOp(inst.a))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(round(function.doubleOp(OP_A(inst)))));
         break;
     case IrCmd::SQRT_NUM:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(sqrt(function.doubleOp(inst.a))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(sqrt(function.doubleOp(OP_A(inst)))));
         break;
     case IrCmd::ABS_NUM:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(fabs(function.doubleOp(inst.a))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(fabs(function.doubleOp(OP_A(inst)))));
         break;
     case IrCmd::SIGN_NUM:
-        if (inst.a.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant)
         {
-            double v = function.doubleOp(inst.a);
+            double v = function.doubleOp(OP_A(inst));
 
             substitute(function, inst, build.constDouble(v > 0.0 ? 1.0 : v < 0.0 ? -1.0 : 0.0));
         }
         break;
     case IrCmd::ADD_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(float(function.doubleOp(inst.a)) + float(function.doubleOp(inst.b))));
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(float(function.doubleOp(OP_A(inst))) + float(function.doubleOp(OP_B(inst)))));
         break;
     case IrCmd::SUB_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(float(function.doubleOp(inst.a)) - float(function.doubleOp(inst.b))));
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(float(function.doubleOp(OP_A(inst))) - float(function.doubleOp(OP_B(inst)))));
         break;
     case IrCmd::MUL_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(float(function.doubleOp(inst.a)) * float(function.doubleOp(inst.b))));
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(float(function.doubleOp(OP_A(inst))) * float(function.doubleOp(OP_B(inst)))));
         break;
     case IrCmd::DIV_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(float(function.doubleOp(inst.a)) / float(function.doubleOp(inst.b))));
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(float(function.doubleOp(OP_A(inst))) / float(function.doubleOp(OP_B(inst)))));
         break;
     case IrCmd::MIN_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            float a1 = float(function.doubleOp(inst.a));
-            float a2 = float(function.doubleOp(inst.b));
+            float a1 = float(function.doubleOp(OP_A(inst)));
+            float a2 = float(function.doubleOp(OP_B(inst)));
 
             substitute(function, inst, build.constDouble(a1 < a2 ? a1 : a2));
         }
         break;
     case IrCmd::MAX_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            float a1 = float(function.doubleOp(inst.a));
-            float a2 = float(function.doubleOp(inst.b));
+            float a1 = float(function.doubleOp(OP_A(inst)));
+            float a2 = float(function.doubleOp(OP_B(inst)));
 
             substitute(function, inst, build.constDouble(a1 > a2 ? a1 : a2));
         }
         break;
     case IrCmd::UNM_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(-float(function.doubleOp(inst.a))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(-float(function.doubleOp(OP_A(inst)))));
         break;
     case IrCmd::FLOOR_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(floorf(float(function.doubleOp(inst.a)))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(floorf(float(function.doubleOp(OP_A(inst))))));
         break;
     case IrCmd::CEIL_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(ceilf(float(function.doubleOp(inst.a)))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(ceilf(float(function.doubleOp(OP_A(inst))))));
         break;
     case IrCmd::SQRT_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(sqrtf(float(function.doubleOp(inst.a)))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(sqrtf(float(function.doubleOp(OP_A(inst))))));
         break;
     case IrCmd::ABS_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(fabsf(float(function.doubleOp(inst.a)))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(fabsf(float(function.doubleOp(OP_A(inst))))));
         break;
     case IrCmd::SIGN_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant)
         {
-            float v = float(function.doubleOp(inst.a));
+            float v = float(function.doubleOp(OP_A(inst)));
 
             substitute(function, inst, build.constDouble(v > 0.0f ? 1.0f : v < 0.0f ? -1.0f : 0.0f));
         }
         break;
     case IrCmd::SELECT_NUM:
-        if (inst.c.kind == IrOpKind::Constant && inst.d.kind == IrOpKind::Constant)
+        if (OP_C(inst).kind == IrOpKind::Constant && OP_D(inst).kind == IrOpKind::Constant)
         {
-            double c = function.doubleOp(inst.c);
-            double d = function.doubleOp(inst.d);
+            double c = function.doubleOp(OP_C(inst));
+            double d = function.doubleOp(OP_D(inst));
 
-            substitute(function, inst, c == d ? inst.b : inst.a);
+            substitute(function, inst, c == d ? OP_B(inst) : OP_A(inst));
         }
-        else if (FFlag::LuauCodegenLinearAndOr && inst.a == inst.b)
+        else if (FFlag::LuauCodegenLinearAndOr && OP_A(inst) == OP_B(inst))
         {
             // If the values are the same, no need to worry about the condition check
-            substitute(function, inst, inst.a);
+            substitute(function, inst, OP_A(inst));
         }
         break;
     case IrCmd::SELECT_VEC:
-        if (FFlag::LuauCodegenLinearAndOr && inst.a == inst.b)
+        if (FFlag::LuauCodegenLinearAndOr && OP_A(inst) == OP_B(inst))
         {
             // If the values are the same, no need to worry about the condition check
-            substitute(function, inst, inst.a);
+            substitute(function, inst, OP_A(inst));
         }
         break;
     case IrCmd::SELECT_IF_TRUTHY:
-        if (FFlag::LuauCodegenLinearAndOr && inst.b == inst.c)
+        if (FFlag::LuauCodegenLinearAndOr && OP_B(inst) == OP_C(inst))
         {
             // If the values are the same, no need to worry about the condition check
-            substitute(function, inst, inst.b);
+            substitute(function, inst, OP_B(inst));
         }
         break;
     case IrCmd::NOT_ANY:
-        if (inst.a.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant)
         {
-            uint8_t a = function.tagOp(inst.a);
+            uint8_t a = function.tagOp(OP_A(inst));
 
             if (a == LUA_TNIL)
                 substitute(function, inst, build.constInt(1));
             else if (a != LUA_TBOOLEAN)
                 substitute(function, inst, build.constInt(0));
-            else if (inst.b.kind == IrOpKind::Constant)
-                substitute(function, inst, build.constInt(function.intOp(inst.b) == 1 ? 0 : 1));
+            else if (OP_B(inst).kind == IrOpKind::Constant)
+                substitute(function, inst, build.constInt(function.intOp(OP_B(inst)) == 1 ? 0 : 1));
         }
         break;
     case IrCmd::CMP_INT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            if (compare(function.intOp(inst.a), function.intOp(inst.b), conditionOp(inst.c)))
+            if (compare(function.intOp(OP_A(inst)), function.intOp(OP_B(inst)), conditionOp(OP_C(inst))))
                 substitute(function, inst, build.constInt(1));
             else
                 substitute(function, inst, build.constInt(0));
         }
         break;
     case IrCmd::CMP_TAG:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            IrCondition cond = conditionOp(inst.c);
+            IrCondition cond = conditionOp(OP_C(inst));
             CODEGEN_ASSERT(cond == IrCondition::Equal || cond == IrCondition::NotEqual);
 
             if (cond == IrCondition::Equal)
-                substitute(function, inst, build.constInt(function.tagOp(inst.a) == function.tagOp(inst.b) ? 1 : 0));
+                substitute(function, inst, build.constInt(function.tagOp(OP_A(inst)) == function.tagOp(OP_B(inst)) ? 1 : 0));
             else
-                substitute(function, inst, build.constInt(function.tagOp(inst.a) != function.tagOp(inst.b) ? 1 : 0));
+                substitute(function, inst, build.constInt(function.tagOp(OP_A(inst)) != function.tagOp(OP_B(inst)) ? 1 : 0));
         }
         break;
     case IrCmd::CMP_SPLIT_TVALUE:
     {
-        CODEGEN_ASSERT(inst.b.kind == IrOpKind::Constant);
+        CODEGEN_ASSERT(OP_B(inst).kind == IrOpKind::Constant);
 
-        IrCondition cond = conditionOp(inst.e);
+        IrCondition cond = conditionOp(OP_E(inst));
         CODEGEN_ASSERT(cond == IrCondition::Equal || cond == IrCondition::NotEqual);
 
         if (cond == IrCondition::Equal)
         {
-            if (inst.a.kind == IrOpKind::Constant && function.tagOp(inst.a) != function.tagOp(inst.b))
+            if (OP_A(inst).kind == IrOpKind::Constant && function.tagOp(OP_A(inst)) != function.tagOp(OP_B(inst)))
             {
                 substitute(function, inst, build.constInt(0));
             }
-            else if (inst.c.kind == IrOpKind::Constant && inst.d.kind == IrOpKind::Constant)
+            else if (OP_C(inst).kind == IrOpKind::Constant && OP_D(inst).kind == IrOpKind::Constant)
             {
                 // If the tag is a constant, this means previous condition has failed because tags are the same
-                bool knownSameTag = inst.a.kind == IrOpKind::Constant;
+                bool knownSameTag = OP_A(inst).kind == IrOpKind::Constant;
                 bool sameValue = false;
 
-                if (function.tagOp(inst.b) == LUA_TBOOLEAN)
-                    sameValue = compare(function.intOp(inst.c), function.intOp(inst.d), IrCondition::Equal);
-                else if (function.tagOp(inst.b) == LUA_TNUMBER)
-                    sameValue = compare(function.doubleOp(inst.c), function.doubleOp(inst.d), IrCondition::Equal);
+                if (function.tagOp(OP_B(inst)) == LUA_TBOOLEAN)
+                    sameValue = compare(function.intOp(OP_C(inst)), function.intOp(OP_D(inst)), IrCondition::Equal);
+                else if (function.tagOp(OP_B(inst)) == LUA_TNUMBER)
+                    sameValue = compare(function.doubleOp(OP_C(inst)), function.doubleOp(OP_D(inst)), IrCondition::Equal);
                 else
                     CODEGEN_ASSERT(!"unsupported type");
 
                 if (knownSameTag && sameValue)
                     substitute(function, inst, build.constInt(1));
                 else if (sameValue)
-                    replace(function, block, index, {IrCmd::CMP_TAG, inst.a, inst.b, inst.e});
+                    replace(function, block, index, {IrCmd::CMP_TAG, {OP_A(inst), OP_B(inst), OP_E(inst)}});
                 else
                     substitute(function, inst, build.constInt(0));
             }
         }
         else
         {
-            if (inst.a.kind == IrOpKind::Constant && function.tagOp(inst.a) != function.tagOp(inst.b))
+            if (OP_A(inst).kind == IrOpKind::Constant && function.tagOp(OP_A(inst)) != function.tagOp(OP_B(inst)))
             {
                 substitute(function, inst, build.constInt(1));
             }
-            else if (inst.c.kind == IrOpKind::Constant && inst.d.kind == IrOpKind::Constant)
+            else if (OP_C(inst).kind == IrOpKind::Constant && OP_D(inst).kind == IrOpKind::Constant)
             {
                 // If the tag is a constant, this means previous condition has failed because tags are the same
-                bool knownSameTag = inst.a.kind == IrOpKind::Constant;
+                bool knownSameTag = OP_A(inst).kind == IrOpKind::Constant;
                 bool differentValue = false;
 
-                if (function.tagOp(inst.b) == LUA_TBOOLEAN)
-                    differentValue = compare(function.intOp(inst.c), function.intOp(inst.d), IrCondition::NotEqual);
-                else if (function.tagOp(inst.b) == LUA_TNUMBER)
-                    differentValue = compare(function.doubleOp(inst.c), function.doubleOp(inst.d), IrCondition::NotEqual);
+                if (function.tagOp(OP_B(inst)) == LUA_TBOOLEAN)
+                    differentValue = compare(function.intOp(OP_C(inst)), function.intOp(OP_D(inst)), IrCondition::NotEqual);
+                else if (function.tagOp(OP_B(inst)) == LUA_TNUMBER)
+                    differentValue = compare(function.doubleOp(OP_C(inst)), function.doubleOp(OP_D(inst)), IrCondition::NotEqual);
                 else
                     CODEGEN_ASSERT(!"unsupported type");
 
@@ -1052,51 +1012,51 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 else if (knownSameTag)
                     substitute(function, inst, build.constInt(0));
                 else
-                    replace(function, block, index, {IrCmd::CMP_TAG, inst.a, inst.b, inst.e});
+                    replace(function, block, index, {IrCmd::CMP_TAG, {OP_A(inst), OP_B(inst), OP_E(inst)}});
             }
         }
     }
-        break;
+    break;
     case IrCmd::JUMP_EQ_TAG:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            if (function.tagOp(inst.a) == function.tagOp(inst.b))
-                replace(function, block, index, {IrCmd::JUMP, inst.c});
+            if (function.tagOp(OP_A(inst)) == function.tagOp(OP_B(inst)))
+                replace(function, block, index, {IrCmd::JUMP, {OP_C(inst)}});
             else
-                replace(function, block, index, {IrCmd::JUMP, inst.d});
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
         }
         break;
     case IrCmd::JUMP_CMP_INT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            if (compare(function.intOp(inst.a), function.intOp(inst.b), conditionOp(inst.c)))
-                replace(function, block, index, {IrCmd::JUMP, inst.d});
+            if (compare(function.intOp(OP_A(inst)), function.intOp(OP_B(inst)), conditionOp(OP_C(inst))))
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
             else
-                replace(function, block, index, {IrCmd::JUMP, inst.e});
+                replace(function, block, index, {IrCmd::JUMP, {OP_E(inst)}});
         }
         break;
     case IrCmd::JUMP_CMP_NUM:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            if (compare(function.doubleOp(inst.a), function.doubleOp(inst.b), conditionOp(inst.c)))
-                replace(function, block, index, {IrCmd::JUMP, inst.d});
+            if (compare(function.doubleOp(OP_A(inst)), function.doubleOp(OP_B(inst)), conditionOp(OP_C(inst))))
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
             else
-                replace(function, block, index, {IrCmd::JUMP, inst.e});
+                replace(function, block, index, {IrCmd::JUMP, {OP_E(inst)}});
         }
         break;
     case IrCmd::JUMP_CMP_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            if (compare(float(function.doubleOp(inst.a)), float(function.doubleOp(inst.b)), conditionOp(inst.c)))
-                replace(function, block, index, {IrCmd::JUMP, inst.d});
+            if (compare(float(function.doubleOp(OP_A(inst))), float(function.doubleOp(OP_B(inst))), conditionOp(OP_C(inst))))
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
             else
-                replace(function, block, index, {IrCmd::JUMP, inst.e});
+                replace(function, block, index, {IrCmd::JUMP, {OP_E(inst)}});
         }
         break;
     case IrCmd::TRY_NUM_TO_INDEX:
-        if (inst.a.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant)
         {
-            double value = function.doubleOp(inst.a);
+            double value = function.doubleOp(OP_A(inst));
 
             // To avoid undefined behavior of casting a value not representable in the target type, we check the range
             if (value >= INT_MIN && value <= INT_MAX)
@@ -1106,30 +1066,30 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 if (double(arrIndex) == value)
                     substitute(function, inst, build.constInt(arrIndex));
                 else
-                    replace(function, block, index, {IrCmd::JUMP, inst.b});
+                    replace(function, block, index, {IrCmd::JUMP, {OP_B(inst)}});
             }
             else
             {
-                replace(function, block, index, {IrCmd::JUMP, inst.b});
+                replace(function, block, index, {IrCmd::JUMP, {OP_B(inst)}});
             }
         }
         break;
     case IrCmd::INT_TO_NUM:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(double(function.intOp(inst.a))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(double(function.intOp(OP_A(inst)))));
         break;
     case IrCmd::UINT_TO_NUM:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(double(unsigned(function.intOp(inst.a)))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(double(unsigned(function.intOp(OP_A(inst))))));
         break;
     case IrCmd::UINT_TO_FLOAT:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(float(unsigned(function.intOp(inst.a)))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(float(unsigned(function.intOp(OP_A(inst))))));
         break;
     case IrCmd::NUM_TO_INT:
-        if (inst.a.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant)
         {
-            double value = function.doubleOp(inst.a);
+            double value = function.doubleOp(OP_A(inst));
 
             // To avoid undefined behavior of casting a value not representable in the target type, check the range (matches luai_num2int)
             if (value >= INT_MIN && value <= INT_MAX)
@@ -1137,63 +1097,63 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         }
         break;
     case IrCmd::NUM_TO_UINT:
-        if (inst.a.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant)
         {
-            double value = function.doubleOp(inst.a);
+            double value = function.doubleOp(OP_A(inst));
 
             // To avoid undefined behavior of casting a value not representable in the target type, check the range (matches luai_num2unsigned)
             if (FFlag::LuauCodegenNumToUintFoldRange)
             {
                 if (value >= -kDoubleMaxExactInteger && value <= kDoubleMaxExactInteger)
-                    substitute(function, inst, build.constInt(unsigned((long long)function.doubleOp(inst.a))));
+                    substitute(function, inst, build.constInt(unsigned((long long)function.doubleOp(OP_A(inst)))));
             }
             else
             {
                 if (value >= 0 && value <= UINT_MAX)
-                    substitute(function, inst, build.constInt(unsigned(function.doubleOp(inst.a))));
+                    substitute(function, inst, build.constInt(unsigned(function.doubleOp(OP_A(inst)))));
             }
         }
         break;
     case IrCmd::FLOAT_TO_NUM:
         // float -> double for a constant is a no-op
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(function.doubleOp(inst.a)));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(function.doubleOp(OP_A(inst))));
         break;
     case IrCmd::NUM_TO_FLOAT:
         // double -> float for a constant just needs to lower precision
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constDouble(float(function.doubleOp(inst.a))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(float(function.doubleOp(OP_A(inst)))));
         break;
     case IrCmd::TRUNCATE_UINT:
         if (FFlag::LuauCodegenTruncateFold)
         {
             // Truncating a constant integer is a no-op as constant integers only store 32 bits
-            if (inst.a.kind == IrOpKind::Constant)
-                substitute(function, inst, inst.a);
+            if (OP_A(inst).kind == IrOpKind::Constant)
+                substitute(function, inst, OP_A(inst));
         }
         break;
     case IrCmd::CHECK_TAG:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            if (function.tagOp(inst.a) == function.tagOp(inst.b))
+            if (function.tagOp(OP_A(inst)) == function.tagOp(OP_B(inst)))
                 kill(function, inst);
             else
-                replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
+                replace(function, block, index, {IrCmd::JUMP, {OP_C(inst)}}); // Shows a conflict in assumptions on this path
         }
         break;
     case IrCmd::CHECK_TRUTHY:
-        if (inst.a.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant)
         {
-            if (function.tagOp(inst.a) == LUA_TNIL)
+            if (function.tagOp(OP_A(inst)) == LUA_TNIL)
             {
-                replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
+                replace(function, block, index, {IrCmd::JUMP, {OP_C(inst)}}); // Shows a conflict in assumptions on this path
             }
-            else if (function.tagOp(inst.a) == LUA_TBOOLEAN)
+            else if (function.tagOp(OP_A(inst)) == LUA_TBOOLEAN)
             {
-                if (inst.b.kind == IrOpKind::Constant)
+                if (OP_B(inst).kind == IrOpKind::Constant)
                 {
-                    if (function.intOp(inst.b) == 0)
-                        replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
+                    if (function.intOp(OP_B(inst)) == 0)
+                        replace(function, block, index, {IrCmd::JUMP, {OP_C(inst)}}); // Shows a conflict in assumptions on this path
                     else
                         kill(function, inst);
                 }
@@ -1205,135 +1165,148 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         }
         break;
     case IrCmd::CHECK_CMP_INT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            if (compare(function.intOp(inst.a), function.intOp(inst.b), conditionOp(inst.c)))
+            if (compare(function.intOp(OP_A(inst)), function.intOp(OP_B(inst)), conditionOp(OP_C(inst))))
                 kill(function, inst);
             else
-                replace(function, block, index, {IrCmd::JUMP, inst.d}); // Shows a conflict in assumptions on this path
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}}); // Shows a conflict in assumptions on this path
         }
         break;
     case IrCmd::BITAND_UINT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            unsigned op1 = unsigned(function.intOp(inst.a));
-            unsigned op2 = unsigned(function.intOp(inst.b));
+            unsigned op1 = unsigned(function.intOp(OP_A(inst)));
+            unsigned op2 = unsigned(function.intOp(OP_B(inst)));
             substitute(function, inst, build.constInt(op1 & op2));
         }
         else
         {
-            if (inst.a.kind == IrOpKind::Constant && function.intOp(inst.a) == 0) // (0 & b) -> 0
+            if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == 0) // (0 & b) -> 0
                 substitute(function, inst, build.constInt(0));
-            else if (inst.a.kind == IrOpKind::Constant && function.intOp(inst.a) == -1) // (-1 & b) -> b
-                substitute(function, inst, inst.b);
-            else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == 0) // (a & 0) -> 0
+            else if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == -1) // (-1 & b) -> b
+                substitute(function, inst, OP_B(inst));
+            else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0) // (a & 0) -> 0
                 substitute(function, inst, build.constInt(0));
-            else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == -1) // (a & -1) -> a
-                substitute(function, inst, inst.a);
+            else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == -1) // (a & -1) -> a
+                substitute(function, inst, OP_A(inst));
         }
         break;
     case IrCmd::BITXOR_UINT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            unsigned op1 = unsigned(function.intOp(inst.a));
-            unsigned op2 = unsigned(function.intOp(inst.b));
+            unsigned op1 = unsigned(function.intOp(OP_A(inst)));
+            unsigned op2 = unsigned(function.intOp(OP_B(inst)));
             substitute(function, inst, build.constInt(op1 ^ op2));
         }
         else
         {
-            if (inst.a.kind == IrOpKind::Constant && function.intOp(inst.a) == 0) // (0 ^ b) -> b
-                substitute(function, inst, inst.b);
-            else if (inst.a.kind == IrOpKind::Constant && function.intOp(inst.a) == -1) // (-1 ^ b) -> ~b
-                replace(function, block, index, {IrCmd::BITNOT_UINT, inst.b});
-            else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == 0) // (a ^ 0) -> a
-                substitute(function, inst, inst.a);
-            else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == -1) // (a ^ -1) -> ~a
-                replace(function, block, index, {IrCmd::BITNOT_UINT, inst.a});
+            if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == 0) // (0 ^ b) -> b
+                substitute(function, inst, OP_B(inst));
+            else if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == -1) // (-1 ^ b) -> ~b
+                replace(function, block, index, {IrCmd::BITNOT_UINT, {OP_B(inst)}});
+            else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0) // (a ^ 0) -> a
+                substitute(function, inst, OP_A(inst));
+            else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == -1) // (a ^ -1) -> ~a
+                replace(function, block, index, {IrCmd::BITNOT_UINT, {OP_A(inst)}});
         }
         break;
     case IrCmd::BITOR_UINT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            unsigned op1 = unsigned(function.intOp(inst.a));
-            unsigned op2 = unsigned(function.intOp(inst.b));
+            unsigned op1 = unsigned(function.intOp(OP_A(inst)));
+            unsigned op2 = unsigned(function.intOp(OP_B(inst)));
             substitute(function, inst, build.constInt(op1 | op2));
         }
         else
         {
-            if (inst.a.kind == IrOpKind::Constant && function.intOp(inst.a) == 0) // (0 | b) -> b
-                substitute(function, inst, inst.b);
-            else if (inst.a.kind == IrOpKind::Constant && function.intOp(inst.a) == -1) // (-1 | b) -> -1
+            if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == 0) // (0 | b) -> b
+                substitute(function, inst, OP_B(inst));
+            else if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == -1) // (-1 | b) -> -1
                 substitute(function, inst, build.constInt(-1));
-            else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == 0) // (a | 0) -> a
-                substitute(function, inst, inst.a);
-            else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == -1) // (a | -1) -> -1
+            else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0) // (a | 0) -> a
+                substitute(function, inst, OP_A(inst));
+            else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == -1) // (a | -1) -> -1
                 substitute(function, inst, build.constInt(-1));
         }
         break;
     case IrCmd::BITNOT_UINT:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constInt(~unsigned(function.intOp(inst.a))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constInt(~unsigned(function.intOp(OP_A(inst)))));
         break;
     case IrCmd::BITLSHIFT_UINT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            unsigned op1 = unsigned(function.intOp(inst.a));
-            int op2 = function.intOp(inst.b);
+            unsigned op1 = unsigned(function.intOp(OP_A(inst)));
+            int op2 = function.intOp(OP_B(inst));
 
             substitute(function, inst, build.constInt(op1 << (op2 & 31)));
         }
-        else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == 0)
+        else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
         {
-            substitute(function, inst, inst.a);
+            substitute(function, inst, OP_A(inst));
         }
         break;
     case IrCmd::BITRSHIFT_UINT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            unsigned op1 = unsigned(function.intOp(inst.a));
-            int op2 = function.intOp(inst.b);
+            unsigned op1 = unsigned(function.intOp(OP_A(inst)));
+            int op2 = function.intOp(OP_B(inst));
 
             substitute(function, inst, build.constInt(op1 >> (op2 & 31)));
         }
-        else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == 0)
+        else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
         {
-            substitute(function, inst, inst.a);
+            substitute(function, inst, OP_A(inst));
         }
         break;
     case IrCmd::BITARSHIFT_UINT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
-            int op1 = function.intOp(inst.a);
-            int op2 = function.intOp(inst.b);
+            int op1 = function.intOp(OP_A(inst));
+            int op2 = function.intOp(OP_B(inst));
 
             // note: technically right shift of negative values is UB, but this behavior is getting defined in C++20 and all compilers do the
             // right (shift) thing.
             substitute(function, inst, build.constInt(op1 >> (op2 & 31)));
         }
-        else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == 0)
+        else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
         {
-            substitute(function, inst, inst.a);
+            substitute(function, inst, OP_A(inst));
         }
         break;
     case IrCmd::BITLROTATE_UINT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constInt(lrotate(unsigned(function.intOp(inst.a)), function.intOp(inst.b))));
-        else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == 0)
-            substitute(function, inst, inst.a);
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constInt(lrotate(unsigned(function.intOp(OP_A(inst))), function.intOp(OP_B(inst)))));
+        else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
+            substitute(function, inst, OP_A(inst));
         break;
     case IrCmd::BITRROTATE_UINT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constInt(rrotate(unsigned(function.intOp(inst.a)), function.intOp(inst.b))));
-        else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == 0)
-            substitute(function, inst, inst.a);
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constInt(rrotate(unsigned(function.intOp(OP_A(inst))), function.intOp(OP_B(inst)))));
+        else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
+            substitute(function, inst, OP_A(inst));
         break;
     case IrCmd::BITCOUNTLZ_UINT:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constInt(countlz(unsigned(function.intOp(inst.a)))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constInt(countlz(unsigned(function.intOp(OP_A(inst))))));
         break;
     case IrCmd::BITCOUNTRZ_UINT:
-        if (inst.a.kind == IrOpKind::Constant)
-            substitute(function, inst, build.constInt(countrz(unsigned(function.intOp(inst.a)))));
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constInt(countrz(unsigned(function.intOp(OP_A(inst))))));
+        break;
+    case IrCmd::CHECK_BUFFER_LEN:
+        if (FFlag::LuauCodegenBufferRangeMerge3 && FFlag::LuauCodegenNumIntFolds2)
+        {
+            // If base offset and base offset source double value are both constants, we can get rid of that check or fallback
+            if (OP_B(inst).kind == IrOpKind::Constant && OP_E(inst).kind == IrOpKind::Constant)
+            {
+                if (double(function.intOp(OP_B(inst))) == function.doubleOp(OP_E(inst)))
+                    replace(function, OP_E(inst), build.undef()); // This disables equality check at runtime
+                else
+                    replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}}); // Shows a conflict in assumptions on this path
+            }
+        }
         break;
     default:
         break;
@@ -1445,9 +1418,9 @@ IrBlock* tryGetNextBlockInChain(IrFunction& function, IrBlock& block)
     IrInst& termInst = function.instructions[block.finish];
 
     // Follow the strict block chain
-    if (termInst.cmd == IrCmd::JUMP && termInst.a.kind == IrOpKind::Block)
+    if (termInst.cmd == IrCmd::JUMP && OP_A(termInst).kind == IrOpKind::Block)
     {
-        IrBlock& target = function.blockOp(termInst.a);
+        IrBlock& target = function.blockOp(OP_A(termInst));
 
         // Has to have the same sorting key and a consecutive chain key
         if (target.sortkey == block.sortkey && target.chainkey == block.chainkey + 1)
