@@ -1885,12 +1885,23 @@ TypeFunctionReductionResult<TypeId> intersectTypeFunction(
 
     // check to see if the operand types are resolved enough, and wait to reduce if not
     // if any of them are `never`, the intersection will always be `never`, so we can reduce directly.
+    std::vector<TypeId> pendingTypes;
     for (auto ty : types)
     {
         if (isPending(ty, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {ty}, {}};
+            pendingTypes.push_back(ty);
         else if (get<NeverType>(ty))
             return {ctx->builtins->neverType, Reduction::MaybeOk, {}, {}};
+    }
+
+    // If there are pending types, we can't fully reduce yet.
+    // Return an IntersectionType that can be simplified later, rather than blocking.
+    // This handles recursive function calls where the return type is blocked but known.
+    if (!pendingTypes.empty())
+    {
+        // Return the intersection as-is, with pending types noted for later resolution
+        TypeId intersection = ctx->arena->addType(IntersectionType{types});
+        return {intersection, Reduction::MaybeOk, {pendingTypes.begin(), pendingTypes.end()}, {}};
     }
 
     // fold over the types with `simplifyIntersection`
