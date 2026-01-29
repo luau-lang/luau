@@ -410,14 +410,22 @@ std::optional<TypeId> ConstraintGenerator::lookup(const ScopePtr& scope, Locatio
         return scope->lookup(def);
     if (auto phi = get<Phi>(def))
     {
-        // For phis with exactly 1 operand, prefer resolving through the operand first.
-        // This handles recursive function references correctly: the function signature
-        // is bound to the Cell operand, and we should find that instead of any
-        // prepopulated BlockedType that might be directly associated with the phi.
+        // For phis with exactly 1 operand, check if the phi itself is bound to a BlockedType.
+        // If so, prefer resolving through the operand to find the actual type (e.g., a function
+        // signature). This handles recursive function references correctly where GlobalPrepopulator
+        // may have bound a BlockedType to the phi, shadowing the real function signature on the Cell.
         if (!prototype && phi->operands.size() == 1)
         {
-            if (auto operandTy = lookup(scope, location, phi->operands.at(0), prototype))
-                return operandTy;
+            if (auto found = scope->lookup(def))
+            {
+                TypeId foundTy = follow(*found);
+                if (get<BlockedType>(foundTy))
+                {
+                    if (auto operandTy = lookup(scope, location, phi->operands.at(0), prototype))
+                        return operandTy;
+                }
+                return *found;
+            }
         }
 
         // Fall back to direct phi lookup
