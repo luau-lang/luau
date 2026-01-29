@@ -1331,7 +1331,7 @@ bool occurs(TypeId haystack, TypeId needle, DenseHashSet<TypeId>& seen)
                 return true;
     }
 
-    if (auto it = get<UnionType>(haystack))
+    if (auto it = get<IntersectionType>(haystack))
     {
         for (auto part : it)
             if (occurs(part, needle, seen))
@@ -1703,6 +1703,141 @@ TypeFunctionReductionResult<TypeId> unionTypeFunction(
 }
 
 
+namespace
+{
+
+// Check if 'needle' occurs anywhere within 'haystack' (for detecting recursive type references)
+bool occursInIntersect(TypeId haystack, TypeId needle, DenseHashSet<TypeId>& seen)
+{
+    haystack = follow(haystack);
+    needle = follow(needle);
+
+    if (needle == haystack)
+        return true;
+
+    if (seen.contains(haystack))
+        return false;
+
+    seen.insert(haystack);
+
+    if (auto ut = get<UnionType>(haystack))
+    {
+        for (auto option : ut)
+            if (occursInIntersect(option, needle, seen))
+                return true;
+    }
+
+    if (auto it = get<IntersectionType>(haystack))
+    {
+        for (auto part : it)
+            if (occursInIntersect(part, needle, seen))
+                return true;
+    }
+
+    return false;
+}
+
+bool occursInIntersect(TypeId haystack, TypeId needle)
+{
+    DenseHashSet<TypeId> seen{nullptr};
+    return occursInIntersect(haystack, needle, seen);
+}
+
+// Substitution class to scrub recursive type references from intersection type parameters
+struct IntersectTypeScrubber : public Substitution
+{
+    NotNull<TypeFunctionContext> ctx;
+    TypeId needle;
+
+    explicit IntersectTypeScrubber(NotNull<TypeFunctionContext> ctx, TypeId needle)
+        : Substitution(ctx->arena)
+        , ctx{ctx}
+        , needle{needle}
+    {
+    }
+
+    bool isDirty(TypePackId tp) override
+    {
+        return false;
+    }
+
+    bool ignoreChildren(TypePackId tp) override
+    {
+        return false;
+    }
+
+    TypePackId clean(TypePackId tp) override
+    {
+        return tp;
+    }
+
+    bool isDirty(TypeId ty) override
+    {
+        if (auto ut = get<UnionType>(ty))
+        {
+            for (auto option : ut)
+            {
+                if (option == needle)
+                    return true;
+            }
+        }
+        else if (auto it = get<IntersectionType>(ty))
+        {
+            for (auto part : it)
+            {
+                if (part == needle)
+                    return true;
+            }
+        }
+        return ty == needle;
+    }
+
+    bool ignoreChildren(TypeId ty) override
+    {
+        return !is<UnionType, IntersectionType>(ty);
+    }
+
+    TypeId clean(TypeId ty) override
+    {
+        if (auto ut = get<UnionType>(ty))
+        {
+            TypeIds newOptions;
+            for (auto option : ut)
+            {
+                if (option != needle && !is<NeverType>(option))
+                    newOptions.insert(option);
+            }
+            if (newOptions.empty())
+                return ctx->builtins->neverType;
+            else if (newOptions.size() == 1)
+                return *newOptions.begin();
+            else
+                return ctx->arena->addType(UnionType{newOptions.take()});
+        }
+        else if (auto it = get<IntersectionType>(ty))
+        {
+            TypeIds newParts;
+            for (auto part : it)
+            {
+                if (part != needle && !is<UnknownType>(part))
+                    newParts.insert(part);
+            }
+            if (newParts.empty())
+                return ctx->builtins->unknownType;
+            else if (newParts.size() == 1)
+                return *newParts.begin();
+            else
+                return ctx->arena->addType(IntersectionType{newParts.take()});
+        }
+        else if (ty == needle)
+            return ctx->builtins->unknownType;
+        else
+            return ty;
+    }
+};
+
+} // namespace
+
 TypeFunctionReductionResult<TypeId> intersectTypeFunction(
     TypeId instance,
     const std::vector<TypeId>& typeParams,
@@ -1731,6 +1866,22 @@ TypeFunctionReductionResult<TypeId> intersectTypeFunction(
         return {types[0], Reduction::MaybeOk, {}, {}};
     else if (types.size() == 2 && get<NoRefineType>(types[0]))
         return {types[1], Reduction::MaybeOk, {}, {}};
+
+    // If we end up minting an intersect type like:
+    //
+    //  t1 where t1 = intersect<T | t1, Y>
+    //
+    // This can create a degenerate recursive type. Instead, we clip the recursive part
+    // by removing occurrences of the instance from the type parameters.
+    for (size_t i = 0; i < types.size(); i++)
+    {
+        if (occursInIntersect(types[i], instance))
+        {
+            IntersectTypeScrubber its{ctx, instance};
+            if (auto result = its.substitute(types[i]))
+                types[i] = *result;
+        }
+    }
 
     // check to see if the operand types are resolved enough, and wait to reduce if not
     // if any of them are `never`, the intersection will always be `never`, so we can reduce directly.

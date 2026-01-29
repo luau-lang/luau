@@ -2095,4 +2095,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2144_type_instantiation_on_type_function
     CHECK_EQ("number", toString(requireType("_b")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2216_recursive_function_with_for_in_loop")
+{
+    // Issue #2216: Recursive global function with for-in loop over recursive call result
+    // should not produce "Type function instance intersect<blocked, ~nil> is uninhabited" error
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        type tb_any = {[any]:any}
+
+        function flatten(t: tb_any): tb_any
+            local out: tb_any = {}
+            for k, v in flatten(t) do
+                out[k] = v
+            end
+            return out
+        end
+    )");
+
+    // We should not get UninhabitedTypeFunction error for intersect
+    for (const auto& err : result.errors)
+    {
+        if (auto utf = get<UninhabitedTypeFunction>(err))
+        {
+            std::string typeStr = toString(utf->ty);
+            CHECK_MESSAGE(typeStr.find("intersect") == std::string::npos,
+                "Should not have uninhabited intersect type function: " << typeStr);
+        }
+    }
+}
+
 TEST_SUITE_END();
