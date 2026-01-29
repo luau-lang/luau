@@ -410,6 +410,30 @@ std::optional<TypeId> ConstraintGenerator::lookup(const ScopePtr& scope, Locatio
         return scope->lookup(def);
     if (auto phi = get<Phi>(def))
     {
+        // For single-operand phis that have a BlockedType binding (from GlobalPrepopulator),
+        // check if the operand has a concrete FunctionType. If so, prefer the operand
+        // to get the actual function signature instead of the placeholder BlockedType.
+        // This fixes recursive function calls where the function has explicit type annotations.
+        if (!prototype && phi->operands.size() == 1)
+        {
+            if (auto found = scope->lookup(def))
+            {
+                TypeId foundTy = follow(*found);
+                if (get<BlockedType>(foundTy))
+                {
+                    // Try to resolve through the operand
+                    if (auto operandTy = lookup(scope, location, phi->operands.at(0), prototype))
+                    {
+                        TypeId opTy = follow(*operandTy);
+                        // Only prefer operand if it's a concrete FunctionType, not blocked/free
+                        if (get<FunctionType>(opTy))
+                            return operandTy;
+                    }
+                }
+                return *found;
+            }
+        }
+
         if (auto found = scope->lookup(def))
             return *found;
         else if (!prototype)
@@ -4502,12 +4526,7 @@ struct GlobalPrepopulator : AstVisitor
         if (auto ty = globalScope->lookup(global->name))
         {
             DefId def = dfg->getDef(global);
-            // Only set lvalueTypes for Cell defs, not Phi defs.
-            // Phi defs represent captured references (like recursive function calls)
-            // and should resolve through their operands to get the actual type,
-            // not a prepopulated BlockedType which would shadow the real type.
-            if (get<Cell>(def))
-                globalScope->lvalueTypes[def] = *ty;
+            globalScope->lvalueTypes[def] = *ty;
         }
 
         return true;
