@@ -42,12 +42,6 @@ Navigator::Status Navigator::navigate(std::string path)
 {
     std::replace(path.begin(), path.end(), '\\', '/');
 
-    if (Error error = resetToRequirer())
-    {
-        errorHandler.reportError(*error);
-        return Status::ErrorReported;
-    }
-
     if (Error error = navigateImpl(path))
     {
         errorHandler.reportError(*error);
@@ -89,6 +83,9 @@ Error Navigator::navigateImpl(std::string_view path)
             return std::nullopt;
         }
 
+        if (Error error = resetToRequirer())
+            return error;
+
         Config config;
         if (Error error = navigateToAndPopulateConfig(alias, config))
             return error;
@@ -127,6 +124,8 @@ Error Navigator::navigateImpl(std::string_view path)
 
     if (pathType == PathType::RelativeToCurrent || pathType == PathType::RelativeToParent)
     {
+        if (Error error = resetToRequirer())
+            return error;
         if (Error error = navigateToParent(std::nullopt))
             return error;
         if (Error error = navigateThroughPath(path))
@@ -297,7 +296,7 @@ Error Navigator::navigateToAndPopulateConfig(const std::string& desiredAlias, Co
 
 Error Navigator::resetToRequirer()
 {
-    NavigationContext::NavigateResult result = navigationContext.reset(navigationContext.getRequirerIdentifier());
+    NavigationContext::NavigateResult result = navigationContext.resetToRequirer();
     if (result == NavigationContext::NavigateResult::Success)
         return std::nullopt;
 

@@ -1008,6 +1008,79 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.fneg(inst.regA64, regOp(OP_A(inst)));
         break;
     }
+    case IrCmd::MIN_VEC:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::q, index, {OP_A(inst), OP_B(inst)});
+
+        RegisterA64 temp1 = regOp(OP_A(inst));
+        RegisterA64 temp2 = regOp(OP_B(inst));
+
+        RegisterA64 mask = regs.allocTemp(KindA64::q);
+
+        // b > a == a < b
+        build.fcmgt_4s(mask, temp2, temp1);
+
+        // If A is already at the target, select B where mask is 0
+        if (inst.regA64 == temp1)
+        {
+            build.bif(inst.regA64, temp2, mask);
+        }
+        else
+        {
+            // Store B at the target unless it's there, select A where mask is 1
+            if (inst.regA64 != temp2)
+                build.mov(inst.regA64, temp2);
+
+            build.bit(inst.regA64, temp1, mask);
+        }
+        break;
+    }
+    case IrCmd::MAX_VEC:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::q, index, {OP_A(inst), OP_B(inst)});
+
+        RegisterA64 temp1 = regOp(OP_A(inst));
+        RegisterA64 temp2 = regOp(OP_B(inst));
+
+        RegisterA64 mask = regs.allocTemp(KindA64::q);
+
+        build.fcmgt_4s(mask, temp1, temp2);
+
+        // If A is already at the target, select B where mask is 0
+        if (inst.regA64 == temp1)
+        {
+            build.bif(inst.regA64, temp2, mask);
+        }
+        else
+        {
+            // Store B at the target unless it's there, select A where mask is 1
+            if (inst.regA64 != temp2)
+                build.mov(inst.regA64, temp2);
+
+            build.bit(inst.regA64, temp1, mask);
+        }
+        break;
+    }
+    case IrCmd::FLOOR_VEC:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::q, index, {OP_A(inst)});
+
+        build.frintm(inst.regA64, regOp(OP_A(inst)));
+        break;
+    }
+    case IrCmd::CEIL_VEC:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::q, index, {OP_A(inst)});
+
+        build.frintp(inst.regA64, regOp(OP_A(inst)));
+        break;
+    }
+    case IrCmd::ABS_VEC:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::q, index, {OP_A(inst)});
+        build.fabs(inst.regA64, regOp(OP_A(inst)));
+        break;
+    }
     case IrCmd::DOT_VEC:
     {
         if (FFlag::LuauCodegenSplitFloat)

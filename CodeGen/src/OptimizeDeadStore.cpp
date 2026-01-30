@@ -12,6 +12,7 @@
 LUAU_FASTFLAGVARIABLE(LuauCodegenGcoDse2)
 LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
+LUAU_FASTFLAGVARIABLE(LuauCodegenDsoPairTrackFix)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
@@ -19,8 +20,6 @@ namespace Luau
 {
 namespace CodeGen
 {
-
-constexpr uint8_t kUnknownTag = 0xff;
 
 // Luau value structure reminder:
 // [              TValue             ]
@@ -73,29 +72,62 @@ struct RemoveDeadStoreState
         }
     }
 
-    void killTagAndValueStorePair(StoreRegInfo& regInfo)
+    bool tagValuePairEstablished(StoreRegInfo& regInfo)
     {
         bool tagEstablished = regInfo.tagInstIdx != ~0u || regInfo.knownTag != kUnknownTag;
 
         // When tag is 'nil', we don't need to remove the unused value store
         bool valueEstablished = regInfo.valueInstIdx != ~0u || regInfo.knownTag == LUA_TNIL;
 
-        // Partial stores can only be removed if the whole pair is established
-        if (tagEstablished && valueEstablished)
+        return tagEstablished && valueEstablished;
+    }
+
+    void killTagAndValueStorePair(StoreRegInfo& regInfo)
+    {
+        if (FFlag::LuauCodegenDsoPairTrackFix)
         {
-            if (regInfo.tagInstIdx != ~0u)
+            // Partial stores can only be removed if the whole pair is established
+            if (tagValuePairEstablished(regInfo))
             {
-                kill(function, function.instructions[regInfo.tagInstIdx]);
-                regInfo.tagInstIdx = ~0u;
-            }
+                if (regInfo.tagInstIdx != ~0u)
+                {
+                    kill(function, function.instructions[regInfo.tagInstIdx]);
+                    regInfo.tagInstIdx = ~0u;
+                }
 
-            if (regInfo.valueInstIdx != ~0u)
+                if (regInfo.valueInstIdx != ~0u)
+                {
+                    kill(function, function.instructions[regInfo.valueInstIdx]);
+                    regInfo.valueInstIdx = ~0u;
+                }
+
+                regInfo.maybeGco = false;
+            }
+        }
+        else
+        {
+            bool tagEstablished = regInfo.tagInstIdx != ~0u || regInfo.knownTag != kUnknownTag;
+
+            // When tag is 'nil', we don't need to remove the unused value store
+            bool valueEstablished = regInfo.valueInstIdx != ~0u || regInfo.knownTag == LUA_TNIL;
+
+            // Partial stores can only be removed if the whole pair is established
+            if (tagEstablished && valueEstablished)
             {
-                kill(function, function.instructions[regInfo.valueInstIdx]);
-                regInfo.valueInstIdx = ~0u;
-            }
+                if (regInfo.tagInstIdx != ~0u)
+                {
+                    kill(function, function.instructions[regInfo.tagInstIdx]);
+                    regInfo.tagInstIdx = ~0u;
+                }
 
-            regInfo.maybeGco = false;
+                if (regInfo.valueInstIdx != ~0u)
+                {
+                    kill(function, function.instructions[regInfo.valueInstIdx]);
+                    regInfo.valueInstIdx = ~0u;
+                }
+
+                regInfo.maybeGco = false;
+            }
         }
     }
 
@@ -523,6 +555,16 @@ static bool tryReplaceValueWithFullStore(
             regInfo.tvalueInstIdx = instIndex;
             return true;
         }
+        else if (FFlag::LuauCodegenDsoPairTrackFix && prev.cmd == IrCmd::STORE_TVALUE && regInfo.knownTag != kUnknownTag)
+        {
+            IrOp prevTagOp = build.constTag(regInfo.knownTag);
+            replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, {targetOp, prevTagOp, valueOp}});
+
+            state.killTValueStore(regInfo);
+
+            regInfo.tvalueInstIdx = instIndex;
+            return true;
+        }
     }
 
     return false;
@@ -640,6 +682,10 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
             uint8_t tag = function.tagOp(OP_B(inst));
 
             regInfo.tagInstIdx = index;
+
+            if (FFlag::LuauCodegenDsoPairTrackFix && state.tagValuePairEstablished(regInfo))
+                regInfo.tvalueInstIdx = kInvalidInstIdx;
+
             regInfo.maybeGco = isGCO(tag);
             regInfo.knownTag = tag;
             state.hasGcoToClear |= regInfo.maybeGco;
@@ -674,6 +720,10 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
                 state.killValueStore(regInfo);
 
             regInfo.valueInstIdx = index;
+
+            if (FFlag::LuauCodegenDsoPairTrackFix && state.tagValuePairEstablished(regInfo))
+                regInfo.tvalueInstIdx = kInvalidInstIdx;
+
             regInfo.maybeGco = true;
             state.hasGcoToClear = true;
         }
@@ -697,6 +747,10 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
                 state.killValueStore(regInfo);
 
             regInfo.valueInstIdx = index;
+
+            if (FFlag::LuauCodegenDsoPairTrackFix && state.tagValuePairEstablished(regInfo))
+                regInfo.tvalueInstIdx = kInvalidInstIdx;
+
             regInfo.maybeGco = false;
         }
         break;
@@ -718,6 +772,10 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
                 state.killValueStore(regInfo);
 
             regInfo.valueInstIdx = index;
+
+            if (FFlag::LuauCodegenDsoPairTrackFix && state.tagValuePairEstablished(regInfo))
+                regInfo.tvalueInstIdx = kInvalidInstIdx;
+
             regInfo.maybeGco = false;
         }
         break;
@@ -741,21 +799,30 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
             }
 
             regInfo.tvalueInstIdx = index;
-            regInfo.maybeGco = true;
 
-            // We do not use tag inference from the source instruction here as it doesn't provide useful opportunities for dead store removal
-            regInfo.knownTag = kUnknownTag;
-
-            // If the argument is a vector, it's not a GC object
-            // Note that for known boolean/number/GCO, we already optimize into STORE_SPLIT_TVALUE form
-            // TODO (CLI-101027): similar code is used in constant propagation optimization and should be shared in utilities
-            if (IrInst* arg = function.asInstOp(OP_B(inst)))
+            if (FFlag::LuauCodegenDsoPairTrackFix)
             {
-                if (arg->cmd == IrCmd::TAG_VECTOR)
-                    regInfo.maybeGco = false;
+                regInfo.knownTag = tryGetOperandTag(function, OP_B(inst)).value_or(kUnknownTag);
+                regInfo.maybeGco = regInfo.knownTag == kUnknownTag || isGCO(regInfo.knownTag);
+            }
+            else
+            {
+                regInfo.maybeGco = true;
 
-                if (arg->cmd == IrCmd::LOAD_TVALUE && OP_C(arg).kind != IrOpKind::None)
-                    regInfo.maybeGco = isGCO(function.tagOp(OP_C(arg)));
+                // We do not use tag inference from the source instruction here as it doesn't provide useful opportunities for dead store removal
+                regInfo.knownTag = kUnknownTag;
+
+                // If the argument is a vector, it's not a GC object
+                // Note that for known boolean/number/GCO, we already optimize into STORE_SPLIT_TVALUE form
+                // TODO (CLI-101027): similar code is used in constant propagation optimization and should be shared in utilities
+                if (IrInst* arg = function.asInstOp(OP_B(inst)))
+                {
+                    if (arg->cmd == IrCmd::TAG_VECTOR)
+                        regInfo.maybeGco = false;
+
+                    if (arg->cmd == IrCmd::LOAD_TVALUE && OP_C(arg).kind != IrOpKind::None)
+                        regInfo.maybeGco = isGCO(function.tagOp(OP_C(arg)));
+                }
             }
 
             state.hasGcoToClear |= regInfo.maybeGco;
