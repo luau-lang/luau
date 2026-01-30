@@ -23,6 +23,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAG(LuauCodegenSplitFloat)
+LUAU_FASTFLAG(LuauCodegenDsoPairTrackFix)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLoadFloatSubstituteLast)
 LUAU_FASTFLAGVARIABLE(LuauCodegenVecOpGvn)
@@ -1677,13 +1678,20 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             // We know the tag of some instructions that result in TValue
             if (tag == 0xff)
             {
-                if (IrInst* arg = function.asInstOp(OP_B(inst)))
+                if (FFlag::LuauCodegenDsoPairTrackFix)
                 {
-                    if (arg->cmd == IrCmd::TAG_VECTOR)
-                        tag = LUA_TVECTOR;
+                    tag = tryGetOperandTag(function, OP_B(inst)).value_or(kUnknownTag);
+                }
+                else
+                {
+                    if (IrInst* arg = function.asInstOp(OP_B(inst)))
+                    {
+                        if (arg->cmd == IrCmd::TAG_VECTOR)
+                            tag = LUA_TVECTOR;
 
-                    if (arg->cmd == IrCmd::LOAD_TVALUE && OP_C(arg).kind != IrOpKind::None)
-                        tag = function.tagOp(OP_C(arg));
+                        if (arg->cmd == IrCmd::LOAD_TVALUE && OP_C(arg).kind != IrOpKind::None)
+                            tag = function.tagOp(OP_C(arg));
+                    }
                 }
             }
 
@@ -2871,6 +2879,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::DIV_VEC:
     case IrCmd::IDIV_VEC:
     case IrCmd::DOT_VEC:
+    case IrCmd::MIN_VEC:
+    case IrCmd::MAX_VEC:
         if (IrInst* a = function.asInstOp(OP_A(inst)); a && a->cmd == IrCmd::TAG_VECTOR)
             replace(function, OP_A(inst), OP_A(a));
 
@@ -2882,6 +2892,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         break;
 
     case IrCmd::UNM_VEC:
+    case IrCmd::FLOOR_VEC:
+    case IrCmd::CEIL_VEC:
+    case IrCmd::ABS_VEC:
         if (IrInst* a = function.asInstOp(OP_A(inst)); a && a->cmd == IrCmd::TAG_VECTOR)
             replace(function, OP_A(inst), OP_A(a));
 
