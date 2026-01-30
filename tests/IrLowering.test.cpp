@@ -18,6 +18,7 @@
 
 LUAU_FASTFLAG(LuauCodegenVecOpGvn)
 LUAU_FASTFLAG(LuauCodegenLibmGvn)
+LUAU_FASTFLAG(LuauCodegenExtraSimd)
 LUAU_FASTFLAG(LuauCodegenLoopStepDetectFix)
 LUAU_FASTFLAG(LuauCodegenLoadFloatSubstituteLast)
 LUAU_FASTFLAG(LuauCodegenLoadFloatPropExtra)
@@ -578,6 +579,84 @@ bb_bytecode_1:
   STORE_TVALUE R3, %24
   INTERRUPT 8u
   RETURN R3, 1i
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "VectorMinMax")
+{
+    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
+    ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
+    ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
+    ScopedFastFlag luauCodegenFloatOps{FFlag::LuauCodegenFloatOps, true};
+    ScopedFastFlag luauCodegenSplitFloatExtra{FFlag::LuauCodegenSplitFloatExtra, true};
+    ScopedFastFlag luauCodegenExtraSimd{FFlag::LuauCodegenExtraSimd, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function vecops(a: vector, b: vector)
+    return vector.min(a, b), vector.max(a, b)
+end
+)"),
+        R"(
+; function vecops($arg0, $arg1) line 2
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  CHECK_TAG R1, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %11 = LOAD_TVALUE R0, 0i, tvector
+  %12 = LOAD_TVALUE R1, 0i, tvector
+  %13 = MIN_VEC %12, %11
+  %14 = TAG_VECTOR %13
+  STORE_TVALUE R2, %14
+  %23 = MAX_VEC %12, %11
+  %24 = TAG_VECTOR %23
+  STORE_TVALUE R3, %24
+  INTERRUPT 14u
+  RETURN R2, 2i
+)"
+    );
+}
+TEST_CASE_FIXTURE(LoweringFixture, "VectorFloorCeilAbs")
+{
+    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
+    ScopedFastFlag luauCodegenHydrateLoadWithTag{FFlag::LuauCodegenHydrateLoadWithTag, true};
+    ScopedFastFlag luauCodegenSplitFloat{FFlag::LuauCodegenSplitFloat, true};
+    ScopedFastFlag luauCodegenFloatOps{FFlag::LuauCodegenFloatOps, true};
+    ScopedFastFlag luauCodegenSplitFloatExtra{FFlag::LuauCodegenSplitFloatExtra, true};
+    ScopedFastFlag luauCodegenExtraSimd{FFlag::LuauCodegenExtraSimd, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function vecops(a: vector)
+    return vector.abs(a), vector.floor(a), vector.ceil(a)
+end
+)"),
+        R"(
+; function vecops($arg0) line 2
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %7 = LOAD_TVALUE R0, 0i, tvector
+  %8 = ABS_VEC %7
+  %9 = TAG_VECTOR %8
+  STORE_TVALUE R1, %9
+  %15 = FLOOR_VEC %7
+  %16 = TAG_VECTOR %15
+  STORE_TVALUE R2, %16
+  %22 = CEIL_VEC %7
+  %23 = TAG_VECTOR %22
+  STORE_TVALUE R3, %23
+  INTERRUPT 15u
+  RETURN R1, 3i
 )"
     );
 }

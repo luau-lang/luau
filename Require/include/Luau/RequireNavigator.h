@@ -49,7 +49,6 @@ class NavigationContext
 {
 public:
     virtual ~NavigationContext() = default;
-    virtual std::string getRequirerIdentifier() const = 0;
 
     enum class NavigateResult
     {
@@ -58,7 +57,7 @@ public:
         NotFound
     };
 
-    virtual NavigateResult reset(const std::string& identifier) = 0;
+    virtual NavigateResult resetToRequirer() = 0;
     virtual NavigateResult jumpToAlias(const std::string& path) = 0;
 
     virtual NavigateResult toAliasOverride(const std::string& aliasUnprefixed)
@@ -133,8 +132,6 @@ private:
 
     NavigationContext& navigationContext;
     ErrorHandler& errorHandler;
-
-    std::optional<std::string> foundAliasValue;
 };
 
 } // namespace Luau::Require

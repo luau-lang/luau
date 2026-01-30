@@ -41,10 +41,8 @@ LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(LuauNumericUnaryOpsDontProduceNegationRefinements)
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctions)
 LUAU_FASTFLAG(LuauPushTypeConstraintLambdas3)
 LUAU_FASTFLAGVARIABLE(LuauAvoidMintingMultipleBlockedTypesForGlobals)
-LUAU_FASTFLAGVARIABLE(LuauUseIterativeTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAGVARIABLE(LuauStorePolarityInline)
 LUAU_FASTFLAGVARIABLE(LuauDontIncludeVarargWithAnnotation)
@@ -587,13 +585,12 @@ namespace
  * FindSimplificationBlockers to recognize these typeArguments and defer the
  * simplification until constraint solution.
  */
-template<typename BaseVisitor>
-struct FindSimplificationBlockers : BaseVisitor
+struct FindSimplificationBlockers : IterativeTypeVisitor
 {
     bool found = false;
 
     FindSimplificationBlockers()
-        : BaseVisitor("FindSimplificationBlockers", /* skipBoundTypes */ true)
+        : IterativeTypeVisitor("FindSimplificationBlockers", /* skipBoundTypes */ true)
     {
     }
 
@@ -635,18 +632,9 @@ struct FindSimplificationBlockers : BaseVisitor
 
 bool mustDeferIntersection(TypeId ty)
 {
-    if (FFlag::LuauUseIterativeTypeVisitor)
-    {
-        FindSimplificationBlockers<IterativeTypeVisitor> bts;
-        bts.run(ty);
-        return bts.found;
-    }
-    else
-    {
-        FindSimplificationBlockers<TypeOnceVisitor> bts;
-        bts.traverse(ty);
-        return bts.found;
-    }
+    FindSimplificationBlockers bts;
+    bts.run(ty);
+    return bts.found;
 }
 } // namespace
 
