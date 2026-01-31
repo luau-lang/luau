@@ -43,6 +43,8 @@ LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexingUnionWithNonTable)
+LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
+LUAU_FASTFLAG(LuauReadWriteOnlyIndexers)
 
 namespace Luau
 {
@@ -1970,7 +1972,18 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
     if (auto tt = get<TableType>(exprType))
     {
         if (tt->indexer)
+        {
+            if (FFlag::LuauReadWriteOnlyIndexers)
+            {
+                if (context == ValueContext::LValue && tt->indexer->access == AstTableAccess::Read)
+                    reportError(PropertyAccessViolation{exprType, "indexer", PropertyAccessViolation::CannotWrite}, indexExpr->location);
+
+                if (context == ValueContext::RValue && tt->indexer->access == AstTableAccess::Write)
+                    reportError(PropertyAccessViolation{exprType, "indexer", PropertyAccessViolation::CannotRead}, indexExpr->location);
+            }
+
             testIsSubtype(indexType, tt->indexer->indexType, indexExpr->index->location);
+        }
         else
             reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
     }
@@ -2300,6 +2313,12 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
     if (expr->op != AstExprBinary::And && expr->op != AstExprBinary::Or && expr->op != AstExprBinary::CompareEq &&
         expr->op != AstExprBinary::CompareNe)
         inContext.emplace(&typeContext, TypeContext::Default);
+
+    if (FFlag::LuauLValueCompoundAssignmentVisitLhs)
+    {
+        if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
+            visit(expr->left, ValueContext::LValue); // In compound assignments, the LHS is both read-from and written-to
+    }
 
     visit(expr->left, ValueContext::RValue);
     visit(expr->right, ValueContext::RValue);

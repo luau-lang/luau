@@ -421,6 +421,7 @@ struct TableIndexer
 
     TypeId indexType;
     TypeId indexResultType;
+    AstTableAccess access = AstTableAccess::ReadWrite;
 };
 
 struct Property

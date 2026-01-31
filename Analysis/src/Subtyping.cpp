@@ -30,6 +30,7 @@ LUAU_FASTFLAGVARIABLE(LuauSubtypingHandlesExternTypesWithIndexers)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauUnifyWithSubtyping)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
+LUAU_FASTFLAG(LuauReadWriteOnlyIndexers)
 
 namespace Luau
 {
@@ -2110,7 +2111,20 @@ SubtypingResult Subtyping::isCovariantWith(
     if (superTable->indexer)
     {
         if (subTable->indexer)
+        {
+            if (FFlag::LuauReadWriteOnlyIndexers)
+            {
+                int superAccess = (int)superTable->indexer->access;
+                int subAccess = (int)subTable->indexer->access;
+
+                // First check: No coincident bits (Super is Read, Sub is Write, etc)
+                // Second check: Essentially if Super is ReadWrite and Sub is only Read or Write
+                if ((superAccess & subAccess) == 0 || (superAccess > subAccess))
+                    return SubtypingResult{false}.withBothComponent(TypePath::TypeField::IndexLookup);
+            }
+
             result.andAlso(isInvariantWith(env, *subTable->indexer, *superTable->indexer, scope));
+        }
         else if (subTable->state != TableState::Sealed)
         {
             // As above, we assume that {| |} <: {T} because the unsealed table

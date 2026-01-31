@@ -47,6 +47,7 @@ LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAGVARIABLE(LuauStorePolarityInline)
 LUAU_FASTFLAGVARIABLE(LuauDontIncludeVarargWithAnnotation)
 LUAU_FASTFLAGVARIABLE(LuauUdtfIndirectAliases)
+LUAU_FASTFLAGVARIABLE(LuauReadWriteOnlyIndexers)
 
 namespace Luau
 {
@@ -3956,20 +3957,32 @@ TypeId ConstraintGenerator::resolveTableType(const ScopePtr& scope, AstType* ty,
 
         if (AstTableIndexer* astIndexer = tab->indexer)
         {
-            if (astIndexer->access == AstTableAccess::Read)
-                reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
-            else if (astIndexer->access == AstTableAccess::Write)
-                reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
-            else if (astIndexer->access == AstTableAccess::ReadWrite)
+            if (FFlag::LuauReadWriteOnlyIndexers)
             {
                 polarity = Polarity::Mixed;
                 indexer = TableIndexer{
                     resolveType_(scope, astIndexer->indexType, inTypeArguments),
                     resolveType_(scope, astIndexer->resultType, inTypeArguments),
                 };
+                indexer->access = astIndexer->access;
             }
             else
-                ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access)));
+            {
+                if (astIndexer->access == AstTableAccess::Read)
+                    reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
+                else if (astIndexer->access == AstTableAccess::Write)
+                    reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
+                else if (astIndexer->access == AstTableAccess::ReadWrite)
+                {
+                    polarity = Polarity::Mixed;
+                    indexer = TableIndexer{
+                        resolveType_(scope, astIndexer->indexType, inTypeArguments),
+                        resolveType_(scope, astIndexer->resultType, inTypeArguments),
+                    };
+                }
+                else
+                    ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access)));
+            }
         }
 
         polarity = p;
@@ -4003,19 +4016,30 @@ TypeId ConstraintGenerator::resolveTableType(const ScopePtr& scope, AstType* ty,
 
         if (AstTableIndexer* astIndexer = tab->indexer)
         {
-            if (astIndexer->access == AstTableAccess::Read)
-                reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
-            else if (astIndexer->access == AstTableAccess::Write)
-                reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
-            else if (astIndexer->access == AstTableAccess::ReadWrite)
+            if (FFlag::LuauReadWriteOnlyIndexers)
             {
-                indexer = TableIndexer{
-                    resolveType(scope, astIndexer->indexType, inTypeArguments),
-                    resolveType(scope, astIndexer->resultType, inTypeArguments),
-                };
+              indexer = TableIndexer{
+                  resolveType(scope, astIndexer->indexType, inTypeArguments),
+                  resolveType(scope, astIndexer->resultType, inTypeArguments),
+              };
+              indexer->access = astIndexer->access;
             }
             else
-                ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access)));
+            {
+              if (astIndexer->access == AstTableAccess::Read)
+                  reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
+              else if (astIndexer->access == AstTableAccess::Write)
+                  reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
+              else if (astIndexer->access == AstTableAccess::ReadWrite)
+              {
+                  indexer = TableIndexer{
+                      resolveType(scope, astIndexer->indexType, inTypeArguments),
+                      resolveType(scope, astIndexer->resultType, inTypeArguments),
+                  };
+              }
+              else
+                  ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access)));
+            }
         }
     }
 

@@ -29,6 +29,8 @@ LUAU_FASTFLAG(LuauUseFastSubtypeForIndexerWithName)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauFixIndexingUnionWithNonTable)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
+LUAU_FASTFLAG(LuauReadWriteOnlyIndexers)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -4529,12 +4531,17 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_indexers_are_unsupported")
         type U = {write [string]: boolean}
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    if (FFlag::LuauSolverV2 && FFlag::LuauReadWriteOnlyIndexers)
+        LUAU_REQUIRE_ERROR_COUNT(0, result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    CHECK("read keyword is illegal here" == toString(result.errors[0]));
-    CHECK(Location{{1, 18}, {1, 22}} == result.errors[0].location);
-    CHECK("write keyword is illegal here" == toString(result.errors[1]));
-    CHECK(Location{{2, 18}, {2, 23}} == result.errors[1].location);
+        CHECK("read keyword is illegal here" == toString(result.errors[0]));
+        CHECK(Location{{1, 18}, {1, 22}} == result.errors[0].location);
+        CHECK("write keyword is illegal here" == toString(result.errors[1]));
+        CHECK(Location{{2, 18}, {2, 23}} == result.errors[1].location);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_write_property")
@@ -4711,21 +4718,6 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported
     CHECK(Location{{4, 18}, {4, 22}} == result.errors[2].location);
     CHECK("write keyword is illegal here" == toString(result.errors[3]));
     CHECK(Location{{5, 18}, {5, 23}} == result.errors[3].location);
-}
-
-TEST_CASE_FIXTURE(Fixture, "read_and_write_only_indexers_are_unsupported")
-{
-    CheckResult result = check(R"(
-        type T = {read [string]: number}
-        type U = {write [string]: boolean}
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-
-    CHECK("read keyword is illegal here" == toString(result.errors[0]));
-    CHECK(Location{{1, 18}, {1, 22}} == result.errors[0].location);
-    CHECK("write keyword is illegal here" == toString(result.errors[1]));
-    CHECK(Location{{2, 18}, {2, 23}} == result.errors[1].location);
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
@@ -6702,5 +6694,133 @@ TEST_CASE_FIXTURE(Fixture, "table_inference_one_incorrect_member")
     CHECK_EQ("(number) -> { x: number, y: string }", toString(requireType("makeTable")));
 }
 
+
+TEST_CASE_FIXTURE(Fixture, "table_indexer_arraylike_readonly")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauLValueCompoundAssignmentVisitLhs, true},
+        {FFlag::LuauReadWriteOnlyIndexers, true}
+    };
+
+    CheckResult result = check(R"(
+        function foo(x: { read number })
+            local _n = x[1]
+            x[1] += 2
+            x[2] = 5
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<PropertyAccessViolation>(result.errors[0]));
+    CHECK(get<PropertyAccessViolation>(result.errors[1]));
+    CHECK_EQ(3, result.errors[0].location.begin.line);
+    CHECK_EQ(4, result.errors[1].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_indexer_explicit_readonly")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauLValueCompoundAssignmentVisitLhs, true},
+        {FFlag::LuauReadWriteOnlyIndexers, true}
+    };
+
+    CheckResult result = check(R"(
+        function foo(x: { read [string]: number })
+            local _n = x["" :: string]
+            x["Hello" :: string] += 2
+            x["World" :: string] = 5
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<PropertyAccessViolation>(result.errors[0]));
+    CHECK(get<PropertyAccessViolation>(result.errors[1]));
+    CHECK_EQ(3, result.errors[0].location.begin.line);
+    CHECK_EQ(4, result.errors[1].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_indexer_arraylike_writeonly")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauLValueCompoundAssignmentVisitLhs, true},
+        {FFlag::LuauReadWriteOnlyIndexers, true}
+    };
+
+    CheckResult result = check(R"(
+        function foo(x: { write number })
+            local _n = x[1]
+            x[1] += 2
+            x[2] = 5
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<PropertyAccessViolation>(result.errors[0]));
+    CHECK(get<PropertyAccessViolation>(result.errors[1]));
+    CHECK_EQ(2, result.errors[0].location.begin.line);
+    CHECK_EQ(3, result.errors[1].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_indexer_explicit_writeonly")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauLValueCompoundAssignmentVisitLhs, true},
+        {FFlag::LuauReadWriteOnlyIndexers, true}
+    };
+
+    CheckResult result = check(R"(
+        function foo(x: { write [string]: number })
+            local _n = x["" :: string]
+            x["Hello" :: string] += 2
+            x["World" :: string] = 5
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<PropertyAccessViolation>(result.errors[0]));
+    CHECK(get<PropertyAccessViolation>(result.errors[1]));
+    CHECK_EQ(2, result.errors[0].location.begin.line);
+    CHECK_EQ(3, result.errors[1].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_indexer_attributes_bad_alias")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauReadWriteOnlyIndexers, true}
+    };
+
+    CheckResult result = check(R"(
+        function foo(x: { read [boolean]: string })
+            local y: { [boolean]: string } = x
+            y[false] = "Hello, world!"
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(2, result.errors[0].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_indexer_attributes_alias")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauReadWriteOnlyIndexers, true}
+    };
+
+    CheckResult result = check(R"(
+        function foo(x: { read [boolean]: string })
+            local y = x
+            y[true] = "Hello, world!"
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(3, result.errors[0].location.begin.line);
+}
 
 TEST_SUITE_END();
