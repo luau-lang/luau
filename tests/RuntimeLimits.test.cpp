@@ -24,7 +24,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauIceLess)
-LUAU_FASTFLAG(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
 LUAU_FASTFLAG(LuauUseNativeStackGuard)
 LUAU_FASTINT(LuauGenericCounterMaxSteps)
 LUAU_FASTFLAG(LuauUnifyWithSubtyping)
@@ -368,7 +367,7 @@ TEST_CASE_FIXTURE(Fixture, "limit_number_of_dynamically_created_constraints")
 TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constraints_2")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true}, {FFlag::LuauDontDynamicallyCreateRedundantSubtypeConstraints, true}, {FFlag::LuauUnifyWithSubtyping, false}
+        {FFlag::LuauSolverV2, true}, {FFlag::LuauUnifyWithSubtyping, false}
     };
 
     ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 50};

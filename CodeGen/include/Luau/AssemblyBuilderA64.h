@@ -167,7 +167,9 @@ public:
     void umov_4s(RegisterA64 dst, RegisterA64 src, uint8_t index);
 
     void fcmeq_4s(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
+    void fcmgt_4s(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void bit(RegisterA64 dst, RegisterA64 src, RegisterA64 mask);
+    void bif(RegisterA64 dst, RegisterA64 src, RegisterA64 mask);
 
     // Floating-point rounding and conversions
     void frinta(RegisterA64 dst, RegisterA64 src);

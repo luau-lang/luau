@@ -1054,6 +1054,62 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.vxorpd(inst.regX64, regOp(OP_A(inst)), build.f32x4(-0.0, -0.0, -0.0, -0.0));
         break;
     }
+    case IrCmd::MIN_VEC:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {OP_A(inst), OP_B(inst)});
+
+        ScopedRegX64 tmp1{regs};
+        ScopedRegX64 tmp2{regs};
+
+        RegisterX64 tmpa = vecOp(OP_A(inst), tmp1);
+        RegisterX64 tmpb = (OP_A(inst) == OP_B(inst)) ? tmpa : vecOp(OP_B(inst), tmp2);
+
+        build.vminps(inst.regX64, tmpa, tmpb);
+        break;
+    }
+    case IrCmd::MAX_VEC:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {OP_A(inst), OP_B(inst)});
+
+        ScopedRegX64 tmp1{regs};
+        ScopedRegX64 tmp2{regs};
+
+        RegisterX64 tmpa = vecOp(OP_A(inst), tmp1);
+        RegisterX64 tmpb = (OP_A(inst) == OP_B(inst)) ? tmpa : vecOp(OP_B(inst), tmp2);
+
+        build.vmaxps(inst.regX64, tmpa, tmpb);
+        break;
+    }
+    case IrCmd::FLOOR_VEC:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {OP_A(inst)});
+
+        ScopedRegX64 tmp1{regs};
+        RegisterX64 tmpa = vecOp(OP_A(inst), tmp1);
+
+        build.vroundps(inst.regX64, tmpa, RoundingModeX64::RoundToNegativeInfinity);
+        break;
+    }
+    case IrCmd::CEIL_VEC:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {OP_A(inst)});
+
+        ScopedRegX64 tmp1{regs};
+        RegisterX64 tmpa = vecOp(OP_A(inst), tmp1);
+
+        build.vroundps(inst.regX64, tmpa, RoundingModeX64::RoundToPositiveInfinity);
+        break;
+    }
+    case IrCmd::ABS_VEC:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {OP_A(inst)});
+
+        ScopedRegX64 tmp1{regs};
+        RegisterX64 tmpa = vecOp(OP_A(inst), tmp1);
+
+        build.vandps(inst.regX64, tmpa, build.u32x4(0x7fffffff, 0x7fffffff, 0x7fffffff, 0x7fffffff));
+        break;
+    }
     case IrCmd::DOT_VEC:
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {OP_A(inst), OP_B(inst)});

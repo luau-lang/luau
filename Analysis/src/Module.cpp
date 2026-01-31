@@ -15,7 +15,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 
 namespace Luau
 {
@@ -141,7 +140,7 @@ struct ClonePublicInterface : Substitution
 
     bool isNewSolver() const
     {
-        return FFlag::LuauSolverV2 || (FFlag::LuauUseWorkspacePropToChooseSolver && solverMode == SolverMode::New);
+        return FFlag::LuauSolverV2 || solverMode == SolverMode::New;
     }
 
     bool isDirty(TypeId ty) override
@@ -307,57 +306,6 @@ Module::~Module()
 {
     unfreeze(interfaceTypes);
     unfreeze(internalTypes);
-}
-
-void Module::clonePublicInterface_DEPRECATED(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
-{
-    CloneState cloneState{builtinTypes};
-
-    ScopePtr moduleScope = getModuleScope();
-
-    TypePackId returnType = moduleScope->returnType;
-    std::optional<TypePackId> varargPack = FFlag::LuauSolverV2 ? std::nullopt : moduleScope->varargPack;
-
-    TxnLog log;
-    ClonePublicInterface clonePublicInterface{&log, builtinTypes, this};
-
-    returnType = clonePublicInterface.cloneTypePack(returnType);
-
-    moduleScope->returnType = returnType;
-    if (varargPack)
-    {
-        varargPack = clonePublicInterface.cloneTypePack(*varargPack);
-        moduleScope->varargPack = varargPack;
-    }
-
-    for (auto& [name, tf] : moduleScope->exportedTypeBindings)
-    {
-        tf = clonePublicInterface.cloneTypeFun(tf);
-    }
-
-    for (auto& [name, ty] : declaredGlobals)
-    {
-        ty = clonePublicInterface.cloneType(ty);
-    }
-
-    for (auto& tf : typeFunctionAliases)
-    {
-        *tf = clonePublicInterface.cloneTypeFun(*tf);
-    }
-
-    if (clonePublicInterface.internalTypeEscaped)
-    {
-        errors.emplace_back(
-            Location{}, // Not amazing but the best we can do.
-            name,
-            InternalError{"An internal type is escaping this module; please report this bug at "
-                          "https://github.com/luau-lang/luau/issues"}
-        );
-    }
-
-    // Copy external stuff over to Module itself
-    this->returnType = moduleScope->returnType;
-    this->exportedTypeBindings = moduleScope->exportedTypeBindings;
 }
 
 void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice, SolverMode mode)
