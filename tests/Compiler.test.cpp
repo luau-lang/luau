@@ -29,6 +29,8 @@ LUAU_FASTFLAG(LuauCompileCallCostModel)
 LUAU_FASTFLAG(LuauCompileInlineInitializers)
 LUAU_FASTFLAG(LuauCompileCorrectLocalPc)
 LUAU_FASTFLAG(LuauCompileFastcallsSurvivePolyfills)
+LUAU_FASTFLAG(LuauCompileFoldVectorComp)
+LUAU_FASTFLAG(LuauCompileInlinedBuiltins)
 
 using namespace Luau;
 
@@ -1761,6 +1763,47 @@ RETURN R0 3
 LOADK R0 K0 [-1, -2, -3, -4]
 RETURN R0 1
 )");
+}
+
+TEST_CASE("ConstantFoldVectorComponents")
+{
+    ScopedFastFlag luauCompileFoldVectorComp{FFlag::LuauCompileFoldVectorComp, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = vector.create(1, 2, 3, 4)
+return a.x + a.y + a.z + a.w
+)",
+                   0,
+                   2
+               ),
+        R"(
+LOADN R1 6
+LOADK R3 K0 [1, 2, 3, 4]
+GETTABLEKS R2 R3 K1 ['w']
+ADD R0 R1 R2
+RETURN R0 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = vector.create(1, 2, 3, 4)
+return a.X + a.Y + a.Z + a.W
+)",
+                   0,
+                   2
+               ),
+        R"(
+LOADN R1 6
+LOADK R3 K0 [1, 2, 3, 4]
+GETTABLEKS R2 R3 K1 ['W']
+ADD R0 R1 R2
+RETURN R0 1
+)"
+    );
 }
 
 TEST_CASE("ConstantFoldStringLen")
@@ -8043,6 +8086,58 @@ MOVE R7 R1
 MOVE R8 R2
 CALL R6 2 1
 L1: RETURN R0 0
+)"
+    );
+
+    ScopedFastFlag luauCompileInlinedBuiltins{FFlag::LuauCompileInlinedBuiltins, true};
+
+    // inline builtins
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function test(a, b, c, d, op)
+    return op(a, b) * op(c, d)
+end
+
+local min = math.min
+
+local r1 = test(x, y, 2, 4, math.max)
+local r2 = test(x, y, 2, 4, min)
+local r3 = test(x, y, 2, 4, z)
+
+return r1, r2, r3
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['test']
+GETIMPORT R4 3 [math.min]
+GETIMPORT R6 5 [math.max]
+FASTCALL2 18 R0 R1 L0
+MOVE R8 R0
+MOVE R9 R1
+MOVE R7 R6
+CALL R7 2 1
+L0: MULK R5 R7 K6 [4]
+FASTCALL2 19 R0 R1 L1
+MOVE R8 R0
+MOVE R9 R1
+MOVE R7 R4
+CALL R7 2 1
+L1: MULK R6 R7 K7 [2]
+MOVE R8 R2
+MOVE R9 R0
+MOVE R10 R1
+CALL R8 2 1
+MOVE R9 R2
+LOADN R10 2
+LOADN R11 4
+CALL R9 2 1
+MUL R7 R8 R9
+RETURN R5 3
 )"
     );
 }
