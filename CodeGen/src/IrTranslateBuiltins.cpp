@@ -12,6 +12,7 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenSplitFloat)
 LUAU_FASTFLAGVARIABLE(LuauCodegenFloatOps)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSplitFloatExtra)
 LUAU_FASTFLAGVARIABLE(LuauCodegenVectorCreateXy)
+LUAU_FASTFLAGVARIABLE(LuauCodegenExtraSimd)
 LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBit32Guards)
@@ -1257,6 +1258,33 @@ static BuiltinImplResult translateBuiltinVectorDot(IrBuilder& build, int nparams
     return {BuiltinImplType::Full, 1};
 }
 
+static BuiltinImplResult translateBuiltinVectorMap1x4(
+    IrBuilder& build,
+    IrCmd cmd,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    int pcpos
+)
+{
+    IrOp arg1 = build.vmReg(arg);
+
+    if (nparams != 1 || nresults > 1 || arg1.kind == IrOpKind::Constant)
+        return {BuiltinImplType::None, -1};
+
+    build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
+
+    IrOp value = build.inst(IrCmd::LOAD_TVALUE, arg1);
+    IrOp ret = build.inst(cmd, value);
+
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+
+    return {BuiltinImplType::Full, 1};
+}
+
 static BuiltinImplResult translateBuiltinVectorMap1(
     IrBuilder& build,
     IrCmd cmd,
@@ -1433,6 +1461,36 @@ static BuiltinImplResult translateBuiltinVectorClamp(
     return {BuiltinImplType::UsesFallback, 1};
 }
 
+static BuiltinImplResult translateBuiltinVectorMinMax(
+    IrBuilder& build,
+    IrCmd cmd,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    int pcpos
+)
+{
+    IrOp arg1 = build.vmReg(arg);
+
+    if (nparams != 2 || nresults > 1 || arg1.kind == IrOpKind::Constant || args.kind == IrOpKind::Constant)
+        return {BuiltinImplType::None, -1};
+
+    build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
+    build.loadAndCheckTag(args, LUA_TVECTOR, build.vmExit(pcpos));
+
+    IrOp value1 = build.inst(IrCmd::LOAD_TVALUE, arg1);
+    IrOp value2 = build.inst(IrCmd::LOAD_TVALUE, args);
+
+    IrOp ret = build.inst(cmd, value2, value1); // Swapped arguments are required for consistency with VM builtins
+
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+
+    return {BuiltinImplType::Full, 1};
+}
+
 static BuiltinImplResult translateBuiltinVectorMap2(
     IrBuilder& build,
     IrCmd cmd,
@@ -1488,7 +1546,6 @@ static BuiltinImplResult translateBuiltinVectorMap2(
 
     return {BuiltinImplType::Full, 1};
 }
-
 
 BuiltinImplResult translateBuiltin(
     IrBuilder& build,
@@ -1638,17 +1695,23 @@ BuiltinImplResult translateBuiltin(
     case LBF_VECTOR_DOT:
         return translateBuiltinVectorDot(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_FLOOR:
-        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+        if (FFlag::LuauCodegenExtraSimd && FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+            return translateBuiltinVectorMap1x4(build, IrCmd::FLOOR_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        else if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
             return translateBuiltinVectorMap1(build, IrCmd::FLOOR_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
         else
             return translateBuiltinVectorMap1(build, IrCmd::FLOOR_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_CEIL:
-        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+        if (FFlag::LuauCodegenExtraSimd && FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+            return translateBuiltinVectorMap1x4(build, IrCmd::CEIL_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        else if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
             return translateBuiltinVectorMap1(build, IrCmd::CEIL_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
         else
             return translateBuiltinVectorMap1(build, IrCmd::CEIL_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_ABS:
-        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+        if (FFlag::LuauCodegenExtraSimd && FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+            return translateBuiltinVectorMap1x4(build, IrCmd::ABS_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        else if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
             return translateBuiltinVectorMap1(build, IrCmd::ABS_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
         else
             return translateBuiltinVectorMap1(build, IrCmd::ABS_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);
@@ -1660,12 +1723,16 @@ BuiltinImplResult translateBuiltin(
     case LBF_VECTOR_CLAMP:
         return translateBuiltinVectorClamp(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
     case LBF_VECTOR_MIN:
-        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+        if (FFlag::LuauCodegenExtraSimd && FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+            return translateBuiltinVectorMinMax(build, IrCmd::MIN_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        else if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
             return translateBuiltinVectorMap2(build, IrCmd::MIN_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
         else
             return translateBuiltinVectorMap2(build, IrCmd::MIN_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_MAX:
-        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+        if (FFlag::LuauCodegenExtraSimd && FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+            return translateBuiltinVectorMinMax(build, IrCmd::MAX_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        else if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
             return translateBuiltinVectorMap2(build, IrCmd::MAX_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
         else
             return translateBuiltinVectorMap2(build, IrCmd::MAX_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);

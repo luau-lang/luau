@@ -61,9 +61,6 @@ static RequireSuggestions makeSuggestionsFromNode(std::unique_ptr<RequireNode> n
         RequireSuggestion parentSuggestion;
         parentSuggestion.label = "..";
 
-        // TODO: after exposing require-by-string's path normalization API, this
-        // if-else can be replaced. Instead, we can simply normalize the result
-        // of inserting ".." at the end of the current path.
         if (lastSlashInPath >= 2 && path.substr(lastSlashInPath - 2, 3) == "../")
         {
             parentSuggestion.fullPath = path.substr(0, lastSlashInPath + 1);

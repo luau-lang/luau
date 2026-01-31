@@ -217,6 +217,16 @@ const char* getCmdName(IrCmd cmd)
         return "MULADD_VEC";
     case IrCmd::UNM_VEC:
         return "UNM_VEC";
+    case IrCmd::MIN_VEC:
+        return "MIN_VEC";
+    case IrCmd::MAX_VEC:
+        return "MAX_VEC";
+    case IrCmd::FLOOR_VEC:
+        return "FLOOR_VEC";
+    case IrCmd::CEIL_VEC:
+        return "CEIL_VEC";
+    case IrCmd::ABS_VEC:
+        return "ABS_VEC";
     case IrCmd::DOT_VEC:
         return "DOT_VEC";
     case IrCmd::EXTRACT_VEC:

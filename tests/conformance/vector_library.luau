@@ -1,6 +1,9 @@
 -- This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 print('testing vector library')
 
+local function noinline(x, ...) local s, r = pcall(function(y) return y end, x) return r end
+local function noinlinevector(a, b, c) return noinline(vector.create(a, b, c)) end
+
 -- detect vector size
 local vector_size = if pcall(function() return vector(0, 0, 0).w end) then 4 else 3
 
@@ -49,32 +52,45 @@ assert(select("#", doDot2(v124, vector.create(5, 6, 7))) == 1)
 -- 'cross' tests and next ones will only test basic results
 assert(vector.cross(vector.create(1, 0, 0), vector.create(0, 1, 0)) == vector.create(0, 0, 1))
 assert(vector.cross(vector.create(0, 1, 0), vector.create(1, 0, 0)) == vector.create(0, 0, -1))
+assert(vector.cross(noinlinevector(1, 0, 0), vector.create(0, 1, 0)) == vector.create(0, 0, 1))
+assert(vector.cross(noinlinevector(0, 1, 0), vector.create(1, 0, 0)) == vector.create(0, 0, -1))
 assert(select("#", vector.cross(vector.zero, vector.one)) == 1)
 
 -- 'normalize'
 assert(vector.normalize(vector.create(0.5, 0, 0)) == vector.create(1, 0, 0))
+assert(vector.normalize(noinlinevector(0.5, 0, 0)) == vector.create(1, 0, 0))
 assert(select("#", vector.normalize(vector.one)) == 1)
 
 -- 'magnitude'
 assert(vector.magnitude(vector.create(1, 2, 2)) == 3)
+assert(vector.magnitude(noinlinevector(1, 2, 2)) == 3)
 assert(select("#", vector.magnitude(vector.one)) == 1)
 
 -- 'abs'
 assert(vector.abs(-vector.one) == vector.one)
 assert(vector.abs(vector.create(math.huge, 0, 0)).x == math.abs(math.huge))
 assert(vector.abs(vector.create(0/0, 0, 0)).x ~= 0/0)
+assert(vector.abs(noinline(-vector.one)) == vector.one)
+assert(vector.abs(noinlinevector(math.huge, 0, 0)).x == math.abs(math.huge))
+assert(vector.abs(noinlinevector(0/0, 0, 0)).x ~= 0/0)
 assert(select("#", vector.abs(vector.one)) == 1)
 
 -- 'floor'
 assert(vector.floor(vector.create(1, 2, 3)) == vector.create(1, 2, 3))
 assert(vector.floor(vector.create(1.5, 2.4, 3)) == vector.create(1, 2, 3))
 assert(vector.floor(vector.create(-1.5, -2.4, -3)) == vector.create(-2, -3, -3))
+assert(vector.floor(noinlinevector(1, 2, 3)) == vector.create(1, 2, 3))
+assert(vector.floor(noinlinevector(1.5, 2.4, 3)) == vector.create(1, 2, 3))
+assert(vector.floor(noinlinevector(-1.5, -2.4, -3)) == vector.create(-2, -3, -3))
 assert(select("#", vector.floor(vector.one)) == 1)
 
 -- 'ceil'
 assert(vector.ceil(vector.create(1, 2, 3)) == vector.create(1, 2, 3))
 assert(vector.ceil(vector.create(1.5, 2.4, 3)) == vector.create(2, 3, 3))
 assert(vector.ceil(vector.create(-1.5, -2.4, -3)) == vector.create(-1, -2, -3))
+assert(vector.ceil(noinlinevector(1, 2, 3)) == vector.create(1, 2, 3))
+assert(vector.ceil(noinlinevector(1.5, 2.4, 3)) == vector.create(2, 3, 3))
+assert(vector.ceil(noinlinevector(-1.5, -2.4, -3)) == vector.create(-1, -2, -3))
 assert(select("#", vector.ceil(vector.one)) == 1)
 
 -- 'sign'
@@ -82,13 +98,20 @@ assert(vector.sign(vector.zero) == vector.zero)
 assert(vector.sign(vector.one) == vector.one)
 assert(vector.sign(vector.create(-10, 0, 10)) == vector.create(-1, 0, 1))
 assert(vector.sign(vector.create(math.huge, 0, -math.huge)) == vector.create(1, 0, -1))
+assert(vector.sign(noinline(vector.zero)) == vector.zero)
+assert(vector.sign(noinline(vector.one)) == vector.one)
+assert(vector.sign(noinlinevector(-10, 0, 10)) == vector.create(-1, 0, 1))
+assert(vector.sign(noinlinevector(math.huge, 0, -math.huge)) == vector.create(1, 0, -1))
 -- negative zero and nan are consistent with math library, even if implementation defined
 assert(vector.sign(vector.create(-0, 0, 0)).x == math.sign(-0))
 assert(vector.sign(vector.create(0/0, 0, 0)).x == math.sign(0/0))
+assert(vector.sign(noinlinevector(-0, 0, 0)).x == math.sign(-0))
+assert(vector.sign(noinlinevector(0/0, 0, 0)).x == math.sign(0/0))
 assert(select("#", vector.sign(vector.one)) == 1)
 
 -- 'angle'
 assert(math.abs(vector.angle(vector.create(1, 2, 3), vector.create(4, 5, 6)) - 0.2257259) < 0.00001)
+assert(math.abs(vector.angle(noinlinevector(1, 2, 3), vector.create(4, 5, 6)) - 0.2257259) < 0.00001)
 assert(select("#", vector.angle(vector.zero, vector.one)) == 1)
 assert(select("#", vector.angle(vector.one, -vector.one, vector.zero)) == 1)
 
@@ -152,6 +175,8 @@ end
 -- 'min'/'max'
 assert(vector.max(vector.create(-1, 2, 0.5)) == vector.create(-1, 2, 0.5))
 assert(vector.min(vector.create(-1, 2, 0.5)) == vector.create(-1, 2, 0.5))
+assert(vector.max(noinlinevector(-1, 2, 0.5)) == vector.create(-1, 2, 0.5))
+assert(vector.min(noinlinevector(-1, 2, 0.5)) == vector.create(-1, 2, 0.5))
 
 assert(ecall(function() vector.min() end) == "missing argument #1 to 'min' (vector expected)")
 assert(ecall(function() vector.max() end) == "missing argument #1 to 'max' (vector expected)")
@@ -165,9 +190,27 @@ assert(vector.min(vector.create(-1, 2, 3), vector.create(3, 2, 1)) == vector.cre
 assert(vector.max(vector.create(1, 2, 3),vector.create(2, 3, 4),vector.create(3, 4, 5),vector.create(4, 5, 6)) == vector.create(4, 5, 6))
 assert(vector.min(vector.create(1, 2, 3),vector.create(2, 3, 4),vector.create(3, 4, 5),vector.create(4, 5, 6)) == vector.create(1, 2, 3))
 
+assert(vector.max(noinlinevector(-1, 2, 3), vector.create(3, 2, 1)) == vector.create(3, 2, 3))
+assert(vector.min(noinlinevector(-1, 2, 3), vector.create(3, 2, 1)) == vector.create(-1, 2, 1))
+
+assert(vector.max(noinlinevector(1, 2, 3),vector.create(2, 3, 4),vector.create(3, 4, 5),vector.create(4, 5, 6)) == vector.create(4, 5, 6))
+assert(vector.min(noinlinevector(1, 2, 3),vector.create(2, 3, 4),vector.create(3, 4, 5),vector.create(4, 5, 6)) == vector.create(1, 2, 3))
+
+assert(vector.min(vector.create(0/0, 0, 0), vector.create(2, 0, 0)).x ~= 0/0)
+assert(vector.min(vector.create(1, 0, 0), vector.create(0/0, 0, 0)).x == 1)
+assert(vector.max(vector.create(0/0, 0, 0), vector.create(2, 0, 0)).x ~= 0/0)
+assert(vector.max(vector.create(1, 0, 0), vector.create(0/0, 0, 0)).x == 1)
+
+assert(vector.min(noinlinevector(0/0, 0, 0), vector.create(2, 0, 0)).x ~= 0/0)
+assert(vector.min(noinlinevector(1, 0, 0), vector.create(0/0, 0, 0)).x == 1)
+assert(vector.max(noinlinevector(0/0, 0, 0), vector.create(2, 0, 0)).x ~= 0/0)
+assert(vector.max(noinlinevector(1, 0, 0), vector.create(0/0, 0, 0)).x == 1)
+
 -- clamp
 assert(vector.clamp(vector.create(1, 1, 1), vector.create(0, 1, 2), vector.create(3, 3, 3)) == vector.create(1, 1, 2))
 assert(vector.clamp(vector.create(1, 1, 1), vector.create(-1, -1, -1), vector.create(0, 1, 2)) == vector.create(0, 1, 1))
+assert(vector.clamp(noinlinevector(1, 1, 1), vector.create(0, 1, 2), vector.create(3, 3, 3)) == vector.create(1, 1, 2))
+assert(vector.clamp(noinlinevector(1, 1, 1), vector.create(-1, -1, -1), vector.create(0, 1, 2)) == vector.create(0, 1, 1))
 assert(select("#", vector.clamp(vector.zero, vector.zero, vector.one)) == 1)
 
 -- lerp
@@ -179,6 +222,14 @@ assert(vector.lerp(vector.one, vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5)
 assert(vector.lerp(vector.create(1, 2, 3), vector.create(3, 2, 1), 0.5) == vector.create(2, 2, 2))
 assert(vector.lerp(vector.create(-1, -1, -3), vector.zero, 0.5) == vector.create(-0.5, -0.5, -1.5))
 assert(vector.lerp(vector.create(10, 8, 3), vector.create(-3, 8, 3), 0.43) == vector.create(4.41, 8, 3))
+assert(vector.lerp(noinline(vector.zero), vector.one, 0) == vector.zero)
+assert(vector.lerp(noinline(vector.zero), vector.one, 1) == vector.one)
+assert(vector.lerp(noinline(vector.zero), vector.one, 0.5) == vector.create(0.5, 0.5, 0.5))
+assert(vector.lerp(noinline(vector.one), vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5))
+assert(vector.lerp(noinline(vector.one), vector.zero, 0.5) == vector.create(0.5, 0.5, 0.5))
+assert(vector.lerp(noinlinevector(1, 2, 3), vector.create(3, 2, 1), 0.5) == vector.create(2, 2, 2))
+assert(vector.lerp(noinlinevector(-1, -1, -3), vector.zero, 0.5) == vector.create(-0.5, -0.5, -1.5))
+assert(vector.lerp(noinlinevector(10, 8, 3), vector.create(-3, 8, 3), 0.43) == vector.create(4.41, 8, 3))
 assert(ecall(function() return vector.lerp(vector.zero, vector.one, vector.one) end) == "invalid argument #3 to 'lerp' (number expected, got vector)")
 
 -- validate component access
@@ -191,6 +242,15 @@ assert(vector.create(1, 2, 3)['Y'] == 2)
 assert(vector.create(1, 2, 3).z == 3)
 assert(vector.create(1, 2, 3).Z == 3)
 assert(vector.create(1, 2, 3)['Z'] == 3)
+assert(noinlinevector(1, 2, 3).x == 1)
+assert(noinlinevector(1, 2, 3).X == 1)
+assert(noinlinevector(1, 2, 3)['X'] == 1)
+assert(noinlinevector(1, 2, 3).y == 2)
+assert(noinlinevector(1, 2, 3).Y == 2)
+assert(noinlinevector(1, 2, 3)['Y'] == 2)
+assert(noinlinevector(1, 2, 3).z == 3)
+assert(noinlinevector(1, 2, 3).Z == 3)
+assert(noinlinevector(1, 2, 3)['Z'] == 3)
 
 local function getcomp(v: vector, field: string)
     return v[field]

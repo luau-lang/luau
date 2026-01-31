@@ -24,6 +24,7 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenTruncateFold)
 LUAU_FASTFLAG(LuauCodegenSplitFloat)
 LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
+LUAU_FASTFLAGVARIABLE(LuauCodegenBufferBaseFold)
 
 namespace Luau
 {
@@ -216,6 +217,11 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::DIV_VEC:
     case IrCmd::IDIV_VEC:
     case IrCmd::UNM_VEC:
+    case IrCmd::MIN_VEC:
+    case IrCmd::MAX_VEC:
+    case IrCmd::FLOOR_VEC:
+    case IrCmd::CEIL_VEC:
+    case IrCmd::ABS_VEC:
     case IrCmd::SELECT_VEC:
     case IrCmd::SELECT_IF_TRUTHY:
     case IrCmd::MULADD_VEC:
@@ -1298,13 +1304,20 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
     case IrCmd::CHECK_BUFFER_LEN:
         if (FFlag::LuauCodegenBufferRangeMerge3 && FFlag::LuauCodegenNumIntFolds2)
         {
-            // If base offset and base offset source double value are both constants, we can get rid of that check or fallback
             if (OP_B(inst).kind == IrOpKind::Constant && OP_E(inst).kind == IrOpKind::Constant)
             {
+                // If base offset and base offset source double value are both constants, we can get rid of that check or fallback
                 if (double(function.intOp(OP_B(inst))) == function.doubleOp(OP_E(inst)))
                     replace(function, OP_E(inst), build.undef()); // This disables equality check at runtime
                 else
                     replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}}); // Shows a conflict in assumptions on this path
+            }
+            else if (FFlag::LuauCodegenBufferBaseFold && OP_B(inst).kind == IrOpKind::Inst && OP_E(inst).kind == IrOpKind::Constant)
+            {
+                // If only the base offset source double value is a constant, it means we couldn't constant-fold NUM_TO_INT
+                CODEGEN_ASSERT(function.instOp(OP_B(inst)).cmd == IrCmd::NUM_TO_INT && OP_A(function.instOp(OP_B(inst))) == OP_E(inst));
+
+                replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}}); // Shows a conflict in assumptions on this path
             }
         }
         break;
@@ -1433,6 +1446,20 @@ IrBlock* tryGetNextBlockInChain(IrFunction& function, IrBlock& block)
 bool isEntryBlock(const IrBlock& block)
 {
     return block.useCount == 0 && block.kind != IrBlockKind::Dead;
+}
+
+std::optional<uint8_t> tryGetOperandTag(IrFunction& function, IrOp op)
+{
+    if (IrInst* arg = function.asInstOp(op))
+    {
+        if (arg->cmd == IrCmd::TAG_VECTOR)
+            return LUA_TVECTOR;
+
+        if (arg->cmd == IrCmd::LOAD_TVALUE && HAS_OP_C(*arg))
+            return function.tagOp(OP_C(*arg));
+    }
+
+    return std::nullopt;
 }
 
 } // namespace CodeGen
