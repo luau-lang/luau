@@ -19,7 +19,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 
 namespace Luau
@@ -1690,7 +1689,7 @@ bool Normalizer::withinResourceLimits()
 
 bool Normalizer::useNewLuauSolver() const
 {
-    return FFlag::LuauUseWorkspacePropToChooseSolver ? (solverMode == SolverMode::New) : FFlag::LuauSolverV2;
+    return solverMode == SolverMode::New;
 }
 
 NormalizationResult Normalizer::intersectNormalWithNegationTy(TypeId toNegate, NormalizedType& intersect)
@@ -3540,8 +3539,6 @@ bool isSubtype(
         NotNull{&ice}, NotNull{&limits}
     }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
-    if (FFlag::LuauUseWorkspacePropToChooseSolver)
-    {
         Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, solverMode};
         if (solverMode == SolverMode::New)
         {
@@ -3556,24 +3553,6 @@ bool isSubtype(
             u.tryUnify(subTy, superTy);
             return !u.failure;
         }
-    }
-    else
-    {
-        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
-        if (FFlag::LuauSolverV2)
-        {
-            Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
-
-            return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
-        }
-        else
-        {
-            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
-
-            u.tryUnify(subTy, superTy);
-            return !u.failure;
-        }
-    }
 }
 
 bool isSubtype(
@@ -3592,8 +3571,6 @@ bool isSubtype(
         NotNull{&ice}, NotNull{&limits}
     }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
-    if (FFlag::LuauUseWorkspacePropToChooseSolver)
-    {
         Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, solverMode};
         if (solverMode == SolverMode::New)
         {
@@ -3608,24 +3585,6 @@ bool isSubtype(
             u.tryUnify(subPack, superPack);
             return !u.failure;
         }
-    }
-    else
-    {
-        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
-        if (FFlag::LuauSolverV2)
-        {
-            Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
-
-            return subtyping.isSubtype(subPack, superPack, scope, {}).isSubtype;
-        }
-        else
-        {
-            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
-
-            u.tryUnify(subPack, superPack);
-            return !u.failure;
-        }
-    }
 }
 
 } // namespace Luau

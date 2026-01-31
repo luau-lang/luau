@@ -166,8 +166,6 @@ struct SubtypingEnvironment
         NotNull<InternalErrorReporter> iceReporter
     );
 
-    // TODO: Clip with LuauTryFindSubstitutionReturnOptional
-    const TypeId* tryFindSubstitution_DEPRECATED(TypeId ty) const;
     std::optional<TypeId> tryFindSubstitution(TypeId ty) const;
     const SubtypingResult* tryFindSubtypingResult(std::pair<TypeId, TypeId> subAndSuper) const;
 

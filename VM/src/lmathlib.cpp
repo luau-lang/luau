@@ -14,6 +14,7 @@
 #define PCG32_INC 105
 
 LUAU_FASTFLAGVARIABLE(LuauMathIsNanInfFinite)
+LUAU_FASTFLAGVARIABLE(LuauMathSeedEncode)
 
 static uint32_t pcg32_random(uint64_t* state)
 {
@@ -496,7 +497,7 @@ static const luaL_Reg mathlib[] = {
 */
 int luaopen_math(lua_State* L)
 {
-    uint64_t seed = uintptr_t(L);
+    uint64_t seed = FFlag::LuauMathSeedEncode ? lua_encodepointer(L, uintptr_t(L)) : uintptr_t(L);
     seed ^= time(NULL);
     seed ^= clock();
 
