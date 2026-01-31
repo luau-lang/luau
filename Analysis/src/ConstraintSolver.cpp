@@ -42,14 +42,12 @@ LUAU_FASTFLAGVARIABLE(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
-LUAU_FASTFLAGVARIABLE(LuauDontDynamicallyCreateRedundantSubtypeConstraints)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
 LUAU_FASTFLAG(LuauPushTypeConstraintLambdas3)
 LUAU_FASTFLAG(LuauMarkUnscopedGenericsAsSolved)
 LUAU_FASTFLAGVARIABLE(LuauUseFastSubtypeForIndexerWithName)
 LUAU_FASTFLAGVARIABLE(LuauUnifyWithSubtyping)
-LUAU_FASTFLAG(LuauUseIterativeTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauDoNotUseApplyTypeFunctionToClone)
 LUAU_FASTFLAGVARIABLE(LuauReworkInfiniteTypeFinder)
 
@@ -333,8 +331,7 @@ struct InstantiationQueuer : TypeOnceVisitor
     }
 };
 
-template<typename BaseVisitor>
-struct InfiniteTypeFinder : BaseVisitor
+struct InfiniteTypeFinder : IterativeTypeVisitor
 {
     NotNull<ConstraintSolver> solver;
     const InstantiationSignature& signature;
@@ -342,7 +339,7 @@ struct InfiniteTypeFinder : BaseVisitor
     bool foundInfiniteType = false;
 
     explicit InfiniteTypeFinder(ConstraintSolver* solver, const InstantiationSignature& signature, NotNull<Scope> scope)
-        : BaseVisitor("InfiniteTypeFinder", /* skipBoundTypes */ true)
+        : IterativeTypeVisitor("InfiniteTypeFinder", /* skipBoundTypes */ true)
         , solver(solver)
         , signature(signature)
         , scope(scope)
@@ -1192,37 +1189,18 @@ bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constr
             c.typePackParameters,
         };
 
-        if (FFlag::LuauUseIterativeTypeVisitor)
-        {
-            InfiniteTypeFinder<IterativeTypeVisitor> itf{this, signature, constraint->scope};
-            itf.run(target);
+        InfiniteTypeFinder itf{this, signature, constraint->scope};
+        itf.run(target);
 
-            if (itf.foundInfiniteType)
-            {
-                if (FFlag::LuauReworkInfiniteTypeFinder)
-                    constraint->scope->invalidTypeAliases[c.name] = constraint->location;
-                else
-                    constraint->scope->invalidTypeAliasNames_DEPRECATED.insert(c.name);
-                shiftReferences(target, builtinTypes->errorType);
-                emplaceType<BoundType>(asMutable(target), builtinTypes->errorType);
-                return true;
-            }
-        }
-        else
+        if (itf.foundInfiniteType)
         {
-            InfiniteTypeFinder<TypeOnceVisitor> itf{this, signature, constraint->scope};
-            itf.traverse(target);
-
-            if (itf.foundInfiniteType)
-            {
-                if (FFlag::LuauReworkInfiniteTypeFinder)
-                    constraint->scope->invalidTypeAliases[c.name] = constraint->location;
-                else
-                    constraint->scope->invalidTypeAliasNames_DEPRECATED.insert(c.name);
-                shiftReferences(target, builtinTypes->errorType);
-                emplaceType<BoundType>(asMutable(target), builtinTypes->errorType);
-                return true;
-            }
+            if (FFlag::LuauReworkInfiniteTypeFinder)
+                constraint->scope->invalidTypeAliases[c.name] = constraint->location;
+            else
+                constraint->scope->invalidTypeAliasNames_DEPRECATED.insert(c.name);
+            shiftReferences(target, builtinTypes->errorType);
+            emplaceType<BoundType>(asMutable(target), builtinTypes->errorType);
+            return true;
         }
     }
 
@@ -1360,37 +1338,18 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     // https://github.com/luau-lang/luau/pull/68 for the RFC responsible for
     // this. This is a little nicer than using a recursion limit because we can
     // catch the infinite expansion before actually trying to expand it.
-    if (FFlag::LuauUseIterativeTypeVisitor)
-    {
-        InfiniteTypeFinder<IterativeTypeVisitor> itf{this, signature, constraint->scope};
-        itf.run(tf->type);
+    InfiniteTypeFinder itf{this, signature, constraint->scope};
+    itf.run(tf->type);
 
-        if (itf.foundInfiniteType)
-        {
-            // TODO (CLI-56761): Report an error.
-            bindResult(builtinTypes->errorType);
-            if (FFlag::LuauReworkInfiniteTypeFinder)
-                constraint->scope->invalidTypeAliases[petv->name.value] = constraint->location;
-            else
-                reportError(GenericError{"Recursive type being used with different parameters"}, constraint->location);
-            return true;
-        }
-    }
-    else
+    if (itf.foundInfiniteType)
     {
-        InfiniteTypeFinder<TypeOnceVisitor> itf{this, signature, constraint->scope};
-        itf.traverse(tf->type);
-
-        if (itf.foundInfiniteType)
-        {
-            // TODO (CLI-56761): Report an error.
-            bindResult(builtinTypes->errorType);
-            if (FFlag::LuauReworkInfiniteTypeFinder)
-                constraint->scope->invalidTypeAliases[petv->name.value] = constraint->location;
-            else
-                reportError(GenericError{"Recursive type being used with different parameters"}, constraint->location);
-            return true;
-        }
+        // TODO (CLI-56761): Report an error.
+        bindResult(builtinTypes->errorType);
+        if (FFlag::LuauReworkInfiniteTypeFinder)
+            constraint->scope->invalidTypeAliases[petv->name.value] = constraint->location;
+        else
+            reportError(GenericError{"Recursive type being used with different parameters"}, constraint->location);
+        return true;
     }
 
     // FIXME: this does not actually implement instantiation properly, it puts
@@ -3894,13 +3853,10 @@ bool ConstraintSolver::isBlocked(NotNull<const Constraint> constraint) const
 NotNull<Constraint> ConstraintSolver::pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv)
 {
     std::optional<SubtypeConstraintRecord> scr;
-    if (FFlag::LuauDontDynamicallyCreateRedundantSubtypeConstraints)
-    {
-        if (auto sc = cv.get_if<SubtypeConstraint>())
-            scr.emplace(SubtypeConstraintRecord{sc->subType, sc->superType, SubtypingVariance::Covariant});
-        else if (auto ec = cv.get_if<EqualityConstraint>())
-            scr.emplace(SubtypeConstraintRecord{ec->assignmentType, ec->resultType, SubtypingVariance::Invariant});
-    }
+    if (auto sc = cv.get_if<SubtypeConstraint>())
+        scr.emplace(SubtypeConstraintRecord{sc->subType, sc->superType, SubtypingVariance::Covariant});
+    else if (auto ec = cv.get_if<EqualityConstraint>())
+        scr.emplace(SubtypeConstraintRecord{ec->assignmentType, ec->resultType, SubtypingVariance::Invariant});
 
     if (scr)
     {
