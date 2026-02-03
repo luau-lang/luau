@@ -1708,8 +1708,8 @@ static int checkTag(lua_State* L)
 }
 
 // Luau `self:issubtypeof(arg: type) -> boolean`
-// Returns true if the self is a subtype of the given type
-static int checkIsSubtypeOf(lua_State* L)
+// Returns true if self is a subtype of the given type
+static int isSubtypeOf(lua_State* L)
 {
     int argumentCount = lua_gettop(L);
     if (argumentCount != 2)
@@ -1890,7 +1890,7 @@ void registerTypeUserData(lua_State* L)
 
     if (FFlag::LuauTypeFunctionTypeIsSubtypeOf)
     {
-        lua_pushcfunction(L, checkIsSubtypeOf, "issubtypeof");
+        lua_pushcfunction(L, isSubtypeOf, "issubtypeof");
         lua_setfield(L, -2, "issubtypeof");
     }
 
