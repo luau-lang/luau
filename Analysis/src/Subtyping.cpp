@@ -2117,9 +2117,22 @@ SubtypingResult Subtyping::isCovariantWith(
                 int superAccess = (int)superTable->indexer->access;
                 int subAccess = (int)subTable->indexer->access;
 
-                // First check: No coincident bits (Super is Read, Sub is Write, etc)
-                // Second check: Essentially if Super is ReadWrite and Sub is only Read or Write
-                if ((superAccess & subAccess) == 0 || (superAccess > subAccess))
+                /*
+                    User is trying to use table with indexer access Sub in context of access Super
+
+                    Super    |    Sub    |    &   |  Allow ( & < Super )
+                    ----------------------------------------------------
+                    R   0b01 |  R   0b01 |  0b01  |    Y
+                    W   0b10 |  R   0b01 |  0b00  |    N
+                    RW  0b11 |  R   0b01 |  0b01  |    N
+                    R   0b01 |  W   0b10 |  0b00  |    N
+                    W   0b10 |  W   0b10 |  0b10  |    Y
+                    RW  0b11 |  W   0b10 |  0b10  |    N
+                    R   0b01 |  RW  0b11 |  0b01  |    Y
+                    W   0b10 |  RW  0b11 |  0b10  |    Y
+                    RW  0b11 |  RW  0b11 |  0b11  |    Y
+                */
+                if ((superAccess & subAccess) < superAccess)
                     return SubtypingResult{false}.withBothComponent(TypePath::TypeField::IndexLookup);
             }
 

@@ -413,15 +413,24 @@ enum class TableState
 
 struct TableIndexer
 {
-    TableIndexer(TypeId indexType, TypeId indexResultType)
+    TableIndexer(TypeId indexType, TypeId readIndexResultType, TypeId writeIndexResultType)
         : indexType(indexType)
-        , indexResultType(indexResultType)
+        , readIndexResultType(readIndexResultType)
+        , writeIndexResultType(writeIndexResultType)
+    {
+    }
+
+    // Deprecated! Use the constructor that supports different read/write result types instead
+    TableIndexer(TypeId indexType, TypeId readIndexResultType, TypeId indexResultType_DEPRECATED)
+        : indexType(indexType)
+        , indexResultType_DEPRECATED(indexResultType_DEPRECATED)
     {
     }
 
     TypeId indexType;
-    TypeId indexResultType;
-    AstTableAccess access = AstTableAccess::ReadWrite;
+    std::optional<TypeId> readIndexResultType;
+    std::optional<TypeId> writeIndexResultType;
+    TypeId indexResultType_DEPRECATED;
 };
 
 struct Property

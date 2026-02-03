@@ -11,6 +11,7 @@
 
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
+LUAU_FASTFLAG(LuauParseReadWriteIndexers)
 
 namespace
 {
@@ -1609,13 +1610,42 @@ struct Printer
                 if (cstNode->isArray)
                 {
                     LUAU_ASSERT(a->props.size == 0 && indexType && indexType->name == "number");
-                    if (a->indexer->accessLocation)
+
+                    if (FFlag::LuauParseReadWriteIndexers)
                     {
-                        LUAU_ASSERT(a->indexer->access != AstTableAccess::ReadWrite);
-                        advance(a->indexer->accessLocation->begin);
-                        writer.keyword(a->indexer->access == AstTableAccess::Read ? "read" : "write");
+                        if (a->indexer->readAccessLocation != a->index->writeAccessLocation)
+                        {
+                            if (a->indexer->readAccessLocation)
+                            {
+                                advance(a->indexer->readAccessLocation->begin);
+                                writer.keyword("read");
+                                visualizeTypeAnnotation(*a->indexer->readResultType);
+                            }
+
+                            if (a->indexer->writeAccessLocation)
+                            {
+                                advance(a->indexer->writeAccessLocation->begin);
+                                write.keyword("write");
+                                visualizeTypeAnnotation(*a->indexer->writeResultType);
+                            }
+                        }
+                        else
+                        {
+                            LUAU_ASSERT(a->indexer->readAccessLocation.has_value() && a->indexer->writeAccessLocation.has_value());
+                            advance(a->indexer->readAccessLocation->begin);
+                            visualizeTypeAnnotation(*a->indexer->readResultType);
+                        }
                     }
-                    visualizeTypeAnnotation(*a->indexer->resultType);
+                    else
+                    {
+                        if (a->indexer->accessLocation_DEPRECATED)
+                        {
+                            LUAU_ASSERT(a->indexer->access_DEPRECATED != AstTableAccess::ReadWrite);
+                            advance(a->indexer->accessLocation_DEPRECATED->begin);
+                            writer.keyword(a->indexer->access_DEPRECATED == AstTableAccess::Read ? "read" : "write");
+                        }
+                        visualizeTypeAnnotation(*a->indexer->resultType_DEPRECATED);
+                    }
                 }
                 else
                 {
@@ -1643,7 +1673,7 @@ struct Printer
                             writer.symbol("]");
                             advance(item.colonPosition);
                             writer.symbol(":");
-                            visualizeTypeAnnotation(*a->indexer->resultType);
+                            visualizeTypeAnnotation(*a->indexer->resultType_DEPRECATED);
 
                             if (item.separator)
                             {
@@ -1706,7 +1736,7 @@ struct Printer
             {
                 if (a->props.size == 0 && indexType && indexType->name == "number")
                 {
-                    visualizeTypeAnnotation(*a->indexer->resultType);
+                    visualizeTypeAnnotation(*a->indexer->resultType_DEPRECATED);
                 }
                 else
                 {
@@ -1730,7 +1760,7 @@ struct Printer
                         visualizeTypeAnnotation(*a->indexer->indexType);
                         writer.symbol("]");
                         writer.symbol(":");
-                        visualizeTypeAnnotation(*a->indexer->resultType);
+                        visualizeTypeAnnotation(*a->indexer->resultType_DEPRECATED);
                     }
                 }
             }

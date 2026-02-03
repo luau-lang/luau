@@ -4,8 +4,8 @@
 #include "Luau/Common.h"
 
 LUAU_FASTFLAGVARIABLE(LuauStandaloneParseType)
-
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
+LUAU_FASTFLAG(LuauParseReadWriteIndexers)
 
 namespace Luau
 {
@@ -1134,7 +1134,15 @@ void AstTypeTable::visit(AstVisitor* visitor)
         if (indexer)
         {
             indexer->indexType->visit(visitor);
-            indexer->resultType->visit(visitor);
+
+            if (FFlag::LuauParseReadWriteIndexers)
+            {
+                indexer->readResultType->visit(visitor);
+                indexer->writeResultType->visit(visitor);
+            }
+            {
+                indexer->resultType_DEPRECATED->visit(visitor);
+            }
         }
     }
 }

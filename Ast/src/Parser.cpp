@@ -22,6 +22,7 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, f
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauStandaloneParseType)
 LUAU_FASTFLAGVARIABLE(LuauCstStatDoWithStatsStart)
+LUAU_FASTFLAGVARIABLE(LuauParseReadWriteIndexers)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -2061,7 +2062,7 @@ Parser::TableIndexerResult Parser::parseTableIndexer(AstTableAccess access, std:
     AstType* result = parseType();
 
     return {
-        allocator.alloc<AstTableIndexer>(AstTableIndexer{index, result, Location(begin.location, result->location), access, accessLocation}),
+        allocator.alloc<AstTableIndexer>(AstTableIndexer::construct_DEPRECATED(index, result, Location(begin.location, result->location), access, accessLocation)),
         begin.location.begin,
         indexerClosePosition,
         colonPosition,
