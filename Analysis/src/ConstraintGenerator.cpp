@@ -2041,28 +2041,27 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
         }
     }
 
-    for (const AstDeclaredExternTypeProperty& prop : declaredExternType->props)
+    for (const AstDeclaredExternTypeProperty& externProp : declaredExternType->props)
     {
-        Name propName(prop.name.value);
-        TypeId propTy;
+        Name propName(externProp.name.value);
+        TypeId externPropTy;
         if (FFlag::LuauStorePolarityInline)
         {
-            propTy =
-                resolveType(scope, prop.ty, /* inTypeArguments */ false, /* replaceErrorWithFresh */ false, /* initialPolarity */ Polarity::Mixed);
+            externPropTy =
+                resolveType(scope, externProp.ty, /* inTypeArguments */ false, /* replaceErrorWithFresh */ false, /* initialPolarity */ Polarity::Mixed);
         }
         else
         {
-            propTy = resolveType(scope, prop.ty, /* inTypeArguments */ false);
+            externPropTy = resolveType(scope, externProp.ty, /* inTypeArguments */ false);
         }
-
 
         bool assignToMetatable = isMetamethod(propName);
 
         // Function typeArguments always take 'self', but this isn't reflected in the
         // parsed annotation. Add it here.
-        if (prop.isMethod)
+        if (externProp.isMethod)
         {
-            if (FunctionType* ftv = getMutable<FunctionType>(propTy))
+            if (FunctionType* ftv = getMutable<FunctionType>(externPropTy))
             {
                 ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
                 ftv->argTypes = addTypePack({externTy}, ftv->argTypes);
@@ -2072,9 +2071,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 FunctionDefinition defn;
 
                 defn.definitionModuleName = module->name;
-                defn.definitionLocation = prop.location;
+                defn.definitionLocation = externProp.location;
                 // No data is preserved for varargLocation
-                defn.originalNameLocation = prop.nameLocation;
+                defn.originalNameLocation = externProp.nameLocation;
 
                 ftv->definition = defn;
             }
@@ -2088,18 +2087,18 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
 
             if (FFlag::LuauExternReadWriteAttributes)
             {
-                if (prop.access == AstTableAccess::Read)
-                    tableProp = Property::readonly(propTy);
-                else if (prop.access == AstTableAccess::Write)
-                    tableProp = Property::writeonly(propTy);
+                if (externProp.access == AstTableAccess::Read)
+                    tableProp = Property::readonly(externPropTy);
+                else if (externProp.access == AstTableAccess::Write)
+                    tableProp = Property::writeonly(externPropTy);
                 else
-                    tableProp = Property::rw(propTy);
+                    tableProp = Property::rw(externPropTy);
 
-                tableProp.location = prop.location;
+                tableProp.location = externProp.location;
             }
             else
             {
-                tableProp = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
+                tableProp = {externPropTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", externProp.location};
             }
 
             props[propName] = tableProp;
@@ -2107,6 +2106,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
         else
         {
             Luau::Property& prop = props[propName];
+            bool addedWriteTypeByOverload = false;
 
             if (auto readTy = prop.readTy)
             {
@@ -2115,50 +2115,79 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 if (const IntersectionType* itv = get<IntersectionType>(*readTy))
                 {
                     std::vector<TypeId> options = itv->parts;
-                    options.push_back(propTy);
+                    options.push_back(externPropTy);
                     TypeId newItv = arena->addType(IntersectionType{std::move(options)});
 
                     prop.readTy = newItv;
                 }
                 else if (get<FunctionType>(*readTy))
                 {
-                    TypeId intersection = arena->addType(IntersectionType{{*readTy, propTy}});
+                    TypeId intersection = arena->addType(IntersectionType{{*readTy, externPropTy}});
 
                     prop.readTy = intersection;
                 }
                 else
                 {
-                    reportError(
-                        declaredExternType->location,
-                        GenericError{format("Cannot overload read type of non-function class member '%s'", propName.c_str())}
-                    );
+                    if (FFlag::LuauExternReadWriteAttributes)
+                    {
+                        if (externProp.access == AstTableAccess::Write && !prop.writeTy.has_value())
+                        {
+                            prop.writeTy = externPropTy;
+                            addedWriteTypeByOverload = true;
+                        }
+                        else
+                            reportError(
+                                declaredExternType->location,
+                                GenericError{format("Cannot overload read type of non-function extern type member '%s'", propName.c_str())}
+                            );
+                    }
+                    else
+                    {
+                        reportError(
+                            declaredExternType->location,
+                            GenericError{format("Cannot overload read type of non-function extern type member '%s'", propName.c_str())}
+                        );
+                    }
                 }
             }
 
-            if (auto writeTy = prop.writeTy)
+            if (auto writeTy = prop.writeTy; writeTy && !addedWriteTypeByOverload)
             {
                 // We special-case this logic to keep the intersection flat; otherwise we
                 // would create a ton of nested intersection typeArguments.
                 if (const IntersectionType* itv = get<IntersectionType>(*writeTy))
                 {
                     std::vector<TypeId> options = itv->parts;
-                    options.push_back(propTy);
+                    options.push_back(externPropTy);
                     TypeId newItv = arena->addType(IntersectionType{std::move(options)});
 
                     prop.writeTy = newItv;
                 }
                 else if (get<FunctionType>(*writeTy))
                 {
-                    TypeId intersection = arena->addType(IntersectionType{{*writeTy, propTy}});
+                    TypeId intersection = arena->addType(IntersectionType{{*writeTy, externPropTy}});
 
                     prop.writeTy = intersection;
                 }
                 else
                 {
-                    reportError(
-                        declaredExternType->location,
-                        GenericError{format("Cannot overload write type of non-function class member '%s'", propName.c_str())}
-                    );
+                    if (FFlag::LuauExternReadWriteAttributes)
+                    {
+                        if (externProp.access == AstTableAccess::Read && !prop.readTy.has_value())
+                            prop.readTy = externPropTy;
+                        else
+                            reportError(
+                                declaredExternType->location,
+                                GenericError{format("Cannot overload write type of non-function extern type member '%s'", propName.c_str())}
+                            );
+                    }
+                    else
+                    {
+                        reportError(
+                            declaredExternType->location,
+                            GenericError{format("Cannot overload write type of non-function extern type member '%s'", propName.c_str())}
+                        );
+                    }
                 }
             }
         }

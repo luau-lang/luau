@@ -180,7 +180,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
     GenericError* ge = get<GenericError>(result.module->errors[0]);
     REQUIRE(ge);
     if (FFlag::LuauSolverV2)
-        CHECK_EQ("Cannot overload read type of non-function class member 'X'", ge->message);
+        CHECK_EQ("Cannot overload read type of non-function extern type member 'X'", ge->message);
     else
         CHECK_EQ("Cannot overload non-function class member 'X'", ge->message);
 
@@ -188,7 +188,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
     {
         GenericError* ge2 = get<GenericError>(result.module->errors[1]);
         REQUIRE(ge2);
-        CHECK_EQ("Cannot overload write type of non-function class member 'X'", ge2->message);
+        CHECK_EQ("Cannot overload write type of non-function extern type member 'X'", ge2->message);
     }
 }
 
@@ -657,8 +657,11 @@ end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
+
     CHECK(get<PropertyAccessViolation>(result.errors[0]));
     CHECK(get<PropertyAccessViolation>(result.errors[1]));
+    CHECK_EQ(result.errors[0].location.begin.line, 8);
+    CHECK_EQ(result.errors[1].location.begin.line, 9);
 }
 
 TEST_CASE_FIXTURE(Fixture, "extern_writeonly_props")
@@ -692,6 +695,40 @@ end
     CHECK(get<PropertyAccessViolation>(result.errors[0]));
     CHECK(get<PropertyAccessViolation>(result.errors[1]));
     CHECK(get<PropertyAccessViolation>(result.errors[2]));
+    CHECK_EQ(result.errors[0].location.begin.line, 7);
+    CHECK_EQ(result.errors[1].location.begin.line, 8);
+    CHECK_EQ(result.errors[2].location.begin.line, 9);
+}
+
+TEST_CASE_FIXTURE(Fixture, "extern_read_write_dual_attribute")
+{
+    ScopedFastFlag _[] = {
+        { FFlag::LuauSolverV2, true },
+        { FFlag::LuauExternReadWriteAttributes, true },
+        { FFlag::LuauLValueCompoundAssignmentVisitLhs, true }
+    };
+
+    loadDefinition(R"(
+        declare extern type dual_attribute with
+            read value: boolean
+            write value: number
+        end
+    )");
+
+    CheckResult result = check(R"(
+--!strict
+local da: dual_attribute
+local x: boolean = da.value
+local y: number = da.value
+da.value = 5
+da.value = false
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    REQUIRE(get<TypeMismatch>(result.errors[0]));
+    REQUIRE(get<TypeMismatch>(result.errors[1]));
+    CHECK_EQ(result.errors[0].location.begin.line, 4);
+    CHECK_EQ(result.errors[1].location.begin.line, 6);
 }
 
 TEST_SUITE_END();
