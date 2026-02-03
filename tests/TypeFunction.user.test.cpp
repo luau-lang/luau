@@ -3051,9 +3051,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof")
         CHECK(get<UserDefinedTypeFunctionError>(results.errors[1]));
         CHECK(get<UserDefinedTypeFunctionError>(results.errors[2]));
 
-        CHECK(results.errors[0].location.begin.line == 11);
-        CHECK(results.errors[1].location.begin.line == 12);
-        CHECK(results.errors[2].location.begin.line == 13);
+        CHECK_EQ(results.errors[0].location.begin.line, 12);
+        CHECK_EQ(results.errors[1].location.begin.line, 12);
+        CHECK_EQ(results.errors[2].location.begin.line, 13);
     }
     else
     {
