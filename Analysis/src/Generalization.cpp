@@ -17,6 +17,7 @@
 
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxDepth, 15)
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxSteps, 1500)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -169,7 +170,22 @@ struct FreeTypeSearcher : TypeVisitor
             const Polarity p = polarity;
             polarity = Polarity::Mixed;
             traverse(tt.indexer->indexType);
-            traverse(tt.indexer->indexResultType);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (tt.indexer->readIndexResultType)
+                    traverse(tt.indexer->readIndexResultType.value());
+
+                if (tt.indexer->writeIndexResultType)
+                    traverse(tt.indexer->writeIndexResultType.value());
+
+                LUAU_ASSERT(tt.indexer->readIndexResultType || tt.indexer->writeIndexResultType);
+            }
+            else
+            {
+                traverse(tt.indexer->indexResultType_DEPRECATED);
+            }
+
             polarity = p;
         }
 
@@ -434,9 +450,30 @@ struct TypeCacher : TypeOnceVisitor
             if (isUncacheable(tt.indexer->indexType))
                 uncacheable = true;
 
-            traverse(tt.indexer->indexResultType);
-            if (isUncacheable(tt.indexer->indexResultType))
-                uncacheable = true;
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (tt.indexer->readIndexResultType)
+                {
+                    traverse(tt.indexer->readIndexResultType.value());
+                    if (isUncacheable(tt.indexer->readIndexResultType.value()))
+                        uncacheable = true;
+                }
+
+                if (tt.indexer->writeIndexResultType)
+                {
+                    traverse(tt.indexer->writeIndexResultType.value());
+                    if (isUncacheable(tt.indexer->writeIndexResultType.value()))
+                        uncacheable = true;
+                }
+
+                LUAU_ASSERT(tt.indexer->readIndexResultType || tt.indexer->writeIndexResultType);
+            }
+            else
+            {
+                traverse(tt.indexer->indexResultType_DEPRECATED);
+                if (isUncacheable(tt.indexer->indexResultType_DEPRECATED))
+                    uncacheable = true;
+            }
         }
 
         if (uncacheable)
@@ -1045,7 +1082,22 @@ struct GenericCounter : TypeVisitor
         {
             polarity = Polarity::Mixed;
             traverse(tt.indexer->indexType);
-            traverse(tt.indexer->indexResultType);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (tt.indexer->readIndexResultType)
+                    traverse(tt.indexer->readIndexResultType.value());
+
+                if (tt.indexer->writeIndexResultType)
+                    traverse(tt.indexer->writeIndexResultType.value());
+
+                LUAU_ASSERT(tt.indexer->readIndexResultType || tt.indexer->writeIndexResultType);
+            }
+            else
+            {
+                traverse(tt.indexer->indexResultType_DEPRECATED);
+            }
+
             polarity = previous;
         }
 

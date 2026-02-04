@@ -9,8 +9,8 @@
 
 using namespace Luau;
 
-
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -503,7 +503,15 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_indexer")
     REQUIRE(bool(etv->indexer));
 
     CHECK("number" == toString(etv->indexer->indexType));
-    CHECK("string" == toString(etv->indexer->indexResultType));
+
+    if (FFlag::LuauAnalysisReadWriteIndexers)
+    {
+        CHECK("string" == toString(etv->indexer->readIndexResultType.value()));
+    }
+    else
+    {
+        CHECK("string" == toString(etv->indexer->indexResultType_DEPRECATED));
+    }
 
     CHECK_EQ(toString(requireType("y")), "string");
 }

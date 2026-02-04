@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauPushTypeConstraintStripNilFromFunction)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks)
 LUAU_FASTFLAG(LuauContainsAnyGenericDoesntTraverseIntoExtern)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -828,8 +829,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "higher_order_function_4")
 
     std::vector<TypeId> arg1Args = flatten(arg1->argTypes).first;
 
-    CHECK(follow(arg0->indexer->indexResultType) == follow(arg1Args[0]));
-    CHECK(follow(arg0->indexer->indexResultType) == follow(arg1Args[1]));
+    if (FFlag::LuauAnalysisReadWriteIndexers)
+    {
+        CHECK(follow(arg0->indexer->readIndexResultType.value()) == follow(arg1Args[0]));
+        CHECK(follow(arg0->indexer->readIndexResultType.value()) == follow(arg1Args[1]));
+    }
+    else
+    {
+        CHECK(follow(arg0->indexer->indexResultType_DEPRECATED) == follow(arg1Args[0]));
+        CHECK(follow(arg0->indexer->indexResultType_DEPRECATED) == follow(arg1Args[1]));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "mutual_recursion")

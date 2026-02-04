@@ -8,6 +8,8 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/VisitType.h"
 
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
+
 namespace Luau
 {
 
@@ -280,16 +282,47 @@ void ExpectedTypeVisitor::applyExpectedType(TypeId expectedType, const AstExpr* 
                 }
                 else if (expectedTableType->indexer)
                 {
-                    applyExpectedType(expectedTableType->indexer->indexResultType, item.value);
+                    if (FFlag::LuauAnalysisReadWriteIndexers)
+                    {
+                        if (expectedTableType->indexer->readIndexResultType)
+                            applyExpectedType(expectedTableType->indexer->readIndexResultType.value(), item.value);
+                        else
+                            applyExpectedType(builtinTypes->neverType, item.value);
+                    }
+                    else
+                    {
+                        applyExpectedType(expectedTableType->indexer->indexResultType_DEPRECATED, item.value);
+                    }
                 }
             }
             else if (item.kind == AstExprTable::Item::List && expectedTableType->indexer)
             {
-                applyExpectedType(expectedTableType->indexer->indexResultType, item.value);
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (expectedTableType->indexer->readIndexResultType)
+                        applyExpectedType(expectedTableType->indexer->readIndexResultType.value(), item.value);
+                    else
+                        applyExpectedType(builtinTypes->neverType, item.value);
+                }
+                else
+                {
+                    applyExpectedType(expectedTableType->indexer->indexResultType_DEPRECATED, item.value);
+                }
             }
             else if (item.kind == AstExprTable::Item::General && expectedTableType->indexer)
             {
-                applyExpectedType(expectedTableType->indexer->indexResultType, item.value);
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (expectedTableType->indexer->readIndexResultType)
+                        applyExpectedType(expectedTableType->indexer->readIndexResultType.value(), item.value);
+                    else
+                        applyExpectedType(builtinTypes->neverType, item.value);
+                }
+                else
+                {
+                    applyExpectedType(expectedTableType->indexer->indexResultType_DEPRECATED, item.value);
+                }
+
                 applyExpectedType(expectedKeyType, item.key);
             }
         }

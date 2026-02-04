@@ -249,13 +249,47 @@ private:
 
     struct TableIndexerResult
     {
-        AstTableIndexer* node;
+        TableIndexerResult(AstType* indexType, AstType* resultType, Location location, Position indexerOpenPosition, Position indexerClosePosition, Position colonPosition)
+            : indexType(indexType)
+            , resultType(resultType)
+            , location(location)
+            , indexerOpenPosition(indexerOpenPosition)
+            , indexerClosePosition(indexerClosePosition)
+            , colonPosition(colonPosition)
+        {
+        }
+
+        static TableIndexerResult construct_DEPRECATED(AstTableIndexer* node_DEPRECATED, Position indexerOpenPosition, Position indexerClosePosition, Position colonPosition)
+        {
+            TableIndexerResult tir;
+            tir.node_DEPRECATED = node_DEPRECATED;
+            tir.indexerOpenPosition = indexerOpenPosition;
+            tir.indexerClosePosition = indexerClosePosition;
+            tir.colonPosition = colonPosition;
+
+            return tir;
+        }
+
+        AstType* indexType;
+        AstType* resultType;
+        AstTableIndexer* node_DEPRECATED;
+        Location location;
         Position indexerOpenPosition;
         Position indexerClosePosition;
         Position colonPosition;
+
+    private:
+        // Temporary, until `construct_DEPRECATED` can be removed
+        TableIndexerResult()
+            : indexerOpenPosition(0, 0)
+            , indexerClosePosition(0, 0)
+            , colonPosition(0, 0)
+        {
+        };
     };
 
-    TableIndexerResult parseTableIndexer(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin);
+    TableIndexerResult parseTableIndexer(std::optional<Location> accessLocation, Lexeme begin);
+    TableIndexerResult parseTableIndexer_DEPRECATED(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin);
 
     AstTypeOrPack parseFunctionType(bool allowPack, const AstArray<AstAttr*>& attributes);
     AstType* parseFunctionTypeTail(

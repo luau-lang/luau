@@ -13,6 +13,8 @@
 
 #include <string>
 
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
+
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
 {
     char* result = (char*)allocator.allocate(contents.size() + 1);
@@ -231,7 +233,19 @@ public:
 
             indexer = allocator->alloc<AstTableIndexer>();
             indexer->indexType = Luau::visit(*this, ttv.indexer->indexType->ty);
-            indexer->resultType = Luau::visit(*this, ttv.indexer->indexResultType->ty);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (ttv.indexer->readIndexResultType)
+                    indexer->readResultType = Luau::visit(*this, ttv.indexer->readIndexResultType.value()->ty);
+
+                if (ttv.indexer->writeIndexResultType)
+                    indexer->writeResultType = Luau::visit(*this, ttv.indexer->writeIndexResultType.value()->ty);
+            }
+            else
+            {
+                indexer->resultType_DEPRECATED = Luau::visit(*this, ttv.indexer->indexResultType_DEPRECATED->ty);
+            }
         }
         return allocator->alloc<AstTypeTable>(Location(), props, indexer);
     }
@@ -296,7 +310,19 @@ public:
 
             indexer = allocator->alloc<AstTableIndexer>();
             indexer->indexType = Luau::visit(*this, etv.indexer->indexType->ty);
-            indexer->resultType = Luau::visit(*this, etv.indexer->indexResultType->ty);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (etv.indexer->readIndexResultType)
+                    indexer->readResultType = Luau::visit(*this, etv.indexer->readIndexResultType.value()->ty);
+
+                if (etv.indexer->writeIndexResultType)
+                    indexer->writeResultType = Luau::visit(*this, etv.indexer->writeIndexResultType.value()->ty);
+            }
+            else
+            {
+                indexer->resultType_DEPRECATED = Luau::visit(*this, etv.indexer->indexResultType_DEPRECATED->ty);
+            }
         }
 
         return allocator->alloc<AstTypeTable>(Location(), props, indexer);

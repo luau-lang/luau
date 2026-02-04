@@ -15,6 +15,7 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -1236,7 +1237,19 @@ void DataFlowGraphBuilder::visitType(AstTypeTable* t)
     if (t->indexer)
     {
         visitType(t->indexer->indexType);
-        visitType(t->indexer->resultType);
+
+        if (FFlag::LuauAnalysisReadWriteIndexers)
+        {
+            if (t->indexer->readResultType)
+                visitType(t->indexer->readResultType.value());
+
+            if (t->indexer->writeResultType)
+                visitType(t->indexer->writeResultType.value());
+        }
+        else
+        {
+            visitType(t->indexer->resultType_DEPRECATED);
+        }
     }
 }
 

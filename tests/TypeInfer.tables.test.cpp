@@ -30,7 +30,8 @@ LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauFixIndexingUnionWithNonTable)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
-LUAU_FASTFLAG(LuauReadWriteOnlyIndexers)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
+LUAU_FASTFLAG(LuauParseReadWriteIndexers)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -50,7 +51,11 @@ end
     REQUIRE(tType != nullptr);
     REQUIRE(tType->indexer);
     CHECK_EQ(tType->indexer->indexType, getBuiltins()->numberType);
-    CHECK_EQ(follow(tType->indexer->indexResultType), getBuiltins()->unknownType);
+
+    if (FFlag::LuauAnalysisReadWriteIndexers)
+        CHECK_EQ(follow(tType->indexer->readIndexResultType.value()), getBuiltins()->unknownType);
+    else
+        CHECK_EQ(follow(tType->indexer->indexResultType_DEPRECATED), getBuiltins()->unknownType);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "LUAU_ASSERT_arg_exprs_doesnt_trigger_assert")
@@ -671,7 +676,11 @@ TEST_CASE_FIXTURE(Fixture, "infer_array")
     REQUIRE(bool(ttv->indexer));
 
     CHECK("number" == toString(ttv->indexer->indexType));
-    CHECK("string" == toString(ttv->indexer->indexResultType));
+
+    if (FFlag::LuauAnalysisReadWriteIndexers)
+        CHECK("string" == toString(ttv->indexer->readIndexResultType.value()));
+    else
+        CHECK("string" == toString(ttv->indexer->indexResultType_DEPRECATED));
 }
 
 /* This is a bit weird.
@@ -735,7 +744,12 @@ TEST_CASE_FIXTURE(Fixture, "indexers_get_quantified_too")
 
         REQUIRE("number" == toString(indexer.indexType));
 
-        TypeId indexResultType = follow(indexer.indexResultType);
+        TypeId indexResultType;
+        if (FFlag::LuauAnalysisReadWriteIndexers)
+            indexResultType = follow(indexer.readIndexResultType.value());
+        else
+            indexResultType = follow(indexer.indexResultType_DEPRECATED);
+
         REQUIRE_MESSAGE(get<GenericType>(indexResultType), "Expected generic but got " << toString(indexResultType));
     }
 }
@@ -786,7 +800,11 @@ TEST_CASE_FIXTURE(Fixture, "infer_indexer_from_array_like_table")
     const TableIndexer& indexer = *ttv->indexer;
 
     CHECK("number" == toString(indexer.indexType));
-    CHECK("string" == toString(indexer.indexResultType));
+
+    if (FFlag::LuauAnalysisReadWriteIndexers)
+        CHECK("string" == toString(indexer.readIndexResultType.value()));
+    else
+        CHECK("string" == toString(indexer.indexResultType_DEPRECATED));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_indexer_from_value_property_in_literal")
@@ -845,7 +863,11 @@ TEST_CASE_FIXTURE(Fixture, "infer_indexer_from_its_variable_type_and_unifiable")
 
     REQUIRE(tTy->indexer);
     CHECK("number" == toString(tTy->indexer->indexType));
-    CHECK("string" == toString(tTy->indexer->indexResultType));
+
+    if (FFlag::LuauAnalysisReadWriteIndexers)
+        CHECK("string" == toString(tTy->indexer->readIndexResultType.value()));
+    else
+        CHECK("string" == toString(tTy->indexer->indexResultType_DEPRECATED));
 }
 
 TEST_CASE_FIXTURE(Fixture, "indexer_mismatch")
@@ -4531,7 +4553,7 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_indexers_are_unsupported")
         type U = {write [string]: boolean}
     )");
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauReadWriteOnlyIndexers)
+    if (FFlag::LuauSolverV2 && FFlag::LuauAnalysisReadWriteIndexers)
         LUAU_REQUIRE_ERROR_COUNT(0, result);
     else
     {
@@ -6700,7 +6722,7 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_arraylike_readonly")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauLValueCompoundAssignmentVisitLhs, true},
-        {FFlag::LuauReadWriteOnlyIndexers, true}
+        {FFlag::LuauAnalysisReadWriteIndexers, true}
     };
 
     CheckResult result = check(R"(
@@ -6723,7 +6745,7 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_explicit_readonly")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauLValueCompoundAssignmentVisitLhs, true},
-        {FFlag::LuauReadWriteOnlyIndexers, true}
+        {FFlag::LuauAnalysisReadWriteIndexers, true}
     };
 
     CheckResult result = check(R"(
@@ -6746,7 +6768,7 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_arraylike_writeonly")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauLValueCompoundAssignmentVisitLhs, true},
-        {FFlag::LuauReadWriteOnlyIndexers, true}
+        {FFlag::LuauAnalysisReadWriteIndexers, true}
     };
 
     CheckResult result = check(R"(
@@ -6769,7 +6791,7 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_explicit_writeonly")
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
         {FFlag::LuauLValueCompoundAssignmentVisitLhs, true},
-        {FFlag::LuauReadWriteOnlyIndexers, true}
+        {FFlag::LuauAnalysisReadWriteIndexers, true}
     };
 
     CheckResult result = check(R"(
@@ -6791,7 +6813,7 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_attributes_bad_alias")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauReadWriteOnlyIndexers, true}
+        {FFlag::LuauAnalysisReadWriteIndexers, true}
     };
 
     CheckResult result = check(R"(
@@ -6809,7 +6831,7 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_attributes_alias")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauReadWriteOnlyIndexers, true}
+        {FFlag::LuauAnalysisReadWriteIndexers, true}
     };
 
     CheckResult result = check(R"(
@@ -6820,6 +6842,29 @@ TEST_CASE_FIXTURE(Fixture, "table_indexer_attributes_alias")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(3, result.errors[0].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(Fixture, "indexer_dual_access_attribute")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauAnalysisReadWriteIndexers, true},
+        {FFlag::LuauParseReadWriteIndexers, true}
+    };
+
+    CheckResult result = check(R"(
+        local x: { read [boolean]: string, write [boolean]: number } = {
+            [true] = "hello",
+            [false] = vector.zero
+        }
+        local y: string = x[true]
+        local z: number = x[true]
+        x[false] = 5
+        x[false] = "hello"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
     CHECK_EQ(3, result.errors[0].location.begin.line);
 }
 

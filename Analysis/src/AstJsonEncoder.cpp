@@ -8,6 +8,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAG(LuauParseReadWriteIndexers)
+
 namespace Luau
 {
 
@@ -1022,13 +1024,42 @@ struct AstJsonEncoder : public AstVisitor
     {
         if (indexer)
         {
-            writeRaw("{");
-            bool c = pushComma();
-            write("location", indexer->location);
-            write("indexType", indexer->indexType);
-            write("resultType", indexer->resultType);
-            popComma(c);
-            writeRaw("}");
+            if (FFlag::LuauParseReadWriteIndexers)
+            {
+                if (indexer->readResultType)
+                {
+                    writeRaw("{");
+                    bool c = pushComma();
+                    write("location", indexer->readLocation.value());
+                    write("indexType", indexer->indexType);
+                    write("resultType", indexer->readResultType.value());
+                    popComma(c);
+                    writeRaw("}");
+                }
+
+                if (indexer->writeResultType)
+                {
+                    writeRaw("{");
+                    bool c = pushComma();
+                    write("location", indexer->writeLocation.value());
+                    write("indexType", indexer->indexType);
+                    write("resultType", indexer->writeResultType.value());
+                    popComma(c);
+                    writeRaw("}");
+                }
+
+                LUAU_ASSERT(indexer->readResultType || indexer->writeResultType);
+            }
+            else
+            {
+                writeRaw("{");
+                bool c = pushComma();
+                write("location", indexer->location_DEPRECATED);
+                write("indexType", indexer->indexType);
+                write("resultType", indexer->resultType_DEPRECATED);
+                popComma(c);
+                writeRaw("}");
+            }
         }
         else
         {

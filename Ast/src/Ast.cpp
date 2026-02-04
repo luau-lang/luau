@@ -1137,8 +1137,13 @@ void AstTypeTable::visit(AstVisitor* visitor)
 
             if (FFlag::LuauParseReadWriteIndexers)
             {
-                indexer->readResultType->visit(visitor);
-                indexer->writeResultType->visit(visitor);
+                if (AstType* readResultType = indexer->readResultType.value_or(nullptr))
+                    readResultType->visit(visitor);
+
+                if (AstType* writeResultType = indexer->writeResultType.value_or(nullptr))
+                    writeResultType->visit(visitor);
+
+                LUAU_ASSERT(indexer->readResultType.has_value() || indexer->writeResultType.has_value());
             }
             {
                 indexer->resultType_DEPRECATED->visit(visitor);

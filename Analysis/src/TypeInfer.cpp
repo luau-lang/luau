@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -1279,7 +1280,10 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
                 unify(iterTable->indexer->indexType, varTypes[0], scope, forin.location);
 
             if (varTypes.size() > 1)
-                unify(iterTable->indexer->indexResultType, varTypes[1], scope, forin.location);
+            {
+                LUAU_ASSERT(!FFlag::LuauAnalysisReadWriteIndexers);
+                unify(iterTable->indexer->indexResultType_DEPRECATED, varTypes[1], scope, forin.location);
+            }
 
             for (size_t i = 2; i < varTypes.size(); ++i)
                 unify(nilType, varTypes[i], scope, forin.location);
@@ -1733,7 +1737,10 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareExtern
         ice("No metatable for declared extern type");
 
     if (const auto& indexer = declaredExternType.indexer)
-        etv->indexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType));
+    {
+        LUAU_ASSERT(!FFlag::LuauAnalysisReadWriteIndexers);
+        etv->indexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType_DEPRECATED));
+    }
 
     TableType* metatable = getMutable<TableType>(*etv->metatable);
     for (const AstDeclaredExternTypeProperty& prop : declaredExternType.props)
@@ -2113,7 +2120,10 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
             ErrorVec errors = tryUnify(stringType, indexer->indexType, scope, location);
 
             if (errors.empty())
-                return indexer->indexResultType;
+            {
+                LUAU_ASSERT(!FFlag::LuauAnalysisReadWriteIndexers);
+                return indexer->indexResultType_DEPRECATED;
+            }
 
             if (addErrors)
                 reportError(location, UnknownProperty{type, name});
@@ -2142,7 +2152,10 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
             ErrorVec errors = tryUnify(stringType, indexer->indexType, scope, location);
 
             if (errors.empty())
-                return indexer->indexResultType;
+            {
+                LUAU_ASSERT(!FFlag::LuauAnalysisReadWriteIndexers);
+                return indexer->indexResultType_DEPRECATED;
+            }
 
             if (addErrors)
                 reportError(location, UnknownProperty{type, name});
@@ -2323,7 +2336,8 @@ TypeId TypeChecker::checkExprTable(
             if (indexer)
             {
                 unify(numberType, indexer->indexType, scope, value->location);
-                unify(valueType, indexer->indexResultType, scope, value->location);
+                LUAU_ASSERT(!FFlag::LuauAnalysisReadWriteIndexers);
+                unify(valueType, indexer->indexResultType_DEPRECATED, scope, value->location);
             }
             else
                 indexer = TableIndexer{numberType, anyIfNonstrict(valueType)};
@@ -2348,9 +2362,11 @@ TypeId TypeChecker::checkExprTable(
                     }
                     else if (expectedTable->indexer && maybeString(expectedTable->indexer->indexType))
                     {
-                        ErrorVec errors = tryUnify(exprType, expectedTable->indexer->indexResultType, scope, k->location);
+                        LUAU_ASSERT(!FFlag::LuauAnalysisReadWriteIndexers);
+
+                        ErrorVec errors = tryUnify(exprType, expectedTable->indexer->indexResultType_DEPRECATED, scope, k->location);
                         if (errors.empty())
-                            exprType = expectedTable->indexer->indexResultType;
+                            exprType = expectedTable->indexer->indexResultType_DEPRECATED;
                     }
                 }
 
@@ -2364,7 +2380,7 @@ TypeId TypeChecker::checkExprTable(
                 if (indexer)
                 {
                     unify(keyType, indexer->indexType, scope, k->location);
-                    unify(valueType, indexer->indexResultType, scope, value->location);
+                    unify(valueType, indexer->indexResultType_DEPRECATED, scope, value->location);
                 }
                 else if (isNonstrictMode())
                 {
@@ -2412,7 +2428,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                 if (ttv->indexer)
                 {
                     expectedIndexType = ttv->indexer->indexType;
-                    expectedIndexResultType = ttv->indexer->indexResultType;
+                    expectedIndexResultType = ttv->indexer->indexResultType_DEPRECATED;
                 }
             }
         }
@@ -2452,7 +2468,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                             if (auto prop = ttv->props.find(key->value.data); prop != ttv->props.end())
                                 expectedResultTypes.push_back(prop->second.type_DEPRECATED());
                             else if (ttv->indexer && maybeString(ttv->indexer->indexType))
-                                expectedResultTypes.push_back(ttv->indexer->indexResultType);
+                                expectedResultTypes.push_back(ttv->indexer->indexResultType_DEPRECATED);
                         }
                     }
 
@@ -3509,7 +3525,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         {
             Unifier state = mkUnifier(scope, expr.location);
             state.tryUnify(stringType, indexer->indexType);
-            TypeId retType = indexer->indexResultType;
+            TypeId retType = indexer->indexResultType_DEPRECATED;
             if (!state.errors.empty())
             {
 
@@ -3546,7 +3562,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             if (state.errors.empty())
             {
                 state.log.commit();
-                return indexer->indexResultType;
+                return indexer->indexResultType_DEPRECATED;
             }
         }
 
@@ -3601,7 +3617,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             if (auto indexer = exprExternType->indexer)
             {
                 unify(stringType, indexer->indexType, scope, expr.index->location);
-                return indexer->indexResultType;
+                return indexer->indexResultType_DEPRECATED;
             }
 
             reportError(TypeError{expr.location, UnknownProperty{exprType, value->value.data}});
@@ -3629,7 +3645,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             if (auto indexer = exprExternType->indexer)
             {
                 unify(indexType, indexer->indexType, scope, expr.index->location);
-                return indexer->indexResultType;
+                return indexer->indexResultType_DEPRECATED;
             }
         }
 
@@ -3747,7 +3763,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             {
                 const TableIndexer& indexer = *table->indexer;
                 unify(indexType, indexer.indexType, scope, expr.index->location);
-                resultTypes.insert(indexer.indexResultType);
+                resultTypes.insert(indexer.indexResultType_DEPRECATED);
             }
             else if ((ctx == ValueContext::LValue && table->state == TableState::Unsealed) || table->state == TableState::Free)
             {
@@ -5868,14 +5884,14 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
 
         if (const auto& indexer = table->indexer)
         {
-            if (indexer->access == AstTableAccess::Read)
-                reportError(indexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
-            else if (indexer->access == AstTableAccess::Write)
-                reportError(indexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
-            else if (indexer->access == AstTableAccess::ReadWrite)
-                tableIndexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType));
+            if (indexer->access_DEPRECATED == AstTableAccess::Read)
+                reportError(indexer->accessLocation_DEPRECATED.value_or(Location{}), GenericError{"read keyword is illegal here"});
+            else if (indexer->access_DEPRECATED == AstTableAccess::Write)
+                reportError(indexer->accessLocation_DEPRECATED.value_or(Location{}), GenericError{"write keyword is illegal here"});
+            else if (indexer->access_DEPRECATED == AstTableAccess::ReadWrite)
+                tableIndexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType_DEPRECATED));
             else
-                ice("Unexpected property access " + std::to_string(int(indexer->access)));
+                ice("Unexpected property access " + std::to_string(int(indexer->access_DEPRECATED)));
         }
 
         TableType ttv{props, tableIndexer, scope->level, TableState::Sealed};

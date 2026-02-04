@@ -313,7 +313,21 @@ private:
         if (t->indexer)
         {
             t->indexer->indexType = shallowClone(t->indexer->indexType);
-            t->indexer->indexResultType = shallowClone(t->indexer->indexResultType);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (t->indexer->readIndexResultType)
+                    t->indexer->readIndexResultType = shallowClone(t->indexer->readIndexResultType.value());
+
+                if (t->indexer->writeIndexResultType)
+                    t->indexer->writeIndexResultType = shallowClone(t->indexer->writeIndexResultType.value());
+
+                LUAU_ASSERT(t->indexer->readIndexResultType || t->indexer->writeIndexResultType);
+            }
+            else
+            {
+                t->indexer->indexResultType_DEPRECATED = shallowClone(t->indexer->indexResultType_DEPRECATED);
+            }
         }
 
         for (auto& [_, p] : t->props)
@@ -346,7 +360,21 @@ private:
         if (t->indexer)
         {
             t->indexer->indexType = shallowClone(t->indexer->indexType);
-            t->indexer->indexResultType = shallowClone(t->indexer->indexResultType);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (t->indexer->readIndexResultType)
+                    t->indexer->readIndexResultType = shallowClone(t->indexer->readIndexResultType.value());
+
+                if (t->indexer->writeIndexResultType)
+                    t->indexer->writeIndexResultType = shallowClone(t->indexer->writeIndexResultType.value());
+
+                LUAU_ASSERT(t->indexer->readIndexResultType || t->indexer->writeIndexResultType);
+            }
+            else
+            {
+                t->indexer->indexResultType_DEPRECATED = shallowClone(t->indexer->indexResultType_DEPRECATED);
+            }
         }
     }
 

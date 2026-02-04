@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 using namespace Luau;
 
@@ -635,7 +636,15 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases_are_cloned_properly")
     CHECK(arrayTable->indexer);
 
     CHECK(isInArena(array.type, mod.interfaceTypes));
-    CHECK_EQ(array.typeParams[0].ty, arrayTable->indexer->indexResultType);
+
+    if (FFlag::LuauAnalysisReadWriteIndexers)
+    {
+        CHECK_EQ(array.typeParams[0].ty, arrayTable->indexer->readIndexResultType.value());
+    }
+    else
+    {
+        CHECK_EQ(array.typeParams[0].ty, arrayTable->indexer->indexResultType_DEPRECATED);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definitions")

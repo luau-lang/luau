@@ -50,6 +50,7 @@ LUAU_FASTFLAGVARIABLE(LuauUseFastSubtypeForIndexerWithName)
 LUAU_FASTFLAGVARIABLE(LuauUnifyWithSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauDoNotUseApplyTypeFunctionToClone)
 LUAU_FASTFLAGVARIABLE(LuauReworkInfiniteTypeFinder)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -2053,8 +2054,27 @@ bool ConstraintSolver::tryDispatchHasIndexer(
     {
         if (auto tbl = get<TableType>(follow(ft->upperBound)); tbl && tbl->indexer)
         {
-            unify(constraint, indexType, tbl->indexer->indexType);
-            bind(constraint, resultType, tbl->indexer->indexResultType);
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (tbl->indexer->readIndexResultType)
+                {
+                    unify(constraint, indexType, tbl->indexer->indexType);
+                    bind(constraint, resultType, tbl->indexer->readIndexResultType.value());
+                }
+
+                if (tbl->indexer->writeIndexResultType)
+                {
+                    unify(constraint, indexType, tbl->indexer->indexType);
+                    bind(constraint, resultType, tbl->indexer->writeIndexResultType.value());
+                }
+
+                LUAU_ASSERT(tbl->indexer->readIndexResultType || tbl->indexer->writeIndexResultType);
+            }
+            else
+            {
+                unify(constraint, indexType, tbl->indexer->indexType);
+                bind(constraint, resultType, tbl->indexer->indexResultType_DEPRECATED);
+            }
             return true;
         }
         else if (auto mt = get<MetatableType>(follow(ft->upperBound)))
@@ -2079,8 +2099,27 @@ bool ConstraintSolver::tryDispatchHasIndexer(
     {
         if (auto indexer = tt->indexer)
         {
-            unify(constraint, indexType, indexer->indexType);
-            bind(constraint, resultType, indexer->indexResultType);
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (indexer->readIndexResultType)
+                {
+                    unify(constraint, indexType, indexer->indexType);
+                    bind(constraint, resultType, indexer->readIndexResultType.value());
+                }
+
+                if (indexer->writeIndexResultType)
+                {
+                    unify(constraint, indexType, indexer->indexType);
+                    bind(constraint, resultType, indexer->writeIndexResultType.value());
+                }
+
+                LUAU_ASSERT(indexer->readIndexResultType || indexer->writeIndexResultType);
+            }
+            else
+            {
+                unify(constraint, indexType, indexer->indexType);
+                bind(constraint, resultType, indexer->indexResultType_DEPRECATED);
+            }
             return true;
         }
 
@@ -2102,8 +2141,27 @@ bool ConstraintSolver::tryDispatchHasIndexer(
     {
         if (auto indexer = ct->indexer)
         {
-            unify(constraint, indexType, indexer->indexType);
-            bind(constraint, resultType, indexer->indexResultType);
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (indexer->readIndexResultType)
+                {
+                    unify(constraint, indexType, indexer->indexType);
+                    bind(constraint, resultType, indexer->readIndexResultType.value());
+                }
+
+                if (indexer->writeIndexResultType)
+                {
+                    unify(constraint, indexType, indexer->indexType);
+                    bind(constraint, resultType, indexer->writeIndexResultType.value());
+                }
+
+                LUAU_ASSERT(indexer->readIndexResultType || indexer->writeIndexResultType);
+            }
+            else
+            {
+                unify(constraint, indexType, indexer->indexType);
+                bind(constraint, resultType, indexer->indexResultType_DEPRECATED);
+            }
             return true;
         }
         else if (isString(indexType))
@@ -2370,8 +2428,28 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
 
         if (lhsTable->indexer && maybeString(lhsTable->indexer->indexType))
         {
-            bind(constraint, c.propType, rhsType);
-            unify(constraint, rhsType, lhsTable->indexer->indexResultType);
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (lhsTable->indexer->readIndexResultType)
+                {
+                    bind(constraint, c.propType, rhsType);
+                    unify(constraint, rhsType, lhsTable->indexer->readIndexResultType.value());
+                }
+
+                if (lhsTable->indexer->writeIndexResultType)
+                {
+                    bind(constraint, c.propType, rhsType);
+                    unify(constraint, rhsType, lhsTable->indexer->writeIndexResultType.value());
+                }
+
+                LUAU_ASSERT(lhsTable->indexer->readIndexResultType || lhsTable->indexer->writeIndexResultType);
+            }
+            else
+            {
+                bind(constraint, c.propType, rhsType);
+                unify(constraint, rhsType, lhsTable->indexer->indexResultType_DEPRECATED);
+            }
+
             return true;
         }
 
@@ -2439,9 +2517,30 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
     {
         if (lhsTable->indexer)
         {
-            unify(constraint, indexType, lhsTable->indexer->indexType);
-            unify(constraint, rhsType, lhsTable->indexer->indexResultType);
-            bind(constraint, c.propType, addUnion(arena, builtinTypes, {lhsTable->indexer->indexResultType, builtinTypes->nilType}));
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (lhsTable->indexer->readIndexResultType)
+                {
+                    unify(constraint, indexType, lhsTable->indexer->indexType);
+                    unify(constraint, rhsType, lhsTable->indexer->readIndexResultType.value());
+                    bind(constraint, c.propType, addUnion(arena, builtinTypes, {lhsTable->indexer->readIndexResultType.value(), builtinTypes->nilType}));
+                }
+
+                if (lhsTable->indexer->writeIndexResultType)
+                {
+                    unify(constraint, indexType, lhsTable->indexer->indexType);
+                    unify(constraint, rhsType, lhsTable->indexer->writeIndexResultType.value());
+                    bind(constraint, c.propType, addUnion(arena, builtinTypes, {lhsTable->indexer->writeIndexResultType.value(), builtinTypes->nilType}));
+                }
+
+                LUAU_ASSERT(lhsTable->indexer->readIndexResultType || lhsTable->indexer->writeIndexResultType);
+            }
+            else
+            {
+                unify(constraint, indexType, lhsTable->indexer->indexType);
+                unify(constraint, rhsType, lhsTable->indexer->indexResultType_DEPRECATED);
+                bind(constraint, c.propType, addUnion(arena, builtinTypes, {lhsTable->indexer->indexResultType_DEPRECATED, builtinTypes->nilType}));
+            }
             return true;
         }
 
@@ -2471,7 +2570,18 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
         unify(constraint, lhsType, newUpperBound);
 
         LUAU_ASSERT(newTable->indexer);
-        bind(constraint, c.propType, newTable->indexer->indexResultType);
+
+        if (FFlag::LuauAnalysisReadWriteIndexers)
+        {
+            if (newTable->indexer->writeIndexResultType)
+                bind(constraint, c.propType, newTable->indexer->writeIndexResultType.value());
+            else
+                bind(constraint, c.propType, builtinTypes->neverType);
+        }
+        else
+        {
+            bind(constraint, c.propType, newTable->indexer->indexResultType_DEPRECATED);
+        }
         return true;
     }
 
@@ -2488,9 +2598,29 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
         {
             if (lhsExternType->indexer)
             {
-                unify(constraint, indexType, lhsExternType->indexer->indexType);
-                unify(constraint, rhsType, lhsExternType->indexer->indexResultType);
-                bind(constraint, c.propType, arena->addType(UnionType{{lhsExternType->indexer->indexResultType, builtinTypes->nilType}}));
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (lhsExternType->indexer->readIndexResultType)
+                    {
+                        unify(constraint, indexType, lhsExternType->indexer->indexType);
+                        unify(constraint, rhsType, lhsExternType->indexer->readIndexResultType.value());
+                        bind(constraint, c.propType, arena->addType(UnionType{{lhsExternType->indexer->readIndexResultType.value(), builtinTypes->nilType}}));
+                    }
+
+                    if (lhsExternType->indexer->writeIndexResultType)
+                    {
+                        unify(constraint, indexType, lhsExternType->indexer->indexType);
+                        unify(constraint, rhsType, lhsExternType->indexer->writeIndexResultType.value());
+                        bind(constraint, c.propType, arena->addType(UnionType{{lhsExternType->indexer->writeIndexResultType.value(), builtinTypes->nilType}}));
+                    }
+                }
+                else
+                {
+                    unify(constraint, indexType, lhsExternType->indexer->indexType);
+                    unify(constraint, rhsType, lhsExternType->indexer->indexResultType_DEPRECATED);
+                    bind(constraint, c.propType, arena->addType(UnionType{{lhsExternType->indexer->indexResultType_DEPRECATED, builtinTypes->nilType}}));
+                }
+
                 return true;
             }
 
@@ -2514,7 +2644,11 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
                 if (tbl->indexer)
                 {
                     unify(constraint, indexType, tbl->indexer->indexType);
-                    parts.insert(tbl->indexer->indexResultType);
+
+                    if (FFlag::LuauAnalysisReadWriteIndexers)
+                        parts.insert(tbl->indexer->writeIndexResultType ? tbl->indexer->writeIndexResultType.value() : builtinTypes->neverType);
+                    else
+                        parts.insert(tbl->indexer->indexResultType_DEPRECATED);
                 }
 
                 if (tbl->state == TableState::Unsealed || tbl->state == TableState::Free)
@@ -2530,7 +2664,11 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
                     if (cls->indexer)
                     {
                         unify(constraint, indexType, cls->indexer->indexType);
-                        parts.insert(cls->indexer->indexResultType);
+
+                        if (FFlag::LuauAnalysisReadWriteIndexers)
+                            parts.insert(cls->indexer->writeIndexResultType ? tbl->indexer->writeIndexResultType.value() : builtinTypes->neverType);
+                        else
+                            parts.insert(cls->indexer->indexResultType_DEPRECATED);
                         break;
                     }
 
@@ -3108,7 +3246,17 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
 
         if (iteratorTable->indexer)
         {
-            std::vector<TypeId> expectedVariables{iteratorTable->indexer->indexType, iteratorTable->indexer->indexResultType};
+            std::vector<TypeId> expectedVariables;
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+                expectedVariables = {
+                    iteratorTable->indexer->indexType,
+                    iteratorTable->indexer->readIndexResultType
+                        ? iteratorTable->indexer->readIndexResultType.value()
+                        : builtinTypes->neverType
+                };
+            else
+                expectedVariables = {iteratorTable->indexer->indexType, iteratorTable->indexer->indexResultType_DEPRECATED};
+
             while (c.variables.size() >= expectedVariables.size())
                 expectedVariables.push_back(builtinTypes->errorType);
 
@@ -3297,13 +3445,28 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
                 // logic as `index<_, _>`
                 TypeId fauxLiteral = arena->addType(SingletonType{StringSingleton{propName}});
                 if (fastIsSubtype(fauxLiteral, ttv->indexer->indexType))
-                    return {/* blockedTypes */ {}, ttv->indexer->indexResultType, /* isIndex */ true};
+                {
+                    if (FFlag::LuauAnalysisReadWriteIndexers)
+                    {
+                        std::optional<TypeId> resultTy;
+                        if (context == ValueContext::LValue)
+                            resultTy = ttv->indexer->writeIndexResultType;
+                        else
+                            resultTy = ttv->indexer->readIndexResultType;
+
+                        return {/* blockedTypes */ {}, resultTy ? resultTy.value() : builtinTypes->neverType, /* isIndex */ true};
+                    }
+                    else
+                    {
+                        return {/* blockedTypes */ {}, ttv->indexer->indexResultType_DEPRECATED, /* isIndex */ true};
+                    }
+                }
             }
         }
         else
         {
             if (ttv->indexer && maybeString(ttv->indexer->indexType))
-                return {{}, ttv->indexer->indexResultType, /* isIndex = */ true};
+                return {{}, ttv->indexer->indexResultType_DEPRECATED, /* isIndex = */ true};
         }
 
         if (ttv->state == TableState::Free)
@@ -3393,7 +3556,20 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
             return {{}, context == ValueContext::RValue ? p->readTy : p->writeTy};
         if (ct->indexer)
         {
-            return {{}, ct->indexer->indexResultType, /* isIndex = */ true};
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                std::optional<TypeId> resultTy;
+                if (context == ValueContext::LValue)
+                    resultTy = ct->indexer->writeIndexResultType;
+                else
+                    resultTy = ct->indexer->readIndexResultType;
+
+                return {/* blockedTypes */ {}, resultTy ? resultTy.value() : builtinTypes->neverType, /* isIndex */ true};
+            }
+            else
+            {
+                return {{}, ct->indexer->indexResultType_DEPRECATED, /* isIndex = */ true};
+            }
         }
     }
     else if (auto pt = get<PrimitiveType>(subjectType); pt && pt->metatable)

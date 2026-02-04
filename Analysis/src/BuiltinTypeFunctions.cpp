@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
 LUAU_FASTFLAGVARIABLE(LuauBuiltinTypeFunctionsUseNewOverloadResolution)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableWaitForPendingTypes)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsUseSolveFunctionCall)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -2105,12 +2106,30 @@ bool searchPropsAndIndexer(
         {
             // if we have an index function here, it means we're in a cycle, so let's see if it's well-founded if we tie the knot
             if (tfit->function.get() == &ctx->builtins->typeFunctions->indexFunc)
-                indexType = follow(tblIndexer->indexResultType);
+            {
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    indexType = follow(tblIndexer->readIndexResultType ? tblIndexer->readIndexResultType.value() : tblIndexer->writeIndexResultType.value());
+                    LUAU_ASSERT(tblIndexer->readIndexResultType || tblIndexer->writeIndexResultType);
+                }
+                else
+                    indexType = follow(tblIndexer->indexResultType_DEPRECATED);
+            }
         }
 
         if (isSubtype(ty, indexType, ctx->scope, ctx->builtins, *ctx->ice, SolverMode::New))
         {
-            TypeId idxResultTy = follow(tblIndexer->indexResultType);
+            TypeId idxResultTy;
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                idxResultTy = follow(tblIndexer->readIndexResultType ? tblIndexer->readIndexResultType.value() : tblIndexer->writeIndexResultType.value());
+                LUAU_ASSERT(tblIndexer->readIndexResultType || tblIndexer->writeIndexResultType);
+            }
+            else
+            {
+                idxResultTy = follow(tblIndexer->indexResultType_DEPRECATED);
+            }
 
             // indexResultType is a union type -> we need to extend our reduction type
             if (auto idxResUnionTy = get<UnionType>(idxResultTy))

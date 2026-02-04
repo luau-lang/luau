@@ -22,7 +22,7 @@ LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
 LUAU_FASTFLAGVARIABLE(LuauToStringDecomposition)
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauReadWriteOnlyIndexers)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -816,15 +816,21 @@ struct TypeStringifier
         {
             state.emit("{");
 
-            if (FFlag::LuauReadWriteOnlyIndexers)
+            if (FFlag::LuauAnalysisReadWriteIndexers)
             {
-                if (ttv.indexer->access == AstTableAccess::Read)
-                    state.emit("read ");
-                else if (ttv.indexer->access == AstTableAccess::Write)
-                    state.emit("write ");
+                if (ttv.indexer->readIndexResultType)
+                    stringify(ttv.indexer->readIndexResultType.value());
+
+                if (ttv.indexer->writeIndexResultType)
+                    stringify(ttv.indexer->writeIndexResultType.value());
+
+                LUAU_ASSERT(ttv.indexer->readIndexResultType || ttv.indexer->writeIndexResultType);
+            }
+            else
+            {
+                stringify(ttv.indexer->indexResultType_DEPRECATED);
             }
 
-            stringify(ttv.indexer->indexResultType);
             state.emit("}");
 
             state.unsee(&ttv);
@@ -839,18 +845,34 @@ struct TypeStringifier
         {
             state.newline();
 
-            if (FFlag::LuauReadWriteOnlyIndexers)
+            if (FFlag::LuauAnalysisReadWriteIndexers)
             {
-                if (ttv.indexer->access == AstTableAccess::Read)
-                    state.emit("read ");
-                else if (ttv.indexer->access == AstTableAccess::Write)
-                    state.emit("write ");
+                if (ttv.indexer->readIndexResultType)
+                {
+                    state.emit("[");
+                    stringify(ttv.indexer->indexType);
+                    state.emit("]: ");
+                    stringify(ttv.indexer->readIndexResultType.value());
+                }
+
+                if (ttv.indexer->writeIndexResultType)
+                {
+                    state.emit("[");
+                    stringify(ttv.indexer->indexType);
+                    state.emit("]: ");
+                    stringify(ttv.indexer->writeIndexResultType.value());
+                }
+
+                LUAU_ASSERT(ttv.indexer->readIndexResultType || ttv.indexer->writeIndexResultType);
+            }
+            else
+            {
+                state.emit("[");
+                stringify(ttv.indexer->indexType);
+                state.emit("]: ");
+                stringify(ttv.indexer->indexResultType_DEPRECATED);
             }
 
-            state.emit("[");
-            stringify(ttv.indexer->indexType);
-            state.emit("]: ");
-            stringify(ttv.indexer->indexResultType);
             comma = true;
         }
 

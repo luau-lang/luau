@@ -9,6 +9,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAG(LuauUnifyWithSubtyping)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -106,7 +107,20 @@ std::pair<UnifyResult, bool> SubtypingUnifier::dispatchOneConstraint(
 
         // FIXME CLI-182960: Unification shouldn't be the mechanism for adding table indexers
         if (auto pair = get2<TableType, TableType>(subTy, superTy); pair && !pair.first->indexer)
-            getMutable<TableType>(subTy)->indexer = TableIndexer{pair.second->indexer->indexType, pair.second->indexer->indexResultType};
+        {
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                getMutable<TableType>(subTy)->indexer = TableIndexer{
+                    pair.second->indexer->indexType,
+                    pair.second->indexer->readIndexResultType,
+                    pair.second->indexer->writeIndexResultType
+                };
+            }
+            else
+            {
+                getMutable<TableType>(subTy)->indexer = TableIndexer{pair.second->indexer->indexType, pair.second->indexer->indexResultType_DEPRECATED};
+            }
+        }
     }
     else if (auto psc = get_if<PackSubtypeConstraint>(&cv))
     {

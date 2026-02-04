@@ -11,6 +11,7 @@
 #include <unordered_set>
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -209,7 +210,21 @@ void StateDot::visitChildren(TypeId ty, int index)
             if (t.indexer)
             {
                 visitChild(t.indexer->indexType, index, "[index]");
-                visitChild(t.indexer->indexResultType, index, "[value]");
+
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (t.indexer->readIndexResultType)
+                        visitChild(t.indexer->readIndexResultType.value(), index, "[read value]");
+
+                    if (t.indexer->writeIndexResultType)
+                        visitChild(t.indexer->writeIndexResultType.value(), index, "[write value]");
+
+                    LUAU_ASSERT(t.indexer->readIndexResultType || t.indexer->writeIndexResultType);
+                }
+                else
+                {
+                    visitChild(t.indexer->indexResultType_DEPRECATED, index, "[value]");
+                }
             }
             for (TypeId itp : t.instantiatedTypeParams)
                 visitChild(itp, index, "typeParam");
@@ -351,7 +366,21 @@ void StateDot::visitChildren(TypeId ty, int index)
             if (t.indexer)
             {
                 visitChild(t.indexer->indexType, index, "[index]");
-                visitChild(t.indexer->indexResultType, index, "[value]");
+
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (t.indexer->readIndexResultType)
+                        visitChild(t.indexer->readIndexResultType.value(), index, "[read value]");
+
+                    if (t.indexer->writeIndexResultType)
+                        visitChild(t.indexer->writeIndexResultType.value(), index, "[write value]");
+
+                    LUAU_ASSERT(t.indexer->readIndexResultType || t.indexer->writeIndexResultType);
+                }
+                else
+                {
+                    visitChild(t.indexer->indexResultType_DEPRECATED, index, "[value]");
+                }
             }
         }
         else if constexpr (std::is_same_v<T, SingletonType>)

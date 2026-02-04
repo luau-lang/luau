@@ -20,6 +20,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -2704,12 +2705,34 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     {
         // TODO: What should intersection of indexes be?
         TypeId index = unionType(httv->indexer->indexType, tttv->indexer->indexType);
-        TypeId indexResult = intersectionType(httv->indexer->indexResultType, tttv->indexer->indexResultType);
+
+        TypeId hirt;
+        TypeId tirt;
+
+        if (FFlag::LuauAnalysisReadWriteIndexers)
+        {
+            if (httv->indexer->readIndexResultType)
+                hirt = httv->indexer->readIndexResultType.value();
+            else
+                hirt = httv->indexer->writeIndexResultType.value();
+
+            if (tttv->indexer->readIndexResultType)
+                tirt = tttv->indexer->readIndexResultType.value();
+            else
+                tirt = tttv->indexer->writeIndexResultType.value();
+        }
+        else
+        {
+            hirt = httv->indexer->indexResultType_DEPRECATED;
+            tirt = tttv->indexer->indexResultType_DEPRECATED;
+        }
+
+        TypeId indexResult = intersectionType(hirt, tirt);
         if (!result.get())
             result = std::make_unique<TableType>(TableType{state, level, scope});
         result->indexer = {index, indexResult};
-        hereSubThere &= (httv->indexer->indexType == index) && (httv->indexer->indexResultType == indexResult);
-        thereSubHere &= (tttv->indexer->indexType == index) && (tttv->indexer->indexResultType == indexResult);
+        hereSubThere &= (httv->indexer->indexType == index) && (hirt == indexResult);
+        thereSubHere &= (tttv->indexer->indexType == index) && (tirt == indexResult);
     }
     else if (httv->indexer)
     {

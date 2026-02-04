@@ -413,23 +413,27 @@ enum class TableState
 
 struct TableIndexer
 {
-    TableIndexer(TypeId indexType, TypeId readIndexResultType, TypeId writeIndexResultType)
+    TableIndexer(TypeId indexType, std::optional<TypeId> readIndexResultType, std::optional<TypeId> writeIndexResultType)
         : indexType(indexType)
         , readIndexResultType(readIndexResultType)
         , writeIndexResultType(writeIndexResultType)
     {
+        LUAU_ASSERT(readIndexResultType || writeIndexResultType);
     }
 
     // Deprecated! Use the constructor that supports different read/write result types instead
-    TableIndexer(TypeId indexType, TypeId readIndexResultType, TypeId indexResultType_DEPRECATED)
+    TableIndexer(TypeId indexType, TypeId indexResultType_DEPRECATED)
         : indexType(indexType)
         , indexResultType_DEPRECATED(indexResultType_DEPRECATED)
     {
     }
 
+    TableIndexer() = default;
+
     TypeId indexType;
     std::optional<TypeId> readIndexResultType;
     std::optional<TypeId> writeIndexResultType;
+    // Deprecated by LuauAnalysisReadWriteIndexers
     TypeId indexResultType_DEPRECATED;
 };
 

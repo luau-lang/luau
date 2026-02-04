@@ -10,6 +10,7 @@
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -197,7 +198,21 @@ void Tarjan::visitChildren(TypeId ty, int index)
         if (ttv->indexer)
         {
             visitChild(ttv->indexer->indexType);
-            visitChild(ttv->indexer->indexResultType);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (ttv->indexer->readIndexResultType)
+                    visitChild(ttv->indexer->readIndexResultType.value());
+
+                if (ttv->indexer->writeIndexResultType)
+                    visitChild(ttv->indexer->writeIndexResultType.value());
+
+                LUAU_ASSERT(ttv->indexer->readIndexResultType || ttv->indexer->writeIndexResultType);
+            }
+            else
+            {
+                visitChild(ttv->indexer->indexResultType_DEPRECATED);
+            }
         }
 
         for (TypeId itp : ttv->instantiatedTypeParams)
@@ -259,7 +274,21 @@ void Tarjan::visitChildren(TypeId ty, int index)
         if (etv->indexer)
         {
             visitChild(etv->indexer->indexType);
-            visitChild(etv->indexer->indexResultType);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (etv->indexer->readIndexResultType)
+                    visitChild(etv->indexer->readIndexResultType.value());
+
+                if (etv->indexer->writeIndexResultType)
+                    visitChild(etv->indexer->writeIndexResultType.value());
+
+                LUAU_ASSERT(etv->indexer->readIndexResultType || etv->indexer->writeIndexResultType);
+            }
+            else
+            {
+                visitChild(etv->indexer->indexResultType_DEPRECATED);
+            }
         }
     }
     else if (const NegationType* ntv = get<NegationType>(ty))
@@ -784,7 +813,21 @@ void Substitution::replaceChildren(TypeId ty)
         if (ttv->indexer)
         {
             ttv->indexer->indexType = replace(ttv->indexer->indexType);
-            ttv->indexer->indexResultType = replace(ttv->indexer->indexResultType);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (ttv->indexer->readIndexResultType)
+                    ttv->indexer->readIndexResultType = replace(ttv->indexer->readIndexResultType);
+
+                if (ttv->indexer->writeIndexResultType)
+                    ttv->indexer->readIndexResultType = replace(ttv->indexer->readIndexResultType);
+
+                LUAU_ASSERT(ttv->indexer->readIndexResultType || ttv->indexer->writeIndexResultType);
+            }
+            else
+            {
+                ttv->indexer->indexResultType_DEPRECATED = replace(ttv->indexer->indexResultType_DEPRECATED);
+            }
         }
 
         for (TypeId& itp : ttv->instantiatedTypeParams)
@@ -848,7 +891,21 @@ void Substitution::replaceChildren(TypeId ty)
         if (etv->indexer)
         {
             etv->indexer->indexType = replace(etv->indexer->indexType);
-            etv->indexer->indexResultType = replace(etv->indexer->indexResultType);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (ttv->indexer->readIndexResultType)
+                    etv->indexer->readIndexResultType = replace(etv->indexer->readIndexResultType);
+
+                if (ttv->indexer->writeIndexResultType)
+                    etv->indexer->writeIndexResultType = replace(etv->indexer->writeIndexResultType);
+
+                LUAU_ASSERT(ttv->indexer->readIndexResultType || ttv->indexer->writeIndexResultType);
+            }
+            else
+            {
+                etv->indexer->indexResultType_DEPRECATED = replace(etv->indexer->indexResultType_DEPRECATED);
+            }
         }
     }
     else if (NegationType* ntv = getMutable<NegationType>(ty))

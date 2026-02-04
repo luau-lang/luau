@@ -1484,16 +1484,44 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                 }
                 else if (indexer)
                 {
-                    // maybe we don't need to parse the entire badIndexer...
-                    // however, we either have { or [ to lint, not the entire table type or the bad indexer.
-                    AstTableIndexer* badIndexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, begin).node;
+                    if (FFlag::LuauParseReadWriteIndexers)
+                    {
+                        // maybe we don't need to parse the entire badIndexer...
+                        // however, we either have { or [ to lint, not the entire table type or the bad indexer.
+                        TableIndexerResult result = parseTableIndexer(std::nullopt, begin);
 
-                    // we lose all additional indexer expressions from the AST after error recovery here
-                    report(badIndexer->location, "Cannot have more than one indexer on an extern type");
+                        // different read/write indexers is not supported on extern types
+                        report(result.location, "Cannot have more than one indexer on an extern type"); 
+                    }
+                    else
+                    {
+                        // maybe we don't need to parse the entire badIndexer...
+                        // however, we either have { or [ to lint, not the entire table type or the bad indexer.
+                        AstTableIndexer* badIndexer = parseTableIndexer_DEPRECATED(AstTableAccess::ReadWrite, std::nullopt, begin).node_DEPRECATED;
+
+                        // we lose all additional indexer expressions from the AST after error recovery here
+                        report(badIndexer->location_DEPRECATED, "Cannot have more than one indexer on an extern type");
+                    }
                 }
                 else
                 {
-                    indexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt, begin).node;
+                    if (FFlag::LuauParseReadWriteIndexers)
+                    {
+                        TableIndexerResult result = parseTableIndexer(std::nullopt, begin);
+                        indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer(
+                            result.indexType,
+                            result.resultType,
+                            result.resultType,
+                            result.location,
+                            result.location,
+                            std::nullopt,
+                            std::nullopt
+                        ));
+                    }
+                    else
+                    {
+                        indexer = parseTableIndexer_DEPRECATED(AstTableAccess::ReadWrite, std::nullopt, begin).node_DEPRECATED;
+                    }
                 }
             }
             else
@@ -2048,9 +2076,34 @@ std::pair<CstExprConstantString::QuoteStyle, unsigned int> Parser::extractString
     return {style, blockDepth};
 }
 
-// TableIndexer ::= `[' Type `]' `:' Type
-Parser::TableIndexerResult Parser::parseTableIndexer(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin)
+// TableIndexer ::= ['read' | 'write'] '[' Type ']' ':' Type
+Parser::TableIndexerResult Parser::parseTableIndexer_DEPRECATED(AstTableAccess access, std::optional<Location> accessLocation, Lexeme begin)
 {
+    LUAU_ASSERT(!FFlag::LuauParseReadWriteIndexers);
+
+    AstType* index = parseType();
+
+    Position indexerClosePosition = lexer.current().location.begin;
+    expectMatchAndConsume(']', begin);
+
+    Position colonPosition = lexer.current().location.begin;
+    expectAndConsume(':', "table field");
+
+    AstType* result = parseType();
+
+    return TableIndexerResult::construct_DEPRECATED(
+        allocator.alloc<AstTableIndexer>(AstTableIndexer::construct_DEPRECATED(index, result, Location(begin.location, result->location), access, accessLocation)),
+        begin.location.begin,
+        indexerClosePosition,
+        colonPosition
+    );
+}
+
+// TableIndexer ::= ['read' | 'write'] '[' Type ']' ':' Type
+Parser::TableIndexerResult Parser::parseTableIndexer(std::optional<Location> accessLocation, Lexeme begin)
+{
+    LUAU_ASSERT(FFlag::LuauParseReadWriteIndexers);
+
     AstType* index = parseType();
 
     Position indexerClosePosition = lexer.current().location.begin;
@@ -2062,7 +2115,9 @@ Parser::TableIndexerResult Parser::parseTableIndexer(AstTableAccess access, std:
     AstType* result = parseType();
 
     return {
-        allocator.alloc<AstTableIndexer>(AstTableIndexer::construct_DEPRECATED(index, result, Location(begin.location, result->location), access, accessLocation)),
+        index,
+        result,
+        Location(begin.location, result->location),
         begin.location.begin,
         indexerClosePosition,
         colonPosition,
@@ -2159,28 +2214,81 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
             {
                 if (indexer)
                 {
-                    // maybe we don't need to parse the entire badIndexer...
-                    // however, we either have { or [ to lint, not the entire table type or the bad indexer.
-                    AstTableIndexer* badIndexer = parseTableIndexer(access, accessLocation, begin).node;
+                    if (FFlag::LuauParseReadWriteIndexers)
+                    {
+                        TableIndexerResult result = parseTableIndexer(accessLocation, begin);
 
-                    // we lose all additional indexer expressions from the AST after error recovery here
-                    report(badIndexer->location, "Cannot have more than one table indexer");
+                        if (((int)indexer->definedAccessors & (int)access) == 0)
+                        {
+                            LUAU_ASSERT(access != AstTableAccess::ReadWrite);
+
+                            if (access == AstTableAccess::Read)
+                            {
+                                indexer->readResultType = result.resultType;
+                                indexer->readLocation = result.location;
+                                indexer->readAccessLocation = accessLocation;
+                            }
+                            else
+                            {
+                                LUAU_ASSERT(access == AstTableAccess::Write);
+
+                                indexer->writeResultType = result.resultType;
+                                indexer->writeLocation = result.location;
+                                indexer->writeAccessLocation = accessLocation;
+                            }
+                        }
+                        else
+                        {
+                            report(result.location, "Cannot have more than one table indexer with the same access attributes");
+                        }
+                    }
+                    else
+                    {
+                        // maybe we don't need to parse the entire badIndexer...
+                        // however, we either have { or [ to lint, not the entire table type or the bad indexer.
+                        AstTableIndexer* badIndexer = parseTableIndexer_DEPRECATED(access, accessLocation, begin).node_DEPRECATED;
+
+                        // we lose all additional indexer expressions from the AST after error recovery here
+                        report(badIndexer->location_DEPRECATED, "Cannot have more than one table indexer");
+                    }
                 }
                 else
                 {
-                    auto tableIndexerResult = parseTableIndexer(access, accessLocation, begin);
-                    indexer = tableIndexerResult.node;
-                    if (options.storeCstData)
-                        cstItems.push_back(
-                            CstTypeTable::Item{
-                                CstTypeTable::Item::Kind::Indexer,
-                                tableIndexerResult.indexerOpenPosition,
-                                tableIndexerResult.indexerClosePosition,
-                                tableIndexerResult.colonPosition,
-                                tableSeparator(),
-                                lexer.current().location.begin,
-                            }
-                        );
+                    if (FFlag::LuauParseReadWriteIndexers)
+                    {
+                        const int Read = (int)AstTableAccess::Read;
+                        const int Write = (int)AstTableAccess::Write;
+                        const int ReadWrite = (int)AstTableAccess::ReadWrite;
+                        int accessInt = (int)access;
+
+                        TableIndexerResult result = parseTableIndexer(accessLocation, begin);
+
+                        indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer(
+                            result.indexType,
+                            accessInt & Read  ? std::optional<AstType*>(result.resultType) : std::nullopt,
+                            accessInt & Write ? std::optional<AstType*>(result.resultType) : std::nullopt,
+                            accessInt & Read  ? std::optional<Location>(result.location)   : std::nullopt,
+                            accessInt & Read  ? std::optional<Location>(result.location)   : std::nullopt,
+                            std::nullopt,
+                            std::nullopt
+                        ));
+                    }
+                    else
+                    {
+                        auto tableIndexerResult = parseTableIndexer_DEPRECATED(access, accessLocation, begin);
+                        indexer = tableIndexerResult.node_DEPRECATED;
+                        if (options.storeCstData)
+                            cstItems.push_back(
+                                CstTypeTable::Item{
+                                    CstTypeTable::Item::Kind::Indexer,
+                                    tableIndexerResult.indexerOpenPosition,
+                                    tableIndexerResult.indexerClosePosition,
+                                    tableIndexerResult.colonPosition,
+                                    tableSeparator(),
+                                    lexer.current().location.begin,
+                                }
+                            );
+                    }
                 }
             }
         }
@@ -2191,7 +2299,11 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
             // array-like table type: {T} desugars into {[number]: T}
             isArray = true;
             AstType* index = allocator.alloc<AstTypeReference>(type->location, std::nullopt, nameNumber, std::nullopt, type->location);
-            indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer{index, type, type->location, access, accessLocation});
+
+            if (FFlag::LuauParseReadWriteIndexers)
+                indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer(index, type, type, type->location, type->location, accessLocation, accessLocation));
+            else
+                indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer::construct_DEPRECATED(index, type, type->location, access, accessLocation));
 
             break;
         }

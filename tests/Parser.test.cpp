@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
+LUAU_FASTFLAG(LuauParseReadWriteIndexers)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -1519,8 +1520,17 @@ TEST_CASE_FIXTURE(Fixture, "short_array_types")
     REQUIRE(annotation->indexer);
     REQUIRE(annotation->indexer->indexType->is<AstTypeReference>());
     CHECK(annotation->indexer->indexType->as<AstTypeReference>()->name == "number");
-    REQUIRE(annotation->indexer->resultType->is<AstTypeReference>());
-    CHECK(annotation->indexer->resultType->as<AstTypeReference>()->name == "string");
+
+    if (FFlag::LuauParseReadWriteIndexers)
+    {
+        REQUIRE(annotation->indexer->readResultType.value()->is<AstTypeReference>());
+        CHECK(annotation->indexer->readResultType.value()->as<AstTypeReference>()->name == "string");
+    }
+    else
+    {
+        REQUIRE(annotation->indexer->resultType_DEPRECATED->is<AstTypeReference>());
+        CHECK(annotation->indexer->resultType_DEPRECATED->as<AstTypeReference>()->name == "string");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "short_array_types_must_be_alone")
@@ -2300,8 +2310,17 @@ TEST_CASE_FIXTURE(Fixture, "class_indexer")
     REQUIRE(declaredExternType->indexer);
     REQUIRE(declaredExternType->indexer->indexType->is<AstTypeReference>());
     CHECK(declaredExternType->indexer->indexType->as<AstTypeReference>()->name == "string");
-    REQUIRE(declaredExternType->indexer->resultType->is<AstTypeReference>());
-    CHECK(declaredExternType->indexer->resultType->as<AstTypeReference>()->name == "number");
+
+    if (FFlag::LuauParseReadWriteIndexers)
+    {
+        REQUIRE(declaredExternType->indexer->readResultType.value()->as<AstTypeReference>());
+        CHECK(declaredExternType->indexer->readResultType.value()->as<AstTypeReference>()->name == "number");
+    }
+    else
+    {
+        REQUIRE(declaredExternType->indexer->resultType_DEPRECATED->is<AstTypeReference>());
+        CHECK(declaredExternType->indexer->resultType_DEPRECATED->as<AstTypeReference>()->name == "number");
+    }
 
     const ParseResult p1 = matchParseError(
         R"(

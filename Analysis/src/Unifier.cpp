@@ -23,6 +23,7 @@ LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart)
 LUAU_FASTFLAGVARIABLE(LuauUnifierDoesntReferToNewSolver)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -1939,7 +1940,21 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
                 variance = Invariant;
 
             std::unique_ptr<Unifier> innerState = makeChildUnifier();
-            innerState->tryUnify_(subTable->indexer->indexResultType, prop.type_DEPRECATED());
+
+            TypeId irt;
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (subTable->indexer->readIndexResultType)
+                    irt = subTable->indexer->readIndexResultType.value();
+                else
+                    irt = subTable->indexer->writeIndexResultType.value();
+            }
+            else
+            {
+                irt = subTable->indexer->indexResultType_DEPRECATED;
+            }
+
+            innerState->tryUnify_(irt, prop.type_DEPRECATED());
 
             checkChildUnifierTypeMismatch(innerState->errors, name, superTy, subTy);
 
@@ -2016,13 +2031,26 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
             if (!literalProperties || !literalProperties->contains(name))
                 variance = Invariant;
 
+            TypeId irt;
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (superTable->indexer->readIndexResultType)
+                    irt = superTable->indexer->readIndexResultType.value();
+                else
+                    irt = superTable->indexer->writeIndexResultType.value();
+            }
+            else
+            {
+                irt = superTable->indexer->indexResultType_DEPRECATED;
+            }
+
             std::unique_ptr<Unifier> innerState = makeChildUnifier();
             if (FFlag::LuauFixIndexerSubtypingOrdering)
-                innerState->tryUnify_(prop.type_DEPRECATED(), superTable->indexer->indexResultType);
+                innerState->tryUnify_(prop.type_DEPRECATED(), irt);
             else
             {
                 // Incredibly, the old solver depends on this bug somehow.
-                innerState->tryUnify_(superTable->indexer->indexResultType, prop.type_DEPRECATED());
+                innerState->tryUnify_(irt, prop.type_DEPRECATED());
             }
 
             checkChildUnifierTypeMismatch(innerState->errors, name, superTy, subTy);
@@ -2108,7 +2136,19 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
 
         checkChildUnifierTypeMismatch(innerState->errors, "[indexer key]", superTy, subTy);
 
-        innerState->tryUnify_(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
+        TypeId irt;
+        if (FFlag::LuauAnalysisReadWriteIndexers)
+        {
+            if (subTable->indexer->readIndexResultType && superTable->indexer->readIndexResultType)
+                innerState->tryUnify_(subTable->indexer->readIndexResultType.value(), superTable->indexer->readIndexResultType.value());
+
+            if (subTable->indexer->writeIndexResultType && superTable->indexer->writeIndexResultType)
+                innerState->tryUnify_(subTable->indexer->writeIndexResultType.value(), superTable->indexer->writeIndexResultType.value());
+        }
+        else
+        {
+            innerState->tryUnify_(subTable->indexer->indexResultType_DEPRECATED, superTable->indexer->indexResultType_DEPRECATED);
+        }
 
         if (!reported)
             checkChildUnifierTypeMismatch(innerState->errors, "[indexer value]", superTy, subTy);
@@ -2564,7 +2604,19 @@ static void tryUnifyWithAny(
             if (table->indexer)
             {
                 queue.push_back(table->indexer->indexType);
-                queue.push_back(table->indexer->indexResultType);
+
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (table->indexer->readIndexResultType)
+                        queue.push_back(table->indexer->readIndexResultType.value());
+
+                    if (table->indexer->writeIndexResultType)
+                        queue.push_back(table->indexer->writeIndexResultType.value());
+                }
+                else
+                {
+                    queue.push_back(table->indexer->indexResultType_DEPRECATED);
+                }
             }
         }
         else if (auto mt = state.log.getMutable<MetatableType>(ty))

@@ -23,6 +23,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTINTVARIABLE(LuauNonStrictTypeCheckerRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(LuauAddRecursionCounterToNonStrictTypeChecker)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -492,7 +493,21 @@ struct NonStrictTypeChecker
         if (declClass->indexer)
         {
             visit(declClass->indexer->indexType);
-            visit(declClass->indexer->resultType);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (declClass->indexer->readResultType)
+                    visit(declClass->indexer->readResultType.value());
+
+                if (declClass->indexer->writeResultType)
+                    visit(declClass->indexer->writeResultType.value());
+
+                LUAU_ASSERT(declClass->indexer->readResultType || declClass->indexer->writeResultType);
+            }
+            else
+            {
+                visit(declClass->indexer->resultType_DEPRECATED);
+            }
         }
 
         for (auto prop : declClass->props)
@@ -1035,7 +1050,21 @@ struct NonStrictTypeChecker
         if (table->indexer)
         {
             visit(table->indexer->indexType);
-            visit(table->indexer->resultType);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (table->indexer->readResultType)
+                    visit(table->indexer->readResultType.value());
+
+                if (table->indexer->writeResultType)
+                    visit(table->indexer->writeResultType.value());
+
+                LUAU_ASSERT(table->indexer->readResultType || table->indexer->writeResultType);
+            }
+            else
+            {
+                visit(table->indexer->resultType_DEPRECATED);
+            }
         }
 
         for (auto prop : table->props)

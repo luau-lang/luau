@@ -1061,10 +1061,10 @@ struct AstTableIndexer
 {
     AstTableIndexer(
         AstType* indexType,
-        AstType* readResultType,
-        AstType* writeResultType,
-        Location readLocation,
-        Location writeLocation,
+        std::optional<AstType*> readResultType,
+        std::optional<AstType*> writeResultType,
+        std::optional<Location> readLocation,
+        std::optional<Location> writeLocation,
         std::optional<Location> readAccessLocation,
         std::optional<Location> writeAccessLocation
     )
@@ -1078,13 +1078,27 @@ struct AstTableIndexer
     {
     }
 
+    AstTableIndexer() = default;
+
     static AstTableIndexer construct_DEPRECATED(AstType* indexType, AstType* resultType, AstTableAccess access, std::optional<Location> accessLocation)
     {
         AstTableIndexer ati;
-        ati->indexType = indexType;
-        ati->resultType_DEPRECATED = resultType;
-        ati->access_DEPRECATED = access;
-        ati->accessLocation_DEPRECATED = accessLocation;
+        ati.indexType = indexType;
+        ati.resultType_DEPRECATED = resultType;
+        ati.access_DEPRECATED = access;
+        ati.accessLocation_DEPRECATED = accessLocation;
+
+        return ati;
+    }
+
+    static AstTableIndexer construct_DEPRECATED(AstType* indexType, AstType* resultType, Location location, AstTableAccess access, std::optional<Location> accessLocation)
+    {
+        AstTableIndexer ati;
+        ati.indexType = indexType;
+        ati.resultType_DEPRECATED = resultType;
+        ati.location_DEPRECATED = location;
+        ati.access_DEPRECATED = access;
+        ati.accessLocation_DEPRECATED = accessLocation;
 
         return ati;
     }
@@ -1092,14 +1106,17 @@ struct AstTableIndexer
     AstType* indexType;
     // Note: If access attribute is not specified (e.x.: `{ number }` instead of `{ write number }` or `{ read number }`),
     // both of these, as well as `readLocation` and `writeLocation`, have the same value
-    AstType* readResultType;
-    AstType* writeResultType;
+    // Using ::optional here because either one or both can be defined
+    std::optional<AstType*> readResultType;
+    std::optional<AstType*> writeResultType;
 
-    Location readLocation;
-    Location writeLocation;
+    std::optional<Location> readLocation;
+    std::optional<Location> writeLocation;
 
     std::optional<Location> readAccessLocation;
     std::optional<Location> writeAccessLocation;
+
+    AstTableAccess definedAccessors;
 
     AstType* resultType_DEPRECATED;
     Location location_DEPRECATED;

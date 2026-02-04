@@ -21,6 +21,7 @@
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -384,7 +385,22 @@ private:
         }
 
         if (t1->indexer)
-            t2->indexer = TypeFunctionTableIndexer(shallowSerialize(t1->indexer->indexType), shallowSerialize(t1->indexer->indexResultType));
+        {
+            TypeId irt;
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (t1->indexer->readIndexResultType)
+                    irt = t1->indexer->readIndexResultType.value();
+                else
+                    irt = t1->indexer->writeIndexResultType.value();
+            }
+            else
+            {
+                irt = t1->indexer->indexResultType_DEPRECATED;
+            }
+
+            t2->indexer = TypeFunctionTableIndexer(shallowSerialize(t1->indexer->indexType), shallowSerialize(irt));
+        }
     }
 
     void serializeChildren(const MetatableType* m1, TypeFunctionTableType* m2)
@@ -426,7 +442,22 @@ private:
         }
 
         if (c1->indexer)
-            c2->indexer = TypeFunctionTableIndexer(shallowSerialize(c1->indexer->indexType), shallowSerialize(c1->indexer->indexResultType));
+        {
+            TypeId irt;
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (c1->indexer->readIndexResultType)
+                    irt = c1->indexer->readIndexResultType.value();
+                else
+                    irt = c1->indexer->writeIndexResultType.value();
+            }
+            else
+            {
+                irt = c1->indexer->indexResultType_DEPRECATED;
+            }
+
+            c2->indexer = TypeFunctionTableIndexer(shallowSerialize(c1->indexer->indexType), shallowSerialize(irt));
+        }
 
         if (c1->metatable)
             c2->metatable = shallowSerialize(*c1->metatable);

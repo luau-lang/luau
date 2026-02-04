@@ -2,6 +2,7 @@
 #include "Luau/IterativeTypeVisitor.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -335,7 +336,21 @@ void IterativeTypeVisitor::process(TypeId ty)
                 if (ttv->indexer)
                 {
                     traverse(ttv->indexer->indexType);
-                    traverse(ttv->indexer->indexResultType);
+
+                    if (FFlag::LuauAnalysisReadWriteIndexers)
+                    {
+                        if (ttv->indexer->readIndexResultType)
+                            traverse(ttv->indexer->readIndexResultType.value());
+
+                        if (ttv->indexer->writeIndexResultType)
+                            traverse(ttv->indexer->writeIndexResultType.value());
+
+                        LUAU_ASSERT(ttv->indexer->readIndexResultType || ttv->indexer->writeIndexResultType);
+                    }
+                    else
+                    {
+                        traverse(ttv->indexer->indexResultType_DEPRECATED);
+                    }
                 }
             }
         }
@@ -374,7 +389,21 @@ void IterativeTypeVisitor::process(TypeId ty)
             if (etv->indexer)
             {
                 traverse(etv->indexer->indexType);
-                traverse(etv->indexer->indexResultType);
+
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (etv->indexer->readIndexResultType)
+                        traverse(etv->indexer->readIndexResultType.value());
+
+                    if (etv->indexer->writeIndexResultType)
+                        traverse(etv->indexer->writeIndexResultType.value());
+
+                    LUAU_ASSERT(etv->indexer->readIndexResultType || etv->indexer->writeIndexResultType);
+                }
+                else
+                {
+                    traverse(etv->indexer->indexResultType_DEPRECATED);
+                }
             }
         }
     }

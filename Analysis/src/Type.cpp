@@ -31,6 +31,7 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -937,7 +938,21 @@ void persist(TypeId ty)
             if (ttv->indexer)
             {
                 queue.push_back(ttv->indexer->indexType);
-                queue.push_back(ttv->indexer->indexResultType);
+
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (ttv->indexer->readIndexResultType)
+                        queue.push_back(ttv->indexer->readIndexResultType.value());
+
+                    if (ttv->indexer->writeIndexResultType)
+                        queue.push_back(ttv->indexer->writeIndexResultType.value());
+
+                    LUAU_ASSERT(ttv->indexer->readIndexResultType || ttv->indexer->writeIndexResultType);
+                }
+                else
+                {
+                    queue.push_back(ttv->indexer->indexResultType_DEPRECATED);
+                }
             }
         }
         else if (auto etv = get<ExternType>(t))

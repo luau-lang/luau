@@ -1613,27 +1613,30 @@ struct Printer
 
                     if (FFlag::LuauParseReadWriteIndexers)
                     {
-                        if (a->indexer->readAccessLocation != a->index->writeAccessLocation)
+                        if (a->indexer->readAccessLocation != a->indexer->writeAccessLocation)
                         {
-                            if (a->indexer->readAccessLocation)
+                            LUAU_ASSERT((a->indexer->readResultType.has_value() && a->indexer->readAccessLocation.has_value())
+                                || (a->indexer->writeResultType.has_value() && a->indexer->writeAccessLocation.has_value()));
+
+                            if (AstType* readResultType = a->indexer->readResultType.value_or(nullptr); a->indexer->readAccessLocation.has_value())
                             {
                                 advance(a->indexer->readAccessLocation->begin);
                                 writer.keyword("read");
-                                visualizeTypeAnnotation(*a->indexer->readResultType);
+                                visualizeTypeAnnotation(*readResultType);
                             }
 
-                            if (a->indexer->writeAccessLocation)
+                            if (AstType* writeResultType = a->indexer->writeResultType.value_or(nullptr); a->indexer->writeAccessLocation.has_value())
                             {
                                 advance(a->indexer->writeAccessLocation->begin);
-                                write.keyword("write");
-                                visualizeTypeAnnotation(*a->indexer->writeResultType);
+                                writer.keyword("write");
+                                visualizeTypeAnnotation(*writeResultType);
                             }
                         }
                         else
                         {
                             LUAU_ASSERT(a->indexer->readAccessLocation.has_value() && a->indexer->writeAccessLocation.has_value());
                             advance(a->indexer->readAccessLocation->begin);
-                            visualizeTypeAnnotation(*a->indexer->readResultType);
+                            visualizeTypeAnnotation(*(a->indexer->readResultType.value()));
                         }
                     }
                     else
@@ -1659,11 +1662,11 @@ struct Printer
                         {
                             LUAU_ASSERT(a->indexer);
 
-                            if (a->indexer->accessLocation)
+                            if (a->indexer->accessLocation_DEPRECATED)
                             {
-                                LUAU_ASSERT(a->indexer->access != AstTableAccess::ReadWrite);
-                                advance(a->indexer->accessLocation->begin);
-                                writer.keyword(a->indexer->access == AstTableAccess::Read ? "read" : "write");
+                                LUAU_ASSERT(a->indexer->access_DEPRECATED != AstTableAccess::ReadWrite);
+                                advance(a->indexer->accessLocation_DEPRECATED->begin);
+                                writer.keyword(a->indexer->access_DEPRECATED == AstTableAccess::Read ? "read" : "write");
                             }
 
                             advance(item.indexerOpenPosition);

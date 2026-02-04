@@ -19,6 +19,7 @@
 LUAU_FASTFLAG(LuauSolverV2)
 
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal
@@ -527,7 +528,20 @@ struct TraversalState
 
             if (indexer)
             {
-                updateCurrent(field == TypePath::TypeField::IndexLookup ? indexer->indexType : indexer->indexResultType);
+                TypeId irt;
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (indexer->readIndexResultType)
+                        irt = indexer->readIndexResultType.value();
+                    else
+                        irt = indexer->writeIndexResultType.value();
+                }
+                else
+                {
+                    irt = indexer->indexResultType_DEPRECATED;
+                }
+
+                updateCurrent(field == TypePath::TypeField::IndexLookup ? indexer->indexType : irt);
                 return true;
             }
 

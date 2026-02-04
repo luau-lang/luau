@@ -16,6 +16,7 @@
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintLambdas3)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeConstraintStripNilFromFunction)
 LUAU_FASTFLAGVARIABLE(LuauPushTypeUnifyConstantHandling)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -408,7 +409,19 @@ struct BidirectionalTypePusher
                         //
                         // Then the intent is probably to push `U` into `bar`.
                         if (expectedTableTy->indexer)
-                            (void)pushType(expectedTableTy->indexer->indexResultType, item.value);
+                        {
+                            if (FFlag::LuauAnalysisReadWriteIndexers)
+                            {
+                                if (expectedTableTy->indexer->readIndexResultType)
+                                    pushType(expectedTableTy->indexer->readIndexResultType.value(), item.value);
+                                else
+                                    pushType(expectedTableTy->indexer->writeIndexResultType.value(), item.value);
+                            }
+                            else
+                            {
+                                (void)pushType(expectedTableTy->indexer->indexResultType_DEPRECATED, item.value);
+                            }
+                        }
 
                         // If it's just an extra property and the expected type
                         // has no indexer, there's no work to do here.
@@ -434,7 +447,18 @@ struct BidirectionalTypePusher
                     if (expectedTableTy->indexer)
                     {
                         unifier->unify(expectedTableTy->indexer->indexType, solver->builtinTypes->numberType);
-                        (void)pushType(expectedTableTy->indexer->indexResultType, item.value);
+
+                        if (FFlag::LuauAnalysisReadWriteIndexers)
+                        {
+                            if (expectedTableTy->indexer->readIndexResultType)
+                                pushType(expectedTableTy->indexer->readIndexResultType.value(), item.value);
+                            else
+                                pushType(expectedTableTy->indexer->writeIndexResultType.value(), item.value);
+                        }
+                        else
+                        {
+                            (void)pushType(expectedTableTy->indexer->indexResultType_DEPRECATED, item.value);
+                        }
                     }
                 }
                 else if (item.kind == AstExprTable::Item::General)
@@ -448,7 +472,18 @@ struct BidirectionalTypePusher
                     if (expectedTableTy->indexer)
                     {
                         (void)pushType(expectedTableTy->indexer->indexType, item.key);
-                        (void)pushType(expectedTableTy->indexer->indexResultType, item.value);
+
+                        if (FFlag::LuauAnalysisReadWriteIndexers)
+                        {
+                            if (expectedTableTy->indexer->readIndexResultType)
+                                pushType(expectedTableTy->indexer->readIndexResultType.value(), item.value);
+                            else
+                                pushType(expectedTableTy->indexer->writeIndexResultType.value(), item.value);
+                        }
+                        else
+                        {
+                            (void)pushType(expectedTableTy->indexer->indexResultType_DEPRECATED, item.value);
+                        }
                     }
                 }
                 else

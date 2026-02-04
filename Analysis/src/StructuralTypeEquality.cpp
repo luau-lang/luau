@@ -6,6 +6,7 @@
 #include "Luau/TypePack.h"
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 // Test Types for equivalence
 // More complex than we'd like because Types can self-reference.
@@ -119,8 +120,21 @@ bool areEqual(SeenSet& seen, const TableType& lhs, const TableType& rhs)
         if (!areEqual(seen, *lhs.indexer->indexType, *rhs.indexer->indexType))
             return false;
 
-        if (!areEqual(seen, *lhs.indexer->indexResultType, *rhs.indexer->indexResultType))
-            return false;
+        if (FFlag::LuauAnalysisReadWriteIndexers)
+        {
+            if (lhs.indexer->readIndexResultType && rhs.indexer->readIndexResultType)
+                if (!areEqual(seen, *lhs.indexer->readIndexResultType.value(), *rhs.indexer->readIndexResultType.value()))
+                    return false;
+
+            if (lhs.indexer->writeIndexResultType && rhs.indexer->writeIndexResultType)
+                if (!areEqual(seen, *lhs.indexer->writeIndexResultType.value(), *rhs.indexer->writeIndexResultType.value()))
+                    return false;
+        }
+        else
+        {
+            if (!areEqual(seen, *lhs.indexer->indexResultType_DEPRECATED, *rhs.indexer->indexResultType_DEPRECATED))
+                return false;
+        }
     }
 
     auto l = lhs.props.begin();

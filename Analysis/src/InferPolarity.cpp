@@ -5,6 +5,7 @@
 #include "Luau/Scope.h"
 #include "Luau/VisitType.h"
 
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -74,7 +75,21 @@ struct InferPolarity : TypeVisitor
         {
             polarity = Polarity::Mixed;
             traverse(tt.indexer->indexType);
-            traverse(tt.indexer->indexResultType);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (tt.indexer->readIndexResultType)
+                    traverse(tt.indexer->readIndexResultType.value());
+
+                if (tt.indexer->writeIndexResultType)
+                    traverse(tt.indexer->writeIndexResultType.value());
+
+                LUAU_ASSERT(tt.indexer->readIndexResultType || tt.indexer->writeIndexResultType);
+            }
+            else
+            {
+                traverse(tt.indexer->indexResultType_DEPRECATED);
+            }
         }
 
         polarity = p;

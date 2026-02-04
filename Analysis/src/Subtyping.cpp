@@ -30,7 +30,7 @@ LUAU_FASTFLAGVARIABLE(LuauSubtypingHandlesExternTypesWithIndexers)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauUnifyWithSubtyping)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
-LUAU_FASTFLAG(LuauReadWriteOnlyIndexers)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -2048,20 +2048,34 @@ SubtypingResult Subtyping::isCovariantWith(
         {
             if (isCovariantWith(env, builtinTypes->stringType, subTable->indexer->indexType, scope).isSubtype)
             {
+                TypeId irt;
+
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (subTable->indexer->readIndexResultType)
+                        irt = subTable->indexer->readIndexResultType.value();
+                    else
+                        irt = subTable->indexer->writeIndexResultType.value();
+                }
+                else
+                {
+                    irt = subTable->indexer->indexResultType_DEPRECATED;
+                }
+
                 if (superProp.isShared())
                 {
-                    results.push_back(isInvariantWith(env, subTable->indexer->indexResultType, *superProp.readTy, scope)
+                    results.push_back(isInvariantWith(env, irt, *superProp.readTy, scope)
                                           .withSubComponent(TypePath::TypeField::IndexResult)
                                           .withSuperComponent(TypePath::Property::read(name)));
                 }
                 else
                 {
                     if (superProp.readTy)
-                        results.push_back(isCovariantWith(env, subTable->indexer->indexResultType, *superProp.readTy, scope)
+                        results.push_back(isCovariantWith(env, irt, *superProp.readTy, scope)
                                               .withSubComponent(TypePath::TypeField::IndexResult)
                                               .withSuperComponent(TypePath::Property::read(name)));
                     if (superProp.writeTy)
-                        results.push_back(isContravariantWith(env, subTable->indexer->indexResultType, *superProp.writeTy, scope)
+                        results.push_back(isContravariantWith(env, irt, *superProp.writeTy, scope)
                                               .withSubComponent(TypePath::TypeField::IndexResult)
                                               .withSuperComponent(TypePath::Property::write(name)));
                 }
@@ -2112,27 +2126,11 @@ SubtypingResult Subtyping::isCovariantWith(
     {
         if (subTable->indexer)
         {
-            if (FFlag::LuauReadWriteOnlyIndexers)
+            if (FFlag::LuauAnalysisReadWriteIndexers)
             {
-                int superAccess = (int)superTable->indexer->access;
-                int subAccess = (int)subTable->indexer->access;
-
-                /*
-                    User is trying to use table with indexer access Sub in context of access Super
-
-                    Super    |    Sub    |    &   |  Allow ( & < Super )
-                    ----------------------------------------------------
-                    R   0b01 |  R   0b01 |  0b01  |    Y
-                    W   0b10 |  R   0b01 |  0b00  |    N
-                    RW  0b11 |  R   0b01 |  0b01  |    N
-                    R   0b01 |  W   0b10 |  0b00  |    N
-                    W   0b10 |  W   0b10 |  0b10  |    Y
-                    RW  0b11 |  W   0b10 |  0b10  |    N
-                    R   0b01 |  RW  0b11 |  0b01  |    Y
-                    W   0b10 |  RW  0b11 |  0b10  |    Y
-                    RW  0b11 |  RW  0b11 |  0b11  |    Y
-                */
-                if ((superAccess & subAccess) < superAccess)
+                if ((superTable->indexer->readIndexResultType && !subTable->indexer->readIndexResultType)
+                    || (superTable->indexer->writeIndexResultType && !subTable->indexer->writeIndexResultType)
+                )
                     return SubtypingResult{false}.withBothComponent(TypePath::TypeField::IndexLookup);
             }
 
@@ -2542,11 +2540,41 @@ SubtypingResult Subtyping::isCovariantWith(
     NotNull<Scope> scope
 )
 {
-    return isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope)
-        .withBothComponent(TypePath::TypeField::IndexLookup)
-        .andAlso(
-            isInvariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope).withBothComponent(TypePath::TypeField::IndexResult)
-        );
+    if (FFlag::LuauAnalysisReadWriteIndexers)
+    {
+        SubtypingResult result = isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope).withBothComponent(TypePath::TypeField::IndexLookup);
+        if (!result.isSubtype)
+            return result;
+
+        if ((superIndexer.readIndexResultType && !subIndexer.readIndexResultType)
+            || (superIndexer.writeIndexResultType && !subIndexer.writeIndexResultType)
+        )
+            return SubtypingResult{false}.withBothComponent(TypePath::TypeField::IndexLookup);
+
+        if (superIndexer.readIndexResultType)
+        {
+            result = result.andAlso(
+                isInvariantWith(env, subIndexer.readIndexResultType.value(), superIndexer.readIndexResultType.value(), scope).withBothComponent(TypePath::TypeField::IndexResult)
+            );
+            if (!result.isSubtype)
+                return result;
+        }
+
+        if (superIndexer.writeIndexResultType)
+            result = result.andAlso(
+                isInvariantWith(env, subIndexer.writeIndexResultType.value(), superIndexer.writeIndexResultType.value(), scope).withBothComponent(TypePath::TypeField::IndexResult)
+            );
+
+        return result;
+    }
+    else
+    {
+        return isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope)
+            .withBothComponent(TypePath::TypeField::IndexLookup)
+            .andAlso(
+                isInvariantWith(env, subIndexer.indexResultType_DEPRECATED, superIndexer.indexResultType_DEPRECATED, scope).withBothComponent(TypePath::TypeField::IndexResult)
+            );
+    }
 }
 
 SubtypingResult Subtyping::isCovariantWith(

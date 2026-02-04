@@ -3,6 +3,8 @@
 
 #include "Luau/BytecodeBuilder.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCompilerReadWriteIndexers)
+
 namespace Luau
 {
 
@@ -363,7 +365,16 @@ struct TypeMapVisitor : AstVisitor
                     if (const AstTableIndexer* indexer = tryGetTableIndexer(arg))
                     {
                         recordResolvedType(node->vars.data[0], &builtinTypes.numberType);
-                        recordResolvedType(node->vars.data[1], indexer->resultType);
+
+                        if (FFlag::LuauCompilerReadWriteIndexers)
+                        {
+                            if (indexer->readResultType)
+                                recordResolvedType(node->vars.data[1], indexer->readResultType.value());
+                        }
+                        else
+                        {
+                            recordResolvedType(node->vars.data[1], indexer->resultType_DEPRECATED);
+                        }
                     }
                 }
                 else if (isMatchingGlobal(globals, func, "pairs"))
@@ -371,14 +382,32 @@ struct TypeMapVisitor : AstVisitor
                     if (const AstTableIndexer* indexer = tryGetTableIndexer(arg))
                     {
                         recordResolvedType(node->vars.data[0], indexer->indexType);
-                        recordResolvedType(node->vars.data[1], indexer->resultType);
+
+                        if (FFlag::LuauCompilerReadWriteIndexers)
+                        {
+                            if (indexer->writeResultType)
+                                recordResolvedType(node->vars.data[1], indexer->writeResultType.value());
+                        }
+                        else
+                        {
+                            recordResolvedType(node->vars.data[1], indexer->resultType_DEPRECATED);
+                        }
                     }
                 }
             }
             else if (const AstTableIndexer* indexer = tryGetTableIndexer(node->values.data[0]))
             {
                 recordResolvedType(node->vars.data[0], indexer->indexType);
-                recordResolvedType(node->vars.data[1], indexer->resultType);
+
+                if (FFlag::LuauCompilerReadWriteIndexers)
+                {
+                    if (indexer->readResultType)
+                        recordResolvedType(node->vars.data[1], indexer->readResultType.value());
+                }
+                else
+                {
+                    recordResolvedType(node->vars.data[1], indexer->resultType_DEPRECATED);
+                }
             }
         }
 
@@ -454,7 +483,22 @@ struct TypeMapVisitor : AstVisitor
         node->index->visit(this);
 
         if (const AstTableIndexer* indexer = tryGetTableIndexer(node->expr))
-            recordResolvedType(node, indexer->resultType);
+        {
+            if (FFlag::LuauCompilerReadWriteIndexers)
+            {
+                if (indexer->readResultType)
+                    recordResolvedType(node, indexer->readResultType.value());
+
+                if (indexer->writeResultType)
+                    recordResolvedType(node, indexer->writeResultType.value());
+
+                LUAU_ASSERT(indexer->readResultType || indexer->writeResultType);
+            }
+            else
+            {
+                recordResolvedType(node, indexer->resultType_DEPRECATED);
+            }
+        }
 
         return false;
     }

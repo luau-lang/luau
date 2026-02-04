@@ -24,6 +24,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
 LUAU_FASTFLAGVARIABLE(LuauUnifier2HandleMismatchedPacks)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -500,11 +501,35 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
     if (subTable->indexer && superTable->indexer)
     {
         result &= unify_(subTable->indexer->indexType, superTable->indexer->indexType);
-        result &= unify_(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
+
+        if (FFlag::LuauAnalysisReadWriteIndexers)
+        {
+            if (subTable->indexer->readIndexResultType && superTable->indexer->readIndexResultType)
+                result &= unify_(subTable->indexer->writeIndexResultType.value(), superTable->indexer->readIndexResultType.value());
+
+            if (subTable->indexer->writeIndexResultType && superTable->indexer->writeIndexResultType)
+                result &= unify_(subTable->indexer->writeIndexResultType.value(), superTable->indexer->writeIndexResultType.value());
+        }
+        else
+        {
+            result &= unify_(subTable->indexer->indexResultType_DEPRECATED, superTable->indexer->indexResultType_DEPRECATED);
+        }
 
         // FIXME: We can probably do something more efficient here.
         result &= unify_(superTable->indexer->indexType, subTable->indexer->indexType);
-        result &= unify_(superTable->indexer->indexResultType, subTable->indexer->indexResultType);
+
+        if (FFlag::LuauAnalysisReadWriteIndexers)
+        {
+            if (subTable->indexer->readIndexResultType && superTable->indexer->readIndexResultType)
+                result &= unify_(superTable->indexer->writeIndexResultType.value(), subTable->indexer->readIndexResultType.value());
+
+            if (subTable->indexer->writeIndexResultType && superTable->indexer->writeIndexResultType)
+                result &= unify_(superTable->indexer->writeIndexResultType.value(), subTable->indexer->writeIndexResultType.value());
+        }
+        else
+        {
+            result &= unify_(superTable->indexer->indexResultType_DEPRECATED, subTable->indexer->indexResultType_DEPRECATED);
+        }
     }
 
     if (!subTable->indexer && subTable->state == TableState::Unsealed && superTable->indexer)
@@ -524,11 +549,35 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
         if (TypeId* subst = genericSubstitutions.find(indexType))
             indexType = *subst;
 
-        TypeId indexResultType = superTable->indexer->indexResultType;
-        if (TypeId* subst = genericSubstitutions.find(indexResultType))
-            indexResultType = *subst;
+        if (FFlag::LuauAnalysisReadWriteIndexers)
+        {
+            std::optional<TypeId> rirt;
+            std::optional<TypeId> wirt;
 
-        subTable->indexer = TableIndexer{indexType, indexResultType};
+            if (superTable->indexer->readIndexResultType)
+            {
+                rirt = superTable->indexer->readIndexResultType.value();
+                if (TypeId* subst = genericSubstitutions.find(wirt.value()))
+                    rirt = *subst;
+            }
+
+            if (superTable->indexer->writeIndexResultType)
+            {
+                wirt = superTable->indexer->writeIndexResultType.value();
+                if (TypeId* subst = genericSubstitutions.find(wirt.value()))
+                    wirt = *subst;
+            }
+
+            subTable->indexer = TableIndexer{indexType, rirt, wirt};
+        }
+        else
+        {
+            TypeId indexResultType = superTable->indexer->indexResultType_DEPRECATED;
+            if (TypeId* subst = genericSubstitutions.find(indexResultType))
+                indexResultType = *subst;
+
+            subTable->indexer = TableIndexer{indexType, indexResultType};
+        }
     }
 
     return result;
@@ -572,7 +621,19 @@ UnifyResult Unifier2::unify_(const AnyType* subAny, const TableType* superTable)
     if (superTable->indexer)
     {
         unify_(builtinTypes->anyType, superTable->indexer->indexType);
-        unify_(builtinTypes->anyType, superTable->indexer->indexResultType);
+
+        if (FFlag::LuauAnalysisReadWriteIndexers)
+        {
+            if (superTable->indexer->readIndexResultType)
+                unify_(builtinTypes->anyType, superTable->indexer->readIndexResultType.value());
+
+            if (superTable->indexer->writeIndexResultType)
+                unify_(builtinTypes->anyType, superTable->indexer->writeIndexResultType.value());
+        }
+        else
+        {
+            unify_(builtinTypes->anyType, superTable->indexer->indexResultType_DEPRECATED);
+        }
     }
 
     return UnifyResult::Ok;
@@ -592,7 +653,19 @@ UnifyResult Unifier2::unify_(const TableType* subTable, const AnyType* superAny)
     if (subTable->indexer)
     {
         unify_(subTable->indexer->indexType, builtinTypes->anyType);
-        unify_(subTable->indexer->indexResultType, builtinTypes->anyType);
+
+        if (FFlag::LuauAnalysisReadWriteIndexers)
+        {
+            if (subTable->indexer->readIndexResultType)
+                unify_(subTable->indexer->readIndexResultType.value(), builtinTypes->anyType);
+
+            if (subTable->indexer->writeIndexResultType)
+                unify_(subTable->indexer->writeIndexResultType.value(), builtinTypes->anyType);
+        }
+        else
+        {
+            unify_(subTable->indexer->indexResultType_DEPRECATED, builtinTypes->anyType);
+        }
     }
 
     return UnifyResult::Ok;

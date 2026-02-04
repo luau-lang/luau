@@ -44,7 +44,7 @@ LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexingUnionWithNonTable)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
-LUAU_FASTFLAG(LuauReadWriteOnlyIndexers)
+LUAU_FASTFLAG(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -1109,7 +1109,19 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
         {
             testIsSubtype(variableTypes[0], ttv->indexer->indexType, forInStatement->vars.data[0]->location);
             if (variableTypes.size() == 2)
-                testIsSubtype(variableTypes[1], ttv->indexer->indexResultType, forInStatement->vars.data[1]->location);
+            {
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (!ttv->indexer->readIndexResultType)
+                        reportError(GenericError{"Cannot iterate over a table with write-only indexer"}, forInStatement->values.data[0]->location);
+                    else
+                        testIsSubtype(variableTypes[1], ttv->indexer->readIndexResultType.value(), forInStatement->vars.data[1]->location);
+                }
+                else
+                {
+                    testIsSubtype(variableTypes[1], ttv->indexer->indexResultType_DEPRECATED, forInStatement->vars.data[1]->location);
+                }
+            }
         }
         else
             reportError(GenericError{"Cannot iterate over a table without indexer"}, forInStatement->values.data[0]->location);
@@ -1973,12 +1985,12 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
     {
         if (tt->indexer)
         {
-            if (FFlag::LuauReadWriteOnlyIndexers)
+            if (FFlag::LuauAnalysisReadWriteIndexers)
             {
-                if (context == ValueContext::LValue && tt->indexer->access == AstTableAccess::Read)
+                if (context == ValueContext::LValue && !tt->indexer->writeIndexResultType)
                     reportError(PropertyAccessViolation{exprType, "indexer", PropertyAccessViolation::CannotWrite}, indexExpr->location);
 
-                if (context == ValueContext::RValue && tt->indexer->access == AstTableAccess::Write)
+                if (context == ValueContext::RValue && !tt->indexer->readIndexResultType)
                     reportError(PropertyAccessViolation{exprType, "indexer", PropertyAccessViolation::CannotRead}, indexExpr->location);
             }
 
@@ -2958,7 +2970,19 @@ void TypeChecker2::visit(AstTypeTable* table)
     if (table->indexer)
     {
         visit(table->indexer->indexType);
-        visit(table->indexer->resultType);
+
+        if (FFlag::LuauAnalysisReadWriteIndexers)
+        {
+            if (table->indexer->readResultType)
+                visit(table->indexer->readResultType.value());
+
+            if (table->indexer->writeResultType)
+                visit(table->indexer->writeResultType.value());
+        }
+        else
+        {
+            visit(table->indexer->resultType_DEPRECATED);
+        }
     }
 }
 
@@ -3292,10 +3316,35 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
                 if (expectedTableType->indexer)
                 {
                     module->astExpectedTypes[item.key] = expectedTableType->indexer->indexType;
-                    module->astExpectedTypes[item.value] = expectedTableType->indexer->indexResultType;
+
+                    if (FFlag::LuauAnalysisReadWriteIndexers)
+                    {
+                        if (expectedTableType->indexer->readIndexResultType)
+                            module->astExpectedTypes[item.value] = expectedTableType->indexer->readIndexResultType.value();
+
+                        if (expectedTableType->indexer->writeIndexResultType)
+                            module->astExpectedTypes[item.value] = expectedTableType->indexer->writeIndexResultType.value();
+                    }
+                    else
+                    {
+                        module->astExpectedTypes[item.value] = expectedTableType->indexer->indexResultType_DEPRECATED;
+                    }
+
                     auto inferredKeyType = module->internalTypes.addType(SingletonType{StringSingleton{keyStr}});
                     isSubtype &= testIsSubtype(inferredKeyType, expectedTableType->indexer->indexType, item.key->location);
-                    isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType);
+
+                    if (FFlag::LuauAnalysisReadWriteIndexers)
+                    {
+                        if (expectedTableType->indexer->readIndexResultType)
+                            isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->readIndexResultType.value());
+
+                        if (expectedTableType->indexer->writeIndexResultType)
+                            isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->writeIndexResultType.value());
+                    }
+                    else
+                    {
+                        isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType_DEPRECATED);
+                    }
                 }
                 // If there's not an indexer, then by width subtyping we can just do nothing :)
             }
@@ -3321,16 +3370,51 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
             // if the indexer index type is not exactly `number`.
             if (expectedTableType->indexer)
             {
-                module->astExpectedTypes[item.value] = expectedTableType->indexer->indexResultType;
-                isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType);
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (expectedTableType->indexer->readIndexResultType)
+                    {
+                        module->astExpectedTypes[item.value] = expectedTableType->indexer->readIndexResultType.value();
+                        isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->readIndexResultType.value());
+                    }
+
+                    if (expectedTableType->indexer->writeIndexResultType)
+                    {
+                        module->astExpectedTypes[item.value] = expectedTableType->indexer->writeIndexResultType.value();
+                        isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->writeIndexResultType.value());
+                    }
+                }
+                else
+                {
+                    module->astExpectedTypes[item.value] = expectedTableType->indexer->indexResultType_DEPRECATED;
+                    isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType_DEPRECATED);
+                }
             }
         }
         else if (item.kind == AstExprTable::Item::General && expectedTableType->indexer)
         {
             module->astExpectedTypes[item.key] = expectedTableType->indexer->indexType;
-            module->astExpectedTypes[item.value] = expectedTableType->indexer->indexResultType;
             isSubtype &= testPotentialLiteralIsSubtype(item.key, expectedTableType->indexer->indexType);
-            isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType);
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (expectedTableType->indexer->readIndexResultType)
+                {
+                    module->astExpectedTypes[item.value] = expectedTableType->indexer->readIndexResultType.value();
+                    isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->readIndexResultType.value());
+                }
+
+                if (expectedTableType->indexer->writeIndexResultType)
+                {
+                    module->astExpectedTypes[item.value] = expectedTableType->indexer->writeIndexResultType.value();
+                    isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->writeIndexResultType.value());
+                }
+            }
+            else
+            {
+                module->astExpectedTypes[item.value] = expectedTableType->indexer->indexResultType_DEPRECATED;
+                isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType_DEPRECATED);
+            }
         }
     }
 
@@ -3681,7 +3765,21 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
             TypeId indexType = follow(tt->indexer->indexType);
             TypeId givenType = module->internalTypes.addType(SingletonType{StringSingleton{prop}});
             if (isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}, builtinTypes, *ice, SolverMode::New))
-                return {NormalizationResult::True, {tt->indexer->indexResultType}};
+            {
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    if (context == ValueContext::LValue && !tt->indexer->writeIndexResultType)
+                        return {NormalizationResult::False, {}};
+                    else if (context == ValueContext::RValue && !tt->indexer->readIndexResultType)
+                        return {NormalizationResult::False, {}};
+
+                    return {NormalizationResult::True, {context == ValueContext::LValue ? tt->indexer->writeIndexResultType : tt->indexer->readIndexResultType}};
+                }
+                else
+                {
+                    return {NormalizationResult::True, {tt->indexer->indexResultType_DEPRECATED}};
+                }
+            }
         }
 
         return {NormalizationResult::False, {builtinTypes->unknownType}};
@@ -3697,7 +3795,20 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         if (cls->indexer)
         {
             TypeId inhabitedTestType = module->internalTypes.addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});
-            return {normalizer.isInhabited(inhabitedTestType), {cls->indexer->indexResultType}};
+
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (context == ValueContext::LValue && !tt->indexer->writeIndexResultType)
+                    return {NormalizationResult::False, {}};
+                else if (context == ValueContext::RValue && !tt->indexer->readIndexResultType)
+                    return {NormalizationResult::False, {}};
+
+                return {normalizer.isInhabited(inhabitedTestType), {context == ValueContext::LValue ? cls->indexer->writeIndexResultType : cls->indexer->readIndexResultType}};
+            }
+            else
+            {
+                return {normalizer.isInhabited(inhabitedTestType), {cls->indexer->indexResultType_DEPRECATED}};
+            }
         }
         return {NormalizationResult::False, {}};
     }

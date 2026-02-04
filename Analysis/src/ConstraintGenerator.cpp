@@ -47,7 +47,7 @@ LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAGVARIABLE(LuauStorePolarityInline)
 LUAU_FASTFLAGVARIABLE(LuauDontIncludeVarargWithAnnotation)
 LUAU_FASTFLAGVARIABLE(LuauUdtfIndirectAliases)
-LUAU_FASTFLAGVARIABLE(LuauReadWriteOnlyIndexers)
+LUAU_FASTFLAGVARIABLE(LuauAnalysisReadWriteIndexers)
 
 namespace Luau
 {
@@ -2005,7 +2005,20 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
     {
         if (recursionCount >= DFInt::LuauConstraintGeneratorRecursionLimit)
         {
-            reportCodeTooComplex(declaredExternType->indexer->location);
+            if (FFlag::LuauAnalysisReadWriteIndexers)
+            {
+                if (declaredExternType->indexer->readLocation)
+                    reportCodeTooComplex(declaredExternType->indexer->readLocation.value());
+
+                if (declaredExternType->indexer->writeLocation)
+                    reportCodeTooComplex(declaredExternType->indexer->writeLocation.value());
+
+                LUAU_ASSERT(declaredExternType->indexer->readLocation || declaredExternType->indexer->writeLocation);
+            }
+            else
+            {
+                reportCodeTooComplex(declaredExternType->indexer->location_DEPRECATED);
+            }
         }
         else
         {
@@ -2014,29 +2027,73 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 // I don't think extern types can *be* generic, but if they
                 // have an indexer over those generics, the polarity is
                 // mixed.
-                etv->indexer = TableIndexer{
-                    resolveType(
-                        scope,
-                        declaredExternType->indexer->indexType,
-                        /* inTypeArguments */ false,
-                        /* replaceErrorWithFresh */ false,
-                        /* initialPolarity */ Polarity::Mixed
-                    ),
-                    resolveType(
-                        scope,
-                        declaredExternType->indexer->resultType,
-                        /* inTypeArguments */ false,
-                        /* replaceErrorWithFresh */ false,
-                        /* initialPolarity */ Polarity::Mixed
-                    ),
-                };
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    etv->indexer = TableIndexer{
+                        resolveType(
+                            scope,
+                            declaredExternType->indexer->indexType,
+                            /* inTypeArguments */ false,
+                            /* replaceErrorWithFresh */ false,
+                            /* initialPolarity */ Polarity::Mixed
+                        ),
+                        declaredExternType->indexer->readResultType ? resolveType(
+                            scope,
+                            declaredExternType->indexer->readResultType.value(),
+                            /* inTypeArguments */ false,
+                            /* replaceErrorWithFresh */ false,
+                            /* initialPolarity */ Polarity::Mixed
+                        ) : builtinTypes->neverType,
+                        declaredExternType->indexer->writeResultType ? resolveType(
+                            scope,
+                            declaredExternType->indexer->writeResultType.value(),
+                            /* inTypeArguments */ false,
+                            /* replaceErrorWithFresh */ false,
+                            /* initialPolarity */ Polarity::Mixed
+                        ) : builtinTypes->neverType,
+                    };
+                }
+                else
+                {
+                    etv->indexer = TableIndexer{
+                        resolveType(
+                            scope,
+                            declaredExternType->indexer->indexType,
+                            /* inTypeArguments */ false,
+                            /* replaceErrorWithFresh */ false,
+                            /* initialPolarity */ Polarity::Mixed
+                        ),
+                        resolveType(
+                            scope,
+                            declaredExternType->indexer->resultType_DEPRECATED,
+                            /* inTypeArguments */ false,
+                            /* replaceErrorWithFresh */ false,
+                            /* initialPolarity */ Polarity::Mixed
+                        ),
+                    };
+                }
             }
             else
             {
-                etv->indexer = TableIndexer{
-                    resolveType(scope, declaredExternType->indexer->indexType, /* inTypeArguments */ false),
-                    resolveType(scope, declaredExternType->indexer->resultType, /* inTypeArguments */ false),
-                };
+                if (FFlag::LuauAnalysisReadWriteIndexers)
+                {
+                    etv->indexer = TableIndexer{
+                        resolveType(scope, declaredExternType->indexer->indexType, /* inTypeArguments */ false),
+                        declaredExternType->indexer->readResultType
+                            ? resolveType(scope, declaredExternType->indexer->readResultType.value(), /* inTypeArguments */ false)
+                            : builtinTypes->neverType,
+                        declaredExternType->indexer->writeResultType
+                            ? resolveType(scope, declaredExternType->indexer->writeResultType.value(), /* inTypeArguments */ false)
+                            : builtinTypes->neverType,
+                    };
+                }
+                else
+                {
+                    etv->indexer = TableIndexer{
+                        resolveType(scope, declaredExternType->indexer->indexType, /* inTypeArguments */ false),
+                        resolveType(scope, declaredExternType->indexer->resultType_DEPRECATED, /* inTypeArguments */ false),
+                    };
+                }
             }
         }
     }
@@ -3957,31 +4014,31 @@ TypeId ConstraintGenerator::resolveTableType(const ScopePtr& scope, AstType* ty,
 
         if (AstTableIndexer* astIndexer = tab->indexer)
         {
-            if (FFlag::LuauReadWriteOnlyIndexers)
+            if (FFlag::LuauAnalysisReadWriteIndexers)
             {
                 polarity = Polarity::Mixed;
                 indexer = TableIndexer{
                     resolveType_(scope, astIndexer->indexType, inTypeArguments),
-                    resolveType_(scope, astIndexer->resultType, inTypeArguments),
+                    astIndexer->readResultType ? resolveType_(scope, astIndexer->readResultType.value(), inTypeArguments) : builtinTypes->neverType,
+                    astIndexer->writeResultType ? resolveType_(scope, astIndexer->writeResultType.value(), inTypeArguments) : builtinTypes->neverType,
                 };
-                indexer->access = astIndexer->access;
             }
             else
             {
-                if (astIndexer->access == AstTableAccess::Read)
-                    reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
-                else if (astIndexer->access == AstTableAccess::Write)
-                    reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
-                else if (astIndexer->access == AstTableAccess::ReadWrite)
+                if (astIndexer->access_DEPRECATED == AstTableAccess::Read)
+                    reportError(astIndexer->accessLocation_DEPRECATED.value_or(Location{}), GenericError{"read keyword is illegal here"});
+                else if (astIndexer->access_DEPRECATED == AstTableAccess::Write)
+                    reportError(astIndexer->accessLocation_DEPRECATED.value_or(Location{}), GenericError{"write keyword is illegal here"});
+                else if (astIndexer->access_DEPRECATED == AstTableAccess::ReadWrite)
                 {
                     polarity = Polarity::Mixed;
                     indexer = TableIndexer{
                         resolveType_(scope, astIndexer->indexType, inTypeArguments),
-                        resolveType_(scope, astIndexer->resultType, inTypeArguments),
+                        resolveType_(scope, astIndexer->resultType_DEPRECATED, inTypeArguments),
                     };
                 }
                 else
-                    ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access)));
+                    ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access_DEPRECATED)));
             }
         }
 
@@ -4016,29 +4073,29 @@ TypeId ConstraintGenerator::resolveTableType(const ScopePtr& scope, AstType* ty,
 
         if (AstTableIndexer* astIndexer = tab->indexer)
         {
-            if (FFlag::LuauReadWriteOnlyIndexers)
+            if (FFlag::LuauAnalysisReadWriteIndexers)
             {
-              indexer = TableIndexer{
-                  resolveType(scope, astIndexer->indexType, inTypeArguments),
-                  resolveType(scope, astIndexer->resultType, inTypeArguments),
-              };
-              indexer->access = astIndexer->access;
+                indexer = TableIndexer{
+                    resolveType(scope, astIndexer->indexType, inTypeArguments),
+                    astIndexer->readResultType ? resolveType(scope, astIndexer->readResultType.value(), inTypeArguments) : builtinTypes->neverType,
+                    astIndexer->writeResultType ? resolveType(scope, astIndexer->writeResultType.value(), inTypeArguments) : builtinTypes->neverType,
+                };
             }
             else
             {
-              if (astIndexer->access == AstTableAccess::Read)
-                  reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
-              else if (astIndexer->access == AstTableAccess::Write)
-                  reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
-              else if (astIndexer->access == AstTableAccess::ReadWrite)
+              if (astIndexer->access_DEPRECATED == AstTableAccess::Read)
+                  reportError(astIndexer->accessLocation_DEPRECATED.value_or(Location{}), GenericError{"read keyword is illegal here"});
+              else if (astIndexer->access_DEPRECATED == AstTableAccess::Write)
+                  reportError(astIndexer->accessLocation_DEPRECATED.value_or(Location{}), GenericError{"write keyword is illegal here"});
+              else if (astIndexer->access_DEPRECATED == AstTableAccess::ReadWrite)
               {
                   indexer = TableIndexer{
                       resolveType(scope, astIndexer->indexType, inTypeArguments),
-                      resolveType(scope, astIndexer->resultType, inTypeArguments),
+                      resolveType(scope, astIndexer->resultType_DEPRECATED, inTypeArguments),
                   };
               }
               else
-                  ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access)));
+                  ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access_DEPRECATED)));
             }
         }
     }
