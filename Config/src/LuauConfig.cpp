@@ -241,7 +241,7 @@ static std::optional<std::string> createLuauConfigFromLuauTable(
                 if (!global)
                     return "configuration value in \"globals\" table must be a string";
 
-                LUAU_ASSERT(0 <= index - 1 && index - 1 < globalsTable->size());
+                LUAU_ASSERT(index >= 1 && index <= globalsTable->size());
                 globals[index - 1] = *global;
             }
 
