@@ -492,7 +492,7 @@ static int loadsafe(
             {
                 int keys = readVarInt(data, size, offset);
                 LuaTable* h = luaH_new(L, 0, keys);
-                for (int i = 0; i < keys; ++i)
+                for (int ii = 0; ii < keys; ++ii)
                 {
                     int key = readVarInt(data, size, offset);
                     TValue* val = luaH_set(L, h, &p->k[key]);
