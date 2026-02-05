@@ -191,7 +191,9 @@ static int luaB_rawlen(lua_State* L)
 
 static int luaB_gcinfo(lua_State* L)
 {
-    lua_pushinteger(L, lua_gc(L, LUA_GCCOUNT, 0));
+    int k = lua_gc(L, LUA_GCCOUNT, 0);
+    int b = lua_gc(L, LUA_GCCOUNTB, 0);
+    lua_pushnumber(L, (double)k + (double)b / 1024);
     return 1;
 }
 
