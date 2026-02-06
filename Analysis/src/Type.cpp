@@ -31,6 +31,7 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 namespace Luau
 {
@@ -922,7 +923,7 @@ void persist(TypeId ty)
 
             for (const auto& [_name, prop] : ttv->props)
             {
-                if (FFlag::LuauSolverV2)
+                if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
                 {
                     if (prop.readTy)
                         queue.push_back(*prop.readTy);
@@ -944,7 +945,7 @@ void persist(TypeId ty)
         {
             for (const auto& [_name, prop] : etv->props)
             {
-                if (FFlag::LuauSolverV2)
+                if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
                 {
                     if (prop.readTy)
                         queue.push_back(*prop.readTy);

@@ -15,6 +15,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAGVARIABLE(LuauAnalysisUsesSolverMode)
 
 namespace Luau
 {
@@ -140,7 +141,14 @@ struct ClonePublicInterface : Substitution
 
     bool isNewSolver() const
     {
-        return FFlag::LuauSolverV2 || solverMode == SolverMode::New;
+        if (FFlag::LuauAnalysisUsesSolverMode)
+        {
+            return solverMode == SolverMode::New;
+        }
+        else
+        {
+            return FFlag::LuauSolverV2 || solverMode == SolverMode::New;
+        }
     }
 
     bool isDirty(TypeId ty) override

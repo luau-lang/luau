@@ -3,7 +3,6 @@
 
 #include "Luau/IrUtils.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenChainedSpills)
 LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 
 namespace Luau
@@ -25,15 +24,11 @@ void IrValueLocationTracking::setRestoreCallback(void* context, void (*callback)
 
 bool IrValueLocationTracking::canBeRematerialized(IrCmd cmd)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
-
     return cmd == IrCmd::UINT_TO_NUM || cmd == IrCmd::INT_TO_NUM;
 }
 
 bool IrValueLocationTracking::canRematerializeArguments(IrInst& inst)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
-
     if (canBeRematerialized(inst.cmd) && OP_A(inst).kind == IrOpKind::Inst)
     {
         IrInst& depInst = function.instOp(OP_A(inst));
@@ -192,42 +187,24 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:
     case IrCmd::STORE_TVALUE:
-        if (FFlag::LuauCodegenChainedSpills)
+        // If this is not the last use of the stored value, we can restore it from this new location
+        // Additionally, even if it's a last use, it might allow its argument to be restored
+        if (OP_B(inst).kind == IrOpKind::Inst)
         {
-            // If this is not the last use of the stored value, we can restore it from this new location
-            // Additionally, even if it's a last use, it might allow its argument to be restored
-            if (OP_B(inst).kind == IrOpKind::Inst)
-            {
-                IrInst& source = function.instOp(OP_B(inst));
+            IrInst& source = function.instOp(OP_B(inst));
 
-                if (source.lastUse != instIdx || canRematerializeArguments(source))
-                    recordRestoreOp(OP_B(inst).index, OP_A(inst));
-            }
-        }
-        else
-        {
-            // If this is not the last use of the stored value, we can restore it from this new location
-            if (OP_B(inst).kind == IrOpKind::Inst && function.instOp(OP_B(inst)).lastUse != instIdx)
+            if (source.lastUse != instIdx || canRematerializeArguments(source))
                 recordRestoreOp(OP_B(inst).index, OP_A(inst));
         }
         break;
     case IrCmd::STORE_SPLIT_TVALUE:
-        if (FFlag::LuauCodegenChainedSpills)
+        // If this is not the last use of the stored value, we can restore it from this new location
+        // Additionally, even if it's a last use, it might allow its argument to be restored
+        if (OP_C(inst).kind == IrOpKind::Inst)
         {
-            // If this is not the last use of the stored value, we can restore it from this new location
-            // Additionally, even if it's a last use, it might allow its argument to be restored
-            if (OP_C(inst).kind == IrOpKind::Inst)
-            {
-                IrInst& source = function.instOp(OP_C(inst));
+            IrInst& source = function.instOp(OP_C(inst));
 
-                if (source.lastUse != instIdx || canRematerializeArguments(source))
-                    recordRestoreOp(OP_C(inst).index, OP_A(inst));
-            }
-        }
-        else
-        {
-            // If this is not the last use of the stored value, we can restore it from this new location
-            if (OP_C(inst).kind == IrOpKind::Inst && function.instOp(OP_C(inst)).lastUse != instIdx)
+            if (source.lastUse != instIdx || canRematerializeArguments(source))
                 recordRestoreOp(OP_C(inst).index, OP_A(inst));
         }
         break;
@@ -238,57 +215,34 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
 
 void IrValueLocationTracking::recordRestoreOp(uint32_t instIdx, IrOp location)
 {
-    if (FFlag::LuauCodegenChainedSpills)
+    IrInst& inst = function.instructions[instIdx];
+
+    if (location.kind == IrOpKind::VmReg)
     {
-        IrInst& inst = function.instructions[instIdx];
+        int reg = vmRegOp(location);
 
-        if (location.kind == IrOpKind::VmReg)
+        if (reg > maxReg)
+            maxReg = reg;
+
+        // Record location in register memory only if register is not captured
+        bool captured = function.cfg.captured.regs.test(reg);
+
+        if (!captured)
+            function.recordRestoreLocation(instIdx, {location, getCmdValueKind(inst.cmd), IrCmd::NOP});
+
+        vmRegValue[reg] = instIdx;
+
+        if (canBeRematerialized(inst.cmd) && OP_A(inst).kind == IrOpKind::Inst)
         {
-            int reg = vmRegOp(location);
-
-            if (reg > maxReg)
-                maxReg = reg;
-
-            // Record location in register memory only if register is not captured
-            bool captured = function.cfg.captured.regs.test(reg);
+            uint32_t depInstIdx = OP_A(inst).index;
 
             if (!captured)
-                function.recordRestoreLocation(instIdx, {location, getCmdValueKind(inst.cmd), IrCmd::NOP});
-
-            vmRegValue[reg] = instIdx;
-
-            if (canBeRematerialized(inst.cmd) && OP_A(inst).kind == IrOpKind::Inst)
-            {
-                uint32_t depInstIdx = OP_A(inst).index;
-
-                if (!captured)
-                    function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd});
-            }
-        }
-        else if (location.kind == IrOpKind::VmConst)
-        {
-            function.recordRestoreLocation(instIdx, {location, getCmdValueKind(inst.cmd)});
+                function.recordRestoreLocation(depInstIdx, {location, getCmdValueKind(inst.cmd), inst.cmd});
         }
     }
-    else
+    else if (location.kind == IrOpKind::VmConst)
     {
-        if (location.kind == IrOpKind::VmReg)
-        {
-            int reg = vmRegOp(location);
-
-            if (reg > maxReg)
-                maxReg = reg;
-
-            // Record location in register memory only if register is not captured
-            if (!function.cfg.captured.regs.test(reg))
-                function.recordRestoreOp_DEPRECATED(instIdx, location);
-
-            vmRegValue[reg] = instIdx;
-        }
-        else if (location.kind == IrOpKind::VmConst)
-        {
-            function.recordRestoreOp_DEPRECATED(instIdx, location);
-        }
+        function.recordRestoreLocation(instIdx, {location, getCmdValueKind(inst.cmd)});
     }
 }
 
@@ -320,38 +274,27 @@ void IrValueLocationTracking::invalidateRestoreOp(IrOp location, bool skipValueI
             if (inst.needsReload)
                 restoreCallback(restoreCallbackCtx, inst);
 
-            if (FFlag::LuauCodegenChainedSpills)
-            {
-                // Get the current restore location of the instruction
-                ValueRestoreLocation currRestoreLocation = function.findRestoreLocation(instIdx, /* limitToCurrentBlock */ false);
+            // Get the current restore location of the instruction
+            ValueRestoreLocation currRestoreLocation = function.findRestoreLocation(instIdx, /* limitToCurrentBlock */ false);
 
-                // If the current location is the one that is being invalidated, we can no longer restore from it
+            // If the current location is the one that is being invalidated, we can no longer restore from it
+            if (location == currRestoreLocation.op)
+                function.recordRestoreLocation(instIdx, {});
+
+            // Register loses link with instruction
+            instIdx = kInvalidInstIdx;
+
+            // Chained instruction special case
+            if (canBeRematerialized(inst.cmd) && OP_A(inst).kind == IrOpKind::Inst)
+            {
+                uint32_t depInstIdx = OP_A(inst).index;
+                IrInst& depInst = function.instructions[depInstIdx];
+
+                if (depInst.needsReload)
+                    restoreCallback(restoreCallbackCtx, depInst);
+
                 if (location == currRestoreLocation.op)
-                    function.recordRestoreLocation(instIdx, {});
-
-                // Register loses link with instruction
-                instIdx = kInvalidInstIdx;
-
-                // Chained instruction special case
-                if (canBeRematerialized(inst.cmd) && OP_A(inst).kind == IrOpKind::Inst)
-                {
-                    uint32_t depInstIdx = OP_A(inst).index;
-                    IrInst& depInst = function.instructions[depInstIdx];
-
-                    if (depInst.needsReload)
-                        restoreCallback(restoreCallbackCtx, depInst);
-
-                    if (location == currRestoreLocation.op)
-                        function.recordRestoreLocation(depInstIdx, {});
-                }
-            }
-            else
-            {
-                // Instruction loses its memory storage location
-                function.recordRestoreOp_DEPRECATED(instIdx, IrOp());
-
-                // Register loses link with instruction
-                instIdx = kInvalidInstIdx;
+                    function.recordRestoreLocation(depInstIdx, {});
             }
         }
     }
