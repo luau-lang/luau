@@ -7,7 +7,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauUnifyWithSubtyping)
+LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 
 TEST_SUITE_BEGIN("TypeInferUnknownNever");
 
@@ -328,7 +328,7 @@ TEST_CASE_FIXTURE(Fixture, "length_of_never")
 
 TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_in_any_ordering_operators")
 {
-    ScopedFastFlag _{FFlag::LuauUnifyWithSubtyping, true};
+    ScopedFastFlag _{FFlag::LuauUnifyWithSubtyping2, true};
 
     CheckResult result = check(R"(
         local function ord(x: nil, y)

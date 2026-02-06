@@ -24,8 +24,6 @@
 
 struct Proto;
 
-LUAU_FASTFLAG(LuauCodegenChainedSpills)
-
 namespace Luau
 {
 namespace CodeGen
@@ -463,10 +461,6 @@ enum class IrCmd : uint8_t
     // Converts a double number to a float
     // A: double
     NUM_TO_FLOAT,
-
-    // Converts a double number to a vector with the value in X/Y/Z
-    // A: double
-    NUM_TO_VEC_DEPRECATED,
 
     // Converts a float number to a vector with the value in X/Y/Z (use NUM_TO_FLOAT to convert from double)
     // A: float
@@ -1267,8 +1261,7 @@ struct IrFunction
     uint32_t endLocation = 0;
 
     // For each instruction, an operand that can be used to recompute the value
-    std::vector<IrOp> valueRestoreOps_DEPRECATED; // TODO: Remove with FFlagLuauCodegenChainedSpills
-    std::vector<ValueRestoreLocation> valueRestoreOps_NEW;
+    std::vector<ValueRestoreLocation> valueRestoreOps;
     std::vector<uint32_t> validRestoreOpBlocks;
 
     BytecodeTypeInfo bcOriginalTypeInfo; // Bytecode type information as loaded
@@ -1413,63 +1406,19 @@ struct IrFunction
         return uint32_t(&inst - instructions.data());
     }
 
-    void recordRestoreOp_DEPRECATED(uint32_t instIdx, IrOp location)
-    {
-        CODEGEN_ASSERT(!FFlag::LuauCodegenChainedSpills);
-
-        if (instIdx >= valueRestoreOps_DEPRECATED.size())
-            valueRestoreOps_DEPRECATED.resize(instIdx + 1);
-
-        valueRestoreOps_DEPRECATED[instIdx] = location;
-    }
-
-    IrOp findRestoreOp_DEPRECATED(uint32_t instIdx, bool limitToCurrentBlock) const
-    {
-        CODEGEN_ASSERT(!FFlag::LuauCodegenChainedSpills);
-
-        if (instIdx >= valueRestoreOps_DEPRECATED.size())
-            return {};
-
-        // When spilled, values can only reference restore operands in the current block chain
-        if (limitToCurrentBlock)
-        {
-            for (uint32_t blockIdx : validRestoreOpBlocks)
-            {
-                const IrBlock& block = blocks[blockIdx];
-
-                if (instIdx >= block.start && instIdx <= block.finish)
-                    return valueRestoreOps_DEPRECATED[instIdx];
-            }
-
-            return {};
-        }
-
-        return valueRestoreOps_DEPRECATED[instIdx];
-    }
-
-    IrOp findRestoreOp_DEPRECATED(const IrInst& inst, bool limitToCurrentBlock) const
-    {
-        CODEGEN_ASSERT(!FFlag::LuauCodegenChainedSpills);
-
-        return findRestoreOp_DEPRECATED(getInstIndex(inst), limitToCurrentBlock);
-    }
-
     void recordRestoreLocation(uint32_t instIdx, ValueRestoreLocation location)
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
         CODEGEN_ASSERT(location.op.kind == IrOpKind::None || location.op.kind == IrOpKind::VmReg || location.op.kind == IrOpKind::VmConst);
 
-        if (instIdx >= valueRestoreOps_NEW.size())
-            valueRestoreOps_NEW.resize(instIdx + 1);
+        if (instIdx >= valueRestoreOps.size())
+            valueRestoreOps.resize(instIdx + 1);
 
-        valueRestoreOps_NEW[instIdx] = location;
+        valueRestoreOps[instIdx] = location;
     }
 
     ValueRestoreLocation findRestoreLocation(uint32_t instIdx, bool limitToCurrentBlock) const
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
-
-        if (instIdx >= valueRestoreOps_NEW.size())
+        if (instIdx >= valueRestoreOps.size())
             return {};
 
         // When spilled, values can only reference restore operands in the current block chain
@@ -1480,26 +1429,22 @@ struct IrFunction
                 const IrBlock& block = blocks[blockIdx];
 
                 if (instIdx >= block.start && instIdx <= block.finish)
-                    return valueRestoreOps_NEW[instIdx];
+                    return valueRestoreOps[instIdx];
             }
 
             return {};
         }
 
-        return valueRestoreOps_NEW[instIdx];
+        return valueRestoreOps[instIdx];
     }
 
     ValueRestoreLocation findRestoreLocation(const IrInst& inst, bool limitToCurrentBlock) const
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
-
         return findRestoreLocation(getInstIndex(inst), limitToCurrentBlock);
     }
 
     bool hasRestoreLocation(const IrInst& inst, bool limitToCurrentBlock) const
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
-
         return findRestoreLocation(getInstIndex(inst), limitToCurrentBlock).op.kind != IrOpKind::None;
     }
 

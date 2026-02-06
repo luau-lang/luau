@@ -15,7 +15,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINT(LuauSolverConstraintLimit)
-LUAU_FASTFLAG(LuauUnifyWithSubtyping)
+LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 
@@ -899,7 +899,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "internal_type_errors_are_only_reported_once"
         {FFlag::DebugLuauMagicTypes, true},
         // With this flag on we no longer try to unify the members of the return
         // table with `any`, so we don't end up being unable to solve constraints.
-        {FFlag::LuauUnifyWithSubtyping, true},
+        {FFlag::LuauUnifyWithSubtyping2, true},
     };
 
     fileResolver.source["game/A"] = R"(

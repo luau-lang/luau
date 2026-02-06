@@ -6,6 +6,7 @@
 #include "Luau/TypePack.h"
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 // Test Types for equivalence
 // More complex than we'd like because Types can self-reference.
@@ -131,7 +132,7 @@ bool areEqual(SeenSet& seen, const TableType& lhs, const TableType& rhs)
         if (l->first != r->first)
             return false;
 
-        if (FFlag::LuauSolverV2)
+        if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
         {
             if (l->second.readTy && r->second.readTy)
             {

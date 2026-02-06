@@ -14,7 +14,6 @@
 
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState2)
-LUAU_FASTFLAG(LuauCodegenChainLink)
 
 namespace Luau
 {
@@ -702,10 +701,8 @@ void IrBuilder::checkSafeEnv(int pcpos)
     inst(IrCmd::CHECK_SAFE_ENV, vmExit(pcpos));
 }
 
-void IrBuilder::clone_NEW(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator)
+void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenChainLink);
-
     DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
 
     auto redirect = [&instRedir](IrOp& op)
@@ -756,58 +753,6 @@ void IrBuilder::clone_NEW(std::vector<uint32_t> sourceIdxs, bool removeCurrentTe
             // Reconstruct the fresh clone
             inst(clone.cmd, clone.ops);
         }
-    }
-}
-
-void IrBuilder::clone_DEPRECATED(const IrBlock& source, bool removeCurrentTerminator)
-{
-    CODEGEN_ASSERT(!FFlag::LuauCodegenChainLink);
-
-    DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
-
-    auto redirect = [&instRedir](IrOp& op)
-    {
-        if (op.kind == IrOpKind::Inst)
-        {
-            if (const uint32_t* newIndex = instRedir.find(op.index))
-                op.index = *newIndex;
-            else
-                CODEGEN_ASSERT(!"Values can only be used if they are defined in the same block");
-        }
-    };
-
-    if (removeCurrentTerminator && inTerminatedBlock)
-    {
-        IrBlock& active = function.blocks[activeBlockIdx];
-        IrInst& term = function.instructions[active.finish];
-
-        kill(function, term);
-        inTerminatedBlock = false;
-    }
-
-    for (uint32_t index = source.start; index <= source.finish; index++)
-    {
-        CODEGEN_ASSERT(index < function.instructions.size());
-        IrInst clone = function.instructions[index];
-
-        // Skip pseudo instructions to make clone more compact, but validate that they have no users
-        if (isPseudo(clone.cmd))
-        {
-            CODEGEN_ASSERT(clone.useCount == 0);
-            continue;
-        }
-
-        for (auto& op : clone.ops)
-            redirect(op);
-
-        for (auto& op : clone.ops)
-            addUse(function, op);
-
-        // Instructions that referenced the original will have to be adjusted to use the clone
-        instRedir[index] = uint32_t(function.instructions.size());
-
-        // Reconstruct the fresh clone
-        inst(clone.cmd, clone.ops);
     }
 }
 

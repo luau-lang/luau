@@ -557,10 +557,11 @@ AstExprInstantiate::AstExprInstantiate(const Location& location, AstExpr* expr, 
 
 void AstExprInstantiate::visit(AstVisitor* visitor)
 {
-    expr->visit(visitor);
+    LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
 
     if (visitor->visit(this))
     {
+        expr->visit(visitor);
         visitTypeOrPackArray(visitor, typeArguments);
     }
 }

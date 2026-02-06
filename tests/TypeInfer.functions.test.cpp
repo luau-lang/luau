@@ -25,11 +25,12 @@ LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauPushTypeConstraintLambdas3)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
-LUAU_FASTFLAG(LuauUnifyWithSubtyping)
+LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTFLAG(LuauPushTypeConstraintStripNilFromFunction)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks)
 LUAU_FASTFLAG(LuauContainsAnyGenericDoesntTraverseIntoExtern)
+LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -3024,7 +3025,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_ast_stat_fun")
 
 TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
 {
-    ScopedFastFlag _{FFlag::LuauUnifyWithSubtyping, true};
+    ScopedFastFlag _{FFlag::LuauUnifyWithSubtyping2, true};
 
     CheckResult result = check(R"(
         function foo(player)
@@ -3732,7 +3733,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2125")
         mrrp({
             meow = 5,
         })
-
     )"));
 }
 
@@ -3934,6 +3934,181 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "bidirectional_function_statement_inference
 
     CHECK_EQ("ClassWithGenericMethod", toString(requireTypeAtPosition({4, 23})));
     CHECK_EQ("number", toString(requireTypeAtPosition({6, 23})));
+}
+
+
+TEST_CASE_FIXTURE(Fixture, "table_containing_factorial_standalone")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local coolmath = {}
+        function coolmath.factorial(n: number)
+            if n <= 1 then
+                return 1
+            end
+            return coolmath.factorial(n - 1) * n
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_containing_factorial_assign_later")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    CheckResult results = check(R"(
+        local coolmath = {}
+        function coolmath.factorial(n: number)
+            if n <= 1 then
+                return 1
+            end
+            return coolmath.factorial(n - 1) * n
+        end
+
+        coolmath.factorial = function (s: string) end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypeMismatch>(results.errors[0]);
+    CHECK_EQ("(number) -> number", toString(err->wantedType));
+    CHECK_EQ("(string) -> ()", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_containing_factorial_assign_with_correct_typing")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    CheckResult results = check(R"(
+        local coolmath = {}
+        function coolmath.factorial(n: number)
+            if n <= 1 then
+                return 1
+            end
+            return coolmath.factorial(n - 1) * n
+        end
+
+        coolmath.factorial = function (n: number) return n end
+        coolmath.factorial = "not a function"
+    )");
+
+    // In the future, we should consider disallowing assignment to
+    // table members that were initialized as function statements.
+    // But for now, we allow assignment as long as the type of the
+    // RHS is compatible.
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypeMismatch>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("(number) -> number", toString(err->wantedType));
+    CHECK_EQ("string", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_static_method_must_refer_to_the_ungeneralized_type")
+{
+    ScopedFastFlag _{FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals, true};
+
+    CheckResult result = check(R"(
+        local lexer = {}
+        local subContent: string = ""
+        function lexer.scan(s: string)
+            for innerToken, innerContent in lexer.scan(subContent) do
+                table.insert(innerToken, innerContent)
+            end
+            return {}, nil, nil
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2216_recursive_global_function_works_as_expected")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    CheckResult result = check(R"(
+        type tb_any = {[any]:any}
+        function flatten(... : tb_any) : tb_any
+            local out = {}
+            local par = {...}
+            for i = 1,#par do
+                if par[i] and typeof(par[i]) == "table" then
+                    for n,v in par[i] do
+                        if typeof(n) == "number" then
+                            for m,u in flatten(v) do
+                                out[m] = u -- type error
+                            end
+                        else
+                            out[n] = v
+                        end
+                    end
+                end
+            end
+            return out
+        end
+    )");
+
+    // Previously this failed to even solve constraints!
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_187542_recursive_call_in_loop")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauUnifyWithSubtyping2, true},
+        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    CheckResult result = check(R"(
+        function a(b)
+            if true then return b end
+            while false do
+                b = a(b)
+            end
+
+            if true then return b end
+        end
+    )");
+
+    // This will have some other errors, but all we care about is that
+    // this finished solving all constraints without forcing any.
+    // FIXME CLI-188000: We infer `a: (never) -> never`, which is incorrect.
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    LUAU_REQUIRE_NO_ERROR(result, ConstraintSolvingIncompleteError);
+}
+
+TEST_CASE_FIXTURE(Fixture, "global_function_redefinition")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true}
+    };
+
+    CheckResult result = check(R"(
+        function fact(n: number)
+            return if n < 1 then 1 else n * fact(n - 1)
+        end
+
+        fact = "huh"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    CHECK_EQ("(number) -> number", toString(err->wantedType));
+    CHECK_EQ("string", toString(err->givenType));
 }
 
 TEST_SUITE_END();
