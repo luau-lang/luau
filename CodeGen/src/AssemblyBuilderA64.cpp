@@ -584,30 +584,18 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, Label& label)
 
 void AssemblyBuilderA64::fmov(RegisterA64 dst, RegisterA64 src)
 {
-    if (FFlag::LuauCodegenUpvalueLoadProp2 || FFlag::LuauCodegenSplitFloat)
-    {
-        if (dst.kind == KindA64::d && src.kind == KindA64::d)
-            placeR1("fmov", dst, src, 0b00'11110'01'1'0000'00'10000);
-        else if (dst.kind == KindA64::d && src.kind == KindA64::x)
-            placeR1("fmov", dst, src, 0b00'11110'01'1'00'111'000000);
-        else if (dst.kind == KindA64::x && src.kind == KindA64::d)
-            placeR1("fmov", dst, src, 0b00'11110'01'1'00'110'000000);
-        else if (FFlag::LuauCodegenSplitFloat && dst.kind == KindA64::s && src.kind == KindA64::s)
-            placeR1("fmov", dst, src, 0b00'11110'00'1'0000'00'10000);
-        else if (FFlag::LuauCodegenSplitFloat && dst.kind == KindA64::s && src.kind == KindA64::w)
-            placeR1("fmov", dst, src, 0b00'11110'00'1'00'111'000000);
-        else
-            CODEGEN_ASSERT(!"Unsupported fmov kind");
-    }
+    if (dst.kind == KindA64::d && src.kind == KindA64::d)
+        placeR1("fmov", dst, src, 0b00'11110'01'1'0000'00'10000);
+    else if (dst.kind == KindA64::d && src.kind == KindA64::x)
+        placeR1("fmov", dst, src, 0b00'11110'01'1'00'111'000000);
+    else if (dst.kind == KindA64::x && src.kind == KindA64::d)
+        placeR1("fmov", dst, src, 0b00'11110'01'1'00'110'000000);
+    else if (dst.kind == KindA64::s && src.kind == KindA64::s)
+        placeR1("fmov", dst, src, 0b00'11110'00'1'0000'00'10000);
+    else if (dst.kind == KindA64::s && src.kind == KindA64::w)
+        placeR1("fmov", dst, src, 0b00'11110'00'1'00'111'000000);
     else
-    {
-        CODEGEN_ASSERT(dst.kind == KindA64::d && (src.kind == KindA64::d || src.kind == KindA64::x));
-
-        if (src.kind == KindA64::d)
-            placeR1("fmov", dst, src, 0b000'11110'01'1'0000'00'10000);
-        else
-            placeR1("fmov", dst, src, 0b000'11110'01'1'00'111'000000);
-    }
+        CODEGEN_ASSERT(!"Unsupported fmov kind");
 }
 
 void AssemblyBuilderA64::fmov(RegisterA64 dst, double src)

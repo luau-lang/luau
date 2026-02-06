@@ -69,7 +69,8 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
     ErrorVec& errors,
     TypeId ty,
     const std::string& name,
-    Location location
+    Location location,
+    bool useNewSolver
 );
 std::optional<TypeId> findTablePropertyRespectingMeta(
     NotNull<BuiltinTypes> builtinTypes,
@@ -77,7 +78,8 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
     TypeId ty,
     const std::string& name,
     ValueContext context,
-    Location location
+    Location location,
+    bool useNewSolver
 );
 
 bool occursCheck(TypeId needle, TypeId haystack);

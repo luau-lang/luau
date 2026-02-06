@@ -16,8 +16,6 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenExplicitUint16)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLocationEndFix)
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
-LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
-LUAU_FASTFLAG(LuauCodegenSplitFloat)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAG(LuauCodegenLinearNonNumComp)
 
@@ -325,22 +323,10 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::LOAD_FLOAT:
     {
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            inst.regA64 = regs.allocReg(KindA64::s, index);
-            AddressA64 addr = tempAddr(OP_A(inst), intOp(OP_B(inst)));
+        inst.regA64 = regs.allocReg(KindA64::s, index);
+        AddressA64 addr = tempAddr(OP_A(inst), intOp(OP_B(inst)));
 
-            build.ldr(inst.regA64, addr);
-        }
-        else
-        {
-            inst.regA64 = regs.allocReg(KindA64::d, index);
-            RegisterA64 temp = castReg(KindA64::s, inst.regA64); // safe to alias a fresh register
-            AddressA64 addr = tempAddr(OP_A(inst), intOp(OP_B(inst)));
-
-            build.ldr(temp, addr);
-            build.fcvt(inst.regA64, temp);
-        }
+        build.ldr(inst.regA64, addr);
         break;
     }
     case IrCmd::LOAD_TVALUE:
@@ -514,36 +500,16 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::STORE_VECTOR:
     {
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            RegisterA64 temp1 = tempFloat(OP_B(inst));
-            RegisterA64 temp2 = tempFloat(OP_C(inst));
-            RegisterA64 temp3 = tempFloat(OP_D(inst));
+        RegisterA64 temp1 = tempFloat(OP_B(inst));
+        RegisterA64 temp2 = tempFloat(OP_C(inst));
+        RegisterA64 temp3 = tempFloat(OP_D(inst));
 
-            AddressA64 addr = tempAddr(OP_A(inst), offsetof(TValue, value));
-            CODEGEN_ASSERT(addr.kind == AddressKindA64::imm && addr.data % 4 == 0 && unsigned(addr.data + 8) / 4 <= AddressA64::kMaxOffset);
+        AddressA64 addr = tempAddr(OP_A(inst), offsetof(TValue, value));
+        CODEGEN_ASSERT(addr.kind == AddressKindA64::imm && addr.data % 4 == 0 && unsigned(addr.data + 8) / 4 <= AddressA64::kMaxOffset);
 
-            build.str(temp1, AddressA64(addr.base, addr.data + 0));
-            build.str(temp2, AddressA64(addr.base, addr.data + 4));
-            build.str(temp3, AddressA64(addr.base, addr.data + 8));
-        }
-        else
-        {
-            RegisterA64 temp1 = tempDouble(OP_B(inst));
-            RegisterA64 temp2 = tempDouble(OP_C(inst));
-            RegisterA64 temp3 = tempDouble(OP_D(inst));
-            RegisterA64 temp4 = regs.allocTemp(KindA64::s);
-
-            AddressA64 addr = tempAddr(OP_A(inst), offsetof(TValue, value));
-            CODEGEN_ASSERT(addr.kind == AddressKindA64::imm && addr.data % 4 == 0 && unsigned(addr.data + 8) / 4 <= AddressA64::kMaxOffset);
-
-            build.fcvt(temp4, temp1);
-            build.str(temp4, AddressA64(addr.base, addr.data + 0));
-            build.fcvt(temp4, temp2);
-            build.str(temp4, AddressA64(addr.base, addr.data + 4));
-            build.fcvt(temp4, temp3);
-            build.str(temp4, AddressA64(addr.base, addr.data + 8));
-        }
+        build.str(temp1, AddressA64(addr.base, addr.data + 0));
+        build.str(temp2, AddressA64(addr.base, addr.data + 4));
+        build.str(temp3, AddressA64(addr.base, addr.data + 8));
 
         if (OP_E(inst).kind != IrOpKind::None)
         {
@@ -1083,65 +1049,29 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::DOT_VEC:
     {
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            inst.regA64 = regs.allocReg(KindA64::s, index);
+        inst.regA64 = regs.allocReg(KindA64::s, index);
 
-            RegisterA64 temp = regs.allocTemp(KindA64::q);
-            RegisterA64 temps = castReg(KindA64::s, temp);
+        RegisterA64 temp = regs.allocTemp(KindA64::q);
+        RegisterA64 temps = castReg(KindA64::s, temp);
 
-            build.fmul(temp, regOp(OP_A(inst)), regOp(OP_B(inst)));
-            build.faddp(inst.regA64, temps); // x+y
-            build.dup_4s(temp, temp, 2);
-            build.fadd(inst.regA64, inst.regA64, temps); // +z
-        }
-        else
-        {
-            inst.regA64 = regs.allocReg(KindA64::d, index);
-
-            RegisterA64 temp = regs.allocTemp(KindA64::q);
-            RegisterA64 temps = castReg(KindA64::s, temp);
-            RegisterA64 regs = castReg(KindA64::s, inst.regA64);
-
-            build.fmul(temp, regOp(OP_A(inst)), regOp(OP_B(inst)));
-            build.faddp(regs, temps); // x+y
-            build.dup_4s(temp, temp, 2);
-            build.fadd(regs, regs, temps); // +z
-            build.fcvt(inst.regA64, regs);
-        }
+        build.fmul(temp, regOp(OP_A(inst)), regOp(OP_B(inst)));
+        build.faddp(inst.regA64, temps); // x+y
+        build.dup_4s(temp, temp, 2);
+        build.fadd(inst.regA64, inst.regA64, temps); // +z
         break;
     }
     case IrCmd::EXTRACT_VEC:
     {
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            inst.regA64 = regs.allocReg(KindA64::s, index);
+        inst.regA64 = regs.allocReg(KindA64::s, index);
 
-            if (intOp(OP_B(inst)) == 0)
-            {
-                // Lane vN.s[0] can just be read directly as sN
-                build.fmov(inst.regA64, castReg(KindA64::s, regOp(OP_A(inst))));
-            }
-            else
-            {
-                build.dup_4s(inst.regA64, regOp(OP_A(inst)), intOp(OP_B(inst)));
-            }
+        if (intOp(OP_B(inst)) == 0)
+        {
+            // Lane vN.s[0] can just be read directly as sN
+            build.fmov(inst.regA64, castReg(KindA64::s, regOp(OP_A(inst))));
         }
         else
         {
-            inst.regA64 = regs.allocReg(KindA64::d, index);
-
-            if (intOp(OP_B(inst)) == 0)
-            {
-                // Lane vN.s[0] can just be read directly as sN
-                build.fcvt(inst.regA64, castReg(KindA64::s, regOp(OP_A(inst))));
-            }
-            else
-            {
-                RegisterA64 temp = regs.allocTemp(KindA64::s);
-                build.dup_4s(temp, regOp(OP_A(inst)), intOp(OP_B(inst)));
-                build.fcvt(inst.regA64, temp);
-            }
+            build.dup_4s(inst.regA64, regOp(OP_A(inst)), intOp(OP_B(inst)));
         }
         break;
     }
@@ -1604,8 +1534,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         inst.regA64 = regs.takeReg(w0, index);
 
-        if (FFlag::LuauCodegenNumIntFolds2)
-            build.ubfx(inst.regA64, inst.regA64, 0, 32); // Ensure high register bits are cleared
+        build.ubfx(inst.regA64, inst.regA64, 0, 32); // Ensure high register bits are cleared
         break;
     }
     case IrCmd::STRING_LEN:
@@ -1766,40 +1695,6 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.fcvt(inst.regA64, regOp(OP_A(inst)));
         break;
-    case IrCmd::NUM_TO_VEC_DEPRECATED:
-    {
-        inst.regA64 = regs.allocReg(KindA64::q, index);
-
-        if (OP_A(inst).kind == IrOpKind::Constant)
-        {
-            float value = float(doubleOp(OP_A(inst)));
-            uint32_t asU32;
-            static_assert(sizeof(asU32) == sizeof(value), "Expecting float to be 32-bit");
-            memcpy(&asU32, &value, sizeof(value));
-
-            if (AssemblyBuilderA64::isFmovSupportedFp64(value))
-            {
-                build.fmov(inst.regA64, double(value));
-            }
-            else
-            {
-                RegisterA64 temp = regs.allocTemp(KindA64::x);
-
-                uint32_t vec[4] = {asU32, asU32, asU32, 0};
-                build.adr(temp, vec, sizeof(vec));
-                build.ldr(inst.regA64, temp);
-            }
-        }
-        else
-        {
-            RegisterA64 tempd = tempDouble(OP_A(inst));
-            RegisterA64 temps = regs.allocTemp(KindA64::s);
-
-            build.fcvt(temps, tempd);
-            build.dup_4s(inst.regA64, castReg(KindA64::q, temps), 0);
-        }
-        break;
-    }
     case IrCmd::FLOAT_TO_VEC:
     {
         inst.regA64 = regs.allocReg(KindA64::q, index);
@@ -2402,7 +2297,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CHECK_BUFFER_LEN:
     {
-        if (FFlag::LuauCodegenBufferRangeMerge3 && FFlag::LuauCodegenNumIntFolds2)
+        if (FFlag::LuauCodegenBufferRangeMerge3)
         {
             int minOffset = intOp(OP_C(inst));
             int maxOffset = intOp(OP_D(inst));
@@ -2517,8 +2412,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
             if (OP_B(inst).kind == IrOpKind::Inst)
             {
-                if (FFlag::LuauCodegenNumIntFolds2)
-                    CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
+                CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
 
                 if (accessSize == 1)
                 {
@@ -3326,43 +3220,19 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
     case IrCmd::BUFFER_READF32:
     {
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            inst.regA64 = regs.allocReg(KindA64::s, index);
-            AddressA64 addr = tempAddrBuffer(OP_A(inst), OP_B(inst), OP_C(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_C(inst)));
+        inst.regA64 = regs.allocReg(KindA64::s, index);
+        AddressA64 addr = tempAddrBuffer(OP_A(inst), OP_B(inst), OP_C(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_C(inst)));
 
-            build.ldr(inst.regA64, addr);
-        }
-        else
-        {
-            inst.regA64 = regs.allocReg(KindA64::d, index);
-            RegisterA64 temp = castReg(KindA64::s, inst.regA64); // safe to alias a fresh register
-            AddressA64 addr = tempAddrBuffer(OP_A(inst), OP_B(inst), OP_C(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_C(inst)));
-
-            build.ldr(temp, addr);
-            build.fcvt(inst.regA64, temp);
-        }
+        build.ldr(inst.regA64, addr);
         break;
     }
 
     case IrCmd::BUFFER_WRITEF32:
     {
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            RegisterA64 temp = tempFloat(OP_C(inst));
-            AddressA64 addr = tempAddrBuffer(OP_A(inst), OP_B(inst), OP_D(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_D(inst)));
+        RegisterA64 temp = tempFloat(OP_C(inst));
+        AddressA64 addr = tempAddrBuffer(OP_A(inst), OP_B(inst), OP_D(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_D(inst)));
 
-            build.str(temp, addr);
-        }
-        else
-        {
-            RegisterA64 temp1 = tempDouble(OP_C(inst));
-            RegisterA64 temp2 = regs.allocTemp(KindA64::s);
-            AddressA64 addr = tempAddrBuffer(OP_A(inst), OP_B(inst), OP_D(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_D(inst)));
-
-            build.fcvt(temp2, temp1);
-            build.str(temp2, addr);
-        }
+        build.str(temp, addr);
         break;
     }
 
@@ -3735,8 +3605,7 @@ AddressA64 IrLoweringA64::tempAddrBuffer(IrOp bufferOp, IrOp indexOp, uint8_t ta
 
     if (indexOp.kind == IrOpKind::Inst)
     {
-        if (FFlag::LuauCodegenNumIntFolds2)
-            CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(indexOp).cmd));
+        CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(indexOp).cmd));
 
         RegisterA64 temp = regs.allocTemp(KindA64::x);
         build.add(temp, regOp(bufferOp), regOp(indexOp)); // implicit uxtw

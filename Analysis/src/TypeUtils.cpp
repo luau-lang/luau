@@ -15,6 +15,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauContainsAnyGenericDoesntTraverseIntoExtern)
+LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 namespace Luau
 {
@@ -87,10 +88,11 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
     ErrorVec& errors,
     TypeId ty,
     const std::string& name,
-    Location location
+    Location location,
+    bool useNewSolver
 )
 {
-    return findTablePropertyRespectingMeta(builtinTypes, errors, ty, name, ValueContext::RValue, location);
+    return findTablePropertyRespectingMeta(builtinTypes, errors, ty, name, ValueContext::RValue, location, useNewSolver);
 }
 
 std::optional<TypeId> findTablePropertyRespectingMeta(
@@ -99,7 +101,8 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
     TypeId ty,
     const std::string& name,
     ValueContext context,
-    Location location
+    Location location,
+    bool useNewSolver
 )
 {
     if (get<AnyType>(ty))
@@ -136,7 +139,25 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
             const auto& fit = itt->props.find(name);
             if (fit != itt->props.end())
             {
-                if (FFlag::LuauSolverV2)
+                // This is only used in the old solver?
+                if (FFlag::LuauAnalysisUsesSolverMode)
+                {
+                    if (useNewSolver)
+                    {
+                        switch (context)
+                        {
+                        case ValueContext::RValue:
+                            return fit->second.readTy;
+                        case ValueContext::LValue:
+                            return fit->second.writeTy;
+                        }
+                    }
+                    else
+                    {
+                        return fit->second.readTy;
+                    }
+                }
+                else if (FFlag::LuauSolverV2)
                 {
                     switch (context)
                     {
