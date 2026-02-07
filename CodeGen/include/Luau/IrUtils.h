@@ -156,7 +156,6 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::NUM_TO_UINT:
     case IrCmd::FLOAT_TO_NUM:
     case IrCmd::NUM_TO_FLOAT:
-    case IrCmd::NUM_TO_VEC_DEPRECATED:
     case IrCmd::FLOAT_TO_VEC:
     case IrCmd::TAG_VECTOR:
     case IrCmd::TRUNCATE_UINT:
@@ -285,6 +284,7 @@ inline IrCondition getNegatedCondition(IrCondition cond)
 }
 
 IrValueKind getCmdValueKind(IrCmd cmd);
+IrValueKind getConstValueKind(const IrConst& constant);
 
 template<typename F>
 void visitArguments(IrInst& inst, F&& func)

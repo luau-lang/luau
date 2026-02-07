@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Frontend.h"
 #include "Luau/Parser.h"

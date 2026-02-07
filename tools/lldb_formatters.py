@@ -5,6 +5,16 @@ import lldb
 # HACK: LLDB's python API doesn't afford anything helpful for getting at variadic template parameters.
 # We're forced to resort to parsing names as strings.
 
+def read_non_cstring_from_data(data):
+    str_text = ""
+    for c in data.uint8s:
+        str_text += chr(c)
+
+    return str_text
+
+def create_quoted_escaped_c_str(s):
+    """Given a string, this function quotes the string and escapes any special characters (e.g. '\n', '\t')"""
+    return f'"{repr(s)[1:-1]}"'
 
 def templateParams(s):
     depth = 0
@@ -387,3 +397,57 @@ def luau_typepath_property_summary(valobj, internal_dict, options):
     result += name
     result += "]"
     return result
+
+def luau_tstring_summary(valobj, internal_dict):
+    str_start = valobj.GetChildMemberWithName("data")
+    str_len = valobj.GetChildMemberWithName("len").GetValueAsUnsigned(0)
+    str_data = read_non_cstring_from_data(str_start.GetPointeeData(0, str_len))
+    return create_quoted_escaped_c_str(str_data)
+
+def luau_tvalue_summary(valobj, internal_dict):
+    if valobj.GetType().IsPointerType():
+        valobj = valobj.Dereference()
+    type_val = valobj.GetChildMemberWithName("tt").GetValueAsUnsigned(0)
+
+    type_map = [
+    'TNIL',
+    'TBOOLEAN',
+    'TLIGHTUSERDATA',
+    'TNUMBER',
+    'TVECTOR',
+    'TSTRING',
+    'TTABLE',
+    'TFUNCTION',
+    'TUSERDATA',
+    'TTHREAD',
+    'TBUFFER',
+    'TPROTO',
+    'TUPVAL',
+    'TDEADKEY',
+    ]
+
+    type_name = f"{type_map[type_val] if type_val < len(type_map) else '<invalid type>'}"
+
+    if type_name == 'TBOOLEAN':
+        bool_val = valobj.GetChildMemberWithName("value").GetChildMemberWithName("b").GetValueAsUnsigned(0)
+        bool_str = ["false", "true"][bool_val]
+        return f"{bool_str} ({type_name})"
+    elif type_name == 'TNUMBER':
+        num_val = valobj.GetChildMemberWithName("value").GetChildMemberWithName("n")
+        return f"{num_val.GetValue()} ({type_name})"
+    elif type_name == 'TVECTOR':
+        target = valobj.GetTarget()
+        float_type = target.GetBasicType(lldb.eBasicTypeFloat)
+
+        x_val = valobj.GetChildMemberWithName("value").GetChildMemberWithName("v").GetChildAtIndex(0).GetValue()
+        y_val = valobj.GetChildMemberWithName("value").GetChildMemberWithName("v").GetChildAtIndex(1).GetValue()
+        z_val_addr = valobj.GetChildMemberWithName("extra").GetChildAtIndex(0).GetAddress()
+        z_val = target.CreateValueFromAddress("z", z_val_addr, float_type).GetValue()
+        return f"({x_val}, {y_val}, {z_val}) ({type_name})"
+    elif type_name == 'TSTRING':
+        addr = valobj.GetChildMemberWithName("value").GetChildMemberWithName("gc").GetValueAsUnsigned(0)
+        str_val = valobj.EvaluateExpression(f"(TString*){addr}")
+        str_summary = str_val.GetSummary()
+        return f"{str_summary} ({type_name})"
+
+    return type_name

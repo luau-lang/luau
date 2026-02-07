@@ -2048,7 +2048,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 std::optional<TypeId> TypeChecker::findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location, bool addErrors)
 {
     ErrorVec errors;
-    auto result = Luau::findTablePropertyRespectingMeta(builtinTypes, errors, lhsType, name, location);
+    auto result = Luau::findTablePropertyRespectingMeta(builtinTypes, errors, lhsType, name, location, /* useNewSolver */ false);
     if (addErrors)
         reportErrors(errors);
     return result;

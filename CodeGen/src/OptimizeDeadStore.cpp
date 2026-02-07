@@ -10,9 +10,9 @@
 #include "lobject.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenGcoDse2)
-LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDsoPairTrackFix)
+LUAU_FASTFLAGVARIABLE(LuauCodegenDsoTagOverlayFix)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
@@ -463,6 +463,7 @@ static bool tryReplaceTagWithFullStore(
                 replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, {targetOp, tagOp, prevValueOp}});
             }
 
+            CODEGEN_ASSERT(regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx);
             state.killTValueStore(regInfo);
 
             regInfo.tvalueInstIdx = instIndex;
@@ -482,6 +483,7 @@ static bool tryReplaceTagWithFullStore(
                 replace(function, block, instIndex, IrInst{IrCmd::STORE_VECTOR, {targetOp, prevValueX, prevValueY, prevValueZ, tagOp}});
             }
 
+            CODEGEN_ASSERT(regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx);
             state.killTValueStore(regInfo);
 
             regInfo.tvalueInstIdx = instIndex;
@@ -536,6 +538,7 @@ static bool tryReplaceValueWithFullStore(
             CODEGEN_ASSERT(OP_D(prev).kind == IrOpKind::None);
             replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, {targetOp, prevTagOp, valueOp}});
 
+            CODEGEN_ASSERT(regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx);
             state.killTValueStore(regInfo);
 
             regInfo.tvalueInstIdx = instIndex;
@@ -550,16 +553,19 @@ static bool tryReplaceValueWithFullStore(
             CODEGEN_ASSERT(regInfo.knownTag == prevTag);
             replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, {targetOp, prevTagOp, valueOp}});
 
+            CODEGEN_ASSERT(regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx);
             state.killTValueStore(regInfo);
 
             regInfo.tvalueInstIdx = instIndex;
             return true;
         }
-        else if (FFlag::LuauCodegenDsoPairTrackFix && prev.cmd == IrCmd::STORE_TVALUE && regInfo.knownTag != kUnknownTag)
+        else if (FFlag::LuauCodegenDsoPairTrackFix && prev.cmd == IrCmd::STORE_TVALUE && regInfo.knownTag != kUnknownTag &&
+                 (!FFlag::LuauCodegenDsoTagOverlayFix || regInfo.tagInstIdx == kInvalidInstIdx))
         {
             IrOp prevTagOp = build.constTag(regInfo.knownTag);
             replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, {targetOp, prevTagOp, valueOp}});
 
+            CODEGEN_ASSERT(regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx);
             state.killTValueStore(regInfo);
 
             regInfo.tvalueInstIdx = instIndex;
@@ -615,6 +621,7 @@ static bool tryReplaceVectorValueWithFullStore(
             CODEGEN_ASSERT(storeInst.cmd == IrCmd::STORE_VECTOR);
             replace(function, OP_E(storeInst), prevTagOp);
 
+            CODEGEN_ASSERT(regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx);
             state.killTValueStore(regInfo);
 
             regInfo.tvalueInstIdx = instIndex;
@@ -632,6 +639,7 @@ static bool tryReplaceVectorValueWithFullStore(
             CODEGEN_ASSERT(storeInst.cmd == IrCmd::STORE_VECTOR);
             replace(function, OP_E(storeInst), prevTagOp);
 
+            CODEGEN_ASSERT(regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx);
             state.killTValueStore(regInfo);
 
             regInfo.tvalueInstIdx = instIndex;
@@ -902,7 +910,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         state.checkLiveIns(OP_B(inst));
         break;
     case IrCmd::CHECK_BUFFER_LEN:
-        if (FFlag::LuauCodegenBufferRangeMerge3 && FFlag::LuauCodegenNumIntFolds2)
+        if (FFlag::LuauCodegenBufferRangeMerge3)
             state.checkLiveIns(OP_F(inst));
         else
             state.checkLiveIns(OP_D(inst));
