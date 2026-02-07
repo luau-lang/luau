@@ -3654,7 +3654,7 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
 
     if (auto tt = getTableType(ty))
     {
-        if (auto resTy = findTablePropertyRespectingMeta(builtinTypes, errors, ty, prop, context, location))
+        if (auto resTy = findTablePropertyRespectingMeta(builtinTypes, errors, ty, prop, context, location, /* useNewSolver */ true))
             return {NormalizationResult::True, resTy};
 
         if (tt->indexer)

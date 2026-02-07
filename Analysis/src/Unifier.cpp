@@ -2622,7 +2622,7 @@ void Unifier::tryUnifyWithAny(TypePackId subTy, TypePackId anyTp)
 
 std::optional<TypeId> Unifier::findTablePropertyRespectingMeta(TypeId lhsType, Name name)
 {
-    return Luau::findTablePropertyRespectingMeta(builtinTypes, errors, lhsType, name, location);
+    return Luau::findTablePropertyRespectingMeta(builtinTypes, errors, lhsType, name, location, /* useNewSolver */ false);
 }
 
 TxnLog Unifier::combineLogsIntoUnion(std::vector<TxnLog> logs)

@@ -36,8 +36,7 @@ struct IrBuilder
 
     // Clones all instructions into the current block
     // Source block that is cloned cannot use values coming in from a predecessor
-    void clone_NEW(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator);
-    void clone_DEPRECATED(const IrBlock& source, bool removeCurrentTerminator);
+    void clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator);
 
     IrOp undef();
 

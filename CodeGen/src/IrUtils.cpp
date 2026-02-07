@@ -16,13 +16,7 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenBetterSccRemoval)
-LUAU_FASTFLAGVARIABLE(LuauCodegenNumToUintFoldRange)
-LUAU_FASTFLAG(LuauCodegenLinearAndOr)
 LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenTruncateFold)
-LUAU_FASTFLAG(LuauCodegenSplitFloat)
-LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufferBaseFold)
 
@@ -157,7 +151,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::LOAD_INT:
         return IrValueKind::Int;
     case IrCmd::LOAD_FLOAT:
-        return FFlag::LuauCodegenSplitFloat ? IrValueKind::Float : IrValueKind::Double;
+        return IrValueKind::Float;
     case IrCmd::LOAD_TVALUE:
         return IrValueKind::Tvalue;
     case IrCmd::LOAD_ENV:
@@ -228,7 +222,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Tvalue;
     case IrCmd::DOT_VEC:
     case IrCmd::EXTRACT_VEC:
-        return FFlag::LuauCodegenSplitFloat ? IrValueKind::Float : IrValueKind::Double;
+        return IrValueKind::Float;
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:
     case IrCmd::CMP_INT:
@@ -272,7 +266,6 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Double;
     case IrCmd::NUM_TO_FLOAT:
         return IrValueKind::Float;
-    case IrCmd::NUM_TO_VEC_DEPRECATED:
     case IrCmd::FLOAT_TO_VEC:
     case IrCmd::TAG_VECTOR:
         return IrValueKind::Tvalue;
@@ -371,9 +364,29 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::BUFFER_WRITEF64:
         return IrValueKind::None;
     case IrCmd::BUFFER_READF32:
-        return FFlag::LuauCodegenSplitFloat ? IrValueKind::Float : IrValueKind::Double;
+        return IrValueKind::Float;
     case IrCmd::BUFFER_READF64:
         return IrValueKind::Double;
+    }
+
+    LUAU_UNREACHABLE();
+}
+
+IrValueKind getConstValueKind(const IrConst& constant)
+{
+    switch (constant.kind)
+    {
+    case IrConstKind::Int:
+        return IrValueKind::Int;
+    case IrConstKind::Uint:
+        return IrValueKind::Int;
+    case IrConstKind::Double:
+        return IrValueKind::Double;
+    case IrConstKind::Tag:
+        return IrValueKind::Tag;
+    case IrConstKind::Import:
+        CODEGEN_ASSERT(!"Import constants cannot be used as IR values");
+        return IrValueKind::Unknown;
     }
 
     LUAU_UNREACHABLE();
@@ -503,7 +516,7 @@ void kill(IrFunction& function, uint32_t start, uint32_t end)
 
         // Do not force destruction of instructions that are still in use
         // When the operands are released, the instruction will be released automatically
-        if (FFlag::LuauCodegenBetterSccRemoval && curr.useCount != 0)
+        if (curr.useCount != 0)
             continue;
 
         kill(function, curr);
@@ -538,12 +551,6 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
     for (auto& op : replacement.ops)
         addUse(function, op);
 
-    if (!FFlag::LuauCodegenBetterSccRemoval)
-    {
-        // An extra reference is added so block will not remove itself
-        block.useCount++;
-    }
-
     // If we introduced an earlier terminating instruction, all following instructions become dead
     if (!isBlockTerminator(inst.cmd) && isBlockTerminator(replacement.cmd))
     {
@@ -554,7 +561,7 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
         kill(function, instIdx + 1, block.finish);
 
         // If killing that range killed the current block we have to undo replacement instruction uses and exit
-        if (FFlag::LuauCodegenBetterSccRemoval && block.kind == IrBlockKind::Dead)
+        if (block.kind == IrBlockKind::Dead)
         {
             for (auto& op : replacement.ops)
                 removeUse(function, op);
@@ -564,33 +571,16 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
         block.finish = instIdx;
     }
 
-    if (FFlag::LuauCodegenBetterSccRemoval)
-    {
-        // Before we remove old argument uses, we have to place our new instruction
-        IrInst copy = inst;
+    // Before we remove old argument uses, we have to place our new instruction
+    IrInst copy = inst;
 
-        // Inherit existing use count (last use is skipped as it will be defined later)
-        replacement.useCount = inst.useCount;
+    // Inherit existing use count (last use is skipped as it will be defined later)
+    replacement.useCount = inst.useCount;
 
-        inst = replacement;
+    inst = replacement;
 
-        for (auto& op : copy.ops)
-            removeUse(function, op);
-    }
-    else
-    {
-        for (auto& op : inst.ops)
-            removeUse(function, op);
-
-        // Inherit existing use count (last use is skipped as it will be defined later)
-        replacement.useCount = inst.useCount;
-
-        inst = replacement;
-
-        // Removing the earlier extra reference, this might leave the block without users without marking it as dead
-        // This will have to be handled by separate dead code elimination
-        block.useCount--;
-    }
+    for (auto& op : copy.ops)
+        removeUse(function, op);
 }
 
 void substitute(IrFunction& function, IrInst& inst, IrOp replacement)
@@ -906,21 +896,21 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
 
             substitute(function, inst, c == d ? OP_B(inst) : OP_A(inst));
         }
-        else if (FFlag::LuauCodegenLinearAndOr && OP_A(inst) == OP_B(inst))
+        else if (OP_A(inst) == OP_B(inst))
         {
             // If the values are the same, no need to worry about the condition check
             substitute(function, inst, OP_A(inst));
         }
         break;
     case IrCmd::SELECT_VEC:
-        if (FFlag::LuauCodegenLinearAndOr && OP_A(inst) == OP_B(inst))
+        if (OP_A(inst) == OP_B(inst))
         {
             // If the values are the same, no need to worry about the condition check
             substitute(function, inst, OP_A(inst));
         }
         break;
     case IrCmd::SELECT_IF_TRUTHY:
-        if (FFlag::LuauCodegenLinearAndOr && OP_B(inst) == OP_C(inst))
+        if (OP_B(inst) == OP_C(inst))
         {
             // If the values are the same, no need to worry about the condition check
             substitute(function, inst, OP_B(inst));
@@ -1108,16 +1098,8 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             double value = function.doubleOp(OP_A(inst));
 
             // To avoid undefined behavior of casting a value not representable in the target type, check the range (matches luai_num2unsigned)
-            if (FFlag::LuauCodegenNumToUintFoldRange)
-            {
-                if (value >= -kDoubleMaxExactInteger && value <= kDoubleMaxExactInteger)
-                    substitute(function, inst, build.constInt(unsigned((long long)function.doubleOp(OP_A(inst)))));
-            }
-            else
-            {
-                if (value >= 0 && value <= UINT_MAX)
-                    substitute(function, inst, build.constInt(unsigned(function.doubleOp(OP_A(inst)))));
-            }
+            if (value >= -kDoubleMaxExactInteger && value <= kDoubleMaxExactInteger)
+                substitute(function, inst, build.constInt(unsigned((long long)function.doubleOp(OP_A(inst)))));
         }
         break;
     case IrCmd::FLOAT_TO_NUM:
@@ -1131,12 +1113,9 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             substitute(function, inst, build.constDouble(float(function.doubleOp(OP_A(inst)))));
         break;
     case IrCmd::TRUNCATE_UINT:
-        if (FFlag::LuauCodegenTruncateFold)
-        {
-            // Truncating a constant integer is a no-op as constant integers only store 32 bits
-            if (OP_A(inst).kind == IrOpKind::Constant)
-                substitute(function, inst, OP_A(inst));
-        }
+        // Truncating a constant integer is a no-op as constant integers only store 32 bits
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, OP_A(inst));
         break;
     case IrCmd::CHECK_TAG:
         if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
@@ -1302,7 +1281,7 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             substitute(function, inst, build.constInt(countrz(unsigned(function.intOp(OP_A(inst))))));
         break;
     case IrCmd::CHECK_BUFFER_LEN:
-        if (FFlag::LuauCodegenBufferRangeMerge3 && FFlag::LuauCodegenNumIntFolds2)
+        if (FFlag::LuauCodegenBufferRangeMerge3)
         {
             if (OP_B(inst).kind == IrOpKind::Constant && OP_E(inst).kind == IrOpKind::Constant)
             {

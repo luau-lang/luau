@@ -10,7 +10,6 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
-LUAU_FASTFLAG(LuauNumericUnaryOpsDontProduceNegationRefinements)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
@@ -2944,7 +2943,6 @@ TEST_CASE_FIXTURE(Fixture, "len_operator_in_if_is_just_a_proposition")
 {
     ScopedFastFlag _[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauNumericUnaryOpsDontProduceNegationRefinements, true},
     };
 
     CheckResult result = check(R"(
@@ -2962,7 +2960,6 @@ TEST_CASE_FIXTURE(Fixture, "unm_operator_is_just_a_proposition")
 {
     ScopedFastFlag _[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauNumericUnaryOpsDontProduceNegationRefinements, true},
     };
 
     CheckResult result = check(R"(
