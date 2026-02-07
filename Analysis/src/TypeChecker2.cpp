@@ -43,6 +43,7 @@ LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexingUnionWithNonTable)
+LUAU_FASTFLAG(LuauTypeNegationSupport)
 
 namespace Luau
 {
@@ -2787,6 +2788,8 @@ void TypeChecker2::visit(AstType* ty)
         return visit(t);
     else if (auto t = ty->as<AstTypeGroup>())
         return visit(t->type);
+    else if (auto t = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && t)
+        visit(t->inner);
 }
 
 void TypeChecker2::visit(AstTypeReference* ty)
