@@ -18,7 +18,6 @@
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
-LUAU_FASTFLAGVARIABLE(LuauNewNonStrictReportsOneIndexedErrors)
 LUAU_FASTFLAGVARIABLE(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 

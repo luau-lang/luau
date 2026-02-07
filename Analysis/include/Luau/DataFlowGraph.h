@@ -184,7 +184,10 @@ private:
     DataFlowResult visitExpr(AstExprCall* c);
     DataFlowResult visitExpr(AstExprIndexName* i);
     DataFlowResult visitExpr(AstExprIndexExpr* i);
+
     DataFlowResult visitExpr(AstExprFunction* f);
+    DataFlowResult visitFunction(AstExprFunction* f, NotNull<DfgScope> signatureScope);
+
     DataFlowResult visitExpr(AstExprTable* t);
     DataFlowResult visitExpr(AstExprUnary* u);
     DataFlowResult visitExpr(AstExprBinary* b);

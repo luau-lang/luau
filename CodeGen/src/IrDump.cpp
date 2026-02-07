@@ -291,8 +291,6 @@ const char* getCmdName(IrCmd cmd)
         return "FLOAT_TO_NUM";
     case IrCmd::NUM_TO_FLOAT:
         return "NUM_TO_FLOAT";
-    case IrCmd::NUM_TO_VEC_DEPRECATED:
-        return "NUM_TO_VEC";
     case IrCmd::FLOAT_TO_VEC:
         return "FLOAT_TO_VEC";
     case IrCmd::TAG_VECTOR:

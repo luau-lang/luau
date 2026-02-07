@@ -47,7 +47,7 @@ LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
 LUAU_FASTFLAG(LuauPushTypeConstraintLambdas3)
 LUAU_FASTFLAG(LuauMarkUnscopedGenericsAsSolved)
 LUAU_FASTFLAGVARIABLE(LuauUseFastSubtypeForIndexerWithName)
-LUAU_FASTFLAGVARIABLE(LuauUnifyWithSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauUnifyWithSubtyping2)
 LUAU_FASTFLAGVARIABLE(LuauDoNotUseApplyTypeFunctionToClone)
 LUAU_FASTFLAGVARIABLE(LuauReworkInfiniteTypeFinder)
 
@@ -3532,7 +3532,7 @@ bool ConstraintSolver::unify(NotNull<const Constraint> constraint, TID subTy, TI
 {
     static_assert(std::is_same_v<TID, TypeId> || std::is_same_v<TID, TypePackId>);
 
-    if (FFlag::LuauUnifyWithSubtyping)
+    if (FFlag::LuauUnifyWithSubtyping2)
     {
         Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
         SubtypingUnifier stu{arena, builtinTypes, NotNull{&iceReporter}};

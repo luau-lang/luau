@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType4)
 LUAU_FASTFLAGVARIABLE(LuauCloneForIntersectionsUnions)
 LUAU_FASTFLAG(LuauStorePolarityInline)
 LUAU_FASTFLAGVARIABLE(LuauTableFreezeCheckIsSubtype)
+LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 namespace Luau
 {
@@ -1155,9 +1156,10 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
     const TypePackId oneStringPack = arena->addTypePack({stringType});
     const TypePackId anyTypePack = builtinTypes->anyTypePack;
 
-    const TypePackId variadicTailPack = mode == SolverMode::New ? builtinTypes->unknownTypePack
-                                        : FFlag::LuauSolverV2   ? builtinTypes->unknownTypePack
-                                                                : anyTypePack;
+    const TypePackId variadicTailPack = FFlag::LuauAnalysisUsesSolverMode ? (mode == SolverMode::New ? builtinTypes->unknownTypePack : anyTypePack)
+                                        : mode == SolverMode::New         ? builtinTypes->unknownTypePack
+                                        : FFlag::LuauSolverV2             ? builtinTypes->unknownTypePack
+                                                                          : anyTypePack;
     const TypePackId emptyPack = arena->addTypePack({});
     const TypePackId stringVariadicList = arena->addTypePack(TypePackVar{VariadicTypePack{stringType}});
     const TypePackId numberVariadicList = arena->addTypePack(TypePackVar{VariadicTypePack{numberType}});

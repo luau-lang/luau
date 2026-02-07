@@ -23,12 +23,10 @@
 #include <unordered_set>
 #include <utility>
 
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteSingletonsInIndexer)
-LUAU_FASTFLAGVARIABLE(LuauSolverAgnosticPropType)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -362,16 +360,10 @@ static void autocompleteProps(
             if (result.count(name) == 0 && name != kParseNameError)
             {
                 Luau::TypeId type;
-
-                if (FFlag::LuauSolverV2 || FFlag::LuauSolverAgnosticPropType)
-                {
                     if (auto ty = prop.readTy)
                         type = follow(*ty);
                     else
                         continue;
-                }
-                else
-                    type = follow(prop.type_DEPRECATED());
 
                 TypeCorrectKind typeCorrect = indexType == PropIndexType::Key
                                                   ? TypeCorrectKind::Correct
@@ -404,17 +396,10 @@ static void autocompleteProps(
         if (indexIt != mtable->props.end())
         {
             TypeId followed;
-            if (FFlag::LuauSolverAgnosticPropType)
+            if (auto propTy = indexIt->second.readTy)
             {
-                if (auto propTy = indexIt->second.readTy)
-                {
-                    followed = follow(*propTy);
-                }
+                followed = follow(*propTy);
             }
-            else if (FFlag::LuauSolverV2)
-                followed = follow(*indexIt->second.readTy);
-            else
-                followed = follow(indexIt->second.type_DEPRECATED());
             if (get<TableType>(followed) || get<MetatableType>(followed))
             {
                 autocompleteProps(module, typeArena, builtinTypes, rootTy, followed, indexType, nodes, result, seen);

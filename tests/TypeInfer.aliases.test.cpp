@@ -11,6 +11,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -1344,6 +1345,17 @@ local A = {}
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     LUAU_CHECK_ERROR(result, UnknownSymbol);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "dont_allow_redefining_builtin_types")
+{
+    ScopedFastFlag _{FFlag::LuauDisallowRedefiningBuiltinTypes, true};
+    auto result = check(R"(
+        type number = string
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_CHECK_ERROR(result, DuplicateTypeDefinition);
 }
 
 

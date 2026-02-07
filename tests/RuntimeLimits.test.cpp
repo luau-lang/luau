@@ -26,7 +26,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauIceLess)
 LUAU_FASTFLAG(LuauUseNativeStackGuard)
 LUAU_FASTINT(LuauGenericCounterMaxSteps)
-LUAU_FASTFLAG(LuauUnifyWithSubtyping)
+LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTINT(LuauSubtypingIterationLimit)
 LUAU_FASTINT(LuauStackGuardThreshold)
 
@@ -366,9 +366,7 @@ TEST_CASE_FIXTURE(Fixture, "limit_number_of_dynamically_created_constraints")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constraints_2")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true}, {FFlag::LuauUnifyWithSubtyping, false}
-    };
+    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauUnifyWithSubtyping2, false}};
 
     ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 50};
 
@@ -560,7 +558,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterati
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
         // Clip this entire test with this flag.
-        {FFlag::LuauUnifyWithSubtyping, false},
+        {FFlag::LuauUnifyWithSubtyping2, false},
     };
 
     ScopedFastInt sfi{FInt::LuauTypeInferIterationLimit, 100};
@@ -584,7 +582,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterati
 {
     ScopedFastFlag sff[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauUnifyWithSubtyping, true},
+        {FFlag::LuauUnifyWithSubtyping2, true},
     };
 
     ScopedFastInt sfi{FInt::LuauSubtypingIterationLimit, 100};
