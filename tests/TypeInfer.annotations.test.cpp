@@ -936,4 +936,17 @@ TEST_CASE_FIXTURE(Fixture, "instantiation_clone_has_to_follow")
     LUAU_REQUIRE_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "unifier3_supertail_covariant_with_sub")
+{
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+
+    CheckResult result = check(R"(
+        local function fib(n)
+            return n + fib(n)
+        end
+    )");
+
+    CHECK_EQ("<a>(a) -> t1 where t1 = add<a, t1>", toString(requireType("fib")));
+}
+
 TEST_SUITE_END();

@@ -33,7 +33,6 @@ LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 
 namespace Luau
 {
@@ -303,10 +302,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     normalizer.clearCaches();
     normalizer.arena = nullptr;
 
-    if (FFlag::LuauUseWorkspacePropToChooseSolver)
-        currentModule->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::Old);
-    else
-        currentModule->clonePublicInterface_DEPRECATED(builtinTypes, *iceHandler);
+    currentModule->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::Old);
 
     freeze(currentModule->internalTypes);
     freeze(currentModule->interfaceTypes);
@@ -2052,7 +2048,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 std::optional<TypeId> TypeChecker::findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location, bool addErrors)
 {
     ErrorVec errors;
-    auto result = Luau::findTablePropertyRespectingMeta(builtinTypes, errors, lhsType, name, location);
+    auto result = Luau::findTablePropertyRespectingMeta(builtinTypes, errors, lhsType, name, location, /* useNewSolver */ false);
     if (addErrors)
         reportErrors(errors);
     return result;

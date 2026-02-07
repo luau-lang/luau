@@ -14,8 +14,8 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauUseIterativeTypeVisitor)
 LUAU_FASTFLAGVARIABLE(LuauContainsAnyGenericDoesntTraverseIntoExtern)
+LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 namespace Luau
 {
@@ -43,69 +43,6 @@ bool occursCheck(TypeId needle, TypeId haystack)
         return std::any_of(begin(it), end(it), checkHaystack);
 
     return false;
-}
-
-// FIXME: Property is quite large.
-//
-// Returning it on the stack like this isn't great. We'd like to just return a
-// const Property*, but we mint a property of type any if the subject type is
-// any.
-std::optional<Property> findTableProperty(NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId ty, const std::string& name, Location location)
-{
-    if (get<AnyType>(ty))
-        return Property::rw(ty);
-
-    if (const TableType* tableType = getTableType(ty))
-    {
-        const auto& it = tableType->props.find(name);
-        if (it != tableType->props.end())
-            return it->second;
-    }
-
-    std::optional<TypeId> mtIndex = findMetatableEntry(builtinTypes, errors, ty, "__index", location);
-    int count = 0;
-    while (mtIndex)
-    {
-        TypeId index = follow(*mtIndex);
-
-        if (count >= 100)
-            return std::nullopt;
-
-        ++count;
-
-        if (const auto& itt = getTableType(index))
-        {
-            const auto& fit = itt->props.find(name);
-            if (fit != itt->props.end())
-            {
-                if (FFlag::LuauSolverV2)
-                {
-                    if (fit->second.readTy)
-                        return fit->second.readTy;
-                    else
-                        return fit->second.writeTy;
-                }
-                else
-                    return fit->second.type_DEPRECATED();
-            }
-        }
-        else if (const auto& itf = get<FunctionType>(index))
-        {
-            std::optional<TypeId> r = first(follow(itf->retTypes));
-            if (!r)
-                return builtinTypes->nilType;
-            else
-                return *r;
-        }
-        else if (get<AnyType>(index))
-            return builtinTypes->anyType;
-        else
-            errors.emplace_back(location, GenericError{"__index should either be a function or table. Got " + toString(index)});
-
-        mtIndex = findMetatableEntry(builtinTypes, errors, *mtIndex, "__index", location);
-    }
-
-    return std::nullopt;
 }
 
 std::optional<TypeId> findMetatableEntry(
@@ -151,10 +88,11 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
     ErrorVec& errors,
     TypeId ty,
     const std::string& name,
-    Location location
+    Location location,
+    bool useNewSolver
 )
 {
-    return findTablePropertyRespectingMeta(builtinTypes, errors, ty, name, ValueContext::RValue, location);
+    return findTablePropertyRespectingMeta(builtinTypes, errors, ty, name, ValueContext::RValue, location, useNewSolver);
 }
 
 std::optional<TypeId> findTablePropertyRespectingMeta(
@@ -163,7 +101,8 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
     TypeId ty,
     const std::string& name,
     ValueContext context,
-    Location location
+    Location location,
+    bool useNewSolver
 )
 {
     if (get<AnyType>(ty))
@@ -200,7 +139,25 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
             const auto& fit = itt->props.find(name);
             if (fit != itt->props.end())
             {
-                if (FFlag::LuauSolverV2)
+                // This is only used in the old solver?
+                if (FFlag::LuauAnalysisUsesSolverMode)
+                {
+                    if (useNewSolver)
+                    {
+                        switch (context)
+                        {
+                        case ValueContext::RValue:
+                            return fit->second.readTy;
+                        case ValueContext::LValue:
+                            return fit->second.writeTy;
+                        }
+                    }
+                    else
+                    {
+                        return fit->second.readTy;
+                    }
+                }
+                else if (FFlag::LuauSolverV2)
                 {
                     switch (context)
                     {
@@ -933,13 +890,12 @@ bool ContainsAnyGeneric::hasAnyGeneric(TypePackId tp)
     return cg.found;
 }
 
-template<typename BaseVisitor>
-struct ContainsGenerics : public BaseVisitor
+struct ContainsGenerics : public IterativeTypeVisitor
 {
     NotNull<DenseHashSet<const void*>> generics;
 
     explicit ContainsGenerics(NotNull<DenseHashSet<const void*>> generics)
-        : BaseVisitor("ContainsGenerics", /* skipBoundTypes */ true)
+        : IterativeTypeVisitor("ContainsGenerics", /* skipBoundTypes */ true)
         , generics{generics}
     {
     }
@@ -971,34 +927,16 @@ struct ContainsGenerics : public BaseVisitor
 
 bool containsGeneric(TypeId ty, NotNull<DenseHashSet<const void*>> generics)
 {
-    if (FFlag::LuauUseIterativeTypeVisitor)
-    {
-        ContainsGenerics<IterativeTypeVisitor> cg{generics};
-        cg.run(ty);
-        return cg.found;
-    }
-    else
-    {
-        ContainsGenerics<TypeOnceVisitor> cg{generics};
-        cg.traverse(ty);
-        return cg.found;
-    }
+    ContainsGenerics cg{generics};
+    cg.run(ty);
+    return cg.found;
 }
 
 bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics)
 {
-    if (FFlag::LuauUseIterativeTypeVisitor)
-    {
-        ContainsGenerics<IterativeTypeVisitor> cg{generics};
-        cg.run(ty);
-        return cg.found;
-    }
-    else
-    {
-        ContainsGenerics<TypeOnceVisitor> cg{generics};
-        cg.traverse(ty);
-        return cg.found;
-    }
+    ContainsGenerics cg{generics};
+    cg.run(ty);
+    return cg.found;
 }
 
 bool isBlocked(TypeId ty)

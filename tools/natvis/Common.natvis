@@ -24,4 +24,16 @@
     </Expand>
   </Type>
 
+  <Type Name="Luau::SmallVector&lt;*,*&gt;">
+    <DisplayString>[size]={count} {ptr,[count]na}</DisplayString>
+    <Expand>
+      <Item Name="[size]">count</Item>
+      <Item Name="[capacity]">max</Item>
+      <ArrayItems>
+        <Size>count</Size>
+        <ValuePointer>ptr</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+
 </AutoVisualizer>

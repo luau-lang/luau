@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/AstQuery.h"
 
+#include "Luau/Frontend.h"
 #include "Luau/Module.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
@@ -13,6 +14,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauQueryLocalFunctionBinding)
+LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 namespace Luau
 {
@@ -566,7 +568,7 @@ static std::optional<DocumentationSymbol> getMetatableDocumentation(
         return std::nullopt;
 
     TypeId followed;
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
     {
         if (indexIt->second.readTy)
             followed = follow(*indexIt->second.readTy);
@@ -585,7 +587,7 @@ static std::optional<DocumentationSymbol> getMetatableDocumentation(
     if (propIt == ttv->props.end())
         return std::nullopt;
 
-    if (FFlag::LuauSolverV2)
+    if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
     {
         if (auto ty = propIt->second.readTy)
             return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
@@ -620,7 +622,7 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                 {
                     if (auto propIt = ttv->props.find(indexName->index.value); propIt != ttv->props.end())
                     {
-                        if (FFlag::LuauSolverV2)
+                        if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
                         {
                             if (auto ty = propIt->second.readTy)
                                 return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
@@ -637,7 +639,7 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                     {
                         if (auto propIt = etv->props.find(indexName->index.value); propIt != etv->props.end())
                         {
-                            if (FFlag::LuauSolverV2)
+                            if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
                             {
                                 if (auto ty = propIt->second.readTy)
                                     return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);

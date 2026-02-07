@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/Common.h"
 #include "lua.h"
 #include "lualib.h"
 #include "luacode.h"
@@ -38,12 +39,7 @@ LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauStacklessPcall)
-LUAU_FASTFLAG(LuauMathIsNanInfFinite)
-LUAU_FASTFLAG(LuauCompileMathIsNanInfFinite)
-LUAU_FASTFLAG(LuauTypeCheckerMathIsNanInfFinite)
-LUAU_FASTFLAG(LuauCodegenChainedSpills)
-LUAU_FASTFLAG(LuauCodegenSpillRestoreFreeTemp)
-LUAU_FASTFLAG(LuauCodegenDwordSpillSlots)
+LUAU_FASTFLAG(LuauCodegenExtraSimd)
 LUAU_FASTFLAG(LuauCodegenExtraSpills)
 LUAU_FASTFLAG(LuauActivationRecordStopDeadnaming)
 
@@ -836,8 +832,6 @@ TEST_CASE("Buffers")
 
 TEST_CASE("Math")
 {
-    ScopedFastFlag _[] = {{FFlag::LuauMathIsNanInfFinite, true}, {FFlag::LuauCompileMathIsNanInfFinite, true}};
-
     runConformance("math.luau");
 }
 
@@ -1340,6 +1334,8 @@ TEST_CASE("Vector")
 
 TEST_CASE("VectorLibrary")
 {
+    ScopedFastFlag luauCodegenExtraSimd{FFlag::LuauCodegenExtraSimd, true};
+
     lua_CompileOptions copts = defaultOptions();
 
     SUBCASE("O0")
@@ -1442,10 +1438,6 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::LuauMathIsNanInfFinite, true}, {FFlag::LuauCompileMathIsNanInfFinite, true}, {FFlag::LuauTypeCheckerMathIsNanInfFinite, true}
-    };
-
     runConformance(
         "types.luau",
         [](lua_State* L)
@@ -3462,9 +3454,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauCodegenSpillRestoreFreeTemp{FFlag::LuauCodegenSpillRestoreFreeTemp, true};
-    ScopedFastFlag luauCodegenChainedSpills{FFlag::LuauCodegenChainedSpills, true};
-    ScopedFastFlag luauCodegenDwordSpillSlots{FFlag::LuauCodegenDwordSpillSlots, true};
     ScopedFastFlag luauCodegenExtraSpills{FFlag::LuauCodegenExtraSpills, true};
 
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
@@ -3523,9 +3512,6 @@ TEST_CASE("Native")
 
 TEST_CASE("NativeIntegerSpills")
 {
-    ScopedFastFlag luauCodegenChainedSpills{FFlag::LuauCodegenChainedSpills, true};
-    ScopedFastFlag luauCodegenDwordSpillSlots{FFlag::LuauCodegenDwordSpillSlots, true};
-
     lua_CompileOptions copts = defaultOptions();
 
     SUBCASE("O0")

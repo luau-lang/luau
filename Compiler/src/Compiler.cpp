@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(LuauCompileCallCostModel)
 LUAU_FASTFLAGVARIABLE(LuauCompileNoInterpStorage)
 LUAU_FASTFLAGVARIABLE(LuauCompileInlineInitializers)
 LUAU_FASTFLAGVARIABLE(LuauCompileExtraTableHints)
+LUAU_FASTFLAGVARIABLE(LuauCompileInlinedBuiltins)
 
 namespace Luau
 {
@@ -396,8 +397,18 @@ struct Compiler
         // handles builtin calls that can't be constant-folded but are known to return one value
         // note: optimizationLevel check is technically redundant but it's important that we never optimize based on builtins in O1
         if (options.optimizationLevel >= 2)
-            if (int* bfid = builtins.find(expr))
-                return getBuiltinInfo(*bfid).results != 1;
+        {
+            if (FFlag::LuauCompileInlinedBuiltins)
+            {
+                if (int* bfid = builtins.find(expr); bfid && *bfid != LBF_NONE)
+                    return getBuiltinInfo(*bfid).results != 1;
+            }
+            else
+            {
+                if (int* bfid = builtins.find(expr))
+                    return getBuiltinInfo(*bfid).results != 1;
+            }
+        }
 
         // handles local function calls where we know only one argument is returned
         AstExprFunction* func = getFunctionExpr(expr->func);
@@ -853,6 +864,29 @@ struct Compiler
         // the inline frame will be used to compile return statements as well as to reject recursive inlining attempts
         inlineFrames.push_back({func, oldLocals, target, targetCount});
 
+        if (FFlag::LuauCompileInlinedBuiltins)
+        {
+            // this pass tracks which calls are builtins and can be compiled more efficiently
+            analyzeBuiltins(inlineBuiltins, globals, variables, options, func->body, names);
+
+            // If we found new builtins, apply them, but record which expressions we changed so we can undo later
+            if (!inlineBuiltins.empty())
+            {
+                for (auto [callExpr, bfid] : inlineBuiltins)
+                {
+                    int& builtin = builtins[callExpr]; // If there was no builtin previously, we will get LBF_NONE
+
+                    if (bfid != builtin)
+                    {
+                        inlineBuiltinsBackup[callExpr] = builtin;
+                        builtin = bfid;
+                    }
+                }
+
+                inlineBuiltins.clear();
+            }
+        }
+
         // fold constant values updated above into expressions in the function body
         foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
 
@@ -938,6 +972,17 @@ struct Compiler
                 lv->init = nullptr;
         }
 
+        if (FFlag::LuauCompileInlinedBuiltins)
+        {
+            if (!inlineBuiltinsBackup.empty())
+            {
+                for (auto [callExpr, bfid] : inlineBuiltinsBackup)
+                    builtins[callExpr] = bfid;
+
+                inlineBuiltinsBackup.clear();
+            }
+        }
+
         foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
     }
 
@@ -990,8 +1035,18 @@ struct Compiler
         int bfid = -1;
 
         if (options.optimizationLevel >= 1 && !expr->self)
-            if (const int* id = builtins.find(expr))
-                bfid = *id;
+        {
+            if (FFlag::LuauCompileInlinedBuiltins)
+            {
+                if (const int* id = builtins.find(expr); id && *id != LBF_NONE)
+                    bfid = *id;
+            }
+            else
+            {
+                if (const int* id = builtins.find(expr))
+                    bfid = *id;
+            }
+        }
 
         if (bfid >= 0 && bytecode.needsDebugRemarks())
         {
@@ -4427,6 +4482,9 @@ struct Compiler
     DenseHashMap<AstExprFunction*, std::string> functionTypes;
     DenseHashMap<AstLocal*, LuauBytecodeType> localTypes;
     DenseHashMap<AstExpr*, LuauBytecodeType> exprTypes;
+
+    DenseHashMap<AstExprCall*, int> inlineBuiltins{nullptr};
+    DenseHashMap<AstExprCall*, int> inlineBuiltinsBackup{nullptr};
 
     BuiltinAstTypes builtinTypes;
     AstNameTable& names;
