@@ -496,17 +496,17 @@ bb_bytecode_1:
   %22 = FLOAT_TO_VEC 4
   %23 = DIV_VEC %20, %22
   %32 = ADD_VEC %15, %23
-  %43 = FLOAT_TO_VEC 0.5
-  %44 = LOAD_TVALUE R2, 0i, tvector
-  %45 = MUL_VEC %43, %44
-  %54 = ADD_VEC %32, %45
-  %60 = FLOAT_TO_VEC 40
-  %61 = LOAD_TVALUE R3, 0i, tvector
-  %62 = DIV_VEC %60, %61
-  %71 = ADD_VEC %54, %62
-  %72 = TAG_VECTOR %71
-  STORE_TVALUE R4, %72
-  INTERRUPT 8u
+  %37 = LOAD_TVALUE R2, 0i, tvector
+  %39 = FLOAT_TO_VEC 0.5
+  %40 = MUL_VEC %37, %39
+  %49 = ADD_VEC %32, %40
+  %55 = FLOAT_TO_VEC 40
+  %56 = LOAD_TVALUE R3, 0i, tvector
+  %57 = DIV_VEC %55, %56
+  %66 = ADD_VEC %49, %57
+  %67 = TAG_VECTOR %66
+  STORE_TVALUE R4, %67
+  INTERRUPT 7u
   RETURN R4, 1i
 )"
     );
@@ -6995,16 +6995,16 @@ bb_bytecode_1:
   STORE_POINTER R2, %7
   STORE_TAG R2, ttable
   CHECK_GC
-  %19 = FLOAT_TO_VEC 2
-  %20 = LOAD_TVALUE R0, 0i, tvector
-  %21 = MUL_VEC %19, %20
-  %29 = LOAD_TVALUE R1, 0i, tvector
-  %30 = ADD_VEC %21, %29
-  %31 = TAG_VECTOR %30
-  STORE_TVALUE R3, %31
-  STORE_TVALUE R4, %31
-  SETLIST 8u, R2, R3, 2i, 1u, 2u
-  INTERRUPT 10u
+  %13 = LOAD_TVALUE R0, 0i, tvector
+  %15 = FLOAT_TO_VEC 2
+  %16 = MUL_VEC %13, %15
+  %24 = LOAD_TVALUE R1, 0i, tvector
+  %25 = ADD_VEC %16, %24
+  %26 = TAG_VECTOR %25
+  STORE_TVALUE R3, %26
+  STORE_TVALUE R4, %26
+  SETLIST 6u, R2, R3, 2i, 1u, 2u
+  INTERRUPT 8u
   RETURN R2, 1i
 )"
     );

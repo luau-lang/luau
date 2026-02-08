@@ -448,6 +448,19 @@ struct TypeMapVisitor : AstVisitor
         return false;
     }
 
+    bool visit(AstStatFor* node) override
+    {
+        resolvedLocals[node->var] = &builtinTypes.numberType;
+
+        node->from->visit(this);
+        node->to->visit(this);
+        if (node->step)
+            node->step->visit(this);
+        node->body->visit(this);
+
+        return false;
+    }
+
     bool visit(AstExprIndexExpr* node) override
     {
         node->expr->visit(this);

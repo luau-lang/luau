@@ -1862,8 +1862,8 @@ struct Compiler
                 }
                 else if (options.optimizationLevel >= 2 && (expr->op == AstExprBinary::Add || expr->op == AstExprBinary::Mul))
                 {
-                    // Optimization: replace k*r with r*k when r is known to be a number (otherwise metamethods may be called)
-                    if (LuauBytecodeType* ty = exprTypes.find(expr); ty && *ty == LBC_TYPE_NUMBER)
+                    // Optimization: replace k*r with r*k when r is known to be a number or vector (otherwise metamethods may be called)
+                    if (LuauBytecodeType* ty = exprTypes.find(expr); ty && (*ty == LBC_TYPE_NUMBER || *ty == LBC_TYPE_VECTOR))
                     {
                         int32_t lc = getConstantNumber(expr->left);
 
@@ -1873,7 +1873,7 @@ struct Compiler
 
                             bytecode.emitABC(getBinaryOpArith(expr->op, /* k= */ true), target, rr, uint8_t(lc));
 
-                            hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
+                            hintTemporaryExprRegType(expr->right, rr, *ty, /* instLength */ 1);
                             return;
                         }
                     }
