@@ -484,14 +484,19 @@ int main(int argc, char** argv)
 {
     const std::vector<std::string_view> args(argv, argv + argc);
 
-    if (args.size() != 4)
-        help(args);
-
     for (size_t i = 1; i < args.size(); ++i)
     {
         if (args[i] == "--help")
             help(args);
+        if (args[i] == "--version")
+        {
+            printf("Luau %s\n", LUAU_VERSION);
+            return 0;
+        }
     }
+
+    if (args.size() != 4)
+        help(args);
 
     std::string scriptName = argv[1];
     std::string appName = argv[2];
