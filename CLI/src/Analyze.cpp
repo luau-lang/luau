@@ -141,6 +141,7 @@ static void displayHelp(const char* argv0)
     printf("  --formatter=gnu: report analysis errors in GNU-compatible format\n");
     printf("  --mode=strict: default to strict mode when typechecking\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
+    printf("  --version: display version information\n");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)
@@ -399,6 +400,12 @@ int main(int argc, char** argv)
     if (argc >= 2 && strcmp(argv[1], "--help") == 0)
     {
         displayHelp(argv[0]);
+        return 0;
+    }
+
+    if (argc >= 2 && strcmp(argv[1], "--version") == 0)
+    {
+        printf("Luau %s\n", LUAU_VERSION);
         return 0;
     }
 
