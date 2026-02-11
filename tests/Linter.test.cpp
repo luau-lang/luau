@@ -365,6 +365,22 @@ return bar()
     CHECK_EQ(result.warnings[0].text, "Variable 'a' shadows previous declaration at line 2");
 }
 
+TEST_CASE_FIXTURE(Fixture, "LocalShadowTypeFunction")
+{
+    LintResult result = lint(R"(
+type num = number
+
+type function GetNum()
+    return num
+end
+
+local num = 10
+return num
+)");
+
+    REQUIRE(0 == result.warnings.size());
+}
+
 TEST_CASE_FIXTURE(Fixture, "LocalUnused")
 {
     LintResult result = lint(R"(
