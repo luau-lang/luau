@@ -31,8 +31,10 @@ TEST_SUITE_BEGIN("Negations");
 
 TEST_CASE_FIXTURE(NegationFixture, "negated_string_is_a_subtype_of_string")
 {
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag sffs[]{
-        {FFlag::LuauSolverV2, true},
         {FFlag::LuauParseNegationType, true},
         {FFlag::LuauNegationTypes, true},
     };
@@ -48,8 +50,10 @@ TEST_CASE_FIXTURE(NegationFixture, "negated_string_is_a_subtype_of_string")
 
 TEST_CASE_FIXTURE(NegationFixture, "string_is_not_a_subtype_of_negated_string")
 {
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag sffs[]{
-        {FFlag::LuauSolverV2, true},
         {FFlag::LuauParseNegationType, true},
         {FFlag::LuauNegationTypes, true},
     };
@@ -83,8 +87,10 @@ TEST_CASE_FIXTURE(Fixture, "cofinite_strings_can_be_compared_for_equality")
 
 TEST_CASE_FIXTURE(NegationFixture, "compare_cofinite_strings")
 {
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag sffs[]{
-        {FFlag::LuauSolverV2, true},
         {FFlag::LuauParseNegationType, true},
         {FFlag::LuauNegationTypes, true},
     };
@@ -100,8 +106,10 @@ end
 
 TEST_CASE_FIXTURE(NegationFixture, "cannot_negate_non_testables")
 {
+    if (!FFlag::LuauSolverV2)
+        return;
+
     ScopedFastFlag sffs[]{
-        {FFlag::LuauSolverV2, true},
         {FFlag::LuauParseNegationType, true},
         {FFlag::LuauNegationTypes, true},
     };
