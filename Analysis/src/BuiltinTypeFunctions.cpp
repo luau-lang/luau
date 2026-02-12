@@ -1808,8 +1808,16 @@ TypeFunctionReductionResult<TypeId> intersectTypeFunction(
 static bool isTestable(TypeId ty)
 {
     ty = follow(ty);
-    return is<PrimitiveType, SingletonType, GenericType, ExternType, AnyType, UnknownType, NeverType, FreeType, PendingExpansionType, BlockedType>(ty
-    );
+
+    if (auto ut = get<UnionType>(ty))
+        return std::all_of(begin(ut), end(ut), isTestable);
+    else if (auto it = get<IntersectionType>(ty))
+        return std::all_of(begin(it), end(it), isTestable);
+
+    // TODO: Negation of a type parameter is testable iff there exists a type in
+    // the upper bound that is testable. Currently this is tautologically true
+    // because all type parameters are bounded by `unknown`.
+    return is<PrimitiveType, SingletonType, GenericType, ExternType, AnyType, UnknownType, NeverType>(ty);
 }
 
 TypeFunctionReductionResult<TypeId> negateTypeFunction(
@@ -1834,17 +1842,8 @@ TypeFunctionReductionResult<TypeId> negateTypeFunction(
     if (isPending(inner, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {inner}};
 
-    // No need to pull in the complex `tryDistributeTypeFunctionApp` for this (also need to handle intersections).
-    bool ok;
-    if (auto ut = get<UnionType>(inner))
-        ok = std::all_of(begin(ut), end(ut), isTestable);
-    else if (auto it = get<IntersectionType>(inner))
-        ok = std::all_of(begin(it), end(it), isTestable);
-    else
-        ok = isTestable(inner);
-
     // Types that are not testable are turned into errors.
-    if (!ok)
+    if (!isTestable(inner))
         return {ctx->builtins->errorType, Reduction::Erroneous};
 
     return {ctx->arena->addType(NegationType{inner}), Reduction::MaybeOk};

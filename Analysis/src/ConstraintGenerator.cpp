@@ -4203,7 +4203,7 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
         // Can't do syntactic optimization here where `~~T == T` because semantically `T` was negated at least _once_,
         // otherwise `~~(string) -> string == (string) -> string` which is nonsense.
         TypeId inner = resolveType_(scope, negationAnnotation->inner, inTypeArguments);
-        result = arena->addType(TypeFunctionInstanceType{builtinTypes->typeFunctions->negateFunc, {inner}});
+        result = createTypeFunctionInstance(builtinTypes->typeFunctions->negateFunc, {inner}, {}, scope, ty->location);
     }
     else if (auto typeGroupAnnotation = ty->as<AstTypeGroup>())
     {
