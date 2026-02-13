@@ -276,6 +276,12 @@ CstTypeIntersection::CstTypeIntersection(std::optional<Position> leadingPosition
 {
 }
 
+CstTypeNegation::CstTypeNegation(Position tildePosition)
+    : CstNode(CstClassIndex())
+    , tildePosition(tildePosition)
+{
+}
+
 CstTypeSingletonString::CstTypeSingletonString(AstArray<char> sourceString, CstExprConstantString::QuoteStyle quoteStyle, unsigned int blockDepth)
     : CstNode(CstClassIndex())
     , sourceString(sourceString)

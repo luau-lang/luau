@@ -7,6 +7,9 @@
 #include "Luau/Common.h"
 #include "ScopedFlags.h"
 
+LUAU_FASTFLAG(LuauParseNegationType);
+LUAU_FASTFLAG(LuauNegationTypes)
+
 using namespace Luau;
 
 namespace
@@ -28,9 +31,17 @@ TEST_SUITE_BEGIN("Negations");
 
 TEST_CASE_FIXTURE(NegationFixture, "negated_string_is_a_subtype_of_string")
 {
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sffs[]{
+        {FFlag::LuauParseNegationType, true},
+        {FFlag::LuauNegationTypes, true},
+    };
+
     CheckResult result = check(R"(
         function foo(arg: string) end
-        local a: string & Not<"Hello">
+        local a: string & ~"Hello"
         foo(a)
     )");
 
@@ -39,8 +50,16 @@ TEST_CASE_FIXTURE(NegationFixture, "negated_string_is_a_subtype_of_string")
 
 TEST_CASE_FIXTURE(NegationFixture, "string_is_not_a_subtype_of_negated_string")
 {
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sffs[]{
+        {FFlag::LuauParseNegationType, true},
+        {FFlag::LuauNegationTypes, true},
+    };
+
     CheckResult result = check(R"(
-        function foo(arg: string & Not<"hello">) end
+        function foo(arg: string & ~"hello") end
         local a: string
         foo(a)
     )");
@@ -68,13 +87,82 @@ TEST_CASE_FIXTURE(Fixture, "cofinite_strings_can_be_compared_for_equality")
 
 TEST_CASE_FIXTURE(NegationFixture, "compare_cofinite_strings")
 {
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sffs[]{
+        {FFlag::LuauParseNegationType, true},
+        {FFlag::LuauNegationTypes, true},
+    };
+
     CheckResult result = check(R"(
-local u : Not<"a">
+local u : ~"a"
 local v : "b"
 if u == v then
 end
 )");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "cannot_negate_non_testables")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sffs[]{
+        {FFlag::LuauParseNegationType, true},
+        {FFlag::LuauNegationTypes, true},
+    };
+
+    CheckResult result = check(R"(
+local t: ~{}
+local f: ~(string) -> string
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    // LUAU_REQUIRE_ERROR_COUNT(2, result);
+    REQUIRE(get<ErrorType>(requireType("t")));
+    REQUIRE(get<ErrorType>(requireType("f")));
+}
+
+// Given the type `~~{}`, the inner negation `~{}` must undergo evaluation and
+// result in an error type. Negation of an error type preserves the error type.
+TEST_CASE_FIXTURE(NegationFixture, "negation_is_partial_and_partiality_breaks_double_negation_elimination_algebra")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sffs[]{
+        {FFlag::LuauParseNegationType, true},
+        {FFlag::LuauNegationTypes, true},
+    };
+
+    CheckResult result = check(R"(
+local t: ~~{}
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    // LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<ErrorType>(requireType("t")));
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "negation_is_antitone")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sffs[]{
+        {FFlag::LuauParseNegationType, true},
+        {FFlag::LuauNegationTypes, true},
+    };
+
+    CheckResult result = check(R"(
+        type T = ~T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    // LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<ErrorType>(requireTypeAlias("T")));
 }
 
 TEST_SUITE_END();

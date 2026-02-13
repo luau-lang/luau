@@ -1234,6 +1234,18 @@ public:
     AstArray<AstType*> types;
 };
 
+class AstTypeNegation : public AstType
+{
+public:
+    LUAU_RTTI(AstTypeNegation)
+
+    AstTypeNegation(const Location& location, AstType* inner);
+
+    void visit(AstVisitor* visitor) override;
+
+    AstType* inner;
+};
+
 class AstExprError : public AstExpr
 {
 public:

@@ -1321,6 +1321,8 @@ void DataFlowGraphBuilder::visitType(AstType* t)
         return visitType(u);
     else if (auto i = t->as<AstTypeIntersection>())
         return visitType(i);
+    else if (auto n = t->as<AstTypeNegation>())
+        return visitType(n->inner);
     else if (auto e = t->as<AstTypeError>())
         return visitType(e);
     else if (t->is<AstTypeSingletonBool>())

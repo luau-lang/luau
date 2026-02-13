@@ -1805,6 +1805,50 @@ TypeFunctionReductionResult<TypeId> intersectTypeFunction(
     return {resultTy, Reduction::MaybeOk, {}, {}};
 }
 
+static bool isTestable(TypeId ty)
+{
+    ty = follow(ty);
+
+    if (auto ut = get<UnionType>(ty))
+        return std::all_of(begin(ut), end(ut), isTestable);
+    else if (auto it = get<IntersectionType>(ty))
+        return std::all_of(begin(it), end(it), isTestable);
+
+    // TODO: Negation of a type parameter is testable iff there exists a type in
+    // the upper bound that is testable. Currently this is tautologically true
+    // because all type parameters are bounded by `unknown`.
+    return is<PrimitiveType, SingletonType, GenericType, ExternType, AnyType, UnknownType, NeverType>(ty);
+}
+
+TypeFunctionReductionResult<TypeId> negateTypeFunction(
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
+{
+    if (typeParams.size() != 1 && !packParams.empty())
+    {
+        ctx->ice->ice("negate type function: encountered a type function instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId inner = follow(typeParams[0]);
+
+    // Russell's paradox: `type T = ~T`.
+    if (inner == instance)
+        return {ctx->builtins->errorType, Reduction::Erroneous};
+
+    if (isPending(inner, ctx->solver))
+        return {std::nullopt, Reduction::MaybeOk, {inner}};
+
+    // Types that are not testable are turned into errors.
+    if (!isTestable(inner))
+        return {ctx->builtins->errorType, Reduction::Erroneous};
+
+    return {ctx->arena->addType(NegationType{inner}), Reduction::MaybeOk};
+}
+
 namespace
 {
 
@@ -2724,6 +2768,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , singletonFunc{"singleton", singletonTypeFunction}
     , unionFunc{"union", unionTypeFunction}
     , intersectFunc{"intersect", intersectTypeFunction}
+    , negateFunc{"negate", negateTypeFunction}
     , keyofFunc{"keyof", keyofTypeFunction}
     , rawkeyofFunc{"rawkeyof", rawkeyofTypeFunction}
     , indexFunc{"index", indexTypeFunction}

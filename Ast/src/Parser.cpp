@@ -23,6 +23,7 @@ LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauStandaloneParseType)
 LUAU_FASTFLAGVARIABLE(LuauCstStatDoWithStatsStart)
 LUAU_FASTFLAGVARIABLE(DesugaredArrayTypeReferenceIsEmpty)
+LUAU_FASTFLAGVARIABLE(LuauParseNegationType)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -2690,6 +2691,19 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
     else if (lexer.current().type == '(' || lexer.current().type == '<')
     {
         return parseFunctionType(allowPack, AstArray<AstAttr*>({nullptr, 0}));
+    }
+    else if (FFlag::LuauParseNegationType && lexer.current().type == '~')
+    {
+        Position begin = lexer.current().location.begin;
+
+        nextLexeme(); // ~
+        AstType* type = parseType(inDeclarationContext);
+
+        AstTypeNegation* node = allocator.alloc<AstTypeNegation>(Location(begin, type->location.end), type);
+        if (options.storeCstData)
+            cstNodeMap[node] = allocator.alloc<CstTypeNegation>(begin);
+
+        return {node, nullptr};
     }
     else if (lexer.current().type == Lexeme::ReservedFunction)
     {

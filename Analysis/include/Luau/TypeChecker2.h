@@ -184,6 +184,7 @@ private:
     void visit(AstTypeTypeof* ty);
     void visit(AstTypeUnion* ty);
     void visit(AstTypeIntersection* ty);
+    void visit(AstTypeNegation* ty);
     void visit(AstTypePack* pack);
     void visit(AstTypePackExplicit* tp);
     void visit(AstTypePackVariadic* tp);
