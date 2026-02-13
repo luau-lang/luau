@@ -5971,7 +5971,7 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
     }
     else if (const auto& n = annotation.as<AstTypeNegation>(); n && FFlag::LuauNegationTypes)
     {
-        reportError(TypeError{annotation.location, GenericError{"Negation types are illegal here"}});
+        reportError(TypeError{annotation.location, GenericError{"Negation types are not supported by the old type solver."}});
         return errorRecoveryType(scope);
     }
     else if (const auto& g = annotation.as<AstTypeGroup>())
