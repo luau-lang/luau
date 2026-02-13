@@ -1860,11 +1860,12 @@ struct Printer
         }
         else if (const auto& a = typeAnnotation.as<AstTypeNegation>())
         {
-            const auto cstNode = lookupCstNode<CstTypeNegation>(a);
+            if (const auto cstNode = lookupCstNode<CstTypeNegation>(a))
+                advance(cstNode->tildePosition);
+            else
+                writer.maybeSpace(a->location.begin, 1);
 
-            advance(cstNode->tildePosition);
-            writer.write("~");
-
+            writer.symbol("~");
             visualizeTypeAnnotation(*a->inner);
         }
         else if (const auto& a = typeAnnotation.as<AstTypeGroup>())
