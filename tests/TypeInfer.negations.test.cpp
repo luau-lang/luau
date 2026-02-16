@@ -83,14 +83,12 @@ end
 
 TEST_CASE_FIXTURE(NegationFixture, "truthy_type")
 {
-    // Flag override not working?????
     if (!FFlag::LuauSolverV2)
         return;
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true},
-        {FFlag::LuauSolverV2, true}
+        {FFlag::LuauTypeNegationSupport, true}
     };
 
     CheckResult result = check(R"(
@@ -108,14 +106,12 @@ TEST_CASE_FIXTURE(NegationFixture, "truthy_type")
 
 TEST_CASE_FIXTURE(NegationFixture, "tight_binding")
 {
-    // Flag override not working?????
     if (!FFlag::LuauSolverV2)
         return;
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true},
-        {FFlag::LuauSolverV2, true}
+        {FFlag::LuauTypeNegationSupport, true}
     };
 
     CheckResult result = check(R"(
@@ -131,14 +127,12 @@ TEST_CASE_FIXTURE(NegationFixture, "tight_binding")
 
 TEST_CASE_FIXTURE(NegationFixture, "string_singleton_negation")
 {
-    // Flag override not working?????
     if (!FFlag::LuauSolverV2)
         return;
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true},
-        {FFlag::LuauSolverV2, true}
+        {FFlag::LuauTypeNegationSupport, true}
     };
 
     CheckResult result = check(R"(
@@ -155,14 +149,12 @@ TEST_CASE_FIXTURE(NegationFixture, "string_singleton_negation")
 
 TEST_CASE_FIXTURE(NegationFixture, "exclusion_basis_is_unknown")
 {
-    // Flag override not working?????
     if (!FFlag::LuauSolverV2)
         return;
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true},
-        {FFlag::LuauSolverV2, true}
+        {FFlag::LuauTypeNegationSupport, true}
     };
 
     CheckResult result = check(R"(
@@ -178,14 +170,12 @@ TEST_CASE_FIXTURE(NegationFixture, "exclusion_basis_is_unknown")
 
 TEST_CASE_FIXTURE(NegationFixture, "double_negation")
 {
-    // Flag override not working?????
     if (!FFlag::LuauSolverV2)
         return;
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true},
-        {FFlag::LuauSolverV2, true}
+        {FFlag::LuauTypeNegationSupport, true}
     };
 
     CheckResult result = check(R"(
@@ -205,14 +195,12 @@ TEST_CASE_FIXTURE(NegationFixture, "double_negation")
 
 TEST_CASE_FIXTURE(NegationFixture, "no_structural_negation")
 {
-    // Flag override not working?????
     if (!FFlag::LuauSolverV2)
         return;
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true},
-        {FFlag::LuauSolverV2, true}
+        {FFlag::LuauTypeNegationSupport, true}
     };
 
     CheckResult result = check(R"(
@@ -229,14 +217,12 @@ TEST_CASE_FIXTURE(NegationFixture, "no_structural_negation")
 
 TEST_CASE_FIXTURE(NegationFixture, "no_generic_negation")
 {
-    // Flag override not working?????
     if (!FFlag::LuauSolverV2)
         return;
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true},
-        {FFlag::LuauSolverV2, true}
+        {FFlag::LuauTypeNegationSupport, true}
     };
 
     CheckResult result = check(R"(
@@ -252,14 +238,12 @@ TEST_CASE_FIXTURE(NegationFixture, "no_generic_negation")
 
 TEST_CASE_FIXTURE(NegationFixture, "no_errortype_ice")
 {
-    // Flag override not working?????
     if (!FFlag::LuauSolverV2)
         return;
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true},
-        {FFlag::LuauSolverV2, true}
+        {FFlag::LuauTypeNegationSupport, true}
     };
 
     CheckResult result = check(R"(
@@ -274,14 +258,12 @@ TEST_CASE_FIXTURE(NegationFixture, "no_errortype_ice")
 
 TEST_CASE_FIXTURE(NegationFixture, "negate_inner_expansion_constraint")
 {
-    // Flag override not working?????
     if (!FFlag::LuauSolverV2)
         return;
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true},
-        {FFlag::LuauSolverV2, true}
+        {FFlag::LuauTypeNegationSupport, true}
     };
 
     CheckResult result = check(R"(

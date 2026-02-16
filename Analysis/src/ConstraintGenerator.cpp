@@ -4080,7 +4080,7 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
         TypeId inner = resolveType(scope, nty->inner, true, replaceErrorWithFresh);
         // The `inner` type is within type arguments of the `negate` type function,
         // we need to add an expansion constraint
-        addConstraint(scope, nty->inner->location, TypeAliasExpansionConstraint{/* target */ inner});
+        //addConstraint(scope, nty->inner->location, TypeAliasExpansionConstraint{/* target */ inner});
 
         if (get<TableType>(inner) || get<MetatableType>(inner) || get<FunctionType>(inner) || get<GenericType>(inner))
         {
