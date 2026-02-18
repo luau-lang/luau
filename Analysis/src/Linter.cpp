@@ -835,7 +835,7 @@ private:
         if (!glob)
             return false;
 
-        return glob->name == "require";
+        return glob->name == "require" || glob->name == "sharedRequire";
     }
 
     bool visit(AstStatAssign* node) override

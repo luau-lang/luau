@@ -5067,8 +5067,8 @@ std::optional<AstExpr*> TypeChecker::matchRequire(const AstExprCall& call)
         return std::nullopt;
 
     const AstExprGlobal* funcAsGlobal = call.func->as<AstExprGlobal>();
-    if (!funcAsGlobal || funcAsGlobal->name != require)
-        return std::nullopt;
+    if (!funcAsGlobal || (funcAsGlobal->name != require && funcAsGlobal->name != "sharedRequire"))
+    return std::nullopt;
 
     if (call.args.size != 1)
         return std::nullopt;

@@ -27,8 +27,8 @@ struct RequireTracer : AstVisitor
     {
         AstExprGlobal* global = expr->func->as<AstExprGlobal>();
 
-        if (global && global->name == "require" && expr->args.size >= 1)
-            requireCalls.push_back(expr);
+        if (global && expr->args.size >= 1 && (global->name == "require" || global->name == "sharedRequire"))
+    requireCalls.push_back(expr);
 
         return true;
     }
