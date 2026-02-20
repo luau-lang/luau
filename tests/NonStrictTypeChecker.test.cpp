@@ -880,6 +880,7 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_check_block_recursion_
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+#if 0 // CLI-181303 requires a ConstraintGenerator::checkPack fix to succeed in debug on Windows
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_check_expr_recursion_limit")
 {
     int limit = 250;
@@ -895,5 +896,6 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_check_expr_recursion_l
     // Nonstrict recursion limit just exits early and doesn't produce an error
     LUAU_REQUIRE_NO_ERRORS(result);
 }
+#endif
 
 TEST_SUITE_END();

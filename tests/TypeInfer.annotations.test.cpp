@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauUnpackRespectsAnnotations)
 
 using namespace Luau;
 
@@ -947,6 +948,69 @@ TEST_CASE_FIXTURE(Fixture, "unifier3_supertail_covariant_with_sub")
     )");
 
     CHECK_EQ("<a>(a) -> t1 where t1 = add<a, t1>", toString(requireType("fib")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "respect_partially_annotated_type_packs_1")
+{
+    ScopedFastFlag _{FFlag::LuauUnpackRespectsAnnotations, true};
+
+    CheckResult results = check(R"(
+        local function f(): (number, string)
+            return 42, "huh"
+        end
+
+        local a: number, b = f()
+
+        print(math.abs(b))
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypeMismatch>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("number", toString(err->wantedType));
+    CHECK_EQ("string", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "respect_partially_annotated_type_packs_2")
+{
+    ScopedFastFlag _{FFlag::LuauUnpackRespectsAnnotations, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(): (number, boolean, string)
+            return 42, true, "huh"
+        end
+
+        local a: number, b, c: string = f()
+    )"));
+
+    CHECK_EQ("boolean", toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "react_use_state_partial_annotation")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauUnpackRespectsAnnotations, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type BasicStateAction<S> = ((S) -> S) | S
+        type Dispatch<A> = (A) -> ()
+
+        local useState: <S>( (() -> S) | S ) -> (S, Dispatch<BasicStateAction<S>>) = nil :: any
+
+        local v: number, setV = useState(0)
+        local w, setW = useState(0 :: number?)
+        local x, setX = useState(0)
+    )"));
+
+    CHECK_EQ("(((number) -> number) | number) -> ()", toString(requireType("setV")));
+
+    CHECK_EQ("number?", toString(requireType("w")));
+    CHECK_EQ("((((number?) -> number?) | number)?) -> ()", toString(requireType("setW")));
+
+    CHECK_EQ("number", toString(requireType("x")));
+    CHECK_EQ("(((number) -> number) | number) -> ()", toString(requireType("setX")));
 }
 
 TEST_SUITE_END();
