@@ -13,6 +13,7 @@
 #include "lstate.h"
 
 LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck)
+LUAU_FASTFLAG(LuauCodegenFreeBlocks)
 
 namespace Luau
 {
@@ -287,17 +288,35 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
     CODEGEN_ASSERT(build.data.empty());
 
     uint8_t* codeStart = nullptr;
-    if (!codeGenContext.codeAllocator.allocate(
+
+    if (FFlag::LuauCodegenFreeBlocks)
+    {
+        codeGenContext.gateAllocationData = codeGenContext.codeAllocator.allocate(
             build.data.data(),
             int(build.data.size()),
             reinterpret_cast<const uint8_t*>(build.code.data()),
-            int(build.code.size() * sizeof(build.code[0])),
-            codeGenContext.gateData,
-            codeGenContext.gateDataSize,
-            codeStart
-        ))
+            int(build.code.size() * sizeof(build.code[0]))
+        );
+
+        if (!codeGenContext.gateAllocationData.start)
+            return false;
+
+        codeStart = codeGenContext.gateAllocationData.codeStart;
+    }
+    else
     {
-        return false;
+        if (!codeGenContext.codeAllocator.allocate_DEPRECATED(
+                build.data.data(),
+                int(build.data.size()),
+                reinterpret_cast<const uint8_t*>(build.code.data()),
+                int(build.code.size() * sizeof(build.code[0])),
+                codeGenContext.gateData_DEPRECATED,
+                codeGenContext.gateDataSize_DEPRECATED,
+                codeStart
+            ))
+        {
+            return false;
+        }
     }
 
     // Set the offset at the beginning so that functions in new blocks will not overlay the locations

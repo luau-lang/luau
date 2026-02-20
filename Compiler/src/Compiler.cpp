@@ -468,6 +468,7 @@ struct Compiler
 
     void compileExprVarargs(AstExprVarargs* expr, uint8_t target, uint8_t targetCount, bool multRet = false)
     {
+        LUAU_ASSERT(targetCount < 255);
         LUAU_ASSERT(!multRet || unsigned(target + targetCount) == regTop);
 
         setDebugLine(expr); // normally compileExpr sets up line info, but compileExprVarargs can be called directly
@@ -536,6 +537,7 @@ struct Compiler
         LUAU_ASSERT(expr->args.size >= 1);
         LUAU_ASSERT(expr->args.size <= 3);
         LUAU_ASSERT(bfid == LBF_BIT32_EXTRACTK ? bfK >= 0 : bfK < 0);
+        LUAU_ASSERT(targetCount < 255);
 
         LuauOpcode opc = LOP_NOP;
 
@@ -792,7 +794,7 @@ struct Compiler
             else if (Variable* vv = variables.find(var); vv && vv->written)
             {
                 // if the argument is mutated, we need to allocate a fresh register even if it's a constant
-                uint8_t reg = allocReg(arg, 1);
+                uint8_t reg = allocReg(arg, 1u);
                 uint32_t allocpc = bytecode.getDebugPC();
 
                 if (arg)
@@ -824,7 +826,7 @@ struct Compiler
                 }
                 else
                 {
-                    uint8_t temp = allocReg(arg, 1);
+                    uint8_t temp = allocReg(arg, 1u);
                     uint32_t allocpc = bytecode.getDebugPC();
 
                     compileExprTemp(arg, temp);
@@ -988,6 +990,7 @@ struct Compiler
 
     void compileExprCall(AstExprCall* expr, uint8_t target, uint8_t targetCount, bool targetTop = false, bool multRet = false)
     {
+        LUAU_ASSERT(targetCount < 255);
         LUAU_ASSERT(!targetTop || unsigned(target + targetCount) == regTop);
 
         setDebugLine(expr); // normally compileExpr sets up line info, but compileExprCall can be called directly
@@ -1268,7 +1271,7 @@ struct Compiler
             else if (const Constant* uc = locstants.find(uv); uc && uc->type != Constant::Type_Unknown)
             {
                 // inlining can result in an upvalue capture of a constant, in which case we can't capture without a temporary register
-                uint8_t reg = allocReg(expr, 1);
+                uint8_t reg = allocReg(expr, 1u);
                 compileExprConstant(expr, uc, reg);
 
                 captures.push_back({LCT_VAL, reg});
@@ -1781,7 +1784,7 @@ struct Compiler
 
         // Optimization: if target is a temp register, we can clobber it which allows us to compute the result directly into it
         // If it's not a temp register, then something like `a = a > 1 or a + 2` may clobber `a` while evaluating left hand side, and `a+2` will break
-        uint8_t reg = targetTemp ? target : allocReg(expr, 1);
+        uint8_t reg = targetTemp ? target : allocReg(expr, 1u);
 
         std::vector<size_t> skipJump;
         compileConditionValue(expr->left, &reg, skipJump, /* onlyTruth= */ !and_);
@@ -2157,7 +2160,7 @@ struct Compiler
         RegScope rs(this);
 
         // Optimization: if target is a temp register, we can clobber it which allows us to compute the result directly into it
-        uint8_t reg = targetTemp ? target : allocReg(expr, 1);
+        uint8_t reg = targetTemp ? target : allocReg(expr, 1u);
 
         // Optimization: when all items are record fields, use template tables to compile expression
         if (arraySize == 0 && indexSize == 0 && hashSize == recordSize && recordSize >= 1 && recordSize <= BytecodeBuilder::TableShape::kMaxLength)
@@ -2632,7 +2635,7 @@ struct Compiler
             return uint8_t(reg);
 
         // note: the register is owned by the parent scope
-        uint8_t reg = allocReg(node, 1);
+        uint8_t reg = allocReg(node, 1u);
 
         compileExprTemp(node, reg);
 
@@ -2661,6 +2664,10 @@ struct Compiler
         // we assume that target range is at the top of the register space and can be clobbered
         // this is what allows us to compile the last call expression - if it's a call - using targetTop=true
         LUAU_ASSERT(!targetTop || unsigned(target + targetCount) == regTop);
+
+        // LOP_CALL/LOP_GETVARARGS encoding uses 255 to signal a multret
+        if (targetCount == 255)
+            CompileError::raise(node->location, "Exceeded result count limit; simplify the code to compile");
 
         if (AstExprCall* expr = node->as<AstExprCall>())
         {
@@ -3206,6 +3213,10 @@ struct Compiler
 
     void compileStatReturn(AstStatReturn* stat)
     {
+        // LOP_RETURN encoding uses 255 to signal a multret
+        if (stat->list.size >= 255)
+            CompileError::raise(stat->location, "Exceeded return count limit; simplify the code to compile");
+
         RegScope rs(this);
 
         uint8_t temp = 0;
@@ -3411,7 +3422,7 @@ struct Compiler
         hasLoops = true;
 
         // register layout: limit, step, index
-        uint8_t regs = allocReg(stat, 3);
+        uint8_t regs = allocReg(stat, 3u);
 
         // if the iteration index is assigned from within the loop, we need to protect the internal index from the assignment
         // to do that, we will copy the index into an actual local variable on each iteration
@@ -3421,7 +3432,7 @@ struct Compiler
         uint32_t varregallocpc = bytecode.getDebugPC();
 
         if (Variable* il = variables.find(stat->var); il && il->written)
-            varreg = allocReg(stat, 1);
+            varreg = allocReg(stat, 1u);
 
         compileExprTemp(stat->from, uint8_t(regs + 2));
         compileExprTemp(stat->to, uint8_t(regs + 0));
@@ -3477,7 +3488,7 @@ struct Compiler
         hasLoops = true;
 
         // register layout: generator, state, index, variables...
-        uint8_t regs = allocReg(stat, 3);
+        uint8_t regs = allocReg(stat, 3u);
 
         // this puts initial values of (generator, state, index) into the loop registers
         compileExprListTemp(stat->values, regs, 3, /* targetTop= */ true);
@@ -3645,7 +3656,7 @@ struct Compiler
             const LValue& li = var.lvalue;
 
             if (li.kind == LValue::Kind_Local && visitor.conflict[li.reg])
-                var.conflictReg = allocReg(stat, 1);
+                var.conflictReg = allocReg(stat, 1u);
         }
     }
 
@@ -3700,10 +3711,10 @@ struct Compiler
             {
                 // allocate a consecutive range of regs for all remaining vars and compute everything into temps
                 // note, this also handles trailing nils
-                uint8_t rest = uint8_t(stat->vars.size - stat->values.size + 1);
+                unsigned rest = stat->vars.size - stat->values.size + 1;
                 uint8_t temp = allocReg(stat, rest);
 
-                compileExprTempN(value, temp, rest, /* targetTop= */ true);
+                compileExprTempN(value, temp, uint8_t(rest), /* targetTop= */ true);
 
                 for (size_t j = i; j < stat->vars.size; ++j)
                     vars[j].valueReg = uint8_t(temp + (j - i));
@@ -3767,7 +3778,7 @@ struct Compiler
         LValue var = compileLValue(stat->var, rs);
 
         // Optimization: assign to locals directly
-        uint8_t target = (var.kind == LValue::Kind_Local) ? var.reg : allocReg(stat, 1);
+        uint8_t target = (var.kind == LValue::Kind_Local) ? var.reg : allocReg(stat, 1u);
 
         switch (stat->op)
         {
@@ -3838,7 +3849,7 @@ struct Compiler
         }
 
         RegScope rs(this);
-        uint8_t reg = allocReg(stat, 1);
+        uint8_t reg = allocReg(stat, 1u);
 
         compileExprTemp(stat->func, reg);
 
@@ -3974,7 +3985,7 @@ struct Compiler
         }
         else if (AstStatLocalFunction* stat = node->as<AstStatLocalFunction>())
         {
-            uint8_t var = allocReg(stat, 1);
+            uint8_t var = allocReg(stat, 1u);
 
             pushLocal(stat->name, var, kDefaultAllocPc);
             compileExprFunction(stat->func, var);
@@ -4178,6 +4189,9 @@ struct Compiler
 
         return uint8_t(top);
     }
+
+    template<typename T>
+    uint8_t allocReg(AstNode* node, T count) = delete;
 
     void setDebugLine(AstNode* node)
     {

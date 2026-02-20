@@ -33,7 +33,6 @@ LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauAvoidMintingMultipleBlockedTypesForGlobals)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarityFollow)
 
 using namespace Luau;
@@ -2745,10 +2744,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_avoid_singleton_union")
 
 TEST_CASE_FIXTURE(Fixture, "captured_globals_are_not_blocked")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForbidInternalTypes, true},
-        {FFlag::LuauAvoidMintingMultipleBlockedTypesForGlobals, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForbidInternalTypes, true};
 
     // We do not care about the errors here, only that there are no internal
     // types in the final typed AST.

@@ -26,7 +26,7 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteSingletonsInIndexer)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionCallArgTails)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -141,6 +141,8 @@ static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* n
 
             if (index < head.size())
                 return head[index];
+            else if (FFlag::LuauAutocompleteFunctionCallArgTails && index == head.size() && tail.has_value() && isVariadic(*tail))
+                return first(*tail);
 
             return std::nullopt;
         }
@@ -423,7 +425,7 @@ static void autocompleteProps(
     else if (auto tbl = get<TableType>(ty))
     {
         fillProps(tbl->props);
-        if (FFlag::LuauAutocompleteSingletonsInIndexer && tbl->indexer && indexType == PropIndexType::Point)
+        if (tbl->indexer && indexType == PropIndexType::Point)
         {
             auto indexerTy = follow(tbl->indexer->indexType);
             if (auto utv = get<UnionType>(indexerTy))
