@@ -201,12 +201,6 @@ if(LUAU_EXTERN_C)
     endif()
 endif()
 
-if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND MSVC_VERSION GREATER_EQUAL 1924)
-    # disable partial redundancy elimination which regresses interpreter codegen substantially in VS2022:
-    # https://developercommunity.visualstudio.com/t/performance-regression-on-a-complex-interpreter-lo/1631863
-    set_source_files_properties(VM/src/lvmexecute.cpp PROPERTIES COMPILE_FLAGS /d2ssa-pre-)
-endif()
-
 if (NOT MSVC)
     # disable support for math_errno which allows compilers to lower sqrt() into a single CPU instruction
     target_compile_options(Luau.VM PRIVATE -fno-math-errno)
