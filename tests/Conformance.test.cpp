@@ -72,6 +72,13 @@ static int lua_collectgarbage(lua_State* L)
     int res = lua_gc(L, optsnum[o], ex);
     switch (optsnum[o])
     {
+    case LUA_GCCOUNT:
+    {
+        int k = lua_gc(L, LUA_GCCOUNT, 0);
+        int b = lua_gc(L, LUA_GCCOUNTB, 0);
+        lua_pushnumber(L, double(k) + double(b) / 1024);
+        return 1;
+    }
     case LUA_GCSTEP:
     case LUA_GCISRUNNING:
     {
