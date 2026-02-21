@@ -10,6 +10,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
+LUAU_FASTFLAG(LuauUnionOfTablesPreservesReadWrite)
 
 namespace
 {
@@ -683,6 +684,71 @@ TEST_CASE_FIXTURE(SimplifyFixture, "intersect_parts_empty_table_non_empty")
     TypeId nonEmptyTable = arena->addType(std::move(nonEmpty));
 
     CHECK("{ p: number | string }" == toString(simplifyIntersection(getBuiltins(), arena, {nonEmptyTable, emptyTable}).result));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "relate_write_only_number_with_number")
+{
+    TypeId leftTy = mkTable({{"x", Property::writeonly(builtinTypes->numberType)}});
+    TypeId rightTy = mkTable({{"x", Property::rw(arena->addType(UnionType{{builtinTypes->nilType, builtinTypes->numberType}}))}});
+
+    // This example could be simplified to:
+    //
+    //  { write x: number, read x: number ? }
+    CHECK("{ write x: number } & { x: number? }" == toString(intersect(leftTy, rightTy)));
+    CHECK("{ write x: number } & { x: number? }" == toString(intersect(rightTy, leftTy)));
+
+    // We could probably simplify this to...
+    //
+    //  { x: number? }
+    //
+    // ... as...
+    //
+    //  { write x: number } <: { x: number? }
+    CHECK("{ write x: number } | { x: number? }" == toString(union_(leftTy, rightTy)));
+    CHECK("{ write x: number } | { x: number? }" == toString(union_(rightTy, leftTy)));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "relate_read_only_number_with_number")
+{
+    ScopedFastFlag _{FFlag::LuauUnionOfTablesPreservesReadWrite, true};
+
+    TypeId leftTy = mkTable({{"x", Property::readonly(builtinTypes->numberType)}});
+    TypeId rightTy = mkTable({{"x", Property::rw(arena->addType(UnionType{{builtinTypes->nilType, builtinTypes->numberType}}))}});
+
+    // Both of these examples _could_ be simplified, but require
+    // minting a new table ...
+
+    // This could be: { read x: number, write x: number? }
+    CHECK("{ read x: number } & { x: number? }" == toString(intersect(leftTy, rightTy)));
+    CHECK("{ read x: number } & { x: number? }" == toString(intersect(rightTy, leftTy)));
+
+    // This could be: { read x: number? }
+    CHECK("{ read x: number } | { x: number? }" == toString(union_(leftTy, rightTy)));
+    CHECK("{ read x: number } | { x: number? }" == toString(union_(rightTy, leftTy)));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "relate_coincident_minus_one_prop_tables")
+{
+    // { x: number, y: boolean }
+    TypeId leftTy = mkTable({
+    {"x", Property::rw(builtinTypes->numberType)},
+        {"y", Property::rw(builtinTypes->booleanType)}
+    });
+
+    // { x: number, y: boolean, z: string }
+    TypeId rightTy = mkTable({
+    {"x", Property::rw(builtinTypes->numberType)},
+        {"y", Property::rw(builtinTypes->booleanType)},
+        {"z", Property::rw(builtinTypes->stringType)}
+    });
+
+    // By width subtyping this could be { x: number, y: boolean, z: string }
+    CHECK("{ x: number, y: boolean } & { x: number, y: boolean, z: string }" == toString(intersect(leftTy, rightTy)));
+    CHECK("{ x: number, y: boolean } & { x: number, y: boolean, z: string }" == toString(intersect(rightTy, leftTy)));
+
+    // By width subtyping this could be { x: number, y: boolean }
+    CHECK("{ x: number, y: boolean } | { x: number, y: boolean, z: string }" == toString(union_(leftTy, rightTy)));
+    CHECK("{ x: number, y: boolean } | { x: number, y: boolean, z: string }" == toString(union_(rightTy, leftTy)));
 }
 
 TEST_SUITE_END();

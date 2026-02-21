@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState2)
+LUAU_FASTFLAGVARIABLE(LuauCodegenIsNanAndDirectCompare)
 
 namespace Luau
 {
@@ -384,6 +385,16 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstJumpIf(*this, pc, i, /* not_ */ true);
         break;
     case LOP_JUMPIFEQ:
+        if (FFlag::LuauCodegenIsNanAndDirectCompare && isDirectCompare(function.proto, pc, i))
+        {
+            translateInstJumpIfEqShortcut(*this, pc, i, /* not_ */ false);
+
+            // We complete the current instruction and the first LOADB, but we do not skip the second LOADB
+            // This is because the second LOADB was a jump target so there is a block prepared to handle it
+            cmdSkipTarget = i + 3;
+            break;
+        }
+
         translateInstJumpIfEq(*this, pc, i, /* not_ */ false);
         break;
     case LOP_JUMPIFLE:
@@ -393,6 +404,16 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstJumpIfCond(*this, pc, i, IrCondition::Less);
         break;
     case LOP_JUMPIFNOTEQ:
+        if (FFlag::LuauCodegenIsNanAndDirectCompare && isDirectCompare(function.proto, pc, i))
+        {
+            translateInstJumpIfEqShortcut(*this, pc, i, /* not_ */ true);
+
+            // We complete the current instruction and the first LOADB, but we do not skip the second LOADB
+            // This is because the second LOADB was a jump target so there is a block prepared to handle it
+            cmdSkipTarget = i + 3;
+            break;
+        }
+
         translateInstJumpIfEq(*this, pc, i, /* not_ */ true);
         break;
     case LOP_JUMPIFNOTLE:

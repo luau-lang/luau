@@ -16,6 +16,7 @@ LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauCloneForIntersectionsUnions)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
+LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1211,6 +1212,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_does_not_retroactively_block_mutation")
 {
+    ScopedFastFlag _{FFlag::LuauRelateHandlesCoincidentTables, true};
+
     CheckResult result = check(R"(
         local t1 = {a = 42}
 
@@ -1226,7 +1229,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_does_not_retroactively_block_mu
 
     if (FFlag::LuauSolverV2)
     {
-        CHECK_EQ("{ a: number, q: string } | { read a: number, read q: string }", toString(requireType("t1"), {/*exhaustive */ true}));
+        CHECK_EQ("{ read a: number, read q: string }", toString(requireType("t1"), {/*exhaustive */ true}));
         // before the assignment, it's `t1`
         CHECK_EQ("{ a: number, q: string }", toString(requireTypeAtPosition({3, 8}), {/*exhaustive */ true}));
         // after the assignment, it's read-only.

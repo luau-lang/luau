@@ -8,11 +8,11 @@
 
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenVectorCreateXy)
 LUAU_FASTFLAGVARIABLE(LuauCodegenExtraSimd)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBit32Guards)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBit32SingleArg)
+LUAU_FASTFLAG(LuauCodegenIsNanAndDirectCompare)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
@@ -360,6 +360,24 @@ static BuiltinImplResult translateBuiltinMathUnary(IrBuilder& build, IrCmd cmd, 
 
     if (ra != arg)
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+
+    return {BuiltinImplType::Full, 1};
+}
+
+static BuiltinImplResult translateBuiltinMathIsNan(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+{
+    if (nparams < 1 || nresults > 1)
+        return {BuiltinImplType::None, -1};
+
+    builtinCheckDouble(build, build.vmReg(arg), pcpos);
+
+    IrOp varg = builtinLoadDouble(build, build.vmReg(arg));
+
+    IrOp result =
+        build.inst(IrCmd::CMP_SPLIT_TVALUE, build.constTag(LUA_TNUMBER), build.constTag(LUA_TNUMBER), varg, varg, build.cond(IrCondition::NotEqual));
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(ra), result);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
 
     return {BuiltinImplType::Full, 1};
 }
@@ -865,23 +883,13 @@ static BuiltinImplResult translateBuiltinBit32Replace(
 
 static BuiltinImplResult translateBuiltinVector(IrBuilder& build, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, int pcpos)
 {
-    if (FFlag::LuauCodegenVectorCreateXy)
-    {
-        if (nparams < 2 || nresults > 1)
-            return {BuiltinImplType::None, -1};
-    }
-    else
-    {
-        if (nparams < 3 || nresults > 1)
-            return {BuiltinImplType::None, -1};
-    }
+    if (nparams < 2 || nresults > 1)
+        return {BuiltinImplType::None, -1};
 
     CODEGEN_ASSERT(LUA_VECTOR_SIZE == 3);
 
     if (nparams == 2)
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenVectorCreateXy);
-
         builtinCheckDouble(build, build.vmReg(arg), pcpos);
         builtinCheckDouble(build, args, pcpos);
 
@@ -1542,6 +1550,11 @@ BuiltinImplResult translateBuiltin(
         return translateBuiltinVectorLerp(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_MATH_LERP:
         return translateBuiltinMathLerp(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
+    case LBF_MATH_ISNAN:
+        if (FFlag::LuauCodegenIsNanAndDirectCompare)
+            return translateBuiltinMathIsNan(build, nparams, ra, arg, args, nresults, pcpos);
+        else
+            return {BuiltinImplType::None, -1};
     default:
         return {BuiltinImplType::None, -1};
     }

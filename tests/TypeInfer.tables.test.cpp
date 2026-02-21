@@ -14,6 +14,7 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <sstream>
 
 using namespace Luau;
 
@@ -27,8 +28,8 @@ LUAU_FASTFLAG(LuauPushTypeConstraintLambdas3)
 LUAU_FASTFLAG(LuauMarkUnscopedGenericsAsSolved)
 LUAU_FASTFLAG(LuauUseFastSubtypeForIndexerWithName)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-LUAU_FASTFLAG(LuauFixIndexingUnionWithNonTable)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -6545,8 +6546,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "allow_indexing_into_error_or_not_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "show_not_a_table_error_when_indexing_into_non_table")
 {
-    ScopedFastFlag _{FFlag::LuauFixIndexingUnionWithNonTable, true};
-
     CheckResult result = check(R"(
         --!strict
         local function f(t: number | boolean)
@@ -6700,6 +6699,47 @@ TEST_CASE_FIXTURE(Fixture, "table_inference_one_incorrect_member")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("(number) -> { x: number, y: string }", toString(requireType("makeTable")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "basic_data_like_array")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauRelateHandlesCoincidentTables, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local t = {
+            {1, 2, 3},
+            {4, 5, 6}
+        }
+    )"));
+    CHECK_EQ("{{number}}", toString(requireType("t"), {/* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "large_data_like_array_can_simplify")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauRelateHandlesCoincidentTables, true},
+    };
+
+    std::stringstream stream;
+    stream << "local function get()" << '\n';
+    stream << "\treturn { " << '\n';
+    for (size_t i = 0; i < 200; i++)
+    {
+        stream << "\t\t{" << i << ", " << i + 1 << ", " << i + 2 << "}," << '\n';
+        if ((i % 2) != 0u)
+            stream << "\t\t{ foo = " << i << " }," << '\n';
+        else
+            stream << "\t\t{ bar = " << i << " }," << '\n';
+    }
+    stream << "\t}" << '\n';
+    stream << "end" << '\n';
+
+    LUAU_REQUIRE_NO_ERRORS(check(stream.str()));
+    CHECK_EQ("() -> {{ bar: number } | { foo: number } | {number}}", toString(requireType("get")));
 }
 
 
