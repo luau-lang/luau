@@ -455,7 +455,7 @@ struct lua_Callbacks
     void (*panic)(lua_State* L, int errcode); // gets called when an unprotected error is raised (if longjmp is used)
 
     void (*userthread)(lua_State* LP, lua_State* L); // gets called when L is created (LP == parent) or destroyed (LP == NULL)
-    int16_t (*useratom)(const char* s, size_t l);    // gets called when a string is created; returned atom can be retrieved via tostringatom
+    int16_t (*useratom)(lua_State* L, const char* s, size_t l);    // gets called when a string is created; returned atom can be retrieved via tostringatom
 
     void (*debugbreak)(lua_State* L, lua_Debug* ar);     // gets called when BREAK instruction is encountered
     void (*debugstep)(lua_State* L, lua_Debug* ar);      // gets called after each instruction in single step mode

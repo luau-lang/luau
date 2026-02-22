@@ -2366,7 +2366,7 @@ TEST_CASE("ApiAtoms")
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
-    lua_callbacks(L)->useratom = [](const char* s, size_t l) -> int16_t
+    lua_callbacks(L)->useratom = [](lua_State* L, const char* s, size_t l) -> int16_t
     {
         if (strcmp(s, "string") == 0)
             return 0;
