@@ -329,6 +329,10 @@ private:
     // stringinterp ::= <INTERP_BEGIN> exp {<INTERP_MID> exp} <INTERP_END>
     AstExpr* parseInterpString();
 
+    // Parses an interpolated string as function call arguments, desugaring into
+    // a 3-argument call: (template, values, offsets)
+    AstExpr* parseInterpStringCall(AstExpr* func, bool self);
+
     // TypeInstantiation ::= `<' `<' [TypeList] `>' `>'
     AstArray<AstTypeOrPack> parseTypeInstantiationExpr(CstTypeInstantiation* cstNodeOut = nullptr, Location* endLocationOut = nullptr);
 

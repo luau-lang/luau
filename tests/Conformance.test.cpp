@@ -42,6 +42,7 @@ LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauStacklessPcall)
 LUAU_FASTFLAG(LuauCodegenExtraSimd)
 LUAU_FASTFLAG(LuauCodegenExtraSpills)
+LUAU_FASTFLAG(LuauInterpStringFunctionCalls)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -909,6 +910,12 @@ TEST_CASE("Strings")
 TEST_CASE("StringInterp")
 {
     runConformance("stringinterp.luau");
+}
+
+TEST_CASE("StringInterpCall")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+    runConformance("stringinterpcall.luau");
 }
 
 TEST_CASE("VarArg")

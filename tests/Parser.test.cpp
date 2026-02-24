@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
+LUAU_FASTFLAG(LuauInterpStringFunctionCalls)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -4600,6 +4601,170 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_errors")
     ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
 
     matchParseError("local a = x:a<<T>>", "Expected '(', '{' or <string> when parsing function call, got <eof>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_simple_no_expressions")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    auto result = parseEx("f `hello`");
+    REQUIRE(result.errors.empty());
+    auto stat = result.root->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stat);
+    auto call = stat->expr->as<AstExprCall>();
+    REQUIRE(call);
+    CHECK(!call->self);
+    CHECK(call->args.size == 1);
+    auto str = call->args.data[0]->as<AstExprConstantString>();
+    REQUIRE(str);
+    CHECK(std::string(str->value.data, str->value.size) == "hello");
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_with_expressions")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    auto result = parseEx("f `hello {x}`");
+    REQUIRE(result.errors.empty());
+    auto stat = result.root->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stat);
+    auto call = stat->expr->as<AstExprCall>();
+    REQUIRE(call);
+    CHECK(!call->self);
+    CHECK(call->args.size == 3);
+
+    auto tmpl = call->args.data[0]->as<AstExprConstantString>();
+    REQUIRE(tmpl);
+    CHECK(std::string(tmpl->value.data, tmpl->value.size) == "hello {x}");
+
+    auto vals = call->args.data[1]->as<AstExprTable>();
+    REQUIRE(vals);
+    CHECK(vals->items.size == 1);
+
+    auto offsets = call->args.data[2]->as<AstExprTable>();
+    REQUIRE(offsets);
+    CHECK(offsets->items.size == 1);
+    auto pair = offsets->items.data[0].value->as<AstExprTable>();
+    REQUIRE(pair);
+    CHECK(pair->items.size == 2);
+    auto off = pair->items.data[0].value->as<AstExprConstantNumber>();
+    auto len = pair->items.data[1].value->as<AstExprConstantNumber>();
+    REQUIRE(off);
+    REQUIRE(len);
+    CHECK(off->value == 7);
+    CHECK(len->value == 3);
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_method")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    auto result = parseEx("obj:method `hello {x}`");
+    REQUIRE(result.errors.empty());
+    auto stat = result.root->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stat);
+    auto call = stat->expr->as<AstExprCall>();
+    REQUIRE(call);
+    CHECK(call->self);
+    CHECK(call->args.size == 3);
+
+    auto tmpl = call->args.data[0]->as<AstExprConstantString>();
+    REQUIRE(tmpl);
+    CHECK(std::string(tmpl->value.data, tmpl->value.size) == "hello {x}");
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_multiple_expressions")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    auto result = parseEx("f `{a} and {b}`");
+    REQUIRE(result.errors.empty());
+    auto stat = result.root->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stat);
+    auto call = stat->expr->as<AstExprCall>();
+    REQUIRE(call);
+    CHECK(call->args.size == 3);
+
+    auto tmpl = call->args.data[0]->as<AstExprConstantString>();
+    REQUIRE(tmpl);
+    CHECK(std::string(tmpl->value.data, tmpl->value.size) == "{a} and {b}");
+
+    auto vals = call->args.data[1]->as<AstExprTable>();
+    REQUIRE(vals);
+    CHECK(vals->items.size == 2);
+
+    auto offsets = call->args.data[2]->as<AstExprTable>();
+    REQUIRE(offsets);
+    CHECK(offsets->items.size == 2);
+
+    auto pair0 = offsets->items.data[0].value->as<AstExprTable>();
+    REQUIRE(pair0);
+    auto off0 = pair0->items.data[0].value->as<AstExprConstantNumber>();
+    auto len0 = pair0->items.data[1].value->as<AstExprConstantNumber>();
+    REQUIRE(off0);
+    REQUIRE(len0);
+    CHECK(off0->value == 1);
+    CHECK(len0->value == 3);
+
+    auto pair1 = offsets->items.data[1].value->as<AstExprTable>();
+    REQUIRE(pair1);
+    auto off1 = pair1->items.data[0].value->as<AstExprConstantNumber>();
+    auto len1 = pair1->items.data[1].value->as<AstExprConstantNumber>();
+    REQUIRE(off1);
+    REQUIRE(len1);
+    CHECK(off1->value == 9);
+    CHECK(len1->value == 3);
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_complex_expression")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    auto result = parseEx("f `result is {double(a)}`");
+    REQUIRE(result.errors.empty());
+    auto stat = result.root->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stat);
+    auto call = stat->expr->as<AstExprCall>();
+    REQUIRE(call);
+    CHECK(call->args.size == 3);
+
+    auto tmpl = call->args.data[0]->as<AstExprConstantString>();
+    REQUIRE(tmpl);
+    CHECK(std::string(tmpl->value.data, tmpl->value.size) == "result is {double(a)}");
+
+    auto offsets = call->args.data[2]->as<AstExprTable>();
+    REQUIRE(offsets);
+    auto pair = offsets->items.data[0].value->as<AstExprTable>();
+    REQUIRE(pair);
+    auto off = pair->items.data[0].value->as<AstExprConstantNumber>();
+    auto len = pair->items.data[1].value->as<AstExprConstantNumber>();
+    REQUIRE(off);
+    REQUIRE(len);
+    CHECK(off->value == 11);
+    CHECK(len->value == 11);
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_disabled_by_flag")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, false};
+
+    matchParseError("f `hello {x}`", "Incomplete statement: expected assignment or a function call");
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_chaining")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    auto result = parseEx("f `hello {x}` {key = 1}");
+    REQUIRE(result.errors.empty());
+    auto stat = result.root->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stat);
+    auto outerCall = stat->expr->as<AstExprCall>();
+    REQUIRE(outerCall);
+    CHECK(outerCall->args.size == 1);
+    auto innerCall = outerCall->func->as<AstExprCall>();
+    REQUIRE(innerCall);
+    CHECK(innerCall->args.size == 3);
 }
 
 TEST_SUITE_END();
