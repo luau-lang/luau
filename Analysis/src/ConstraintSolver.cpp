@@ -50,6 +50,8 @@ LUAU_FASTFLAGVARIABLE(LuauUseFastSubtypeForIndexerWithName)
 LUAU_FASTFLAGVARIABLE(LuauUnifyWithSubtyping2)
 LUAU_FASTFLAGVARIABLE(LuauDoNotUseApplyTypeFunctionToClone)
 LUAU_FASTFLAGVARIABLE(LuauReworkInfiniteTypeFinder)
+LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
+LUAU_FASTFLAG(LuauUnpackRespectsAnnotations)
 
 namespace Luau
 {
@@ -1016,6 +1018,9 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
             }
             else if (get<TableType>(ty))
                 sealTable(constraint->scope, ty);
+
+            if (FFlag::LuauRelateHandlesCoincidentTables)
+                unblock(ty, constraint->location);
         }
     }
 
@@ -2574,11 +2579,16 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
         TypeId srcTy = follow(srcPack.head[i]);
         TypeId resultTy = follow(*resultIter);
 
-        LUAU_ASSERT(get<BlockedType>(resultTy));
-        LUAU_ASSERT(canMutate(resultTy, constraint));
+        if (!FFlag::LuauUnpackRespectsAnnotations)
+        {
+            LUAU_ASSERT(get<BlockedType>(resultTy));
+            LUAU_ASSERT(canMutate(resultTy, constraint));
+        }
 
         if (get<BlockedType>(resultTy))
         {
+            if (FFlag::LuauUnpackRespectsAnnotations)
+                LUAU_ASSERT(canMutate(resultTy, constraint));
             if (follow(srcTy) == resultTy)
             {
                 // It is sometimes the case that we find that a blocked type
@@ -2764,6 +2774,15 @@ struct FindAllUnionMembers : TypeOnceVisitor
     bool visit(TypeId, const UnionType&) override
     {
         return true;
+    }
+
+    bool visit(TypeId ty, const TableType& tbl) override
+    {
+        if (FFlag::LuauRelateHandlesCoincidentTables && tbl.state != TableState::Sealed)
+            blockedTys.insert(ty);
+        else
+            recordedTys.insert(ty);
+        return false;
     }
 };
 

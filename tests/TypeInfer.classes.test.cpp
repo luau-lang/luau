@@ -17,7 +17,6 @@ using std::nullopt;
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauSubtypingHandlesExternTypesWithIndexers)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
@@ -1236,8 +1235,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_is_not_subtype_of_table")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingHandlesExternTypesWithIndexers, true};
-
     loadDefinition(R"(
         declare extern type Color3 with
         end
@@ -1256,8 +1253,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_is_not_subtype_of_table")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_overload")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingHandlesExternTypesWithIndexers, true};
-
     loadDefinition(R"(
         declare extern type Color3 with
         end
@@ -1272,7 +1267,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_overload")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_indexer_interactions")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauSubtypingHandlesExternTypesWithIndexers, true}};
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     loadDefinition(R"(
         declare extern type Container with

@@ -16,7 +16,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-LUAU_FASTFLAG(LuauSetmetatableWaitForPendingTypes)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
@@ -1985,8 +1984,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2106_wait_for_pending_types_in_setmetata
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        // This is the actual fix for this test
-        {FFlag::LuauSetmetatableWaitForPendingTypes, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true}
     };
 
@@ -2015,8 +2012,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2106_wait_for_pending_types_in_setmetata
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        // This is the actual fix for this test
-        {FFlag::LuauSetmetatableWaitForPendingTypes, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true}
     };
 
