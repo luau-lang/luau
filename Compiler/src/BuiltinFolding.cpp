@@ -8,6 +8,7 @@
 #include <math.h>
 
 LUAU_FASTFLAGVARIABLE(LuauCompileStringCharSubFold)
+LUAU_FASTFLAGVARIABLE(LuauCompileMathNewConstants)
 
 namespace Luau
 {
@@ -16,6 +17,8 @@ namespace Compile
 
 const double kPi = 3.14159265358979323846;
 const double kRadDeg = kPi / 180.0;
+const double kE = 2.71828182845904523536;
+const double kPhi = 1.61803398874989484820;
 
 constexpr size_t kStringCharFoldLimit = 128;
 
@@ -635,6 +638,21 @@ Constant foldBuiltinMath(AstName index)
 
     if (index == "huge")
         return cnum(HUGE_VAL);
+
+    if (index == "nan")
+        return cnum(0.0/0.0);
+
+    if (index == "e")
+        return cnum(kE);
+
+    if (index == "phi")
+        return cnum(kPhi);
+
+    if (index == "sqrt2")
+        return cnum(sqrt(2.0));
+
+    if (index == "tau")
+        return cnum(2.0 * kPi);
 
     return cvar();
 }

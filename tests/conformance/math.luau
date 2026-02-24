@@ -447,6 +447,16 @@ assert(math.isfinite(noinline(-math.huge)) == false)
 assert(math.isfinite(noinline(0/0)) == false)
 assert(math.isfinite(noinline(123.45)))
 
+-- .nan, e, phi, sqrt2, tau
+if math.nan then
+  assert(math.nan ~= math.nan)
+  assert(math.isnan(math.nan))
+  assert(math.e == 2.71828182845904523536)
+  assert(math.phi == 1.61803398874989484820)
+  assert(math.sqrt2 == math.sqrt(2))
+  assert(math.tau == 2 * math.pi)
+end
+
 -- test that fastcalls return correct number of results
 assert(select('#', math.floor(1.4)) == 1)
 assert(select('#', math.ceil(1.6)) == 1)

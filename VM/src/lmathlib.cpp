@@ -11,9 +11,13 @@
 #define PI (3.14159265358979323846)
 #define RADIANS_PER_DEGREE (PI / 180.0)
 
+#define E 2.71828182845904523536
+#define PHI 1.61803398874989484820
+
 #define PCG32_INC 105
 
 LUAU_FASTFLAGVARIABLE(LuauMathSeedEncode)
+LUAU_FASTFLAGVARIABLE(LuauMathNewConstants)
 
 static uint32_t pcg32_random(uint64_t* state)
 {
@@ -511,6 +515,20 @@ int luaopen_math(lua_State* L)
     lua_setfield(L, -2, "pi");
     lua_pushnumber(L, HUGE_VAL);
     lua_setfield(L, -2, "huge");
+
+    if (FFlag::LuauMathNewConstants)
+    {
+        lua_pushnumber(L, 0.0/0.0);
+        lua_setfield(L, -2, "nan");
+        lua_pushnumber(L, E);
+        lua_setfield(L, -2, "e");
+        lua_pushnumber(L, PHI);
+        lua_setfield(L, -2, "phi");
+        lua_pushnumber(L, sqrt(2.0));
+        lua_setfield(L, -2, "sqrt2");
+        lua_pushnumber(L, 2.0 * PI);
+        lua_setfield(L, -2, "tau");
+    }
 
     return 1;
 }
