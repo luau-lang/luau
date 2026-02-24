@@ -13,7 +13,6 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenBufferLoadProp2)
 LUAU_FASTFLAG(LuauCodegenGcoDse2)
 LUAU_FASTFLAG(LuauCodegenDsoPairTrackFix)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
@@ -3722,7 +3721,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SetListIsABlocker")
 
     build.beginBlock(entry);
     IrOp op1 = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
-    build.inst(IrCmd::SETLIST);
+    build.inst(IrCmd::SETLIST, build.constUint(0), build.vmReg(1), build.vmReg(2), build.constInt(1), build.constUint(1), build.undef());
     IrOp op2 = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
     IrOp sum = build.inst(IrCmd::ADD_NUM, op1, op2);
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), sum);
@@ -3734,7 +3733,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SetListIsABlocker")
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
    %0 = LOAD_DOUBLE R0
-   SETLIST
+   SETLIST 0u, R1, R2, 1i, 1u, undef
    %2 = LOAD_DOUBLE R0
    %3 = ADD_NUM %0, %2
    STORE_DOUBLE R0, %3
@@ -4230,7 +4229,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "HiddenPointerUse1")
 {
-    ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);
@@ -4258,7 +4256,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "HiddenPointerUse2")
 {
-    ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);

@@ -5,6 +5,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenFreeBlocks)
+
 #if defined(_WIN32)
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -61,6 +63,15 @@ static void freePagesImpl(uint8_t* mem, size_t size)
     return VirtualProtect(mem, size, PAGE_EXECUTE_READ, &oldProtect) != 0;
 }
 
+[[nodiscard]] static bool makePagesNotExecutable(uint8_t* mem, size_t size)
+{
+    CODEGEN_ASSERT((uintptr_t(mem) & (kPageSize - 1)) == 0);
+    CODEGEN_ASSERT(size == alignToPageSize(size));
+
+    DWORD oldProtect;
+    return VirtualProtect(mem, size, PAGE_READWRITE, &oldProtect) != 0;
+}
+
 static void flushInstructionCache(uint8_t* mem, size_t size)
 {
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
@@ -96,6 +107,14 @@ static void freePagesImpl(uint8_t* mem, size_t size)
     CODEGEN_ASSERT(size == alignToPageSize(size));
 
     return mprotect(mem, size, PROT_READ | PROT_EXEC) == 0;
+}
+
+[[nodiscard]] static bool makePagesNotExecutable(uint8_t* mem, size_t size)
+{
+    CODEGEN_ASSERT((uintptr_t(mem) & (kPageSize - 1)) == 0);
+    CODEGEN_ASSERT(size == alignToPageSize(size));
+
+    return mprotect(mem, size, PROT_READ | PROT_WRITE) == 0;
 }
 
 static void flushInstructionCache(uint8_t* mem, size_t size)
@@ -136,11 +155,14 @@ CodeAllocator::~CodeAllocator()
             destroyBlockUnwindInfo(context, unwindInfo);
     }
 
+    if (FFlag::LuauCodegenFreeBlocks)
+        CODEGEN_ASSERT(liveAllocations == 0);
+
     for (uint8_t* block : blocks)
         freePages(block, blockSize);
 }
 
-bool CodeAllocator::allocate(
+bool CodeAllocator::allocate_DEPRECATED(
     const uint8_t* data,
     size_t dataSize,
     const uint8_t* code,
@@ -150,6 +172,8 @@ bool CodeAllocator::allocate(
     uint8_t*& resultCodeStart
 )
 {
+    CODEGEN_ASSERT(!FFlag::LuauCodegenFreeBlocks);
+
     // 'Round up' to preserve code alignment
     size_t alignedDataSize = (dataSize + (kCodeAlignment - 1)) & ~(kCodeAlignment - 1);
 
@@ -207,6 +231,92 @@ bool CodeAllocator::allocate(
     }
 
     return true;
+}
+
+CodeAllocationData CodeAllocator::allocate(const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenFreeBlocks);
+
+    // 'Round up' to preserve code alignment
+    size_t alignedDataSize = (dataSize + (kCodeAlignment - 1)) & ~(kCodeAlignment - 1);
+
+    size_t totalSize = alignedDataSize + codeSize;
+
+    // Function has to fit into a single block with unwinding information
+    if (totalSize > blockSize - kMaxReservedDataSize)
+        return {};
+
+    size_t startOffset = 0;
+
+    // We might need a new block
+    if (totalSize > size_t(blockEnd - blockPos))
+    {
+        if (!allocateNewBlock(startOffset))
+            return {};
+
+        CODEGEN_ASSERT(totalSize <= size_t(blockEnd - blockPos));
+    }
+
+    CODEGEN_ASSERT((uintptr_t(blockPos) & (kPageSize - 1)) == 0); // Allocation starts on page boundary
+
+    size_t dataOffset = startOffset + alignedDataSize - dataSize;
+    size_t codeOffset = startOffset + alignedDataSize;
+
+    if (dataSize != 0)
+        memcpy(blockPos + dataOffset, data, dataSize);
+    if (codeSize != 0)
+        memcpy(blockPos + codeOffset, code, codeSize);
+
+    size_t pageAlignedSize = alignToPageSize(startOffset + totalSize);
+
+    if (!makePagesExecutable(blockPos, pageAlignedSize))
+        return {};
+
+    liveAllocations++;
+
+    flushInstructionCache(blockPos + codeOffset, codeSize);
+
+    CodeAllocationData result;
+
+    result.start = blockPos + startOffset;
+    result.size = totalSize;
+    result.codeStart = blockPos + codeOffset;
+
+    result.allocationStart = blockPos;
+    result.allocationSize = pageAlignedSize;
+
+    // Ensure that future allocations from the block start from a page boundary.
+    // This is important since we use W^X, and writing to the previous page would require briefly removing
+    // executable bit from it, which may result in access violations if that code is being executed concurrently.
+    if (pageAlignedSize <= size_t(blockEnd - blockPos))
+    {
+        blockPos += pageAlignedSize;
+        CODEGEN_ASSERT((uintptr_t(blockPos) & (kPageSize - 1)) == 0);
+        CODEGEN_ASSERT(blockPos <= blockEnd);
+    }
+    else
+    {
+        // Future allocations will need to allocate fresh blocks
+        blockPos = blockEnd;
+    }
+
+    return result;
+}
+
+void CodeAllocator::deallocate(CodeAllocationData codeAllocationData)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenFreeBlocks);
+
+    if (codeAllocationData.allocationStart == nullptr)
+        return;
+
+    [[maybe_unused]] bool result = makePagesNotExecutable(codeAllocationData.allocationStart, codeAllocationData.allocationSize);
+    CODEGEN_ASSERT(result);
+
+    CODEGEN_ASSERT(liveAllocations != 0);
+    liveAllocations--;
+
+    // TODO: new allocations should be able to reuse the freed pages (but note that first block page contains unwind data)
 }
 
 bool CodeAllocator::allocateNewBlock(size_t& unwindInfoSize)

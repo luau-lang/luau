@@ -22,7 +22,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
 LUAU_FASTFLAGVARIABLE(LuauBuiltinTypeFunctionsUseNewOverloadResolution)
-LUAU_FASTFLAGVARIABLE(LuauSetmetatableWaitForPendingTypes)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsUseSolveFunctionCall)
 
 namespace Luau
@@ -2431,11 +2430,8 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
     TypeId targetTy = follow(typeParams.at(0));
     TypeId metatableTy = follow(typeParams.at(1));
 
-    if (FFlag::LuauSetmetatableWaitForPendingTypes)
-    {
-        if (isPending(targetTy, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
-    }
+    if (isPending(targetTy, ctx->solver))
+        return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
 
     std::shared_ptr<const NormalizedType> targetNorm = ctx->normalizer->normalize(targetTy);
 
@@ -2453,11 +2449,8 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
         targetNorm->hasExternTypes())
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 
-    if (FFlag::LuauSetmetatableWaitForPendingTypes)
-    {
-        if (isPending(metatableTy, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
-    }
+    if (isPending(metatableTy, ctx->solver))
+        return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
 
     // if the supposed metatable is not a table, we will fail to reduce.
     if (!get<TableType>(metatableTy) && !get<MetatableType>(metatableTy))

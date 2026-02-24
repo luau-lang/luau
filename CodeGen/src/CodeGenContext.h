@@ -32,6 +32,7 @@ class BaseCodeGenContext
 {
 public:
     BaseCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+    virtual ~BaseCodeGenContext();
 
     [[nodiscard]] bool initHeaderFunctions();
 
@@ -56,8 +57,9 @@ public:
     CodeAllocator codeAllocator;
     std::unique_ptr<UnwindBuilder> unwindBuilder;
 
-    uint8_t* gateData = nullptr;
-    size_t gateDataSize = 0;
+    uint8_t* gateData_DEPRECATED = nullptr;
+    size_t gateDataSize_DEPRECATED = 0;
+    CodeAllocationData gateAllocationData;
 
     void* userdataRemappingContext = nullptr;
     UserdataRemapperCallback* userdataRemapper = nullptr;
@@ -86,6 +88,7 @@ public:
     void onDestroyFunction(void* execdata) noexcept override;
 
 private:
+    SharedCodeAllocator sharedAllocator;
 };
 
 class SharedCodeGenContext final : public BaseCodeGenContext

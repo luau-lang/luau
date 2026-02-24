@@ -2,9 +2,7 @@
 #include "Luau/Autocomplete.h"
 #include "Luau/AutocompleteTypes.h"
 #include "Luau/BuiltinDefinitions.h"
-#include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
-#include "Luau/VisitType.h"
 #include "Luau/StringUtils.h"
 
 
@@ -21,8 +19,8 @@ LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauAutocompleteSingletonsInIndexer)
-
+LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails)
+  
 using namespace Luau;
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
@@ -5002,8 +5000,6 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_deprecated_braced_attribute")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_indexer_with_singleton_keys")
 {
-    ScopedFastFlag _{FFlag::LuauAutocompleteSingletonsInIndexer, true};
-
     check(R"(
         type List = "Val1" | "Val2" | "Val3"
         local Table: { [List]: boolean }
@@ -5014,6 +5010,33 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_indexer_with_singleton_keys")
     CHECK_EQ(ac.entryMap.count("Val1"), 1);
     CHECK_EQ(ac.entryMap.count("Val2"), 1);
     CHECK_EQ(ac.entryMap.count("Val3"), 1);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_arg")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails, true};
+
+    check(R"(
+        local function foo(...: "Val1") end
+        foo(@1)
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("\"Val1\""), 1);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_union_arg")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails, true};
+
+    check(R"(
+        local function foo(...: "Val1" | "Val2") end
+        foo(@1)
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("\"Val1\""), 1);
+    CHECK_EQ(ac.entryMap.count("\"Val2\""), 1);
 }
 
 TEST_SUITE_END();
