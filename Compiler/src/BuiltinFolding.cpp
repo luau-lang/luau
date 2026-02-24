@@ -640,7 +640,7 @@ Constant foldBuiltinMath(AstName index)
         return cnum(HUGE_VAL);
 
     if (index == "nan")
-        return cnum(0.0/0.0);
+        return cnum(NAN);
 
     if (index == "e")
         return cnum(kE);

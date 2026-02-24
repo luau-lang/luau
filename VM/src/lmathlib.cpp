@@ -518,7 +518,7 @@ int luaopen_math(lua_State* L)
 
     if (FFlag::LuauMathNewConstants)
     {
-        lua_pushnumber(L, 0.0/0.0);
+        lua_pushnumber(L, NAN);
         lua_setfield(L, -2, "nan");
         lua_pushnumber(L, E);
         lua_setfield(L, -2, "e");
