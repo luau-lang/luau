@@ -19,6 +19,7 @@
 #include "ScopedFlags.h"
 #include "ConformanceIrHooks.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -204,14 +205,30 @@ static StateRef runConformance(
     path += name;
 #else
     std::string path = __FILE__;
-    path.erase(path.find_last_of("\\/"));
-    path += "/conformance/";
+    // __FILE__ is not guaranteed to be absolute path because of reproducible BUCK2 builds.
+    if (path.find_last_of("\\/") == std::string::npos)
+    {
+        path = "Client/Luau/tests/conformance";
+        if (const char* envDir = std::getenv("LUAU_CONFORMANCE_SOURCE_DIR"))
+            path = envDir;
+        path += "/";
+    }
+    else
+    {
+        path.erase(path.find_last_of("\\/"));
+        path += "/conformance/";
+    }
     path += name;
 #endif
 
     std::fstream stream(path, std::ios::in | std::ios::binary);
     INFO(path);
-    REQUIRE(stream);
+    if (!stream)
+    {
+        std::string message = "File " + path + " is not found. " +
+                              "Make sure you run tests from the root or specify custom directory using LUAU_CONFORMANCE_SOURCE_DIR env variable";
+        throw message;
+    }
 
     std::string source(std::istreambuf_iterator<char>(stream), {});
 

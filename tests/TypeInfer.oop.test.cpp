@@ -15,7 +15,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauIndexInMetatableSubtyping)
 LUAU_FASTFLAG(LuauPushTypeConstraintLambdas3)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
@@ -679,8 +678,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_type")
 {
-    ScopedFastFlag _{FFlag::LuauIndexInMetatableSubtyping, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local ItemContainer = {}
         ItemContainer.__index = ItemContainer
@@ -706,8 +703,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_and_property")
 {
-    ScopedFastFlag _{FFlag::LuauIndexInMetatableSubtyping, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local ItemContainer = {}
         ItemContainer.__index = ItemContainer
@@ -736,7 +731,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauSolverV2, true},
-        {FFlag::LuauIndexInMetatableSubtyping, true},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -752,10 +746,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauIndexInMetatableSubtyping, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         local Foobar = {}
@@ -776,10 +767,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauIndexInMetatableSubtyping, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSolverV2, true};
 
     CheckResult results = check(R"(
         local function foobar1(_: { read foo: number }) end

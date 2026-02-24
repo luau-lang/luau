@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/CodeAllocationData.h"
 #include "Luau/CodeGenOptions.h"
 
 #include <vector>
@@ -24,7 +25,7 @@ struct CodeAllocator
     // Places data and code into the executable page area
     // To allow allocation while previously allocated code is already running, allocation has page granularity
     // It's important to group functions together so that page alignment won't result in a lot of wasted space
-    bool allocate(
+    bool allocate_DEPRECATED(
         const uint8_t* data,
         size_t dataSize,
         const uint8_t* code,
@@ -33,6 +34,15 @@ struct CodeAllocator
         size_t& resultSize,
         uint8_t*& resultCodeStart
     );
+
+    // Places data and code into the executable page area
+    // To allow allocation while previously allocated code is already running, allocation has page granularity
+    // It's important to group functions together so that page alignment won't result in a lot of wasted space
+    CodeAllocationData allocate(const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize);
+
+    // Marks executable page area as no longer executable
+    // Freed allocation area can be reused for future allocations
+    void deallocate(CodeAllocationData codeAllocationData);
 
     // Provided to unwind info callbacks
     void* context = nullptr;
@@ -64,6 +74,7 @@ private:
 
     size_t blockSize = 0;
     size_t maxTotalSize = 0;
+    size_t liveAllocations = 0;
 
     AllocationCallback* allocationCallback = nullptr;
     void* allocationCallbackContext = nullptr;

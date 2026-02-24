@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
-LUAU_FASTFLAGVARIABLE(LuauUseTopTableForTableClearAndIsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAGVARIABLE(LuauMorePermissiveNewtableType)
 LUAU_FASTFLAGVARIABLE(LuauTypeDefinitionsTypeIsSubtypeOf)
@@ -186,31 +185,6 @@ declare coroutine: {
 }
 
 )BUILTIN_SRC";
-static constexpr const char* kBuiltinDefinitionTableSrc_DEPRECATED = R"BUILTIN_SRC(
-
-declare table: {
-    concat: <V>(t: {V}, sep: string?, i: number?, j: number?) -> string,
-    insert: (<V>(t: {V}, value: V) -> ()) & (<V>(t: {V}, pos: number, value: V) -> ()),
-    maxn: <V>(t: {V}) -> number,
-    remove: <V>(t: {V}, number?) -> V?,
-    sort: <V>(t: {V}, comp: ((V, V) -> boolean)?) -> (),
-    create: <V>(count: number, value: V?) -> {V},
-    find: <V>(haystack: {V}, needle: V, init: number?) -> number?,
-
-    unpack: <V>(list: {V}, i: number?, j: number?) -> ...V,
-    pack: <V>(...V) -> { n: number, [number]: V },
-
-    getn: <V>(t: {V}) -> number,
-    foreach: <K, V>(t: {[K]: V}, f: (K, V) -> ()) -> (),
-    foreachi: <V>({V}, (number, V) -> ()) -> (),
-
-    move: <V>(src: {V}, a: number, b: number, t: number, dst: {V}?) -> {V},
-    clear: <K, V>(table: {[K]: V}) -> (),
-
-    isfrozen: <K, V>(t: {[K]: V}) -> boolean,
-}
-
-)BUILTIN_SRC";
 
 static constexpr const char* kBuiltinDefinitionTableSrc = R"BUILTIN_SRC(
 
@@ -332,14 +306,7 @@ std::string getBuiltinDefinitionSource()
     result += kBuiltinDefinitionMathSrc;
     result += kBuiltinDefinitionOsSrc;
     result += kBuiltinDefinitionCoroutineSrc;
-    if (FFlag::LuauUseTopTableForTableClearAndIsFrozen)
-    {
-        result += kBuiltinDefinitionTableSrc;
-    }
-    else
-    {
-        result += kBuiltinDefinitionTableSrc_DEPRECATED;
-    }
+    result += kBuiltinDefinitionTableSrc;
     result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
     result += kBuiltinDefinitionBufferSrc;

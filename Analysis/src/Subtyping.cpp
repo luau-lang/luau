@@ -22,11 +22,9 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauSubtypingRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauIndexInMetatableSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingPackRecursionLimits)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAGVARIABLE(LuauSubtypingHandlesExternTypesWithIndexers)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
@@ -2141,101 +2139,85 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Meta
 {
     if (auto subTable = get<TableType>(follow(subMt->table)))
     {
-        if (FFlag::LuauIndexInMetatableSubtyping)
+        auto doDefault = [&]()
         {
-            auto doDefault = [&]()
-            {
-                return isCovariantWith(env, subTable, superTable, /* forceCovariantTest */ false, scope);
-            };
-
-            // My kingdom for `do` notation.
-
-            // TODO CLI-169235: This logic is very mechanical and is,
-            // effectively a repeat of the logic for the `index<_, _>`
-            // type function. These should use similar logic. Otherwise
-            // this all constantly falls over for the same reasons
-            // structural subtyping falls over.
-            //
-            // Notably, this does not support `__index` as a function.
-
-            auto subMTTable = get<TableType>(follow(subMt->metatable));
-            if (!subMTTable)
-                return doDefault();
-
-            auto indexProp = subMTTable->props.find("__index");
-            if (indexProp == subMTTable->props.end())
-                return doDefault();
-
-            // `read`-only __index sounds reasonable, but write-only
-            // or non-shared sounds weird.
-            if (!indexProp->second.readTy)
-                return doDefault();
-
-            auto indexTableProp = get<TableType>(follow(*indexProp->second.readTy));
-            if (!indexTableProp)
-                return doDefault();
-
-            // Consider the snippet:
-            //
-            //  local ItemContainer = {}
-            //  ItemContainer.__index = ItemContainer
-            //
-            //  function ItemContainer.new()
-            //      local self = {}
-            //      setmetatable(self, ItemContainer)
-            //      return self
-            //  end
-            //
-            //  function ItemContainer:removeItem(itemId, itemType)
-            //      self:getItem(itemId, itemType)
-            //  end
-            //
-            //  function ItemContainer:getItem(itemId, itemType) end
-            //
-            //  local container = ItemContainer.new()
-            //  container:removeItem(0, "magic")
-            //
-            // When we go to check this, we're effectively asking whether
-            // `container` is a subtype of the first argument of
-            // `container.removeItem`. `container` has a metatable with the
-            // `__index` metamethod, so we need to include those fields in the
-            // subtype check.
-            //
-            // However, we need to include a read only view of those fields.
-            // Consider:
-            //
-            //  local Foobar = {}
-            //  Foobar.__index = Foobar
-            //  Foobar.const = 42
-            //
-            //  local foobar = setmetatable({}, Foobar)
-            //
-            //  local _: { const: number } = foobar
-            //
-            // This should error, as we cannot write to `const`.
-
-            TableType fauxSubTable{*subTable};
-            for (auto& [name, prop] : indexTableProp->props)
-            {
-                if (prop.readTy && fauxSubTable.props.find(name) == fauxSubTable.props.end())
-                    fauxSubTable.props[name] = Property::readonly(*prop.readTy);
-            }
-
-            return isCovariantWith(env, &fauxSubTable, superTable, /* forceCovariantTest */ false, scope);
-        }
-        else
-        {
-            // Metatables cannot erase properties from the table they're attached to, so
-            // the subtyping rule for this is just if the table component is a subtype
-            // of the supertype table.
-            //
-            // There's a flaw here in that if the __index metamethod contributes a new
-            // field that would satisfy the subtyping relationship, we'll erroneously say
-            // that the metatable isn't a subtype of the table, even though they have
-            // compatible properties/shapes. We'll revisit this later when we have a
-            // better understanding of how important this is.
             return isCovariantWith(env, subTable, superTable, /* forceCovariantTest */ false, scope);
+        };
+
+        // My kingdom for `do` notation.
+
+        // TODO CLI-169235: This logic is very mechanical and is,
+        // effectively a repeat of the logic for the `index<_, _>`
+        // type function. These should use similar logic. Otherwise
+        // this all constantly falls over for the same reasons
+        // structural subtyping falls over.
+        //
+        // Notably, this does not support `__index` as a function.
+
+        auto subMTTable = get<TableType>(follow(subMt->metatable));
+        if (!subMTTable)
+            return doDefault();
+
+        auto indexProp = subMTTable->props.find("__index");
+        if (indexProp == subMTTable->props.end())
+            return doDefault();
+
+        // `read`-only __index sounds reasonable, but write-only
+        // or non-shared sounds weird.
+        if (!indexProp->second.readTy)
+            return doDefault();
+
+        auto indexTableProp = get<TableType>(follow(*indexProp->second.readTy));
+        if (!indexTableProp)
+            return doDefault();
+
+        // Consider the snippet:
+        //
+        //  local ItemContainer = {}
+        //  ItemContainer.__index = ItemContainer
+        //
+        //  function ItemContainer.new()
+        //      local self = {}
+        //      setmetatable(self, ItemContainer)
+        //      return self
+        //  end
+        //
+        //  function ItemContainer:removeItem(itemId, itemType)
+        //      self:getItem(itemId, itemType)
+        //  end
+        //
+        //  function ItemContainer:getItem(itemId, itemType) end
+        //
+        //  local container = ItemContainer.new()
+        //  container:removeItem(0, "magic")
+        //
+        // When we go to check this, we're effectively asking whether
+        // `container` is a subtype of the first argument of
+        // `container.removeItem`. `container` has a metatable with the
+        // `__index` metamethod, so we need to include those fields in the
+        // subtype check.
+        //
+        // However, we need to include a read only view of those fields.
+        // Consider:
+        //
+        //  local Foobar = {}
+        //  Foobar.__index = Foobar
+        //  Foobar.const = 42
+        //
+        //  local foobar = setmetatable({}, Foobar)
+        //
+        //  local _: { const: number } = foobar
+        //
+        // This should error, as we cannot write to `const`.
+
+        TableType fauxSubTable{*subTable};
+        for (auto& [name, prop] : indexTableProp->props)
+        {
+            if (prop.readTy && fauxSubTable.props.find(name) == fauxSubTable.props.end())
+                fauxSubTable.props[name] = Property::readonly(*prop.readTy);
         }
+
+        return isCovariantWith(env, &fauxSubTable, superTable, /* forceCovariantTest */ false, scope);
     }
     else
     {
@@ -2305,41 +2287,38 @@ SubtypingResult Subtyping::isCovariantWith(
         }
     }
 
-    if (FFlag::LuauSubtypingHandlesExternTypesWithIndexers)
+    if (superTable->indexer && subExternType->indexer)
     {
-        if (superTable->indexer && subExternType->indexer)
-        {
-            // NOTE: despite the name, this will internally check that the two
-            // indexers are invariant with one another.
-            result.andAlso(isCovariantWith(env, *subExternType->indexer, *superTable->indexer, scope));
-        }
-        else if (superTable->indexer && !subExternType->indexer)
-        {
-            // If the super table has an indexer and the sub extern type does
-            // not, claim this isn't a subtype. For example:
-            //
-            //  declare extern type Vector3 with
-            //      X: number
-            //      Y: number
-            //      Z: number
-            //  end
-            //
-            //  local function cast(v: Vector3): { [string]: number }
-            //      return v
-            //  end
-            //
-            //  local function ohno(v: Vector3)
-            //      local v_prime = cast(v)
-            //      v_prime["well thats not good"] = 42
-            //  end
-            result = {/* isSubtype */ false};
-        }
-        // The remaining cases are:
-        //  - The extern type has an indexer and the table does not: this is
-        //    fine under width subtyping (for now).
-        //  - Neither the extern type nor the table has an indexer, which is
-        //    also fine.
+        // NOTE: despite the name, this will internally check that the two
+        // indexers are invariant with one another.
+        result.andAlso(isCovariantWith(env, *subExternType->indexer, *superTable->indexer, scope));
     }
+    else if (superTable->indexer && !subExternType->indexer)
+    {
+        // If the super table has an indexer and the sub extern type does
+        // not, claim this isn't a subtype. For example:
+        //
+        //  declare extern type Vector3 with
+        //      X: number
+        //      Y: number
+        //      Z: number
+        //  end
+        //
+        //  local function cast(v: Vector3): { [string]: number }
+        //      return v
+        //  end
+        //
+        //  local function ohno(v: Vector3)
+        //      local v_prime = cast(v)
+        //      v_prime["well thats not good"] = 42
+        //  end
+        result = {/* isSubtype */ false};
+    }
+    // The remaining cases are:
+    //  - The extern type has an indexer and the table does not: this is
+    //    fine under width subtyping (for now).
+    //  - Neither the extern type nor the table has an indexer, which is
+    //    also fine.
 
     env.substitutions[superTy] = nullptr;
 

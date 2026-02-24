@@ -414,6 +414,45 @@ do
 
   -- make sure table.find checks the hash portion as well
   assert(table.find({[(2)] = true}, true, 2) == 2)
+
+  -- table.find respects __eq
+  local objameta = {
+      __eq = function(a, b)
+        return a.x == b.x and a.y == b.y
+      end
+    }
+  local function makeobja(x, y)
+    return setmetatable({x=x, y=y}, objameta)
+  end
+
+  local t3 = {}
+  table.insert(t3, makeobja(1, 2))
+  table.insert(t3, makeobja(2, 3))
+  table.insert(t3, makeobja(3, 4))
+
+  assert(table.find(t3, t3[1]) == 1)
+  assert(table.find(t3, t3[2]) == 2)
+  assert(table.find(t3, t3[3]) == 3)
+
+  -- table.find respects __eq effects
+  local function addnrec(n)
+      return if n == 1 then 1 else n + addnrec(n - 1)
+  end
+
+  local objbmeta = {
+      __eq = function(a, b)
+        return addnrec(a.d) == addnrec(b.d)
+      end
+    }
+  local function makeobjb(d)
+    return setmetatable({d=d}, objbmeta)
+  end
+
+  local o = makeobjb(20)
+  local t4 = {o, o, o, o, o, o, o, o}
+
+  assert(table.find(t4, makeobjb(20)) == 1)
+  assert(table.find(t4, makeobjb(500)) == nil)
 end
 
 -- test table.concat

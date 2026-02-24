@@ -7,8 +7,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenBufferLoadProp2)
-
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::X64;
 
@@ -222,8 +220,6 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMov")
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMovExtended")
 {
-    ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
-
     SINGLE_COMPARE(movsx(eax, byte[rcx]), 0x0f, 0xbe, 0x01);
     SINGLE_COMPARE(movsx(r12, byte[r10]), 0x4d, 0x0f, 0xbe, 0x22);
     SINGLE_COMPARE(movsx(ebx, word[r11]), 0x41, 0x0f, 0xbf, 0x1b);

@@ -21,7 +21,9 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenExtraSpills)
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
+LUAU_FASTFLAG(LuauCodegenOpReadOnly)
 LUAU_FASTFLAG(LuauCodegenLinearNonNumComp)
+LUAU_FASTFLAG(LuauCodegenIsNanAndDirectCompare)
 
 namespace Luau
 {
@@ -115,7 +117,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
 
-        int addrOffset = OP_B(inst).kind != IrOpKind::None ? intOp(OP_B(inst)) : 0;
+        int addrOffset = (FFlag::LuauCodegenOpReadOnly ? HAS_OP_B(inst) : OP_B(inst).kind != IrOpKind::None) ? intOp(OP_B(inst)) : 0;
 
         if (OP_A(inst).kind == IrOpKind::VmReg)
             build.vmovups(inst.regX64, luauReg(vmRegOp(OP_A(inst))));
@@ -285,12 +287,12 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         storeFloat(luauRegValueVector(vmRegOp(OP_A(inst)), 1), OP_C(inst));
         storeFloat(luauRegValueVector(vmRegOp(OP_A(inst)), 2), OP_D(inst));
 
-        if (OP_E(inst).kind != IrOpKind::None)
+        if (FFlag::LuauCodegenOpReadOnly ? HAS_OP_E(inst) : OP_E(inst).kind != IrOpKind::None)
             build.mov(luauRegTag(vmRegOp(OP_A(inst))), tagOp(OP_E(inst)));
         break;
     case IrCmd::STORE_TVALUE:
     {
-        int addrOffset = OP_C(inst).kind != IrOpKind::None ? intOp(OP_C(inst)) : 0;
+        int addrOffset = (FFlag::LuauCodegenOpReadOnly ? HAS_OP_C(inst) : OP_C(inst).kind != IrOpKind::None) ? intOp(OP_C(inst)) : 0;
 
         if (OP_A(inst).kind == IrOpKind::VmReg)
             build.vmovups(luauReg(vmRegOp(OP_A(inst))), regOp(OP_B(inst)));
@@ -302,7 +304,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::STORE_SPLIT_TVALUE:
     {
-        int addrOffset = OP_D(inst).kind != IrOpKind::None ? intOp(OP_D(inst)) : 0;
+        int addrOffset = (FFlag::LuauCodegenOpReadOnly ? HAS_OP_D(inst) : OP_D(inst).kind != IrOpKind::None) ? intOp(OP_D(inst)) : 0;
 
         OperandX64 tagLhs =
             OP_A(inst).kind == IrOpKind::Inst ? dword[regOp(OP_A(inst)) + offsetof(TValue, tt) + addrOffset] : luauRegTag(vmRegOp(OP_A(inst)));
@@ -1304,19 +1306,30 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             else
                 build.vucomisd(regOp(OP_C(inst)), regOp(OP_D(inst)));
 
-            ScopedRegX64 tmp2{regs, SizeX64::dword};
-
-            if (cond == IrCondition::Equal)
+            if (FFlag::LuauCodegenIsNanAndDirectCompare && OP_C(inst) == OP_D(inst))
             {
-                build.mov(tmp2.reg, 0);
-                build.setcc(ConditionX64::NotParity, byteReg(inst.regX64));
-                build.cmov(ConditionX64::NotEqual, inst.regX64, tmp2.reg);
+                // When numbers are the same, we only need to check parity to detect NaN
+                if (cond == IrCondition::Equal)
+                    build.setcc(ConditionX64::NotParity, byteReg(inst.regX64));
+                else
+                    build.setcc(ConditionX64::Parity, byteReg(inst.regX64));
             }
             else
             {
-                build.mov(tmp2.reg, 1);
-                build.setcc(ConditionX64::Parity, byteReg(inst.regX64));
-                build.cmov(ConditionX64::NotEqual, inst.regX64, tmp2.reg);
+                ScopedRegX64 tmp2{regs, SizeX64::dword};
+
+                if (cond == IrCondition::Equal)
+                {
+                    build.mov(tmp2.reg, 0);
+                    build.setcc(ConditionX64::NotParity, byteReg(inst.regX64));
+                    build.cmov(ConditionX64::NotEqual, inst.regX64, tmp2.reg);
+                }
+                else
+                {
+                    build.mov(tmp2.reg, 1);
+                    build.setcc(ConditionX64::Parity, byteReg(inst.regX64));
+                    build.cmov(ConditionX64::NotEqual, inst.regX64, tmp2.reg);
+                }
             }
         }
         else
@@ -2135,7 +2148,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
                 // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
                 if (offset < 0 || unsigned(offset) + unsigned(accessSize) >= unsigned(INT_MAX))
-                    jumpOrAbortOnUndef(OP_E(inst), next);
+                    jumpOrAbortOnUndef(OP_F(inst), next);
                 else
                     build.cmp(dword[regOp(OP_A(inst)) + offsetof(Buffer, len)], offset + accessSize);
 
@@ -2736,7 +2749,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         IrCallWrapperX64 callWrap(regs, build, index);
         callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(OP_B(inst)), OP_B(inst));
 
-        if (OP_C(inst).kind != IrOpKind::None)
+        if (FFlag::LuauCodegenOpReadOnly ? HAS_OP_C(inst) : OP_C(inst).kind != IrOpKind::None)
         {
             bool isInt = (OP_C(inst).kind == IrOpKind::Constant) ? constOp(OP_C(inst)).kind == IrConstKind::Int
                                                                  : getCmdValueKind(function.instOp(OP_C(inst)).cmd) == IrValueKind::Int;
@@ -2790,71 +2803,148 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::BUFFER_READI8:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        build.movsx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), OP_C(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.movsx(
+            inst.regX64,
+            byte[bufferAddrOp(
+                OP_A(inst),
+                OP_B(inst),
+                (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_C(inst) : OP_C(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_C(inst))
+            )]
+        );
         break;
 
     case IrCmd::BUFFER_READU8:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        build.movzx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), OP_C(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.movzx(
+            inst.regX64,
+            byte[bufferAddrOp(
+                OP_A(inst),
+                OP_B(inst),
+                (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_C(inst) : OP_C(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_C(inst))
+            )]
+        );
         break;
 
     case IrCmd::BUFFER_WRITEI8:
     {
         OperandX64 value = OP_C(inst).kind == IrOpKind::Inst ? byteReg(regOp(OP_C(inst))) : OperandX64(int8_t(intOp(OP_C(inst))));
 
-        build.mov(byte[bufferAddrOp(OP_A(inst), OP_B(inst), OP_D(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_D(inst)))], value);
+        build.mov(
+            byte[bufferAddrOp(
+                OP_A(inst),
+                OP_B(inst),
+                (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_D(inst) : OP_D(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_D(inst))
+            )],
+            value
+        );
         break;
     }
 
     case IrCmd::BUFFER_READI16:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        build.movsx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), OP_C(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.movsx(
+            inst.regX64,
+            word[bufferAddrOp(
+                OP_A(inst),
+                OP_B(inst),
+                (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_C(inst) : OP_C(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_C(inst))
+            )]
+        );
         break;
 
     case IrCmd::BUFFER_READU16:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        build.movzx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), OP_C(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.movzx(
+            inst.regX64,
+            word[bufferAddrOp(
+                OP_A(inst),
+                OP_B(inst),
+                (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_C(inst) : OP_C(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_C(inst))
+            )]
+        );
         break;
 
     case IrCmd::BUFFER_WRITEI16:
     {
         OperandX64 value = OP_C(inst).kind == IrOpKind::Inst ? wordReg(regOp(OP_C(inst))) : OperandX64(int16_t(intOp(OP_C(inst))));
 
-        build.mov(word[bufferAddrOp(OP_A(inst), OP_B(inst), OP_D(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_D(inst)))], value);
+        build.mov(
+            word[bufferAddrOp(
+                OP_A(inst),
+                OP_B(inst),
+                (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_D(inst) : OP_D(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_D(inst))
+            )],
+            value
+        );
         break;
     }
 
     case IrCmd::BUFFER_READI32:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        build.mov(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), OP_C(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.mov(
+            inst.regX64,
+            dword[bufferAddrOp(
+                OP_A(inst),
+                OP_B(inst),
+                (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_C(inst) : OP_C(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_C(inst))
+            )]
+        );
         break;
 
     case IrCmd::BUFFER_WRITEI32:
     {
         OperandX64 value = OP_C(inst).kind == IrOpKind::Inst ? regOp(OP_C(inst)) : OperandX64(intOp(OP_C(inst)));
 
-        build.mov(dword[bufferAddrOp(OP_A(inst), OP_B(inst), OP_D(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_D(inst)))], value);
+        build.mov(
+            dword[bufferAddrOp(
+                OP_A(inst),
+                OP_B(inst),
+                (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_D(inst) : OP_D(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_D(inst))
+            )],
+            value
+        );
         break;
     }
 
     case IrCmd::BUFFER_READF32:
         inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
 
-        build.vmovss(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), OP_C(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.vmovss(
+            inst.regX64,
+            dword[bufferAddrOp(
+                OP_A(inst),
+                OP_B(inst),
+                (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_C(inst) : OP_C(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_C(inst))
+            )]
+        );
         break;
 
     case IrCmd::BUFFER_WRITEF32:
-        storeFloat(dword[bufferAddrOp(OP_A(inst), OP_B(inst), OP_D(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_D(inst)))], OP_C(inst));
+        storeFloat(
+            dword[bufferAddrOp(
+                OP_A(inst),
+                OP_B(inst),
+                (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_D(inst) : OP_D(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_D(inst))
+            )],
+            OP_C(inst)
+        );
         break;
 
     case IrCmd::BUFFER_READF64:
         inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
 
-        build.vmovsd(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), OP_C(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.vmovsd(
+            inst.regX64,
+            qword[bufferAddrOp(
+                OP_A(inst),
+                OP_B(inst),
+                (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_C(inst) : OP_C(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_C(inst))
+            )]
+        );
         break;
 
     case IrCmd::BUFFER_WRITEF64:
@@ -2862,12 +2952,24 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         {
             ScopedRegX64 tmp{regs, SizeX64::xmmword};
             build.vmovsd(tmp.reg, build.f64(doubleOp(OP_C(inst))));
-            build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), OP_D(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_D(inst)))], tmp.reg);
+            build.vmovsd(
+                qword[bufferAddrOp(
+                    OP_A(inst),
+                    OP_B(inst),
+                    (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_D(inst) : OP_D(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_D(inst))
+                )],
+                tmp.reg
+            );
         }
         else if (OP_C(inst).kind == IrOpKind::Inst)
         {
             build.vmovsd(
-                qword[bufferAddrOp(OP_A(inst), OP_B(inst), OP_D(inst).kind == IrOpKind::None ? LUA_TBUFFER : tagOp(OP_D(inst)))], regOp(OP_C(inst))
+                qword[bufferAddrOp(
+                    OP_A(inst),
+                    OP_B(inst),
+                    (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_D(inst) : OP_D(inst).kind == IrOpKind::None) ? LUA_TBUFFER : tagOp(OP_D(inst))
+                )],
+                regOp(OP_C(inst))
             );
         }
         else

@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks)
 LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAG(LuauUdtfIndirectAliases)
+LUAU_FASTFLAG(LuauUdtfReserveStack)
 LUAU_FASTFLAG(LuauTypeFunctionTypeIsSubtypeOf)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
@@ -3018,6 +3019,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss2164_table_subtyping_bug")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(results);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_many_arguments")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag fix{FFlag::LuauUdtfReserveStack, true};
+
+    CheckResult result = check(R"(
+type function many(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, aa, ab, ac, ad, ae, af, ag, ah, ai, aj, ak)
+    return a0
+end
+
+local x: many<number, any, any, any, any, any, any, any, any, any, any, any, any, any, any, any, any, any, any, any, any> = 1
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof")

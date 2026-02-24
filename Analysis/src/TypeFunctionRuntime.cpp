@@ -27,6 +27,7 @@ LUAU_FASTFLAGVARIABLE(LuauTypeFunctionTypeIsSubtypeOf)
 
 LUAU_FASTFLAGVARIABLE(LuauUnionofIntersectionofFlattens)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
+LUAU_FASTFLAGVARIABLE(LuauUdtfReserveStack)
 
 namespace Luau
 {
@@ -221,6 +222,9 @@ TypeFunctionTypePackVar* allocateTypeFunctionTypePack(lua_State* L, TypeFunction
 
 void pushType(lua_State* L, TypeFunctionTypeId type)
 {
+    if (FFlag::LuauUdtfReserveStack)
+        luaL_checkstack(L, 2, "allocating type");
+
     TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
     *ptr = type;
 
@@ -232,6 +236,9 @@ void pushType(lua_State* L, TypeFunctionTypeId type)
 // Pushes a new type userdata onto the stack
 void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type, bool frozen)
 {
+    if (FFlag::LuauUdtfReserveStack)
+        luaL_checkstack(L, 2, "allocating type");
+
     // allocate a new type userdata
     TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
     *ptr = allocateTypeFunctionType(L, std::move(type));

@@ -10,6 +10,8 @@
 
 #include "lstate.h"
 
+LUAU_FASTFLAG(LuauCodegenFreeBlocks)
+
 /* An overview of native environment stack setup that we are making in the entry function:
  * Each line is 8 bytes, stack grows downwards.
  *
@@ -202,17 +204,31 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
     CODEGEN_ASSERT(build.data.empty());
 
     uint8_t* codeStart = nullptr;
-    if (!codeGenContext.codeAllocator.allocate(
-            build.data.data(),
-            int(build.data.size()),
-            build.code.data(),
-            int(build.code.size()),
-            codeGenContext.gateData,
-            codeGenContext.gateDataSize,
-            codeStart
-        ))
+
+    if (FFlag::LuauCodegenFreeBlocks)
     {
-        return false;
+        codeGenContext.gateAllocationData =
+            codeGenContext.codeAllocator.allocate(build.data.data(), int(build.data.size()), build.code.data(), int(build.code.size()));
+
+        if (!codeGenContext.gateAllocationData.start)
+            return false;
+
+        codeStart = codeGenContext.gateAllocationData.codeStart;
+    }
+    else
+    {
+        if (!codeGenContext.codeAllocator.allocate_DEPRECATED(
+                build.data.data(),
+                int(build.data.size()),
+                build.code.data(),
+                int(build.code.size()),
+                codeGenContext.gateData_DEPRECATED,
+                codeGenContext.gateDataSize_DEPRECATED,
+                codeStart
+            ))
+        {
+            return false;
+        }
     }
 
     // Set the offset at the beginning so that functions in new blocks will not overlay the locations
