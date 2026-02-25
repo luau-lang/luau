@@ -1654,10 +1654,31 @@ static size_t findExprEnd(const char* s, size_t len, size_t start)
     return SIZE_MAX;
 }
 
+static const char* const kInterpParseCache = "interpparse_cache";
+
 static int str_interpparse(lua_State* L)
 {
     size_t len;
     const char* s = luaL_checklstring(L, 1, &len);
+
+    lua_getfield(L, LUA_REGISTRYINDEX, kInterpParseCache);
+    if (lua_isnil(L, -1))
+    {
+        lua_pop(L, 1);
+        lua_newtable(L);
+        lua_pushvalue(L, -1);
+        lua_setfield(L, LUA_REGISTRYINDEX, kInterpParseCache);
+    }
+    int cacheIdx = lua_gettop(L);
+
+    lua_pushvalue(L, 1);
+    lua_rawget(L, cacheIdx);
+    if (!lua_isnil(L, -1))
+    {
+        lua_remove(L, cacheIdx);
+        return 1;
+    }
+    lua_pop(L, 1);
 
     lua_newtable(L);
     int n = 0;
@@ -1692,6 +1713,13 @@ static int str_interpparse(lua_State* L)
         }
     }
 
+    lua_setreadonly(L, -1, 1);
+
+    lua_pushvalue(L, 1);
+    lua_pushvalue(L, -2);
+    lua_rawset(L, cacheIdx);
+
+    lua_remove(L, cacheIdx);
     return 1;
 }
 

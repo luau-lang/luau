@@ -108,6 +108,12 @@ local exprs5 = string.interpparse("price is {{100}} {x}")
 assert(#exprs5 == 1)
 assert(exprs5[1] == "x")
 
+-- interpparse results are cached: same template returns same (frozen) table
+local cached1 = string.interpparse("Hello {name}")
+local cached2 = string.interpparse("Hello {name}")
+assert(rawequal(cached1, cached2))
+assert(table.isfrozen(cached1))
+
 -- ======================================================
 -- string.interp tests
 -- ======================================================
