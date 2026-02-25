@@ -470,7 +470,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "get_string_completions")
 
     auto ac = autocomplete('1');
 
-    CHECK_EQ(17, ac.entryMap.size());
+    CHECK_EQ(19, ac.entryMap.size());
     CHECK_EQ(ac.context, AutocompleteContext::Property);
 }
 

@@ -4109,7 +4109,6 @@ AstExpr* Parser::parseInterpStringCall(AstExpr* func, bool self)
 
     std::string templateStr;
     std::vector<AstExpr*> values;
-    std::vector<std::pair<size_t, size_t>> exprOffsets;
 
     Location startLocation = lexer.current().location;
     Location endLocation;
@@ -4134,7 +4133,12 @@ AstExpr* Parser::parseInterpStringCall(AstExpr* func, bool self)
             );
         }
 
-        templateStr += scratchData;
+        for (char c : scratchData)
+        {
+            if (c == '{' || c == '}')
+                templateStr += c;
+            templateStr += c;
+        }
 
         const char* braceOpenPtr = currentLexeme.data + currentLexeme.getLength();
 
@@ -4175,9 +4179,7 @@ AstExpr* Parser::parseInterpStringCall(AstExpr* func, bool self)
 
         const char* braceClosePtr = lexer.current().data;
         size_t exprWithBracesLen = braceClosePtr - braceOpenPtr;
-        size_t offsetInTemplate = templateStr.size();
         templateStr.append(braceOpenPtr, exprWithBracesLen);
-        exprOffsets.push_back({offsetInTemplate + 1, exprWithBracesLen});
 
         switch (lexer.current().type)
         {
@@ -4223,25 +4225,10 @@ AstExpr* Parser::parseInterpStringCall(AstExpr* func, bool self)
         valItems.push_back({AstExprTable::Item::List, nullptr, values[i]});
     AstExpr* valuesTable = allocator.alloc<AstExprTable>(syntheticLoc, copy(valItems.data(), valItems.size()));
 
-    std::vector<AstExprTable::Item> offItems;
-    offItems.reserve(exprOffsets.size());
-    for (size_t i = 0; i < exprOffsets.size(); i++)
-    {
-        AstExpr* off = allocator.alloc<AstExprConstantNumber>(syntheticLoc, double(exprOffsets[i].first));
-        AstExpr* len = allocator.alloc<AstExprConstantNumber>(syntheticLoc, double(exprOffsets[i].second));
-        AstExprTable::Item innerArr[2] = {
-            {AstExprTable::Item::List, nullptr, off},
-            {AstExprTable::Item::List, nullptr, len},
-        };
-        AstExpr* inner = allocator.alloc<AstExprTable>(syntheticLoc, copy(innerArr, 2));
-        offItems.push_back({AstExprTable::Item::List, nullptr, inner});
-    }
-    AstExpr* offsetsTable = allocator.alloc<AstExprTable>(syntheticLoc, copy(offItems.data(), offItems.size()));
-
-    AstExpr* callArgs[3] = {templateExpr, valuesTable, offsetsTable};
+    AstExpr* callArgs[2] = {templateExpr, valuesTable};
 
     AstExprCall* node = allocator.alloc<AstExprCall>(
-        Location(func->location, endLocation), func, copy(callArgs, 3), self, AstArray<AstTypeOrPack>{}, Location(argStart, endLocation)
+        Location(func->location, endLocation), func, copy(callArgs, 2), self, AstArray<AstTypeOrPack>{}, Location(argStart, endLocation)
     );
     if (options.storeCstData)
         cstNodeMap[node] = allocator.alloc<CstExprCall>(std::nullopt, std::nullopt, AstArray<Position>{nullptr, 0});

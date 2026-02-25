@@ -4631,7 +4631,7 @@ TEST_CASE_FIXTURE(Fixture, "interp_string_call_with_expressions")
     auto call = stat->expr->as<AstExprCall>();
     REQUIRE(call);
     CHECK(!call->self);
-    CHECK(call->args.size == 3);
+    CHECK(call->args.size == 2);
 
     auto tmpl = call->args.data[0]->as<AstExprConstantString>();
     REQUIRE(tmpl);
@@ -4640,19 +4640,6 @@ TEST_CASE_FIXTURE(Fixture, "interp_string_call_with_expressions")
     auto vals = call->args.data[1]->as<AstExprTable>();
     REQUIRE(vals);
     CHECK(vals->items.size == 1);
-
-    auto offsets = call->args.data[2]->as<AstExprTable>();
-    REQUIRE(offsets);
-    CHECK(offsets->items.size == 1);
-    auto pair = offsets->items.data[0].value->as<AstExprTable>();
-    REQUIRE(pair);
-    CHECK(pair->items.size == 2);
-    auto off = pair->items.data[0].value->as<AstExprConstantNumber>();
-    auto len = pair->items.data[1].value->as<AstExprConstantNumber>();
-    REQUIRE(off);
-    REQUIRE(len);
-    CHECK(off->value == 7);
-    CHECK(len->value == 3);
 }
 
 TEST_CASE_FIXTURE(Fixture, "interp_string_call_method")
@@ -4666,7 +4653,7 @@ TEST_CASE_FIXTURE(Fixture, "interp_string_call_method")
     auto call = stat->expr->as<AstExprCall>();
     REQUIRE(call);
     CHECK(call->self);
-    CHECK(call->args.size == 3);
+    CHECK(call->args.size == 2);
 
     auto tmpl = call->args.data[0]->as<AstExprConstantString>();
     REQUIRE(tmpl);
@@ -4683,7 +4670,7 @@ TEST_CASE_FIXTURE(Fixture, "interp_string_call_multiple_expressions")
     REQUIRE(stat);
     auto call = stat->expr->as<AstExprCall>();
     REQUIRE(call);
-    CHECK(call->args.size == 3);
+    CHECK(call->args.size == 2);
 
     auto tmpl = call->args.data[0]->as<AstExprConstantString>();
     REQUIRE(tmpl);
@@ -4692,28 +4679,6 @@ TEST_CASE_FIXTURE(Fixture, "interp_string_call_multiple_expressions")
     auto vals = call->args.data[1]->as<AstExprTable>();
     REQUIRE(vals);
     CHECK(vals->items.size == 2);
-
-    auto offsets = call->args.data[2]->as<AstExprTable>();
-    REQUIRE(offsets);
-    CHECK(offsets->items.size == 2);
-
-    auto pair0 = offsets->items.data[0].value->as<AstExprTable>();
-    REQUIRE(pair0);
-    auto off0 = pair0->items.data[0].value->as<AstExprConstantNumber>();
-    auto len0 = pair0->items.data[1].value->as<AstExprConstantNumber>();
-    REQUIRE(off0);
-    REQUIRE(len0);
-    CHECK(off0->value == 1);
-    CHECK(len0->value == 3);
-
-    auto pair1 = offsets->items.data[1].value->as<AstExprTable>();
-    REQUIRE(pair1);
-    auto off1 = pair1->items.data[0].value->as<AstExprConstantNumber>();
-    auto len1 = pair1->items.data[1].value->as<AstExprConstantNumber>();
-    REQUIRE(off1);
-    REQUIRE(len1);
-    CHECK(off1->value == 9);
-    CHECK(len1->value == 3);
 }
 
 TEST_CASE_FIXTURE(Fixture, "interp_string_call_complex_expression")
@@ -4726,22 +4691,15 @@ TEST_CASE_FIXTURE(Fixture, "interp_string_call_complex_expression")
     REQUIRE(stat);
     auto call = stat->expr->as<AstExprCall>();
     REQUIRE(call);
-    CHECK(call->args.size == 3);
+    CHECK(call->args.size == 2);
 
     auto tmpl = call->args.data[0]->as<AstExprConstantString>();
     REQUIRE(tmpl);
     CHECK(std::string(tmpl->value.data, tmpl->value.size) == "result is {double(a)}");
 
-    auto offsets = call->args.data[2]->as<AstExprTable>();
-    REQUIRE(offsets);
-    auto pair = offsets->items.data[0].value->as<AstExprTable>();
-    REQUIRE(pair);
-    auto off = pair->items.data[0].value->as<AstExprConstantNumber>();
-    auto len = pair->items.data[1].value->as<AstExprConstantNumber>();
-    REQUIRE(off);
-    REQUIRE(len);
-    CHECK(off->value == 11);
-    CHECK(len->value == 11);
+    auto vals = call->args.data[1]->as<AstExprTable>();
+    REQUIRE(vals);
+    CHECK(vals->items.size == 1);
 }
 
 TEST_CASE_FIXTURE(Fixture, "interp_string_call_disabled_by_flag")
@@ -4764,7 +4722,7 @@ TEST_CASE_FIXTURE(Fixture, "interp_string_call_chaining")
     CHECK(outerCall->args.size == 1);
     auto innerCall = outerCall->func->as<AstExprCall>();
     REQUIRE(innerCall);
-    CHECK(innerCall->args.size == 3);
+    CHECK(innerCall->args.size == 2);
 }
 
 TEST_SUITE_END();

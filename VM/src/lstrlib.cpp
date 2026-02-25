@@ -1634,12 +1634,135 @@ static int str_unpack(lua_State* L)
 
 // }======================================================
 
+// {======================================================
+// Interpolation template functions
+// =======================================================
+
+static size_t findExprEnd(const char* s, size_t len, size_t start)
+{
+    int depth = 1;
+    for (size_t i = start; i < len; i++)
+    {
+        if (s[i] == '{')
+            depth++;
+        else if (s[i] == '}')
+        {
+            if (--depth == 0)
+                return i;
+        }
+    }
+    return SIZE_MAX;
+}
+
+static int str_interpparse(lua_State* L)
+{
+    size_t len;
+    const char* s = luaL_checklstring(L, 1, &len);
+
+    lua_newtable(L);
+    int n = 0;
+
+    for (size_t i = 0; i < len;)
+    {
+        if (s[i] == '{')
+        {
+            if (i + 1 < len && s[i + 1] == '{')
+            {
+                i += 2;
+                continue;
+            }
+
+            size_t start = i + 1;
+            size_t end = findExprEnd(s, len, start);
+            if (end == SIZE_MAX)
+                luaL_error(L, "malformed interpolation template: unmatched '{'");
+
+            lua_pushlstring(L, s + start, end - start);
+            lua_rawseti(L, -2, ++n);
+
+            i = end + 1;
+        }
+        else if (s[i] == '}' && i + 1 < len && s[i + 1] == '}')
+        {
+            i += 2;
+        }
+        else
+        {
+            i++;
+        }
+    }
+
+    return 1;
+}
+
+static int str_interp(lua_State* L)
+{
+    size_t len;
+    const char* s = luaL_checklstring(L, 1, &len);
+    luaL_checktype(L, 2, LUA_TTABLE);
+
+    luaL_Strbuf b;
+    luaL_buffinit(L, &b);
+
+    int n = 0;
+
+    for (size_t i = 0; i < len;)
+    {
+        if (s[i] == '{')
+        {
+            if (i + 1 < len && s[i + 1] == '{')
+            {
+                luaL_addchar(&b, '{');
+                i += 2;
+                continue;
+            }
+
+            size_t start = i + 1;
+            size_t end = findExprEnd(s, len, start);
+            if (end == SIZE_MAX)
+                luaL_error(L, "malformed interpolation template: unmatched '{'");
+
+            n++;
+
+            lua_rawgeti(L, 2, n);
+            if (lua_isnil(L, -1))
+            {
+                lua_pop(L, 1);
+                lua_pushlstring(L, s + start, end - start);
+                lua_gettable(L, 2);
+            }
+
+            luaL_addvalueany(&b, lua_gettop(L));
+            lua_pop(L, 1);
+
+            i = end + 1;
+        }
+        else if (s[i] == '}' && i + 1 < len && s[i + 1] == '}')
+        {
+            luaL_addchar(&b, '}');
+            i += 2;
+        }
+        else
+        {
+            luaL_addchar(&b, s[i]);
+            i++;
+        }
+    }
+
+    luaL_pushresult(&b);
+    return 1;
+}
+
+// }======================================================
+
 static const luaL_Reg strlib[] = {
     {"byte", str_byte},
     {"char", str_char},
     {"find", str_find},
     {"format", str_format},
     {"gmatch", gmatch},
+    {"interp", str_interp},
+    {"interpparse", str_interpparse},
     {"gsub", str_gsub},
     {"len", str_len},
     {"lower", str_lower},
