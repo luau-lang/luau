@@ -1705,6 +1705,7 @@ static int str_interp(lua_State* L)
     luaL_buffinit(L, &b);
 
     int n = 0;
+    size_t litstart = 0;
 
     for (size_t i = 0; i < len;)
     {
@@ -1712,10 +1713,14 @@ static int str_interp(lua_State* L)
         {
             if (i + 1 < len && s[i + 1] == '{')
             {
+                luaL_addlstring(&b, s + litstart, i - litstart);
                 luaL_addchar(&b, '{');
                 i += 2;
+                litstart = i;
                 continue;
             }
+
+            luaL_addlstring(&b, s + litstart, i - litstart);
 
             size_t start = i + 1;
             size_t end = findExprEnd(s, len, start);
@@ -1736,19 +1741,22 @@ static int str_interp(lua_State* L)
             lua_pop(L, 1);
 
             i = end + 1;
+            litstart = i;
         }
         else if (s[i] == '}' && i + 1 < len && s[i + 1] == '}')
         {
+            luaL_addlstring(&b, s + litstart, i - litstart);
             luaL_addchar(&b, '}');
             i += 2;
+            litstart = i;
         }
         else
         {
-            luaL_addchar(&b, s[i]);
             i++;
         }
     }
 
+    luaL_addlstring(&b, s + litstart, len - litstart);
     luaL_pushresult(&b);
     return 1;
 }
