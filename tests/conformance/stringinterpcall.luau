@@ -141,13 +141,29 @@ assert(exprs[2] == "ip")
 local function logInfo(self, template, values)
     local rendered = string.interp(template, values)
     local exprs = string.interpparse(template)
-    return rendered, exprs
+    local kv = {}
+    for i, expr in ipairs(exprs) do
+        local val = values[i]
+        if val == nil then
+            val = values[expr]
+        end
+        kv[expr] = val
+    end
+    return rendered, kv
 end
 
 local logger = {Info = logInfo}
 local name = "Alice"
-local rendered2, exprs6 = logger:Info `Hello {name}`
-assert(rendered2 == "Hello Alice")
-assert(exprs6[1] == "name")
+local id = 42
+local rendered2, kv = logger:Info `Hello {name}, id={id}`
+assert(rendered2 == "Hello Alice, id=42")
+assert(kv["name"] == "Alice")
+assert(kv["id"] == 42)
+
+-- Same function works with parenthesized call + associative table
+local rendered3, kv2 = logger:Info("{greeting} {target}", {greeting = "Hi", target = "Bob"})
+assert(rendered3 == "Hi Bob")
+assert(kv2["greeting"] == "Hi")
+assert(kv2["target"] == "Bob")
 
 return "OK"
