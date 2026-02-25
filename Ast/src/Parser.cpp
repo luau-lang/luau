@@ -4230,6 +4230,7 @@ AstExpr* Parser::parseInterpStringCall(AstExpr* func, bool self)
     AstExprCall* node = allocator.alloc<AstExprCall>(
         Location(func->location, endLocation), func, copy(callArgs, 2), self, AstArray<AstTypeOrPack>{}, Location(argStart, endLocation)
     );
+    node->isInterpStringCall = true;
     if (options.storeCstData)
         cstNodeMap[node] = allocator.alloc<CstExprCall>(std::nullopt, std::nullopt, AstArray<Position>{nullptr, 0});
     return node;

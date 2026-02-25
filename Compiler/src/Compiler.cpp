@@ -112,6 +112,52 @@ static BytecodeBuilder::StringRef sref(AstArray<const char> data)
     return {data.data, data.size};
 }
 
+static std::vector<BytecodeBuilder::StringRef> parseInterpTemplateExprs(const char* s, size_t len)
+{
+    std::vector<BytecodeBuilder::StringRef> names;
+    for (size_t i = 0; i < len;)
+    {
+        if (s[i] == '{')
+        {
+            if (i + 1 < len && s[i + 1] == '{')
+            {
+                i += 2;
+                continue;
+            }
+            size_t start = i + 1;
+            int depth = 1;
+            size_t j = start;
+            while (j < len && depth > 0)
+            {
+                if (s[j] == '{')
+                    depth++;
+                else if (s[j] == '}')
+                    depth--;
+                if (depth > 0)
+                    j++;
+            }
+            if (depth == 0)
+            {
+                names.push_back({s + start, j - start});
+                i = j + 1;
+            }
+            else
+            {
+                break;
+            }
+        }
+        else if (s[i] == '}' && i + 1 < len && s[i + 1] == '}')
+        {
+            i += 2;
+        }
+        else
+        {
+            i++;
+        }
+    }
+    return names;
+}
+
 struct Compiler
 {
     struct RegScope;
@@ -1194,6 +1240,20 @@ struct Compiler
         }
 
         bytecode.emitABC(LOP_CALL, regs, multCall ? 0 : uint8_t(expr->self + expr->args.size + 1), multRet ? 0 : uint8_t(targetCount + 1));
+
+        if (expr->isInterpStringCall && expr->args.size >= 1)
+        {
+            if (AstExprConstantString* tmpl = expr->args.data[0]->as<AstExprConstantString>())
+            {
+                int32_t templateCid = bytecode.addConstantString(sref(tmpl->value));
+                if (templateCid >= 0)
+                {
+                    std::vector<BytecodeBuilder::StringRef> exprNames = parseInterpTemplateExprs(tmpl->value.data, tmpl->value.size);
+                    if (!exprNames.empty())
+                        bytecode.pushInterpEntry(templateCid, exprNames.data(), exprNames.size());
+                }
+            }
+        }
 
         // if we didn't output results directly to target, we need to move them
         if (!targetTop)

@@ -11,6 +11,8 @@
 #include "lbytecode.h"
 #include "lapi.h"
 
+#include "lua.h"
+
 #include <string.h>
 
 template<typename T>
@@ -593,6 +595,75 @@ static int loadsafe(
     // "main" proto is pushed to Lua stack
     uint32_t mainid = readVarInt(data, size, offset);
     Proto* main = protos[mainid];
+
+    // trailing interp metadata: pre-populate interpparse cache
+    if (offset < size)
+    {
+        uint32_t numEntries = readVarInt(data, size, offset);
+
+        if (numEntries > 0)
+        {
+            luaD_checkstack(L, 6);
+
+            lua_getfield(L, LUA_REGISTRYINDEX, "interpparse_cache");
+            if (lua_isnil(L, -1))
+            {
+                lua_pop(L, 1);
+                lua_newtable(L);
+                lua_pushvalue(L, -1);
+                lua_setfield(L, LUA_REGISTRYINDEX, "interpparse_cache");
+            }
+            int cacheIdx = lua_absindex(L, -1);
+
+            for (uint32_t e = 0; e < numEntries; e++)
+            {
+                uint32_t funcId = readVarInt(data, size, offset);
+                uint32_t templateIdx = readVarInt(data, size, offset);
+                uint32_t numExprs = readVarInt(data, size, offset);
+
+                Proto* p = protos[funcId];
+                LUAU_ASSERT(templateIdx < unsigned(p->sizek));
+                LUAU_ASSERT(ttisstring(&p->k[templateIdx]));
+
+                // check if already cached
+                setobj2s(L, L->top, &p->k[templateIdx]);
+                incr_top(L);
+                lua_rawget(L, cacheIdx);
+                if (!lua_isnil(L, -1))
+                {
+                    lua_pop(L, 1);
+                    for (uint32_t k = 0; k < numExprs; k++)
+                        readVarInt(data, size, offset);
+                    continue;
+                }
+                lua_pop(L, 1);
+
+                lua_createtable(L, numExprs, 0);
+                for (uint32_t k = 0; k < numExprs; k++)
+                {
+                    unsigned int exprStrIdx = readVarInt(data, size, offset);
+                    TString* exprStr = exprStrIdx == 0 ? NULL : strings[exprStrIdx - 1];
+                    if (exprStr)
+                    {
+                        setsvalue(L, L->top, exprStr);
+                        incr_top(L);
+                        lua_rawseti(L, -2, k + 1);
+                    }
+                }
+                lua_setreadonly(L, -1, 1);
+
+                // cache[template] = exprsTable
+                setobj2s(L, L->top, &p->k[templateIdx]);
+                incr_top(L);
+                lua_pushvalue(L, -2);
+                lua_rawset(L, cacheIdx);
+
+                lua_pop(L, 1); // pop exprsTable
+            }
+
+            lua_pop(L, 1); // pop cache table
+        }
+    }
 
     luaC_threadbarrier(L);
 

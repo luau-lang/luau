@@ -114,6 +114,7 @@ local cached2 = string.interpparse("Hello {name}")
 assert(rawequal(cached1, cached2))
 assert(table.isfrozen(cached1))
 
+
 -- ======================================================
 -- string.interp tests
 -- ======================================================
