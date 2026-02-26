@@ -129,6 +129,14 @@ static LuauBytecodeType getType(
     {
         return LBC_TYPE_NIL;
     }
+    else if (const AstTypeSingletonBool* singletonBool = ty->as<AstTypeSingletonBool>())
+    {
+        return LBC_TYPE_BOOLEAN;
+    }
+    else if (const AstTypeSingletonString* singletonString = ty->as<AstTypeSingletonString>())
+    {
+        return LBC_TYPE_STRING;
+    }
 
     return LBC_TYPE_ANY;
 }

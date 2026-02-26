@@ -9902,6 +9902,35 @@ end
     );
 }
 
+TEST_CASE("TypeSingleton")
+{
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
+function myfunc(test: true, foo: false)
+end
+
+function myfunc2(test: "hello")
+end
+
+function myfunc3(test: true | false)
+end
+
+function myfunc4(test: true | nil)
+end
+
+function myfunc5(test: "hello" | "world")
+end
+)"),
+        R"(
+0: function(boolean, boolean)
+1: function(string)
+2: function(boolean)
+3: function(boolean?)
+4: function(string)
+)"
+    );
+}
+
 TEST_CASE("BuiltinFoldMathK")
 {
     // we can fold math.pi at optimization level 2
