@@ -11,8 +11,6 @@
 
 #include "lapi.h"
 
-LUAU_FASTFLAG(LuauCodegenLocationEndFix)
-
 namespace Luau
 {
 namespace CodeGen
@@ -228,7 +226,7 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
             functionStat.line = p->linedefined;
             functionStat.bcodeCount = getInstructionCount(p->code, p->sizecode);
             functionStat.irCount = unsigned(ir.function.instructions.size());
-            functionStat.asmSize = FFlag::LuauCodegenLocationEndFix ? asmSize * sizeof(build.code[0]) : asmSize;
+            functionStat.asmSize = asmSize * sizeof(build.code[0]);
             functionStat.asmCount = asmCount;
             if (stats->functionStatsFlags & FunctionStats_BytecodeSummary)
             {

@@ -5,8 +5,6 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
-
 namespace Luau
 {
 namespace CodeGen
@@ -184,9 +182,8 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::BUFFER_READI32:
     case IrCmd::BUFFER_READF32:
     case IrCmd::BUFFER_READF64:
-        return true;
     case IrCmd::GET_UPVALUE:
-        return FFlag::LuauCodegenUpvalueLoadProp2;
+        return true;
     default:
         break;
     }

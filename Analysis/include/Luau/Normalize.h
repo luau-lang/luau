@@ -142,6 +142,12 @@ struct NormalizedExternType
      */
     std::unordered_map<TypeId, TypeIds> externTypes;
 
+    /*
+     * We track an overall collection of shapes that extend this extern type.
+     * This should be interpreted as a big intersection of the given types.
+     */
+    TypeIds shapeExtensions;
+
     /**
      * In order to maintain a consistent insertion order, we use this vector to
      * keep track of it. An ordered std::map will sort by pointer identity,
@@ -402,6 +408,7 @@ private:
     TypeId intersectionOfBools(TypeId here, TypeId there);
     void intersectExternTypes(NormalizedExternType& heres, const NormalizedExternType& theres);
     void intersectExternTypesWithExternType(NormalizedExternType& heres, TypeId there);
+    void intersectExternTypesWithShape(NormalizedExternType& heres, TypeId there);
     void intersectStrings(NormalizedStringType& here, const NormalizedStringType& there);
     std::optional<TypeId> intersectionOfTables(TypeId here, TypeId there, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSet);
     void intersectTablesWithTable(TypeIds& heres, TypeId there, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSetTypes);

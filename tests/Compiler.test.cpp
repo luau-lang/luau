@@ -23,11 +23,9 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
-LUAU_FASTFLAG(LuauCompileStringCharSubFold)
-LUAU_FASTFLAG(LuauCompileCallCostModel)
-LUAU_FASTFLAG(LuauCompileInlineInitializers)
 LUAU_FASTFLAG(LuauCompileCorrectLocalPc)
 LUAU_FASTFLAG(LuauCompileFastcallsSurvivePolyfills)
+LUAU_FASTFLAG(LuauCompileTableIndexTemp)
 LUAU_FASTFLAG(LuauCompileFoldVectorComp)
 LUAU_FASTFLAG(LuauCompileInlinedBuiltins)
 
@@ -327,6 +325,8 @@ RETURN R0 0
 
 TEST_CASE("ReflectionBytecode")
 {
+    ScopedFastFlag luauCompileTableIndexTemp{FFlag::LuauCompileTableIndexTemp, true};
+
     CHECK_EQ(
         "\n" + compileFunction0(R"(
 local part = Instance.new('Part', workspace)
@@ -344,8 +344,8 @@ LOADN R3 2
 LOADN R4 3
 CALL R1 3 1
 SETTABLEKS R1 R0 K8 ['Size']
-GETTABLEKS R3 R0 K8 ['Size']
-GETTABLEKS R2 R3 K9 ['Z']
+GETTABLEKS R2 R0 K8 ['Size']
+GETTABLEKS R2 R2 K9 ['Z']
 NAMECALL R3 R0 K10 ['GetMass']
 CALL R3 1 1
 MUL R1 R2 R3
@@ -414,11 +414,13 @@ L1: RETURN R1 -1
 
 TEST_CASE("FakeImportCall")
 {
+    ScopedFastFlag luauCompileTableIndexTemp{FFlag::LuauCompileTableIndexTemp, true};
+
     const char* source = "math = {} function math.max() return 0 end function test() return math.max(1, 2) end";
 
     CHECK_EQ("\n" + compileFunction(source, 1), R"(
-GETGLOBAL R1 K0 ['math']
-GETTABLEKS R0 R1 K1 ['max']
+GETGLOBAL R0 K0 ['math']
+GETTABLEKS R0 R0 K1 ['max']
 LOADN R1 1
 LOADN R2 2
 CALL R0 2 -1
@@ -1767,6 +1769,7 @@ RETURN R0 1
 TEST_CASE("ConstantFoldVectorComponents")
 {
     ScopedFastFlag luauCompileFoldVectorComp{FFlag::LuauCompileFoldVectorComp, true};
+    ScopedFastFlag luauCompileTableIndexTemp{FFlag::LuauCompileTableIndexTemp, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -1779,8 +1782,8 @@ return a.x + a.y + a.z + a.w
                ),
         R"(
 LOADN R1 6
-LOADK R3 K0 [1, 2, 3, 4]
-GETTABLEKS R2 R3 K1 ['w']
+LOADK R2 K0 [1, 2, 3, 4]
+GETTABLEKS R2 R2 K1 ['w']
 ADD R0 R1 R2
 RETURN R0 1
 )"
@@ -1797,8 +1800,8 @@ return a.X + a.Y + a.Z + a.W
                ),
         R"(
 LOADN R1 6
-LOADK R3 K0 [1, 2, 3, 4]
-GETTABLEKS R2 R3 K1 ['W']
+LOADK R2 K0 [1, 2, 3, 4]
+GETTABLEKS R2 R2 K1 ['W']
 ADD R0 R1 R2
 RETURN R0 1
 )"
@@ -2117,8 +2120,6 @@ RETURN R0 0
 
 TEST_CASE("TerminatingConstantFoldFlowControl")
 {
-    ScopedFastFlag luauCompileCallCostModel{FFlag::LuauCompileCallCostModel, true};
-
     // if
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -3482,6 +3483,8 @@ Foo:Bar(
 
 TEST_CASE("DebugLineInfoCallChain")
 {
+    ScopedFastFlag luauCompileTableIndexTemp{FFlag::LuauCompileTableIndexTemp, true};
+
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
     Luau::compileOrThrow(bcb, R"(
@@ -3495,13 +3498,13 @@ Foo
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 2: GETVARARGS R0 1
-5: LOADN R4 1
-5: NAMECALL R2 R0 K0 ['Bar']
-5: CALL R2 2 1
-6: LOADN R4 2
-6: NAMECALL R2 R2 K1 ['Baz']
-6: CALL R2 2 1
-7: GETTABLEKS R1 R2 K2 ['Qux']
+5: LOADN R3 1
+5: NAMECALL R1 R0 K0 ['Bar']
+5: CALL R1 2 1
+6: LOADN R3 2
+6: NAMECALL R1 R1 K1 ['Baz']
+6: CALL R1 2 1
+7: GETTABLEKS R1 R1 K2 ['Qux']
 7: LOADN R2 3
 7: CALL R1 1 0
 8: RETURN R0 0
@@ -4133,6 +4136,8 @@ RETURN R0 0
 
 TEST_CASE("FastcallBytecode")
 {
+    ScopedFastFlag luauCompileTableIndexTemp{FFlag::LuauCompileTableIndexTemp, true};
+
     // direct global call
     CHECK_EQ("\n" + compileFunction0("return math.abs(-5)"), R"(
 LOADN R1 -5
@@ -4165,8 +4170,8 @@ L0: RETURN R0 -1
     CHECK_EQ("\n" + compileFunction0("math = {} return math.abs(-5)"), R"(
 NEWTABLE R0 0 0
 SETGLOBAL R0 K0 ['math']
-GETGLOBAL R1 K0 ['math']
-GETTABLEKS R0 R1 K1 ['abs']
+GETGLOBAL R0 K0 ['math']
+GETTABLEKS R0 R0 K1 ['abs']
 LOADN R1 -5
 CALL R0 1 -1
 RETURN R0 -1
@@ -4184,8 +4189,8 @@ RETURN R1 -1
 
     // mutating the global in the script breaks the optimization, even if you do this after computing the local (for simplicity)
     CHECK_EQ("\n" + compileFunction0("local abs = math.abs math = {} return abs(-5)"), R"(
-GETGLOBAL R1 K0 ['math']
-GETTABLEKS R0 R1 K1 ['abs']
+GETGLOBAL R0 K0 ['math']
+GETTABLEKS R0 R0 K1 ['abs']
 NEWTABLE R1 0 0
 SETGLOBAL R1 K0 ['math']
 MOVE R1 R0
@@ -4313,8 +4318,10 @@ select("#",1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
 
 TEST_CASE("LotsOfIndexers")
 {
+    ScopedFastFlag luauCompileTableIndexTemp{FFlag::LuauCompileTableIndexTemp, true};
+
     const char* source = R"(
-function u(t)for t in s(t.l.l.l.l.l.l.l.l.l.l.l.l.l.l.n.l.l.l.l.l.l.l.l.l.l.l.l.n.l.l.l.l.l.l.n.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.n.l.l.l.g.l.l.l.l.l.l.l.l.l.l.l.l.l.n.l.l.l.l.l.t.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.r.l.l.l.l.l.l.n.l.l.l.l.l.l.l.l.l.l.l.l.n.l.l.l.l.l.l.n.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.g.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.n.l.l.l.l.l.l.l.l.n.l.l.l.l.l.l.l.l.l.l.l.l.n.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.r.n.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.l.n.l.l.l.n.l.l.l.l.l.l.l.n.l.l.l.l.l.l.l.l.l.l..l,l)do end
+function u(t)for t in s(t[l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l][l],l)do end
 end
 )";
 
@@ -4609,6 +4616,8 @@ TEST_CASE("OutOfRegisters")
 
 TEST_CASE("FastCallImportFallback")
 {
+    ScopedFastFlag luauCompileTableIndexTemp{FFlag::LuauCompileTableIndexTemp, true};
+
     std::string source = "local t = {}\n";
 
     // we need to exhaust the 10-bit constant space to block GETIMPORT from being emitted
@@ -4630,17 +4639,49 @@ TEST_CASE("FastCallImportFallback")
         fragment += "\n";
     }
 
-    // note: it's important that GETGLOBAL below doesn't overwrite R2
+    // note: it's important that GETGLOBAL below doesn't overwrite R2 or any register after
     CHECK_EQ("\n" + fragment, R"(
 LOADN R1 1024
 LOADK R2 K1023 ['1024']
 SETTABLE R2 R0 R1
 LOADN R2 -1
 FASTCALL1 2 R2 L0
-GETGLOBAL R3 K1024 ['math']
-GETTABLEKS R1 R3 K1025 ['abs']
+GETGLOBAL R1 K1024 ['math']
+GETTABLEKS R1 R1 K1025 ['abs']
 CALL R1 1 -1
 )");
+}
+
+TEST_CASE("FastCallUpvalueFallback")
+{
+    ScopedFastFlag luauCompileFastcallsSurvivePolyfills{FFlag::LuauCompileFastcallsSurvivePolyfills, true};
+    ScopedFastFlag luauCompileTableIndexTemp{FFlag::LuauCompileTableIndexTemp, true};
+
+    // note: it's important that GETUPVAL below doesn't overwrite R2 or any register after
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local string = string
+
+local function foo(t)
+    return string.char(table.unpack(t))
+end
+)",
+                   0,
+                   2
+               ),
+        R"(
+FASTCALL1 53 R0 L0
+MOVE R3 R0
+GETIMPORT R2 2 [table.unpack]
+CALL R2 1 -1
+L0: FASTCALL 42 L1
+GETUPVAL R1 0
+GETTABLEKS R1 R1 K3 ['char']
+CALL R1 -1 1
+L1: RETURN R1 1
+)"
+    );
 }
 
 TEST_CASE("CompoundAssignment")
@@ -5448,6 +5489,8 @@ L5: RETURN R0 0
 
 TEST_CASE("MutableGlobals")
 {
+    ScopedFastFlag luauCompileTableIndexTemp{FFlag::LuauCompileTableIndexTemp, true};
+
     const char* source = R"(
 print()
 Game.print()
@@ -5468,8 +5511,8 @@ GETIMPORT R0 3 [Game.print]
 CALL R0 0 0
 GETIMPORT R0 5 [Workspace.print]
 CALL R0 0 0
-GETIMPORT R1 7 [_G]
-GETTABLEKS R0 R1 K0 ['print']
+GETIMPORT R0 7 [_G]
+GETTABLEKS R0 R0 K0 ['print']
 CALL R0 0 0
 GETIMPORT R0 9 [game.print]
 CALL R0 0 0
@@ -5495,29 +5538,29 @@ RETURN R0 0
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 GETIMPORT R0 1 [print]
 CALL R0 0 0
-GETIMPORT R1 3 [Game]
-GETTABLEKS R0 R1 K0 ['print']
+GETIMPORT R0 3 [Game]
+GETTABLEKS R0 R0 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 5 [Workspace]
-GETTABLEKS R0 R1 K0 ['print']
+GETIMPORT R0 5 [Workspace]
+GETTABLEKS R0 R0 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 7 [_G]
-GETTABLEKS R0 R1 K0 ['print']
+GETIMPORT R0 7 [_G]
+GETTABLEKS R0 R0 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 9 [game]
-GETTABLEKS R0 R1 K0 ['print']
+GETIMPORT R0 9 [game]
+GETTABLEKS R0 R0 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 11 [plugin]
-GETTABLEKS R0 R1 K0 ['print']
+GETIMPORT R0 11 [plugin]
+GETTABLEKS R0 R0 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 13 [script]
-GETTABLEKS R0 R1 K0 ['print']
+GETIMPORT R0 13 [script]
+GETTABLEKS R0 R0 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 15 [shared]
-GETTABLEKS R0 R1 K0 ['print']
+GETIMPORT R0 15 [shared]
+GETTABLEKS R0 R0 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 17 [workspace]
-GETTABLEKS R0 R1 K0 ['print']
+GETIMPORT R0 17 [workspace]
+GETTABLEKS R0 R0 K0 ['print']
 CALL R0 0 0
 RETURN R0 0
 )");
@@ -6371,6 +6414,8 @@ L1: RETURN R0 0
 
 TEST_CASE("LoopUnrollCostBuiltins")
 {
+    ScopedFastFlag luauCompileTableIndexTemp{FFlag::LuauCompileTableIndexTemp, true};
+
     ScopedFastInt sfis[] = {
         {FInt::LuauCompileLoopUnrollThreshold, 25},
         {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
@@ -6455,10 +6500,10 @@ LOADN R2 3
 LOADN R3 1
 FORNPREP R2 L1
 L0: ADDK R5 R4 K0 [1]
+GETGLOBAL R6 K1 ['bit32']
+GETTABLEKS R6 R6 K2 ['band']
 GETGLOBAL R7 K1 ['bit32']
-GETTABLEKS R6 R7 K2 ['band']
-GETGLOBAL R8 K1 ['bit32']
-GETTABLEKS R7 R8 K3 ['rshift']
+GETTABLEKS R7 R7 K3 ['rshift']
 MOVE R8 R1
 MULK R9 R4 K4 [8]
 CALL R7 2 1
@@ -6511,8 +6556,6 @@ L3: RETURN R0 0
 
 TEST_CASE("InlineBasic")
 {
-    ScopedFastFlag luauCompileCallCostModel{FFlag::LuauCompileCallCostModel, true};
-
     // inline function that returns a constant
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7523,8 +7566,6 @@ RETURN R3 1
 
 TEST_CASE("InlineIIFE")
 {
-    ScopedFastFlag luauCompileCallCostModel{FFlag::LuauCompileCallCostModel, true};
-
     // IIFE with arguments
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7947,8 +7988,6 @@ RETURN R1 1
 
 TEST_CASE("InlineNonConstInitializers")
 {
-    ScopedFastFlag luauCompileInlineInitializers{FFlag::LuauCompileInlineInitializers, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -8197,8 +8236,6 @@ RETURN R5 3
 
 TEST_CASE("InlineNonArgumentConstConditionals")
 {
-    ScopedFastFlag luauCompileCallCostModel{FFlag::LuauCompileCallCostModel, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -8284,9 +8321,6 @@ RETURN R1 1
 
 TEST_CASE("InlineConstConditionals")
 {
-    ScopedFastFlag luauCompileCallCostModel{FFlag::LuauCompileCallCostModel, true};
-    ScopedFastFlag luauCompileStringCharSubFold{FFlag::LuauCompileStringCharSubFold, true};
-
     // the most expensive part does not participate in cost model if branches are const
     CHECK_EQ(
         "\n" + compileFunction(
@@ -8458,8 +8492,6 @@ RETURN R1 5
 
 TEST_CASE("InlineLoopIteration")
 {
-    ScopedFastFlag luauCompileCallCostModel{FFlag::LuauCompileCallCostModel, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -9904,6 +9936,8 @@ end
 
 TEST_CASE("BuiltinFoldMathK")
 {
+    ScopedFastFlag luauCompileTableIndexTemp{FFlag::LuauCompileTableIndexTemp, true};
+
     // we can fold math.pi at optimization level 2
     CHECK_EQ(
         "\n" + compileFunction(
@@ -9953,8 +9987,8 @@ math = { pi = 4 }
                    2
                ),
         R"(
-GETGLOBAL R2 K1 ['math']
-GETTABLEKS R1 R2 K2 ['pi']
+GETGLOBAL R1 K1 ['math']
+GETTABLEKS R1 R1 K2 ['pi']
 MULK R0 R1 K0 [2]
 RETURN R0 1
 )"
@@ -10160,8 +10194,6 @@ RETURN R0 0
 
 TEST_CASE("IfElimination")
 {
-    ScopedFastFlag luauCompileCallCostModel{FFlag::LuauCompileCallCostModel, true};
-
     // if the left hand side of a condition is constant, it constant folds and we don't emit the branch
     CHECK_EQ("\n" + compileFunction0("local a = false if a and b then b() end"), R"(
 RETURN R0 0
@@ -10318,8 +10350,6 @@ RETURN R0 1
 
 TEST_CASE("StringCharFolding")
 {
-    ScopedFastFlag luauCompileStringCharSubFold{FFlag::LuauCompileStringCharSubFold, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -10344,8 +10374,6 @@ RETURN R0 4
 
 TEST_CASE("StringSubFolding")
 {
-    ScopedFastFlag luauCompileStringCharSubFold{FFlag::LuauCompileStringCharSubFold, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(

@@ -20,7 +20,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAG(LuauStandaloneParseType)
 LUAU_FASTFLAGVARIABLE(LuauCstStatDoWithStatsStart)
 LUAU_FASTFLAGVARIABLE(DesugaredArrayTypeReferenceIsEmpty)
 
@@ -244,14 +243,11 @@ ParseNodeResult<Node> Parser::runParse(const char* buffer, size_t bufferSize, As
         Node* expr = f(p);
         size_t lines = p.lexer.current().location.end.line + (bufferSize > 0 && buffer[bufferSize - 1] != '\n');
 
-        if (FFlag::LuauStandaloneParseType)
+        Lexeme eof = p.lexer.next();
+        if (eof.type != Lexeme::Eof)
         {
-            Lexeme eof = p.lexer.next();
-            if (eof.type != Lexeme::Eof)
-            {
-                expr = nullptr;
-                p.parseErrors.emplace_back(eof.location, "Expected end of file");
-            }
+            expr = nullptr;
+            p.parseErrors.emplace_back(eof.location, "Expected end of file");
         }
 
         return ParseNodeResult<Node>{

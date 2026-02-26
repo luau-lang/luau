@@ -7,8 +7,6 @@
 #include <algorithm>
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCompileStringCharSubFold)
-LUAU_FASTFLAG(LuauCompileCallCostModel)
 LUAU_FASTFLAGVARIABLE(LuauCompileCorrectLocalPc)
 
 namespace Luau
@@ -492,7 +490,6 @@ void BytecodeBuilder::emitAux(uint32_t aux)
 
 void BytecodeBuilder::undoEmit(LuauOpcode op)
 {
-    LUAU_ASSERT(FFlag::LuauCompileCallCostModel);
     LUAU_ASSERT(!insns.empty());
     LUAU_ASSERT((insns.back() & 0xff) == op);
 
@@ -1859,7 +1856,7 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
             else
                 formatAppend(result, "'%.*s'...", 32, str.data);
         }
-        else if (FFlag::LuauCompileStringCharSubFold)
+        else
         {
             formatAppend(result, "'");
 

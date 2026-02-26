@@ -2,6 +2,7 @@
 #include "Luau/Autocomplete.h"
 #include "Luau/AutocompleteTypes.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Common.h"
 #include "Luau/Type.h"
 #include "Luau/StringUtils.h"
 
@@ -19,8 +20,9 @@ LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails)
-  
+LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
+LUAU_FASTFLAG(LuauACOnMTTWriteOnlyPropNoCrash)
+
 using namespace Luau;
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
@@ -5014,7 +5016,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_indexer_with_singleton_keys")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_arg")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails, true};
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails2, true};
 
     check(R"(
         local function foo(...: "Val1") end
@@ -5027,7 +5029,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_arg")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_union_arg")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails, true};
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails2, true};
 
     check(R"(
         local function foo(...: "Val1" | "Val2") end
@@ -5038,5 +5040,39 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_union_a
     CHECK_EQ(ac.entryMap.count("\"Val1\""), 1);
     CHECK_EQ(ac.entryMap.count("\"Val2\""), 1);
 }
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_metatable_fill_writeonly_prop_no_crash")
+{
+    // Due to how memory is allocated and cleaned up on the stack in noopt builds, this will not crash on certain platforms.
+    // This can crash in optimized builds, but the test is mostly here to exercise that the branch in question gets hit
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauACOnMTTWriteOnlyPropNoCrash, true},
+        {FFlag::LuauSolverV2, true},
+    };
+    check(R"(
+
+local t0 = { thing = 5 }
+
+type function evil(x)
+    local tbl = types.newtable(nil, nil, nil)
+    tbl:setwriteproperty(types.singleton("__index"), types.any)
+    return tbl
+end
+
+type BadMTType = evil<{ thing : number}>
+local function foo(t : BadMTType)
+        local t2 = setmetatable({}, t)
+        return t2
+end
+
+local x = foo(nil :: any)
+x.@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.empty());
+}
+
+
 
 TEST_SUITE_END();
