@@ -90,6 +90,8 @@ public:
     void pushDebugLocal(StringRef name, uint8_t reg, uint32_t startpc, uint32_t endpc);
     void pushDebugUpval(StringRef name);
 
+    void pushInterpEntry(int32_t templateConstant, const StringRef* exprNames, size_t exprCount);
+
     size_t getInstructionCount() const;
     size_t getTotalInstructionCount() const;
     uint32_t getDebugPC() const;
@@ -247,6 +249,13 @@ private:
         uint32_t target;
     };
 
+    struct InterpEntry
+    {
+        uint32_t funcId;
+        int32_t templateConstant;
+        std::vector<unsigned int> exprNameStrings;
+    };
+
     struct StringRefHash
     {
         size_t operator()(const StringRef& v) const;
@@ -296,6 +305,8 @@ private:
 
     std::vector<std::pair<uint32_t, uint32_t>> debugRemarks;
     std::string debugRemarkBuffer;
+
+    std::vector<InterpEntry> allInterpEntries;
 
     BytecodeEncoder* encoder = nullptr;
     std::string bytecode;

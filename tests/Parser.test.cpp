@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
+LUAU_FASTFLAG(LuauInterpStringFunctionCalls)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -4600,6 +4601,128 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_errors")
     ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
 
     matchParseError("local a = x:a<<T>>", "Expected '(', '{' or <string> when parsing function call, got <eof>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_simple_no_expressions")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    auto result = parseEx("f `hello`");
+    REQUIRE(result.errors.empty());
+    auto stat = result.root->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stat);
+    auto call = stat->expr->as<AstExprCall>();
+    REQUIRE(call);
+    CHECK(!call->self);
+    CHECK(call->args.size == 1);
+    auto str = call->args.data[0]->as<AstExprConstantString>();
+    REQUIRE(str);
+    CHECK(std::string(str->value.data, str->value.size) == "hello");
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_with_expressions")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    auto result = parseEx("f `hello {x}`");
+    REQUIRE(result.errors.empty());
+    auto stat = result.root->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stat);
+    auto call = stat->expr->as<AstExprCall>();
+    REQUIRE(call);
+    CHECK(!call->self);
+    CHECK(call->args.size == 2);
+
+    auto tmpl = call->args.data[0]->as<AstExprConstantString>();
+    REQUIRE(tmpl);
+    CHECK(std::string(tmpl->value.data, tmpl->value.size) == "hello {x}");
+
+    auto vals = call->args.data[1]->as<AstExprTable>();
+    REQUIRE(vals);
+    CHECK(vals->items.size == 1);
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_method")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    auto result = parseEx("obj:method `hello {x}`");
+    REQUIRE(result.errors.empty());
+    auto stat = result.root->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stat);
+    auto call = stat->expr->as<AstExprCall>();
+    REQUIRE(call);
+    CHECK(call->self);
+    CHECK(call->args.size == 2);
+
+    auto tmpl = call->args.data[0]->as<AstExprConstantString>();
+    REQUIRE(tmpl);
+    CHECK(std::string(tmpl->value.data, tmpl->value.size) == "hello {x}");
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_multiple_expressions")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    auto result = parseEx("f `{a} and {b}`");
+    REQUIRE(result.errors.empty());
+    auto stat = result.root->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stat);
+    auto call = stat->expr->as<AstExprCall>();
+    REQUIRE(call);
+    CHECK(call->args.size == 2);
+
+    auto tmpl = call->args.data[0]->as<AstExprConstantString>();
+    REQUIRE(tmpl);
+    CHECK(std::string(tmpl->value.data, tmpl->value.size) == "{a} and {b}");
+
+    auto vals = call->args.data[1]->as<AstExprTable>();
+    REQUIRE(vals);
+    CHECK(vals->items.size == 2);
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_complex_expression")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    auto result = parseEx("f `result is {double(a)}`");
+    REQUIRE(result.errors.empty());
+    auto stat = result.root->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stat);
+    auto call = stat->expr->as<AstExprCall>();
+    REQUIRE(call);
+    CHECK(call->args.size == 2);
+
+    auto tmpl = call->args.data[0]->as<AstExprConstantString>();
+    REQUIRE(tmpl);
+    CHECK(std::string(tmpl->value.data, tmpl->value.size) == "result is {double(a)}");
+
+    auto vals = call->args.data[1]->as<AstExprTable>();
+    REQUIRE(vals);
+    CHECK(vals->items.size == 1);
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_disabled_by_flag")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, false};
+
+    matchParseError("f `hello {x}`", "Incomplete statement: expected assignment or a function call");
+}
+
+TEST_CASE_FIXTURE(Fixture, "interp_string_call_chaining")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    auto result = parseEx("f `hello {x}` {key = 1}");
+    REQUIRE(result.errors.empty());
+    auto stat = result.root->body.data[0]->as<AstStatExpr>();
+    REQUIRE(stat);
+    auto outerCall = stat->expr->as<AstExprCall>();
+    REQUIRE(outerCall);
+    CHECK(outerCall->args.size == 1);
+    auto innerCall = outerCall->func->as<AstExprCall>();
+    REQUIRE(innerCall);
+    CHECK(innerCall->args.size == 2);
 }
 
 TEST_SUITE_END();

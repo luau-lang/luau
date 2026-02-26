@@ -640,6 +640,16 @@ void BytecodeBuilder::pushDebugUpval(StringRef name)
     debugUpvals.push_back(upval);
 }
 
+void BytecodeBuilder::pushInterpEntry(int32_t templateConstant, const StringRef* exprNames, size_t exprCount)
+{
+    InterpEntry entry;
+    entry.funcId = currentFunction;
+    entry.templateConstant = templateConstant;
+    for (size_t i = 0; i < exprCount; i++)
+        entry.exprNameStrings.push_back(addStringTableEntry(exprNames[i]));
+    allInterpEntries.push_back(std::move(entry));
+}
+
 size_t BytecodeBuilder::getInstructionCount() const
 {
     return insns.size();
@@ -729,6 +739,19 @@ void BytecodeBuilder::finalize()
 
     LUAU_ASSERT(mainFunction < functions.size());
     writeVarInt(bytecode, mainFunction);
+
+    if (!allInterpEntries.empty())
+    {
+        writeVarInt(bytecode, uint32_t(allInterpEntries.size()));
+        for (const InterpEntry& e : allInterpEntries)
+        {
+            writeVarInt(bytecode, e.funcId);
+            writeVarInt(bytecode, uint32_t(e.templateConstant));
+            writeVarInt(bytecode, uint32_t(e.exprNameStrings.size()));
+            for (unsigned int s : e.exprNameStrings)
+                writeVarInt(bytecode, s);
+        }
+    }
 }
 
 void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)

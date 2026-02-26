@@ -42,6 +42,7 @@ LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauStacklessPcall)
 LUAU_FASTFLAG(LuauCodegenExtraSimd)
 LUAU_FASTFLAG(LuauCodegenExtraSpills)
+LUAU_FASTFLAG(LuauInterpStringFunctionCalls)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -909,6 +910,66 @@ TEST_CASE("Strings")
 TEST_CASE("StringInterp")
 {
     runConformance("stringinterp.luau");
+}
+
+TEST_CASE("StringInterpCall")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+    runConformance("stringinterpcall.luau");
+}
+
+TEST_CASE("StringInterpCallCachePrewarm")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    const char* source = R"(
+        local function f(template, values) end
+        local x = 42
+        local a, b = 1, 2
+        f `hello {x}`
+        f `{a} and {b}`
+        return "OK"
+    )";
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+    luaL_openlibs(L);
+
+    lua_CompileOptions opts = defaultOptions();
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source, strlen(source), &opts, &bytecodeSize);
+    int result = luau_load(L, "=test", bytecode, bytecodeSize, 0);
+    free(bytecode);
+    REQUIRE(result == 0);
+
+    // After load but before execution: cache should already be populated
+    lua_getfield(L, LUA_REGISTRYINDEX, "interpparse_cache");
+    REQUIRE(!lua_isnil(L, -1));
+
+    // Check "hello {x}" is cached with {"x"}
+    lua_pushstring(L, "hello {x}");
+    lua_rawget(L, -2);
+    REQUIRE(lua_istable(L, -1));
+    CHECK(lua_getreadonly(L, -1));
+    CHECK(lua_objlen(L, -1) == 1);
+    lua_rawgeti(L, -1, 1);
+    CHECK(std::string(lua_tostring(L, -1)) == "x");
+    lua_pop(L, 2); // pop string and table
+
+    // Check "{a} and {b}" is cached with {"a", "b"}
+    lua_pushstring(L, "{a} and {b}");
+    lua_rawget(L, -2);
+    REQUIRE(lua_istable(L, -1));
+    CHECK(lua_getreadonly(L, -1));
+    CHECK(lua_objlen(L, -1) == 2);
+    lua_rawgeti(L, -1, 1);
+    CHECK(std::string(lua_tostring(L, -1)) == "a");
+    lua_pop(L, 1);
+    lua_rawgeti(L, -1, 2);
+    CHECK(std::string(lua_tostring(L, -1)) == "b");
+    lua_pop(L, 2); // pop string and table
+
+    lua_pop(L, 1); // pop cache table
 }
 
 TEST_CASE("VarArg")

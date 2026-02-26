@@ -440,6 +440,7 @@ public:
     AstArray<AstTypeOrPack> typeArguments;
     AstArray<AstExpr*> args;
     bool self;
+    bool isInterpStringCall = false;
     Location argLocation;
 };
 

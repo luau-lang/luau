@@ -23,6 +23,7 @@ LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauStandaloneParseType)
 LUAU_FASTFLAGVARIABLE(LuauCstStatDoWithStatsStart)
 LUAU_FASTFLAGVARIABLE(DesugaredArrayTypeReferenceIsEmpty)
+LUAU_FASTFLAGVARIABLE(LuauInterpStringFunctionCalls)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -3096,6 +3097,11 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
         {
             expr = parseFunctionArgs(expr, false);
         }
+        else if (FFlag::LuauInterpStringFunctionCalls &&
+                 (lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringSimple))
+        {
+            expr = parseFunctionArgs(expr, false);
+        }
         else if (FFlag::LuauExplicitTypeInstantiationSyntax && lexer.current().type == '<' && lexer.lookahead().type == '<')
         {
             expr = parseExplicitTypeInstantiationExpr(start, *expr);
@@ -3435,6 +3441,11 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstExprCall>(std::nullopt, std::nullopt, AstArray<Position>{nullptr, 0});
         return node;
+    }
+    else if (FFlag::LuauInterpStringFunctionCalls &&
+             (lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringSimple))
+    {
+        return parseInterpStringCall(func, self);
     }
     else
     {
@@ -4075,6 +4086,153 @@ AstExpr* Parser::parseInterpString()
     AstExprInterpString* node = allocator.alloc<AstExprInterpString>(Location{startLocation, endLocation}, stringsArray, expressionsArray);
     if (options.storeCstData)
         cstNodeMap[node] = allocator.alloc<CstExprInterpString>(copy(sourceStrings), copy(stringPositions));
+    return node;
+}
+
+AstExpr* Parser::parseInterpStringCall(AstExpr* func, bool self)
+{
+    LUAU_ASSERT(lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringSimple);
+
+    Location argStart = lexer.current().location;
+
+    if (lexer.current().type == Lexeme::InterpStringSimple)
+    {
+        AstExpr* expr = parseString();
+
+        AstExprCall* node = allocator.alloc<AstExprCall>(
+            Location(func->location, expr->location), func, copy(&expr, 1), self, AstArray<AstTypeOrPack>{}, argStart
+        );
+        if (options.storeCstData)
+            cstNodeMap[node] = allocator.alloc<CstExprCall>(std::nullopt, std::nullopt, AstArray<Position>{nullptr, 0});
+        return node;
+    }
+
+    std::string templateStr;
+    std::vector<AstExpr*> values;
+
+    Location startLocation = lexer.current().location;
+    Location endLocation;
+
+    do
+    {
+        Lexeme currentLexeme = lexer.current();
+        LUAU_ASSERT(
+            currentLexeme.type == Lexeme::InterpStringBegin || currentLexeme.type == Lexeme::InterpStringMid ||
+            currentLexeme.type == Lexeme::InterpStringEnd || currentLexeme.type == Lexeme::InterpStringSimple
+        );
+
+        endLocation = currentLexeme.location;
+
+        scratchData.assign(currentLexeme.data, currentLexeme.getLength());
+
+        if (!Lexer::fixupQuotedString(scratchData))
+        {
+            nextLexeme();
+            return reportExprError(
+                Location{startLocation, endLocation}, {}, "Interpolated string literal contains malformed escape sequence"
+            );
+        }
+
+        for (char c : scratchData)
+        {
+            if (c == '{' || c == '}')
+                templateStr += c;
+            templateStr += c;
+        }
+
+        const char* braceOpenPtr = currentLexeme.data + currentLexeme.getLength();
+
+        nextLexeme();
+
+        if (currentLexeme.type == Lexeme::InterpStringEnd || currentLexeme.type == Lexeme::InterpStringSimple)
+        {
+            break;
+        }
+
+        bool errorWhileChecking = false;
+
+        switch (lexer.current().type)
+        {
+        case Lexeme::InterpStringMid:
+        case Lexeme::InterpStringEnd:
+        {
+            errorWhileChecking = true;
+            nextLexeme();
+            values.push_back(reportExprError(endLocation, {}, "Malformed interpolated string, expected expression inside '{}'"));
+            break;
+        }
+        case Lexeme::BrokenString:
+        {
+            errorWhileChecking = true;
+            nextLexeme();
+            values.push_back(reportExprError(endLocation, {}, "Malformed interpolated string; did you forget to add a '`'?"));
+            break;
+        }
+        default:
+            values.push_back(parseExpr());
+        }
+
+        if (errorWhileChecking)
+        {
+            break;
+        }
+
+        const char* braceClosePtr = lexer.current().data;
+        size_t exprWithBracesLen = braceClosePtr - braceOpenPtr;
+        templateStr.append(braceOpenPtr, exprWithBracesLen);
+
+        switch (lexer.current().type)
+        {
+        case Lexeme::InterpStringBegin:
+        case Lexeme::InterpStringMid:
+        case Lexeme::InterpStringEnd:
+            break;
+        case Lexeme::BrokenInterpDoubleBrace:
+            nextLexeme();
+            return reportExprError(endLocation, {}, "Double braces are not permitted within interpolated strings; did you mean '\\{'?");
+        case Lexeme::BrokenString:
+            nextLexeme();
+            LUAU_FALLTHROUGH;
+        case Lexeme::Eof:
+        {
+            if (auto top = lexer.peekBraceStackTop())
+            {
+                if (*top == Lexer::BraceType::InterpolatedString)
+                    report(lexer.previousLocation(), "Malformed interpolated string; did you forget to add a '}'?");
+            }
+            else
+            {
+                report(lexer.previousLocation(), "Malformed interpolated string; did you forget to add a '`'?");
+            }
+            break;
+        }
+        default:
+            return reportExprError(endLocation, {}, "Malformed interpolated string, got %s", lexer.current().toString().c_str());
+        }
+    } while (true);
+
+    endLocation = lexer.previousLocation();
+
+    Location syntheticLoc(startLocation, endLocation);
+
+    AstArray<char> templateValue = copy(templateStr);
+    AstExpr* templateExpr =
+        allocator.alloc<AstExprConstantString>(syntheticLoc, templateValue, AstExprConstantString::QuotedSimple);
+
+    std::vector<AstExprTable::Item> valItems;
+    valItems.reserve(values.size());
+    for (size_t i = 0; i < values.size(); i++)
+        valItems.push_back({AstExprTable::Item::List, nullptr, values[i]});
+    AstExpr* valuesTable = allocator.alloc<AstExprTable>(syntheticLoc, copy(valItems.data(), valItems.size()));
+
+    AstExpr* callArgs[2] = {templateExpr, valuesTable};
+
+    AstExprCall* node = allocator.alloc<AstExprCall>(
+        Location(func->location, endLocation), func, copy(callArgs, 2), self, AstArray<AstTypeOrPack>{}, Location(argStart, endLocation)
+    );
+    node->isInterpStringCall = true;
+    if (options.storeCstData)
+        cstNodeMap[node] = allocator.alloc<CstExprCall>(std::nullopt, std::nullopt, AstArray<Position>{nullptr, 0});
     return node;
 }
 

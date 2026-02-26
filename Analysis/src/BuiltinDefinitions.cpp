@@ -1250,6 +1250,28 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
          )}},
         {"packsize", {makeFunction(*arena, stringType, {}, {}, {}, {}, {numberType}, /* checked */ true)}},
         {"unpack", {arena->addType(std::move(stringDotUnpack))}},
+        {"interp",
+         {makeFunction(
+             *arena,
+             stringType,
+             {},
+             {},
+             {arena->addType(TableType{{}, std::nullopt, TypeLevel{}, TableState::Unsealed})},
+             {},
+             {stringType},
+             /* checked */ true
+         )}},
+        {"interpparse",
+         {makeFunction(
+             *arena,
+             stringType,
+             {},
+             {},
+             {},
+             {},
+             {arena->addType(TableType{{}, TableIndexer{numberType, stringType}, TypeLevel{}, TableState::Sealed})},
+             /* checked */ true
+         )}},
     };
 
     assignPropDocumentationSymbols(stringLib, "@luau/global/string");

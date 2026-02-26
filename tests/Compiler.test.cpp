@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauCompileCorrectLocalPc)
 LUAU_FASTFLAG(LuauCompileFastcallsSurvivePolyfills)
 LUAU_FASTFLAG(LuauCompileFoldVectorComp)
 LUAU_FASTFLAG(LuauCompileInlinedBuiltins)
+LUAU_FASTFLAG(LuauInterpStringFunctionCalls)
 
 using namespace Luau;
 
@@ -10380,6 +10381,56 @@ LOADK R8 K5 ['9']
 LOADK R9 K6 ['6789']
 LOADK R10 K7 ['456']
 RETURN R0 11
+)"
+    );
+}
+
+TEST_CASE("InterpStringCallNoExpressions")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    CHECK_EQ(compileFunction0(R"(return f "hello")"), compileFunction0("return f `hello`"));
+}
+
+TEST_CASE("InterpStringCallDesugar")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            local x = 42
+            f `hello {x}`
+        )"),
+        R"(
+GETIMPORT R0 1 [f]
+LOADK R1 K2 ['hello {x}']
+NEWTABLE R2 0 1
+LOADN R3 42
+SETLIST R2 R3 1 [1]
+CALL R0 2 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("InterpStringCallMethod")
+{
+    ScopedFastFlag sff{FFlag::LuauInterpStringFunctionCalls, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            local x = 42
+            obj:Info `hello {x}`
+        )"),
+        R"(
+GETIMPORT R0 1 [obj]
+LOADK R2 K2 ['hello {x}']
+NEWTABLE R3 0 1
+LOADN R4 42
+SETLIST R3 R4 1 [1]
+NAMECALL R0 R0 K3 ['Info']
+CALL R0 3 0
+RETURN R0 0
 )"
     );
 }
