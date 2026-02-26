@@ -24,7 +24,7 @@ LUAU_FASTINT(LuauParseErrorLimit)
 
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAG(LuauFragmentRequiresCanBeResolvedToAModule)
-LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails)
+LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -4734,7 +4734,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_inde
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_function_call_with_variadic_args")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails, true};
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails2, true};
 
     std::string source = R"(
         local function foo(...: "Val1" | "Val2") end
@@ -4752,8 +4752,8 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_func
         [](FragmentAutocompleteStatusResult& frag)
         {
             REQUIRE(frag.result);
-            CHECK(frag.result->acResults.entryMap.count("Val1") == 0);
-            CHECK(frag.result->acResults.entryMap.count("Val2") == 0);
+            CHECK(frag.result->acResults.entryMap.count("\"Val1\"") == 1);
+            CHECK(frag.result->acResults.entryMap.count("\"Val2\"") == 1);
         }
     );
 }

@@ -7,10 +7,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
-LUAU_FASTFLAG(LuauCodegenSplitFloat)
-LUAU_FASTFLAG(LuauCodegenLocationEndFix)
-LUAU_FASTFLAG(LuauCodegenUintToFloat)
+LUAU_FASTFLAG(LuauCodegenA64ClosureOffset)
 
 namespace Luau
 {
@@ -1032,23 +1029,13 @@ void AssemblyBuilderA64::scvtf(RegisterA64 dst, RegisterA64 src)
 
 void AssemblyBuilderA64::ucvtf(RegisterA64 dst, RegisterA64 src)
 {
-    if (FFlag::LuauCodegenUintToFloat)
-    {
-        CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s);
-        CODEGEN_ASSERT(src.kind == KindA64::w || src.kind == KindA64::x);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s);
+    CODEGEN_ASSERT(src.kind == KindA64::w || src.kind == KindA64::x);
 
-        if (dst.kind == KindA64::d)
-            placeR1("ucvtf", dst, src, 0b000'11110'01'1'00'011'000000);
-        else
-            placeR1("ucvtf", dst, src, 0b000'11110'00'1'00'011'000000);
-    }
-    else
-    {
-        CODEGEN_ASSERT(dst.kind == KindA64::d);
-        CODEGEN_ASSERT(src.kind == KindA64::w || src.kind == KindA64::x);
-
+    if (dst.kind == KindA64::d)
         placeR1("ucvtf", dst, src, 0b000'11110'01'1'00'011'000000);
-    }
+    else
+        placeR1("ucvtf", dst, src, 0b000'11110'00'1'00'011'000000);
 }
 
 void AssemblyBuilderA64::fjcvtzs(RegisterA64 dst, RegisterA64 src)
@@ -1168,7 +1155,7 @@ uint32_t AssemblyBuilderA64::getCodeSize() const
 
 unsigned AssemblyBuilderA64::getInstructionCount() const
 {
-    return FFlag::LuauCodegenLocationEndFix ? unsigned(getCodeSize()) : unsigned(getCodeSize()) / 4;
+    return unsigned(getCodeSize());
 }
 
 bool AssemblyBuilderA64::isMaskSupported(uint32_t mask)
@@ -1298,11 +1285,20 @@ void AssemblyBuilderA64::placeA(const char* name, RegisterA64 dst, AddressA64 sr
         break;
     case AddressKindA64::imm:
         if (unsigned(src.data >> sizelog) < 1024 && (src.data & ((1 << sizelog) - 1)) == 0)
+        {
             place(dst.index | (src.base.index << 5) | ((src.data >> sizelog) << 10) | (opsize << 22) | (1 << 24));
+        }
         else if (src.data >= -256 && src.data <= 255)
+        {
             place(dst.index | (src.base.index << 5) | ((src.data & ((1 << 9) - 1)) << 12) | (opsize << 22));
+        }
         else
+        {
+            if (FFlag::LuauCodegenA64ClosureOffset)
+                overflowed = true;
+
             CODEGEN_ASSERT(!"Unable to encode large immediate offset");
+        }
         break;
     case AddressKindA64::pre:
         CODEGEN_ASSERT(src.data >= -256 && src.data <= 255);

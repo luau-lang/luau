@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Bytecode.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
 #include "Luau/RegisterX64.h"
@@ -1202,6 +1203,7 @@ struct IrBlock
     uint32_t chainkey = 0;
     uint32_t expectedNextBlock = ~0u;
 
+    // Bytecode PC position at which the block was generated
     uint32_t startpc = kBlockNoStartPc;
 
     Label label;
@@ -1268,6 +1270,8 @@ struct IrFunction
     uint32_t entryLocation = 0;
     uint32_t endLocation = 0;
 
+    std::vector<uint32_t> extraNativeData;
+
     // For each instruction, an operand that can be used to recompute the value
     std::vector<ValueRestoreLocation> valueRestoreOps;
     std::vector<uint32_t> validRestoreOpBlocks;
@@ -1281,6 +1285,8 @@ struct IrFunction
     CfgInfo cfg;
 
     LoweringStats* stats = nullptr;
+
+    bool recordCounters = false; // Taken from CompilationOptions for easy access
 
     IrBlock& blockOp(IrOp op)
     {

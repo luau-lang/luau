@@ -11,7 +11,6 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAG(LuauCompileCallCostModel)
 LUAU_FASTFLAG(LuauCompileInlinedBuiltins)
 
 namespace Luau
@@ -327,20 +326,17 @@ struct CostVisitor : AstVisitor
 
     bool visit(AstStatIf* node) override
     {
-        if (FFlag::LuauCompileCallCostModel)
+        if (isConstantFalse(constants, node->condition))
         {
-            if (isConstantFalse(constants, node->condition))
-            {
-                if (node->elsebody)
-                    node->elsebody->visit(this);
-                return false;
-            }
+            if (node->elsebody)
+                node->elsebody->visit(this);
+            return false;
+        }
 
-            if (isConstantTrue(constants, node->condition))
-            {
-                node->thenbody->visit(this);
-                return false;
-            }
+        if (isConstantTrue(constants, node->condition))
+        {
+            node->thenbody->visit(this);
+            return false;
         }
 
         // unconditional 'else' may require a jump after the 'if' body
@@ -425,24 +421,17 @@ struct CostVisitor : AstVisitor
 
     bool visit(AstStatBlock* node) override
     {
-        if (FFlag::LuauCompileCallCostModel)
+        for (size_t i = 0; i < node->body.size; ++i)
         {
-            for (size_t i = 0; i < node->body.size; ++i)
-            {
-                AstStat* stat = node->body.data[i];
+            AstStat* stat = node->body.data[i];
 
-                stat->visit(this);
+            stat->visit(this);
 
-                if (alwaysTerminates(constants, stat))
-                    break;
-            }
-
-            return false;
+            if (alwaysTerminates(constants, stat))
+                break;
         }
-        else
-        {
-            return true;
-        }
+
+        return false;
     }
 };
 

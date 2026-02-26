@@ -16,7 +16,6 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufferBaseFold)
 
@@ -287,7 +286,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::CONCAT:
         return IrValueKind::None;
     case IrCmd::GET_UPVALUE:
-        return FFlag::LuauCodegenUpvalueLoadProp2 ? IrValueKind::Tvalue : IrValueKind::None;
+        return IrValueKind::Tvalue;
     case IrCmd::SET_UPVALUE:
     case IrCmd::CHECK_TAG:
     case IrCmd::CHECK_TRUTHY:

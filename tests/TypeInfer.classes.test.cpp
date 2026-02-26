@@ -18,6 +18,7 @@ LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
+LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -1291,6 +1292,66 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_indexer_interactions")
     LUAU_REQUIRE_ERROR_COUNT(3, result);
     for (const auto& err : result.errors)
         CHECK(get<TypeMismatch>(err));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_1")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauExternTypesNormalizeWithShapes, true},
+    };
+
+    loadDefinition(R"(
+        declare extern type Instance with
+            name: string
+        end
+
+        declare extern type WithBrushes extends Instance with
+            brushes: Instance
+        end
+    )");
+
+    CheckResult result = check(R"(
+        function take(thing: WithBrushes & { brushes: Instance })
+            print(thing)
+            print(thing.brushes.name)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // These two types are entirely coincident, so we could imagine a world where this becomes simply `WithBrushes`, but
+    // the principal here is that the user wrote the annotation in this way, and so we're propagating that without normalizing.
+    CHECK_EQ("WithBrushes & { brushes: Instance }", toString(requireTypeAtPosition({2, 18})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauExternTypesNormalizeWithShapes, true},
+    };
+
+    loadDefinition(R"(
+        declare extern type Instance with
+            name: string
+        end
+
+        declare extern type WithBrushes extends Instance with
+            brushes: Instance
+        end
+    )");
+
+    CheckResult result = check(R"(
+        function take(thing: Instance & { brushes: Instance })
+            print(thing)
+            print(thing.brushes.name)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Instance & { brushes: Instance }", toString(requireTypeAtPosition({2, 18})));
 }
 
 TEST_SUITE_END();

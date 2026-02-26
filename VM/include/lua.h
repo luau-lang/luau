@@ -421,6 +421,14 @@ typedef void (*lua_Coverage)(void* context, const char* function, int linedefine
 
 LUA_API void lua_getcoverage(lua_State* L, int funcindex, void* context, lua_Coverage callback);
 
+typedef void (*lua_CounterFunction)(void* context, const char* function, int linedefined);
+typedef void (*lua_CounterValue)(void* context, int kind, int line, uint64_t hits);
+
+// Unlike 'lua_getcoverage', counters are customizable in ways which prevent merging them together
+// 'lua_getcounters' will visit the specified function and all nested functions
+// 'functionvisit' is called first to establish a function, then multiple calls of 'countervisit' are made for each counter in that function
+LUA_API void lua_getcounters(lua_State* L, int funcindex, void* context, lua_CounterFunction functionvisit, lua_CounterValue countervisit);
+
 // Warning: this function is not thread-safe since it stores the result in a shared global array! Only use for debugging.
 LUA_API const char* lua_debugtrace(lua_State* L);
 
