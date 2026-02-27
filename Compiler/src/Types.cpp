@@ -199,6 +199,7 @@ struct TypeMapVisitor : AstVisitor
     DenseHashMap<AstExprFunction*, std::string>& functionTypes;
     DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes;
     DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes;
+    std::vector<const AstArray<AstGenericType*>*> genericStack;
     const char* hostVectorType = nullptr;
     const DenseHashMap<AstName, uint8_t>& userdataTypes;
     const BuiltinAstTypes& builtinTypes;
@@ -298,7 +299,13 @@ struct TypeMapVisitor : AstVisitor
 
         resolvedExprs[expr] = ty;
 
-        LuauBytecodeType bty = getType(ty, {}, typeAliases, /* resolveAliases= */ true, hostVectorType, userdataTypes, bytecode);
+        const AstArray<AstGenericType*> emptyGenerics;
+
+        const AstArray<AstGenericType*>& currentGenerics = 
+            genericStack.empty() ? emptyGenerics : *genericStack.back();
+
+        LuauBytecodeType bty = getType(ty, currentGenerics, typeAliases, true, hostVectorType, userdataTypes, bytecode);
+
         exprTypes[expr] = bty;
         return bty;
     }
@@ -309,7 +316,12 @@ struct TypeMapVisitor : AstVisitor
 
         resolvedLocals[local] = ty;
 
-        LuauBytecodeType bty = getType(ty, {}, typeAliases, /* resolveAliases= */ true, hostVectorType, userdataTypes, bytecode);
+        const AstArray<AstGenericType*> emptyGenerics;
+
+        const AstArray<AstGenericType*>& currentGenerics = 
+            genericStack.empty() ? emptyGenerics : *genericStack.back();
+
+        LuauBytecodeType bty = getType(ty, currentGenerics, typeAliases, true, hostVectorType, userdataTypes, bytecode);
 
         if (bty != LBC_TYPE_ANY)
             localTypes[local] = bty;
@@ -395,14 +407,20 @@ struct TypeMapVisitor : AstVisitor
         return false;
     }
 
-    bool visit(AstExprFunction* node) override
+    bool visit(AstExprFunction* node) override 
     {
+        genericStack.push_back(&node->generics);
+
         std::string type = getFunctionType(node, typeAliases, hostVectorType, userdataTypes, bytecode);
 
-        if (!type.empty())
+        if(!type.empty()) 
             functionTypes[node] = std::move(type);
+        
+        node->body->visit(this);
 
-        return true; // Let generic visitor step into all expressions
+        genericStack.pop_back();
+
+        return true;
     }
 
     bool visit(AstExprLocal* node) override
