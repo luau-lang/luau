@@ -202,6 +202,8 @@ struct SubtypingEnvironment
     int iterationCount = 0;
 };
 
+struct TypeFunctionRuntime;
+
 struct Subtyping
 {
     NotNull<BuiltinTypes> builtinTypes;

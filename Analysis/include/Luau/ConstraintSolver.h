@@ -19,6 +19,7 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/Variant.h"
+#include "Luau/Subtyping.h"
 
 #include <utility>
 #include <vector>
@@ -172,7 +173,8 @@ struct ConstraintSolver
         DcrLogger* logger,
         NotNull<const DataFlowGraph> dfg,
         TypeCheckLimits limits,
-        ConstraintSet constraintSet
+        ConstraintSet constraintSet,
+        NotNull<Subtyping> subtyping
     );
 
     // TODO CLI-169086: Replace all uses of this constructor with the ConstraintSet constructor, above.
@@ -187,7 +189,8 @@ struct ConstraintSolver
         std::vector<RequireCycle> requireCycles,
         DcrLogger* logger,
         NotNull<const DataFlowGraph> dfg,
-        TypeCheckLimits limits
+        TypeCheckLimits limits,
+        NotNull<Subtyping> subtyping
     );
 
     // Randomize the order in which to dispatch constraints
@@ -477,6 +480,8 @@ public:
     void throwUserCancelError() const;
 
     ToStringOptions opts;
+
+     NotNull<Subtyping> subtyping;
 
     void fillInDiscriminantTypes(NotNull<const Constraint> constraint, const std::vector<std::optional<TypeId>>& discriminantTypes);
 };

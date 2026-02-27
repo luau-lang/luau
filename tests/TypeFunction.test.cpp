@@ -1783,11 +1783,12 @@ struct TFFixture
     Normalizer normalizer{arena, getBuiltins(), NotNull{&unifierState}, SolverMode::New};
     TypeCheckLimits limits;
     TypeFunctionRuntime runtime{NotNull{&ice}, NotNull{&limits}};
+    Subtyping subtyping{getBuiltins(), arena, NotNull{&normalizer}, NotNull{&runtime}, NotNull{&ice}};
 
     BuiltinTypeFunctions builtinTypeFunctions;
 
     TypeFunctionContext
-        tfc_{arena, getBuiltins(), NotNull{globalScope.get()}, NotNull{&normalizer}, NotNull{&runtime}, NotNull{&ice}, NotNull{&limits}};
+        tfc_{arena, getBuiltins(), NotNull{globalScope.get()}, NotNull{&normalizer}, NotNull{&runtime}, NotNull{&ice}, NotNull{&limits}, NotNull{&subtyping}};
 
     NotNull<TypeFunctionContext> tfc{&tfc_};
 };

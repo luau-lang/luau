@@ -22,6 +22,7 @@ struct ConstraintGeneratorFixture : Fixture
     Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, SolverMode::New};
     TypeCheckLimits limits;
     TypeFunctionRuntime typeFunctionRuntime{NotNull{&ice}, NotNull{&limits}};
+    Subtyping subtyping{getBuiltins(), NotNull{&mainModule->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
     std::unique_ptr<DataFlowGraph> dfg;
     std::unique_ptr<ConstraintGenerator> cg;
