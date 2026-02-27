@@ -43,6 +43,8 @@ LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
+LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 namespace Luau
 {
@@ -2272,6 +2274,12 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         expr->op != AstExprBinary::CompareNe)
         inContext.emplace(&typeContext, TypeContext::Default);
 
+    if (FFlag::LuauLValueCompoundAssignmentVisitLhs)
+    {
+        if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
+            visit(expr->left, ValueContext::LValue); // In compound assignments, the LHS is both read-from and written-to
+    }
+
     visit(expr->left, ValueContext::RValue);
     visit(expr->right, ValueContext::RValue);
 
@@ -3629,11 +3637,15 @@ void TypeChecker2::checkIndexTypeFromType(
     {
         if (propTypes.foundOneProp())
             reportError(MissingUnionProperty{tableTy, propTypes.missingProp, prop}, location);
+        else if (!FFlag::LuauExternReadWriteAttributes && get<ExternType>(tableTy))
+        {
+            reportError(UnknownProperty{tableTy, prop}, location);
+        }
         // For class LValues, we don't want to report an extension error,
         // because extern typeArguments come into being with full knowledge of their
         // shape. We instead want to report the unknown property error of
         // the `else` branch.
-        else if (context == ValueContext::LValue && !get<ExternType>(tableTy))
+        else if (context == ValueContext::LValue)
         {
             const auto lvPropTypes = lookupProp(norm.get(), prop, ValueContext::RValue, location, astIndexExprType, dummy);
             if (lvPropTypes.foundOneProp() && lvPropTypes.noneMissingProp())
@@ -3641,9 +3653,14 @@ void TypeChecker2::checkIndexTypeFromType(
             else if (get<PrimitiveType>(tableTy) || get<FunctionType>(tableTy))
                 reportError(NotATable{tableTy}, location);
             else
-                reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
+            {
+                if (get<ExternType>(tableTy))
+                    reportError(UnknownProperty{tableTy, prop}, location);
+                else
+                    reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
+            }
         }
-        else if (context == ValueContext::RValue && !get<ExternType>(tableTy))
+        else if (context == ValueContext::RValue)
         {
             const auto rvPropTypes = lookupProp(norm.get(), prop, ValueContext::LValue, location, astIndexExprType, dummy);
             if (rvPropTypes.foundOneProp() && rvPropTypes.noneMissingProp())
@@ -3705,7 +3722,14 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         // is compatible with the indexer's indexType
         // Construct the intersection and test inhabitedness!
         if (auto property = lookupExternTypeProp(cls, prop))
-            return {NormalizationResult::True, context == ValueContext::LValue ? property->writeTy : property->readTy};
+        {
+            if (FFlag::LuauExternReadWriteAttributes
+                && ((context == ValueContext::LValue && !property->writeTy) || (context == ValueContext::RValue && !property->readTy))
+            )
+                return {NormalizationResult::False, {}};
+            else
+                return {NormalizationResult::True, context == ValueContext::LValue ? property->writeTy : property->readTy};
+        }
         if (cls->indexer)
         {
             TypeId inhabitedTestType = module->internalTypes.addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});

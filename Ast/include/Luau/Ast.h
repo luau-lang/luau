@@ -1041,6 +1041,13 @@ public:
     AstTypePack* retTypes;
 };
 
+enum class AstTableAccess
+{
+    Read = 0b01,
+    Write = 0b10,
+    ReadWrite = 0b11,
+};
+
 struct AstDeclaredExternTypeProperty
 {
     AstName name;
@@ -1048,13 +1055,7 @@ struct AstDeclaredExternTypeProperty
     AstType* ty = nullptr;
     bool isMethod = false;
     Location location;
-};
-
-enum class AstTableAccess
-{
-    Read = 0b01,
-    Write = 0b10,
-    ReadWrite = 0b11,
+    AstTableAccess access = AstTableAccess::ReadWrite;
 };
 
 struct AstTableIndexer
