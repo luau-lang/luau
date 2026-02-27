@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDsoPairTrackFix)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDsoTagOverlayFix)
 LUAU_FASTFLAG(LuauCodegenOpReadOnly)
+LUAU_FASTFLAG(LuauCodegenSafeEnvPreserve)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
@@ -992,6 +993,13 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 static void markDeadStoresInBlock(IrBuilder& build, IrBlock& block, RemoveDeadStoreState& state)
 {
     IrFunction& function = build.function;
+
+    if (FFlag::LuauCodegenSafeEnvPreserve)
+    {
+        // Block might establish a safe environment right at the start and might take a VM exit
+        if ((block.flags & kBlockFlagSafeEnvCheck) != 0)
+            state.readAllRegs();
+    }
 
     for (uint32_t index = block.start; index <= block.finish; index++)
     {

@@ -40,6 +40,8 @@ LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
+LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
+LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 
 namespace Luau
@@ -3469,7 +3471,69 @@ PropertyTypes TypeChecker2::lookupProp(
     if (normValid)
         fetch(norm->booleans);
 
-    if (normValid)
+    // TODO: the subsequent code here is basically proof that this broader approach to doing indexing isn't quite right.
+    // we _should_ be leveraging one unified implementation of indexing here, shared with e.g. the `index` type function.
+    if (normValid && FFlag::LuauExternTypesNormalizeWithShapes)
+    {
+        // each individual extern type consists of a collection of extern types in a normal form, and a collection of table types describing the
+        // shapes further. extern types and tables are both open to extension in general, and therefore, we need to consider the possibility that a
+        // subset of these types might not be contributing to the type of the index, but that the index should nevertheless be valid still. towards
+        // that end, we want to look through all of the components to see if any of them have the index before making a judgment if the extern types
+        // portion as a whole has the index.
+
+        std::vector<TypeId> localTypesOfProp;
+
+        for (const auto& [ty, _negations] : norm->externTypes.externTypes)
+        {
+            NormalizationResult result = normalizer.isInhabited(ty);
+            if (result == NormalizationResult::HitLimits)
+                normValid = false;
+            if (result != NormalizationResult::True)
+                continue;
+
+            DenseHashSet<TypeId> seen{nullptr};
+            PropertyType res = hasIndexTypeFromType(ty, prop, context, location, seen, astIndexExprType, errors);
+
+            if (res.present == NormalizationResult::HitLimits)
+            {
+                normValid = false;
+                continue;
+            }
+
+            if (res.present == NormalizationResult::True && res.result)
+                localTypesOfProp.emplace_back(*res.result);
+        }
+
+        for (TypeId ty : norm->externTypes.shapeExtensions)
+        {
+            NormalizationResult result = normalizer.isInhabited(ty);
+            if (result == NormalizationResult::HitLimits)
+                normValid = false;
+            if (result != NormalizationResult::True)
+                continue;
+
+            DenseHashSet<TypeId> seen{nullptr};
+            PropertyType res = hasIndexTypeFromType(ty, prop, context, location, seen, astIndexExprType, errors);
+
+            if (res.present == NormalizationResult::HitLimits)
+            {
+                normValid = false;
+                continue;
+            }
+
+            if (res.present == NormalizationResult::True && res.result)
+                localTypesOfProp.emplace_back(*res.result);
+        }
+
+        if (!localTypesOfProp.empty())
+            typesOfProp.insert(typesOfProp.end(), localTypesOfProp.begin(), localTypesOfProp.end());
+        else
+        {
+            typesMissingTheProp.insert(typesMissingTheProp.end(), norm->externTypes.ordering.begin(), norm->externTypes.ordering.end());
+            typesMissingTheProp.insert(typesMissingTheProp.end(), norm->externTypes.shapeExtensions.begin(), norm->externTypes.shapeExtensions.end());
+        }
+    }
+    else if (normValid)
     {
         for (const auto& [ty, _negations] : norm->externTypes.externTypes)
         {
