@@ -3849,7 +3849,7 @@ R0: vector [argument]
 R1: mat3 [argument]
 R2: userdata [argument]
 U0: number
-R6: any from 1 to 9
+R6: number from 1 to 9
 R3: vector from 0 to 30
 MUL R3 R0 R0
 LOADN R6 1
@@ -4851,7 +4851,7 @@ TEST_CASE("JumpTrampoline")
     CHECK_EQ("\n" + head, R"(
 local 0: reg 3, start pc 8 line 3, end pc 54545 line 20002
 local 1: reg 0, start pc 2 line 2, end pc 54549 line 20004
-R3: any from 2 to 54546
+R3: number from 2 to 54546
 R0: number from 1 to 54550
 LOADN R0 0
 LOADN R3 1
