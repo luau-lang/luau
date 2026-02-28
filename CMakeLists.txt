@@ -331,3 +331,22 @@ foreach(LIB Luau.Ast Luau.Compiler Luau.Config Luau.Analysis Luau.CodeGen Luau.V
         endif()
     endif()
 endforeach()
+
+# define the install steps
+include(GNUInstallDirs)
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/VM/include/" "${PROJECT_SOURCE_DIR}/AST/include/" "${PROJECT_SOURCE_DIR}/Compiler/include/"
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILES_MATCHING
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+        PATTERN "*.inl")
+
+install(TARGETS Luau.Ast Luau.Compiler Luau.Config Luau.Analysis Luau.CodeGen Luau.VM
+        EXPORT luau
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+if (LUAU_BUILD_CLI)
+install(TARGETS Luau.Repl.CLI Luau.Analyze.CLI Luau.Compile.CLI
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
