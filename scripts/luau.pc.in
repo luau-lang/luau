@@ -1,0 +1,9 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+libdir=@libdir_for_pc_file@
+includedir=@includedir_for_pc_file@
+
+Name: Luau
+Description: A fast, small, safe, gradually typed embeddable scripting language derived from Lua
+Version: @VERSION@
+Cflags: -I${includedir}
+Libs: -L${libdir} -lLuau.Require -lLuau.Ast -lLuau.Compiler -lLuau.Common -lLuau.Config -lLuau.Analysis -lLuau.CodeGen -lLuau.VM
