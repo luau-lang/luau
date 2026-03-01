@@ -31,6 +31,19 @@ end
     CHECK_EQ(example, prettyPrint(example).code);
 }
 
+TEST_CASE("prettyPrint_AstStatBlock_overload")
+{
+    const std::string code = "local a = 1";
+    ParseOptions options;
+    Allocator allocator;
+    AstNameTable names(allocator);
+    ParseResult result = Parser::parse(code.c_str(), code.size(), names, allocator, options);
+    REQUIRE(result.root != nullptr);
+    
+    std::string printed = prettyPrint(*result.root);
+    CHECK_EQ("local a = 1", printed);
+}
+
 TEST_CASE("string_literals")
 {
     const std::string code = R"( local S='abcdef\n\f\a\020' )";
