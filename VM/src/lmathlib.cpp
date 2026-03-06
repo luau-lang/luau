@@ -4,16 +4,23 @@
 
 #include "lstate.h"
 
+#include <limits>
 #include <math.h>
 #include <time.h>
 
-#undef PI
-#define PI (3.14159265358979323846)
-#define RADIANS_PER_DEGREE (PI / 180.0)
+#define LUAU_PI (3.14159265358979323846)
+#define RADIANS_PER_DEGREE (LUAU_PI / 180.0)
+
+#define LUAU_NAN (std::numeric_limits<double>::quiet_NaN())
+#define LUAU_E (2.71828182845904523536)
+#define LUAU_PHI (1.61803398874989484820)
+#define LUAU_SQRT2 (1.41421356237309504880)
+#define LUAU_TAU (6.28318530717958647692)
 
 #define PCG32_INC 105
 
 LUAU_FASTFLAGVARIABLE(LuauMathSeedEncode)
+LUAU_FASTFLAGVARIABLE(LuauNewMathConstantsRuntime)
 
 static uint32_t pcg32_random(uint64_t* state)
 {
@@ -507,10 +514,24 @@ int luaopen_math(lua_State* L)
 
     luaL_register(L, LUA_MATHLIBNAME, mathlib);
 
-    lua_pushnumber(L, PI);
+    lua_pushnumber(L, LUAU_PI);
     lua_setfield(L, -2, "pi");
     lua_pushnumber(L, HUGE_VAL);
     lua_setfield(L, -2, "huge");
+
+    if (FFlag::LuauNewMathConstantsRuntime)
+    {
+        lua_pushnumber(L, LUAU_NAN);
+        lua_setfield(L, -2, "nan");
+        lua_pushnumber(L, LUAU_E);
+        lua_setfield(L, -2, "e");
+        lua_pushnumber(L, LUAU_PHI);
+        lua_setfield(L, -2, "phi");
+        lua_pushnumber(L, LUAU_SQRT2);
+        lua_setfield(L, -2, "sqrt2");
+        lua_pushnumber(L, LUAU_TAU);
+        lua_setfield(L, -2, "tau");
+    }
 
     return 1;
 }

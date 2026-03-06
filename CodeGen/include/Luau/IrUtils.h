@@ -5,6 +5,9 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
+LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters)
+LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
+
 namespace Luau
 {
 namespace CodeGen
@@ -220,7 +223,10 @@ inline bool canInvalidateSafeEnv(IrCmd cmd)
 inline bool isPseudo(IrCmd cmd)
 {
     // Instructions that are used for internal needs and are not a part of final lowering
-    return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
+    if (FFlag::LuauCodegenMarkDeadRegisters || FFlag::LuauCodegenDseOnCondJump)
+        return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE || cmd == IrCmd::MARK_USED || cmd == IrCmd::MARK_DEAD;
+    else
+        return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
 }
 
 inline bool hasSideEffects(IrCmd cmd)

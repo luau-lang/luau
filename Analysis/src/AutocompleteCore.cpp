@@ -399,7 +399,11 @@ static void autocompleteProps(
         auto indexIt = mtable->props.find("__index");
         if (indexIt != mtable->props.end())
         {
+#ifndef __EMSCRIPTEN__
+            // EMSDK cannot compile the flag-off branch, so force the flag on with defines here.
+            // Delete these conditionals when this flag is removed.
             if (FFlag::LuauACOnMTTWriteOnlyPropNoCrash)
+#endif
             {
                 TypeId followed = indexIt->second.readTy.value_or(nullptr);
                 if (followed == nullptr)
@@ -418,6 +422,7 @@ static void autocompleteProps(
                         autocompleteProps(module, typeArena, builtinTypes, rootTy, *indexFunctionResult, indexType, nodes, result, seen);
                 }
             }
+#ifndef __EMSCRIPTEN__
             else
             {
                 TypeId followed;
@@ -436,6 +441,7 @@ static void autocompleteProps(
                         autocompleteProps(module, typeArena, builtinTypes, rootTy, *indexFunctionResult, indexType, nodes, result, seen);
                 }
             }
+#endif
         }
     };
 

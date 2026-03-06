@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Instantiation.h"
 
+#include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/Instantiation2.h" // including for `Replacer` which was stolen since it will be kept in the new solver
 #include "Luau/ToString.h"
@@ -11,6 +12,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauReplacerRespectsReboundGenerics)
 
 namespace Luau
 {
@@ -201,22 +203,46 @@ std::optional<TypeId> instantiate(
     for (TypePackId g : ft->genericPacks)
         replacementPacks[g] = arena->freshTypePack(scope);
 
-    Replacer r{arena, std::move(replacements), std::move(replacementPacks)};
+    if (FFlag::LuauReplacerRespectsReboundGenerics)
+    {
+        Replacer r{arena, NotNull{&replacements}, NotNull{&replacementPacks}};
 
-    if (limits->instantiationChildLimit)
-        r.childLimit = *limits->instantiationChildLimit;
+        if (limits->instantiationChildLimit)
+            r.childLimit = *limits->instantiationChildLimit;
 
-    std::optional<TypeId> res = r.substitute(ty);
-    if (!res)
+        CloneState cs{builtinTypes};
+        // We clone persistent types here to enable instantiation for generic
+        // builtins like `table.find`; otherwise, the lines after would
+        // immediately corrupt the definitions of the original function.
+        auto clonedFunctionTypeId = shallowClone(ty, *arena, cs, /* clonePersistentTypes */ true);
+        FunctionType* ft2 = getMutable<FunctionType>(clonedFunctionTypeId);
+        LUAU_ASSERT(ft != ft2);
+
+        ft2->generics.clear();
+        ft2->genericPacks.clear();
+
+        return r.substitute(clonedFunctionTypeId);
+    }
+    else
+    {
+        Replacer_DEPRECATED r{arena, std::move(replacements), std::move(replacementPacks)};
+
+        if (limits->instantiationChildLimit)
+            r.childLimit = *limits->instantiationChildLimit;
+
+        std::optional<TypeId> res = r.substitute(ty);
+        if (!res)
+            return res;
+
+        FunctionType* ft2 = getMutable<FunctionType>(*res);
+        LUAU_ASSERT(ft != ft2);
+
+        ft2->generics.clear();
+        ft2->genericPacks.clear();
+
         return res;
+    }
 
-    FunctionType* ft2 = getMutable<FunctionType>(*res);
-    LUAU_ASSERT(ft != ft2);
-
-    ft2->generics.clear();
-    ft2->genericPacks.clear();
-
-    return res;
 }
 
 } // namespace Luau

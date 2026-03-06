@@ -22,7 +22,7 @@ LUAU_FASTINT(LuauSolverConstraintLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauIceLess)
 LUAU_FASTFLAG(LuauUseNativeStackGuard)
 LUAU_FASTINT(LuauGenericCounterMaxSteps)
@@ -292,7 +292,7 @@ TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
 TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(1.0))
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
     };
 
     constexpr const char* src = R"LUAU(
@@ -336,7 +336,7 @@ TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(1.0))
 
 TEST_CASE_FIXTURE(Fixture, "limit_number_of_dynamically_created_constraints")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     constexpr const char* src = R"(
         type Array<T> = {T}
@@ -366,7 +366,7 @@ TEST_CASE_FIXTURE(Fixture, "limit_number_of_dynamically_created_constraints")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constraints_2")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauUnifyWithSubtyping2, false}};
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauUnifyWithSubtyping2, false}};
 
     ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 50};
 
@@ -420,7 +420,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constrai
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * doctest::timeout(1.0))
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     constexpr const char* src = R"LUAU(
     type DataProxy = any
@@ -541,7 +541,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * 
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     ScopedFastInt sfi{FInt::LuauGenericCounterMaxSteps, 1};
 
@@ -556,7 +556,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
 TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterations_before_stopping_unifier" * doctest::timeout(4.0))
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         // Clip this entire test with this flag.
         {FFlag::LuauUnifyWithSubtyping2, false},
     };
@@ -581,7 +581,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterati
 TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterations_before_stopping_subtyping" * doctest::timeout(4.0))
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauUnifyWithSubtyping2, true},
     };
 
@@ -607,7 +607,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterati
 TEST_CASE_FIXTURE(BuiltinsFixture, "native_stack_guard_prevents_stack_overflows" * doctest::timeout(4.0))
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauUseNativeStackGuard, true},
     };
 

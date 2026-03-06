@@ -10,7 +10,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -238,7 +238,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_missing_property")
     REQUIRE(mup);
     CHECK_EQ("Key 'x' is missing from 'B' in the type 'A | B'", toString(result.errors[0]));
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("(A | B) -> number", toString(requireType("f")));
     else
         CHECK_EQ("(A | B) -> *error-type*", toString(requireType("f")));
@@ -418,7 +418,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors_2")
 TEST_CASE_FIXTURE(Fixture, "optional_length_error")
 {
 
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type A = {number}
@@ -537,7 +537,7 @@ end
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         if (FFlag::LuauBetterTypeMismatchErrors)
             CHECK_EQ(
@@ -587,7 +587,7 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2 && FFlag::LuauMorePreciseErrorSuppression)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
     {
         // clang-format off
         const std::string expected =
@@ -599,7 +599,7 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
         // clang-format on
         CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
     }
-    else if (FFlag::LuauSolverV2)
+    else if (!FFlag::DebugLuauForceOldSolver)
     {
         if (FFlag::LuauBetterTypeMismatchErrors)
             CHECK(toString(result.errors[0]) == "Expected this to be 'X | Y | Z', but got '{ w: number }'");
@@ -621,7 +621,7 @@ local a: X? = { w = 4 }
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK("Table type '{ w: number }' not compatible with type 'X' because the former is missing field 'x'" == toString(result.errors[0]));
     else if (FFlag::LuauBetterTypeMismatchErrors)
     {
@@ -923,7 +923,7 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
      )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2 && FFlag::LuauMorePreciseErrorSuppression)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
     {
         // clang-format off
         const std::string expected =
@@ -939,7 +939,7 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
 
         CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
     }
-    else if (FFlag::LuauSolverV2)
+    else if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected = FFlag::LuauBetterTypeMismatchErrors ? "Expected this to be\n\t"
                                                                            "'((...number?) -> ()) | ((number?) -> ())'"
@@ -997,7 +997,7 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_variadics
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -1014,7 +1014,7 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types_2")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -1104,7 +1104,7 @@ TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions")
 
 TEST_CASE_FIXTURE(Fixture, "suppress_errors_for_prop_lookup_of_a_union_that_includes_error")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     registerHiddenTypes(getFrontend());
 

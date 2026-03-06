@@ -32,8 +32,16 @@ struct GeneralizationResult
     }
 };
 
-// Replace a single free type by its bounds according to the polarity provided.
 GeneralizationResult<TypeId> generalizeType(
+    NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Scope> scope,
+    TypeId freeTy,
+    const GeneralizationParams<TypeId>& params
+);
+
+// Replace a single free type by its bounds according to the polarity provided.
+GeneralizationResult<TypeId> generalizeType_DEPRECATED(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Scope> scope,
@@ -51,6 +59,7 @@ GeneralizationResult<TypePackId> generalizeTypePack(
 );
 
 void sealTable(NotNull<Scope> scope, TypeId ty);
+
 
 /** Attempt to generalize a type.
  *

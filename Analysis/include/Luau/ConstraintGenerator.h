@@ -446,6 +446,17 @@ private:
         Polarity initialPolarity = Polarity::Positive
     );
 
+    // Clip with LuauForwardPolarityForFunctionTypes
+    TypePackId resolveTypePack_DEPRECATED(
+        const ScopePtr& scope,
+        const AstTypeList& list,
+        bool inTypeArguments,
+        bool replaceErrorWithFresh = false,
+        Polarity initialPolarity = Polarity::Positive
+    );
+
+    TypePackId resolveTypePack_(const ScopePtr& scope, const AstTypeList& list, bool inTypeArguments, bool replaceErrorWithFresh);
+
     /**
      * Creates generic types given a list of AST definitions, resolving default
      * types as required.
