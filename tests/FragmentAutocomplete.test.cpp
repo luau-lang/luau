@@ -25,6 +25,7 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAG(LuauFragmentRequiresCanBeResolvedToAModule)
 LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -36,7 +37,7 @@ static FrontendOptions getOptions()
     FrontendOptions options;
     options.retainFullTypeGraphs = true;
 
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         options.forAutocomplete = true;
 
     options.runLintChecks = false;
@@ -46,7 +47,7 @@ static FrontendOptions getOptions()
 
 static ModuleResolver& getModuleResolver(Frontend& frontend)
 {
-    return FFlag::LuauSolverV2 ? frontend.moduleResolver : frontend.moduleResolverForAutocomplete;
+    return !FFlag::DebugLuauForceOldSolver ? frontend.moduleResolver : frontend.moduleResolverForAutocomplete;
 }
 
 template<class BaseType>
@@ -152,7 +153,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
 
     CheckResult checkOldSolver(const std::string& source)
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
         return this->check(Mode::Strict, source, getOptions());
     }
 
@@ -189,7 +190,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         std::optional<Position> fragmentEndPosition = std::nullopt
     )
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
         std::string cleanDocument = cleanMarkers(document);
         std::string cleanUpdated = cleanMarkers(updated);
@@ -211,7 +212,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         std::optional<Position> fragmentEndPosition = std::nullopt
     )
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
 
         std::string cleanDocument = cleanMarkers(document);
         std::string cleanUpdated = cleanMarkers(updated);
@@ -237,7 +238,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         std::string cleanUpdated = cleanMarkers(updated);
         Position cursorPos = getPosition(marker);
 
-        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
         this->getFrontend().setLuauSolverMode(SolverMode::New);
         this->check(cleanDocument, getOptions());
 
@@ -245,7 +246,7 @@ struct FragmentAutocompleteFixtureImpl : BaseType
         CHECK(result.status != FragmentAutocompleteStatus::InternalIce);
         assertions(result);
 
-        ScopedFastFlag _{FFlag::LuauSolverV2, false};
+        ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, true};
         this->getFrontend().setLuauSolverMode(SolverMode::Old);
         this->check(cleanDocument, getOptions());
 
@@ -1137,7 +1138,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "thrown_parse_error_leads_to_null
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_initializer")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     checkWithOptions("local a =");
     auto fragment = parseFragment("local a =", Position(0, 9));
 
@@ -1148,7 +1149,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_initializer")
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "statement_in_empty_fragment_is_non_null")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     auto res = checkWithOptions(R"(
 
 )");
@@ -1172,7 +1173,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "statement_in_empty_fragment_is_n
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_complete_fragments")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     auto res = checkWithOptions(
         R"(
 local x = 4
@@ -1219,7 +1220,7 @@ local z = x + y
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_fragments_in_line")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     auto res = checkWithOptions(
         R"(
 local x = 4
@@ -1265,7 +1266,7 @@ local y = 5
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_in_correct_scope")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     checkWithOptions(R"(
         local myLocal = 4
         function abc()
@@ -1292,7 +1293,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_in_correct_scope")
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_single_line_fragment_override")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     auto res = checkWithOptions("function abc(foo: string) end");
 
     LUAU_REQUIRE_NO_ERRORS(res);
@@ -1355,7 +1356,7 @@ abc("bar")
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_multi_line_fragment_override")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     auto res = checkWithOptions("function abc(foo: string) end");
 
@@ -1403,7 +1404,7 @@ t
 
     FrontendOptions opts;
     opts.forAutocomplete = true;
-    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    getFrontend().setLuauSolverMode(!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old);
     getFrontend().check("game/A", opts);
     CHECK_NE(getFrontend().moduleResolverForAutocomplete.getModule("game/A"), nullptr);
     CHECK_EQ(getFrontend().moduleResolver.getModule("game/A"), nullptr);
@@ -1428,7 +1429,7 @@ TEST_SUITE_BEGIN("FragmentAutocompleteTypeCheckerTests");
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_typecheck_simple_fragment")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     auto res = checkWithOptions(
         R"(
 local x = 4
@@ -1454,7 +1455,7 @@ local z = x + y
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_typecheck_fragment_inserted_inline")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     auto res = checkWithOptions(
         R"(
 local x = 4
@@ -1484,8 +1485,8 @@ TEST_SUITE_BEGIN("MixedModeTests");
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "mixed_mode_basic_example_append")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
-    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
+    getFrontend().setLuauSolverMode(!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old);
     auto res = checkOldSolver(
         R"(
 local x = 4
@@ -1511,8 +1512,8 @@ local z = x + y
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "mixed_mode_basic_example_inlined")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
-    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
+    getFrontend().setLuauSolverMode(!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old);
     auto res = checkOldSolver(
         R"(
 local x = 4
@@ -1536,8 +1537,8 @@ local y = 5
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "mixed_mode_can_autocomplete_simple_property_access")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
-    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
+    getFrontend().setLuauSolverMode(!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old);
     auto res = checkOldSolver(
         R"(
 local tbl = { abc = 1234}
@@ -1650,14 +1651,14 @@ function module.ab
 return module)";
 
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
         getFrontend().setLuauSolverMode(SolverMode::Old);
         checkAndExamine(source, "module", "{|  |}");
         fragmentACAndCheck(updated1, Position{1, 17}, "module", "{|  |}", "{| a: (%error-id%: unknown) -> () |}");
         fragmentACAndCheck(updated2, Position{1, 18}, "module", "{|  |}", "{| ab: (%error-id%: unknown) -> () |}");
     }
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
         getFrontend().setLuauSolverMode(SolverMode::New);
         checkAndExamine(source, "module", "{  }");
         // [TODO] CLI-140762 Fragment autocomplete still doesn't return correct result when LuauSolverV2 is on
@@ -3023,7 +3024,7 @@ function module.ab
 return module)";
 
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, true};
         getFrontend().setLuauSolverMode(SolverMode::Old);
         checkAndExamine(source, "module", "{|  |}");
         // [TODO] CLI-140762 we shouldn't mutate stale module in autocompleteFragment
@@ -3033,7 +3034,7 @@ return module)";
     }
 
     {
-        ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+        ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
         getFrontend().setLuauSolverMode(SolverMode::New);
         checkAndExamine(source, "module", "{  }");
         // [TODO] CLI-140762 we shouldn't mutate stale module in autocompleteFragment
@@ -3184,7 +3185,7 @@ end
 )";
 
     // Only checking in new solver as old solver doesn't handle type functions and constraint solver will ICE
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     this->check(source, getOptions());
 
     FragmentAutocompleteStatusResult result = autocompleteFragment(dest, Position{4, 9}, std::nullopt);

@@ -399,6 +399,10 @@ const char* getCmdName(IrCmd cmd)
         return "FALLBACK_FORGPREP";
     case IrCmd::SUBSTITUTE:
         return "SUBSTITUTE";
+    case IrCmd::MARK_USED:
+        return "MARK_USED";
+    case IrCmd::MARK_DEAD:
+        return "MARK_DEAD";
     case IrCmd::BITAND_UINT:
         return "BITAND_UINT";
     case IrCmd::BITXOR_UINT:

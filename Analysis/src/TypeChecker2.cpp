@@ -41,8 +41,8 @@ LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
-LUAU_FASTFLAGVARIABLE(LuauCheckForInWithSubtyping3)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
+LUAU_FASTFLAGVARIABLE(LuauComparisonToNilsIsAlwaysOk)
 
 namespace Luau
 {
@@ -2265,6 +2265,12 @@ static bool isOkToCompare(
     return false;
 };
 
+static bool isComparisonOp(AstExprBinary::Op op)
+{
+    return op == AstExprBinary::CompareNe || op == AstExprBinary::CompareEq || op == AstExprBinary::CompareGe || op == AstExprBinary::CompareGt ||
+           op == AstExprBinary::CompareLe || op == AstExprBinary::CompareLt;
+}
+
 TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
 {
     std::optional<InConditionalContext> inContext;
@@ -2278,7 +2284,8 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
     NotNull<Scope> scope = stack.back();
 
     bool isEquality = expr->op == AstExprBinary::Op::CompareEq || expr->op == AstExprBinary::Op::CompareNe;
-    bool isComparison = expr->op >= AstExprBinary::Op::CompareEq && expr->op <= AstExprBinary::Op::CompareGe;
+    bool isComparison = FFlag::LuauComparisonToNilsIsAlwaysOk ? isComparisonOp(expr->op)
+                                                              : expr->op >= AstExprBinary::Op::CompareEq && expr->op <= AstExprBinary::Op::CompareGe;
     bool isLogical = expr->op == AstExprBinary::Op::And || expr->op == AstExprBinary::Op::Or;
 
     TypeId leftType = follow(lookupType(expr->left));
@@ -2324,13 +2331,34 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
     }
 
     NormalizationResult typesHaveIntersection = normalizer.isIntersectionInhabited(leftType, rightType);
-    if (isEquality || isComparison)
+
+    if (FFlag::LuauComparisonToNilsIsAlwaysOk)
     {
-        // As a special exception, we allow anything to be compared to nil.
-        if (!isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight))
+        if (isEquality || isComparison)
         {
-            reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
-            return builtinTypes->errorType;
+            bool canCompare = isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight);
+            if (!canCompare)
+            {
+                reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
+                return builtinTypes->errorType;
+            }
+            else if (isEquality && (normLeft->isNil() || normRight->isNil()))
+            {
+                // For equality operations, if either operand is nil, we should allow this comparison through
+                return builtinTypes->booleanType;
+            }
+        }
+    }
+    else
+    {
+        if (isEquality || isComparison)
+        {
+            // As a special exception, we allow anything to be compared to nil.
+            if (!isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight))
+            {
+                reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
+                return builtinTypes->errorType;
+            }
         }
     }
 

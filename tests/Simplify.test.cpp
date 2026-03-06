@@ -8,7 +8,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
 LUAU_FASTFLAG(LuauUnionOfTablesPreservesReadWrite)
 
@@ -64,7 +64,7 @@ struct SimplifyFixture : Fixture
     TypeId unrelatedClassTy = nullptr;
 
     // This only affects type stringification.
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     SimplifyFixture()
     {

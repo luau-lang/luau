@@ -217,6 +217,13 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
         visitor.use(OP_A(inst));
         break;
 
+    case IrCmd::MARK_USED:
+        visitor.useRange(vmRegOp(OP_A(inst)), function.intOp(OP_B(inst)));
+        break;
+    case IrCmd::MARK_DEAD:
+        // Does not affect VM def/use info
+        break;
+
     default:
         // All instructions which reference registers have to be handled explicitly
         for (auto& op : inst.ops)

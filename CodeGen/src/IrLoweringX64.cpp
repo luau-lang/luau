@@ -2927,6 +2927,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     // Pseudo instructions
     case IrCmd::NOP:
     case IrCmd::SUBSTITUTE:
+    case IrCmd::MARK_USED:
+    case IrCmd::MARK_DEAD:
         CODEGEN_ASSERT(!"Pseudo instructions should not be lowered");
         break;
     }

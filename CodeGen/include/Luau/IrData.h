@@ -795,8 +795,18 @@ enum class IrCmd : uint8_t
     FALLBACK_FORGPREP,
 
     // Instruction that passes value through, it is produced by constant folding and users substitute it with the value
-    SUBSTITUTE,
     // A: operand of any type
+    SUBSTITUTE,
+
+    // Pseudo instruction to mark VM registers as implicitly used at the location
+    // A: Rn (start)
+    // B: int (count, -1 to mark all registers after start)
+    MARK_USED,
+
+    // Pseudo instruction to mark VM registers as dead at the location
+    // A: Rn (start)
+    // B: int (count, -1 to mark all registers after start)
+    MARK_DEAD,
 
     // Performs bitwise and/xor/or on two unsigned integers
     // A, B: int

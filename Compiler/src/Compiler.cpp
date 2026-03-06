@@ -28,6 +28,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
+LUAU_FASTFLAGVARIABLE(LuauCompileVectorReveseMul)
 LUAU_FASTFLAGVARIABLE(LuauCompileTableIndexTemp)
 LUAU_FASTFLAGVARIABLE(LuauCompileInlinedBuiltins)
 LUAU_FASTFLAGVARIABLE(LuauCompileVectorConstLimit)
@@ -1775,18 +1776,43 @@ struct Compiler
                 else if (options.optimizationLevel >= 2 && (expr->op == AstExprBinary::Add || expr->op == AstExprBinary::Mul))
                 {
                     // Optimization: replace k*r with r*k when r is known to be a number (otherwise metamethods may be called)
-                    if (LuauBytecodeType* ty = exprTypes.find(expr); ty && *ty == LBC_TYPE_NUMBER)
+                    if (FFlag::LuauCompileVectorReveseMul)
                     {
-                        int32_t lc = getConstantNumber(expr->left);
-
-                        if (lc >= 0 && lc <= 255)
+                        if (LuauBytecodeType* ty = exprTypes.find(expr))
                         {
-                            uint8_t rr = compileExprAuto(expr->right, rs);
+                            // Note: for vectors, it only makes sense to do for a multiplication as number+vector is an error
+                            if (*ty == LBC_TYPE_NUMBER ||
+                                (FFlag::LuauCompileVectorReveseMul && *ty == LBC_TYPE_VECTOR && expr->op == AstExprBinary::Mul))
+                            {
+                                int32_t lc = getConstantNumber(expr->left);
 
-                            bytecode.emitABC(getBinaryOpArith(expr->op, /* k= */ true), target, rr, uint8_t(lc));
+                                if (lc >= 0 && lc <= 255)
+                                {
+                                    uint8_t rr = compileExprAuto(expr->right, rs);
 
-                            hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
-                            return;
+                                    bytecode.emitABC(getBinaryOpArith(expr->op, /* k= */ true), target, rr, uint8_t(lc));
+
+                                    hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (LuauBytecodeType* ty = exprTypes.find(expr); ty && *ty == LBC_TYPE_NUMBER)
+                        {
+                            int32_t lc = getConstantNumber(expr->left);
+
+                            if (lc >= 0 && lc <= 255)
+                            {
+                                uint8_t rr = compileExprAuto(expr->right, rs);
+
+                                bytecode.emitABC(getBinaryOpArith(expr->op, /* k= */ true), target, rr, uint8_t(lc));
+
+                                hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
+                                return;
+                            }
                         }
                     }
                 }

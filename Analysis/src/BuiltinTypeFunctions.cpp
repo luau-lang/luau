@@ -20,9 +20,7 @@
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
-LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
 LUAU_FASTFLAGVARIABLE(LuauBuiltinTypeFunctionsUseNewOverloadResolution)
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsUseSolveFunctionCall)
 
 namespace Luau
 {
@@ -161,8 +159,6 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
         return std::nullopt;
     }
 
-    LUAU_ASSERT(FFlag::LuauInstantiationUsesGenericPolarity2);
-
     if (!unifier.genericSubstitutions.empty() || !unifier.genericPackSubstitutions.empty())
     {
         Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
@@ -271,37 +267,9 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
     if (isPending(*mmType, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {*mmType}, {}};
 
-    if (FFlag::LuauTypeFunctionsUseSolveFunctionCall)
-    {
-        // We only care that we _can_ solve this function, it doesn't matter what it returns.
-        if (!solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack({operandTy})))
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
-    else
-    {
-
-        const FunctionType* mmFtv = get<FunctionType>(*mmType);
-        if (!mmFtv)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-        std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType);
-        if (!instantiatedMmType)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-        const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
-        if (!instantiatedMmFtv)
-            return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
-
-        TypePackId inferredArgPack = ctx->arena->addTypePack({operandTy});
-
-        Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
-        if (UnifyResult::Ok != u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
-            return {std::nullopt, Reduction::Erroneous, {}, {}}; // occurs check failed
-
-        Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-        if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
+    // We only care that we _can_ solve this function, it doesn't matter what it returns.
+    if (!solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack({operandTy})))
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
 
     // `len` must return a `number`.
     return {ctx->builtins->numberType, Reduction::MaybeOk, {}, {}};
@@ -364,43 +332,14 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
     if (isPending(*mmType, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {*mmType}, {}};
 
-    if (FFlag::LuauTypeFunctionsUseSolveFunctionCall)
-    {
-        auto result = solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack({operandTy}));
-        if (!result)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
+    auto result = solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack({operandTy}));
+    if (!result)
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
 
-        if (auto ret = first(*result))
-            return {ret, Reduction::MaybeOk, {}, {}};
-        else
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
+    if (auto ret = first(*result))
+        return {ret, Reduction::MaybeOk, {}, {}};
     else
-    {
-
-        const FunctionType* mmFtv = get<FunctionType>(*mmType);
-        if (!mmFtv)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-        std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType);
-        if (!instantiatedMmType)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-        const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
-        if (!instantiatedMmFtv)
-            return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
-
-        TypePackId inferredArgPack = ctx->arena->addTypePack({operandTy});
-
-        Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
-        if (UnifyResult::Ok != u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
-            return {std::nullopt, Reduction::Erroneous, {}, {}}; // occurs check failed
-
-        if (std::optional<TypeId> ret = first(instantiatedMmFtv->retTypes))
-            return {ret, Reduction::MaybeOk, {}, {}};
-        else
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
 }
 
 TypeFunctionContext::TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint)
@@ -728,51 +667,14 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
     if (isPending(*mmType, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {*mmType}, {}};
 
-    if (FFlag::LuauTypeFunctionsUseSolveFunctionCall)
-    {
-        std::vector<TypeId> inferredArgs;
-        if (!reversed)
-            inferredArgs = {lhsTy, rhsTy};
-        else
-            inferredArgs = {rhsTy, lhsTy};
-
-        if (!solveFunctionCall(
-                ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack(std::move(inferredArgs))
-            ))
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
+    std::vector<TypeId> inferredArgs;
+    if (!reversed)
+        inferredArgs = {lhsTy, rhsTy};
     else
-    {
-        const FunctionType* mmFtv = get<FunctionType>(*mmType);
-        if (!mmFtv)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
+        inferredArgs = {rhsTy, lhsTy};
 
-        std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType);
-        if (!instantiatedMmType)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-        const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
-        if (!instantiatedMmFtv)
-            return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
-
-        std::vector<TypeId> inferredArgs;
-        if (!reversed)
-            inferredArgs = {lhsTy, rhsTy};
-        else
-            inferredArgs = {rhsTy, lhsTy};
-
-        TypePackId inferredArgPack = ctx->arena->addTypePack(std::move(inferredArgs));
-
-
-        Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
-        if (UnifyResult::Ok != u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
-            return {std::nullopt, Reduction::Erroneous, {}, {}}; // occurs check failed
-
-        Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-        if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
-
+    if (!solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack(std::move(inferredArgs))))
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
 
     return {ctx->builtins->stringType, Reduction::MaybeOk, {}, {}};
 }
@@ -962,36 +864,9 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
     if (isPending(*mmType, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {*mmType}, {}};
 
-    if (FFlag::LuauTypeFunctionsUseSolveFunctionCall)
-    {
-        // We only care that we _can_ solve this function, it doesn't matter what it returns.
-        if (!solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack({lhsTy, rhsTy})))
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
-    else
-    {
-        const FunctionType* mmFtv = get<FunctionType>(*mmType);
-        if (!mmFtv)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-        std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType);
-        if (!instantiatedMmType)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-        const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
-        if (!instantiatedMmFtv)
-            return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
-
-        TypePackId inferredArgPack = ctx->arena->addTypePack({lhsTy, rhsTy});
-        Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
-        if (UnifyResult::Ok != u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
-            return {std::nullopt, Reduction::Erroneous, {}, {}}; // occurs check failed
-
-        Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-        if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
-
+    // We only care that we _can_ solve this function, it doesn't matter what it returns.
+    if (!solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack({lhsTy, rhsTy})))
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
 
     return {ctx->builtins->booleanType, Reduction::MaybeOk, {}, {}};
 }
@@ -1101,35 +976,8 @@ TypeFunctionReductionResult<TypeId> eqTypeFunction(
     if (isPending(*mmType, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {*mmType}, {}};
 
-    if (FFlag::LuauTypeFunctionsUseSolveFunctionCall)
-    {
-        if (!solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack({lhsTy, rhsTy})))
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
-    else
-    {
-        const FunctionType* mmFtv = get<FunctionType>(*mmType);
-        if (!mmFtv)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-        std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType);
-        if (!instantiatedMmType)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-        const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
-        if (!instantiatedMmFtv)
-            return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
-
-        TypePackId inferredArgPack = ctx->arena->addTypePack({lhsTy, rhsTy});
-        Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
-        if (UnifyResult::Ok != u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
-            return {std::nullopt, Reduction::Erroneous, {}, {}}; // occurs check failed
-
-        Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-        if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes, ctx->scope, {}).isSubtype)
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-    }
-
+    if (!solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack({lhsTy, rhsTy})))
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
 
     return {ctx->builtins->booleanType, Reduction::MaybeOk, {}, {}};
 }
