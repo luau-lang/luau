@@ -38,7 +38,7 @@ static void displayHelp(const char* argv0)
     printf("  -h, --help: Display this usage message.\n");
     printf("  -O<n>: compile with optimization level n (default 1, n should be between 0 and 2).\n");
     printf("  -g<n>: compile with debug level n (default 1, n should be between 0 and 2).\n");
-    printf("  --fflags=<fflags>: flags to be enabled.\n");
+    printf("  --fflags=<flags>: comma-separated list of fast flags to enable/disable (--fflags=true,false,LuauFlag1=true,LuauFlag2=false).\n");
     printf("  --summary-file=<filename>: file in which bytecode analysis summary will be recorded (default 'bytecode-summary.json').\n");
 
     exit(0);

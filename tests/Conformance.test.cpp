@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Common.h"
+#include "Luau/Type.h"
 #include "lua.h"
 #include "lualib.h"
 #include "luacode.h"
@@ -43,6 +44,9 @@ LUAU_FASTFLAG(LuauStacklessPcall)
 LUAU_FASTFLAG(LuauCodegenExtraSimd)
 LUAU_FASTFLAG(LuauCodegenExtraSpills)
 LUAU_FASTFLAG(LuauCodegenA64ClosureOffset)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauNewMathConstantsRuntime)
+
 
 static lua_CompileOptions defaultOptions()
 {
@@ -849,6 +853,7 @@ TEST_CASE("Buffers")
 
 TEST_CASE("Math")
 {
+    ScopedFastFlag newMathConstants{FFlag::LuauNewMathConstantsRuntime, true};
     runConformance("math.luau");
 }
 
@@ -1462,7 +1467,7 @@ TEST_CASE("Types")
             Luau::NullModuleResolver moduleResolver;
             Luau::NullFileResolver fileResolver;
             Luau::NullConfigResolver configResolver;
-            Luau::Frontend frontend{&fileResolver, &configResolver};
+            Luau::Frontend frontend{!FFlag::DebugLuauForceOldSolver ? Luau::SolverMode::New : Luau::SolverMode::Old, &fileResolver, &configResolver};
             Luau::registerBuiltinGlobals(frontend, frontend.globals);
             Luau::freeze(frontend.globals.globalTypes);
 

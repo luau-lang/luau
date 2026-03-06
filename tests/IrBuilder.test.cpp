@@ -13,6 +13,8 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters)
+LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenGcoDse2)
 LUAU_FASTFLAG(LuauCodegenDsoPairTrackFix)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
@@ -5031,6 +5033,9 @@ bb_2:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotReturnWithPartialStores")
 {
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters, true};
+    ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
+
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp success = build.block(IrBlockKind::Internal);
     IrOp fail = build.block(IrBlockKind::Internal);
@@ -5061,15 +5066,12 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotReturnWithPartialStores")
     markDeadStoresInBlockChains(build);
 
     // Even though R1 is not live out at return, we stored table tag followed by an integer value
-    // Boolean tag store has to remain, even if unused, because all stack slots are visible to GC
+    // Boolean tag store has to remain, even if unused, because all stack slots are visible to GC and R1 might location might have some old tag
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
 ; successors: bb_1, bb_2
 ; in regs: R0
 ; out regs: R0
-   %0 = NEW_TABLE 0u, 0u
-   STORE_POINTER R1, %0
-   STORE_TAG R1, ttable
    %3 = NUM_TO_UINT 1e+20
    %4 = BITAND_UINT %3, 4i
    JUMP_CMP_INT %4, 0i, eq, bb_1, bb_2

@@ -7,7 +7,7 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauUnpackRespectsAnnotations)
 
@@ -79,7 +79,7 @@ TEST_CASE_FIXTURE(Fixture, "assignment_cannot_transform_a_table_property_type")
 
 TEST_CASE_FIXTURE(Fixture, "assignments_to_unannotated_parameters_can_transform_the_type")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         function f(x)
@@ -95,7 +95,7 @@ TEST_CASE_FIXTURE(Fixture, "assignments_to_unannotated_parameters_can_transform_
 
 TEST_CASE_FIXTURE(Fixture, "assignments_to_annotated_parameters_are_checked")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         function f(x: string)
@@ -264,7 +264,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_of_value_a_via_typeof_with_assignment")
         a = "foo"
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK("string?" == toString(requireType("a")));
         CHECK("nil" == toString(requireType("b")));
@@ -891,7 +891,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_type_fun_should_not_trip_rbxassert")
 // Not important enough to fix today.
 TEST_CASE_FIXTURE(Fixture, "pulling_a_type_from_value_dont_falsely_create_occurs_check_failed")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         function f(x)
@@ -939,7 +939,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiation_clone_has_to_follow")
 
 TEST_CASE_FIXTURE(Fixture, "unifier3_supertail_covariant_with_sub")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local function fib(n)
@@ -989,7 +989,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "respect_partially_annotated_type_packs_2")
 TEST_CASE_FIXTURE(BuiltinsFixture, "react_use_state_partial_annotation")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauUnpackRespectsAnnotations, true},
     };
 

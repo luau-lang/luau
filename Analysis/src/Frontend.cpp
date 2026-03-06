@@ -42,6 +42,8 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
 
+LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
+
 namespace Luau
 {
 
@@ -425,6 +427,19 @@ static TypeCheckLimits makeTypeCheckLimits(const FrontendOptions& options)
     limits.cancellationToken = options.cancellationToken;
 
     return limits;
+}
+
+Frontend::Frontend(SolverMode mode, FileResolver* fileResolver, ConfigResolver* configResolver, FrontendOptions options)
+    : useNewLuauSolver(mode)
+    , builtinTypes(NotNull{&builtinTypes_})
+    , fileResolver(fileResolver)
+    , moduleResolver(this)
+    , moduleResolverForAutocomplete(this)
+    , globals(builtinTypes, getLuauSolverMode())
+    , globalsForAutocomplete(builtinTypes, getLuauSolverMode())
+    , configResolver(configResolver)
+    , options(std::move(options))
+{
 }
 
 Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options)

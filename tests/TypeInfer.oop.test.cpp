@@ -15,9 +15,8 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauPushTypeConstraintLambdas3)
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -162,7 +161,7 @@ TEST_CASE_FIXTURE(Fixture, "inferring_hundreds_of_self_calls_should_not_suffocat
     )");
 
     ModulePtr module = getMainModule();
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_GE(80, module->internalTypes.types.size());
     else
         CHECK_GE(50, module->internalTypes.types.size());
@@ -170,10 +169,7 @@ TEST_CASE_FIXTURE(Fixture, "inferring_hundreds_of_self_calls_should_not_suffocat
 
 TEST_CASE_FIXTURE(Fixture, "pass_too_many_arguments")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushTypeConstraintLambdas3, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type T = {
@@ -397,7 +393,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "augmenting_an_unsealed_table_with_a_metatabl
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK("{ @metatable { number: number }, { method: (unknown) -> string } }" == toString(requireType("B"), {true}));
     else
         CHECK("{ @metatable {| number: number |}, {| method: <a>(a) -> string |} }" == toString(requireType("B"), {true}));
@@ -556,7 +552,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::t
 
 TEST_CASE_FIXTURE(Fixture, "method_should_not_create_cyclic_type")
 {
-    ScopedFastFlag sff(FFlag::LuauSolverV2, true);
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local Component = {}
@@ -605,7 +601,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_metatable")
 // https://luau.org/typecheck#adding-types-for-faux-object-oriented-programs
 TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -633,7 +629,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -730,7 +726,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_and_property")
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -746,7 +742,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult results = check(R"(
         local Foobar = {}
@@ -767,7 +763,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult results = check(R"(
         local function foobar1(_: { read foo: number }) end

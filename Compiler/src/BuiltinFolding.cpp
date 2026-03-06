@@ -5,7 +5,10 @@
 #include "Luau/Lexer.h"
 
 #include <array>
+#include <limits>
 #include <math.h>
+
+LUAU_FASTFLAGVARIABLE(LuauCompileNewMathConstantsFolded)
 
 namespace Luau
 {
@@ -14,6 +17,11 @@ namespace Compile
 
 const double kPi = 3.14159265358979323846;
 const double kRadDeg = kPi / 180.0;
+const double kNan = std::numeric_limits<double>::quiet_NaN();
+const double kE = 2.71828182845904523536;
+const double kPhi = 1.61803398874989484820;
+const double kSqrt2 = 1.41421356237309504880;
+const double kTau = 6.28318530717958647692;
 
 constexpr size_t kStringCharFoldLimit = 128;
 
@@ -633,6 +641,24 @@ Constant foldBuiltinMath(AstName index)
 
     if (index == "huge")
         return cnum(HUGE_VAL);
+
+    if (FFlag::LuauCompileNewMathConstantsFolded)
+    {
+        if (index == "nan")
+            return cnum(kNan);
+
+        if (index == "e")
+            return cnum(kE);
+
+        if (index == "phi")
+            return cnum(kPhi);
+
+        if (index == "sqrt2")
+            return cnum(kSqrt2);
+
+        if (index == "tau")
+            return cnum(kTau);
+    }
 
     return cvar();
 }

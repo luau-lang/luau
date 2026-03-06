@@ -11,10 +11,10 @@
 #include "Luau/Normalize.h"
 #include <memory>
 
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 using namespace Luau;
 
@@ -31,7 +31,7 @@ struct IsSubtypeFixture : Fixture
             FAIL("isSubtype: module scope data is not available");
 
         return ::Luau::isSubtype(
-            a, b, NotNull{module->getModuleScope().get()}, getBuiltins(), ice, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old
+            a, b, NotNull{module->getModuleScope().get()}, getBuiltins(), ice, !FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old
         );
     }
 };
@@ -96,7 +96,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "variadic_functions_with_no_head")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "variadic_function_with_head")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     check(R"(
         local a: (...number) -> ()
@@ -147,7 +147,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_union_prop")
     TypeId a = requireType("a");
     TypeId b = requireType("b");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK(!isSubtype(a, b)); // table properties are invariant
     else
         CHECK(isSubtype(a, b));
@@ -164,7 +164,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_any_prop")
     TypeId a = requireType("a");
     TypeId b = requireType("b");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK(!isSubtype(a, b)); // table properties are invariant
     else
         CHECK(isSubtype(a, b));
@@ -224,7 +224,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
     TypeId c = requireType("c");
     TypeId d = requireType("d");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK(!isSubtype(a, b)); // table properties are invariant
     else
         CHECK(isSubtype(a, b));
@@ -236,7 +236,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
     CHECK(isSubtype(d, a));
     CHECK(!isSubtype(a, d));
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK(!isSubtype(d, b)); // table properties are invariant
     else
         CHECK(isSubtype(d, b));
@@ -245,7 +245,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "table_indexers_are_invariant")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     check(R"(
         local a: {[string]: number}
@@ -266,7 +266,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_indexers_are_invariant")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "mismatched_indexers")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     check(R"(
         local a: {x: number}
@@ -415,7 +415,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "error_suppression")
 
     // We have added this as an exception - the set of inhabitants of any is exactly the set of inhabitants of unknown (since error has no
     // inhabitants). any = err | unknown, so under semantic subtyping, {} U unknown = unknown
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK(isSubtype(any, unk));
     }
@@ -424,7 +424,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "error_suppression")
         CHECK(!isSubtype(any, unk));
     }
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK(isSubtype(err, str));
     }
@@ -459,7 +459,7 @@ struct NormalizeFixture : Fixture
         CheckResult result = check("type _Res = " + annotation);
         LUAU_REQUIRE_ERROR_COUNT(expectedErrors, result);
 
-        if (FFlag::LuauSolverV2)
+        if (!FFlag::DebugLuauForceOldSolver)
         {
             SourceModule* sourceModule = getMainSourceModule();
             REQUIRE(sourceModule);
@@ -732,7 +732,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negated_function_is_anything_except_a_funct
 
 TEST_CASE_FIXTURE(NormalizeFixture, "specific_functions_cannot_be_negated")
 {
-    CHECK(nullptr == toNormalizedType("Not<(boolean) -> boolean>", FFlag::LuauSolverV2 ? 1 : 0));
+    CHECK(nullptr == toNormalizedType("Not<(boolean) -> boolean>", !FFlag::DebugLuauForceOldSolver ? 1 : 0));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "trivial_intersection_inhabited")
@@ -773,7 +773,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_with_annotation")
 {
     // CLI-117088 - Inferring the type of a higher order function with an annotation sometimes doesn't fully constrain the type (there are free types
     // left over).
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return;
     check(R"(
         function apply<a, b>(f: (a) -> b, x)
@@ -796,7 +796,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TypeId ty = requireType("Cyclic");
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("t1 where t1 = { get: () -> t1 }", toString(ty, {true}));
     else
         CHECK_EQ("t1 where t1 = {| get: () -> t1 |}", toString(ty, {true}));
@@ -948,7 +948,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "top_table_type")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_tables")
 {
-    CHECK(nullptr == toNormalizedType("Not<{}>", FFlag::LuauSolverV2 ? 1 : 0));
+    CHECK(nullptr == toNormalizedType("Not<{}>", !FFlag::DebugLuauForceOldSolver ? 1 : 0));
     CHECK("(boolean | buffer | function | number | string | thread | userdata)?" == toString(normal("Not<tbl>")));
     CHECK("table" == toString(normal("Not<Not<tbl>>")));
 }
@@ -989,7 +989,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "normalize_unknown")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "read_only_props")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK("{ x: string }" == toString(normal("{ read x: string } & { x: string }"), {true}));
     CHECK("{ x: string }" == toString(normal("{ x: string } & { read x: string }"), {true}));
@@ -997,7 +997,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "read_only_props")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "read_only_props_2")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK(R"({ x: "hello" })" == toString(normal(R"({ x: "hello" } & { x: string })"), {true}));
     CHECK(R"(never)" == toString(normal(R"({ x: "hello" } & { x: "world" })"), {true}));
@@ -1005,7 +1005,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "read_only_props_2")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "read_only_props_3")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK(R"({ read x: "hello" })" == toString(normal(R"({ read x: "hello" } & { read x: string })"), {true}));
     CHECK("never" == toString(normal(R"({ read x: "hello" } & { read x: "world" })"), {true}));
@@ -1068,7 +1068,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_stack_overflow_2")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "truthy_table_property_and_optional_table_with_optional_prop")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     // { x: ~(false?) }
     TypeId t1 = arena.addType(TableType{TableType::Props{{"x", getBuiltins()->truthyType}}, std::nullopt, TypeLevel{}, TableState::Sealed});
@@ -1093,7 +1093,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "truthy_table_property_and_optional_table_wi
 TEST_CASE_FIXTURE(NormalizeFixture, "free_type_and_not_truthy")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true}, // Only because it affects the stringification of free types
+        {FFlag::DebugLuauForceOldSolver, false}, // Only because it affects the stringification of free types
     };
 
     TypeId freeTy = arena.freshType(getBuiltins(), getGlobalScope());
@@ -1111,7 +1111,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "free_type_and_not_truthy")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "free_type_intersection_ordering")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true}; // Affects stringification of free types.
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false}; // Affects stringification of free types.
 
     TypeId freeTy = arena.freshType(getBuiltins(), getGlobalScope());
     TypeId orderA = arena.addType(IntersectionType{{freeTy, getBuiltins()->stringType}});
@@ -1145,7 +1145,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "tyvar_limit_one_sided_intersection" * docte
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalizer_should_be_able_to_detect_cyclic_tables_and_not_stack_overflow")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
     ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
 
@@ -1250,7 +1250,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_flatten_type_pack_cycle")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauSolverV2, true}};
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     // Note: if this stops throwing an exception, it means we fixed cycle construction and can replace with a regular check
     CHECK_THROWS_AS(
@@ -1271,7 +1271,7 @@ do end
 #if 0
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_union_type_pack_cycle")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
 
     // FIXME CLI-153131: This is constructing a cyclic type pack

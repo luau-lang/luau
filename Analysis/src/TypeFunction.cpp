@@ -32,8 +32,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
-LUAU_FASTFLAGVARIABLE(LuauMarkUnscopedGenericsAsSolved)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunctionsNoUninhabitedError)
 
 namespace Luau
 {
@@ -419,16 +417,11 @@ struct TypeFunctionReducer
 
                 if constexpr (std::is_same_v<T, TypeId>)
                 {
-                    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+                    if (const TypeFunctionInstanceType* tf = get<TypeFunctionInstanceType>(subject))
                     {
-                        if (const TypeFunctionInstanceType* tf = get<TypeFunctionInstanceType>(subject))
-                        {
-                            if (tf->function != &ctx->builtins->typeFunctions->userFunc)
-                                result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
-                        }
+                        if (tf->function != &ctx->builtins->typeFunctions->userFunc)
+                            result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
                     }
-                    else
-                        result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
                 }
                 else if constexpr (std::is_same_v<T, TypePackId>)
                     result.errors.emplace_back(location, UninhabitedTypePackFunction{subject});
@@ -593,11 +586,8 @@ struct TypeFunctionReducer
                     // Let the caller know this type will not become reducible
                     result.irreducibleTypes.insert(subject);
 
-                    if (FFlag::LuauMarkUnscopedGenericsAsSolved)
-                    {
-                        if (getState(subject) == TypeFunctionInstanceState::Unsolved)
-                            setState(subject, TypeFunctionInstanceState::Solved);
-                    }
+                    if (getState(subject) == TypeFunctionInstanceState::Unsolved)
+                        setState(subject, TypeFunctionInstanceState::Solved);
 
                     if (FFlag::DebugLuauLogTypeFamilies)
                         printf("Irreducible due to an unscoped generic type\n");
