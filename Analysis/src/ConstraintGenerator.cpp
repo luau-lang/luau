@@ -2063,7 +2063,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
         // parsed annotation. Add it here.
         if (externProp.isMethod)
         {
-            if (FunctionType* ftv = getMutable<FunctionType>(externPropTy))
+            if (FunctionType* ftv = getMutable<FunctionType>(propTy))
             {
                 ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
                 ftv->argTypes = addTypePack({externTy}, ftv->argTypes);
@@ -2090,17 +2090,17 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
             if (FFlag::LuauExternReadWriteAttributes)
             {
                 if (externProp.access == AstTableAccess::Read)
-                    tableProp = Property::readonly(externPropTy);
+                    tableProp = Property::readonly(propTy);
                 else if (externProp.access == AstTableAccess::Write)
-                    tableProp = Property::writeonly(externPropTy);
+                    tableProp = Property::writeonly(propTy);
                 else
-                    tableProp = Property::rw(externPropTy);
+                    tableProp = Property::rw(propTy);
 
                 tableProp.location = externProp.location;
             }
             else
             {
-                tableProp = {externPropTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", externProp.location};
+                tableProp = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", externProp.location};
             }
 
             props[propName] = tableProp;
@@ -2117,14 +2117,14 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 if (const IntersectionType* itv = get<IntersectionType>(*readTy))
                 {
                     std::vector<TypeId> options = itv->parts;
-                    options.push_back(externPropTy);
+                    options.push_back(propTy);
                     TypeId newItv = arena->addType(IntersectionType{std::move(options)});
 
                     prop.readTy = newItv;
                 }
                 else if (get<FunctionType>(*readTy))
                 {
-                    TypeId intersection = arena->addType(IntersectionType{{*readTy, externPropTy}});
+                    TypeId intersection = arena->addType(IntersectionType{{*readTy, propTy}});
 
                     prop.readTy = intersection;
                 }
@@ -2134,7 +2134,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                     {
                         if (externProp.access == AstTableAccess::Write && !prop.writeTy.has_value())
                         {
-                            prop.writeTy = externPropTy;
+                            prop.writeTy = propTy;
                             addedWriteTypeByOverload = true;
                         }
                         else
@@ -2160,14 +2160,14 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 if (const IntersectionType* itv = get<IntersectionType>(*writeTy))
                 {
                     std::vector<TypeId> options = itv->parts;
-                    options.push_back(externPropTy);
+                    options.push_back(propTy);
                     TypeId newItv = arena->addType(IntersectionType{std::move(options)});
 
                     prop.writeTy = newItv;
                 }
                 else if (get<FunctionType>(*writeTy))
                 {
-                    TypeId intersection = arena->addType(IntersectionType{{*writeTy, externPropTy}});
+                    TypeId intersection = arena->addType(IntersectionType{{*writeTy, propTy}});
 
                     prop.writeTy = intersection;
                 }
@@ -2176,7 +2176,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                     if (FFlag::LuauExternReadWriteAttributes)
                     {
                         if (externProp.access == AstTableAccess::Read && !prop.readTy.has_value())
-                            prop.readTy = externPropTy;
+                            prop.readTy = propTy;
                         else
                             reportError(
                                 declaredExternType->location,
