@@ -4075,9 +4075,6 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
     else if (AstTypeNegation* nty = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && nty)
     {
         TypeId inner = resolveType_(scope, nty->inner, inTypeArguments);
-        // The `inner` type is within type arguments of the `negate` type function,
-        // we need to add an expansion constraint
-        //addConstraint(scope, nty->inner->location, TypeAliasExpansionConstraint{/* target */ inner});
 
         if (get<TableType>(inner) || get<MetatableType>(inner) || get<FunctionType>(inner) || get<GenericType>(inner))
         {
@@ -4086,7 +4083,6 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
         }
         else if (!get<ErrorType>(inner)) // avoid excessive cascading
         {
-            //result = arena->addType(PendingExpansionType{&builtinTypes->typeFunctions->negateFunc, {inner}, {}})
             TypeFunctionInstanceType tfit{builtinTypes->typeFunctions->negateFunc, {inner}};
             tfit.isBuiltinApplied = true;
 
