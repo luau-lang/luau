@@ -28,6 +28,7 @@ LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingReplaceBounds)
 
 namespace Luau
 {
@@ -454,51 +455,81 @@ struct ApplyMappedGenerics : Substitution
         }
         else if (!upperBound.empty())
         {
-            TypeIds boundsToUse;
-
-            for (TypeId ub : upperBound)
+            if (FFlag::LuauSubtypingReplaceBounds)
             {
-                // quick and dirty check to avoid adding generic types
-                if (!get<GenericType>(ub))
-                    boundsToUse.insert(ub);
+                IntersectionBuilder ib{arena, builtinTypes};
+                for (TypeId ub : upperBound)
+                {
+                    // NOTE: The original implementation skips over generic
+                    // types, but that seems incorrect to me.
+                    if (!get<GenericType>(ub))
+                        ib.add(ub);
+                }
+                return ib.build();
             }
-
-            if (boundsToUse.empty())
+            else
             {
-                // This case happens when we've collected no bounds for the generic we're mapping.
-                // In this case, unknown vs never is an arbitrary choice:
-                // ie, does it matter if we map add<A, A> to add<unknown, unknown> or add<never, never> in the context of subtyping?
-                // We choose unknown here, since it's closest to the original behavior.
-                return builtinTypes->unknownType;
-            }
-            if (boundsToUse.size() == 1)
-                return *boundsToUse.begin();
+                TypeIds boundsToUse;
 
-            return arena->addType(IntersectionType{boundsToUse.take()});
+                for (TypeId ub : upperBound)
+                {
+                    // quick and dirty check to avoid adding generic types
+                    if (!get<GenericType>(ub))
+                        boundsToUse.insert(ub);
+                }
+
+                if (boundsToUse.empty())
+                {
+                    // This case happens when we've collected no bounds for the generic we're mapping.
+                    // In this case, unknown vs never is an arbitrary choice:
+                    // ie, does it matter if we map add<A, A> to add<unknown, unknown> or add<never, never> in the context of subtyping?
+                    // We choose unknown here, since it's closest to the original behavior.
+                    return builtinTypes->unknownType;
+                }
+                if (boundsToUse.size() == 1)
+                    return *boundsToUse.begin();
+
+                return arena->addType(IntersectionType{boundsToUse.take()});
+            }
         }
         else if (!lowerBound.empty())
         {
-            TypeIds boundsToUse;
-
-            for (TypeId lb : lowerBound)
+            if (FFlag::LuauSubtypingReplaceBounds)
             {
-                // quick and dirty check to avoid adding generic types
-                if (!get<GenericType>(lb))
-                    boundsToUse.insert(lb);
+                UnionBuilder ub{arena, builtinTypes};
+                for (TypeId lb : lowerBound)
+                {
+                    // NOTE: The original implementation skips over generic
+                    // types, but that seems incorrect to me.
+                    if (!get<GenericType>(lb))
+                        ub.add(lb);
+                }
+                return ub.build();
             }
-
-            if (boundsToUse.empty())
-            {
-                // This case happens when we've collected no bounds for the generic we're mapping.
-                // In this case, unknown vs never is an arbitrary choice:
-                // ie, does it matter if we map add<A, A> to add<unknown, unknown> or add<never, never> in the context of subtyping?
-                // We choose unknown here, since it's closest to the original behavior.
-                return builtinTypes->unknownType;
-            }
-            else if (lowerBound.size() == 1)
-                return *boundsToUse.begin();
             else
-                return arena->addType(UnionType{boundsToUse.take()});
+            {
+                TypeIds boundsToUse;
+
+                for (TypeId lb : lowerBound)
+                {
+                    // quick and dirty check to avoid adding generic types
+                    if (!get<GenericType>(lb))
+                        boundsToUse.insert(lb);
+                }
+
+                if (boundsToUse.empty())
+                {
+                    // This case happens when we've collected no bounds for the generic we're mapping.
+                    // In this case, unknown vs never is an arbitrary choice:
+                    // ie, does it matter if we map add<A, A> to add<unknown, unknown> or add<never, never> in the context of subtyping?
+                    // We choose unknown here, since it's closest to the original behavior.
+                    return builtinTypes->unknownType;
+                }
+                else if (lowerBound.size() == 1)
+                    return *boundsToUse.begin();
+                else
+                    return arena->addType(UnionType{boundsToUse.take()});
+            }
         }
         else
         {
@@ -2863,103 +2894,188 @@ SubtypingResult Subtyping::checkGenericBounds(
 
     const auto& [lb, ub] = bounds;
 
-    TypeIds lbTypes;
-    for (TypeId t : lb)
+    if (FFlag::LuauSubtypingReplaceBounds)
     {
-        t = follow(t);
-        if (const auto mappedBounds = env.mappedGenerics.find(t))
+        UnionBuilder aggregateLowerBound{arena, builtinTypes};
+        aggregateLowerBound.reserve(lb.size());
+        for (TypeId t : lb)
         {
-            if (mappedBounds->empty()) // If the generic is no longer in scope, we don't have any info about it
+            if (const auto mappedBounds = env.mappedGenerics.find(t); mappedBounds && mappedBounds->empty())
                 continue;
-
-            auto& [lowerBound, upperBound] = mappedBounds->back();
-            // We're populating the lower bounds, so we prioritize the upper bounds of a mapped generic
-            if (!upperBound.empty())
-                lbTypes.insert(upperBound.begin(), upperBound.end());
-            else if (!lowerBound.empty())
-                lbTypes.insert(lowerBound.begin(), lowerBound.end());
-            else
-                lbTypes.insert(builtinTypes->unknownType);
+            aggregateLowerBound.add(t);
         }
-        else
-            lbTypes.insert(t);
-    }
+        TypeId lowerBound = aggregateLowerBound.build();
 
-    TypeIds ubTypes;
-    for (TypeId t : ub)
-    {
-        t = follow(t);
-        if (const auto mappedBounds = env.mappedGenerics.find(t))
+        IntersectionBuilder aggregateUpperBound{arena, builtinTypes};
+        aggregateUpperBound.reserve(ub.size());
+        for (TypeId t : ub)
         {
-            if (mappedBounds->empty()) // If the generic is no longer in scope, we don't have any info about it
+            if (const auto mappedBounds = env.mappedGenerics.find(t); mappedBounds && mappedBounds->empty())
                 continue;
-
-            auto& [lowerBound, upperBound] = mappedBounds->back();
-            // We're populating the upper bounds, so we prioritize the lower bounds of a mapped generic
-            if (!lowerBound.empty())
-                ubTypes.insert(lowerBound.begin(), lowerBound.end());
-            else if (!upperBound.empty())
-                ubTypes.insert(upperBound.begin(), upperBound.end());
-            else
-                ubTypes.insert(builtinTypes->unknownType);
+            aggregateUpperBound.add(t);
         }
-        else
-            ubTypes.insert(t);
-    }
-    TypeId lowerBound = makeAggregateType<UnionType>(lbTypes.take(), builtinTypes->neverType);
-    TypeId upperBound = makeAggregateType<IntersectionType>(ubTypes.take(), builtinTypes->unknownType);
+        TypeId upperBound = aggregateUpperBound.build();
 
-    std::shared_ptr<const NormalizedType> nt = normalizer->normalize(upperBound);
-    // we say that the result is true if normalization failed because complex types are likely to be inhabited.
-    NormalizationResult res = nt ? normalizer->isInhabited(nt.get()) : NormalizationResult::True;
+        if (auto substLowerBound = env.applyMappedGenerics(builtinTypes, arena, lowerBound, iceReporter))
+            lowerBound = *substLowerBound;
 
-    if (!nt || res == NormalizationResult::HitLimits)
-        result.normalizationTooComplex = true;
-    else if (res == NormalizationResult::False)
-    {
-        /* If the normalized upper bound we're mapping to a generic is
-         * uninhabited, then we must consider the subtyping relation not to
-         * hold.
-         *
-         * This happens eg in <T>() -> (T, T) <: () -> (string, number)
-         *
-         * T appears in covariant position and would have to be both string
-         * and number at once.
-         *
-         * No actual value is both a string and a number, so the test fails.
-         *
-         * TODO: We'll need to add explanitory context here.
-         */
-        result.isSubtype = false;
-    }
+        if (auto substUpperBound = env.applyMappedGenerics(builtinTypes, arena, upperBound, iceReporter))
+            upperBound = *substUpperBound;
 
-    SubtypingEnvironment boundsEnv;
-    boundsEnv.parent = &env;
-    SubtypingResult boundsResult = isCovariantWith(boundsEnv, lowerBound, upperBound, scope);
-    boundsResult.reasoning.clear();
+        std::shared_ptr<const NormalizedType> nt = normalizer->normalize(upperBound);
+        // we say that the result is true if normalization failed because complex types are likely to be inhabited.
+        NormalizationResult res = nt ? normalizer->isInhabited(nt.get()) : NormalizationResult::True;
 
-    if (res == NormalizationResult::False)
-        result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
-    else if (!boundsResult.isSubtype)
-    {
-        // Check if the bounds are error suppressing before reporting a mismatch
-        switch (shouldSuppressErrors(normalizer, lowerBound).orElse(shouldSuppressErrors(normalizer, upperBound)))
+        if (!nt || res == NormalizationResult::HitLimits)
+            result.normalizationTooComplex = true;
+        else if (res == NormalizationResult::False)
         {
-        case ErrorSuppression::Suppress:
-            break;
-        case ErrorSuppression::NormalizationFailed:
-            // intentionally fallthrough here since we couldn't prove this was error-suppressing
-            [[fallthrough]];
-        case ErrorSuppression::DoNotSuppress:
+            /* If the normalized upper bound we're mapping to a generic is
+             * uninhabited, then we must consider the subtyping relation not to
+             * hold.
+             *
+             * This happens eg in <T>() -> (T, T) <: () -> (string, number)
+             *
+             * T appears in covariant position and would have to be both string
+             * and number at once.
+             *
+             * No actual value is both a string and a number, so the test fails.
+             *
+             * TODO: We'll need to add explanitory context here.
+             */
+            result.isSubtype = false;
+        }
+
+        SubtypingEnvironment boundsEnv;
+        boundsEnv.parent = &env;
+        SubtypingResult boundsResult = isCovariantWith(boundsEnv, lowerBound, upperBound, scope);
+        boundsResult.reasoning.clear();
+
+        if (res == NormalizationResult::False)
             result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
-            break;
-        default:
-            LUAU_ASSERT(0);
-            break;
+        else if (!boundsResult.isSubtype)
+        {
+            // Check if the bounds are error suppressing before reporting a mismatch
+            switch (shouldSuppressErrors(normalizer, lowerBound).orElse(shouldSuppressErrors(normalizer, upperBound)))
+            {
+            case ErrorSuppression::Suppress:
+                break;
+            case ErrorSuppression::NormalizationFailed:
+                // intentionally fallthrough here since we couldn't prove this was error-suppressing
+                [[fallthrough]];
+            case ErrorSuppression::DoNotSuppress:
+                result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
+                break;
+            default:
+                LUAU_ASSERT(0);
+                break;
+            }
         }
-    }
 
-    result.andAlso(boundsResult);
+        result.andAlso(boundsResult);
+    }
+    else
+    {
+
+        TypeIds lbTypes;
+        for (TypeId t : lb)
+        {
+            t = follow(t);
+            if (const auto mappedBounds = env.mappedGenerics.find(t))
+            {
+                if (mappedBounds->empty()) // If the generic is no longer in scope, we don't have any info about it
+                    continue;
+
+                auto& [lowerBound, upperBound] = mappedBounds->back();
+                // We're populating the lower bounds, so we prioritize the upper bounds of a mapped generic
+                if (!upperBound.empty())
+                    lbTypes.insert(upperBound.begin(), upperBound.end());
+                else if (!lowerBound.empty())
+                    lbTypes.insert(lowerBound.begin(), lowerBound.end());
+                else
+                    lbTypes.insert(builtinTypes->unknownType);
+            }
+            else
+                lbTypes.insert(t);
+        }
+
+        TypeIds ubTypes;
+        for (TypeId t : ub)
+        {
+            t = follow(t);
+            if (const auto mappedBounds = env.mappedGenerics.find(t))
+            {
+                if (mappedBounds->empty()) // If the generic is no longer in scope, we don't have any info about it
+                    continue;
+
+                auto& [lowerBound, upperBound] = mappedBounds->back();
+                // We're populating the upper bounds, so we prioritize the lower bounds of a mapped generic
+                if (!lowerBound.empty())
+                    ubTypes.insert(lowerBound.begin(), lowerBound.end());
+                else if (!upperBound.empty())
+                    ubTypes.insert(upperBound.begin(), upperBound.end());
+                else
+                    ubTypes.insert(builtinTypes->unknownType);
+            }
+            else
+                ubTypes.insert(t);
+        }
+        TypeId lowerBound = makeAggregateType<UnionType>(lbTypes.take(), builtinTypes->neverType);
+        TypeId upperBound = makeAggregateType<IntersectionType>(ubTypes.take(), builtinTypes->unknownType);
+
+        std::shared_ptr<const NormalizedType> nt = normalizer->normalize(upperBound);
+        // we say that the result is true if normalization failed because complex types are likely to be inhabited.
+        NormalizationResult res = nt ? normalizer->isInhabited(nt.get()) : NormalizationResult::True;
+
+        if (!nt || res == NormalizationResult::HitLimits)
+            result.normalizationTooComplex = true;
+        else if (res == NormalizationResult::False)
+        {
+            /* If the normalized upper bound we're mapping to a generic is
+             * uninhabited, then we must consider the subtyping relation not to
+             * hold.
+             *
+             * This happens eg in <T>() -> (T, T) <: () -> (string, number)
+             *
+             * T appears in covariant position and would have to be both string
+             * and number at once.
+             *
+             * No actual value is both a string and a number, so the test fails.
+             *
+             * TODO: We'll need to add explanitory context here.
+             */
+            result.isSubtype = false;
+        }
+
+        SubtypingEnvironment boundsEnv;
+        boundsEnv.parent = &env;
+        SubtypingResult boundsResult = isCovariantWith(boundsEnv, lowerBound, upperBound, scope);
+        boundsResult.reasoning.clear();
+
+        if (res == NormalizationResult::False)
+            result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
+        else if (!boundsResult.isSubtype)
+        {
+            // Check if the bounds are error suppressing before reporting a mismatch
+            switch (shouldSuppressErrors(normalizer, lowerBound).orElse(shouldSuppressErrors(normalizer, upperBound)))
+            {
+            case ErrorSuppression::Suppress:
+                break;
+            case ErrorSuppression::NormalizationFailed:
+                // intentionally fallthrough here since we couldn't prove this was error-suppressing
+                [[fallthrough]];
+            case ErrorSuppression::DoNotSuppress:
+                result.genericBoundsMismatches.emplace_back(genericName, bounds.lowerBound, bounds.upperBound);
+                break;
+            default:
+                LUAU_ASSERT(0);
+                break;
+            }
+        }
+
+        result.andAlso(boundsResult);
+
+    }
 
     return result;
 }

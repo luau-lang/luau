@@ -12,8 +12,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
-
 namespace Luau
 {
 
@@ -1173,28 +1171,13 @@ SolveResult solveFunctionCall_DEPRECATED(
 
     if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
     {
-        if (FFlag::LuauInstantiationUsesGenericPolarity2)
-        {
-            Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, iceReporter};
-            std::optional<TypePackId> subst = instantiate2(
-                arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions), NotNull{&subtyping}, scope, resultPack
-            );
-            if (!subst)
-                return {SolveResult::CodeTooComplex};
-            else
-                resultPack = *subst;
-        }
+        Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, iceReporter};
+        std::optional<TypePackId> subst =
+            instantiate2(arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions), NotNull{&subtyping}, scope, resultPack);
+        if (!subst)
+            return {SolveResult::CodeTooComplex};
         else
-        {
-            auto instantiation = std::make_unique<Instantiation2>(arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions));
-
-            std::optional<TypePackId> subst = instantiation->substitute(resultPack);
-
-            if (!subst)
-                return {SolveResult::CodeTooComplex};
-            else
-                resultPack = *subst;
-        }
+            resultPack = *subst;
     }
 
     switch (unifyResult)

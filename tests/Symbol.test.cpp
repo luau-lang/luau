@@ -8,7 +8,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("SymbolTests");
 
@@ -45,8 +45,8 @@ TEST_CASE("equality_and_hashing_of_locals")
     std::string s2 = "name";
 
     // These two names point to distinct memory areas.
-    AstLocal one{AstName{s1.data()}, Location(), nullptr, 0, 0, nullptr};
-    AstLocal two{AstName{s2.data()}, Location(), &one, 0, 0, nullptr};
+    AstLocal one{AstName{s1.data()}, Location(), nullptr, 0, 0, nullptr, false};
+    AstLocal two{AstName{s2.data()}, Location(), &one, 0, 0, nullptr, false};
 
     Symbol n1{&one};
     Symbol n2{&two};
@@ -68,13 +68,13 @@ TEST_CASE("equality_and_hashing_of_locals")
 
 TEST_CASE("equality_of_empty_symbols")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     std::string s1 = "name";
     std::string s2 = "name";
 
     AstName one{s1.data()};
-    AstLocal two{AstName{s2.data()}, Location(), nullptr, 0, 0, nullptr};
+    AstLocal two{AstName{s2.data()}, Location(), nullptr, 0, 0, nullptr, false};
 
     Symbol global{one};
     Symbol local{&two};

@@ -170,19 +170,19 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
     REQUIRE(!result.success);
     CHECK_EQ(result.parseResult.errors.size(), 0);
     REQUIRE(bool(result.module));
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         REQUIRE_EQ(result.module->errors.size(), 2);
     else
         REQUIRE_EQ(result.module->errors.size(), 1);
 
     GenericError* ge = get<GenericError>(result.module->errors[0]);
     REQUIRE(ge);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("Cannot overload read type of non-function class member 'X'", ge->message);
     else
         CHECK_EQ("Cannot overload non-function class member 'X'", ge->message);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         GenericError* ge2 = get<GenericError>(result.module->errors[1]);
         REQUIRE(ge2);
@@ -572,7 +572,7 @@ TEST_CASE_FIXTURE(Fixture, "recursive_redefinition_reduces_rightfully")
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_142285_reduce_minted_union_func")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
     };
 
     CheckResult result = check(R"(

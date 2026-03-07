@@ -202,7 +202,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Frontend.h
     Analysis/include/Luau/Generalization.h
     Analysis/include/Luau/GlobalTypes.h
-    Analysis/include/Luau/InferPolarity.h
     Analysis/include/Luau/InsertionOrderedMap.h
     Analysis/include/Luau/Instantiation.h
     Analysis/include/Luau/Instantiation2.h
@@ -289,7 +288,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Generalization.cpp
     Analysis/src/NativeStackGuard.cpp
     Analysis/src/GlobalTypes.cpp
-    Analysis/src/InferPolarity.cpp
     Analysis/src/Instantiation.cpp
     Analysis/src/Instantiation2.cpp
     Analysis/src/IostreamHelpers.cpp
@@ -418,10 +416,12 @@ target_sources(Luau.CLI.lib PRIVATE
 if(TARGET Luau.Repl.CLI)
     # Luau.Repl.CLI Sources
     target_sources(Luau.Repl.CLI PRIVATE
+        CLI/include/Luau/Counters.h
         CLI/include/Luau/Coverage.h
         CLI/include/Luau/Profiler.h
         CLI/include/Luau/ReplRequirer.h
 
+        CLI/src/Counters.cpp
         CLI/src/Coverage.cpp
         CLI/src/Profiler.cpp
         CLI/src/Repl.cpp
@@ -476,7 +476,6 @@ if(TARGET Luau.UnitTest)
         tests/FragmentAutocomplete.test.cpp
         tests/Frontend.test.cpp
         tests/Generalization.test.cpp
-        tests/InferPolarity.test.cpp
         tests/InsertionOrderedMap.test.cpp
         tests/IostreamOptional.h
         tests/IrBuilder.test.cpp
@@ -562,10 +561,12 @@ endif()
 if(TARGET Luau.CLI.Test)
     # Luau.CLI.Test Sources
     target_sources(Luau.CLI.Test PRIVATE
+        CLI/include/Luau/Counters.h
         CLI/include/Luau/Coverage.h
         CLI/include/Luau/Profiler.h
         CLI/include/Luau/ReplRequirer.h
 
+        CLI/src/Counters.cpp
         CLI/src/Coverage.cpp
         CLI/src/Profiler.cpp
         CLI/src/Repl.cpp

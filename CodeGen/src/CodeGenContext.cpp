@@ -16,6 +16,7 @@
 LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
 LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
 LUAU_FASTFLAG(LuauCodegenFreeBlocks)
+LUAU_FASTFLAGVARIABLE(LuauCodegenCounterSupport)
 
 namespace Luau
 {
@@ -427,6 +428,16 @@ static size_t getMemorySize(lua_State* L, Proto* proto)
     return execDataSize + execDataHeader.nativeCodeSize;
 }
 
+static char* getCounterData(lua_State* L, Proto* proto, size_t* count)
+{
+    CODEGEN_ASSERT(count != nullptr);
+
+    const NativeProtoExecDataHeader& execDataHeader = getNativeProtoExecDataHeader(static_cast<const uint32_t*>(proto->execdata));
+
+    *count = execDataHeader.extraDataCount / 4;
+    return reinterpret_cast<char*>(static_cast<uint32_t*>(proto->execdata) + proto->sizecode);
+}
+
 static void initializeExecutionCallbacks(lua_State* L, BaseCodeGenContext* codeGenContext) noexcept
 {
     CODEGEN_ASSERT(codeGenContext != nullptr);
@@ -439,6 +450,9 @@ static void initializeExecutionCallbacks(lua_State* L, BaseCodeGenContext* codeG
     ecb->enter = onEnter;
     ecb->disable = onDisable;
     ecb->getmemorysize = getMemorySize;
+
+    if (FFlag::LuauCodegenCounterSupport)
+        ecb->getcounterdata = getCounterData;
 }
 
 void create(lua_State* L)
@@ -469,7 +483,9 @@ void create(lua_State* L, SharedCodeGenContext* codeGenContext)
 
 [[nodiscard]] static NativeProtoExecDataPtr createNativeProtoExecData(Proto* proto, const IrBuilder& ir)
 {
-    NativeProtoExecDataPtr nativeExecData = createNativeProtoExecData(proto->sizecode);
+    uint32_t extraDataCount = FFlag::LuauCodegenCounterSupport ? uint32_t(ir.function.extraNativeData.size()) : 0;
+
+    NativeProtoExecDataPtr nativeExecData = createNativeProtoExecData(proto->sizecode, extraDataCount);
 
     uint32_t instTarget = ir.function.entryLocation;
     uint32_t unassignedOffset = ir.function.endLocation - instTarget;
@@ -486,6 +502,13 @@ void create(lua_State* L, SharedCodeGenContext* codeGenContext)
             nativeExecData[i] = unassignedOffset;
     }
 
+    if (FFlag::LuauCodegenCounterSupport)
+    {
+        // After the instruction offsets, custom native data is placed
+        for (uint32_t i = 0; i < extraDataCount; i++)
+            nativeExecData[proto->sizecode + i] = ir.function.extraNativeData[i];
+    }
+
     // Set first instruction offset to 0 so that entering this function still
     // executes any generated entry code.
     nativeExecData[0] = 0;
@@ -495,11 +518,14 @@ void create(lua_State* L, SharedCodeGenContext* codeGenContext)
     header.bytecodeId = uint32_t(proto->bytecodeid);
     header.bytecodeInstructionCount = proto->sizecode;
 
+    if (FFlag::LuauCodegenCounterSupport)
+        header.extraDataCount = extraDataCount;
+
     return nativeExecData;
 }
 
 template<typename AssemblyBuilder>
-[[nodiscard]] static NativeProtoExecDataPtr createNativeFunction(
+[[nodiscard]] static NativeProtoExecDataPtr createNativeFunction_DEPRECATED(
     AssemblyBuilder& build,
     ModuleHelpers& helpers,
     Proto* proto,
@@ -508,6 +534,8 @@ template<typename AssemblyBuilder>
     CodeGenCompilationResult& result
 )
 {
+    CODEGEN_ASSERT(!FFlag::LuauCodegenCounterSupport);
+
     IrBuilder ir(hooks);
     ir.buildFunctionIr(proto);
 
@@ -522,6 +550,42 @@ template<typename AssemblyBuilder>
     totalIrInstCount += instCount;
 
     if (!lowerFunction(ir, build, helpers, proto, {}, /* stats */ nullptr, result))
+    {
+        return {};
+    }
+
+    return createNativeProtoExecData(proto, ir);
+}
+
+template<typename AssemblyBuilder>
+[[nodiscard]] static NativeProtoExecDataPtr createNativeFunction(
+    AssemblyBuilder& build,
+    ModuleHelpers& helpers,
+    Proto* proto,
+    uint32_t& totalIrInstCount,
+    const CompilationOptions& options,
+    CodeGenCompilationResult& result
+)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenCounterSupport);
+
+    IrBuilder ir(options.hooks);
+    ir.buildFunctionIr(proto);
+
+    unsigned instCount = unsigned(ir.function.instructions.size());
+
+    if (totalIrInstCount + instCount >= unsigned(FInt::CodegenHeuristicsInstructionLimit.value))
+    {
+        result = CodeGenCompilationResult::CodeGenOverflowInstructionLimit;
+        return {};
+    }
+
+    totalIrInstCount += instCount;
+
+    AssemblyOptions assemblyOptions;
+    assemblyOptions.compilationOptions = options;
+
+    if (!lowerFunction(ir, build, helpers, proto, assemblyOptions, /* stats */ nullptr, result))
     {
         return {};
     }
@@ -608,7 +672,10 @@ template<typename AssemblyBuilder>
     {
         CodeGenCompilationResult protoResult = CodeGenCompilationResult::Success;
 
-        NativeProtoExecDataPtr nativeExecData = createNativeFunction(build, helpers, protos[i], totalIrInstCount, options.hooks, protoResult);
+        NativeProtoExecDataPtr nativeExecData =
+            FFlag::LuauCodegenCounterSupport
+                ? createNativeFunction(build, helpers, protos[i], totalIrInstCount, options, protoResult)
+                : createNativeFunction_DEPRECATED(build, helpers, protos[i], totalIrInstCount, options.hooks, protoResult);
         if (nativeExecData != nullptr)
         {
             nativeProtos.push_back(std::move(nativeExecData));

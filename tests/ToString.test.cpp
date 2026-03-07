@@ -13,7 +13,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauToStringDecomposition)
 
@@ -24,7 +24,7 @@ TEST_CASE_FIXTURE(Fixture, "primitive")
     CheckResult result = check("local a = nil    local b = 44    local c = 'lalala'    local d = true");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK("nil" == toString(requireType("a")));
     else
     {
@@ -196,7 +196,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
     CHECK_EQ(std::string::npos, a.find("CYCLE"));
     CHECK_EQ(std::string::npos, a.find("TRUNCATED"));
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK(
             "t2 where "
@@ -359,7 +359,7 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
         function f2(f) return f or f1 end
         function f3(f) return f or f2 end
     )");
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -394,7 +394,7 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
         function f3(f) return f or f2 end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -697,7 +697,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
     TypeId ty = requireType("map");
     const FunctionType* ftv = get<FunctionType>(follow(ty));
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> (b, ...unknown)): {b}", toStringNamedFunction("map", *ftv));
     else
         CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> b): {b}", toStringNamedFunction("map", *ftv));
@@ -815,7 +815,7 @@ TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_
         function foo<a>(x: a, y) end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK("<a>(a, unknown) -> ()" == toString(requireType("foo")));
     }
@@ -847,14 +847,14 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
     )");
 
     std::string expected;
-    if (FFlag::LuauSolverV2 && FFlag::LuauBetterTypeMismatchErrors)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauBetterTypeMismatchErrors)
         expected = "Expected this to be\n\t"
                    "'{ a: number, b: string, c: { d: number } }'\n"
                    "but got\n\t"
                    "'{ a: number, b: string, c: { d: string } }'; \n"
                    "accessing `c.d` results in `string` in the latter type and `number` in the former "
                    "type, and `string` is not exactly `number`";
-    else if (FFlag::LuauSolverV2)
+    else if (!FFlag::DebugLuauForceOldSolver)
         expected = "Type\n\t"
                    "'{ a: number, b: string, c: { d: string } }'\n"
                    "could not be converted into\n\t"
@@ -898,7 +898,7 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
 TEST_CASE_FIXTURE(Fixture, "checked_fn_toString")
 {
     ScopedFastFlag flags[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
     };
 
     auto _result = loadDefinition(R"(
@@ -917,7 +917,7 @@ local f = abs
 
 TEST_CASE_FIXTURE(Fixture, "read_only_properties")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type A = {x: string}
@@ -963,7 +963,7 @@ TEST_CASE_FIXTURE(Fixture, "correct_stringification_user_defined_type_functions"
 
     Type tv{tftt};
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ(toString(&tv, {}), "woohoo<number>");
 }
 

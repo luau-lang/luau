@@ -5,7 +5,8 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
+LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters)
+LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 
 namespace Luau
 {
@@ -184,9 +185,8 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::BUFFER_READI32:
     case IrCmd::BUFFER_READF32:
     case IrCmd::BUFFER_READF64:
-        return true;
     case IrCmd::GET_UPVALUE:
-        return FFlag::LuauCodegenUpvalueLoadProp2;
+        return true;
     default:
         break;
     }
@@ -223,7 +223,10 @@ inline bool canInvalidateSafeEnv(IrCmd cmd)
 inline bool isPseudo(IrCmd cmd)
 {
     // Instructions that are used for internal needs and are not a part of final lowering
-    return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
+    if (FFlag::LuauCodegenMarkDeadRegisters || FFlag::LuauCodegenDseOnCondJump)
+        return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE || cmd == IrCmd::MARK_USED || cmd == IrCmd::MARK_DEAD;
+    else
+        return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
 }
 
 inline bool hasSideEffects(IrCmd cmd)

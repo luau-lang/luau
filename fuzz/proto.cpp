@@ -14,6 +14,7 @@
 #include "Luau/Parser.h"
 #include "Luau/PrettyPrinter.h"
 #include "Luau/ToString.h"
+#include "Luau/Type.h"
 #include "Luau/TypeInfer.h"
 
 #include "lua.h"
@@ -41,7 +42,6 @@ const bool kFuzzVM = getEnvParam("LUAU_FUZZ_VM", true);
 const bool kFuzzPrettyPrint = getEnvParam("LUAU_FUZZ_PRETTY_PRINT", true);
 const bool kFuzzCodegenVM = getEnvParam("LUAU_FUZZ_CODEGEN_VM", true);
 const bool kFuzzCodegenAssembly = getEnvParam("LUAU_FUZZ_CODEGEN_ASM", true);
-const bool kFuzzUseNewSolver = getEnvParam("LUAU_FUZZ_NEW_SOLVER", false);
 
 // Should we generate type annotations?
 const bool kFuzzTypes = getEnvParam("LUAU_FUZZ_GEN_TYPES", true);
@@ -58,7 +58,7 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauNewSolver)
 
 const double kTypecheckTimeoutSec = 4.0;
 
@@ -281,7 +281,6 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 
     FFlag::DebugLuauFreezeArena.value = true;
     FFlag::DebugLuauAbortingChecks.value = true;
-    FFlag::LuauSolverV2.value = kFuzzUseNewSolver;
 
     std::vector<std::string> sources = protoprint(message, kFuzzTypes);
 
@@ -320,7 +319,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
         static FuzzFileResolver fileResolver;
         static FuzzConfigResolver configResolver;
         static Luau::FrontendOptions defaultOptions = getFrontendOptions();
-        static Luau::Frontend frontend(&fileResolver, &configResolver, defaultOptions);
+        static Luau::Frontend frontend(Luau::SolverMode::New, &fileResolver, &configResolver, defaultOptions);
 
         static int once = (setupFrontend(frontend), 0);
         (void)once;

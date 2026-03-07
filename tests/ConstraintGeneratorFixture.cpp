@@ -2,7 +2,7 @@
 #include "ConstraintGeneratorFixture.h"
 #include "ScopedFlags.h"
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(DebugLuauForceOldSolver);
 
 namespace Luau
 {
@@ -10,7 +10,7 @@ namespace Luau
 ConstraintGeneratorFixture::ConstraintGeneratorFixture()
     : Fixture()
     , mainModule(new Module)
-    , forceTheFlag{FFlag::LuauSolverV2, true}
+    , forceTheFlag{FFlag::DebugLuauForceOldSolver, false}
 {
     getFrontend(); // Force the frontend to exist in the constructor.
     mainModule->name = "MainModule";

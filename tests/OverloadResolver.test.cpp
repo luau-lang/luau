@@ -7,6 +7,8 @@
 #include "Luau/Normalize.h"
 #include "Luau/UnifierSharedState.h"
 
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+
 using namespace Luau;
 
 struct OverloadResolverFixture : Fixture
@@ -14,7 +16,7 @@ struct OverloadResolverFixture : Fixture
     TypeArena arena_;
     NotNull<TypeArena> arena{&arena_};
     UnifierSharedState sharedState{&ice};
-    Normalizer normalizer{arena, getBuiltins(), NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
+    Normalizer normalizer{arena, getBuiltins(), NotNull{&sharedState}, !FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old};
     InternalErrorReporter iceReporter;
     TypeCheckLimits limits;
     TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceReporter}, NotNull{&limits}};
