@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauTypeNegationSupport)
 
 namespace Luau
 {
@@ -5947,6 +5948,11 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
     else if (annotation.is<AstTypeOptional>())
     {
         return builtinTypes->nilType;
+    }
+    else if (const auto& nty = annotation.as<AstTypeNegation>())
+    {
+        reportError(TypeError{annotation.location, GenericError{"Negation types are not supported by the old type solver"}});
+        return errorRecoveryType(scope);
     }
     else if (const auto& un = annotation.as<AstTypeUnion>())
     {

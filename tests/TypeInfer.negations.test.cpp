@@ -7,6 +7,10 @@
 #include "Luau/Common.h"
 #include "ScopedFlags.h"
 
+LUAU_FASTFLAG(LuauTypeNegationSyntax)
+LUAU_FASTFLAG(LuauTypeNegationSupport)
+LUAU_FASTFLAG(LuauSolverV2)
+
 using namespace Luau;
 
 namespace
@@ -75,6 +79,202 @@ if u == v then
 end
 )");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "truthy_type")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        type truthy = ~(false?)
+        local w: truthy = true
+        local x: truthy = false
+        local y: truthy = nil
+        local z: truthy = 0
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(result.errors[0].location.begin.line, 3);
+    CHECK_EQ(result.errors[1].location.begin.line, 4);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "tight_binding")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        type V = ~boolean | false
+        local x: V = false
+        local y: V = 42
+        local z: V = true
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(result.errors[0].location.begin.line, 4);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "string_singleton_negation")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        type T = ~"a"
+        local x: T = "b" :: "b"
+        x = nil
+        x = 5
+        x = "a"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(result.errors[0].location.begin.line, 5);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "exclusion_basis_is_unknown")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        type T = ~"a"
+        local b: unknown & ~"a"
+        local y: T = b
+        local z: T = "a"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(result.errors[0].location.begin.line, 4);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "double_negation")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        type T = ~~false?
+        local a: false?
+        local x: T = a
+
+        if x ~= false then
+            local y: nil = x
+        elseif x ~= nil then
+            local z: false = x
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "no_structural_negation")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        type T = ~{ p: unknown }
+        type U = ~(number) -> unknown
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(result.errors[0].location.begin.line, 1);
+    CHECK_EQ(result.errors[1].location.begin.line, 2);
+    CHECK(get<InvalidNegation>(result.errors[0]));
+    CHECK(get<InvalidNegation>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "no_generic_negation")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        type T = <U>(U) -> ~U
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(result.errors[0].location.begin.column, 27);
+    CHECK(get<InvalidNegation>(result.errors[0]));
+    CHECK_EQ(result.errors[1].location.begin.column, 28);
+    CHECK(get<UnknownSymbol>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "no_errortype_ice")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        type T<U> = U
+        local _x: T<~T> = false
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(result.errors[0].location.begin.line, 2);
+    CHECK(get<IncorrectGenericParameterCount>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "negate_inner_expansion_constraint")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        type function A(ty)
+            return ty
+        end
+
+        local _x: ~(A<number>) = true
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
 TEST_SUITE_END();

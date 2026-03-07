@@ -1754,6 +1754,14 @@ struct Printer
                 advance(cstNode->closePosition);
             writer.symbol(")");
         }
+        else if (const auto& nty = typeAnnotation.as<AstTypeNegation>())
+        {
+            if (const auto cstNode = lookupCstNode<CstTypeNegation>(nty))
+                advance(cstNode->tildePosition);
+
+            writer.symbol("~");
+            visualizeTypeAnnotation(*nty->inner);
+        }
         else if (const auto& a = typeAnnotation.as<AstTypeUnion>())
         {
             const auto cstNode = lookupCstNode<CstTypeUnion>(a);

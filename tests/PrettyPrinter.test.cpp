@@ -11,6 +11,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
+LUAU_FASTFLAG(LuauTypeNegationSyntax)
 
 using namespace Luau;
 
@@ -2146,6 +2147,14 @@ TEST_CASE("transpile_explicit_type_instantiations")
     CHECK_EQ("f              () t.f              () t:f           ()", prettyPrint(code).code);
 
     code = "f < < A , B , C... > >( ) t.f < < A, B, C... > >  ( )  t:f< < A, B, C > > ( )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+}
+
+TEST_CASE("type_negation")
+{
+    ScopedFastFlag sff{FFlag::LuauTypeNegationSyntax, true};
+
+    std::string code = "type T = (~ vector)";
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
 }
 
