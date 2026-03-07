@@ -12,7 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -175,7 +175,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_property_guarante
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK("(A & B) -> { y: number }" == toString(requireType("f")));
     else
         CHECK("(A & B) -> { y: number } & { y: number }" == toString(requireType("f")));
@@ -194,7 +194,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_works_at_arbitrary_dep
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("(A & B) -> string", toString(requireType("f")));
     else
         CHECK_EQ("(A & B) -> string & string", toString(requireType("f")));
@@ -213,7 +213,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_mixed_types")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("(A & B) -> never", toString(requireType("f")));
     else
         CHECK_EQ("(A & B) -> number & string", toString(requireType("f")));
@@ -351,7 +351,7 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'X & Y'");
         auto err1 = get<TypeMismatch>(result.errors[1]);
@@ -453,7 +453,7 @@ local a: XYZ = 3
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected = FFlag::LuauBetterTypeMismatchErrors
                                          ? "Expected this to be 'X & Y & Z', but got 'number'; \n"
@@ -507,7 +507,7 @@ end
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected = FFlag::LuauBetterTypeMismatchErrors
                                          ? "Expected this to be 'number', but got 'X & Y & Z'; \n"
@@ -572,7 +572,7 @@ TEST_CASE_FIXTURE(Fixture, "intersect_bool_and_false")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected = FFlag::LuauBetterTypeMismatchErrors
                                          ? "Expected this to be 'true', but got 'boolean & false'; \n"
@@ -608,7 +608,7 @@ TEST_CASE_FIXTURE(Fixture, "intersect_false_and_bool_and_false")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     // TODO: odd stringification of `false & (boolean & false)`.)
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected = FFlag::LuauBetterTypeMismatchErrors
                                          ? "Expected this to be 'true', but got 'boolean & false & false'; \n"
@@ -646,7 +646,7 @@ TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")
         end
     )");
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauMorePreciseErrorSuppression)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
     {
         // clang-format off
         const std::string expected1 =
@@ -675,7 +675,7 @@ TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")
         CHECK_LONG_STRINGS_EQ(expected1, toString(result.errors.at(0)));
         CHECK_LONG_STRINGS_EQ(expected2, toString(result.errors.at(1)));
     }
-    else if (FFlag::LuauSolverV2)
+    else if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected1 =
             FFlag::LuauBetterTypeMismatchErrors
@@ -800,7 +800,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected =
             FFlag::LuauBetterTypeMismatchErrors
@@ -844,7 +844,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
         end
     )");
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauMorePreciseErrorSuppression)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
     {
         // clang-format off
         const std::string expected =
@@ -868,7 +868,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
 
         CHECK_LONG_STRINGS_EQ(expected, toString(result.errors.at(0)));
     }
-    else if (FFlag::LuauSolverV2)
+    else if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected =
             FFlag::LuauBetterTypeMismatchErrors
@@ -949,7 +949,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
         end
     )");
 
-    if (FFlag::LuauSolverV2 && FFlag::LuauMorePreciseErrorSuppression)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         // clang-format off
@@ -982,7 +982,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
         CHECK_LONG_STRINGS_EQ(expected1, toString(result.errors.at(0)));
         CHECK_LONG_STRINGS_EQ(expected2, toString(result.errors.at(1)));
     }
-    else if (FFlag::LuauSolverV2)
+    else if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected1 =
             FFlag::LuauBetterTypeMismatchErrors
@@ -1117,7 +1117,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic")
             end
         end
     )");
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(0, result);
     }
@@ -1153,7 +1153,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generics")
     )");
 
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
     }
@@ -1188,7 +1188,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic_packs")
             end
         end
     )");
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         const TypeMismatch* tm1 = get<TypeMismatch>(result.errors[0]);
@@ -1364,7 +1364,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_result")
     end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected1 =
             FFlag::LuauBetterTypeMismatchErrors
@@ -1456,7 +1456,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_arguments")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected1 =
             FFlag::LuauBetterTypeMismatchErrors
@@ -1587,7 +1587,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_1")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
     }
@@ -1620,7 +1620,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_2")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         const TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
@@ -1657,7 +1657,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_3")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         const TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
@@ -1698,7 +1698,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_4")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
         CHECK(tm);
@@ -1767,10 +1767,10 @@ could not be converted into
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables")
 {
     // CLI-117121 - Intersection of types are not compatible with the equivalent alias
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return;
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CheckResult result = check(R"(
             function f(a: string?, b: string?)
@@ -1860,7 +1860,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables_with_properties")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with_table")
 {
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CheckResult result = check(R"(
             local x = setmetatable({ a = 5 }, { p = 5 })
@@ -1926,7 +1926,7 @@ TEST_CASE_FIXTURE(Fixture, "CLI-44817")
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -1947,7 +1947,7 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types")
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types_2")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -1993,7 +1993,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_property_table_intersection_2")
 
 TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_degenerate_intersections")
 {
-    ScopedFastFlag dcr{FFlag::LuauSolverV2, true};
+    ScopedFastFlag dcr{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type A = {
@@ -2016,7 +2016,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_degenerate_intersections")
 
 TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
 {
-    ScopedFastFlag dcr{FFlag::LuauSolverV2, true};
+    ScopedFastFlag dcr{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type A = {
@@ -2041,7 +2041,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "narrow_intersection_nevers")
 {
-    ScopedFastFlag sffs{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sffs{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare class Player

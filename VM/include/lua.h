@@ -421,6 +421,14 @@ typedef void (*lua_Coverage)(void* context, const char* function, int linedefine
 
 LUA_API void lua_getcoverage(lua_State* L, int funcindex, void* context, lua_Coverage callback);
 
+typedef void (*lua_CounterFunction)(void* context, const char* function, int linedefined);
+typedef void (*lua_CounterValue)(void* context, int kind, int line, uint64_t hits);
+
+// Unlike 'lua_getcoverage', counters are customizable in ways which prevent merging them together
+// 'lua_getcounters' will visit the specified function and all nested functions
+// 'functionvisit' is called first to establish a function, then multiple calls of 'countervisit' are made for each counter in that function
+LUA_API void lua_getcounters(lua_State* L, int funcindex, void* context, lua_CounterFunction functionvisit, lua_CounterValue countervisit);
+
 // Warning: this function is not thread-safe since it stores the result in a shared global array! Only use for debugging.
 LUA_API const char* lua_debugtrace(lua_State* L);
 
@@ -455,7 +463,11 @@ struct lua_Callbacks
     void (*panic)(lua_State* L, int errcode); // gets called when an unprotected error is raised (if longjmp is used)
 
     void (*userthread)(lua_State* LP, lua_State* L); // gets called when L is created (LP == parent) or destroyed (LP == NULL)
-    int16_t (*useratom)(const char* s, size_t l);    // gets called when a string is created; returned atom can be retrieved via tostringatom
+    int16_t (*useratom)(
+        lua_State* L,
+        const char* s,
+        size_t l
+    ); // gets called when a string is created; returned atom can be retrieved via tostringatom
 
     void (*debugbreak)(lua_State* L, lua_Debug* ar);     // gets called when BREAK instruction is encountered
     void (*debugstep)(lua_State* L, lua_Debug* ar);      // gets called after each instruction in single step mode

@@ -25,18 +25,6 @@ struct PushTypeResult
     std::vector<IncompleteInference> incompleteTypes;
 };
 
-// Clip with LuauPushTypeConstraintLambdas3
-PushTypeResult pushTypeInto_DEPRECATED(
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
-    NotNull<ConstraintSolver> solver,
-    NotNull<const Constraint> constraint,
-    NotNull<Unifier2> unifier,
-    NotNull<Subtyping> subtyping,
-    TypeId expectedType,
-    const AstExpr* expr
-);
-
 PushTypeResult pushTypeInto(
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,

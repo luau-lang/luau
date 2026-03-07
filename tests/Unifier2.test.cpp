@@ -12,7 +12,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 
 struct Unifier2Fixture
@@ -24,7 +24,7 @@ struct Unifier2Fixture
     Unifier2 u2{NotNull{&arena}, NotNull{&builtinTypes}, NotNull{&scope}, NotNull{&iceReporter}};
     ToStringOptions opts;
 
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     std::pair<TypeId, FreeType*> freshType()
     {

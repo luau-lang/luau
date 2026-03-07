@@ -14,7 +14,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 
 TEST_SUITE_BEGIN("Generalization");
@@ -30,7 +30,7 @@ struct GeneralizationFixture
     DenseHashSet<TypeId> generalizedTypes_{nullptr};
     NotNull<DenseHashSet<TypeId>> generalizedTypes{&generalizedTypes_};
 
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     std::pair<TypeId, FreeType*> freshType()
     {
@@ -372,7 +372,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_should_not_leak_free_type")
 
 TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local func: <T>(T, (T) -> ()) -> () = nil :: any
@@ -391,7 +391,7 @@ TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
 
 TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
 local func: <T>(T, (T) -> ()) -> () = nil :: any
