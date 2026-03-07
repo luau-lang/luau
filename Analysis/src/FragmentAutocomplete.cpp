@@ -1122,6 +1122,8 @@ FragmentTypeCheckResult typecheckFragment_(
     /// User defined type functions runtime
     TypeFunctionRuntime typeFunctionRuntime(iceHandler, NotNull{&limits});
 
+    Subtyping subtyping{frontend.builtinTypes, NotNull{&incrementalModule->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler};
+
     typeFunctionRuntime.allowEvaluation = false;
 
     /// Create a DataFlowGraph just for the surrounding context
@@ -1201,7 +1203,8 @@ FragmentTypeCheckResult typecheckFragment_(
         {},
         nullptr,
         NotNull{&dfg},
-        std::move(limits)
+        std::move(limits),
+        NotNull{&subtyping}
     };
 
     try
@@ -1285,6 +1288,8 @@ FragmentTypeCheckResult typecheckFragment__DEPRECATED(
 
     typeFunctionRuntime.allowEvaluation = false;
 
+    Subtyping subtyping{frontend.builtinTypes, NotNull{&incrementalModule->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler};
+
     /// Create a DataFlowGraph just for the surrounding context
     DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::DfgBuildEnd);
@@ -1351,7 +1356,8 @@ FragmentTypeCheckResult typecheckFragment__DEPRECATED(
         {},
         nullptr,
         NotNull{&dfg},
-        std::move(limits)
+        std::move(limits),
+        NotNull{&subtyping}
     };
 
     try
