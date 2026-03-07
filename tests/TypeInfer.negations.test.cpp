@@ -34,7 +34,7 @@ TEST_CASE_FIXTURE(NegationFixture, "negated_string_is_a_subtype_of_string")
 {
     CheckResult result = check(R"(
         function foo(arg: string) end
-        local a: string & ~"Hello"
+        local a: string & Not<"Hello">
         foo(a)
     )");
 
@@ -44,7 +44,7 @@ TEST_CASE_FIXTURE(NegationFixture, "negated_string_is_a_subtype_of_string")
 TEST_CASE_FIXTURE(NegationFixture, "string_is_not_a_subtype_of_negated_string")
 {
     CheckResult result = check(R"(
-        function foo(arg: string & ~"hello") end
+        function foo(arg: string & Not<"hello">) end
         local a: string
         foo(a)
     )");
@@ -73,7 +73,7 @@ TEST_CASE_FIXTURE(Fixture, "cofinite_strings_can_be_compared_for_equality")
 TEST_CASE_FIXTURE(NegationFixture, "compare_cofinite_strings")
 {
     CheckResult result = check(R"(
-local u : ~"a"
+local u : Not<"a">
 local v : "b"
 if u == v then
 end

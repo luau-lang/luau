@@ -2957,6 +2957,11 @@ void TypeChecker2::visit(AstTypeTypeof* ty)
     visit(ty->expr, ValueContext::RValue);
 }
 
+void TypeChecker2::visit(AstTypeNegation* ty)
+{
+    visit(ty->inner);
+}
+
 void TypeChecker2::visit(AstTypeUnion* ty)
 {
     // TODO!

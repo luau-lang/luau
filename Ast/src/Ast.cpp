@@ -1238,7 +1238,8 @@ AstTypeNegation::AstTypeNegation(const Location& location, AstType* inner)
 
 void AstTypeNegation::visit(AstVisitor* visitor)
 {
-    visitor->visit(this);
+    if (visitor->visit(this))
+        inner->visit(visitor);
 }
 
 AstTypeUnion::AstTypeUnion(const Location& location, const AstArray<AstType*>& types)

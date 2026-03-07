@@ -2837,6 +2837,10 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
 
         AstTypeOrPack ty = parseSimpleType(false, inDeclarationContext);
         AstTypeNegation* nty = allocator.alloc<AstTypeNegation>(Location(loc), ty.type);
+
+        if (options.storeCstData)
+            cstNodeMap[nty] = allocator.alloc<CstTypeNegation>(loc.begin);
+
         return {nty, {}};
     }
     else if (lexer.current().type == Lexeme::ReservedFunction)
