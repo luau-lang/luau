@@ -34,7 +34,7 @@ TEST_CASE_FIXTURE(NegationFixture, "negated_string_is_a_subtype_of_string")
 {
     CheckResult result = check(R"(
         function foo(arg: string) end
-        local a: string & Not<"Hello">
+        local a: string & ~"Hello"
         foo(a)
     )");
 
@@ -44,7 +44,7 @@ TEST_CASE_FIXTURE(NegationFixture, "negated_string_is_a_subtype_of_string")
 TEST_CASE_FIXTURE(NegationFixture, "string_is_not_a_subtype_of_negated_string")
 {
     CheckResult result = check(R"(
-        function foo(arg: string & Not<"hello">) end
+        function foo(arg: string & ~"hello") end
         local a: string
         foo(a)
     )");
@@ -73,7 +73,7 @@ TEST_CASE_FIXTURE(Fixture, "cofinite_strings_can_be_compared_for_equality")
 TEST_CASE_FIXTURE(NegationFixture, "compare_cofinite_strings")
 {
     CheckResult result = check(R"(
-local u : Not<"a">
+local u : ~"a"
 local v : "b"
 if u == v then
 end
@@ -83,7 +83,7 @@ end
 
 TEST_CASE_FIXTURE(NegationFixture, "truthy_type")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     ScopedFastFlag _[] = {
@@ -106,7 +106,7 @@ TEST_CASE_FIXTURE(NegationFixture, "truthy_type")
 
 TEST_CASE_FIXTURE(NegationFixture, "tight_binding")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     ScopedFastFlag _[] = {
@@ -127,7 +127,7 @@ TEST_CASE_FIXTURE(NegationFixture, "tight_binding")
 
 TEST_CASE_FIXTURE(NegationFixture, "string_singleton_negation")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     ScopedFastFlag _[] = {
@@ -149,7 +149,7 @@ TEST_CASE_FIXTURE(NegationFixture, "string_singleton_negation")
 
 TEST_CASE_FIXTURE(NegationFixture, "exclusion_basis_is_unknown")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     ScopedFastFlag _[] = {
@@ -170,7 +170,7 @@ TEST_CASE_FIXTURE(NegationFixture, "exclusion_basis_is_unknown")
 
 TEST_CASE_FIXTURE(NegationFixture, "double_negation")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     ScopedFastFlag _[] = {
@@ -195,7 +195,7 @@ TEST_CASE_FIXTURE(NegationFixture, "double_negation")
 
 TEST_CASE_FIXTURE(NegationFixture, "no_structural_negation")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     ScopedFastFlag _[] = {
@@ -217,7 +217,7 @@ TEST_CASE_FIXTURE(NegationFixture, "no_structural_negation")
 
 TEST_CASE_FIXTURE(NegationFixture, "no_generic_negation")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     ScopedFastFlag _[] = {
@@ -238,7 +238,7 @@ TEST_CASE_FIXTURE(NegationFixture, "no_generic_negation")
 
 TEST_CASE_FIXTURE(NegationFixture, "no_errortype_ice")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     ScopedFastFlag _[] = {
@@ -258,7 +258,7 @@ TEST_CASE_FIXTURE(NegationFixture, "no_errortype_ice")
 
 TEST_CASE_FIXTURE(NegationFixture, "negate_inner_expansion_constraint")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     ScopedFastFlag _[] = {

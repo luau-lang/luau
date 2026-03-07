@@ -3861,11 +3861,8 @@ TypeId ConstraintGenerator::resolveReferenceType(
 
     if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(result)))
     {
-        if (!FFlag::LuauTypeNegationSupport || (tfit->typeArguments.empty() && tfit->packArguments.empty()))
-        {
-            reportError(ty->location, UnappliedTypeFunction{});
-            addConstraint(scope, ty->location, ReduceConstraint{result});
-        }
+        reportError(ty->location, UnappliedTypeFunction{});
+        addConstraint(scope, ty->location, ReduceConstraint{result});
     }
 
     if (auto genericType = getMutable<GenericType>(follow(result)))
@@ -4077,7 +4074,7 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
     }
     else if (AstTypeNegation* nty = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && nty)
     {
-        TypeId inner = resolveType(scope, nty->inner, true, replaceErrorWithFresh);
+        TypeId inner = resolveType_(scope, nty->inner, inTypeArguments);
         // The `inner` type is within type arguments of the `negate` type function,
         // we need to add an expansion constraint
         //addConstraint(scope, nty->inner->location, TypeAliasExpansionConstraint{/* target */ inner});
@@ -4089,13 +4086,8 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
         }
         else if (!get<ErrorType>(inner)) // avoid excessive cascading
         {
-            result = createTypeFunctionInstance(
-                builtinTypes->typeFunctions->negateFunc,
-                {inner},
-                {},
-                scope,
-                ty->location
-            );
+            //result = arena->addType(PendingExpansionType{&builtinTypes->typeFunctions->negateFunc, {inner}, {}})
+            result = createTypeFunctionInstance(builtinTypes->typeFunctions->negateFunc, {inner}, {}, scope, ty->location);
         }
         else
             result = builtinTypes->errorType;
