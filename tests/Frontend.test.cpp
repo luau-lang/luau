@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Frontend.h"
 #include "Luau/Parser.h"
@@ -8,14 +9,14 @@
 
 #include "Fixture.h"
 
+#include "Luau/Type.h"
 #include "doctest.h"
 
 #include <algorithm>
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauStandaloneParseType)
+LUAU_FASTFLAG(DebugLuauForceOldSolver);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
@@ -879,8 +880,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
 
 TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_full_type_graph_is_discarded")
 {
-    Frontend fe{&fileResolver, &configResolver, {false}};
-
+    Frontend fe{!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old, &fileResolver, &configResolver, {false}};
     fileResolver.source["Module/A"] = R"(
         --!strict
         local a: {Count: number} = {count='five'}
@@ -893,7 +893,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
     // When this test fails, it is because the TypeIds needed by the error have been deallocated.
     // It is thus basically impossible to predict what will happen when this assert is evaluated.
     // It could segfault, or you could see weird type names like the empty string or <VALUELESS BY EXCEPTION>
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK_EQ(
             "Table type '{ count: string }' not compatible with type '{ Count: number }' because the former is missing field 'Count'",
@@ -909,7 +909,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
 TEST_CASE_FIXTURE(FrontendFixture, "trace_requires_in_nonstrict_mode")
 {
     // The new non-strict mode is not currently expected to signal any errors here.
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return;
 
     fileResolver.source["Module/A"] = R"(
@@ -1082,7 +1082,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "typecheck_twice_for_ast_types")
 TEST_CASE_FIXTURE(FrontendFixture, "imported_table_modification_2")
 {
     // This test describes non-strict mode behavior that is just not currently present in the new non-strict mode.
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return;
 
     getFrontend().options.retainFullTypeGraphs = false;
@@ -1359,7 +1359,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "separate_caches_for_autocomplete")
 
     FrontendOptions opts;
     opts.forAutocomplete = true;
-    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    getFrontend().setLuauSolverMode(!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old);
     getFrontend().check("game/A", opts);
 
     CHECK(nullptr == getFrontend().moduleResolver.getModule("game/A"));
@@ -1378,7 +1378,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "separate_caches_for_autocomplete")
 
 TEST_CASE_FIXTURE(FrontendFixture, "no_separate_caches_with_the_new_solver")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     fileResolver.source["game/A"] = R"(
         --!nonstrict
@@ -1530,7 +1530,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "check_module_references_correct_ast_root")
 
 TEST_CASE_FIXTURE(FrontendFixture, "dfg_data_cleared_on_retain_type_graphs_unset")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     fileResolver.source["game/A"] = R"(
 local a = 1
 local b = 2
@@ -1730,8 +1730,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_dependents_stored_on_node_as_graph_upda
 
 TEST_CASE_FIXTURE(FrontendFixture, "test_invalid_dependency_tracking_per_module_resolver")
 {
-    ScopedFastFlag newSolver{FFlag::LuauSolverV2, false};
-    getFrontend().setLuauSolverMode(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old);
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, true};
+    getFrontend().setLuauSolverMode(!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old);
 
     fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
     fileResolver.source["game/Gui/Modules/B"] = "return require(game:GetService('Gui').Modules.A)";
@@ -1863,8 +1863,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "parse_just_a_type")
 
 TEST_CASE_FIXTURE(FrontendFixture, "parse_types")
 {
-    ScopedFastFlag sff{FFlag::LuauStandaloneParseType, true};
-
     const TypeId ty1 = parseType("(number, boolean?) -> string");
     CHECK("(number, boolean?) -> string" == toString(ty1));
 

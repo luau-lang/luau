@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/AssemblyBuilderA64.h"
+#include "Luau/CodeGenOptions.h"
 #include "Luau/DenseHash.h"
 #include "Luau/IrData.h"
 
@@ -18,6 +19,7 @@ namespace CodeGen
 struct ModuleHelpers;
 struct AssemblyOptions;
 struct LoweringStats;
+enum class CodeGenCounter : unsigned;
 
 namespace A64
 {
@@ -27,6 +29,7 @@ struct IrLoweringA64
     IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, IrFunction& function, LoweringStats* stats);
 
     void lowerInst(IrInst& inst, uint32_t index, const IrBlock& next);
+    void startBlock(const IrBlock& curr);
     void finishBlock(const IrBlock& curr, const IrBlock& next);
     void finishFunction();
 
@@ -39,6 +42,10 @@ struct IrLoweringA64
     void finalizeTargetLabel(IrOp op, Label& fresh);
 
     void checkSafeEnv(IrOp target, const IrBlock& next);
+
+    void allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcpos);
+    void incrementCounterAt(size_t offset);
+
     void checkObjectBarrierConditions(RegisterA64 object, RegisterA64 temp, RegisterA64 ra, IrOp raOp, int ratag, Label& skip);
 
     // Operand data build helpers

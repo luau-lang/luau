@@ -70,9 +70,8 @@ struct RequireNode
         return {};
     }
 
-    // TODO: resolvePathToNode() can ultimately be replaced with a call into
-    // require-by-string's path resolution algorithm. This will first require
-    // generalizing that algorithm to work with a virtual file system.
+    // Resolve a path relative to the current node. The Luau.Require library
+    // provides utilities that can help with implementing this logic.
     virtual std::unique_ptr<RequireNode> resolvePathToNode(const std::string& path) const = 0;
 
     // Get children of this node, if any (if this node represents a directory).

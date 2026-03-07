@@ -5,8 +5,8 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
-LUAU_FASTFLAG(LuauCodegenFloatLoadStoreProp)
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters)
+LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 
 namespace Luau
 {
@@ -67,6 +67,7 @@ inline bool isNonTerminatingJump(IrCmd cmd)
     case IrCmd::CHECK_NODE_VALUE:
     case IrCmd::CHECK_BUFFER_LEN:
     case IrCmd::CHECK_USERDATA_TAG:
+    case IrCmd::CHECK_CMP_INT:
         return true;
     default:
         break;
@@ -129,6 +130,11 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::DIV_VEC:
     case IrCmd::IDIV_VEC:
     case IrCmd::UNM_VEC:
+    case IrCmd::MIN_VEC:
+    case IrCmd::MAX_VEC:
+    case IrCmd::FLOOR_VEC:
+    case IrCmd::CEIL_VEC:
+    case IrCmd::ABS_VEC:
     case IrCmd::DOT_VEC:
     case IrCmd::EXTRACT_VEC:
     case IrCmd::NOT_ANY:
@@ -146,11 +152,11 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::NEW_USERDATA:
     case IrCmd::INT_TO_NUM:
     case IrCmd::UINT_TO_NUM:
+    case IrCmd::UINT_TO_FLOAT:
     case IrCmd::NUM_TO_INT:
     case IrCmd::NUM_TO_UINT:
     case IrCmd::FLOAT_TO_NUM:
     case IrCmd::NUM_TO_FLOAT:
-    case IrCmd::NUM_TO_VEC_DEPRECATED:
     case IrCmd::FLOAT_TO_VEC:
     case IrCmd::TAG_VECTOR:
     case IrCmd::TRUNCATE_UINT:
@@ -179,9 +185,8 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::BUFFER_READI32:
     case IrCmd::BUFFER_READF32:
     case IrCmd::BUFFER_READF64:
-        return true;
     case IrCmd::GET_UPVALUE:
-        return FFlag::LuauCodegenUpvalueLoadProp;
+        return true;
     default:
         break;
     }
@@ -218,7 +223,10 @@ inline bool canInvalidateSafeEnv(IrCmd cmd)
 inline bool isPseudo(IrCmd cmd)
 {
     // Instructions that are used for internal needs and are not a part of final lowering
-    return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
+    if (FFlag::LuauCodegenMarkDeadRegisters || FFlag::LuauCodegenDseOnCondJump)
+        return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE || cmd == IrCmd::MARK_USED || cmd == IrCmd::MARK_DEAD;
+    else
+        return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
 }
 
 inline bool hasSideEffects(IrCmd cmd)
@@ -226,7 +234,7 @@ inline bool hasSideEffects(IrCmd cmd)
     if (cmd == IrCmd::INVOKE_FASTCALL)
         return true;
 
-    if (FFlag::LuauCodegenFloatLoadStoreProp && isPseudo(cmd))
+    if (isPseudo(cmd))
         return false;
 
     // Instructions that don't produce a result most likely have other side-effects to make them useful
@@ -239,7 +247,47 @@ inline bool producesDirtyHighRegisterBits(IrCmd cmd)
     return cmd == IrCmd::NUM_TO_UINT || cmd == IrCmd::INVOKE_FASTCALL || cmd == IrCmd::CMP_ANY;
 }
 
+// Returns a condition that for 'a op b' will result in '!(a op b)'
+inline IrCondition getNegatedCondition(IrCondition cond)
+{
+    switch (cond)
+    {
+    case IrCondition::Equal:
+        return IrCondition::NotEqual;
+    case IrCondition::NotEqual:
+        return IrCondition::Equal;
+    case IrCondition::Less:
+        return IrCondition::NotLess;
+    case IrCondition::NotLess:
+        return IrCondition::Less;
+    case IrCondition::LessEqual:
+        return IrCondition::NotLessEqual;
+    case IrCondition::NotLessEqual:
+        return IrCondition::LessEqual;
+    case IrCondition::Greater:
+        return IrCondition::NotGreater;
+    case IrCondition::NotGreater:
+        return IrCondition::Greater;
+    case IrCondition::GreaterEqual:
+        return IrCondition::NotGreaterEqual;
+    case IrCondition::NotGreaterEqual:
+        return IrCondition::GreaterEqual;
+    case IrCondition::UnsignedLess:
+        return IrCondition::UnsignedGreaterEqual;
+    case IrCondition::UnsignedLessEqual:
+        return IrCondition::UnsignedGreater;
+    case IrCondition::UnsignedGreater:
+        return IrCondition::UnsignedLessEqual;
+    case IrCondition::UnsignedGreaterEqual:
+        return IrCondition::UnsignedLess;
+    default:
+        CODEGEN_ASSERT(!"Unsupported condition");
+        return IrCondition::Count;
+    }
+}
+
 IrValueKind getCmdValueKind(IrCmd cmd);
+IrValueKind getConstValueKind(const IrConst& constant);
 
 template<typename F>
 void visitArguments(IrInst& inst, F&& func)
@@ -247,13 +295,8 @@ void visitArguments(IrInst& inst, F&& func)
     if (isPseudo(inst.cmd))
         return;
 
-    func(inst.a);
-    func(inst.b);
-    func(inst.c);
-    func(inst.d);
-    func(inst.e);
-    func(inst.f);
-    func(inst.g);
+    for (auto& op : inst.ops)
+        func(op);
 }
 template<typename F>
 bool anyArgumentMatch(IrInst& inst, F&& func)
@@ -261,7 +304,10 @@ bool anyArgumentMatch(IrInst& inst, F&& func)
     if (isPseudo(inst.cmd))
         return false;
 
-    return func(inst.a) || func(inst.b) || func(inst.c) || func(inst.d) || func(inst.e) || func(inst.f) || func(inst.g);
+    for (auto& op : inst.ops)
+        if (func(op))
+            return true;
+    return false;
 }
 
 bool isGCO(uint8_t tag);
@@ -269,6 +315,9 @@ bool isGCO(uint8_t tag);
 // Optional bit has to be cleared at call site, otherwise, this will return 'false' for 'userdata?'
 bool isUserdataBytecodeType(uint8_t ty);
 bool isCustomUserdataBytecodeType(uint8_t ty);
+
+// Check that 'ty' is 'expected' or 'any'
+bool isExpectedOrUnknownBytecodeType(uint8_t ty, LuauBytecodeType expected);
 
 HostMetamethod tmToHostMetamethod(int tm);
 
@@ -325,6 +374,9 @@ IrBlock& getNextBlock(IrFunction& function, const std::vector<uint32_t>& sortedB
 IrBlock* tryGetNextBlockInChain(IrFunction& function, IrBlock& block);
 
 bool isEntryBlock(const IrBlock& block);
+
+// When an operand is an instruction, try to extract the tag which is contained inside that value
+std::optional<uint8_t> tryGetOperandTag(IrFunction& function, IrOp op);
 
 } // namespace CodeGen
 } // namespace Luau

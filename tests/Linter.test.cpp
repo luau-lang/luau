@@ -7,9 +7,10 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
+LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 using namespace Luau;
 
@@ -1269,7 +1270,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "read_write_table_props")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff[] = {{FFlag::LuauAnalysisUsesSolverMode, true}, {FFlag::DebugLuauForceOldSolver, false}};
 
     LintResult result = lint(R"(-- line 1
         type A = {x: number}
@@ -1627,7 +1628,7 @@ static void checkDeprecatedWarning(const Luau::LintWarning& warning, const Luau:
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttribute")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // @deprecated works on local functions
     {
@@ -2063,7 +2064,7 @@ print(foo:bar(2.0))
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeFunctionDeclaration")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // @deprecated works on function type declarations
 
@@ -2081,7 +2082,7 @@ bar(2)
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeTableDeclaration")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // @deprecated works on table type declarations
 
@@ -2101,7 +2102,7 @@ print(Hooty:tooty(2.0))
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeMethodDeclaration")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // @deprecated works on table type declarations
 
@@ -2183,7 +2184,7 @@ table.create(42, {} :: {})
 TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperationsIndexer")
 {
     // CLI-116824 Linter incorrectly issues false positive when taking the length of a unannotated string function argument
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return;
 
     LintResult result = lint(R"(

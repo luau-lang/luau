@@ -54,14 +54,14 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2024 Roblox Corporation $\n"
 
 #define api_update_top(L, p) \
     { \
-        api_check(L, p >= L->base && p < L->ci->top); \
+        api_check(L, p >= L->base && p <= L->ci->top); \
         L->top = p; \
     }
 
 #define updateatom(L, ts) \
     { \
         if (ts->atom == ATOM_UNDEF) \
-            ts->atom = L->global->cb.useratom ? L->global->cb.useratom(ts->data, ts->len) : -1; \
+            ts->atom = L->global->cb.useratom ? L->global->cb.useratom(L, ts->data, ts->len) : -1; \
     }
 
 static LuaTable* getcurrenv(lua_State* L)

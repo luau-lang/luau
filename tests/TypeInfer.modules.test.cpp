@@ -12,9 +12,10 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINT(LuauSolverConstraintLimit)
+LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 
@@ -61,7 +62,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "require")
         return {hooty=hooty}
     )";
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         fileResolver.source["game/B"] = R"(
             local Hooty = require(game.A)
@@ -185,7 +186,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_table_freeze")
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
     REQUIRE(b != nullptr);
     // confirm that no cross-module mutation happened here!
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK(toString(b->returnType) == "{ read a: number }");
     else
         CHECK(toString(b->returnType) == "{ a: number }");
@@ -466,7 +467,7 @@ local b: B.T = a
     CheckResult result = getFrontend().check("game/C");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected =
             FFlag::LuauBetterTypeMismatchErrors
@@ -525,7 +526,7 @@ local b: B.T = a
     CheckResult result = getFrontend().check("game/D");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected =
             FFlag::LuauBetterTypeMismatchErrors
@@ -610,7 +611,7 @@ return l0
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_scope_is_nullptr_after_shallow_copy")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
     getFrontend().options.retainFullTypeGraphs = false;
 
     fileResolver.source["game/A"] = R"(
@@ -630,7 +631,7 @@ type Binding<T> = Types.Binding<T>
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_free_variables_are_generialized_across_function_boundaries")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     fileResolver.source["game/A"] = R"(
 -- Roughly taken from react-shallow-renderer
@@ -688,7 +689,7 @@ local ReactShallowRenderer = require(game.A);
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "untitled_segfault_number_13")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     fileResolver.source["game/A"] = R"(
         -- minimized from roblox-requests/http/src/response.lua
@@ -719,7 +720,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "untitled_segfault_number_13")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "spooky_blocked_type_laundered_by_bound_type")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     fileResolver.source["game/A"] = R"(
         local Cache = {}
@@ -778,7 +779,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "spooky_blocked_type_laundered_by_bound_type"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "leaky_generics")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     auto result = check(R"(
         local Cache = {}
@@ -849,7 +850,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cycles_dont_make_everything_any")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_function_mutation")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     fileResolver.source["game/A"] = R"(
 function test2(a: number, b: string)
@@ -876,7 +877,7 @@ return wrapper(test2, 1, "")
 TEST_CASE_FIXTURE(BuiltinsFixture, "internal_types_are_scrubbed_from_module")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauMagicTypes, true},
     };
 
@@ -894,8 +895,11 @@ return function(): _luau_blocked_type return nil :: any end
 TEST_CASE_FIXTURE(BuiltinsFixture, "internal_type_errors_are_only_reported_once")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauMagicTypes, true},
+        // With this flag on we no longer try to unify the members of the return
+        // table with `any`, so we don't end up being unable to solve constraints.
+        {FFlag::LuauUnifyWithSubtyping2, true},
     };
 
     fileResolver.source["game/A"] = R"(
@@ -903,15 +907,14 @@ return function(): { X: _luau_blocked_type, Y: _luau_blocked_type } return nil :
     )";
 
     CheckResult result = getFrontend().check("game/A");
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(get<ConstraintSolvingIncompleteError>(result.errors[0]));
-    CHECK(get<InternalError>(result.errors[1]));
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<InternalError>(result.errors[0]));
     CHECK("(...any) -> { X: *error-type*, Y: *error-type* }" == toString(getFrontend().moduleResolver.getModule("game/A")->returnType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 5};
 

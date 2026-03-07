@@ -7,9 +7,7 @@
 #include <algorithm>
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCompileUnusedUdataFix)
-LUAU_FASTFLAG(LuauCompileStringCharSubFold)
-LUAU_FASTFLAG(LuauCompileCallCostModel)
+LUAU_FASTFLAGVARIABLE(LuauCompileCorrectLocalPc)
 
 namespace Luau
 {
@@ -492,7 +490,6 @@ void BytecodeBuilder::emitAux(uint32_t aux)
 
 void BytecodeBuilder::undoEmit(LuauOpcode op)
 {
-    LUAU_ASSERT(FFlag::LuauCompileCallCostModel);
     LUAU_ASSERT(!insns.empty());
     LUAU_ASSERT((insns.back() & 0xff) == op);
 
@@ -711,7 +708,7 @@ void BytecodeBuilder::finalize()
         // Write the mapping between used type name indices and their name
         for (uint32_t i = 0; i < uint32_t(userdataTypes.size()); i++)
         {
-            if (!FFlag::LuauCompileUnusedUdataFix || userdataTypes[i].used)
+            if (userdataTypes[i].used)
             {
                 writeByte(bytecode, i + 1);
                 writeVarInt(bytecode, userdataTypes[i].nameRef);
@@ -1222,6 +1219,32 @@ void BytecodeBuilder::expandJumps()
     // this was hard, but we're done.
     insns.swap(newinsns);
     lines.swap(newlines);
+
+    if (FFlag::LuauCompileCorrectLocalPc)
+    {
+        for (DebugLocal& debugLocal : debugLocals)
+        {
+            // endpc is exclusive, to get the right remapping, we need to remap the location before the end
+            if (debugLocal.startpc != debugLocal.endpc)
+                debugLocal.endpc = remap[debugLocal.endpc - 1] + 1;
+            else
+                debugLocal.endpc = remap[debugLocal.endpc];
+
+            debugLocal.startpc = remap[debugLocal.startpc];
+
+        }
+
+        for (TypedLocal& typedLocal : typedLocals)
+        {
+            // endpc is exclusive, to get the right remapping, we need to remap the location before the end
+            if (typedLocal.startpc != typedLocal.endpc)
+                typedLocal.endpc = remap[typedLocal.endpc - 1] + 1;
+            else
+                typedLocal.endpc = remap[typedLocal.endpc];
+
+            typedLocal.startpc = remap[typedLocal.startpc];
+        }
+    }
 }
 
 std::string BytecodeBuilder::getError(const std::string& message)
@@ -1833,7 +1856,7 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
             else
                 formatAppend(result, "'%.*s'...", 32, str.data);
         }
-        else if (FFlag::LuauCompileStringCharSubFold)
+        else
         {
             formatAppend(result, "'");
 

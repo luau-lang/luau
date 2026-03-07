@@ -25,12 +25,11 @@
 
 static const char* mainModuleName = "MainModule";
 
-LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceAllNewSolverTests);
-LUAU_FASTFLAG(LuauBuiltinTypeFunctionsArentGlobal)
 LUAU_FASTINT(LuauStackGuardThreshold)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -284,7 +283,7 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
         // if AST is available, check how lint and typecheck handle error nodes
         if (result.root)
         {
-            if (FFlag::LuauSolverV2)
+            if (!FFlag::DebugLuauForceOldSolver)
             {
                 Mode mode = sourceModule->mode ? *sourceModule->mode : Mode::Strict;
                 Frontend::Stats stats;
@@ -331,6 +330,7 @@ CheckResult Fixture::check(Mode mode, const std::string& source, std::optional<F
     configResolver.defaultConfig.mode = mode;
     fileResolver.source[mm] = std::move(source);
     getFrontend().markDirty(mm);
+    getFrontend().clearStats();
 
     CheckResult result = getFrontend().check(mm, options);
 
@@ -426,7 +426,7 @@ ParseResult Fixture::matchParseErrorPrefix(const std::string& source, const std:
 
 ModulePtr Fixture::getMainModule(bool forAutocomplete)
 {
-    if (forAutocomplete && !FFlag::LuauSolverV2)
+    if (forAutocomplete && FFlag::DebugLuauForceOldSolver)
         return getFrontend().moduleResolverForAutocomplete.getModule(fromString(mainModuleName));
 
     return getFrontend().moduleResolver.getModule(fromString(mainModuleName));
@@ -459,7 +459,7 @@ std::optional<TypeId> Fixture::getType(const std::string& name, bool forAutocomp
     if (!module->hasModuleScope())
         return std::nullopt;
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return linearSearchForBinding(module->getModuleScope().get(), name.c_str());
     else
         return lookupName(module->getModuleScope(), name);
@@ -562,12 +562,7 @@ TypeId Fixture::requireExportedType(const ModuleName& moduleName, const std::str
 TypeId Fixture::parseType(std::string_view src)
 {
     return getFrontend().parseType(
-        NotNull{&allocator},
-        NotNull{&nameTable},
-        NotNull{&getFrontend().iceHandler},
-        TypeCheckLimits{},
-        NotNull{&arena},
-        src
+        NotNull{&allocator}, NotNull{&nameTable}, NotNull{&getFrontend().iceHandler}, TypeCheckLimits{}, NotNull{&arena}, src
     );
 }
 
@@ -693,7 +688,7 @@ NotNull<BuiltinTypes> Fixture::getBuiltins()
 
 const BuiltinTypeFunctions& Fixture::getBuiltinTypeFunctions()
 {
-    return FFlag::LuauBuiltinTypeFunctionsArentGlobal ? *getBuiltins()->typeFunctions : builtinTypeFunctions_DEPRECATED();
+    return *getBuiltins()->typeFunctions;
 }
 
 Frontend& Fixture::getFrontend()
@@ -702,6 +697,7 @@ Frontend& Fixture::getFrontend()
         return *frontend;
 
     Frontend& f = frontend.emplace(
+        FFlag::DebugLuauForceOldSolver ? SolverMode::Old : SolverMode::New,
         &fileResolver,
         &configResolver,
         FrontendOptions{

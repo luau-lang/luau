@@ -14,9 +14,11 @@
 using namespace Luau;
 using std::nullopt;
 
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-LUAU_FASTFLAG(LuauSubtypingHandlesExternTypesWithIndexers)
+LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
+LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
+LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -157,7 +159,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_us
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_use_a_table_rather_than_a_class_using_new_solver")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         function makeClone(o)
@@ -398,7 +400,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "table_class_unification_reports_sane_error
         foo(a)
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         if (FFlag::LuauBetterTypeMismatchErrors)
@@ -409,8 +411,16 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "table_class_unification_reports_sane_error
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
-        REQUIRE_EQ("Key 'w' not found in class 'Vector2'", toString(result.errors.at(0)));
-        REQUIRE_EQ("Key 'x' not found in class 'Vector2'.  Did you mean 'X'?", toString(result.errors[1]));
+        if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
+        {
+            REQUIRE_EQ("Key 'w' not found in external type 'Vector2'", toString(result.errors.at(0)));
+            REQUIRE_EQ("Key 'x' not found in external type 'Vector2'.  Did you mean 'X'?", toString(result.errors[1]));
+        }
+        else
+        {
+            REQUIRE_EQ("Key 'w' not found in class 'Vector2'", toString(result.errors.at(0)));
+            REQUIRE_EQ("Key 'x' not found in class 'Vector2'.  Did you mean 'X'?", toString(result.errors[1]));
+        }
     }
 }
 
@@ -438,6 +448,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "class_unification_type_mismatch_is_correct
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "optional_class_field_access_error")
 {
+    ScopedFastFlag sff = {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true};
+
     CheckResult result = check(R"(
 local b: Vector2? = nil
 local a = b.X + b.Z
@@ -448,7 +460,7 @@ b.X = 2 -- real Vector2.X is also read-only
     LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors.at(0)));
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[1]));
-    CHECK_EQ("Key 'Z' not found in class 'Vector2'", toString(result.errors[2]));
+    CHECK_EQ("Key 'Z' not found in external type 'Vector2'", toString(result.errors[2]));
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[3]));
 }
 
@@ -467,7 +479,7 @@ b(a)
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected = FFlag::LuauBetterTypeMismatchErrors
                                          ? "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
@@ -569,7 +581,7 @@ local b: B = a
 
     LUAU_REQUIRE_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         if (FFlag::LuauBetterTypeMismatchErrors)
             CHECK(
@@ -601,7 +613,7 @@ Type 'ChildClass' could not be converted into 'BaseClass' in an invariant contex
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "optional_class_casts_work_in_new_solver")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type A = { x: ChildClass }
@@ -706,7 +718,19 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             local y = x[true]
         )");
 
-        if (FFlag::LuauSolverV2)
+        if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+        {
+            // clang-format off
+            const std::string expected =
+                "Expected this to be 'number | string', but got 'boolean';\n"
+                "this is because\n"
+                "\t* the 1st component of the union is `string`, and `boolean` is not a subtype of `string`\n"
+                "\t* the 2nd component of the union is `number`, and `boolean` is not a subtype of `number`\n"
+            ;
+            // clang-format on
+            CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
+        }
+        else if (!FFlag::DebugLuauForceOldSolver)
         {
             if (FFlag::LuauBetterTypeMismatchErrors)
                 CHECK("Expected this to be 'number | string', but got 'boolean'" == toString(result.errors.at(0)));
@@ -729,7 +753,19 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             x[true] = 42
         )");
 
-        if (FFlag::LuauSolverV2)
+        if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+        {
+            // clang-format off
+            const std::string expected =
+                "Expected this to be 'number | string', but got 'boolean';\n"
+                "this is because\n"
+                "\t * the 1st component of the union is `string`, and `boolean` is not a subtype of `string`\n"
+                "\t * the 2nd component of the union is `number`, and `boolean` is not a subtype of `number`\n"
+            ;
+            // clang-format on
+            CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
+        }
+        else if (!FFlag::DebugLuauForceOldSolver)
         {
             if (FFlag::LuauBetterTypeMismatchErrors)
                 CHECK("Expected this to be 'number | string', but got 'boolean'" == toString(result.errors.at(0)));
@@ -754,7 +790,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             x.key = "string value"
         )");
 
-        if (FFlag::LuauSolverV2)
+        if (!FFlag::DebugLuauForceOldSolver)
         {
             // Disabled for now.  CLI-115686
         }
@@ -777,19 +813,28 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 
     // Check that we string key are rejected if the indexer's key type is not compatible with string
     {
+        ScopedFastFlag sff = {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true};
+
         CheckResult result = check(R"(
             local x : IndexableNumericKeyClass
             x.key = 1
         )");
-        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
     }
     {
+        ScopedFastFlag sff = {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true};
+
         CheckResult result = check(R"(
             local x : IndexableNumericKeyClass
             x["key"] = 1
         )");
-        if (FFlag::LuauSolverV2)
-            CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+        if (!FFlag::DebugLuauForceOldSolver)
+        {
+            if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
+                CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
+            else
+                CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+        }
         else if (FFlag::LuauBetterTypeMismatchErrors)
             CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'number', but got 'string'");
         else
@@ -808,19 +853,28 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             CHECK_EQ(toString(result.errors.at(0)), "Type 'string' could not be converted into 'number'");
     }
     {
+        ScopedFastFlag sff = {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true};
+
         CheckResult result = check(R"(
             local x : IndexableNumericKeyClass
             local y = x.key
         )");
-        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
     }
     {
+        ScopedFastFlag sff = {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true};
+
         CheckResult result = check(R"(
             local x : IndexableNumericKeyClass
             local y = x["key"]
         )");
-        if (FFlag::LuauSolverV2)
-            CHECK(toString(result.errors.at(0)) == "Key 'key' not found in class 'IndexableNumericKeyClass'");
+        if (!FFlag::DebugLuauForceOldSolver)
+        {
+            if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
+                CHECK(toString(result.errors.at(0)) == "Key 'key' not found in external type 'IndexableNumericKeyClass'");
+            else
+                CHECK(toString(result.errors.at(0)) == "Key 'key' not found in class 'IndexableNumericKeyClass'");
+        }
         else if (FFlag::LuauBetterTypeMismatchErrors)
             CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'number', but got 'string'");
         else
@@ -842,7 +896,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 
 TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     TypeArena& arena = getFrontend().globals.globalTypes;
 
@@ -973,7 +1027,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "ice_while_checking_script_due_to_scopes_no
     // This is intentional - if LuauSolverV2 is false, but we elect the new solver, we should still follow
     // new solver code paths.
     // This is necessary to repro an ice that can occur in studio
-    ScopedFastFlag luauSolverOff{FFlag::LuauSolverV2, false};
+    ScopedFastFlag luauSolverOff{FFlag::DebugLuauForceOldSolver, true};
     getFrontend().setLuauSolverMode(SolverMode::New);
 
     auto result = check(R"(
@@ -993,7 +1047,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "extern_type_check_missing_key")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare extern type Foobar with
@@ -1026,7 +1080,7 @@ TEST_CASE_FIXTURE(Fixture, "extern_type_check_missing_key")
 
 TEST_CASE_FIXTURE(Fixture, "extern_type_check_present_key_in_superclass")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare extern type FoobarParent with
@@ -1059,7 +1113,7 @@ TEST_CASE_FIXTURE(Fixture, "extern_type_check_present_key_in_superclass")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_never")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare extern type Foobar with
@@ -1084,7 +1138,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_never")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_intersection")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare extern type Foobar with
@@ -1105,7 +1159,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_intersection")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_superset")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare extern type Foobar with
@@ -1126,7 +1180,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_superset")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_idempotent")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare extern type Foobar with
@@ -1147,7 +1201,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_idempotent")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersect_with_table_indexer")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function f(obj: { [any]: any }, functionName: string)
@@ -1162,7 +1216,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersect_with_table_indexer")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare extern type Foobar with
@@ -1182,8 +1236,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_is_not_subtype_of_table")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingHandlesExternTypesWithIndexers, true};
-
     loadDefinition(R"(
         declare extern type Color3 with
         end
@@ -1202,8 +1254,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_is_not_subtype_of_table")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_overload")
 {
-    ScopedFastFlag _{FFlag::LuauSubtypingHandlesExternTypesWithIndexers, true};
-
     loadDefinition(R"(
         declare extern type Color3 with
         end
@@ -1218,10 +1268,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_overload")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_indexer_interactions")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauSubtypingHandlesExternTypesWithIndexers, true}
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare extern type Container with
@@ -1243,8 +1290,68 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_indexer_interactions")
         local _: { [string]: number } = p -- not OK
     )");
     LUAU_REQUIRE_ERROR_COUNT(3, result);
-    for (const auto& err: result.errors)
+    for (const auto& err : result.errors)
         CHECK(get<TypeMismatch>(err));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_1")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExternTypesNormalizeWithShapes, true},
+    };
+
+    loadDefinition(R"(
+        declare extern type Instance with
+            name: string
+        end
+
+        declare extern type WithBrushes extends Instance with
+            brushes: Instance
+        end
+    )");
+
+    CheckResult result = check(R"(
+        function take(thing: WithBrushes & { brushes: Instance })
+            print(thing)
+            print(thing.brushes.name)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // These two types are entirely coincident, so we could imagine a world where this becomes simply `WithBrushes`, but
+    // the principal here is that the user wrote the annotation in this way, and so we're propagating that without normalizing.
+    CHECK_EQ("WithBrushes & { brushes: Instance }", toString(requireTypeAtPosition({2, 18})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExternTypesNormalizeWithShapes, true},
+    };
+
+    loadDefinition(R"(
+        declare extern type Instance with
+            name: string
+        end
+
+        declare extern type WithBrushes extends Instance with
+            brushes: Instance
+        end
+    )");
+
+    CheckResult result = check(R"(
+        function take(thing: Instance & { brushes: Instance })
+            print(thing)
+            print(thing.brushes.name)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Instance & { brushes: Instance }", toString(requireTypeAtPosition({2, 18})));
 }
 
 TEST_SUITE_END();

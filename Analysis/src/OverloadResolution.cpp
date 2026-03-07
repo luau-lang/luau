@@ -12,8 +12,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
-
 namespace Luau
 {
 
@@ -43,7 +41,7 @@ SelectedOverload OverloadResolution::getUnambiguousOverload() const
         // FIXME CLI-180645: We should try to infer a union of return
         // types here so that we get better autocomplete / type
         // inference for the rest of the function.
-        return { std::nullopt, {}, false };
+        return {std::nullopt, {}, false};
     }
 
     if (potentialOverloads.size() + ok.size() > 1)
@@ -55,11 +53,11 @@ SelectedOverload OverloadResolution::getUnambiguousOverload() const
         // This is the one spot where we return `true`, which callers may use
         // to determine whether they should emit an error or try again later.
         if (ok.empty())
-            return { potentialOverloads.front().first, potentialOverloads.front().second, true};
+            return {potentialOverloads.front().first, potentialOverloads.front().second, true};
         else
         {
             LUAU_ASSERT(ok.size() == 1);
-            return { ok.front(), {}, true };
+            return {ok.front(), {}, true};
         }
     }
 
@@ -72,7 +70,7 @@ SelectedOverload OverloadResolution::getUnambiguousOverload() const
         // There's exactly one incompatible overload, but it has
         // the right arity, so just use that. We'll fail type checking
         // but that's ok.
-        return { incompatibleOverloads.front().first, {}, false };
+        return {incompatibleOverloads.front().first, {}, false};
     }
 
     // FIXME: CLI-180645: if `incompatibleOverloads` is non-empty, return a
@@ -90,7 +88,7 @@ SelectedOverload OverloadResolution::getUnambiguousOverload() const
     // - There are either no, or more than one, overloads that just have an
     //   arity mismatch.
     // The best we can do here is unify against the error type and move on.
-    return { std::nullopt, {}, false };
+    return {std::nullopt, {}, false};
 }
 
 OverloadResolver::OverloadResolver(
@@ -130,7 +128,7 @@ static void ignoreReasoningForReturnType(SubtypingResult& sr)
 {
     SubtypingReasonings result{kEmptyReasoning};
 
-    for (const SubtypingReasoning& reasoning: sr.reasoning)
+    for (const SubtypingReasoning& reasoning : sr.reasoning)
     {
         if (reasoningIsReturnTypes(reasoning.subPath) && reasoningIsReturnTypes(reasoning.superPath))
             continue;
@@ -354,6 +352,19 @@ void OverloadResolver::reportErrors(
 
         switch (shouldSuppressErrors(normalizer, argPack))
         {
+        case ErrorSuppression::Suppress:
+            return;
+        case ErrorSuppression::DoNotSuppress:
+            break;
+        case ErrorSuppression::NormalizationFailed:
+            errors.emplace_back(fnLocation, moduleName, NormalizationTooComplex{});
+            return;
+        }
+
+        if (failedSuperPack)
+        {
+            switch (shouldSuppressErrors(normalizer, requiredMappedArgs))
+            {
             case ErrorSuppression::Suppress:
                 return;
             case ErrorSuppression::DoNotSuppress:
@@ -361,19 +372,6 @@ void OverloadResolver::reportErrors(
             case ErrorSuppression::NormalizationFailed:
                 errors.emplace_back(fnLocation, moduleName, NormalizationTooComplex{});
                 return;
-        }
-
-        if (failedSuperPack)
-        {
-            switch (shouldSuppressErrors(normalizer, requiredMappedArgs))
-            {
-                case ErrorSuppression::Suppress:
-                    return;
-                case ErrorSuppression::DoNotSuppress:
-                    break;
-                case ErrorSuppression::NormalizationFailed:
-                    errors.emplace_back(fnLocation, moduleName, NormalizationTooComplex{});
-                    return;
             }
         }
 
@@ -1173,29 +1171,13 @@ SolveResult solveFunctionCall_DEPRECATED(
 
     if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
     {
-        if (FFlag::LuauInstantiationUsesGenericPolarity2)
-        {
-            Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, iceReporter};
-            std::optional<TypePackId> subst = instantiate2(
-                arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions), NotNull{&subtyping}, scope, resultPack
-            );
-            if (!subst)
-                return {SolveResult::CodeTooComplex};
-            else
-                resultPack = *subst;
-        }
+        Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, iceReporter};
+        std::optional<TypePackId> subst =
+            instantiate2(arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions), NotNull{&subtyping}, scope, resultPack);
+        if (!subst)
+            return {SolveResult::CodeTooComplex};
         else
-        {
-            auto instantiation = std::make_unique<Instantiation2>(
-                arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions));
-
-            std::optional<TypePackId> subst = instantiation->substitute(resultPack);
-
-            if (!subst)
-                return {SolveResult::CodeTooComplex};
-            else
-                resultPack = *subst;
-        }
+            resultPack = *subst;
     }
 
     switch (unifyResult)

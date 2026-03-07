@@ -30,9 +30,7 @@ LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
-LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(LuauFragmentRequiresCanBeResolvedToAModule)
-LUAU_FASTFLAGVARIABLE(LuauForInRangesConsiderInLocation)
 
 namespace Luau
 {
@@ -164,9 +162,9 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
                 return nonEmpty;
             else
             {
-                    auto completeableExtents = Location{forStat->location.begin, forStat->doLocation.begin};
-                    if (completeableExtents.containsClosed(cursorPosition))
-                        return nonEmpty;
+                auto completeableExtents = Location{forStat->location.begin, forStat->doLocation.begin};
+                if (completeableExtents.containsClosed(cursorPosition))
+                    return nonEmpty;
 
                 return empty;
             }
@@ -186,7 +184,7 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
                     else
                     {
                         // [for ... in ... do] - the cursor can either be between [for ... in] or [in ... do]
-                        if (FFlag::LuauForInRangesConsiderInLocation && cursorPosition < forIn->inLocation.begin)
+                        if (cursorPosition < forIn->inLocation.begin)
                             return nonEmpty;
                         else
                             return Location{forIn->inLocation.begin, cursorPosition};
@@ -757,14 +755,6 @@ void cloneTypesFromFragment(
         destScope->returnType = Luau::cloneIncremental(staleScope->returnType, *destArena, cloneState, destScope);
 }
 
-static FrontendModuleResolver& getModuleResolver_DEPRECATED(Frontend& frontend, std::optional<FrontendOptions> options)
-{
-    if (FFlag::LuauSolverV2 || !options)
-        return frontend.moduleResolver;
-
-    return options->forAutocomplete ? frontend.moduleResolverForAutocomplete : frontend.moduleResolver;
-}
-
 static FrontendModuleResolver& getModuleResolver(Frontend& frontend, std::optional<FrontendOptions> options)
 {
     if ((frontend.getLuauSolverMode() == SolverMode::New) || !options)
@@ -1299,8 +1289,7 @@ FragmentTypeCheckResult typecheckFragment__DEPRECATED(
     DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::DfgBuildEnd);
 
-    FrontendModuleResolver& resolver =
-        FFlag::LuauUseWorkspacePropToChooseSolver ? getModuleResolver(frontend, opts) : getModuleResolver_DEPRECATED(frontend, opts);
+    FrontendModuleResolver& resolver = getModuleResolver(frontend, opts);
     std::shared_ptr<Scope> freshChildOfNearestScope = std::make_shared<Scope>(nullptr);
     /// Contraint Generator
     ConstraintGenerator cg{
@@ -1417,8 +1406,7 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
     if (!frontend.allModuleDependenciesValid(moduleName, opts && opts->forAutocomplete))
         return {FragmentTypeCheckStatus::SkipAutocomplete, {}};
 
-    FrontendModuleResolver& resolver =
-        FFlag::LuauUseWorkspacePropToChooseSolver ? getModuleResolver(frontend, opts) : getModuleResolver_DEPRECATED(frontend, opts);
+    FrontendModuleResolver& resolver = getModuleResolver(frontend, opts);
     ModulePtr module = resolver.getModule(moduleName);
     if (!module)
     {

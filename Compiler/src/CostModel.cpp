@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "CostModel.h"
 
+#include "Luau/Bytecode.h"
 #include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 
@@ -10,7 +11,7 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAG(LuauCompileCallCostModel)
+LUAU_FASTFLAG(LuauCompileInlinedBuiltins)
 
 namespace Luau
 {
@@ -145,22 +146,45 @@ struct CostVisitor : AstVisitor
         {
             // builtin cost modeling is different from regular calls because we use FASTCALL to compile these
             // thus we use a cheaper baseline, don't account for function, and assume constant/local copy is free
-            bool builtin = builtins.find(expr) != nullptr;
-            bool builtinShort = builtin && expr->args.size <= 2; // FASTCALL1/2
-
-            Cost cost = builtin ? 2 : 3;
-
-            if (!builtin)
-                cost += model(expr->func);
-
-            for (size_t i = 0; i < expr->args.size; ++i)
+            if (FFlag::LuauCompileInlinedBuiltins)
             {
-                Cost ac = model(expr->args.data[i]);
-                // for constants/locals we still need to copy them to the argument list
-                cost += ac.model == 0 && !builtinShort ? Cost(1) : ac;
-            }
+                const int* bfid = builtins.find(expr);
+                bool builtin = bfid != nullptr && *bfid != LBF_NONE;
+                bool builtinShort = builtin && expr->args.size <= 2; // FASTCALL1/2
 
-            return cost;
+                Cost cost = builtin ? 2 : 3;
+
+                if (!builtin)
+                    cost += model(expr->func);
+
+                for (size_t i = 0; i < expr->args.size; ++i)
+                {
+                    Cost ac = model(expr->args.data[i]);
+                    // for constants/locals we still need to copy them to the argument list
+                    cost += ac.model == 0 && !builtinShort ? Cost(1) : ac;
+                }
+
+                return cost;
+            }
+            else
+            {
+                bool builtin = builtins.find(expr) != nullptr;
+                bool builtinShort = builtin && expr->args.size <= 2; // FASTCALL1/2
+
+                Cost cost = builtin ? 2 : 3;
+
+                if (!builtin)
+                    cost += model(expr->func);
+
+                for (size_t i = 0; i < expr->args.size; ++i)
+                {
+                    Cost ac = model(expr->args.data[i]);
+                    // for constants/locals we still need to copy them to the argument list
+                    cost += ac.model == 0 && !builtinShort ? Cost(1) : ac;
+                }
+
+                return cost;
+            }
         }
         else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
         {
@@ -302,20 +326,17 @@ struct CostVisitor : AstVisitor
 
     bool visit(AstStatIf* node) override
     {
-        if (FFlag::LuauCompileCallCostModel)
+        if (isConstantFalse(constants, node->condition))
         {
-            if (isConstantFalse(constants, node->condition))
-            {
-                if (node->elsebody)
-                    node->elsebody->visit(this);
-                return false;
-            }
+            if (node->elsebody)
+                node->elsebody->visit(this);
+            return false;
+        }
 
-            if (isConstantTrue(constants, node->condition))
-            {
-                node->thenbody->visit(this);
-                return false;
-            }
+        if (isConstantTrue(constants, node->condition))
+        {
+            node->thenbody->visit(this);
+            return false;
         }
 
         // unconditional 'else' may require a jump after the 'if' body
@@ -400,24 +421,17 @@ struct CostVisitor : AstVisitor
 
     bool visit(AstStatBlock* node) override
     {
-        if (FFlag::LuauCompileCallCostModel)
+        for (size_t i = 0; i < node->body.size; ++i)
         {
-            for (size_t i = 0; i < node->body.size; ++i)
-            {
-                AstStat* stat = node->body.data[i];
+            AstStat* stat = node->body.data[i];
 
-                stat->visit(this);
+            stat->visit(this);
 
-                if (alwaysTerminates(constants, stat))
-                    break;
-            }
-
-            return false;
+            if (alwaysTerminates(constants, stat))
+                break;
         }
-        else
-        {
-            return true;
-        }
+
+        return false;
     }
 };
 

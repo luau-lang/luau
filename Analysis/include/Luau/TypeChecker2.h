@@ -104,6 +104,9 @@ struct TypeChecker2
     Reasonings explainReasonings(TypeId subTy, TypeId superTy, Location location, const SubtypingResult& r);
     Reasonings explainReasonings(TypePackId subTp, TypePackId superTp, Location location, const SubtypingResult& r);
 
+    bool testIsSubtype(TypeId subTy, TypeId superTy, Location location);
+    bool testIsSubtype(TypePackId subTy, TypePackId superTy, Location location);
+
 private:
     static bool allowsNoReturnValues(const TypePackId tp);
     static Location getEndLocation(const AstExprFunction* function);
@@ -195,9 +198,6 @@ private:
     bool testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedType);
 
     bool testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedType);
-
-    bool testIsSubtype(TypeId subTy, TypeId superTy, Location location);
-    bool testIsSubtype(TypePackId subTy, TypePackId superTy, Location location);
 
     void maybeReportSubtypingError(TypeId subTy, TypeId superTy, const Location& location);
     // Tests whether subTy is a subtype of superTy in the context of a function iterator for a for-in statement.

@@ -8,11 +8,12 @@
 #include <string_view>
 #include <utility>
 
+LUAU_FASTFLAG(LuauCodegenFreeBlocks)
+
 namespace Luau
 {
 namespace CodeGen
 {
-
 
 struct NativeProtoBytecodeIdEqual
 {
@@ -48,18 +49,50 @@ NativeModule::NativeModule(
 ) noexcept
     : allocator{allocator}
     , moduleId{moduleId}
-    , moduleBaseAddress{moduleBaseAddress}
+    , moduleBaseAddress_DEPRECATED{moduleBaseAddress}
     , nativeProtos{std::move(nativeProtos)}
 {
+    CODEGEN_ASSERT(!FFlag::LuauCodegenFreeBlocks);
     CODEGEN_ASSERT(allocator != nullptr);
-    CODEGEN_ASSERT(moduleBaseAddress != nullptr);
+    CODEGEN_ASSERT(moduleBaseAddress_DEPRECATED != nullptr);
 
     // Bind all of the NativeProtos to this module:
     for (const NativeProtoExecDataPtr& nativeProto : this->nativeProtos)
     {
         NativeProtoExecDataHeader& header = getNativeProtoExecDataHeader(nativeProto.get());
         header.nativeModule = this;
-        header.entryOffsetOrAddress = moduleBaseAddress + reinterpret_cast<uintptr_t>(header.entryOffsetOrAddress);
+        header.entryOffsetOrAddress = moduleBaseAddress_DEPRECATED + reinterpret_cast<uintptr_t>(header.entryOffsetOrAddress);
+    }
+
+    std::sort(this->nativeProtos.begin(), this->nativeProtos.end(), NativeProtoBytecodeIdLess{});
+
+    // We should not have two NativeProtos for the same bytecode id:
+    CODEGEN_ASSERT(
+        std::adjacent_find(this->nativeProtos.begin(), this->nativeProtos.end(), NativeProtoBytecodeIdEqual{}) == this->nativeProtos.end()
+    );
+}
+
+NativeModule::NativeModule(
+    SharedCodeAllocator* allocator,
+    const std::optional<ModuleId>& moduleId,
+    CodeAllocationData codeAllocationData,
+    std::vector<NativeProtoExecDataPtr> nativeProtos
+) noexcept
+    : allocator{allocator}
+    , moduleId{moduleId}
+    , codeAllocationData{codeAllocationData}
+    , nativeProtos{std::move(nativeProtos)}
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenFreeBlocks);
+    CODEGEN_ASSERT(allocator != nullptr);
+    CODEGEN_ASSERT(codeAllocationData.start != nullptr);
+
+    // Bind all of the NativeProtos to this module:
+    for (const NativeProtoExecDataPtr& nativeProto : this->nativeProtos)
+    {
+        NativeProtoExecDataHeader& header = getNativeProtoExecDataHeader(nativeProto.get());
+        header.nativeModule = this;
+        header.entryOffsetOrAddress = codeAllocationData.codeStart + reinterpret_cast<uintptr_t>(header.entryOffsetOrAddress);
     }
 
     std::sort(this->nativeProtos.begin(), this->nativeProtos.end(), NativeProtoBytecodeIdLess{});
@@ -110,7 +143,14 @@ size_t NativeModule::release() const noexcept
 
 [[nodiscard]] const uint8_t* NativeModule::getModuleBaseAddress() const noexcept
 {
-    return moduleBaseAddress;
+    return FFlag::LuauCodegenFreeBlocks ? codeAllocationData.codeStart : moduleBaseAddress_DEPRECATED;
+}
+
+[[nodiscard]] CodeAllocationData NativeModule::getCodeAllocationData() const noexcept
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenFreeBlocks);
+
+    return codeAllocationData;
 }
 
 [[nodiscard]] const uint32_t* NativeModule::tryGetNativeProto(uint32_t bytecodeId) const noexcept
@@ -235,18 +275,33 @@ std::pair<NativeModuleRef, bool> SharedCodeAllocator::getOrInsertNativeModule(
     if (NativeModuleRef existingModule = tryGetNativeModuleWithLockHeld(moduleId))
         return {std::move(existingModule), false};
 
-    uint8_t* nativeData = nullptr;
-    size_t sizeNativeData = 0;
-    uint8_t* codeStart = nullptr;
-    if (!codeAllocator->allocate(data, int(dataSize), code, int(codeSize), nativeData, sizeNativeData, codeStart))
+    if (FFlag::LuauCodegenFreeBlocks)
     {
-        return {};
+        CodeAllocationData result = codeAllocator->allocate(data, int(dataSize), code, int(codeSize));
+
+        if (!result.start)
+            return {};
+
+        std::unique_ptr<NativeModule>& nativeModule = identifiedModules[moduleId];
+        nativeModule = std::make_unique<NativeModule>(this, moduleId, result, std::move(nativeProtos));
+
+        return {NativeModuleRef{nativeModule.get()}, true};
     }
+    else
+    {
+        uint8_t* nativeData = nullptr;
+        size_t sizeNativeData = 0;
+        uint8_t* codeStart = nullptr;
+        if (!codeAllocator->allocate_DEPRECATED(data, int(dataSize), code, int(codeSize), nativeData, sizeNativeData, codeStart))
+        {
+            return {};
+        }
 
-    std::unique_ptr<NativeModule>& nativeModule = identifiedModules[moduleId];
-    nativeModule = std::make_unique<NativeModule>(this, moduleId, codeStart, std::move(nativeProtos));
+        std::unique_ptr<NativeModule>& nativeModule = identifiedModules[moduleId];
+        nativeModule = std::make_unique<NativeModule>(this, moduleId, codeStart, std::move(nativeProtos));
 
-    return {NativeModuleRef{nativeModule.get()}, true};
+        return {NativeModuleRef{nativeModule.get()}, true};
+    }
 }
 
 NativeModuleRef SharedCodeAllocator::insertAnonymousNativeModule(
@@ -259,18 +314,33 @@ NativeModuleRef SharedCodeAllocator::insertAnonymousNativeModule(
 {
     std::unique_lock lock{mutex};
 
-    uint8_t* nativeData = nullptr;
-    size_t sizeNativeData = 0;
-    uint8_t* codeStart = nullptr;
-    if (!codeAllocator->allocate(data, int(dataSize), code, int(codeSize), nativeData, sizeNativeData, codeStart))
+    if (FFlag::LuauCodegenFreeBlocks)
     {
-        return {};
+        CodeAllocationData result = codeAllocator->allocate(data, int(dataSize), code, int(codeSize));
+
+        if (!result.start)
+            return {};
+
+        NativeModuleRef nativeModuleRef{new NativeModule{this, std::nullopt, result, std::move(nativeProtos)}};
+        ++anonymousModuleCount;
+
+        return nativeModuleRef;
     }
+    else
+    {
+        uint8_t* nativeData = nullptr;
+        size_t sizeNativeData = 0;
+        uint8_t* codeStart = nullptr;
+        if (!codeAllocator->allocate_DEPRECATED(data, int(dataSize), code, int(codeSize), nativeData, sizeNativeData, codeStart))
+        {
+            return {};
+        }
 
-    NativeModuleRef nativeModuleRef{new NativeModule{this, std::nullopt, codeStart, std::move(nativeProtos)}};
-    ++anonymousModuleCount;
+        NativeModuleRef nativeModuleRef{new NativeModule{this, std::nullopt, codeStart, std::move(nativeProtos)}};
+        ++anonymousModuleCount;
 
-    return nativeModuleRef;
+        return nativeModuleRef;
+    }
 }
 
 void SharedCodeAllocator::eraseNativeModuleIfUnreferenced(const NativeModule& nativeModule)
@@ -282,6 +352,9 @@ void SharedCodeAllocator::eraseNativeModuleIfUnreferenced(const NativeModule& na
     // lock.  If so, that's okay.
     if (nativeModule.getRefcount() != 0)
         return;
+
+    if (FFlag::LuauCodegenFreeBlocks)
+        codeAllocator->deallocate(nativeModule.getCodeAllocationData());
 
     if (const std::optional<ModuleId>& moduleId = nativeModule.getModuleId())
     {

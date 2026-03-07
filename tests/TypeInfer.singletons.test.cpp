@@ -7,7 +7,9 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauPushTypeUnifyConstantHandling)
 
@@ -49,7 +51,7 @@ TEST_CASE_FIXTURE(Fixture, "string_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "string_singleton_function_call")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -195,7 +197,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons_mismatch")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK_EQ("None of the overloads for function that accept 2 arguments are compatible.", toString(result.errors[0]));
         CHECK_EQ("Available overloads: (true, string) -> (); and (false, number) -> ()", toString(result.errors[1]));
@@ -231,7 +233,21 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+    {
+        // clang-format off
+        const std::string expected =
+            "Expected this to be '\"bar\" | \"baz\" | \"foo\"', but got '\"bang\"'; \n"
+            "this is because \n"
+            "	 * the 1st component of the union is `\"foo\"`, and `\"bang\"` is not a subtype of `\"foo\"`\n"
+            "	 * the 2nd component of the union is `\"bar\"`, and `\"bang\"` is not a subtype of `\"bar\"`\n"
+            "	 * the 3rd component of the union is `\"baz\"`, and `\"bang\"` is not a subtype of `\"baz\"`"
+        ;
+        // clang-format on
+
+        CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
+    }
+    else if (!FFlag::DebugLuauForceOldSolver)
     {
         if (FFlag::LuauBetterTypeMismatchErrors)
             CHECK("Expected this to be '\"bar\" | \"baz\" | \"foo\"', but got '\"bang\"'" == toString(result.errors[0]));
@@ -302,7 +318,7 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_immutable_tag")
 
     LUAU_REQUIRE_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CannotAssignToNever* tm = get<CannotAssignToNever>(result.errors[0]);
         REQUIRE(tm);
@@ -321,7 +337,7 @@ TEST_CASE_FIXTURE(Fixture, "table_has_a_boolean")
         local t={a=1,b=false}
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK("{ a: number, b: boolean }" == toString(requireType("t"), {true}));
     else
         CHECK("{| a: number, b: boolean |}" == toString(requireType("t"), {true}));
@@ -388,7 +404,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_alias_or_parens_is_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "indexer_can_be_union_of_singletons")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -409,7 +425,7 @@ TEST_CASE_FIXTURE(Fixture, "indexer_can_be_union_of_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict
@@ -435,7 +451,7 @@ local a: Animal = { tag = 'cat', cafood = 'something' }
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK(
             R"(Table type '{ cafood: string, tag: "cat" }' not compatible with type 'Cat' because the former is missing field 'catfood')" ==
             toString(result.errors[0])
@@ -473,7 +489,7 @@ local a: Result = { success = false, result = 'something' }
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK_EQ(
             "Table type '{ result: string, success: false }' not compatible with type 'Bad' because the former is missing field 'error'",
@@ -493,7 +509,7 @@ Table type 'a' not compatible with type 'Bad' because the former is missing fiel
 TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauBetterTypeMismatchErrors, true},
         {FFlag::LuauPushTypeUnifyConstantHandling, true},
     };
@@ -575,7 +591,7 @@ TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ(R"("foo")", toString(requireType("copy")));
     else
         CHECK_EQ("string", toString(requireType("copy")));
@@ -700,7 +716,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "singletons_stick_around_under_assignment")
         print(kind == "Bar") -- type of equality refines to `false`
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result);
     else
         LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -768,7 +784,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_163481_any_indexer_pushes_type")
 
 TEST_CASE_FIXTURE(Fixture, "oss_2010")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function foo<T>(my_enum: "" | T): T
@@ -783,7 +799,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2010")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1773")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
@@ -810,7 +826,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1773")
 
 TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_indexers_errored")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict
@@ -826,7 +842,7 @@ TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_indexers_errored")
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
 
-    for (const auto& e: result.errors)
+    for (const auto& e : result.errors)
         CHECK(get<TypeMismatch>(e));
 }
 
@@ -840,7 +856,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2018")
 TEST_CASE_FIXTURE(Fixture, "oss_2010_but_with_booleans")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauPushTypeUnifyConstantHandling, true},
     };
 
@@ -876,7 +892,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2010_but_with_booleans")
 TEST_CASE_FIXTURE(Fixture, "cli_184125")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauPushTypeUnifyConstantHandling, true},
     };
 

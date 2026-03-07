@@ -167,7 +167,9 @@ public:
     void umov_4s(RegisterA64 dst, RegisterA64 src, uint8_t index);
 
     void fcmeq_4s(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
+    void fcmgt_4s(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void bit(RegisterA64 dst, RegisterA64 src, RegisterA64 mask);
+    void bif(RegisterA64 dst, RegisterA64 src, RegisterA64 mask);
 
     // Floating-point rounding and conversions
     void frinta(RegisterA64 dst, RegisterA64 src);
@@ -208,6 +210,7 @@ public:
 
     void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
 
+    // Code size is measured in 'code' array units - uint8_t on x64 and uint32_t on arm64
     uint32_t getCodeSize() const;
 
     unsigned getInstructionCount() const;

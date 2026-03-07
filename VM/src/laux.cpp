@@ -376,6 +376,53 @@ int luaL_callyieldable(lua_State* L, int nargs, int nresults)
     return cl->c.cont(L, LUA_OK);
 }
 
+void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level)
+{
+    api_check(L, level >= 0);
+
+    luaL_Strbuf buf;
+    luaL_buffinit(L, &buf);
+
+    if (msg)
+    {
+        luaL_addstring(&buf, msg);
+        luaL_addstring(&buf, "\n");
+    }
+
+    lua_Debug ar;
+    for (int i = level; lua_getinfo(L1, i, "sln", &ar); ++i)
+    {
+        if (strcmp(ar.what, "C") == 0)
+            continue;
+
+        if (ar.source)
+            luaL_addstring(&buf, ar.short_src);
+
+        if (ar.currentline > 0)
+        {
+            char line[32]; // manual conversion for performance
+            char* lineend = line + sizeof(line);
+            char* lineptr = lineend;
+            for (unsigned int r = ar.currentline; r > 0; r /= 10)
+                *--lineptr = '0' + (r % 10);
+
+            luaL_addchar(&buf, ':');
+            luaL_addlstring(&buf, lineptr, lineend - lineptr);
+        }
+
+        if (ar.name)
+        {
+            luaL_addstring(&buf, " function ");
+            luaL_addstring(&buf, ar.name);
+        }
+
+        luaL_addchar(&buf, '\n');
+    }
+
+    luaL_pushresult(&buf);
+}
+
+
 /*
 ** {======================================================
 ** Generic Buffer manipulation

@@ -116,6 +116,11 @@
 #define LUA_MEMORY_CATEGORIES 256
 #endif
 
+// extra storage for execution callbacks in global state
+#ifndef LUA_EXECUTION_CALLBACK_STORAGE
+#define LUA_EXECUTION_CALLBACK_STORAGE 512
+#endif
+
 // minimum size for the string table (must be power of 2)
 #ifndef LUA_MINSTRTABSIZE
 #define LUA_MINSTRTABSIZE 32

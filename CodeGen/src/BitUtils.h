@@ -32,6 +32,25 @@ inline int countrz(uint32_t n)
 #endif
 }
 
+inline int countrz(uint64_t n)
+{
+#ifdef _MSC_VER
+
+#ifdef _WIN64
+    unsigned long rl;
+    return _BitScanForward64(&rl, n) ? int(rl) : 64;
+#else
+    unsigned long rl;
+    if (_BitScanForward(&rl, uint32_t(n)))
+        return rl;
+    return _BitScanForward(&rl, uint32_t(n >> 32)) ? int(rl) + 32 : 64;
+#endif
+
+#else
+    return n == 0 ? 64 : __builtin_ctzll(n);
+#endif
+}
+
 inline int lrotate(uint32_t u, int s)
 {
     // MSVC doesn't recognize the rotate form that is UB-safe

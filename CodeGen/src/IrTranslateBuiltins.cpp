@@ -8,12 +8,10 @@
 
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenSplitFloat)
-LUAU_FASTFLAGVARIABLE(LuauCodegenFloatOps)
-LUAU_FASTFLAGVARIABLE(LuauCodegenSplitFloatExtra)
-LUAU_FASTFLAGVARIABLE(LuauCodegenVectorCreateXy)
-LUAU_FASTFLAG(LuauCodegenNumIntFolds2)
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge)
+LUAU_FASTFLAGVARIABLE(LuauCodegenExtraSimd)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
+LUAU_FASTFLAGVARIABLE(LuauCodegenBit32SingleArg)
+LUAU_FASTFLAG(LuauCodegenIsNanAndDirectCompare)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
@@ -302,26 +300,13 @@ static BuiltinImplResult translateBuiltinVectorLerp(IrBuilder& build, int nparam
     IrOp b = build.inst(IrCmd::LOAD_TVALUE, args);
     IrOp t = builtinLoadDouble(build, arg3);
 
-    if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenSplitFloatExtra)
-    {
-        IrOp tvec = build.inst(IrCmd::FLOAT_TO_VEC, build.inst(IrCmd::NUM_TO_FLOAT, t));
-        IrOp one = build.inst(IrCmd::FLOAT_TO_VEC, build.constDouble(1.0));
-        IrOp diff = build.inst(IrCmd::SUB_VEC, b, a);
+    IrOp tvec = build.inst(IrCmd::FLOAT_TO_VEC, build.inst(IrCmd::NUM_TO_FLOAT, t));
+    IrOp one = build.inst(IrCmd::FLOAT_TO_VEC, build.constDouble(1.0));
+    IrOp diff = build.inst(IrCmd::SUB_VEC, b, a);
 
-        IrOp res = build.inst(IrCmd::MULADD_VEC, diff, tvec, a);
-        IrOp ret = build.inst(IrCmd::SELECT_VEC, res, b, tvec, one);
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
-    }
-    else
-    {
-        IrOp tvec = build.inst(IrCmd::NUM_TO_VEC_DEPRECATED, t);
-        IrOp one = build.inst(IrCmd::NUM_TO_VEC_DEPRECATED, build.constDouble(1.0));
-        IrOp diff = build.inst(IrCmd::SUB_VEC, b, a);
-
-        IrOp res = build.inst(IrCmd::MULADD_VEC, diff, tvec, a);
-        IrOp ret = build.inst(IrCmd::SELECT_VEC, res, b, tvec, one);
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
-    }
+    IrOp res = build.inst(IrCmd::MULADD_VEC, diff, tvec, a);
+    IrOp ret = build.inst(IrCmd::SELECT_VEC, res, b, tvec, one);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
 
     return {BuiltinImplType::Full, 1};
 }
@@ -378,6 +363,24 @@ static BuiltinImplResult translateBuiltinMathUnary(IrBuilder& build, IrCmd cmd, 
     return {BuiltinImplType::Full, 1};
 }
 
+static BuiltinImplResult translateBuiltinMathIsNan(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+{
+    if (nparams < 1 || nresults > 1)
+        return {BuiltinImplType::None, -1};
+
+    builtinCheckDouble(build, build.vmReg(arg), pcpos);
+
+    IrOp varg = builtinLoadDouble(build, build.vmReg(arg));
+
+    IrOp result =
+        build.inst(IrCmd::CMP_SPLIT_TVALUE, build.constTag(LUA_TNUMBER), build.constTag(LUA_TNUMBER), varg, varg, build.cond(IrCondition::NotEqual));
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(ra), result);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
+
+    return {BuiltinImplType::Full, 1};
+}
+
 static BuiltinImplResult translateBuiltinType(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults)
 {
     if (nparams < 1 || nresults > 1)
@@ -405,7 +408,7 @@ static BuiltinImplResult translateBuiltinTypeof(IrBuilder& build, int nparams, i
     return {BuiltinImplType::Full, 1};
 }
 
-static BuiltinImplResult translateBuiltinBit32BinaryOp(
+static BuiltinImplResult translateBuiltinBit32MultiargOp(
     IrBuilder& build,
     IrCmd cmd,
     bool btest,
@@ -418,11 +421,13 @@ static BuiltinImplResult translateBuiltinBit32BinaryOp(
     int pcpos
 )
 {
-    if (nparams < 2 || nparams > kBit32BinaryOpUnrolledParams || nresults > 1)
+    if (nparams < (FFlag::LuauCodegenBit32SingleArg ? 1 : 2) || nparams > kBit32BinaryOpUnrolledParams || nresults > 1)
         return {BuiltinImplType::None, -1};
 
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
-    builtinCheckDouble(build, args, pcpos);
+
+    if (nparams >= 2)
+        builtinCheckDouble(build, args, pcpos);
 
     if (nparams >= 3)
         builtinCheckDouble(build, arg3, pcpos);
@@ -430,13 +435,31 @@ static BuiltinImplResult translateBuiltinBit32BinaryOp(
     for (int i = 4; i <= nparams; ++i)
         builtinCheckDouble(build, build.vmReg(vmRegOp(args) + (i - 2)), pcpos);
 
-    IrOp va = builtinLoadDouble(build, build.vmReg(arg));
-    IrOp vb = builtinLoadDouble(build, args);
+    IrOp res;
 
-    IrOp vaui = build.inst(IrCmd::NUM_TO_UINT, va);
-    IrOp vbui = build.inst(IrCmd::NUM_TO_UINT, vb);
+    if (FFlag::LuauCodegenBit32SingleArg)
+    {
+        IrOp va = builtinLoadDouble(build, build.vmReg(arg));
+        res = build.inst(IrCmd::NUM_TO_UINT, va);
 
-    IrOp res = build.inst(cmd, vaui, vbui);
+        if (nparams >= 2)
+        {
+            IrOp vb = builtinLoadDouble(build, args);
+            IrOp arg = build.inst(IrCmd::NUM_TO_UINT, vb);
+
+            res = build.inst(cmd, res, arg);
+        }
+    }
+    else
+    {
+        IrOp va = builtinLoadDouble(build, build.vmReg(arg));
+        IrOp vb = builtinLoadDouble(build, args);
+
+        IrOp vaui = build.inst(IrCmd::NUM_TO_UINT, va);
+        IrOp vbui = build.inst(IrCmd::NUM_TO_UINT, vb);
+
+        res = build.inst(cmd, vaui, vbui);
+    }
 
     if (nparams >= 3)
     {
@@ -500,7 +523,6 @@ static BuiltinImplResult translateBuiltinBit32Shift(
     int arg,
     IrOp args,
     int nresults,
-    IrOp fallback,
     int pcpos
 )
 {
@@ -526,9 +548,8 @@ static BuiltinImplResult translateBuiltinBit32Shift(
 
     if (!knownGoodShift)
     {
-        IrOp block = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_CMP_INT, vbi, build.constInt(32), build.cond(IrCondition::UnsignedGreaterEqual), fallback, block);
-        build.beginBlock(block);
+        // unsigned(s) < 32
+        build.inst(IrCmd::CHECK_CMP_INT, vbi, build.constInt(32), build.cond(IrCondition::UnsignedLess), build.vmExit(pcpos));
     }
 
     IrOp shift = build.inst(cmd, vaui, vbi);
@@ -539,7 +560,7 @@ static BuiltinImplResult translateBuiltinBit32Shift(
     if (ra != arg)
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
-    return {BuiltinImplType::UsesFallback, 1};
+    return {BuiltinImplType::Full, 1};
 }
 
 static BuiltinImplResult translateBuiltinBit32Rotate(IrBuilder& build, IrCmd cmd, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
@@ -575,7 +596,6 @@ static BuiltinImplResult translateBuiltinBit32Extract(
     IrOp args,
     IrOp arg3,
     int nresults,
-    IrOp fallback,
     int pcpos
 )
 {
@@ -613,9 +633,8 @@ static BuiltinImplResult translateBuiltinBit32Extract(
         {
             IrOp f = build.inst(IrCmd::NUM_TO_INT, vb);
 
-            IrOp block = build.block(IrBlockKind::Internal);
-            build.inst(IrCmd::JUMP_CMP_INT, f, build.constInt(32), build.cond(IrCondition::UnsignedGreaterEqual), fallback, block);
-            build.beginBlock(block);
+            // unsigned(f) < 32
+            build.inst(IrCmd::CHECK_CMP_INT, f, build.constInt(32), build.cond(IrCondition::UnsignedLess), build.vmExit(pcpos));
 
             IrOp shift = build.inst(IrCmd::BITRSHIFT_UINT, n, f);
             value = build.inst(IrCmd::BITAND_UINT, shift, build.constInt(1));
@@ -627,20 +646,14 @@ static BuiltinImplResult translateBuiltinBit32Extract(
 
         builtinCheckDouble(build, arg3, pcpos);
         IrOp vc = builtinLoadDouble(build, arg3);
+
         IrOp w = build.inst(IrCmd::NUM_TO_INT, vc);
-
-        IrOp block1 = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_CMP_INT, f, build.constInt(0), build.cond(IrCondition::Less), fallback, block1);
-        build.beginBlock(block1);
-
-        IrOp block2 = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_CMP_INT, w, build.constInt(1), build.cond(IrCondition::Less), fallback, block2);
-        build.beginBlock(block2);
-
-        IrOp block3 = build.block(IrBlockKind::Internal);
         IrOp fw = build.inst(IrCmd::ADD_INT, f, w);
-        build.inst(IrCmd::JUMP_CMP_INT, fw, build.constInt(33), build.cond(IrCondition::Less), block3, fallback);
-        build.beginBlock(block3);
+
+        // f >= 0 && w > 0 && f + w <= 32
+        build.inst(IrCmd::CHECK_CMP_INT, f, build.constInt(0), build.cond(IrCondition::GreaterEqual), build.vmExit(pcpos));
+        build.inst(IrCmd::CHECK_CMP_INT, w, build.constInt(0), build.cond(IrCondition::Greater), build.vmExit(pcpos));
+        build.inst(IrCmd::CHECK_CMP_INT, fw, build.constInt(32), build.cond(IrCondition::LessEqual), build.vmExit(pcpos));
 
         IrOp shift = build.inst(IrCmd::BITLSHIFT_UINT, build.constInt(0xfffffffe), build.inst(IrCmd::SUB_INT, w, build.constInt(1)));
         IrOp m = build.inst(IrCmd::BITNOT_UINT, shift);
@@ -654,7 +667,7 @@ static BuiltinImplResult translateBuiltinBit32Extract(
     if (ra != arg)
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
-    return {BuiltinImplType::UsesFallback, 1};
+    return {BuiltinImplType::Full, 1};
 }
 
 static BuiltinImplResult translateBuiltinBit32ExtractK(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
@@ -722,7 +735,6 @@ static BuiltinImplResult translateBuiltinBit32Replace(
     IrOp args,
     IrOp arg3,
     int nresults,
-    IrOp fallback,
     int pcpos
 )
 {
@@ -744,9 +756,8 @@ static BuiltinImplResult translateBuiltinBit32Replace(
     IrOp value;
     if (nparams == 3)
     {
-        IrOp block = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_CMP_INT, f, build.constInt(32), build.cond(IrCondition::UnsignedGreaterEqual), fallback, block);
-        build.beginBlock(block);
+        // unsigned(f) < 32
+        build.inst(IrCmd::CHECK_CMP_INT, f, build.constInt(32), build.cond(IrCondition::UnsignedLess), build.vmExit(pcpos));
 
         IrOp m = build.constInt(1);
         IrOp shift = build.inst(IrCmd::BITLSHIFT_UINT, m, f);
@@ -762,20 +773,14 @@ static BuiltinImplResult translateBuiltinBit32Replace(
     {
         builtinCheckDouble(build, build.vmReg(vmRegOp(args) + 2), pcpos);
         IrOp vd = builtinLoadDouble(build, build.vmReg(vmRegOp(args) + 2));
+
         IrOp w = build.inst(IrCmd::NUM_TO_INT, vd);
-
-        IrOp block1 = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_CMP_INT, f, build.constInt(0), build.cond(IrCondition::Less), fallback, block1);
-        build.beginBlock(block1);
-
-        IrOp block2 = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_CMP_INT, w, build.constInt(1), build.cond(IrCondition::Less), fallback, block2);
-        build.beginBlock(block2);
-
-        IrOp block3 = build.block(IrBlockKind::Internal);
         IrOp fw = build.inst(IrCmd::ADD_INT, f, w);
-        build.inst(IrCmd::JUMP_CMP_INT, fw, build.constInt(33), build.cond(IrCondition::Less), block3, fallback);
-        build.beginBlock(block3);
+
+        // f >= 0 && w > 0 && f + w <= 32
+        build.inst(IrCmd::CHECK_CMP_INT, f, build.constInt(0), build.cond(IrCondition::GreaterEqual), build.vmExit(pcpos));
+        build.inst(IrCmd::CHECK_CMP_INT, w, build.constInt(0), build.cond(IrCondition::Greater), build.vmExit(pcpos));
+        build.inst(IrCmd::CHECK_CMP_INT, fw, build.constInt(32), build.cond(IrCondition::LessEqual), build.vmExit(pcpos));
 
         IrOp shift1 = build.inst(IrCmd::BITLSHIFT_UINT, build.constInt(0xfffffffe), build.inst(IrCmd::SUB_INT, w, build.constInt(1)));
         IrOp m = build.inst(IrCmd::BITNOT_UINT, shift1);
@@ -795,45 +800,28 @@ static BuiltinImplResult translateBuiltinBit32Replace(
     if (ra != arg)
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
-    return {BuiltinImplType::UsesFallback, 1};
+    return {BuiltinImplType::Full, 1};
 }
 
 static BuiltinImplResult translateBuiltinVector(IrBuilder& build, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, int pcpos)
 {
-    if (FFlag::LuauCodegenVectorCreateXy)
-    {
-        if (nparams < 2 || nresults > 1)
-            return {BuiltinImplType::None, -1};
-    }
-    else
-    {
-        if (nparams < 3 || nresults > 1)
-            return {BuiltinImplType::None, -1};
-    }
+    if (nparams < 2 || nresults > 1)
+        return {BuiltinImplType::None, -1};
 
     CODEGEN_ASSERT(LUA_VECTOR_SIZE == 3);
 
     if (nparams == 2)
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenVectorCreateXy);
-
         builtinCheckDouble(build, build.vmReg(arg), pcpos);
         builtinCheckDouble(build, args, pcpos);
 
         IrOp x = builtinLoadDouble(build, build.vmReg(arg));
         IrOp y = builtinLoadDouble(build, args);
 
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            IrOp xf = build.inst(IrCmd::NUM_TO_FLOAT, x);
-            IrOp yf = build.inst(IrCmd::NUM_TO_FLOAT, y);
+        IrOp xf = build.inst(IrCmd::NUM_TO_FLOAT, x);
+        IrOp yf = build.inst(IrCmd::NUM_TO_FLOAT, y);
 
-            build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xf, yf, build.constDouble(0.0));
-        }
-        else
-        {
-            build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), x, y, build.constDouble(0.0));
-        }
+        build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xf, yf, build.constDouble(0.0));
     }
     else
     {
@@ -845,18 +833,11 @@ static BuiltinImplResult translateBuiltinVector(IrBuilder& build, int nparams, i
         IrOp y = builtinLoadDouble(build, args);
         IrOp z = builtinLoadDouble(build, arg3);
 
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            IrOp xf = build.inst(IrCmd::NUM_TO_FLOAT, x);
-            IrOp yf = build.inst(IrCmd::NUM_TO_FLOAT, y);
-            IrOp zf = build.inst(IrCmd::NUM_TO_FLOAT, z);
+        IrOp xf = build.inst(IrCmd::NUM_TO_FLOAT, x);
+        IrOp yf = build.inst(IrCmd::NUM_TO_FLOAT, y);
+        IrOp zf = build.inst(IrCmd::NUM_TO_FLOAT, z);
 
-            build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xf, yf, zf);
-        }
-        else
-        {
-            build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), x, y, z);
-        }
+        build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xf, yf, zf);
     }
 
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
@@ -941,7 +922,7 @@ static void translateBufferArgsAndCheckBounds(
     IrOp numIndex = builtinLoadDouble(build, args);
     intIndex = build.inst(IrCmd::NUM_TO_INT, numIndex);
 
-    if (FFlag::LuauCodegenBufferRangeMerge && FFlag::LuauCodegenNumIntFolds2)
+    if (FFlag::LuauCodegenBufferRangeMerge3)
         build.inst(IrCmd::CHECK_BUFFER_LEN, buf, intIndex, build.constInt(0), build.constInt(size), build.undef(), build.vmExit(pcpos));
     else
         build.inst(IrCmd::CHECK_BUFFER_LEN, buf, intIndex, build.constInt(size), build.vmExit(pcpos));
@@ -1021,26 +1002,12 @@ static BuiltinImplResult translateBuiltinVectorMagnitude(
     IrOp a = build.inst(IrCmd::LOAD_TVALUE, arg1, build.constInt(0));
 
     IrOp sum = build.inst(IrCmd::DOT_VEC, a, a);
+    IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
 
-    if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
-    {
-        IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
+    mag = build.inst(IrCmd::FLOAT_TO_NUM, mag);
 
-        mag = build.inst(IrCmd::FLOAT_TO_NUM, mag);
-
-        build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), mag);
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
-    }
-    else
-    {
-        if (FFlag::LuauCodegenSplitFloat)
-            sum = build.inst(IrCmd::FLOAT_TO_NUM, sum);
-
-        IrOp mag = build.inst(IrCmd::SQRT_NUM, sum);
-
-        build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), mag);
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
-    }
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), mag);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
     return {BuiltinImplType::Full, 1};
 }
@@ -1066,33 +1033,15 @@ static BuiltinImplResult translateBuiltinVectorNormalize(
     IrOp a = build.inst(IrCmd::LOAD_TVALUE, arg1, build.constInt(0));
     IrOp sum = build.inst(IrCmd::DOT_VEC, a, a);
 
-    if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
-    {
-        IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
-        IrOp inv = build.inst(IrCmd::DIV_FLOAT, build.constDouble(1.0f), mag);
-        IrOp invvec = build.inst(IrCmd::FLOAT_TO_VEC, inv);
+    IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
+    IrOp inv = build.inst(IrCmd::DIV_FLOAT, build.constDouble(1.0f), mag);
+    IrOp invvec = build.inst(IrCmd::FLOAT_TO_VEC, inv);
 
-        IrOp result = build.inst(IrCmd::MUL_VEC, a, invvec);
+    IrOp result = build.inst(IrCmd::MUL_VEC, a, invvec);
 
-        result = build.inst(IrCmd::TAG_VECTOR, result);
+    result = build.inst(IrCmd::TAG_VECTOR, result);
 
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
-    }
-    else
-    {
-        if (FFlag::LuauCodegenSplitFloat)
-            sum = build.inst(IrCmd::FLOAT_TO_NUM, sum);
-
-        IrOp mag = build.inst(IrCmd::SQRT_NUM, sum);
-        IrOp inv = build.inst(IrCmd::DIV_NUM, build.constDouble(1.0), mag);
-        IrOp invvec = build.inst(IrCmd::NUM_TO_VEC_DEPRECATED, inv);
-
-        IrOp result = build.inst(IrCmd::MUL_VEC, a, invvec);
-
-        result = build.inst(IrCmd::TAG_VECTOR, result);
-
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
-    }
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
 
     return {BuiltinImplType::Full, 1};
 }
@@ -1116,59 +1065,20 @@ static BuiltinImplResult translateBuiltinVectorCross(IrBuilder& build, int npara
     IrOp z1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
     IrOp z2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(8));
 
-    if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
-    {
-        IrOp y1z2 = build.inst(IrCmd::MUL_FLOAT, y1, z2);
-        IrOp z1y2 = build.inst(IrCmd::MUL_FLOAT, z1, y2);
-        IrOp xr = build.inst(IrCmd::SUB_FLOAT, y1z2, z1y2);
+    IrOp y1z2 = build.inst(IrCmd::MUL_FLOAT, y1, z2);
+    IrOp z1y2 = build.inst(IrCmd::MUL_FLOAT, z1, y2);
+    IrOp xr = build.inst(IrCmd::SUB_FLOAT, y1z2, z1y2);
 
-        IrOp z1x2 = build.inst(IrCmd::MUL_FLOAT, z1, x2);
-        IrOp x1z2 = build.inst(IrCmd::MUL_FLOAT, x1, z2);
-        IrOp yr = build.inst(IrCmd::SUB_FLOAT, z1x2, x1z2);
+    IrOp z1x2 = build.inst(IrCmd::MUL_FLOAT, z1, x2);
+    IrOp x1z2 = build.inst(IrCmd::MUL_FLOAT, x1, z2);
+    IrOp yr = build.inst(IrCmd::SUB_FLOAT, z1x2, x1z2);
 
-        IrOp x1y2 = build.inst(IrCmd::MUL_FLOAT, x1, y2);
-        IrOp y1x2 = build.inst(IrCmd::MUL_FLOAT, y1, x2);
-        IrOp zr = build.inst(IrCmd::SUB_FLOAT, x1y2, y1x2);
+    IrOp x1y2 = build.inst(IrCmd::MUL_FLOAT, x1, y2);
+    IrOp y1x2 = build.inst(IrCmd::MUL_FLOAT, y1, x2);
+    IrOp zr = build.inst(IrCmd::SUB_FLOAT, x1y2, y1x2);
 
-        build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xr, yr, zr);
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
-    }
-    else
-    {
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            x1 = build.inst(IrCmd::FLOAT_TO_NUM, x1);
-            x2 = build.inst(IrCmd::FLOAT_TO_NUM, x2);
-
-            y1 = build.inst(IrCmd::FLOAT_TO_NUM, y1);
-            y2 = build.inst(IrCmd::FLOAT_TO_NUM, y2);
-
-            z1 = build.inst(IrCmd::FLOAT_TO_NUM, z1);
-            z2 = build.inst(IrCmd::FLOAT_TO_NUM, z2);
-        }
-
-        IrOp y1z2 = build.inst(IrCmd::MUL_NUM, y1, z2);
-        IrOp z1y2 = build.inst(IrCmd::MUL_NUM, z1, y2);
-        IrOp xr = build.inst(IrCmd::SUB_NUM, y1z2, z1y2);
-
-        IrOp z1x2 = build.inst(IrCmd::MUL_NUM, z1, x2);
-        IrOp x1z2 = build.inst(IrCmd::MUL_NUM, x1, z2);
-        IrOp yr = build.inst(IrCmd::SUB_NUM, z1x2, x1z2);
-
-        IrOp x1y2 = build.inst(IrCmd::MUL_NUM, x1, y2);
-        IrOp y1x2 = build.inst(IrCmd::MUL_NUM, y1, x2);
-        IrOp zr = build.inst(IrCmd::SUB_NUM, x1y2, y1x2);
-
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            xr = build.inst(IrCmd::NUM_TO_FLOAT, xr);
-            yr = build.inst(IrCmd::NUM_TO_FLOAT, yr);
-            zr = build.inst(IrCmd::NUM_TO_FLOAT, zr);
-        }
-
-        build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xr, yr, zr);
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
-    }
+    build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xr, yr, zr);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
 
     return {BuiltinImplType::Full, 1};
 }
@@ -1188,11 +1098,37 @@ static BuiltinImplResult translateBuiltinVectorDot(IrBuilder& build, int nparams
 
     IrOp sum = build.inst(IrCmd::DOT_VEC, a, b);
 
-    if (FFlag::LuauCodegenSplitFloat)
-        sum = build.inst(IrCmd::FLOAT_TO_NUM, sum);
+    sum = build.inst(IrCmd::FLOAT_TO_NUM, sum);
 
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), sum);
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+
+    return {BuiltinImplType::Full, 1};
+}
+
+static BuiltinImplResult translateBuiltinVectorMap1x4(
+    IrBuilder& build,
+    IrCmd cmd,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    int pcpos
+)
+{
+    IrOp arg1 = build.vmReg(arg);
+
+    if (nparams != 1 || nresults > 1 || arg1.kind == IrOpKind::Constant)
+        return {BuiltinImplType::None, -1};
+
+    build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
+
+    IrOp value = build.inst(IrCmd::LOAD_TVALUE, arg1);
+    IrOp ret = build.inst(cmd, value);
+
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
 
     return {BuiltinImplType::Full, 1};
 }
@@ -1220,23 +1156,9 @@ static BuiltinImplResult translateBuiltinVectorMap1(
     IrOp y1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(4));
     IrOp z1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
 
-    if (FFlag::LuauCodegenSplitFloat && !FFlag::LuauCodegenFloatOps)
-    {
-        x1 = build.inst(IrCmd::FLOAT_TO_NUM, x1);
-        y1 = build.inst(IrCmd::FLOAT_TO_NUM, y1);
-        z1 = build.inst(IrCmd::FLOAT_TO_NUM, z1);
-    }
-
     IrOp xr = build.inst(cmd, x1);
     IrOp yr = build.inst(cmd, y1);
     IrOp zr = build.inst(cmd, z1);
-
-    if (FFlag::LuauCodegenSplitFloat && !FFlag::LuauCodegenFloatOps)
-    {
-        xr = build.inst(IrCmd::NUM_TO_FLOAT, xr);
-        yr = build.inst(IrCmd::NUM_TO_FLOAT, yr);
-        zr = build.inst(IrCmd::NUM_TO_FLOAT, zr);
-    }
 
     build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xr, yr, zr);
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
@@ -1273,104 +1195,69 @@ static BuiltinImplResult translateBuiltinVectorClamp(
     IrOp xmin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(0));
     IrOp xmax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(0));
 
-    if (FFlag::LuauCodegenFloatOps && FFlag::LuauCodegenSplitFloat)
-    {
-        build.inst(IrCmd::JUMP_CMP_FLOAT, xmin, xmax, build.cond(IrCondition::NotLessEqual), fallback, block1);
+    build.inst(IrCmd::JUMP_CMP_FLOAT, xmin, xmax, build.cond(IrCondition::NotLessEqual), fallback, block1);
 
-        build.beginBlock(block1);
+    build.beginBlock(block1);
 
-        IrOp y = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(4));
-        IrOp ymin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(4));
-        IrOp ymax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(4));
+    IrOp y = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(4));
+    IrOp ymin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(4));
+    IrOp ymax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(4));
 
-        build.inst(IrCmd::JUMP_CMP_FLOAT, ymin, ymax, build.cond(IrCondition::NotLessEqual), fallback, block2);
+    build.inst(IrCmd::JUMP_CMP_FLOAT, ymin, ymax, build.cond(IrCondition::NotLessEqual), fallback, block2);
 
-        build.beginBlock(block2);
+    build.beginBlock(block2);
 
-        IrOp z = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
-        IrOp zmin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(8));
-        IrOp zmax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(8));
+    IrOp z = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
+    IrOp zmin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(8));
+    IrOp zmax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(8));
 
-        build.inst(IrCmd::JUMP_CMP_FLOAT, zmin, zmax, build.cond(IrCondition::NotLessEqual), fallback, block3);
+    build.inst(IrCmd::JUMP_CMP_FLOAT, zmin, zmax, build.cond(IrCondition::NotLessEqual), fallback, block3);
 
-        build.beginBlock(block3);
+    build.beginBlock(block3);
 
-        IrOp xtemp = build.inst(IrCmd::MAX_FLOAT, xmin, x);
-        IrOp xclamped = build.inst(IrCmd::MIN_FLOAT, xmax, xtemp);
+    IrOp xtemp = build.inst(IrCmd::MAX_FLOAT, xmin, x);
+    IrOp xclamped = build.inst(IrCmd::MIN_FLOAT, xmax, xtemp);
 
-        IrOp ytemp = build.inst(IrCmd::MAX_FLOAT, ymin, y);
-        IrOp yclamped = build.inst(IrCmd::MIN_FLOAT, ymax, ytemp);
+    IrOp ytemp = build.inst(IrCmd::MAX_FLOAT, ymin, y);
+    IrOp yclamped = build.inst(IrCmd::MIN_FLOAT, ymax, ytemp);
 
-        IrOp ztemp = build.inst(IrCmd::MAX_FLOAT, zmin, z);
-        IrOp zclamped = build.inst(IrCmd::MIN_FLOAT, zmax, ztemp);
+    IrOp ztemp = build.inst(IrCmd::MAX_FLOAT, zmin, z);
+    IrOp zclamped = build.inst(IrCmd::MIN_FLOAT, zmax, ztemp);
 
-        build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xclamped, yclamped, zclamped);
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
-    }
-    else
-    {
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            x = build.inst(IrCmd::FLOAT_TO_NUM, x);
-            xmin = build.inst(IrCmd::FLOAT_TO_NUM, xmin);
-            xmax = build.inst(IrCmd::FLOAT_TO_NUM, xmax);
-        }
-
-        build.inst(IrCmd::JUMP_CMP_NUM, xmin, xmax, build.cond(IrCondition::NotLessEqual), fallback, block1);
-
-        build.beginBlock(block1);
-
-        IrOp y = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(4));
-        IrOp ymin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(4));
-        IrOp ymax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(4));
-
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            y = build.inst(IrCmd::FLOAT_TO_NUM, y);
-            ymin = build.inst(IrCmd::FLOAT_TO_NUM, ymin);
-            ymax = build.inst(IrCmd::FLOAT_TO_NUM, ymax);
-        }
-
-        build.inst(IrCmd::JUMP_CMP_NUM, ymin, ymax, build.cond(IrCondition::NotLessEqual), fallback, block2);
-
-        build.beginBlock(block2);
-
-        IrOp z = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
-        IrOp zmin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(8));
-        IrOp zmax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(8));
-
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            z = build.inst(IrCmd::FLOAT_TO_NUM, z);
-            zmin = build.inst(IrCmd::FLOAT_TO_NUM, zmin);
-            zmax = build.inst(IrCmd::FLOAT_TO_NUM, zmax);
-        }
-
-        build.inst(IrCmd::JUMP_CMP_NUM, zmin, zmax, build.cond(IrCondition::NotLessEqual), fallback, block3);
-
-        build.beginBlock(block3);
-
-        IrOp xtemp = build.inst(IrCmd::MAX_NUM, xmin, x);
-        IrOp xclamped = build.inst(IrCmd::MIN_NUM, xmax, xtemp);
-
-        IrOp ytemp = build.inst(IrCmd::MAX_NUM, ymin, y);
-        IrOp yclamped = build.inst(IrCmd::MIN_NUM, ymax, ytemp);
-
-        IrOp ztemp = build.inst(IrCmd::MAX_NUM, zmin, z);
-        IrOp zclamped = build.inst(IrCmd::MIN_NUM, zmax, ztemp);
-
-        if (FFlag::LuauCodegenSplitFloat)
-        {
-            xclamped = build.inst(IrCmd::NUM_TO_FLOAT, xclamped);
-            yclamped = build.inst(IrCmd::NUM_TO_FLOAT, yclamped);
-            zclamped = build.inst(IrCmd::NUM_TO_FLOAT, zclamped);
-        }
-
-        build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xclamped, yclamped, zclamped);
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
-    }
+    build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xclamped, yclamped, zclamped);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
 
     return {BuiltinImplType::UsesFallback, 1};
+}
+
+static BuiltinImplResult translateBuiltinVectorMinMax(
+    IrBuilder& build,
+    IrCmd cmd,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    int pcpos
+)
+{
+    IrOp arg1 = build.vmReg(arg);
+
+    if (nparams != 2 || nresults > 1 || arg1.kind == IrOpKind::Constant || args.kind == IrOpKind::Constant)
+        return {BuiltinImplType::None, -1};
+
+    build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
+    build.loadAndCheckTag(args, LUA_TVECTOR, build.vmExit(pcpos));
+
+    IrOp value1 = build.inst(IrCmd::LOAD_TVALUE, arg1);
+    IrOp value2 = build.inst(IrCmd::LOAD_TVALUE, args);
+
+    IrOp ret = build.inst(cmd, value2, value1); // Swapped arguments are required for consistency with VM builtins
+
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+
+    return {BuiltinImplType::Full, 1};
 }
 
 static BuiltinImplResult translateBuiltinVectorMap2(
@@ -1401,34 +1288,15 @@ static BuiltinImplResult translateBuiltinVectorMap2(
     IrOp y2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(4));
     IrOp z2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(8));
 
-    if (FFlag::LuauCodegenSplitFloat && !FFlag::LuauCodegenFloatOps)
-    {
-        x1 = build.inst(IrCmd::FLOAT_TO_NUM, x1);
-        y1 = build.inst(IrCmd::FLOAT_TO_NUM, y1);
-        z1 = build.inst(IrCmd::FLOAT_TO_NUM, z1);
-
-        x2 = build.inst(IrCmd::FLOAT_TO_NUM, x2);
-        y2 = build.inst(IrCmd::FLOAT_TO_NUM, y2);
-        z2 = build.inst(IrCmd::FLOAT_TO_NUM, z2);
-    }
-
     IrOp xr = build.inst(cmd, x1, x2);
     IrOp yr = build.inst(cmd, y1, y2);
     IrOp zr = build.inst(cmd, z1, z2);
-
-    if (FFlag::LuauCodegenSplitFloat && !FFlag::LuauCodegenFloatOps)
-    {
-        xr = build.inst(IrCmd::NUM_TO_FLOAT, xr);
-        yr = build.inst(IrCmd::NUM_TO_FLOAT, yr);
-        zr = build.inst(IrCmd::NUM_TO_FLOAT, zr);
-    }
 
     build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xr, yr, zr);
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
 
     return {BuiltinImplType::Full, 1};
 }
-
 
 BuiltinImplResult translateBuiltin(
     IrBuilder& build,
@@ -1496,27 +1364,27 @@ BuiltinImplResult translateBuiltin(
     case LBF_MATH_MODF:
         return translateBuiltinNumberTo2Number(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_BAND:
-        return translateBuiltinBit32BinaryOp(build, IrCmd::BITAND_UINT, /* btest= */ false, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinBit32MultiargOp(build, IrCmd::BITAND_UINT, /* btest= */ false, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_BIT32_BOR:
-        return translateBuiltinBit32BinaryOp(build, IrCmd::BITOR_UINT, /* btest= */ false, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinBit32MultiargOp(build, IrCmd::BITOR_UINT, /* btest= */ false, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_BIT32_BXOR:
-        return translateBuiltinBit32BinaryOp(build, IrCmd::BITXOR_UINT, /* btest= */ false, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinBit32MultiargOp(build, IrCmd::BITXOR_UINT, /* btest= */ false, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_BIT32_BTEST:
-        return translateBuiltinBit32BinaryOp(build, IrCmd::BITAND_UINT, /* btest= */ true, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinBit32MultiargOp(build, IrCmd::BITAND_UINT, /* btest= */ true, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_BIT32_BNOT:
         return translateBuiltinBit32Bnot(build, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_LSHIFT:
-        return translateBuiltinBit32Shift(build, IrCmd::BITLSHIFT_UINT, nparams, ra, arg, args, nresults, fallback, pcpos);
+        return translateBuiltinBit32Shift(build, IrCmd::BITLSHIFT_UINT, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_RSHIFT:
-        return translateBuiltinBit32Shift(build, IrCmd::BITRSHIFT_UINT, nparams, ra, arg, args, nresults, fallback, pcpos);
+        return translateBuiltinBit32Shift(build, IrCmd::BITRSHIFT_UINT, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_ARSHIFT:
-        return translateBuiltinBit32Shift(build, IrCmd::BITARSHIFT_UINT, nparams, ra, arg, args, nresults, fallback, pcpos);
+        return translateBuiltinBit32Shift(build, IrCmd::BITARSHIFT_UINT, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_LROTATE:
         return translateBuiltinBit32Rotate(build, IrCmd::BITLROTATE_UINT, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_RROTATE:
         return translateBuiltinBit32Rotate(build, IrCmd::BITRROTATE_UINT, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_EXTRACT:
-        return translateBuiltinBit32Extract(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
+        return translateBuiltinBit32Extract(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_BIT32_EXTRACTK:
         return translateBuiltinBit32ExtractK(build, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_COUNTLZ:
@@ -1524,7 +1392,7 @@ BuiltinImplResult translateBuiltin(
     case LBF_BIT32_COUNTRZ:
         return translateBuiltinBit32Unary(build, IrCmd::BITCOUNTRZ_UINT, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_REPLACE:
-        return translateBuiltinBit32Replace(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
+        return translateBuiltinBit32Replace(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_TYPE:
         return translateBuiltinType(build, nparams, ra, arg, args, nresults);
     case LBF_TYPEOF:
@@ -1556,15 +1424,9 @@ BuiltinImplResult translateBuiltin(
     case LBF_BUFFER_WRITEU32:
         return translateBuiltinBufferWrite(build, nparams, ra, arg, args, arg3, nresults, pcpos, IrCmd::BUFFER_WRITEI32, 4, IrCmd::NUM_TO_UINT);
     case LBF_BUFFER_READF32:
-        if (FFlag::LuauCodegenSplitFloat)
-            return translateBuiltinBufferRead(build, nparams, ra, arg, args, arg3, nresults, pcpos, IrCmd::BUFFER_READF32, 4, IrCmd::FLOAT_TO_NUM);
-        else
-            return translateBuiltinBufferRead(build, nparams, ra, arg, args, arg3, nresults, pcpos, IrCmd::BUFFER_READF32, 4, IrCmd::NOP);
+        return translateBuiltinBufferRead(build, nparams, ra, arg, args, arg3, nresults, pcpos, IrCmd::BUFFER_READF32, 4, IrCmd::FLOAT_TO_NUM);
     case LBF_BUFFER_WRITEF32:
-        if (FFlag::LuauCodegenSplitFloat)
-            return translateBuiltinBufferWrite(build, nparams, ra, arg, args, arg3, nresults, pcpos, IrCmd::BUFFER_WRITEF32, 4, IrCmd::NUM_TO_FLOAT);
-        else
-            return translateBuiltinBufferWrite(build, nparams, ra, arg, args, arg3, nresults, pcpos, IrCmd::BUFFER_WRITEF32, 4, IrCmd::NOP);
+        return translateBuiltinBufferWrite(build, nparams, ra, arg, args, arg3, nresults, pcpos, IrCmd::BUFFER_WRITEF32, 4, IrCmd::NUM_TO_FLOAT);
     case LBF_BUFFER_READF64:
         return translateBuiltinBufferRead(build, nparams, ra, arg, args, arg3, nresults, pcpos, IrCmd::BUFFER_READF64, 8, IrCmd::NOP);
     case LBF_BUFFER_WRITEF64:
@@ -1578,41 +1440,43 @@ BuiltinImplResult translateBuiltin(
     case LBF_VECTOR_DOT:
         return translateBuiltinVectorDot(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_FLOOR:
-        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+        if (FFlag::LuauCodegenExtraSimd)
+            return translateBuiltinVectorMap1x4(build, IrCmd::FLOOR_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        else
             return translateBuiltinVectorMap1(build, IrCmd::FLOOR_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
-        else
-            return translateBuiltinVectorMap1(build, IrCmd::FLOOR_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_CEIL:
-        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+        if (FFlag::LuauCodegenExtraSimd)
+            return translateBuiltinVectorMap1x4(build, IrCmd::CEIL_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        else
             return translateBuiltinVectorMap1(build, IrCmd::CEIL_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
-        else
-            return translateBuiltinVectorMap1(build, IrCmd::CEIL_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_ABS:
-        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+        if (FFlag::LuauCodegenExtraSimd)
+            return translateBuiltinVectorMap1x4(build, IrCmd::ABS_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        else
             return translateBuiltinVectorMap1(build, IrCmd::ABS_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
-        else
-            return translateBuiltinVectorMap1(build, IrCmd::ABS_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_SIGN:
-        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
-            return translateBuiltinVectorMap1(build, IrCmd::SIGN_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
-        else
-            return translateBuiltinVectorMap1(build, IrCmd::SIGN_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinVectorMap1(build, IrCmd::SIGN_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_CLAMP:
         return translateBuiltinVectorClamp(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
     case LBF_VECTOR_MIN:
-        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
+        if (FFlag::LuauCodegenExtraSimd)
+            return translateBuiltinVectorMinMax(build, IrCmd::MIN_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        else
             return translateBuiltinVectorMap2(build, IrCmd::MIN_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
-        else
-            return translateBuiltinVectorMap2(build, IrCmd::MIN_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_MAX:
-        if (FFlag::LuauCodegenSplitFloat && FFlag::LuauCodegenFloatOps)
-            return translateBuiltinVectorMap2(build, IrCmd::MAX_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
+        if (FFlag::LuauCodegenExtraSimd)
+            return translateBuiltinVectorMinMax(build, IrCmd::MAX_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
         else
-            return translateBuiltinVectorMap2(build, IrCmd::MAX_NUM, nparams, ra, arg, args, arg3, nresults, pcpos);
+            return translateBuiltinVectorMap2(build, IrCmd::MAX_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_LERP:
         return translateBuiltinVectorLerp(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_MATH_LERP:
         return translateBuiltinMathLerp(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
+    case LBF_MATH_ISNAN:
+        if (FFlag::LuauCodegenIsNanAndDirectCompare)
+            return translateBuiltinMathIsNan(build, nparams, ra, arg, args, nresults, pcpos);
+        else
+            return {BuiltinImplType::None, -1};
     default:
         return {BuiltinImplType::None, -1};
     }

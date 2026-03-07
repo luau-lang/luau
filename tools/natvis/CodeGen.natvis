@@ -66,6 +66,7 @@
     <DisplayString Condition="kind == IrOpKind::VmConst">K{index}</DisplayString>
     <DisplayString Condition="kind == IrOpKind::VmUpvalue">UP{index}</DisplayString>
     <DisplayString Condition="kind == IrOpKind::Inst">%{index}</DisplayString>
+    <DisplayString Condition="kind == IrOpKind::Constant">const#{index}</DisplayString>
   </Type>
 
 </AutoVisualizer>

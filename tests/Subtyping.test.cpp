@@ -16,7 +16,8 @@
 
 #include <initializer_list>
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 
 using namespace Luau;
 
@@ -66,11 +67,11 @@ struct SubtypeFixture : Fixture
     TypeArena arena;
     InternalErrorReporter iceReporter;
     UnifierSharedState sharedState{&ice};
-    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, !FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old};
     TypeCheckLimits limits;
     TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceReporter}, NotNull{&limits}};
 
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     ScopePtr rootScope{new Scope(getBuiltins()->emptyTypePack)};
     ScopePtr moduleScope{new Scope(rootScope)};
@@ -840,28 +841,28 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{x: <T>(T) -> ()} <: {x: <U>(U) -> ()}")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: number } <: { read x: number }")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK_IS_SUBTYPE(tbl({{"x", getBuiltins()->numberType}}), tbl({{"x", Property::readonly(getBuiltins()->numberType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: number } <: { write x: number }")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK_IS_SUBTYPE(tbl({{"x", getBuiltins()->numberType}}), tbl({{"x", Property::writeonly(getBuiltins()->numberType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: \"hello\" } <: { read x: string }")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK_IS_SUBTYPE(tbl({{"x", helloType}}), tbl({{"x", Property::readonly(getBuiltins()->stringType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: string } <: { write x: string }")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK_IS_SUBTYPE(tbl({{"x", getBuiltins()->stringType}}), tbl({{"x", Property::writeonly(getBuiltins()->stringType)}}));
 }
@@ -1810,6 +1811,32 @@ function bindAction(callback: ActionCallback)
 end
 )");
     LUAU_REQUIRE_NO_ERRORS(res);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "table_test_is_suppressing_if_all_mismatches_are_suppressing")
+{
+    ScopedFastFlag sff{FFlag::LuauMorePreciseErrorSuppression, true};
+
+    TypeId tableOne = parseType("{foo: any, bar: any}");
+    TypeId tableTwo = parseType("{foo: number, bar: string}");
+
+    SubtypingResult sr = subtyping.isSubtype(tableOne, tableTwo, NotNull{rootScope.get()});
+
+    CHECK(!sr.isSubtype);
+    CHECK(sr.isErrorSuppressing);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "table_test_is_non_suppressing_if_any_mismatches_are_non_suppressing")
+{
+    ScopedFastFlag sff{FFlag::LuauMorePreciseErrorSuppression, true};
+
+    TypeId tableOne = parseType("{foo: any, bar: string, baz: any}");
+    TypeId tableTwo = parseType("{foo: number, bar: number, baz: boolaen}");
+
+    SubtypingResult sr = subtyping.isSubtype(tableOne, tableTwo, NotNull{rootScope.get()});
+
+    CHECK(!sr.isSubtype);
+    CHECK(!sr.isErrorSuppressing);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "weird_cyclic_instantiation")

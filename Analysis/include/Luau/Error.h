@@ -755,7 +755,7 @@ public:
         , location(location)
     {
     }
-    virtual const char* what() const throw();
+    const char* what() const throw() override;
 
     const std::string message;
     const std::optional<std::string> moduleName;

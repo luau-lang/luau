@@ -42,7 +42,7 @@ using IncompatibilityReason = Variant<SubtypingReasonings, ErrorVec>;
  */
 struct SelectedOverload
 {
-   /**
+    /**
      * An unambiguous overload, if one can be selected. This is _not_ necessarily
      * an overload that is valid for the argument pack provided. For example:
      *
@@ -108,7 +108,6 @@ struct OverloadResolution
      * documentation.
      */
     SelectedOverload getUnambiguousOverload() const;
-
 };
 
 struct OverloadResolver
@@ -177,13 +176,7 @@ private:
         NotNull<DenseHashSet<TypeId>> uniqueTypes
     );
 
-    void testFunction(
-        OverloadResolution& result,
-        TypeId fnTy,
-        TypePackId argsPack,
-        Location fnLocation,
-        NotNull<DenseHashSet<TypeId>> uniqueTypes
-    );
+    void testFunction(OverloadResolution& result, TypeId fnTy, TypePackId argsPack, Location fnLocation, NotNull<DenseHashSet<TypeId>> uniqueTypes);
 
     void testFunctionOrCallMetamethod(
         OverloadResolution& result,

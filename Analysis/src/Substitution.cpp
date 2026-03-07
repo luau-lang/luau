@@ -10,6 +10,7 @@
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
+LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 namespace Luau
 {
@@ -241,7 +242,14 @@ void Tarjan::visitChildren(TypeId ty, int index)
     {
         for (const auto& [name, prop] : etv->props)
         {
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauAnalysisUsesSolverMode)
+            {
+                if (prop.readTy)
+                    visitChild(prop.readTy);
+                if (prop.writeTy)
+                    visitChild(prop.writeTy);
+            }
+            else if (FFlag::LuauSolverV2)
             {
                 visitChild(prop.readTy);
                 visitChild(prop.writeTy);
@@ -828,7 +836,7 @@ void Substitution::replaceChildren(TypeId ty)
     {
         for (auto& [name, prop] : etv->props)
         {
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
             {
                 if (prop.readTy)
                     prop.readTy = replace(prop.readTy);

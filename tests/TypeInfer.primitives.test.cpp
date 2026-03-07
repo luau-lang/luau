@@ -81,7 +81,7 @@ TEST_CASE_FIXTURE(Fixture, "check_methods_of_number")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK("Expected type table, got 'number' instead" == toString(result.errors[0]));
         if (FFlag::LuauBetterTypeMismatchErrors)

@@ -75,9 +75,9 @@ class CompileError : public std::exception
 public:
     CompileError(const Location& location, std::string message);
 
-    virtual ~CompileError() throw();
+    ~CompileError() throw() override;
 
-    virtual const char* what() const throw();
+    const char* what() const throw() override;
 
     const Location& getLocation() const;
 

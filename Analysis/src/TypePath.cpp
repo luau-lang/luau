@@ -16,7 +16,9 @@
 #include <optional>
 #include <sstream>
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
+LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal
@@ -379,7 +381,7 @@ struct TraversalState
         if (prop)
         {
             std::optional<TypeId> maybeType;
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
                 maybeType = property.isRead ? prop->readTy : prop->writeTy;
             else
                 maybeType = prop->type_DEPRECATED();
@@ -412,7 +414,8 @@ struct TraversalState
             if (auto u = get<UnionType>(*currentType))
             {
                 auto it = begin(u);
-                // We want to track the index that updates the current type with `idx` while still iterating through the entire union to check for error types with `it`.
+                // We want to track the index that updates the current type with `idx` while still iterating through the entire union to check for
+                // error types with `it`.
                 size_t idx = 0;
                 for (auto it = begin(u); it != end(u); ++it)
                 {
@@ -429,7 +432,8 @@ struct TraversalState
             else if (auto i = get<IntersectionType>(*currentType))
             {
                 auto it = begin(i);
-                // We want to track the index that updates the current type with `idx` while still iterating through the entire intersection to check for error types with `it`.
+                // We want to track the index that updates the current type with `idx` while still iterating through the entire intersection to check
+                // for error types with `it`.
                 size_t idx = 0;
                 for (auto it = begin(i); it != end(i); ++it)
                 {
@@ -652,7 +656,7 @@ std::string toString(const TypePath::Path& path, bool prefixDot)
         if constexpr (std::is_same_v<T, TypePath::Property>)
         {
             result << '[';
-            if (FFlag::LuauSolverV2)
+            if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
             {
                 if (c.isRead)
                     result << "read ";

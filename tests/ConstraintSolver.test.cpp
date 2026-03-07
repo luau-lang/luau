@@ -4,8 +4,6 @@
 #include "Fixture.h"
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauSolverV2);
-
 using namespace Luau;
 
 static TypeId requireBinding(Scope* scope, const char* name)

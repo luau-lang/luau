@@ -148,6 +148,7 @@ public:
 
     void vcvttsd2si(OperandX64 dst, OperandX64 src);
     void vcvtsi2sd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vcvtsi2ss(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vcvtsd2ss(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vcvtss2sd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
@@ -170,8 +171,10 @@ public:
     void vmovups(OperandX64 dst, OperandX64 src);
     void vmovq(OperandX64 lhs, OperandX64 rhs);
 
+    void vmaxps(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vmaxsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vmaxss(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vminps(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vminsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vminss(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
@@ -219,6 +222,7 @@ public:
 
     void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
 
+    // Code size is measured in 'code' array units - uint8_t on x64 and uint32_t on arm64
     uint32_t getCodeSize() const;
 
     unsigned getInstructionCount() const;

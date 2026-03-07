@@ -6,6 +6,7 @@ target_sources(Luau.Common PRIVATE
     Common/include/Luau/DenseHash.h
     Common/include/Luau/ExperimentalFlags.h
     Common/include/Luau/HashUtil.h
+    Common/include/Luau/SmallVector.h
     Common/include/Luau/StringUtils.h
     Common/include/Luau/TimeTrace.h
     Common/include/Luau/Variant.h
@@ -80,6 +81,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/AddressA64.h
     CodeGen/include/Luau/AssemblyBuilderA64.h
     CodeGen/include/Luau/AssemblyBuilderX64.h
+    CodeGen/include/Luau/CodeAllocationData.h
     CodeGen/include/Luau/CodeAllocator.h
     CodeGen/include/Luau/CodeBlockUnwind.h
     CodeGen/include/Luau/CodeGen.h
@@ -200,7 +202,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Frontend.h
     Analysis/include/Luau/Generalization.h
     Analysis/include/Luau/GlobalTypes.h
-    Analysis/include/Luau/InferPolarity.h
     Analysis/include/Luau/InsertionOrderedMap.h
     Analysis/include/Luau/Instantiation.h
     Analysis/include/Luau/Instantiation2.h
@@ -227,6 +228,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/StructuralTypeEquality.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Subtyping.h
+    Analysis/include/Luau/SubtypingUnifier.h
     Analysis/include/Luau/SubtypingVariance.h
     Analysis/include/Luau/Symbol.h
     Analysis/include/Luau/TableLiteralInference.h
@@ -259,6 +261,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/UserDefinedTypeFunction.h
     Analysis/include/Luau/VisitType.h
     Analysis/include/Luau/IterativeTypeVisitor.h
+    Analysis/include/Luau/IterativeTypeFunctionTypeVisitor.h
 
     Analysis/src/Anyification.cpp
     Analysis/src/ApplyTypeFunction.cpp
@@ -285,11 +288,11 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Generalization.cpp
     Analysis/src/NativeStackGuard.cpp
     Analysis/src/GlobalTypes.cpp
-    Analysis/src/InferPolarity.cpp
     Analysis/src/Instantiation.cpp
     Analysis/src/Instantiation2.cpp
     Analysis/src/IostreamHelpers.cpp
     Analysis/src/IterativeTypeVisitor.cpp
+    Analysis/src/IterativeTypeFunctionTypeVisitor.cpp
     Analysis/src/JsonEmitter.cpp
     Analysis/src/Linter.cpp
     Analysis/src/LValue.cpp
@@ -306,6 +309,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/StructuralTypeEquality.cpp
     Analysis/src/Substitution.cpp
     Analysis/src/Subtyping.cpp
+    Analysis/src/SubtypingUnifier.cpp
     Analysis/src/Symbol.cpp
     Analysis/src/TableLiteralInference.cpp
     Analysis/src/ToDot.cpp
@@ -412,10 +416,12 @@ target_sources(Luau.CLI.lib PRIVATE
 if(TARGET Luau.Repl.CLI)
     # Luau.Repl.CLI Sources
     target_sources(Luau.Repl.CLI PRIVATE
+        CLI/include/Luau/Counters.h
         CLI/include/Luau/Coverage.h
         CLI/include/Luau/Profiler.h
         CLI/include/Luau/ReplRequirer.h
 
+        CLI/src/Counters.cpp
         CLI/src/Coverage.cpp
         CLI/src/Profiler.cpp
         CLI/src/Repl.cpp
@@ -470,7 +476,6 @@ if(TARGET Luau.UnitTest)
         tests/FragmentAutocomplete.test.cpp
         tests/Frontend.test.cpp
         tests/Generalization.test.cpp
-        tests/InferPolarity.test.cpp
         tests/InsertionOrderedMap.test.cpp
         tests/IostreamOptional.h
         tests/IrBuilder.test.cpp
@@ -556,10 +561,12 @@ endif()
 if(TARGET Luau.CLI.Test)
     # Luau.CLI.Test Sources
     target_sources(Luau.CLI.Test PRIVATE
+        CLI/include/Luau/Counters.h
         CLI/include/Luau/Coverage.h
         CLI/include/Luau/Profiler.h
         CLI/include/Luau/ReplRequirer.h
 
+        CLI/src/Counters.cpp
         CLI/src/Coverage.cpp
         CLI/src/Profiler.cpp
         CLI/src/Repl.cpp

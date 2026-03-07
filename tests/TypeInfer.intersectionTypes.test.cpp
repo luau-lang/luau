@@ -9,9 +9,10 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
+LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -174,7 +175,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_property_guarante
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK("(A & B) -> { y: number }" == toString(requireType("f")));
     else
         CHECK("(A & B) -> { y: number } & { y: number }" == toString(requireType("f")));
@@ -193,7 +194,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_works_at_arbitrary_dep
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("(A & B) -> string", toString(requireType("f")));
     else
         CHECK_EQ("(A & B) -> string & string", toString(requireType("f")));
@@ -212,7 +213,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_mixed_types")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("(A & B) -> never", toString(requireType("f")));
     else
         CHECK_EQ("(A & B) -> number & string", toString(requireType("f")));
@@ -350,7 +351,7 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'X & Y'");
         auto err1 = get<TypeMismatch>(result.errors[1]);
@@ -452,7 +453,7 @@ local a: XYZ = 3
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected = FFlag::LuauBetterTypeMismatchErrors
                                          ? "Expected this to be 'X & Y & Z', but got 'number'; \n"
@@ -506,7 +507,7 @@ end
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected = FFlag::LuauBetterTypeMismatchErrors
                                          ? "Expected this to be 'number', but got 'X & Y & Z'; \n"
@@ -571,7 +572,7 @@ TEST_CASE_FIXTURE(Fixture, "intersect_bool_and_false")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected = FFlag::LuauBetterTypeMismatchErrors
                                          ? "Expected this to be 'true', but got 'boolean & false'; \n"
@@ -607,7 +608,7 @@ TEST_CASE_FIXTURE(Fixture, "intersect_false_and_bool_and_false")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     // TODO: odd stringification of `false & (boolean & false)`.)
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected = FFlag::LuauBetterTypeMismatchErrors
                                          ? "Expected this to be 'true', but got 'boolean & false & false'; \n"
@@ -645,7 +646,36 @@ TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+    {
+        // clang-format off
+        const std::string expected1 =
+            "Expected this to be\n"
+            "\t'(nil) -> nil'\n"
+            "but got\n"
+            "\t'((number?) -> number?) & ((string?) -> string?)'; \n"
+            "this is because \n"
+            "\t * in the 1st component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the union as `number` and it returns the 1st entry in the type pack is `nil`, and `number` is not a subtype of `nil`\n"
+            "\t * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the union as `string` and it returns the 1st entry in the type pack is `nil`, and `string` is not a subtype of `nil`"
+        ;
+        const std::string expected2 =
+            "Expected this to be\n"
+            "	'(number) -> number'\n"
+            "but got\n"
+            "	'((number?) -> number?) & ((string?) -> string?)';\n"
+            "this is because\n"
+            "	 * in the 1st component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the union as `nil` and it returns the 1st entry in the type pack is `number`, and `nil` is not a subtype of `number`\n"
+            "	 * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the union as `string` and it returns the 1st entry in the type pack is `number`, and `string` is not a subtype of `number`\n"
+            "	 * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the union as `nil` and it returns the 1st entry in the type pack is `number`, and `nil` is not a subtype of `number`\n"
+            "	 * in the 2nd component of the intersection, the function takes the 1st entry in the type pack which has the 1st component of the union as `string` and it takes the 1st entry in the type pack is `number`, and `string` is not a supertype of `number`\n"
+            "	 * in the 2nd component of the intersection, the function takes the 1st entry in the type pack which has the 2nd component of the union as `nil` and it takes the 1st entry in the type pack is `number`, and `nil` is not a supertype of `number`\n"
+        ;
+        // clang-format on
+
+        CHECK_LONG_STRINGS_EQ(expected1, toString(result.errors.at(0)));
+        CHECK_LONG_STRINGS_EQ(expected2, toString(result.errors.at(1)));
+    }
+    else if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected1 =
             FFlag::LuauBetterTypeMismatchErrors
@@ -770,7 +800,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected =
             FFlag::LuauBetterTypeMismatchErrors
@@ -814,7 +844,31 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+    {
+        // clang-format off
+        const std::string expected =
+            "Expected this to be\n"
+            "\t'{ p: string?, q: number? }'\n"
+            "but got\n"
+            "\t'{ p: number?, q: any } & { p: unknown, q: string? }'; \n"
+            "this is because \n"
+            "\t * in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and accessing `p` has the 1st component of the union as `string`, and `number` is not exactly `string`\n"
+            "\t * in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and accessing `p` has the 2nd component of the union as `nil`, and `number` is not exactly `nil`\n"
+            "\t * in the 1st component of the intersection, accessing `p` has the 2nd component of the union as `nil` and accessing `p` has the 1st component of the union as `string`, and `nil` is not exactly `string`\n"
+            "\t * in the 1st component of the intersection, accessing `q` results in `any` and accessing `q` has the 1st component of the union as `number`, and `any` is not exactly `number`\n"
+            "\t * in the 1st component of the intersection, accessing `q` results in `any` and accessing `q` has the 2nd component of the union as `nil`, and `any` is not exactly `nil`\n"
+            "\t * in the 2nd component of the intersection, accessing `p` results in `unknown` and accessing `p` has the 1st component of the union as `string`, and `unknown` is not exactly `string`\n"
+            "\t * in the 2nd component of the intersection, accessing `p` results in `unknown` and accessing `p` has the 2nd component of the union as `nil`, and `unknown` is not exactly `nil`\n"
+            "\t * in the 2nd component of the intersection, accessing `q` has the 1st component of the union as `string` and accessing `q` has the 1st component of the union as `number`, and `string` is not exactly `number`\n"
+            "\t * in the 2nd component of the intersection, accessing `q` has the 1st component of the union as `string` and accessing `q` has the 2nd component of the union as `nil`, and `string` is not exactly `nil`\n"
+            "\t * in the 2nd component of the intersection, accessing `q` has the 2nd component of the union as `nil` and accessing `q` has the 1st component of the union as `number`, and `nil` is not exactly `number`\n"
+        ;
+        // clang-format on
+
+        CHECK_LONG_STRINGS_EQ(expected, toString(result.errors.at(0)));
+    }
+    else if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected =
             FFlag::LuauBetterTypeMismatchErrors
@@ -895,7 +949,40 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        // clang-format off
+        const std::string expected1 =
+            "Expected this to be\n"
+            "	'(nil) -> { p: number, q: number, r: number }'\n"
+            "but got\n"
+            "	'((number?) -> { p: number } & { q: number }) & ((string?) -> { p: number } & { r: number })'; \n"
+            "this is because \n"
+            "	 * in the 1st component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the intersection as `{ p: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ p: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
+            "	 * in the 1st component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the intersection as `{ q: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ q: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
+            "	 * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the intersection as `{ p: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ p: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
+            "	 * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the intersection as `{ r: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ r: number }` is not a subtype of `{ p: number, q: number, r: number }`"
+        ;
+        const std::string expected2 =
+            "Expected this to be\n"
+            "	'(number?) -> { p: number, q: number, r: number }'\n"
+            "but got\n"
+            "	'((number?) -> { p: number } & { q: number }) & ((string?) -> { p: number } & { r: number })'; \n"
+            "this is because \n"
+            "	 * in the 1st component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the intersection as `{ p: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ p: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
+            "	 * in the 1st component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the intersection as `{ q: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ q: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
+            "	 * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the intersection as `{ p: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ p: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
+            "	 * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the intersection as `{ r: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ r: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
+            "	 * in the 2nd component of the intersection, the function takes the 1st entry in the type pack which has the 1st component of the union as `string` and it takes the 1st entry in the type pack has the 1st component of the union as `number`, and `string` is not a supertype of `number`\n"
+            "	 * in the 2nd component of the intersection, the function takes the 1st entry in the type pack which has the 2nd component of the union as `nil` and it takes the 1st entry in the type pack has the 1st component of the union as `number`, and `nil` is not a supertype of `number`"
+        ;
+        // clang-format on
+
+        CHECK_LONG_STRINGS_EQ(expected1, toString(result.errors.at(0)));
+        CHECK_LONG_STRINGS_EQ(expected2, toString(result.errors.at(1)));
+    }
+    else if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected1 =
             FFlag::LuauBetterTypeMismatchErrors
@@ -1030,7 +1117,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic")
             end
         end
     )");
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(0, result);
     }
@@ -1066,7 +1153,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generics")
     )");
 
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
     }
@@ -1101,7 +1188,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic_packs")
             end
         end
     )");
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         const TypeMismatch* tm1 = get<TypeMismatch>(result.errors[0]);
@@ -1277,7 +1364,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_result")
     end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected1 =
             FFlag::LuauBetterTypeMismatchErrors
@@ -1369,7 +1456,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_arguments")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected1 =
             FFlag::LuauBetterTypeMismatchErrors
@@ -1500,7 +1587,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_1")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
     }
@@ -1533,7 +1620,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_2")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         const TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
@@ -1570,7 +1657,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_3")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         const TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
@@ -1611,7 +1698,7 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_4")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
         CHECK(tm);
@@ -1680,10 +1767,10 @@ could not be converted into
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables")
 {
     // CLI-117121 - Intersection of types are not compatible with the equivalent alias
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return;
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CheckResult result = check(R"(
             function f(a: string?, b: string?)
@@ -1773,7 +1860,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables_with_properties")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with_table")
 {
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CheckResult result = check(R"(
             local x = setmetatable({ a = 5 }, { p = 5 })
@@ -1839,7 +1926,7 @@ TEST_CASE_FIXTURE(Fixture, "CLI-44817")
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -1849,6 +1936,10 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types")
         end
     )");
 
+    // We have one error here for the parameter being reduced to never, and
+    // then three bits of extra information indicating the three upper
+    // bound contributors: `{ x: number }`, `{ x: string }`, and `{ x: a }`
+    // from the function inference.
     LUAU_REQUIRE_ERROR_COUNT(3, result);
 
     CHECK_EQ("(never) -> { x: number } & { x: string }", toString(requireType("f")));
@@ -1856,7 +1947,7 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types")
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types_2")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -1902,7 +1993,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_property_table_intersection_2")
 
 TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_degenerate_intersections")
 {
-    ScopedFastFlag dcr{FFlag::LuauSolverV2, true};
+    ScopedFastFlag dcr{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type A = {
@@ -1925,7 +2016,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_degenerate_intersections")
 
 TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
 {
-    ScopedFastFlag dcr{FFlag::LuauSolverV2, true};
+    ScopedFastFlag dcr{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type A = {
@@ -1950,7 +2041,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "narrow_intersection_nevers")
 {
-    ScopedFastFlag sffs{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sffs{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare class Player

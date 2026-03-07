@@ -22,4 +22,7 @@ type summary add --summary-string "${var.ty} (${var%S})" Luau::TypeId Luau::Type
 type summary add Luau::TypePath::Property -F lldb_formatters.luau_typepath_property_summary
 type summary add --summary-string "[${var.index}]" Luau::TypePath::Index
 
+type summary add TString -F lldb_formatters.luau_tstring_summary
+type summary add TValue -F lldb_formatters.luau_tvalue_summary
+
 type summary add -x "^Luau::TryPair<.+>$" --summary-string "(${var.first%T}, ${var.second%T})"

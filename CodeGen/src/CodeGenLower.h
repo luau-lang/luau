@@ -27,7 +27,7 @@ LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
-LUAU_FASTFLAG(LuauCodegenBetterSccRemoval)
+LUAU_FASTFLAG(LuauCodegenCounterSupport)
 
 namespace Luau
 {
@@ -153,6 +153,9 @@ inline bool lowerImpl(
         {
             function.entryLocation = build.getLabelOffset(block.label);
         }
+
+        if (FFlag::LuauCodegenCounterSupport)
+            lowering.startBlock(block);
 
         IrBlock& nextBlock = getNextBlock(function, sortedBlocks, dummy, i);
 
@@ -318,6 +321,9 @@ inline bool lowerFunction(
 {
     ir.function.stats = stats;
 
+    if (FFlag::LuauCodegenCounterSupport)
+        ir.function.recordCounters = options.compilationOptions.recordCounters;
+
     killUnusedBlocks(ir.function);
 
     unsigned preOptBlockCount = 0;
@@ -377,11 +383,8 @@ inline bool lowerFunction(
 
     markDeadStoresInBlockChains(ir);
 
-    if (FFlag::LuauCodegenBetterSccRemoval)
-    {
-        // Recompute the CFG predecessors/successors to match block uses after optimizations
-        computeCfgBlockEdges(ir.function);
-    }
+    // Recompute the CFG predecessors/successors to match block uses after optimizations
+    computeCfgBlockEdges(ir.function);
 
     std::vector<uint32_t> sortedBlocks = getSortedBlockOrder(ir.function);
 

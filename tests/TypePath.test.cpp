@@ -15,19 +15,20 @@
 using namespace Luau;
 using namespace Luau::TypePath;
 
-LUAU_FASTFLAG(LuauSolverV2);
+LUAU_FASTFLAG(DebugLuauForceOldSolver);
 LUAU_DYNAMIC_FASTINT(LuauTypePathMaximumTraverseSteps);
+LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 struct TypePathFixture : Fixture
 {
-    ScopedFastFlag sff1{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff1{FFlag::DebugLuauForceOldSolver, false};
     TypeArena arena;
     const DenseHashMap<TypePackId, TypePackId> emptyMap_DEPRECATED{nullptr};
 };
 
 struct TypePathBuiltinsFixture : BuiltinsFixture
 {
-    ScopedFastFlag sff1{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff1{FFlag::DebugLuauForceOldSolver, false};
     TypeArena arena;
     const DenseHashMap<TypePackId, TypePackId> emptyMap_DEPRECATED{nullptr};
 };
@@ -587,9 +588,8 @@ TEST_SUITE_BEGIN("TypePathToString");
 
 TEST_CASE("field")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
-    CHECK(toString(PathBuilder().prop("foo").build()) == R"(["foo"])");
+    ScopedFastFlag sff{FFlag::LuauAnalysisUsesSolverMode, true};
+    CHECK(toString(PathBuilder().prop("foo").build()) == R"([read "foo"])");
 }
 
 TEST_CASE("index")
@@ -604,7 +604,7 @@ TEST_CASE("chain")
 
 TEST_CASE("human_property_then_metatable_portion")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK(toStringHuman(PathBuilder().readProp("a").mt().build()) == "accessing `a` has the metatable portion as ");
     CHECK(toStringHuman(PathBuilder().writeProp("a").mt().build()) == "writing to `a` has the metatable portion as ");
@@ -612,7 +612,7 @@ TEST_CASE("human_property_then_metatable_portion")
 
 TEST_CASE("pack_slice")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK(toString(PathBuilder().packSlice(1).build()) == "[1:]");
     CHECK(toStringHuman(PathBuilder().packSlice(1).build()) == "the portion of the type pack starting at index 1 to the end");
@@ -670,7 +670,7 @@ TEST_CASE("fields")
 
 TEST_CASE("chained")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK(
         PathBuilder().index(0).readProp("foo").mt().readProp("bar").args().index(1).build() ==

@@ -12,7 +12,8 @@
 
 #include "lstate.h"
 
-LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck);
+LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck)
+LUAU_FASTFLAG(LuauCodegenFreeBlocks)
 
 namespace Luau
 {
@@ -169,11 +170,11 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     // Unlikely, but this might be the last return from VM
     build.ldr(w4, mem(x0, offsetof(CallInfo, flags)));
-    build.tbnz(w4, countrz(LUA_CALLINFO_RETURN), helpers.exitNoContinueVm);
+    build.tbnz(w4, countrz(uint32_t(LUA_CALLINFO_RETURN)), helpers.exitNoContinueVm);
 
     // Continue in interpreter if function has no native data
     build.ldr(w4, mem(x2, offsetof(CallInfo, flags)));
-    build.tbz(w4, countrz(LUA_CALLINFO_NATIVE), helpers.exitContinueVm);
+    build.tbz(w4, countrz(uint32_t(LUA_CALLINFO_NATIVE)), helpers.exitContinueVm);
 
     // Need to update state of the current function before we jump away
     build.ldr(rClosure, mem(x2, offsetof(CallInfo, func)));
@@ -287,17 +288,35 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
     CODEGEN_ASSERT(build.data.empty());
 
     uint8_t* codeStart = nullptr;
-    if (!codeGenContext.codeAllocator.allocate(
+
+    if (FFlag::LuauCodegenFreeBlocks)
+    {
+        codeGenContext.gateAllocationData = codeGenContext.codeAllocator.allocate(
             build.data.data(),
             int(build.data.size()),
             reinterpret_cast<const uint8_t*>(build.code.data()),
-            int(build.code.size() * sizeof(build.code[0])),
-            codeGenContext.gateData,
-            codeGenContext.gateDataSize,
-            codeStart
-        ))
+            int(build.code.size() * sizeof(build.code[0]))
+        );
+
+        if (!codeGenContext.gateAllocationData.start)
+            return false;
+
+        codeStart = codeGenContext.gateAllocationData.codeStart;
+    }
+    else
     {
-        return false;
+        if (!codeGenContext.codeAllocator.allocate_DEPRECATED(
+                build.data.data(),
+                int(build.data.size()),
+                reinterpret_cast<const uint8_t*>(build.code.data()),
+                int(build.code.size() * sizeof(build.code[0])),
+                codeGenContext.gateData_DEPRECATED,
+                codeGenContext.gateDataSize_DEPRECATED,
+                codeStart
+            ))
+        {
+            return false;
+        }
     }
 
     // Set the offset at the beginning so that functions in new blocks will not overlay the locations
