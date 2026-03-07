@@ -3067,6 +3067,13 @@ TEST_CASE_FIXTURE(Fixture, "error_const_function_reassignment")
     matchParseError("const function a() return 42 end; a = 43", "Assigned expression must be a variable or a field");
 }
 
+TEST_CASE_FIXTURE(Fixture, "error_const_function_reassignment_2")
+{
+    ScopedFastFlag sff{FFlag::LuauConst, true};
+
+    matchParseError("const x = 5; function x() end", "Function name must be a variable or a field");
+}
+
 TEST_CASE_FIXTURE(Fixture, "const_shadow")
 {
     ScopedFastFlag sff{FFlag::LuauConst, true};

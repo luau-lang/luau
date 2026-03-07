@@ -861,6 +861,12 @@ AstExpr* Parser::parseFunctionName(bool& hasself, AstName& debugname)
         hasself = true;
     }
 
+    if (FFlag::LuauConst)
+    {
+        if (auto local = expr->as<AstExprLocal>(); local && local->local->isConst)
+            expr = reportExprError(expr->location, copy({expr}), "Function name must be a variable or a field");
+    }
+
     return expr;
 }
 
