@@ -26,7 +26,8 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteSingletonsInIndexer)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionCallArgTails2)
+LUAU_FASTFLAGVARIABLE(LuauACOnMTTWriteOnlyPropNoCrash)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -124,7 +125,8 @@ static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* n
     // When we don't have anything inside () yet, we also don't have an AST node to base our lookup
     if (AstExprCall* exprCall = expr->as<AstExprCall>())
     {
-        if (exprCall->args.size == 0 && exprCall->argLocation.contains(position))
+        if ((exprCall->args.size == 0 && exprCall->argLocation.contains(position)) ||
+            (FFlag::LuauAutocompleteFunctionCallArgTails2 && exprCall->args.size > 0 && (*exprCall->args.begin())->as<AstExprError>()))
         {
             auto it = module.astTypes.find(exprCall->func);
 
@@ -141,6 +143,8 @@ static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* n
 
             if (index < head.size())
                 return head[index];
+            else if (FFlag::LuauAutocompleteFunctionCallArgTails2 && index == head.size() && tail.has_value() && isVariadic(*tail))
+                return first(*tail);
 
             return std::nullopt;
         }
@@ -395,21 +399,49 @@ static void autocompleteProps(
         auto indexIt = mtable->props.find("__index");
         if (indexIt != mtable->props.end())
         {
-            TypeId followed;
-            if (auto propTy = indexIt->second.readTy)
+#ifndef __EMSCRIPTEN__
+            // EMSDK cannot compile the flag-off branch, so force the flag on with defines here.
+            // Delete these conditionals when this flag is removed.
+            if (FFlag::LuauACOnMTTWriteOnlyPropNoCrash)
+#endif
             {
-                followed = follow(*propTy);
+                TypeId followed = indexIt->second.readTy.value_or(nullptr);
+                if (followed == nullptr)
+                    return;
+                followed = follow(followed);
+                LUAU_ASSERT(followed);
+
+                if (get<TableType>(followed) || get<MetatableType>(followed))
+                {
+                    autocompleteProps(module, typeArena, builtinTypes, rootTy, followed, indexType, nodes, result, seen);
+                }
+                else if (auto indexFunction = get<FunctionType>(followed))
+                {
+                    std::optional<TypeId> indexFunctionResult = first(indexFunction->retTypes);
+                    if (indexFunctionResult)
+                        autocompleteProps(module, typeArena, builtinTypes, rootTy, *indexFunctionResult, indexType, nodes, result, seen);
+                }
             }
-            if (get<TableType>(followed) || get<MetatableType>(followed))
+#ifndef __EMSCRIPTEN__
+            else
             {
-                autocompleteProps(module, typeArena, builtinTypes, rootTy, followed, indexType, nodes, result, seen);
+                TypeId followed;
+                if (auto propTy = indexIt->second.readTy)
+                {
+                    followed = follow(*propTy);
+                }
+                if (get<TableType>(followed) || get<MetatableType>(followed))
+                {
+                    autocompleteProps(module, typeArena, builtinTypes, rootTy, followed, indexType, nodes, result, seen);
+                }
+                else if (auto indexFunction = get<FunctionType>(followed))
+                {
+                    std::optional<TypeId> indexFunctionResult = first(indexFunction->retTypes);
+                    if (indexFunctionResult)
+                        autocompleteProps(module, typeArena, builtinTypes, rootTy, *indexFunctionResult, indexType, nodes, result, seen);
+                }
             }
-            else if (auto indexFunction = get<FunctionType>(followed))
-            {
-                std::optional<TypeId> indexFunctionResult = first(indexFunction->retTypes);
-                if (indexFunctionResult)
-                    autocompleteProps(module, typeArena, builtinTypes, rootTy, *indexFunctionResult, indexType, nodes, result, seen);
-            }
+#endif
         }
     };
 
@@ -423,7 +455,7 @@ static void autocompleteProps(
     else if (auto tbl = get<TableType>(ty))
     {
         fillProps(tbl->props);
-        if (FFlag::LuauAutocompleteSingletonsInIndexer && tbl->indexer && indexType == PropIndexType::Point)
+        if (tbl->indexer && indexType == PropIndexType::Point)
         {
             auto indexerTy = follow(tbl->indexer->indexType);
             if (auto utv = get<UnionType>(indexerTy))

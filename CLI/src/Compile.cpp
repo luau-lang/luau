@@ -413,7 +413,7 @@ static void displayHelp(const char* argv0)
     printf("Usage: %s [--mode] [options] [file list]\n", argv0);
     printf("\n");
     printf("Available modes:\n");
-    printf("   binary, text, remarks, codegen\n");
+    printf("   binary, text, remarks, codegen, codegenir, codegenasm, codegenverbose, codegennull, null\n");
     printf("\n");
     printf("Available options:\n");
     printf("  -h, --help: Display this usage message.\n");
@@ -427,6 +427,7 @@ static void displayHelp(const char* argv0)
     printf("  --vector-lib=<name>: name of the library providing vector type operations.\n");
     printf("  --vector-ctor=<name>: name of the function constructing a vector value.\n");
     printf("  --vector-type=<name>: name of the vector type.\n");
+    printf("  --fflags=<flags>: comma-separated list of fast flags to enable/disable (--fflags=true,false,LuauFlag1=true,LuauFlag2=false).\n");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)

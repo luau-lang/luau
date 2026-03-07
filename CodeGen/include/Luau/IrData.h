@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Bytecode.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
 #include "Luau/RegisterX64.h"
@@ -794,8 +795,18 @@ enum class IrCmd : uint8_t
     FALLBACK_FORGPREP,
 
     // Instruction that passes value through, it is produced by constant folding and users substitute it with the value
-    SUBSTITUTE,
     // A: operand of any type
+    SUBSTITUTE,
+
+    // Pseudo instruction to mark VM registers as implicitly used at the location
+    // A: Rn (start)
+    // B: int (count, -1 to mark all registers after start)
+    MARK_USED,
+
+    // Pseudo instruction to mark VM registers as dead at the location
+    // A: Rn (start)
+    // B: int (count, -1 to mark all registers after start)
+    MARK_DEAD,
 
     // Performs bitwise and/xor/or on two unsigned integers
     // A, B: int
@@ -1080,6 +1091,14 @@ inline bool hasOp(IrInst& inst, uint32_t idx)
 #define HAS_OP_F(inst) (5 < (inst).ops.size() && (inst).ops[5].kind != IrOpKind::None)
 #define HAS_OP_G(inst) (6 < (inst).ops.size() && (inst).ops[6].kind != IrOpKind::None)
 
+#define OPT_OP_A(inst) (0 < (inst).ops.size() && (inst).ops[0].kind != IrOpKind::None ? (inst).ops[0] : IrOp{})
+#define OPT_OP_B(inst) (1 < (inst).ops.size() && (inst).ops[1].kind != IrOpKind::None ? (inst).ops[1] : IrOp{})
+#define OPT_OP_C(inst) (2 < (inst).ops.size() && (inst).ops[2].kind != IrOpKind::None ? (inst).ops[2] : IrOp{})
+#define OPT_OP_D(inst) (3 < (inst).ops.size() && (inst).ops[3].kind != IrOpKind::None ? (inst).ops[3] : IrOp{})
+#define OPT_OP_E(inst) (4 < (inst).ops.size() && (inst).ops[4].kind != IrOpKind::None ? (inst).ops[4] : IrOp{})
+#define OPT_OP_F(inst) (5 < (inst).ops.size() && (inst).ops[5].kind != IrOpKind::None ? (inst).ops[5] : IrOp{})
+#define OPT_OP_G(inst) (6 < (inst).ops.size() && (inst).ops[6].kind != IrOpKind::None ? (inst).ops[6] : IrOp{})
+
 // When IrInst operands are used, current instruction index is often required to track lifetime
 inline constexpr uint32_t kInvalidInstIdx = ~0u;
 
@@ -1194,6 +1213,7 @@ struct IrBlock
     uint32_t chainkey = 0;
     uint32_t expectedNextBlock = ~0u;
 
+    // Bytecode PC position at which the block was generated
     uint32_t startpc = kBlockNoStartPc;
 
     Label label;
@@ -1260,6 +1280,8 @@ struct IrFunction
     uint32_t entryLocation = 0;
     uint32_t endLocation = 0;
 
+    std::vector<uint32_t> extraNativeData;
+
     // For each instruction, an operand that can be used to recompute the value
     std::vector<ValueRestoreLocation> valueRestoreOps;
     std::vector<uint32_t> validRestoreOpBlocks;
@@ -1273,6 +1295,8 @@ struct IrFunction
     CfgInfo cfg;
 
     LoweringStats* stats = nullptr;
+
+    bool recordCounters = false; // Taken from CompilationOptions for easy access
 
     IrBlock& blockOp(IrOp op)
     {

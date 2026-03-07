@@ -5,12 +5,15 @@
 #include "AliasCycleTracker.h"
 #include "PathUtilities.h"
 
+#include "Luau/Common.h"
 #include "Luau/Config.h"
 #include "Luau/LuauConfig.h"
 
 #include <algorithm>
 #include <optional>
 #include <utility>
+
+LUAU_FASTFLAGVARIABLE(LuauRequireAliasOverrideOrderFix)
 
 namespace Luau::Require
 {
@@ -71,6 +74,12 @@ Error Navigator::navigateImpl(std::string_view path)
             }
         );
 
+        if (FFlag::LuauRequireAliasOverrideOrderFix)
+        {
+            if (Error error = resetToRequirer())
+                return error;
+        }
+
         if (auto [error, wasOverridden] = toAliasOverride(alias); error)
         {
             return error;
@@ -83,8 +92,11 @@ Error Navigator::navigateImpl(std::string_view path)
             return std::nullopt;
         }
 
-        if (Error error = resetToRequirer())
-            return error;
+        if (!FFlag::LuauRequireAliasOverrideOrderFix)
+        {
+            if (Error error = resetToRequirer())
+                return error;
+        }
 
         Config config;
         if (Error error = navigateToAndPopulateConfig(alias, config))

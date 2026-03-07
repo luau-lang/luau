@@ -18,19 +18,20 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-LUAU_FASTFLAG(LuauPushTypeConstraintLambdas3)
-LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarity2)
 LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
-LUAU_FASTFLAG(LuauPushTypeConstraintStripNilFromFunction)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
-LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks)
+LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauContainsAnyGenericDoesntTraverseIntoExtern)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals)
+LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
+LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
+LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
+LUAU_FASTFLAG(LuauForwardPolarityForFunctionTypes)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -89,7 +90,7 @@ TEST_CASE_FIXTURE(Fixture, "check_function_bodies")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         const TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
         REQUIRE_MESSAGE(tm, "Expected TypeMismatch but got " << result.errors[0]);
@@ -252,7 +253,7 @@ TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         MultipleNonviableOverloads* mno = get<MultipleNonviableOverloads>(result.errors[0]);
         REQUIRE_MESSAGE(mno, "Expected MultipleNonviableOverloads but got " << result.errors[0]);
@@ -269,7 +270,7 @@ TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_
     ExtraInformation* ei = get<ExtraInformation>(result.errors[1]);
     REQUIRE(ei);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         // TODO CLI-170535: Improve message so we show overloads with matching and non-matching arities
         CHECK("Available overloads: (number) -> number; and (number) -> string" == ei->message);
@@ -497,7 +498,7 @@ TEST_CASE_FIXTURE(Fixture, "another_higher_order_function")
 
 TEST_CASE_FIXTURE(Fixture, "another_other_higher_order_function")
 {
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CheckResult result = check(R"(
             local function f(d)
@@ -1036,7 +1037,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "calling_function_with_anytypepack_doesnt_lea
     opts.exhaustive = true;
     opts.maxTableLength = 0;
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("{string}", toString(requireType("tab"), opts));
     else
         CHECK_EQ("{any}", toString(requireType("tab"), opts));
@@ -1132,7 +1133,7 @@ TEST_CASE_FIXTURE(Fixture, "function_does_not_return_enough_values")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -1172,7 +1173,7 @@ TEST_CASE_FIXTURE(Fixture, "function_cast_error_uses_correct_language")
     REQUIRE(tm1);
 
     CHECK_EQ("(string) -> number", toString(tm1->wantedType));
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("(unknown, unknown) -> number", toString(tm1->givenType));
     else
         CHECK_EQ("(string, *error-type*) -> number", toString(tm1->givenType));
@@ -1181,7 +1182,7 @@ TEST_CASE_FIXTURE(Fixture, "function_cast_error_uses_correct_language")
     REQUIRE(tm2);
 
     CHECK_EQ("(number, number) -> (number, number)", toString(tm2->wantedType));
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("(unknown, unknown) -> number", toString(tm1->givenType));
     else
         CHECK_EQ("(string, *error-type*) -> number", toString(tm2->givenType));
@@ -1201,7 +1202,7 @@ TEST_CASE_FIXTURE(Fixture, "no_lossy_function_type")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId type = requireTypeAtPosition(Position(6, 14));
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("(unknown, number, number) -> number", toString(type));
     else
         CHECK_EQ("(tbl, number, number) -> number", toString(type));
@@ -1248,7 +1249,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_by_overload")
     LUAU_REQUIRE_ERRORS(result);
     CHECK_EQ("string", toString(requireType("x")));
     CHECK_EQ("number", toString(requireType("y")));
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         // FIXME CLI-180645: Should this be string|number?
         CHECK_EQ("*error-type*", toString(requireType("z")));
     else
@@ -1458,7 +1459,7 @@ g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
     };
 
     CheckResult result = check(R"(
@@ -1747,7 +1748,7 @@ t.f = function(x)
 end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_CHECK_ERROR_COUNT(2, result);
         LUAU_CHECK_ERROR(result, WhereClauseNeeded); // x2
@@ -1828,7 +1829,7 @@ t.f = function(x)
 end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_CHECK_ERROR_COUNT(2, result);
         LUAU_CHECK_ERROR(result, WhereClauseNeeded);
@@ -2014,7 +2015,7 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_failure_in_function_return_type")
 TEST_CASE_FIXTURE(Fixture, "free_is_not_bound_to_unknown")
 {
     // This test only makes sense for the old solver
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -2048,7 +2049,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_infer_parameter_types_for_functions_from_their_
 
     CHECK_EQ("<a>(a) -> a", toString(requireType("f")));
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_CHECK_NO_ERRORS(result);
         // FIXME CLI-162439, the below fails on Linux with the flag on
@@ -2103,7 +2104,7 @@ u.b().foo()
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(9, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         // These improvements to the error messages are currently regressed in the new type solver.
         CHECK_EQ(toString(result.errors[0]), "Argument count mismatch. Function expects 1 argument, but none are specified");
@@ -2278,7 +2279,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "dont_assert_when_the_tarjan_limit_is_exceeded_during_generalization")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastInt sfi{FInt::LuauTarjanChildLimit, 1};
 
     CheckResult result = check(R"(
@@ -2322,7 +2323,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiated_type_packs_must_have_a_non_null_scope")
 
 TEST_CASE_FIXTURE(Fixture, "inner_frees_become_generic_in_dcr")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -2352,7 +2353,7 @@ TEST_CASE_FIXTURE(Fixture, "function_exprs_are_generalized_at_signature_scope_no
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK(toString(requireType("foo")) == "((unknown) -> nil)?");
     else
     {
@@ -2363,6 +2364,8 @@ TEST_CASE_FIXTURE(Fixture, "function_exprs_are_generalized_at_signature_scope_no
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_but_their_arguments_are_incompatible")
 {
+    ScopedFastFlag sff{FFlag::LuauRelateHandlesCoincidentTables, true};
+
     CheckResult result = check(R"(
         local function foo<a>(x: a, y: a?)
             return x
@@ -2371,14 +2374,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_bu
         local ret: number = foo(vec2, { x = 5 })
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
         auto tm = get<TypeMismatch>(result.errors[0]);
         REQUIRE(tm);
         CHECK("number" == toString(tm->wantedType));
-        CHECK("{ x: number }" == toString(tm->givenType));
+        CHECK("{ x: number } | { x: number, y: number }" == toString(tm->givenType, /* exhausive */ true));
     }
     else
     {
@@ -2447,7 +2450,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_bu
         local z: boolean = f(5, "five")
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -2483,7 +2486,7 @@ TEST_CASE_FIXTURE(Fixture, "attempt_to_call_an_intersection_of_tables")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type { x: number } & { y: string }");
     else
         CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type { x: number }");
@@ -2506,7 +2509,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_wi
 
 TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local function apply<a, b..., c...>(f: (a, b...) -> c..., x: a)
@@ -2618,7 +2621,7 @@ a = function(a, b) return a + b end
 TEST_CASE_FIXTURE(BuiltinsFixture, "simple_unannotated_mutual_recursion")
 {
     // CLI-117118 - TypeInferFunctions.simple_unannotated_mutual_recursion relies on unstable assertions to pass.
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return;
     CheckResult result = check(R"(
 function even(n)
@@ -2640,7 +2643,7 @@ function odd(n)
 end
 )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(5, result);
         // CLI-117117 Constraint solving is incomplete inTypeInferFunctions.simple_unannotated_mutual_recursion
@@ -2710,7 +2713,7 @@ end
 TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_return_type")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
     };
 
     // CLI-114134: This test:
@@ -2733,7 +2736,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_return_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -2754,7 +2757,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type_2")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     // Make sure the error types are cloned to module interface
@@ -2804,7 +2807,7 @@ TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_callback_property")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         auto tm = get<TypeMismatch>(result.errors[0]);
         REQUIRE(tm);
@@ -2876,7 +2879,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_infer_overloaded_functions")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK("(t1) -> () where t1 = { read FindFirstChild: (t1, string) -> (...unknown) }" == toString(requireType("getR6Attachments")));
     else
         CHECK("<a...>(t1) -> () where t1 = {+ FindFirstChild: (t1, string) -> (a...) +}" == toString(requireType("getR6Attachments")));
@@ -2992,7 +2995,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_call_union_of_functions")
          f()
      )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result);
     else
     {
@@ -3188,7 +3191,7 @@ TEST_CASE_FIXTURE(Fixture, "recursive_function_calls_should_not_use_the_generali
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result);
     else
         LUAU_REQUIRE_ERRORS(result); // errors without typestate, obviously
@@ -3215,7 +3218,7 @@ TEST_CASE_FIXTURE(Fixture, "recursive_function_calls_should_not_use_the_generali
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_unwind_mutually_recursive_union_type_func")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // Previously, this block minted a type like:
     //
@@ -3252,7 +3255,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_pack_variadic")
 
 TEST_CASE_FIXTURE(Fixture, "table_annotated_explicit_self")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult results = check(R"(
         type MyObject = {
@@ -3275,7 +3278,7 @@ TEST_CASE_FIXTURE(Fixture, "table_annotated_explicit_self")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1871")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         export type Test = {
@@ -3294,7 +3297,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1871")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "io_manager_oop_ish")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type IIOManager = {
@@ -3326,7 +3329,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "io_manager_oop_ish")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_function_statement")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type Object = {
@@ -3350,7 +3353,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generic_function_statement")
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_calls_should_not_crash")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
     };
 
     CheckResult result = check(R"(
@@ -3449,7 +3452,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1854")
 
 TEST_CASE_FIXTURE(Fixture, "cli_119545_pass_lambda_inside_table")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
@@ -3467,8 +3470,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_119545_pass_lambda_inside_table")
 TEST_CASE_FIXTURE(Fixture, "oss_2065_bidirectional_inference_function_call")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushTypeConstraintLambdas3, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
@@ -3490,8 +3492,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2065_bidirectional_inference_function_call")
 TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_lambda_with_partially_resolved_generic")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushTypeConstraintLambdas3, true},
+	{FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
@@ -3513,8 +3514,7 @@ TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_lambda_with_partially_resolved
 TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_goes_through_ifelse")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushTypeConstraintLambdas3, true},
+	{FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
@@ -3528,7 +3528,7 @@ TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_goes_through_ifelse")
 
 TEST_CASE_FIXTURE(Fixture, "overload_one_ok_one_potential")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     auto result = check(R"(
         local f: ((number) -> "one") & ((string) -> "two")
@@ -3544,7 +3544,7 @@ TEST_CASE_FIXTURE(Fixture, "overload_one_ok_one_potential")
 
 TEST_CASE_FIXTURE(Fixture, "overload_selection_ambiguous_call")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     auto result = check(R"(
         local f: ((number | string) -> "one") & ((number | boolean) -> "two")
@@ -3562,7 +3562,7 @@ TEST_CASE_FIXTURE(Fixture, "overload_selection_ambiguous_call")
 
 TEST_CASE_FIXTURE(Fixture, "overload_selection_pick_better_arity")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     auto result = check(R"(
         local f: ((number) -> "one") & ((number, number) -> "two")
@@ -3582,7 +3582,7 @@ TEST_CASE_FIXTURE(Fixture, "overload_selection_pick_better_arity")
 
 TEST_CASE_FIXTURE(Fixture, "overload_selection_no_compatible_option")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     auto result = check(R"(
         local f: ((number) -> "one") & ((boolean) -> "two")
@@ -3596,7 +3596,7 @@ TEST_CASE_FIXTURE(Fixture, "overload_selection_no_compatible_option")
 
 TEST_CASE_FIXTURE(Fixture, "overload_selection_bad_arity")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     auto result = check(R"(
         local function foo<T>(f: ((number, number) -> "one") & T)
@@ -3619,7 +3619,7 @@ TEST_CASE_FIXTURE(Fixture, "overload_selection_bad_arity")
 
 TEST_CASE_FIXTURE(Fixture, "overload_selection_union_of_functions")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     auto result = check(R"(
         local function foo(f: (() -> (number)) | (() -> (string)))
@@ -3642,7 +3642,7 @@ TEST_CASE_FIXTURE(Fixture, "overload_selection_union_of_functions")
 
 TEST_CASE_FIXTURE(Fixture, "overload_selection_needs_to_retry")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     auto results = check(R"(
         type RGB = { r: number, b: number, g: number }
@@ -3661,7 +3661,7 @@ TEST_CASE_FIXTURE(Fixture, "overload_selection_needs_to_retry")
 
 TEST_CASE_FIXTURE(Fixture, "overload_selection_unambiguous_with_constraint")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local f: ((string, number) -> string) & ((number, boolean) -> number)
@@ -3678,8 +3678,6 @@ TEST_CASE_FIXTURE(Fixture, "overload_selection_unambiguous_with_constraint")
 
 TEST_CASE_FIXTURE(Fixture, "oss_2118")
 {
-    ScopedFastFlag _{FFlag::LuauInstantiationUsesGenericPolarity2, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local foo: <P>(constructor: (P) -> any) -> (P) -> any = (nil :: any)
         local fn = foo(function (value: { test: true })
@@ -3692,10 +3690,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2118")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2125")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauInstantiationUsesGenericPolarity2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         export type function CombineTableAndSetIndexer(a: type, b: type, c: type)
@@ -3739,7 +3734,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2125")
 TEST_CASE_FIXTURE(Fixture, "function_argument_error_suppression")
 {
     ScopedFastFlag sff[]{
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauMorePreciseErrorSuppression, true},
     };
 
@@ -3757,9 +3752,7 @@ TEST_CASE_FIXTURE(Fixture, "function_argument_error_suppression")
 TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_lambda_inference_applies_nilable_functions")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushTypeConstraintLambdas3, true},
-        {FFlag::LuauPushTypeConstraintStripNilFromFunction, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
@@ -3796,8 +3789,7 @@ TEST_CASE_FIXTURE(Fixture, "function_statement_with_incorrect_function_type")
 TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_allow_internal_generics")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauPushTypeConstraintLambdas3, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
@@ -3819,7 +3811,7 @@ TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_allow_internal_generics")
 
 TEST_CASE_FIXTURE(Fixture, "oss_2143")
 {
-    ScopedFastFlag _{FFlag::LuauUnifier2HandleMismatchedPacks, true};
+    ScopedFastFlag _{FFlag::LuauUnifier2HandleMismatchedPacks2, true};
 
     CheckResult result = check(R"(
         local function call<A..., R...>(c: (A...) -> R..., ...: A...): R...
@@ -3847,7 +3839,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2143")
 
 TEST_CASE_FIXTURE(Fixture, "apply_example_from_oss")
 {
-    ScopedFastFlag _{FFlag::LuauUnifier2HandleMismatchedPacks, true};
+    ScopedFastFlag _{FFlag::LuauUnifier2HandleMismatchedPacks2, true};
 
     CheckResult result = check(R"(
         type something = { Something: number }
@@ -3870,7 +3862,7 @@ TEST_CASE_FIXTURE(Fixture, "apply_example_from_oss")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2109")
 {
-    ScopedFastFlag _{FFlag::LuauUnifier2HandleMismatchedPacks, true};
+    ScopedFastFlag _{FFlag::LuauUnifier2HandleMismatchedPacks2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function Retry<T..., K...>(
@@ -3904,7 +3896,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2109")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_example")
 {
-    ScopedFastFlag _{FFlag::LuauUnifier2HandleMismatchedPacks, true};
+    ScopedFastFlag _{FFlag::LuauUnifier2HandleMismatchedPacks2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function makestr(n: number): string
@@ -3958,7 +3950,7 @@ TEST_CASE_FIXTURE(Fixture, "table_containing_factorial_standalone")
 TEST_CASE_FIXTURE(Fixture, "table_containing_factorial_assign_later")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
@@ -4066,7 +4058,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2216_recursive_global_function_works_as_
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_187542_recursive_call_in_loop")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauUnifyWithSubtyping2, true},
         {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
@@ -4109,6 +4101,80 @@ TEST_CASE_FIXTURE(Fixture, "global_function_redefinition")
     auto err = get<TypeMismatch>(result.errors[0]);
     CHECK_EQ("(number) -> number", toString(err->wantedType));
     CHECK_EQ("string", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2061_modify_visited_generic_ice")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauSubtypingReplaceBounds, true},
+    };
+
+    CheckResult results = check(R"(
+type actions<T=unknown, A...=...unknown> = { [string]: (state: T, A...) -> (T) }
+type disconnect = () -> ()
+
+type producer<state, actions = actions> = {
+	get:
+		& (() -> state)
+		& (<T>(selector: (state) -> T) -> T),
+} & actions
+
+type interface = {
+	create: <state>(default: state) -> <actions>(actions: actions) -> producer<state, actions>,
+}
+
+local a: interface
+a.create()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    CHECK(get<CountMismatch>(results.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unify_type_pack_stack_overflow")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauDontIncludeVarargWithAnnotation, true},
+        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
+    };
+
+    CheckResult results = check(R"(
+        local function a(): ...string
+            return "hello", "world"
+        end
+
+        local function g<T...>()
+            local function f(... : T...)
+            end
+            f("what", "is", "going", a())
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypePackMismatch>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("T...", toString(err->wantedTp));
+    CHECK_EQ("string, string, string, ...string", toString(err->givenTp));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_polarity_of_annotated_code")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauForwardPolarityForFunctionTypes, true},
+    };
+    // This test is _just_ for checking the polarity of the generic in the
+    // annotation.
+    check(R"(
+        local f: <T>(T) -> T = nil :: any
+    )");
+
+    auto ftv = get<FunctionType>(requireType("f"));
+    LUAU_ASSERT(ftv);
+    auto gen = get<GenericType>(ftv->generics.at(0));
+    LUAU_ASSERT(gen && gen->polarity == Polarity::Mixed);
 }
 
 TEST_SUITE_END();

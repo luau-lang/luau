@@ -3,7 +3,6 @@
 
 #include "Luau/Common.h"
 
-LUAU_FASTFLAGVARIABLE(LuauStandaloneParseType)
 
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 

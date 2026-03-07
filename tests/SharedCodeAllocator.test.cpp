@@ -255,7 +255,7 @@ TEST_CASE("NativeProtoRefcounting")
 
     std::vector<NativeProtoExecDataPtr> nativeProtos;
     nativeProtos.reserve(1);
-    NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(0);
+    NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(0, 0);
     getNativeProtoExecDataHeader(nativeProto.get()).bytecodeId = 0x01;
     nativeProtos.push_back(std::move(nativeProto));
 
@@ -311,7 +311,7 @@ TEST_CASE("NativeProtoState")
     nativeProtos.reserve(2);
 
     {
-        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2);
+        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2, 0);
         getNativeProtoExecDataHeader(nativeProto.get()).bytecodeId = 1;
         getNativeProtoExecDataHeader(nativeProto.get()).entryOffsetOrAddress = reinterpret_cast<const uint8_t*>(0x00);
         nativeProto[0] = 0;
@@ -321,7 +321,7 @@ TEST_CASE("NativeProtoState")
     }
 
     {
-        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2);
+        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2, 0);
         getNativeProtoExecDataHeader(nativeProto.get()).bytecodeId = 3;
         getNativeProtoExecDataHeader(nativeProto.get()).entryOffsetOrAddress = reinterpret_cast<const uint8_t*>(0x08);
         nativeProto[0] = 8;
@@ -370,7 +370,7 @@ TEST_CASE("AnonymousModuleLifetime")
     nativeProtos.reserve(1);
 
     {
-        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2);
+        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2, 0);
         getNativeProtoExecDataHeader(nativeProto.get()).bytecodeId = 1;
         getNativeProtoExecDataHeader(nativeProto.get()).entryOffsetOrAddress = reinterpret_cast<const uint8_t*>(0x00);
         nativeProto[0] = 0;

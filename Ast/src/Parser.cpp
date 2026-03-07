@@ -20,9 +20,9 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAG(LuauStandaloneParseType)
 LUAU_FASTFLAGVARIABLE(LuauCstStatDoWithStatsStart)
 LUAU_FASTFLAGVARIABLE(DesugaredArrayTypeReferenceIsEmpty)
+LUAU_FASTFLAGVARIABLE(LuauConst)
 LUAU_FASTFLAGVARIABLE(LuauTypeNegationSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -245,14 +245,11 @@ ParseNodeResult<Node> Parser::runParse(const char* buffer, size_t bufferSize, As
         Node* expr = f(p);
         size_t lines = p.lexer.current().location.end.line + (bufferSize > 0 && buffer[bufferSize - 1] != '\n');
 
-        if (FFlag::LuauStandaloneParseType)
+        Lexeme eof = p.lexer.next();
+        if (eof.type != Lexeme::Eof)
         {
-            Lexeme eof = p.lexer.next();
-            if (eof.type != Lexeme::Eof)
-            {
-                expr = nullptr;
-                p.parseErrors.emplace_back(eof.location, "Expected end of file");
-            }
+            expr = nullptr;
+            p.parseErrors.emplace_back(eof.location, "Expected end of file");
         }
 
         return ParseNodeResult<Node>{
@@ -446,7 +443,13 @@ AstStat* Parser::parseStat()
     case Lexeme::ReservedFunction:
         return parseFunctionStat(AstArray<AstAttr*>({nullptr, 0}));
     case Lexeme::ReservedLocal:
-        return parseLocal(AstArray<AstAttr*>({nullptr, 0}));
+        if (FFlag::LuauConst)
+        {
+            Location start = lexer.current().location;
+            return parseLocal(start, start.begin, {nullptr, 0}, false);
+        }
+        else
+            return parseLocal_DEPRECATED(AstArray<AstAttr*>({nullptr, 0}));
     case Lexeme::ReservedReturn:
         return parseReturn();
     case Lexeme::ReservedBreak:
@@ -488,6 +491,9 @@ AstStat* Parser::parseStat()
 
     if (ident == "continue")
         return parseContinue(expr->location);
+
+    if (FFlag::LuauConst && ident == "const")
+        return parseLocal(expr->location, expr->location.begin, AstArray<AstAttr*>({nullptr, 0}), true);
 
     if (options.allowDeclarationSyntax)
     {
@@ -1045,28 +1051,59 @@ AstStat* Parser::parseAttributeStat()
     case Lexeme::Type::ReservedFunction:
         return parseFunctionStat(attributes);
     case Lexeme::Type::ReservedLocal:
-        return parseLocal(attributes);
+        if(FFlag::LuauConst)
+            return parseLocal(attributes.size > 0 ? attributes.data[0]->location : lexer.current().location, lexer.current().location.begin, attributes, false);
+        else
+            return parseLocal_DEPRECATED(attributes);
     case Lexeme::Type::Name:
-        if (options.allowDeclarationSyntax && !strcmp("declare", lexer.current().data))
         {
-            AstExpr* expr = parsePrimaryExpr(/* asStatement= */ true);
-            return parseDeclaration(expr->location, attributes);
+            if (FFlag::LuauConst && strcmp("const", lexer.current().data) == 0)
+            {
+                Location keywordLoc = lexer.current().location;
+                nextLexeme();
+                return parseLocal(attributes.size > 0 ? attributes.data[0]->location : keywordLoc, keywordLoc.begin, attributes, true);
+            }
+            if (options.allowDeclarationSyntax && !strcmp("declare", lexer.current().data))
+            {
+                AstExpr* expr = parsePrimaryExpr(/* asStatement= */ true);
+                return parseDeclaration(expr->location, attributes);
+            }
         }
         [[fallthrough]];
     default:
-        return reportStatError(
-            lexer.current().location,
-            {},
-            {},
-            "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got %s instead",
-            lexer.current().toString().c_str()
-        );
+        if (FFlag::LuauConst)
+            return reportStatError(
+                lexer.current().location,
+                {},
+                {},
+                "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got %s instead",
+                lexer.current().toString().c_str()
+            );
+        else
+            return reportStatError(
+                lexer.current().location,
+                {},
+                {},
+                "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got %s instead",
+                lexer.current().toString().c_str()
+            );
     }
+}
+
+bool isEnoughValues(TempVector<AstExpr*>& values, size_t expected)
+{
+    if (values.size() > 0)
+    {
+        AstExpr* last = values.back();
+        if (last->is<AstExprCall>() || last->is<AstExprVarargs>())
+            return true;
+    }
+    return values.size() == expected;
 }
 
 // local function Name funcbody |
 // local bindinglist [`=' explist]
-AstStat* Parser::parseLocal(const AstArray<AstAttr*>& attributes)
+AstStat* Parser::parseLocal_DEPRECATED(const AstArray<AstAttr*>& attributes)
 {
     Location start = lexer.current().location;
 
@@ -1146,6 +1183,100 @@ AstStat* Parser::parseLocal(const AstArray<AstAttr*>& attributes)
             vars.push_back(pushLocal(names[i]));
 
         Location end = values.empty() ? lexer.previousLocation() : values.back()->location;
+
+        AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation);
+        if (options.storeCstData)
+        {
+            cstNodeMap[node] = allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
+        }
+
+        return node;
+    }
+}
+
+AstStat* Parser::parseLocal(const Location start, const Position keywordPosition, const AstArray<AstAttr*>& attributes, bool isConst)
+{
+    if (!isConst)
+        nextLexeme(); // local
+
+    if (lexer.current().type == Lexeme::ReservedFunction)
+    {
+        Lexeme matchFunction = lexer.current();
+        nextLexeme();
+
+        Position functionKeywordPosition = matchFunction.location.begin;
+        // matchFunction is only used for diagnostics; to make it suitable for detecting missed indentation between
+        // `local function` and `end`, we patch the token to begin at the column where `local` starts
+        if (matchFunction.location.begin.line == start.begin.line)
+            matchFunction.location.begin.column = start.begin.column;
+
+        Name name = parseName("variable name");
+
+        matchRecoveryStopOnToken[Lexeme::ReservedEnd]++;
+
+        auto [body, var] = parseFunctionBody(false, matchFunction, name.name, &name, attributes, isConst);
+
+        matchRecoveryStopOnToken[Lexeme::ReservedEnd]--;
+
+        Location location{start.begin, body->location.end};
+
+        AstStatLocalFunction* node = allocator.alloc<AstStatLocalFunction>(location, var, body);
+        if (options.storeCstData)
+            cstNodeMap[node] = allocator.alloc<CstStatLocalFunction>(keywordPosition, functionKeywordPosition);
+        return node;
+    }
+    else
+    {
+        if (attributes.size != 0)
+        {
+            return reportStatError(
+                lexer.current().location,
+                {},
+                {},
+                "Expected 'function' after local declaration with attribute, but got %s instead",
+                lexer.current().toString().c_str()
+            );
+        }
+
+        matchRecoveryStopOnToken['=']++;
+
+        TempVector<Binding> names(scratchBinding);
+        AstArray<Position> varsCommaPositions;
+        if (options.storeCstData)
+            parseBindingList(names, false, &varsCommaPositions, nullptr, nullptr, isConst);
+        else
+            parseBindingList(names, false, nullptr, nullptr, nullptr, isConst);
+
+        matchRecoveryStopOnToken['=']--;
+
+        TempVector<AstLocal*> vars(scratchLocal);
+
+        TempVector<AstExpr*> values(scratchExpr);
+        TempVector<Position> valuesCommaPositions(scratchPosition);
+
+        std::optional<Location> equalsSignLocation;
+
+        if (lexer.current().type == '=')
+        {
+            equalsSignLocation = lexer.current().location;
+
+            nextLexeme();
+
+            parseExprList(values, options.storeCstData ? &valuesCommaPositions : nullptr);
+        }
+
+        for (size_t i = 0; i < names.size(); ++i)
+            vars.push_back(pushLocal(names[i]));
+
+        Location end = values.empty() ? lexer.previousLocation() : values.back()->location;
+
+        if (isConst && !isEnoughValues(values, vars.size()))
+            return reportStatError(
+                Location(start, end),
+                {},
+                {},
+                "Missing initializer in const declaration"
+            );
 
         AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation);
         if (options.storeCstData)
@@ -1533,7 +1664,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
 
 static bool isExprLValue(AstExpr* expr)
 {
-    return expr->is<AstExprLocal>() || expr->is<AstExprGlobal>() || expr->is<AstExprIndexExpr>() || expr->is<AstExprIndexName>();
+    return (expr->is<AstExprLocal>() && (!FFlag::LuauConst || !expr->as<AstExprLocal>()->local->isConst)) || expr->is<AstExprGlobal>() || expr->is<AstExprIndexExpr>() || expr->is<AstExprIndexName>();
 }
 
 // varlist `=' explist
@@ -1613,7 +1744,8 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
     const Lexeme& matchFunction,
     const AstName& debugname,
     const Name* localName,
-    const AstArray<AstAttr*>& attributes
+    const AstArray<AstAttr*>& attributes,
+    const bool isConst
 )
 {
     Location start = matchFunction.location;
@@ -1674,7 +1806,12 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
     AstLocal* funLocal = nullptr;
 
     if (localName)
-        funLocal = pushLocal(Binding(*localName, nullptr));
+    {
+        if (FFlag::LuauConst)
+            funLocal = pushLocal(Binding(*localName, nullptr, {0, 0}, isConst));
+        else
+            funLocal = pushLocal(Binding(*localName, nullptr));
+    }
 
     unsigned int localsBegin = saveLocals();
 
@@ -1743,7 +1880,7 @@ void Parser::parseExprList(TempVector<AstExpr*>& result, TempVector<Position>* c
     }
 }
 
-Parser::Binding Parser::parseBinding()
+Parser::Binding Parser::parseBinding(bool isConst)
 {
     std::optional<Name> name = parseNameOpt("variable name");
 
@@ -1755,9 +1892,9 @@ Parser::Binding Parser::parseBinding()
     AstType* annotation = parseOptionalType();
 
     if (options.storeCstData)
-        return Binding(*name, annotation, colonPosition);
+        return Binding(*name, annotation, colonPosition, isConst);
     else
-        return Binding(*name, annotation);
+        return Binding(*name, annotation, {0, 0}, isConst);
 }
 
 AstArray<Position> Parser::extractAnnotationColonPositions(const TempVector<Binding>& bindings)
@@ -1774,7 +1911,8 @@ LUAU_NOINLINE std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(
     bool allowDot3,
     AstArray<Position>* commaPositions,
     Position* initialCommaPosition,
-    Position* varargAnnotationColonPosition
+    Position* varargAnnotationColonPosition,
+    bool isConst
 )
 {
     TempVector<Position> localCommaPositions(scratchPosition);
@@ -1805,7 +1943,7 @@ LUAU_NOINLINE std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(
             return {true, varargLocation, tailAnnotation};
         }
 
-        result.push_back(parseBinding());
+        result.push_back(parseBinding(isConst));
 
         if (lexer.current().type != ',')
             break;
@@ -4185,7 +4323,7 @@ AstLocal* Parser::pushLocal(const Binding& binding)
     AstLocal*& local = localMap[name.name];
 
     local = allocator.alloc<AstLocal>(
-        name.name, name.location, /* shadow= */ local, functionStack.size() - 1, functionStack.back().loopDepth, binding.annotation
+        name.name, name.location, /* shadow= */ local, functionStack.size() - 1, functionStack.back().loopDepth, binding.annotation, binding.isConst
     );
 
     localStack.push_back(local);

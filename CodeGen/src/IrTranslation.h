@@ -27,6 +27,7 @@ void translateInstJump(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstJumpBack(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstJumpIf(IrBuilder& build, const Instruction* pc, int pcpos, bool not_);
 void translateInstJumpIfEq(IrBuilder& build, const Instruction* pc, int pcpos, bool not_);
+void translateInstJumpIfEqShortcut(IrBuilder& build, const Instruction* pc, int pcpos, bool not_);
 void translateInstJumpIfCond(IrBuilder& build, const Instruction* pc, int pcpos, IrCondition cond);
 void translateInstJumpX(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstJumpxEqNil(IrBuilder& build, const Instruction* pc, int pcpos);

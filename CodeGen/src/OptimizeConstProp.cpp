@@ -24,18 +24,13 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAG(LuauCodegenDsoPairTrackFix)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
-LUAU_FASTFLAGVARIABLE(LuauCodegenVecOpGvn)
-LUAU_FASTFLAGVARIABLE(LuauCodegenLibmGvn)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSetBlockEntryState2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenUpvalueLoadProp2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenMergedInstTagCheck)
-LUAU_FASTFLAGVARIABLE(LuauCodegenBufferLoadProp2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufferRangeMerge3)
-LUAU_FASTFLAGVARIABLE(LuauCodegenUintToFloat)
-LUAU_FASTFLAGVARIABLE(LuauCodegenLoadFloatPropExtra)
-LUAU_FASTFLAGVARIABLE(LuauCodegenFixNonFloatLoadSubst)
 LUAU_FASTFLAGVARIABLE(LuauCodegenTableLoadProp2)
+LUAU_FASTFLAGVARIABLE(LuauCodegenExtraBlockers)
+LUAU_FASTFLAG(LuauCodegenOpReadOnly)
+LUAU_FASTFLAG(LuauCodegenTruncatedSubsts)
 
 namespace Luau
 {
@@ -160,19 +155,12 @@ struct ConstPropState
     {
         if (RegisterInfo* info = tryGetRegisterInfo(op))
         {
-            if (FFlag::LuauCodegenMergedInstTagCheck)
-            {
-                if (info->tag != 0xff)
-                    return info->tag;
-            }
-            else
-            {
+            if (info->tag != 0xff)
                 return info->tag;
-            }
         }
 
         // SSA register might be associated by a tag through a CHECK_TAG
-        if (FFlag::LuauCodegenUpvalueLoadProp2 && op.kind == IrOpKind::Inst)
+        if (op.kind == IrOpKind::Inst)
         {
             if (uint8_t* info = instTag.find(op.index))
                 return *info;
@@ -297,14 +285,11 @@ struct ConstPropState
     void invalidateValuePropagation()
     {
         valueMap.clear();
-
-        if (FFlag::LuauCodegenUpvalueLoadProp2)
-            upvalueMap.clear();
+        upvalueMap.clear();
 
         tryNumToIndexCache.clear();
 
-        if (FFlag::LuauCodegenBufferLoadProp2)
-            bufferLoadStoreInfo.clear();
+        bufferLoadStoreInfo.clear();
 
         if (FFlag::LuauCodegenTableLoadProp2)
         {
@@ -341,8 +326,7 @@ struct ConstPropState
     {
         checkBufferLenCache.clear();
 
-        if (FFlag::LuauCodegenBufferLoadProp2)
-            bufferLoadStoreInfo.clear();
+        bufferLoadStoreInfo.clear();
     }
 
     void invalidateUserdataData()
@@ -359,8 +343,7 @@ struct ConstPropState
 
         // Buffer length checks are not invalidated since buffer size is immutable
 
-        if (FFlag::LuauCodegenBufferLoadProp2)
-            bufferLoadStoreInfo.clear();
+        bufferLoadStoreInfo.clear();
     }
 
     void invalidateHeap(RegisterInfo& reg)
@@ -375,8 +358,15 @@ struct ConstPropState
         invalidateHeap();
         invalidateCapturedRegisters();
 
-        if (FFlag::LuauCodegenUpvalueLoadProp2)
-            upvalueMap.clear();
+        if (FFlag::LuauCodegenExtraBlockers)
+        {
+            // We cannot guarantee right now that all live values can be rematerialized from non-stack memory locations
+            // To prevent earlier values from being propagated to after operation which might call, we have to clear the maps
+            // TODO: remove only the values that don't have a guaranteed restore location
+            invalidateValuePropagation();
+        }
+
+        upvalueMap.clear();
 
         inSafeEnv = false;
     }
@@ -449,7 +439,17 @@ struct ConstPropState
     IrInst versionedVmRegLoad(IrCmd loadCmd, IrOp opA, IrOp opB)
     {
         IrInst inst = versionedVmRegLoad(loadCmd, opA);
-        OP_B(inst) = opB;
+
+        if (FFlag::LuauCodegenOpReadOnly)
+        {
+            CODEGEN_ASSERT(inst.ops.size() == 1);
+            inst.ops.push_back(opB);
+        }
+        else
+        {
+            OP_B(inst) = opB;
+        }
+
         return inst;
     }
 
@@ -525,9 +525,10 @@ struct ConstPropState
         if (function.cfg.captured.regs.test(vmRegOp(OP_A(loadInst))))
             return false;
 
-        IrInst versionedLoad = (!FFlag::LuauCodegenFixNonFloatLoadSubst || loadInst.cmd == IrCmd::LOAD_FLOAT)
-                                   ? versionedVmRegLoad(loadInst.cmd, OP_A(loadInst), OP_B(loadInst))
-                                   : versionedVmRegLoad(loadInst.cmd, OP_A(loadInst));
+        IrInst versionedLoad =
+            loadInst.cmd == IrCmd::LOAD_FLOAT
+                ? versionedVmRegLoad(loadInst.cmd, OP_A(loadInst), FFlag::LuauCodegenOpReadOnly ? OPT_OP_B(loadInst) : OP_B(loadInst))
+                : versionedVmRegLoad(loadInst.cmd, OP_A(loadInst));
 
         // Check if there is a value that already has this version of the register
         if (uint32_t* prevIdx = getPreviousInstIndex(versionedLoad))
@@ -570,7 +571,6 @@ struct ConstPropState
     // That TValue might have a CHECK_TAG data associated with it
     bool substituteTagLoadWithTValueData(IrBuilder& build, IrInst& loadInst)
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenUpvalueLoadProp2);
         CODEGEN_ASSERT(OP_A(loadInst).kind == IrOpKind::VmReg);
 
         if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_TVALUE, OP_A(loadInst)))
@@ -589,7 +589,6 @@ struct ConstPropState
     // That TValue might have a value data associated with it, if not we will record it here
     bool substituteOrRecordValueLoadWithTValueData(IrBuilder& build, IrInst& loadInst)
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenUpvalueLoadProp2);
         CODEGEN_ASSERT(OP_A(loadInst).kind == IrOpKind::VmReg);
 
         if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_TVALUE, OP_A(loadInst)))
@@ -652,7 +651,6 @@ struct ConstPropState
 
     IrInst versionedVmUpvalueLoad(IrInst& loadInst)
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenUpvalueLoadProp2);
         IrOp op = OP_A(loadInst);
         CODEGEN_ASSERT(op.kind == IrOpKind::VmUpvalue);
         uint32_t version = regs[vmUpvalueOp(op)].version;
@@ -663,7 +661,6 @@ struct ConstPropState
 
     bool substituteOrRecordVmUpvalueLoad(IrInst& loadInst)
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenUpvalueLoadProp2);
         CODEGEN_ASSERT(OP_A(loadInst).kind == IrOpKind::VmUpvalue);
 
         if (uint32_t* prevIdx = upvalueMap.find(vmUpvalueOp(OP_A(loadInst))))
@@ -685,8 +682,6 @@ struct ConstPropState
 
     void forwardVmUpvalueStoreToLoad(IrInst& storeInst)
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenUpvalueLoadProp2);
-
         // Future loads of this upvalue version can use the value we stored
         upvalueMap[vmUpvalueOp(OP_A(storeInst))] = OP_B(storeInst).index;
     }
@@ -715,7 +710,7 @@ struct ConstPropState
             {
                 // Argument can only be re-used if it contains the value of the same precision
                 if (arg->cmd == IrCmd::LOAD_FLOAT || arg->cmd == IrCmd::BUFFER_READF32 || arg->cmd == IrCmd::NUM_TO_FLOAT ||
-                    (FFlag::LuauCodegenLoadFloatPropExtra && arg->cmd == IrCmd::UINT_TO_FLOAT))
+                    arg->cmd == IrCmd::UINT_TO_FLOAT)
                     return argOp;
             }
             else if (argOp.kind == IrOpKind::Constant)
@@ -760,10 +755,10 @@ struct ConstPropState
 
             IrInst& inst = function.instOp(base.op);
 
-            std::optional<double> lhsNum = function.asDoubleOp(OP_A(inst));
-            std::optional<double> rhsNum = function.asDoubleOp(OP_B(inst));
-            std::optional<int> lhsInt = function.asIntOp(OP_A(inst));
-            std::optional<int> rhsInt = function.asIntOp(OP_B(inst));
+            std::optional<double> lhsNum = function.asDoubleOp(FFlag::LuauCodegenOpReadOnly ? OPT_OP_A(inst) : OP_A(inst));
+            std::optional<double> rhsNum = function.asDoubleOp(FFlag::LuauCodegenOpReadOnly ? OPT_OP_B(inst) : OP_B(inst));
+            std::optional<int> lhsInt = function.asIntOp(FFlag::LuauCodegenOpReadOnly ? OPT_OP_A(inst) : OP_A(inst));
+            std::optional<int> rhsInt = function.asIntOp(FFlag::LuauCodegenOpReadOnly ? OPT_OP_B(inst) : OP_B(inst));
 
             if (inst.cmd == IrCmd::ADD_NUM && lhsNum && isValidDoubleForImmediate(*lhsNum))
             {
@@ -919,14 +914,13 @@ struct ConstPropState
 
     void substituteOrRecordBufferLoad(IrBlock& block, uint32_t instIdx, IrInst& loadInst, uint8_t accessSize)
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenBufferLoadProp2);
-
         // Only constant offsets are supported
         if (OP_B(loadInst).kind != IrOpKind::Constant)
             return;
 
         int offset = function.intOp(OP_B(loadInst));
-        uint8_t tag = OP_C(loadInst).kind == IrOpKind::None ? LUA_TBUFFER : function.tagOp(OP_C(loadInst));
+        uint8_t tag = (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_C(loadInst) : OP_C(loadInst).kind == IrOpKind::None) ? LUA_TBUFFER
+                                                                                                                   : function.tagOp(OP_C(loadInst));
 
         // Find if we have data for this kind of load
         for (BufferLoadStoreInfo& info : bufferLoadStoreInfo)
@@ -1059,9 +1053,9 @@ struct ConstPropState
 
     void forwardBufferStoreToLoad(IrInst& storeInst, IrCmd loadCmd, uint8_t accessSize)
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenBufferLoadProp2);
-
-        uint8_t tag = OP_D(storeInst).kind == IrOpKind::None ? LUA_TBUFFER : function.tagOp(OP_D(storeInst));
+        uint8_t tag = (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_D(storeInst) : OP_D(storeInst).kind == IrOpKind::None)
+                          ? LUA_TBUFFER
+                          : function.tagOp(OP_D(storeInst));
 
         // Writing at unknown offset removes everything in the same kind of memory (buffer/userdata)
         // For userdata, we could check where the pointer is coming from, but we don't have an example of such usage
@@ -1338,15 +1332,12 @@ struct ConstPropState
 
         instLink.clear();
 
-        if (FFlag::LuauCodegenUpvalueLoadProp2)
-        {
-            instTag.clear();
+        instTag.clear();
 
-            if (FFlag::LuauCodegenTableLoadProp2)
-                instValue.clear();
-            else
-                instValue_DEPRECATED.clear();
-        }
+        if (FFlag::LuauCodegenTableLoadProp2)
+            instValue.clear();
+        else
+            instValue_DEPRECATED.clear();
 
         invalidateValuePropagation();
         invalidateHeapTableData();
@@ -1532,7 +1523,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         else if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            if (FFlag::LuauCodegenUpvalueLoadProp2 && state.substituteTagLoadWithTValueData(build, inst))
+            if (state.substituteTagLoadWithTValueData(build, inst))
                 break;
 
             state.substituteOrRecordVmRegLoad(inst);
@@ -1541,7 +1532,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::LOAD_POINTER:
         if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            if (FFlag::LuauCodegenUpvalueLoadProp2 && state.substituteOrRecordValueLoadWithTValueData(build, inst))
+            if (state.substituteOrRecordValueLoadWithTValueData(build, inst))
                 break;
 
             state.substituteOrRecordVmRegLoad(inst);
@@ -1557,7 +1548,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         else if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            if (FFlag::LuauCodegenUpvalueLoadProp2 && state.substituteOrRecordValueLoadWithTValueData(build, inst))
+            if (state.substituteOrRecordValueLoadWithTValueData(build, inst))
                 break;
 
             state.substituteOrRecordVmRegLoad(inst);
@@ -1574,7 +1565,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         else if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            if (FFlag::LuauCodegenUpvalueLoadProp2 && state.substituteOrRecordValueLoadWithTValueData(build, inst))
+            if (state.substituteOrRecordValueLoadWithTValueData(build, inst))
                 break;
 
             state.substituteOrRecordVmRegLoad(inst);
@@ -1584,99 +1575,64 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::LOAD_FLOAT:
         if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            if (FFlag::LuauCodegenUpvalueLoadProp2)
+            if (std::optional<IrOp> subst = state.findSubstituteComponentLoadFromStoreVector(build, OP_A(inst), function.intOp(OP_B(inst))))
             {
-                if (std::optional<IrOp> subst = state.findSubstituteComponentLoadFromStoreVector(build, OP_A(inst), function.intOp(OP_B(inst))))
+                substitute(function, inst, *subst);
+                break;
+            }
+
+            // There could be a whole TValue that we can extract a field from
+            if (uint32_t* prevIdxPtr = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_TVALUE, OP_A(inst)))
+            {
+                uint32_t prevIdx = *prevIdxPtr;
+                IrInst& prev = function.instructions[prevIdx];
+
+                // Unpack the STORE_TVALUE of a TAG_VECTOR value
+                if (prev.cmd == IrCmd::TAG_VECTOR)
                 {
-                    substitute(function, inst, *subst);
-                    break;
+                    if (IrInst* untaggedValue = function.asInstOp(OP_A(prev)))
+                        prevIdx = OP_A(prev).index;
                 }
 
-                // There could be a whole TValue that we can extract a field from
-                if (uint32_t* prevIdxPtr = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_TVALUE, OP_A(inst)))
+                IrInst& value = function.instructions[prevIdx];
+
+                unsigned byteOffset = unsigned(function.intOp(OP_B(inst)));
+                CODEGEN_ASSERT(byteOffset % 4 == 0);
+
+                unsigned component = byteOffset / 4;
+                CODEGEN_ASSERT(component <= 3);
+
+                // If we are extracting from a constant, we can substitute with it
+                if (value.cmd == IrCmd::LOAD_TVALUE && OP_A(value).kind == IrOpKind::VmConst && function.proto)
                 {
-                    uint32_t prevIdx = *prevIdxPtr;
-                    IrInst& prev = function.instructions[prevIdx];
+                    TValue* tv = &function.proto->k[vmConstOp(OP_A(value))];
 
-                    // Unpack the STORE_TVALUE of a TAG_VECTOR value
-                    if (prev.cmd == IrCmd::TAG_VECTOR)
+                    if (ttisvector(tv))
                     {
-                        if (IrInst* untaggedValue = function.asInstOp(OP_A(prev)))
-                            prevIdx = OP_A(prev).index;
+                        const float* v = vvalue(tv);
+                        substitute(function, inst, build.constDouble(v[component]));
+                        break;
                     }
-
-                    IrInst& value = function.instructions[prevIdx];
-
-                    unsigned byteOffset = unsigned(function.intOp(OP_B(inst)));
-                    CODEGEN_ASSERT(byteOffset % 4 == 0);
-
-                    unsigned component = byteOffset / 4;
-                    CODEGEN_ASSERT(component <= 3);
-
-                    // If we are extracting from a constant, we can substitute with it
-                    if (value.cmd == IrCmd::LOAD_TVALUE && OP_A(value).kind == IrOpKind::VmConst && function.proto)
+                }
+                else if (value.cmd == IrCmd::LOAD_TVALUE && OP_A(value).kind == IrOpKind::VmReg)
+                {
+                    // We were able to match "LOAD_FLOAT Rx" to a previous "STORE_TVALUE Rx, %n" where "%n = LOAD_TVALUE Ry"
+                    // But we still have to check that %n represents the current version of Ry
+                    if (state.tryGetRegLink(IrOp{IrOpKind::Inst, prevIdx}) != nullptr)
                     {
-                        TValue* tv = &function.proto->k[vmConstOp(OP_A(value))];
-
-                        if (ttisvector(tv))
+                        if (std::optional<IrOp> subst =
+                                state.findSubstituteComponentLoadFromStoreVector(build, OP_A(value), function.intOp(OP_B(inst))))
                         {
-                            const float* v = vvalue(tv);
-                            substitute(function, inst, build.constDouble(v[component]));
+                            substitute(function, inst, *subst);
                             break;
                         }
                     }
-                    else if (value.cmd == IrCmd::LOAD_TVALUE && OP_A(value).kind == IrOpKind::VmReg)
-                    {
-                        // We were able to match "LOAD_FLOAT Rx" to a previous "STORE_TVALUE Rx, %n" where "%n = LOAD_TVALUE Ry"
-                        // But we still have to check that %n represents the current version of Ry
-                        if (state.tryGetRegLink(IrOp{IrOpKind::Inst, prevIdx}) != nullptr)
-                        {
-                            if (std::optional<IrOp> subst =
-                                    state.findSubstituteComponentLoadFromStoreVector(build, OP_A(value), function.intOp(OP_B(inst))))
-                            {
-                                substitute(function, inst, *subst);
-                                break;
-                            }
-                        }
-                    }
-
-                    replace(function, block, index, IrInst{IrCmd::EXTRACT_VEC, {IrOp{IrOpKind::Inst, prevIdx}, build.constInt(component)}});
-
-                    state.substituteOrRecord(inst, index);
-                    break;
                 }
-            }
-            else
-            {
-                IrInst versionedLoad = state.versionedVmRegLoad(IrCmd::LOAD_FLOAT, OP_A(inst));
 
-                // Check if there is a value that already has this version of the register
-                if (uint32_t* prevIdx = state.getPreviousInstIndex(versionedLoad))
-                {
-                    IrInst& store = function.instructions[*prevIdx];
-                    CODEGEN_ASSERT(store.cmd == IrCmd::STORE_VECTOR);
+                replace(function, block, index, IrInst{IrCmd::EXTRACT_VEC, {IrOp{IrOpKind::Inst, prevIdx}, build.constInt(component)}});
 
-                    IrOp argOp;
-
-                    if (std::optional<int> intOp = function.asIntOp(OP_B(inst)))
-                    {
-                        if (*intOp == 0)
-                            argOp = OP_B(store);
-                        else if (*intOp == 4)
-                            argOp = OP_C(store);
-                        else if (*intOp == 8)
-                            argOp = OP_D(store);
-                    }
-
-                    if (IrInst* arg = function.asInstOp(argOp))
-                    {
-                        // Argument can only be re-used if it contains the value of the same precision
-                        if (arg->cmd == IrCmd::LOAD_FLOAT || arg->cmd == IrCmd::BUFFER_READF32 || arg->cmd == IrCmd::NUM_TO_FLOAT)
-                            substitute(function, inst, argOp);
-                    }
-
-                    break;
-                }
+                state.substituteOrRecord(inst, index);
+                break;
             }
 
             state.substituteOrRecordVmRegLoad(inst);
@@ -1685,7 +1641,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::LOAD_TVALUE:
         if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            if (!state.substituteOrRecordVmRegLoad(inst) && OP_C(inst).kind == IrOpKind::None)
+            if (!state.substituteOrRecordVmRegLoad(inst) && (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_C(inst) : OP_C(inst).kind == IrOpKind::None))
             {
                 // Provide information about what kind of tag is being loaded, this helps dead store elimination later
                 if (uint8_t tag = state.tryGetTag(OP_A(inst)); tag != 0xff)
@@ -1722,7 +1678,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 }
                 else if (source->cmd == IrCmd::GET_ARR_ADDR)
                 {
-                    IrOp offsetOp = state.getCombinedArrayLoadOffsetOp(*source, OP_B(inst));
+                    IrOp offsetOp = state.getCombinedArrayLoadOffsetOp(*source, FFlag::LuauCodegenOpReadOnly ? OPT_OP_B(inst) : OP_B(inst));
 
                     auto it = std::find_if(
                         state.arrayValueCache.begin(),
@@ -1909,7 +1865,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                         if (arg->cmd == IrCmd::TAG_VECTOR)
                             tag = LUA_TVECTOR;
 
-                        if (arg->cmd == IrCmd::LOAD_TVALUE && OP_C(arg).kind != IrOpKind::None)
+                        if (arg->cmd == IrCmd::LOAD_TVALUE && (FFlag::LuauCodegenOpReadOnly ? HAS_OP_C(*arg) : OP_C(arg).kind != IrOpKind::None))
                             tag = function.tagOp(OP_C(arg));
                     }
                 }
@@ -1945,7 +1901,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (FFlag::LuauCodegenTableLoadProp2)
             {
                 if (IrInst* target = function.asInstOp(OP_A(inst)))
-                    state.invalidateTableStoreLocation(*target, OP_C(inst), tag);
+                    state.invalidateTableStoreLocation(*target, FFlag::LuauCodegenOpReadOnly ? OPT_OP_C(inst) : OP_C(inst), tag);
             }
 
             // If we have constant tag and value, replace TValue store with tag/value pair store
@@ -1962,7 +1918,10 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
             if (canSplitTvalueStore)
             {
-                replace(function, block, index, {IrCmd::STORE_SPLIT_TVALUE, {OP_A(inst), build.constTag(tag), value, OP_C(inst)}});
+                if (!FFlag::LuauCodegenOpReadOnly || HAS_OP_C(inst))
+                    replace(function, block, index, {IrCmd::STORE_SPLIT_TVALUE, {OP_A(inst), build.constTag(tag), value, OP_C(inst)}});
+                else
+                    replace(function, block, index, {IrCmd::STORE_SPLIT_TVALUE, {OP_A(inst), build.constTag(tag), value}});
 
                 // Value can be propagated to future loads of the same register
                 if (OP_A(inst).kind == IrOpKind::VmReg && activeLoadValue != kInvalidInstIdx)
@@ -1971,7 +1930,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 if (FFlag::LuauCodegenTableLoadProp2)
                 {
                     if (IrInst* target = function.asInstOp(OP_A(inst)))
-                        state.forwardTableStoreToLoad(*target, OP_D(inst), index);
+                        state.forwardTableStoreToLoad(*target, FFlag::LuauCodegenOpReadOnly ? OPT_OP_D(inst) : OP_D(inst), index);
                 }
             }
             else if (OP_A(inst).kind == IrOpKind::VmReg)
@@ -1996,9 +1955,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             {
                 if (IrInst* target = function.asInstOp(OP_A(inst)))
                 {
-                    state.invalidateTableStoreLocation(*target, OP_D(inst), function.tagOp(OP_B(inst)));
+                    state.invalidateTableStoreLocation(
+                        *target, FFlag::LuauCodegenOpReadOnly ? OPT_OP_D(inst) : OP_D(inst), function.tagOp(OP_B(inst))
+                    );
 
-                    state.forwardTableStoreToLoad(*target, OP_D(inst), index);
+                    state.forwardTableStoreToLoad(*target, FFlag::LuauCodegenOpReadOnly ? OPT_OP_D(inst) : OP_D(inst), index);
                 }
             }
         }
@@ -2132,34 +2093,14 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         break;
     }
     case IrCmd::GET_UPVALUE:
-        if (FFlag::LuauCodegenUpvalueLoadProp2)
-        {
-            state.substituteOrRecordVmUpvalueLoad(inst);
-        }
-        else
-        {
-            state.invalidate(OP_A(inst));
-        }
+        state.substituteOrRecordVmUpvalueLoad(inst);
         break;
     case IrCmd::SET_UPVALUE:
-        if (FFlag::LuauCodegenUpvalueLoadProp2)
-        {
-            state.forwardVmUpvalueStoreToLoad(inst);
+        state.forwardVmUpvalueStoreToLoad(inst);
 
-            if (uint8_t tag = state.tryGetTag(OP_B(inst)); tag != 0xff)
-            {
-                replace(function, OP_C(inst), build.constTag(tag));
-            }
-        }
-        else
+        if (uint8_t tag = state.tryGetTag(OP_B(inst)); tag != 0xff)
         {
-            if (OP_B(inst).kind == IrOpKind::VmReg)
-            {
-                if (uint8_t tag = state.tryGetTag(OP_B(inst)); tag != 0xff)
-                {
-                    replace(function, OP_C(inst), build.constTag(tag));
-                }
-            }
+            replace(function, OP_C(inst), build.constTag(tag));
         }
         break;
     case IrCmd::CHECK_TAG:
@@ -2192,17 +2133,14 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         else
         {
-            if (FFlag::LuauCodegenUpvalueLoadProp2)
-            {
-                IrInst& lhs = function.instOp(OP_A(inst));
+            IrInst& lhs = function.instOp(OP_A(inst));
 
-                // If we are loading a tag from a register which has previously been loaded as a full TValue
-                // We can associate a known tag with that instruction going forward
-                if (lhs.cmd == IrCmd::LOAD_TAG && OP_A(lhs).kind == IrOpKind::VmReg)
-                {
-                    if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_TVALUE, OP_A(lhs)))
-                        state.instTag[*prevIdx] = b;
-                }
+            // If we are loading a tag from a register which has previously been loaded as a full TValue
+            // We can associate a known tag with that instruction going forward
+            if (lhs.cmd == IrCmd::LOAD_TAG && OP_A(lhs).kind == IrOpKind::VmReg)
+            {
+                if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_TVALUE, OP_A(lhs)))
+                    state.instTag[*prevIdx] = b;
             }
 
             state.updateTag(OP_A(inst), b); // We can assume the tag value going forward
@@ -2406,84 +2344,66 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::CHECK_CMP_INT:
         break;
     case IrCmd::BUFFER_READI8:
-        if (FFlag::LuauCodegenBufferLoadProp2)
-            state.substituteOrRecordBufferLoad(block, index, inst, 1);
+        state.substituteOrRecordBufferLoad(block, index, inst, 1);
         break;
     case IrCmd::BUFFER_READU8:
-        if (FFlag::LuauCodegenBufferLoadProp2)
-            state.substituteOrRecordBufferLoad(block, index, inst, 1);
+        state.substituteOrRecordBufferLoad(block, index, inst, 1);
         break;
     case IrCmd::BUFFER_WRITEI8:
-        if (FFlag::LuauCodegenBufferLoadProp2)
+        if (IrInst* src = function.asInstOp(OP_C(inst)))
         {
-            if (IrInst* src = function.asInstOp(OP_C(inst)))
-            {
-                std::optional<int> intSrcB = function.asIntOp(OP_B(src));
+            std::optional<int> intSrcB = function.asIntOp(FFlag::LuauCodegenOpReadOnly ? OPT_OP_B(*src) : OP_B(src));
 
-                if (src->cmd == IrCmd::SEXTI8_INT)
-                    replace(function, OP_C(inst), OP_A(src));
-                else if (src->cmd == IrCmd::BITAND_UINT && intSrcB && *intSrcB == 0xff)
-                    replace(function, OP_C(inst), OP_A(src));
-            }
-
-            state.forwardBufferStoreToLoad(inst, IrCmd::BUFFER_READI8, 1);
+            if (src->cmd == IrCmd::SEXTI8_INT)
+                replace(function, OP_C(inst), OP_A(src));
+            else if (src->cmd == IrCmd::BITAND_UINT && intSrcB && *intSrcB == 0xff)
+                replace(function, OP_C(inst), OP_A(src));
         }
+
+        state.forwardBufferStoreToLoad(inst, IrCmd::BUFFER_READI8, 1);
         break;
     case IrCmd::BUFFER_READI16:
-        if (FFlag::LuauCodegenBufferLoadProp2)
-            state.substituteOrRecordBufferLoad(block, index, inst, 2);
+        state.substituteOrRecordBufferLoad(block, index, inst, 2);
         break;
     case IrCmd::BUFFER_READU16:
-        if (FFlag::LuauCodegenBufferLoadProp2)
-            state.substituteOrRecordBufferLoad(block, index, inst, 2);
+        state.substituteOrRecordBufferLoad(block, index, inst, 2);
         break;
     case IrCmd::BUFFER_WRITEI16:
-        if (FFlag::LuauCodegenBufferLoadProp2)
+        if (IrInst* src = function.asInstOp(OP_C(inst)))
         {
-            if (IrInst* src = function.asInstOp(OP_C(inst)))
-            {
-                std::optional<int> intSrcB = function.asIntOp(OP_B(src));
+            std::optional<int> intSrcB = function.asIntOp(FFlag::LuauCodegenOpReadOnly ? OPT_OP_B(*src) : OP_B(src));
 
-                if (src->cmd == IrCmd::SEXTI16_INT)
-                    replace(function, OP_C(inst), OP_A(src));
-                else if (src->cmd == IrCmd::BITAND_UINT && intSrcB && *intSrcB == 0xffff)
-                    replace(function, OP_C(inst), OP_A(src));
-            }
-
-            state.forwardBufferStoreToLoad(inst, IrCmd::BUFFER_READI16, 2);
+            if (src->cmd == IrCmd::SEXTI16_INT)
+                replace(function, OP_C(inst), OP_A(src));
+            else if (src->cmd == IrCmd::BITAND_UINT && intSrcB && *intSrcB == 0xffff)
+                replace(function, OP_C(inst), OP_A(src));
         }
+
+        state.forwardBufferStoreToLoad(inst, IrCmd::BUFFER_READI16, 2);
         break;
     case IrCmd::BUFFER_READI32:
-        if (FFlag::LuauCodegenBufferLoadProp2)
-            state.substituteOrRecordBufferLoad(block, index, inst, 4);
+        state.substituteOrRecordBufferLoad(block, index, inst, 4);
         break;
     case IrCmd::BUFFER_WRITEI32:
-        if (FFlag::LuauCodegenBufferLoadProp2)
+        if (IrInst* src = function.asInstOp(OP_C(inst)))
         {
-            if (IrInst* src = function.asInstOp(OP_C(inst)))
-            {
-                if (src->cmd == IrCmd::TRUNCATE_UINT)
-                    replace(function, OP_C(inst), OP_A(src));
-            }
-
-            state.forwardBufferStoreToLoad(inst, IrCmd::BUFFER_READI32, 4);
+            if (src->cmd == IrCmd::TRUNCATE_UINT)
+                replace(function, OP_C(inst), OP_A(src));
         }
+
+        state.forwardBufferStoreToLoad(inst, IrCmd::BUFFER_READI32, 4);
         break;
     case IrCmd::BUFFER_READF32:
-        if (FFlag::LuauCodegenBufferLoadProp2)
-            state.substituteOrRecordBufferLoad(block, index, inst, 4);
+        state.substituteOrRecordBufferLoad(block, index, inst, 4);
         break;
     case IrCmd::BUFFER_WRITEF32:
-        if (FFlag::LuauCodegenBufferLoadProp2)
-            state.forwardBufferStoreToLoad(inst, IrCmd::BUFFER_READF32, 4);
+        state.forwardBufferStoreToLoad(inst, IrCmd::BUFFER_READF32, 4);
         break;
     case IrCmd::BUFFER_READF64:
-        if (FFlag::LuauCodegenBufferLoadProp2)
-            state.substituteOrRecordBufferLoad(block, index, inst, 8);
+        state.substituteOrRecordBufferLoad(block, index, inst, 8);
         break;
     case IrCmd::BUFFER_WRITEF64:
-        if (FFlag::LuauCodegenBufferLoadProp2)
-            state.forwardBufferStoreToLoad(inst, IrCmd::BUFFER_READF64, 8);
+        state.forwardBufferStoreToLoad(inst, IrCmd::BUFFER_READF64, 8);
         break;
     case IrCmd::CHECK_GC:
         // It is enough to perform a GC check once in a block
@@ -2830,8 +2750,20 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.useradataTagCache.push_back(index);
         break;
     case IrCmd::INT_TO_NUM:
+        state.substituteOrRecord(inst, index);
+        break;
     case IrCmd::UINT_TO_NUM:
     case IrCmd::UINT_TO_FLOAT:
+        if (FFlag::LuauCodegenTruncatedSubsts)
+        {
+            // UINT_TO_***(TRUNCATE_UINT(NUM_TO_UINT(x)) => UINT_TO_***(NUM_TO_UINT(x)) since instruction handles truncation of NUM_TO_UINT result
+            if (IrInst* src = function.asInstOp(OP_A(inst)); src && src->cmd == IrCmd::TRUNCATE_UINT)
+            {
+                if (IrInst* srcOfSrc = function.asInstOp(OP_A(src)); srcOfSrc && srcOfSrc->cmd == IrCmd::NUM_TO_UINT)
+                    replace(function, OP_A(inst), OP_A(src));
+            }
+        }
+
         state.substituteOrRecord(inst, index);
         break;
     case IrCmd::NUM_TO_INT:
@@ -2962,29 +2894,18 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.substituteOrRecord(inst, index);
         break;
     case IrCmd::NUM_TO_FLOAT:
-        if (FFlag::LuauCodegenUintToFloat)
+        if (IrInst* src = function.asInstOp(OP_A(inst)))
         {
-            if (IrInst* src = function.asInstOp(OP_A(inst)))
-            {
-                if (src->cmd == IrCmd::FLOAT_TO_NUM)
-                    substitute(function, inst, OP_A(src)); // Skip float->double->float conversion: NUM_TO_FLOAT(FLOAT_TO_NUM(value)) => value
-                else if (src->cmd == IrCmd::UINT_TO_NUM)
-                    replace(function, block, index, IrInst{IrCmd::UINT_TO_FLOAT, {OP_A(src)}});
-                else
-                    state.substituteOrRecord(inst, index);
-            }
+            if (src->cmd == IrCmd::FLOAT_TO_NUM)
+                substitute(function, inst, OP_A(src)); // Skip float->double->float conversion: NUM_TO_FLOAT(FLOAT_TO_NUM(value)) => value
+            else if (src->cmd == IrCmd::UINT_TO_NUM)
+                replace(function, block, index, IrInst{IrCmd::UINT_TO_FLOAT, {OP_A(src)}});
             else
-            {
                 state.substituteOrRecord(inst, index);
-            }
         }
         else
         {
-            // We can skip float->double->float conversion: NUM_TO_FLOAT(FLOAT_TO_NUM(value)) => value
-            if (IrInst* src = function.asInstOp(OP_A(inst)); src && src->cmd == IrCmd::FLOAT_TO_NUM)
-                substitute(function, inst, OP_A(src));
-            else
-                state.substituteOrRecord(inst, index);
+            state.substituteOrRecord(inst, index);
         }
         break;
     case IrCmd::CHECK_ARRAY_SIZE:
@@ -3109,8 +3030,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (IrInst* b = function.asInstOp(OP_B(inst)); b && b->cmd == IrCmd::TAG_VECTOR)
             replace(function, OP_B(inst), OP_A(b));
 
-        if (FFlag::LuauCodegenVecOpGvn)
-            state.substituteOrRecord(inst, index);
+        state.substituteOrRecord(inst, index);
         break;
 
     case IrCmd::UNM_VEC:
@@ -3120,19 +3040,16 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (IrInst* a = function.asInstOp(OP_A(inst)); a && a->cmd == IrCmd::TAG_VECTOR)
             replace(function, OP_A(inst), OP_A(a));
 
-        if (FFlag::LuauCodegenVecOpGvn)
-            state.substituteOrRecord(inst, index);
+        state.substituteOrRecord(inst, index);
         break;
 
     case IrCmd::FLOAT_TO_VEC:
     case IrCmd::TAG_VECTOR:
-        if (FFlag::LuauCodegenVecOpGvn)
-            state.substituteOrRecord(inst, index);
+        state.substituteOrRecord(inst, index);
         break;
 
     case IrCmd::INVOKE_LIBM:
-        if (FFlag::LuauCodegenLibmGvn)
-            state.substituteOrRecord(inst, index);
+        state.substituteOrRecord(inst, index);
         break;
 
     case IrCmd::CHECK_NODE_NO_NEXT:
@@ -3144,6 +3061,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::CLOSE_UPVALS: // Doesn't change memory that we track
     case IrCmd::CAPTURE:
     case IrCmd::SUBSTITUTE:
+    case IrCmd::MARK_USED:
+    case IrCmd::MARK_DEAD:
     case IrCmd::ADJUST_STACK_TO_REG: // Changes stack top, but not the values
     case IrCmd::ADJUST_STACK_TO_TOP: // Changes stack top, but not the values
     case IrCmd::CHECK_FASTCALL_RES:  // Changes stack top, but not the values
@@ -3184,11 +3103,22 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::GET_CACHED_IMPORT:
         state.invalidate(OP_A(inst));
 
-        // Outside of safe environment, environment traversal for an import can execute custom code
-        if (!state.inSafeEnv)
-            state.invalidateUserCall();
+        if (FFlag::LuauCodegenExtraBlockers)
+        {
+            // Outside of safe environment, environment traversal for an import can execute custom code
+            if (!state.inSafeEnv)
+                state.invalidateUserCall();
+            else
+                state.invalidateValuePropagation();
+        }
+        else
+        {
+            // Outside of safe environment, environment traversal for an import can execute custom code
+            if (!state.inSafeEnv)
+                state.invalidateUserCall();
 
-        state.invalidateValuePropagation();
+            state.invalidateValuePropagation();
+        }
         break;
     case IrCmd::CONCAT:
         state.invalidateRegisterRange(vmRegOp(OP_A(inst)), function.uintOp(OP_B(inst)));
@@ -3210,10 +3140,13 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.invalidateRegistersFrom(vmRegOp(OP_A(inst)));
         state.invalidateUserCall();
 
-        // We cannot guarantee right now that all live values can be rematerialized from non-stack memory locations
-        // To prevent earlier values from being propagated to after the call, we have to clear the map
-        // TODO: remove only the values that don't have a guaranteed restore location
-        state.invalidateValuePropagation();
+        if (!FFlag::LuauCodegenExtraBlockers)
+        {
+            // We cannot guarantee right now that all live values can be rematerialized from non-stack memory locations
+            // To prevent earlier values from being propagated to after the call, we have to clear the map
+            // TODO: remove only the values that don't have a guaranteed restore location
+            state.invalidateValuePropagation();
+        }
         break;
     case IrCmd::FORGLOOP:
         state.invalidateRegistersFrom(vmRegOp(OP_A(inst)) + 2); // Rn and Rn+1 are not modified

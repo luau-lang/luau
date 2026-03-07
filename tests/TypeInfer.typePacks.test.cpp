@@ -9,7 +9,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
@@ -96,7 +96,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("<a, b..., c...>((c...) -> (b...), (a) -> (c...), a) -> (b...)", toString(requireType("apply")));
     else
         CHECK_EQ("<a, b..., c...>((b...) -> (c...), (a) -> (b...), a) -> (c...)", toString(requireType("apply")));
@@ -619,7 +619,7 @@ local a: Packed
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T...>' expects 1 type pack argument, but none are specified");
     else
         CHECK_EQ(toString(result.errors[0]), "Type parameter list is required");
@@ -793,7 +793,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors3")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ(toString(result.errors[0]), "Type parameters must come before type pack parameters");
     else
         CHECK_EQ(toString(result.errors[0]), "Generic type 'Y<T, U...>' expects at least 1 type argument, but none are specified");
@@ -807,7 +807,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors4")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T>' expects 1 type argument, but none are specified");
     else
         CHECK_EQ(toString(result.errors[0]), "Type parameter list is required");
@@ -926,7 +926,7 @@ a = b
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
 
         const std::string expected =
@@ -1093,7 +1093,7 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         if (FFlag::LuauBetterTypeMismatchErrors)
             CHECK(
@@ -1115,7 +1115,7 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")
 {
     std::optional<ScopedFastFlag> sff;
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         sff = {FFlag::LuauInstantiateInSubtyping, true};
 
     CheckResult result = check(R"(
@@ -1136,7 +1136,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")
 TEST_CASE_FIXTURE(BuiltinsFixture, "generalize_expectedTypes_with_proper_scope")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauInstantiateInSubtyping, true},
     };
 

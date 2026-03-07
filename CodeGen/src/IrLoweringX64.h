@@ -20,6 +20,7 @@ namespace CodeGen
 struct ModuleHelpers;
 struct AssemblyOptions;
 struct LoweringStats;
+enum class CodeGenCounter : unsigned;
 
 namespace X64
 {
@@ -29,6 +30,7 @@ struct IrLoweringX64
     IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, IrFunction& function, LoweringStats* stats);
 
     void lowerInst(IrInst& inst, uint32_t index, const IrBlock& next);
+    void startBlock(const IrBlock& curr);
     void finishBlock(const IrBlock& curr, const IrBlock& next);
     void finishFunction();
 
@@ -46,6 +48,9 @@ struct IrLoweringX64
     void storeFloat(OperandX64 dst, IrOp src);
     void storeDoubleAsFloat(OperandX64 dst, IrOp src);
     void checkSafeEnv(IrOp target, const IrBlock& next);
+
+    void allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcpos);
+    void incrementCounterAt(size_t offset);
 
     // Operand data lookup helpers
     OperandX64 memRegDoubleOp(IrOp op);

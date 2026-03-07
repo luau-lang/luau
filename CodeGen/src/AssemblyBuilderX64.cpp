@@ -6,8 +6,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauCodegenBufferLoadProp2)
-
 namespace Luau
 {
 namespace CodeGen
@@ -266,27 +264,14 @@ void AssemblyBuilderX64::movsx(RegisterX64 lhs, OperandX64 rhs)
     if (logText)
         log("movsx", lhs, rhs);
 
-    if (FFlag::LuauCodegenBufferLoadProp2)
-    {
-        SizeX64 size = rhs.cat == CategoryX64::reg ? rhs.base.size : rhs.memSize;
-        CODEGEN_ASSERT(size == SizeX64::byte || size == SizeX64::word);
+    SizeX64 size = rhs.cat == CategoryX64::reg ? rhs.base.size : rhs.memSize;
+    CODEGEN_ASSERT(size == SizeX64::byte || size == SizeX64::word);
 
-        placeRex(lhs, rhs);
-        place(0x0f);
-        place(size == SizeX64::byte ? 0xbe : 0xbf);
-        placeRegAndModRegMem(lhs, rhs);
-        commit();
-    }
-    else
-    {
-        CODEGEN_ASSERT(rhs.memSize == SizeX64::byte || rhs.memSize == SizeX64::word);
-
-        placeRex(lhs, rhs);
-        place(0x0f);
-        place(rhs.memSize == SizeX64::byte ? 0xbe : 0xbf);
-        placeRegAndModRegMem(lhs, rhs);
-        commit();
-    }
+    placeRex(lhs, rhs);
+    place(0x0f);
+    place(size == SizeX64::byte ? 0xbe : 0xbf);
+    placeRegAndModRegMem(lhs, rhs);
+    commit();
 }
 
 void AssemblyBuilderX64::movzx(RegisterX64 lhs, OperandX64 rhs)
@@ -294,27 +279,14 @@ void AssemblyBuilderX64::movzx(RegisterX64 lhs, OperandX64 rhs)
     if (logText)
         log("movzx", lhs, rhs);
 
-    if (FFlag::LuauCodegenBufferLoadProp2)
-    {
-        SizeX64 size = rhs.cat == CategoryX64::reg ? rhs.base.size : rhs.memSize;
-        CODEGEN_ASSERT(size == SizeX64::byte || size == SizeX64::word);
+    SizeX64 size = rhs.cat == CategoryX64::reg ? rhs.base.size : rhs.memSize;
+    CODEGEN_ASSERT(size == SizeX64::byte || size == SizeX64::word);
 
-        placeRex(lhs, rhs);
-        place(0x0f);
-        place(size == SizeX64::byte ? 0xb6 : 0xb7);
-        placeRegAndModRegMem(lhs, rhs);
-        commit();
-    }
-    else
-    {
-        CODEGEN_ASSERT(rhs.memSize == SizeX64::byte || rhs.memSize == SizeX64::word);
-
-        placeRex(lhs, rhs);
-        place(0x0f);
-        place(rhs.memSize == SizeX64::byte ? 0xb6 : 0xb7);
-        placeRegAndModRegMem(lhs, rhs);
-        commit();
-    }
+    placeRex(lhs, rhs);
+    place(0x0f);
+    place(size == SizeX64::byte ? 0xb6 : 0xb7);
+    placeRegAndModRegMem(lhs, rhs);
+    commit();
 }
 
 void AssemblyBuilderX64::div(OperandX64 op)
