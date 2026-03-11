@@ -3192,7 +3192,7 @@ struct Compiler
     void compileStatLocal(AstStatLocal* stat)
     {
         // Optimization: we don't need to allocate and assign const locals, since their uses will be constant-folded
-        if (options.optimizationLevel >= 1 && options.debugLevel <= 1 && areLocalsRedundant(stat))
+        if (options.optimizationLevel >= 1 && options.debugLevel == 0 && areLocalsRedundant(stat))
             return;
 
         // Optimization: for 1-1 local assignments, we can reuse the register *if* neither local is mutated
