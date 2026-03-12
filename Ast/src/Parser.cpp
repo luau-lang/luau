@@ -816,6 +816,12 @@ AstStat* Parser::parseFor()
     }
 }
 
+static bool isExprLValue(AstExpr* expr)
+{
+    return (expr->is<AstExprLocal>() && (!FFlag::LuauConst || !expr->as<AstExprLocal>()->local->isConst)) || expr->is<AstExprGlobal>() ||
+           expr->is<AstExprIndexExpr>() || expr->is<AstExprIndexName>();
+}
+
 // funcname ::= Name {`.' Name} [`:' Name]
 AstExpr* Parser::parseFunctionName(bool& hasself, AstName& debugname)
 {
@@ -860,6 +866,9 @@ AstExpr* Parser::parseFunctionName(bool& hasself, AstName& debugname)
 
         hasself = true;
     }
+
+    if (FFlag::LuauConst && !isExprLValue(expr))
+        expr = reportExprError(expr->location, copy({expr}), "Function name must be a variable or a field");
 
     return expr;
 }
@@ -1659,11 +1668,6 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
     {
         return reportStatError(start, {}, {}, "declare must be followed by an identifier, 'function', or 'extern type'");
     }
-}
-
-static bool isExprLValue(AstExpr* expr)
-{
-    return (expr->is<AstExprLocal>() && (!FFlag::LuauConst || !expr->as<AstExprLocal>()->local->isConst)) || expr->is<AstExprGlobal>() || expr->is<AstExprIndexExpr>() || expr->is<AstExprIndexName>();
 }
 
 // varlist `=' explist
