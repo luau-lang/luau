@@ -557,6 +557,58 @@ void lua_getcoverage(lua_State* L, int funcindex, void* context, lua_Coverage ca
     luaM_freearray(L, buffer, size, int, 0);
 }
 
+static void getcounters(lua_State* L, Proto* p, void* context, lua_CounterFunction functionvisit, lua_CounterValue countervisit)
+{
+    if (p->execdata != nullptr && L->global->ecb.getcounterdata != nullptr)
+    {
+        size_t count = 0;
+        char* data = L->global->ecb.getcounterdata(L, p, &count);
+
+        if (data != nullptr && count != 0)
+        {
+            const char* debugname = p->debugname ? getstr(p->debugname) : nullptr;
+            int linedefined = p->linedefined;
+
+            functionvisit(context, debugname, linedefined);
+
+            for (size_t i = 0; i < count; i++)
+            {
+                uint32_t kind = 0;
+                memcpy(&kind, data + 0, sizeof(kind));
+                data += sizeof(kind);
+
+                uint32_t pcpos = 0;
+                memcpy(&pcpos, data + 0, sizeof(pcpos));
+                data += sizeof(pcpos);
+
+                uint64_t hits = 0;
+                memcpy(&hits, data + 0, sizeof(hits));
+                data += sizeof(hits);
+
+                int line = pcpos == ~0u ? p->linedefined : luaG_getline(p, pcpos);
+
+                countervisit(context, kind, line, hits);
+            }
+        }
+    }
+
+    for (int i = 0; i < p->sizep; ++i)
+        getcounters(L, p->p[i], context, functionvisit, countervisit);
+}
+
+void lua_getcounters(lua_State* L, int funcindex, void* context, lua_CounterFunction functionvisit, lua_CounterValue countervisit)
+{
+    const TValue* func = luaA_toobject(L, funcindex);
+    api_check(L, ttisfunction(func) && !clvalue(func)->isC);
+
+    if (L->global->ecb.getcounterdata == nullptr)
+        return;
+
+    Proto* p = clvalue(func)->l.p;
+
+    getcounters(L, p, context, functionvisit, countervisit);
+}
+
 static size_t append(char* buf, size_t bufsize, size_t offset, const char* data)
 {
     size_t size = strlen(data);

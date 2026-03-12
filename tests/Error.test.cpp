@@ -6,8 +6,8 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("ErrorTests");
 
@@ -51,7 +51,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "binary_op_type_function_errors")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ(
             "Operator '+' could not be applied to operands of types number and string; there is no corresponding overload for __add",
             toString(result.errors[0])
@@ -72,7 +72,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unary_op_type_function_errors")
     )");
 
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         CHECK_EQ(

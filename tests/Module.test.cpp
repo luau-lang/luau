@@ -11,7 +11,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTINT(LuauTypeCloneIterationLimit)
 
@@ -313,7 +313,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_free_tables")
 TEST_CASE_FIXTURE(BuiltinsFixture, "clone_self_property")
 {
     // CLI-117082 ModuleTests.clone_self_property we don't infer self correctly, instead replacing it with unknown.
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return;
     fileResolver.source["Module/A"] = R"(
         --!nonstrict
@@ -412,7 +412,7 @@ type B = A
     auto it = mod->exportedTypeBindings.find("A");
     REQUIRE(it != mod->exportedTypeBindings.end());
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK(toString(it->second.type) == "any");
     else
         CHECK(toString(it->second.type) == "*error-type*");

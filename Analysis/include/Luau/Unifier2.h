@@ -122,6 +122,8 @@ private:
     UnifyResult unify_(const MetatableType* subMetatable, const AnyType*);
     UnifyResult unify_(const AnyType*, const MetatableType* superMetatable);
 
+    UnifyResult unify_DEPRECATED(TypePackId subTp, TypePackId superTp);
+
     UnifyResult unify_(TypePackId subTp, TypePackId superTp);
 
     std::optional<TypeId> generalize(TypeId ty);
