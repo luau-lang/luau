@@ -41,6 +41,7 @@ LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
+LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 
 namespace Luau
 {
@@ -2269,6 +2270,12 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
     if (expr->op != AstExprBinary::And && expr->op != AstExprBinary::Or && expr->op != AstExprBinary::CompareEq &&
         expr->op != AstExprBinary::CompareNe)
         inContext.emplace(&typeContext, TypeContext::Default);
+
+    if (FFlag::LuauLValueCompoundAssignmentVisitLhs)
+    {
+        if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
+            visit(expr->left, ValueContext::LValue); // In compound assignments, the LHS is both read-from and written-to
+    }
 
     visit(expr->left, ValueContext::RValue);
     visit(expr->right, ValueContext::RValue);

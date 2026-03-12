@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauUseFastSubtypeForIndexerWithName)
 LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
+LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -6742,5 +6743,24 @@ TEST_CASE_FIXTURE(Fixture, "large_data_like_array_can_simplify")
     CHECK_EQ("() -> {{ bar: number } | { foo: number } | {number}}", toString(requireType("get")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "compound_assignment_writes_lhs")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauLValueCompoundAssignmentVisitLhs, true};
+
+    CheckResult result = check(R"(
+        type T = {
+            read x: number
+        }
+
+        local foo: T = { x = 5 }
+        foo.x += 5
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<PropertyAccessViolation>(result.errors[0]));
+}
 
 TEST_SUITE_END();
