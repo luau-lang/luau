@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAG(LuauUnionOfTablesPreservesReadWrite)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
+LUAU_FASTFLAG(LuauRefinementTypeVector)
 
 using namespace Luau;
 
@@ -792,7 +793,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_narrow_to_vector")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("never", toString(requireTypeAtPosition({3, 28})));
+    {
+        if (FFlag::LuauRefinementTypeVector)
+            CHECK_EQ("unknown & vector", toString(requireTypeAtPosition({3, 28})));
+        else
+            CHECK_EQ("never", toString(requireTypeAtPosition({3, 28})));
+    }
     else
         CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 28})));
 }
@@ -3226,6 +3232,26 @@ TEST_CASE_FIXTURE(Fixture, "cli_184413_refinement_of_union_of_read_types_is_read
             end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_vector_refine")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{ FFlag::LuauRefinementTypeVector, true };
+
+    CheckResult result = check(R"(
+        function foo(x: unknown)
+            if type(x) == "vector" then
+                local y = x.y
+                local z = y.bad
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<UnknownProperty>(result.errors[0]));
 }
 
 TEST_SUITE_END();
