@@ -2281,8 +2281,9 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
 
     if (FFlag::LuauLValueCompoundAssignmentVisitLhs)
     {
+        // In compound assignments, the left side is both read-from and written-to, so we have to visit it in both contexts.
         if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
-            visit(expr->left, ValueContext::LValue); // In compound assignments, the LHS is both read-from and written-to
+            visit(expr->left, ValueContext::LValue);
     }
 
     visit(expr->left, ValueContext::RValue);
