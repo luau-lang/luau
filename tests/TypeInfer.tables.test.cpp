@@ -31,7 +31,7 @@ LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 LUAU_FASTFLAG(LuauComparisonToNilsIsAlwaysOk)
 LUAU_FASTFLAG(LuauGeneralizationMoreAwareOfBounds)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
-
+LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -6716,6 +6716,7 @@ TEST_CASE_FIXTURE(Fixture, "large_data_like_array_can_simplify")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauRelateHandlesCoincidentTables, true},
     };
 
@@ -6835,5 +6836,122 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "cmpeq_any_with_nil_ok")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauComparisonToNilsIsAlwaysOk, true},
+    };
+
+    CheckResult result = check(R"(
+type A = {
+    foo : { [string] : string}
+}
+
+type B = {
+	parsed: A,
+}
+
+local x : B = (nil :: any)
+local found = x.parsed.foo["any"] == nil -- errors
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "cmpneq_any_with_nil_ok")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauComparisonToNilsIsAlwaysOk, true},
+    };
+
+    CheckResult result = check(R"(
+type A = {
+    foo : { [string] : string}
+}
+
+type B = {
+	parsed: A,
+}
+
+local x : B = (nil :: any)
+local found = x.parsed.foo["any"] ~= nil -- errors
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "cmpneq_any_with_nil_ok_in_if")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauComparisonToNilsIsAlwaysOk, true},
+    };
+
+    CheckResult result = check(R"(
+type A = {
+    foo : { [string] : string}
+}
+
+type B = {
+	parsed: A,
+}
+
+local x : B = (nil :: any)
+
+if x.parsed.foo["any"] ~= nil then
+end
+
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "cmpeq_any_with_nil_ok_in_if")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauComparisonToNilsIsAlwaysOk, true},
+    };
+
+    CheckResult result = check(R"(
+type A = {
+    foo : { [string] : string}
+}
+
+type B = {
+	parsed: A,
+}
+
+local x : B = (nil :: any)
+
+if x.parsed.foo["any"] == nil then
+end
+
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "compound_assignment_writes_lhs")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauLValueCompoundAssignmentVisitLhs, true};
+
+    CheckResult result = check(R"(
+        type T = {
+            read x: number
+        }
+
+        local foo: T = { x = 5 }
+        foo.x += 5
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<PropertyAccessViolation>(result.errors[0]));
+}
 
 TEST_SUITE_END();

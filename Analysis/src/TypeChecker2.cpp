@@ -43,6 +43,7 @@ LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauComparisonToNilsIsAlwaysOk)
+LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 
 namespace Luau
 {
@@ -2277,6 +2278,13 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
     if (expr->op != AstExprBinary::And && expr->op != AstExprBinary::Or && expr->op != AstExprBinary::CompareEq &&
         expr->op != AstExprBinary::CompareNe)
         inContext.emplace(&typeContext, TypeContext::Default);
+
+    if (FFlag::LuauLValueCompoundAssignmentVisitLhs)
+    {
+        // In compound assignments, the left side is both read-from and written-to, so we have to visit it in both contexts.
+        if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
+            visit(expr->left, ValueContext::LValue);
+    }
 
     visit(expr->left, ValueContext::RValue);
     visit(expr->right, ValueContext::RValue);
