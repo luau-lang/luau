@@ -11,8 +11,6 @@
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeUtils.h"
 
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-
 namespace Luau
 {
 
@@ -45,7 +43,7 @@ struct Reasonings
         // sort the reasons here to achieve a stable error
         // stringification.
         std::sort(reasons.begin(), reasons.end());
-        std::string allReasons = (FFlag::LuauBetterTypeMismatchErrors && reasons.size() < 2) ? "\n" : "\nthis is because ";
+        std::string allReasons = reasons.size() < 2 ? "\n" : "\nthis is because ";
         for (const std::string& reason : reasons)
         {
             if (reasons.size() > 1)

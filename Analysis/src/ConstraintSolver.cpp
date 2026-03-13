@@ -44,12 +44,11 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(LuauUnifyWithSubtyping2)
-LUAU_FASTFLAGVARIABLE(LuauDoNotUseApplyTypeFunctionToClone)
 LUAU_FASTFLAGVARIABLE(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 LUAU_FASTFLAG(LuauUnpackRespectsAnnotations)
-LUAU_FASTFLAG(LuauGeneralizationMoreAwareOfBounds)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
+LUAU_FASTFLAGVARIABLE(LuauOverloadGetsInstantiated)
 
 namespace Luau
 {
@@ -1010,10 +1009,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
                 params.foundOutsideFunctions = true;
                 params.useCount = 1;
                 params.polarity = freeTy->polarity;
-                GeneralizationResult<TypeId> res =
-                    FFlag::LuauGeneralizationMoreAwareOfBounds
-                        ? generalizeType(arena, builtinTypes, constraint->scope, ty, params)
-                        : generalizeType_DEPRECATED(arena, builtinTypes, constraint->scope, ty, params);
+                GeneralizationResult<TypeId> res = generalizeType(arena, builtinTypes, constraint->scope, ty, params);
                 if (res.resourceLimitsExceeded)
                     reportError(CodeTooComplex{}, constraint->scope->location); // FIXME: We don't have a very good location for this.
             }
@@ -1421,47 +1417,22 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     {
         if (needsClone)
         {
-            if (FFlag::LuauDoNotUseApplyTypeFunctionToClone)
+            if (get<MetatableType>(target))
             {
-                if (get<MetatableType>(target))
-                {
-                    CloneState cloneState{builtinTypes};
-                    instantiated = shallowClone(target, *arena.get(), cloneState, true);
-                    MetatableType* mtv = getMutable<MetatableType>(instantiated);
-                    mtv->table = shallowClone(mtv->table, *arena.get(), cloneState, true);
-                    ttv = getMutable<TableType>(mtv->table);
-                }
-                else if (get<TableType>(target))
-                {
-                    CloneState cloneState{builtinTypes};
-                    instantiated = shallowClone(target, *arena.get(), cloneState, true);
-                    ttv = getMutable<TableType>(instantiated);
-                }
-
-                target = follow(instantiated);
+                CloneState cloneState{builtinTypes};
+                instantiated = shallowClone(target, *arena.get(), cloneState, true);
+                MetatableType* mtv = getMutable<MetatableType>(instantiated);
+                mtv->table = shallowClone(mtv->table, *arena.get(), cloneState, true);
+                ttv = getMutable<TableType>(mtv->table);
             }
-            else
+            else if (get<TableType>(target))
             {
-                // Substitution::clone is a shallow clone. If this is a
-                // metatable type, we want to mutate its table, so we need to
-                // explicitly clone that table as well. If we don't, we will
-                // mutate another module's type surface and cause a
-                // use-after-free.
-                if (get<MetatableType>(target))
-                {
-                    instantiated = applyTypeFunction.clone(target);
-                    MetatableType* mtv = getMutable<MetatableType>(instantiated);
-                    mtv->table = applyTypeFunction.clone(mtv->table);
-                    ttv = getMutable<TableType>(mtv->table);
-                }
-                else if (get<TableType>(target))
-                {
-                    instantiated = applyTypeFunction.clone(target);
-                    ttv = getMutable<TableType>(instantiated);
-                }
-
-                target = follow(instantiated);
+                CloneState cloneState{builtinTypes};
+                instantiated = shallowClone(target, *arena.get(), cloneState, true);
+                ttv = getMutable<TableType>(instantiated);
             }
+
+            target = follow(instantiated);
         }
 
         // This is a new type - redefine the location.
@@ -1663,37 +1634,123 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     for (TypePackId freeTp : u2.newFreshTypePacks)
         trackInteriorFreeTypePack(constraint->scope, freeTp);
 
-    if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
+    if (FFlag::LuauOverloadGetsInstantiated)
     {
-        Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
-        std::optional<TypePackId> subst = instantiate2(
-            arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions), NotNull{&subtyping}, constraint->scope, result
-        );
-        if (!subst)
+        if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
         {
-            reportError(CodeTooComplex{}, constraint->location);
-            result = builtinTypes->errorTypePack;
+            Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
+
+            // FIXME CLI-191965: Consider:
+            //
+            //  local tbl = {}
+            //  for _ in 0..3 do
+            //      table.insert(tbl, i)
+            //  end
+            //  return table.unpack(tbl)
+            //
+            // When we resolve the constraints for table.unpack, whose
+            // type is `<T>( { T } ) -> ...T`, we may not end up with any
+            // bounds for `T`. We will create an indexer on `tbl` but not
+            // unify it with anything. This is incorrect, and causes
+            // us to store a resolved overloaded type of
+            // `( { unknown } ) -> ...unknown`, which errors in type checking.
+            //
+            // Our solution for now is, if there are no bounds on any
+            // generics, we do not store the resolved overload.
+            bool hasBound = false;
+            for (auto& [_, ty] : u2.genericSubstitutions)
+                if (auto ft = get<FreeType>(ty))
+                    hasBound |= !is<NeverType>(follow(ft->lowerBound)) || !is<UnknownType>(follow(ft->upperBound));
+
+            if (auto overloadAsFn = get<FunctionType>(overloadToUse))
+            {
+                if (hasBound)
+                {
+                    CloneState cs{builtinTypes};
+                    // We want to clone persistent types here, for example if we try to instantiate
+                    // `table.insert`
+                    auto clonedTy = shallowClone(overloadToUse, *arena, cs, true);
+                    auto clonedFn = getMutable<FunctionType>(clonedTy);
+                    LUAU_ASSERT(clonedFn);
+                    clonedFn->generics.clear();
+                    clonedFn->genericPacks.clear();
+                    // NOTE: This can be one call!
+                    if (auto inst = instantiate2(
+                        arena,
+                        // Intentional copy, could be by reference.
+                        std::move(u2.genericSubstitutions),
+                        // Intentional copy, could be by reference.
+                        std::move(u2.genericPackSubstitutions),
+                        NotNull{&subtyping},
+                        constraint->scope,
+                        clonedTy
+                    ))
+                    {
+                        auto instantiatedFn = get<FunctionType>(inst);
+                        LUAU_ASSERT(instantiatedFn);
+                        overloadToUse = *inst;
+                        result = follow(instantiatedFn->retTypes);
+                    }
+                    else
+                    {
+                        reportError(CodeTooComplex{}, constraint->location);
+                        result = builtinTypes->errorTypePack;
+                    }
+                }
+                else
+                {
+                    auto tp = instantiate2(
+                        arena,
+                        std::move(u2.genericSubstitutions),
+                        std::move(u2.genericPackSubstitutions),
+                        NotNull{&subtyping},
+                        constraint->scope,
+                        overloadAsFn->retTypes
+                    );
+                    if (tp)
+                        result = *tp;
+                    else
+                    {
+                        reportError(CodeTooComplex{}, constraint->location);
+                        result = builtinTypes->errorTypePack;
+                    }
+                }
+            }
+            else
+            {
+                std::optional<TypePackId> subst = instantiate2(
+                    arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions), NotNull{&subtyping}, constraint->scope, result
+                );
+                if (!subst)
+                {
+                    reportError(CodeTooComplex{}, constraint->location);
+                    result = builtinTypes->errorTypePack;
+                }
+                else
+                    result = *subst;
+            }
         }
-        else
-            result = *subst;
 
-        if (c.result != result)
+        if (c.result != result && !usedMagic)
             emplaceTypePack<BoundTypePack>(asMutable(c.result), result);
-    }
 
-    for (const auto& [expanded, additions] : u2.expandedFreeTypes)
-    {
-        for (TypeId addition : additions)
-            upperBoundContributors[expanded].emplace_back(constraint->location, addition);
-    }
+        for (const auto& [expanded, additions] : u2.expandedFreeTypes)
+        {
+            for (TypeId addition : additions)
+                upperBoundContributors[expanded].emplace_back(constraint->location, addition);
+        }
 
-    if (UnifyResult::Ok == unifyResult && c.callSite)
-        (*c.astOverloadResolvedTypes)[c.callSite] = inferredTy;
-    else if (UnifyResult::Ok != unifyResult)
-    {
         switch (unifyResult)
         {
         case UnifyResult::Ok:
+            if (c.callSite)
+            {
+                // FIXME CLI-192090
+                // For now, due to how bidirectional inference of function
+                // arguments is implemented, magic functions rely on getting
+                // the "inferred" type here.
+                (*c.astOverloadResolvedTypes)[c.callSite] = usedMagic ? inferredTy : overloadToUse;
+            }
             break;
         case UnifyResult::TooComplex:
             reportError(UnificationTooComplex{}, constraint->location);
@@ -1702,6 +1759,50 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
             reportError(OccursCheckFailed{}, constraint->location);
             break;
         }
+    }
+    else
+    {
+        if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
+        {
+            Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
+            std::optional<TypePackId> subst = instantiate2(
+                arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions), NotNull{&subtyping}, constraint->scope, result
+            );
+            if (!subst)
+            {
+                reportError(CodeTooComplex{}, constraint->location);
+                result = builtinTypes->errorTypePack;
+            }
+            else
+                result = *subst;
+        }
+
+        if (c.result != result)
+            emplaceTypePack<BoundTypePack>(asMutable(c.result), result);
+
+        for (const auto& [expanded, additions] : u2.expandedFreeTypes)
+        {
+            for (TypeId addition : additions)
+                upperBoundContributors[expanded].emplace_back(constraint->location, addition);
+        }
+
+        if (UnifyResult::Ok == unifyResult && c.callSite)
+            (*c.astOverloadResolvedTypes)[c.callSite] = inferredTy;
+        else if (UnifyResult::Ok != unifyResult)
+        {
+            switch (unifyResult)
+            {
+            case UnifyResult::Ok:
+                break;
+            case UnifyResult::TooComplex:
+                reportError(UnificationTooComplex{}, constraint->location);
+                break;
+            case UnifyResult::OccursCheckFailed:
+                reportError(OccursCheckFailed{}, constraint->location);
+                break;
+            }
+        }
+
     }
 
     InstantiationQueuer queuer{constraint->scope, constraint->location, this};

@@ -31,7 +31,6 @@ LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarityFollow)
 
@@ -1158,8 +1157,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         const std::string expected =
-            FFlag::LuauBetterTypeMismatchErrors
-                ? "Expected this to be exactly 'Policies' from 'MainModule', but got 'Policies' from 'MainModule'"
+             "Expected this to be exactly 'Policies' from 'MainModule', but got 'Policies' from 'MainModule'"
                   "\ncaused by:\n"
                   "  Property 'getStoreFieldName' is not compatible.\n"
                   "Expected this to be exactly\n\t"
@@ -1172,22 +1170,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
                   "'FieldSpecifier & { from: number? }'"
                   "\nbut got\n\t"
                   "'FieldSpecifier'"
-                  "\ncaused by:\n"
-                  "  Not all intersection parts are compatible.\n"
-                  "Table type 'FieldSpecifier' not compatible with type '{ from: number? }' because the former has extra field 'fieldName'"
-                : "Type 'Policies' from 'MainModule' could not be converted into 'Policies' from 'MainModule'"
-                  "\ncaused by:\n"
-                  "  Property 'getStoreFieldName' is not compatible.\n"
-                  "Type\n\t"
-                  "'(Policies, FieldSpecifier & { from: number? }) -> ('a, b...)'"
-                  "\ncould not be converted into\n\t"
-                  "'(Policies, FieldSpecifier) -> string'"
-                  "\ncaused by:\n"
-                  "  Argument #2 type is not compatible.\n"
-                  "Type\n\t"
-                  "'FieldSpecifier'"
-                  "\ncould not be converted into\n\t"
-                  "'FieldSpecifier & { from: number? }'"
                   "\ncaused by:\n"
                   "  Not all intersection parts are compatible.\n"
                   "Table type 'FieldSpecifier' not compatible with type '{ from: number? }' because the former has extra field 'fieldName'";

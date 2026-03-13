@@ -17,7 +17,6 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
-LUAU_FASTFLAGVARIABLE(LuauCodegenBufferBaseFold)
 LUAU_FASTFLAGVARIABLE(LuauCodegenTruncatedSubsts)
 
 namespace Luau
@@ -1369,7 +1368,7 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 else
                     replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}}); // Shows a conflict in assumptions on this path
             }
-            else if (FFlag::LuauCodegenBufferBaseFold && OP_B(inst).kind == IrOpKind::Inst && OP_E(inst).kind == IrOpKind::Constant)
+            else if (OP_B(inst).kind == IrOpKind::Inst && OP_E(inst).kind == IrOpKind::Constant)
             {
                 // If only the base offset source double value is a constant, it means we couldn't constant-fold NUM_TO_INT
                 CODEGEN_ASSERT(function.instOp(OP_B(inst)).cmd == IrCmd::NUM_TO_INT && OP_A(function.instOp(OP_B(inst))) == OP_E(inst));

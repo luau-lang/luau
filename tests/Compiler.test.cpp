@@ -25,13 +25,11 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
-LUAU_FASTFLAG(LuauCompileCorrectLocalPc)
 LUAU_FASTFLAG(LuauCompileExtraTypes)
 LUAU_FASTFLAG(LuauCompileVectorReveseMul)
 LUAU_FASTFLAG(LuauCompileFastcallsSurvivePolyfills)
 LUAU_FASTFLAG(LuauCompileTableIndexTemp)
-LUAU_FASTFLAG(LuauCompileFoldVectorComp)
-LUAU_FASTFLAG(LuauCompileInlinedBuiltins)
+LUAU_FASTFLAG(LuauCompileFoldStringLimit)
 LUAU_FASTFLAG(LuauCompileNewMathConstantsFolded)
 
 using namespace Luau;
@@ -1773,7 +1771,6 @@ RETURN R0 1
 
 TEST_CASE("ConstantFoldVectorComponents")
 {
-    ScopedFastFlag luauCompileFoldVectorComp{FFlag::LuauCompileFoldVectorComp, true};
     ScopedFastFlag luauCompileTableIndexTemp{FFlag::LuauCompileTableIndexTemp, true};
 
     CHECK_EQ(
@@ -4822,7 +4819,6 @@ RETURN R0 0
 
 TEST_CASE("JumpTrampoline")
 {
-    ScopedFastFlag luauCompileCorrectLocalPc{FFlag::LuauCompileCorrectLocalPc, true};
     ScopedFastFlag luauCompileExtraTypes{FFlag::LuauCompileExtraTypes, true};
 
     std::string source;
@@ -8189,8 +8185,6 @@ L1: RETURN R0 0
 )"
     );
 
-    ScopedFastFlag luauCompileInlinedBuiltins{FFlag::LuauCompileInlinedBuiltins, true};
-
     // inline builtins
     CHECK_EQ(
         "\n" + compileFunction(
@@ -10496,6 +10490,84 @@ RETURN R0 1
         R"(
 LOADK R0 K0 ['hello world']
 RETURN R0 1
+)"
+    );
+
+    ScopedFastFlag luauCompileFoldStringLimit{FFlag::LuauCompileFoldStringLimit, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a1 = "0123456789012345678901234567890123456789"
+local a2 = a1 .. a1 .. a1 .. a1 .. a1 .. a1 .. a1 .. a1 .. a1 .. a1
+local a3 = a2 .. a2 .. a2 .. a2 .. a2 .. a2 .. a2 .. a2 .. a2 .. a2
+local a4 = a3 .. a3 .. a3 .. a3 .. a3 .. a3 .. a3 .. a3 .. a3 .. a3
+local a5 = a4 .. a4 .. a4 .. a4 .. a4 .. a4 .. a4 .. a4 .. a4 .. a4
+return a5
+)",
+                   0,
+                   2
+               ),
+        R"(
+LOADK R1 K0 ['01234567890123456789012345678901'...]
+LOADK R2 K0 ['01234567890123456789012345678901'...]
+LOADK R3 K0 ['01234567890123456789012345678901'...]
+LOADK R4 K0 ['01234567890123456789012345678901'...]
+LOADK R5 K0 ['01234567890123456789012345678901'...]
+LOADK R6 K0 ['01234567890123456789012345678901'...]
+LOADK R7 K0 ['01234567890123456789012345678901'...]
+LOADK R8 K0 ['01234567890123456789012345678901'...]
+LOADK R9 K0 ['01234567890123456789012345678901'...]
+LOADK R10 K0 ['01234567890123456789012345678901'...]
+CONCAT R0 R1 R10
+MOVE R2 R0
+MOVE R3 R0
+MOVE R4 R0
+MOVE R5 R0
+MOVE R6 R0
+MOVE R7 R0
+MOVE R8 R0
+MOVE R9 R0
+MOVE R10 R0
+MOVE R11 R0
+CONCAT R1 R2 R11
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a1 = "0123456789012345678901234567890123456789"
+local a2 = `{a1}{a1}{a1}{a1}{a1}{a1}{a1}{a1}{a1}{a1}`
+local a3 = `{a2}{a2}{a2}{a2}{a2}{a2}{a2}{a2}{a2}{a2}`
+local a4 = `{a3}{a3}{a3}{a3}{a3}{a3}{a3}{a3}{a3}{a3}`
+local a5 = `{a4}{a4}{a4}{a4}{a4}{a4}{a4}{a4}{a4}{a4}`
+return a5
+)",
+                   0,
+                   2
+               ),
+        R"(
+LOADK R1 K0 ['01234567890123456789012345678901'...]
+NAMECALL R1 R1 K1 ['format']
+CALL R1 1 1
+MOVE R0 R1
+LOADK R2 K2 ['%*%*%*%*%*%*%*%*%*%*']
+MOVE R4 R0
+MOVE R5 R0
+MOVE R6 R0
+MOVE R7 R0
+MOVE R8 R0
+MOVE R9 R0
+MOVE R10 R0
+MOVE R11 R0
+MOVE R12 R0
+MOVE R13 R0
+NAMECALL R2 R2 K1 ['format']
+CALL R2 11 1
+MOVE R1 R2
+RETURN R1 1
 )"
     );
 }

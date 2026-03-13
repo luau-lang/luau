@@ -30,11 +30,7 @@
  * about a function that takes any number of values, but where each value must have some specific type.
  */
 
-LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauTableCloneClonesType4)
-LUAU_FASTFLAGVARIABLE(LuauCloneForIntersectionsUnions)
 LUAU_FASTFLAGVARIABLE(LuauTableFreezeCheckIsSubtype)
-LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 LUAU_FASTFLAGVARIABLE(LuauSilenceDynamicFormatStringErrors)
 
 namespace Luau
@@ -522,8 +518,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         ttv->props["foreachi"].deprecated = true;
 
         attachMagicFunction(*ttv->props["pack"].readTy, std::make_shared<MagicPack>());
-        if (FFlag::LuauTableCloneClonesType4)
-            attachMagicFunction(*ttv->props["clone"].readTy, std::make_shared<MagicClone>());
+        attachMagicFunction(*ttv->props["clone"].readTy, std::make_shared<MagicClone>());
         attachMagicFunction(*ttv->props["freeze"].readTy, std::make_shared<MagicFreeze>());
     }
 
@@ -1149,10 +1144,7 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
     const TypePackId oneStringPack = arena->addTypePack({stringType});
     const TypePackId anyTypePack = builtinTypes->anyTypePack;
 
-    const TypePackId variadicTailPack = FFlag::LuauAnalysisUsesSolverMode ? (mode == SolverMode::New ? builtinTypes->unknownTypePack : anyTypePack)
-                                        : mode == SolverMode::New         ? builtinTypes->unknownTypePack
-                                        : FFlag::LuauSolverV2             ? builtinTypes->unknownTypePack
-                                                                          : anyTypePack;
+    const TypePackId variadicTailPack = mode == SolverMode::New ? builtinTypes->unknownTypePack : anyTypePack;
     const TypePackId emptyPack = arena->addTypePack({});
     const TypePackId stringVariadicList = arena->addTypePack(TypePackVar{VariadicTypePack{stringType}});
     const TypePackId numberVariadicList = arena->addTypePack(TypePackVar{VariadicTypePack{numberType}});
@@ -1563,8 +1555,6 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
     WithPredicate<TypePackId> withPredicate
 )
 {
-    LUAU_ASSERT(FFlag::LuauTableCloneClonesType4);
-
     auto [paramPack, _predicates] = std::move(withPredicate);
 
     TypeArena& arena = typechecker.currentModule->internalTypes;
@@ -1580,22 +1570,14 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
 
     TypeId inputType = follow(paramTypes[0]);
 
-    if (FFlag::LuauCloneForIntersectionsUnions)
-    {
-        if (!get<TableType>(inputType) && !get<IntersectionType>(inputType))
-            return std::nullopt;
+    if (!get<TableType>(inputType) && !get<IntersectionType>(inputType))
+        return std::nullopt;
 
-        if (auto intersectionTy = get<IntersectionType>(inputType))
-        {
-            for (auto ty : intersectionTy)
-                if (!get<TableType>(ty))
-                    return std::nullopt;
-        }
-    }
-    else
+    if (auto intersectionTy = get<IntersectionType>(inputType))
     {
-        if (!get<TableType>(inputType))
-            return std::nullopt;
+        for (auto ty : intersectionTy)
+            if (!get<TableType>(ty))
+                return std::nullopt;
     }
 
     CloneState cloneState{typechecker.builtinTypes};
@@ -1607,8 +1589,6 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
 
 bool MagicClone::infer(const MagicFunctionCallContext& context)
 {
-    LUAU_ASSERT(FFlag::LuauTableCloneClonesType4);
-
     TypeArena* arena = context.solver->arena;
 
     const auto& [paramTypes, paramTail] = flatten(context.arguments);

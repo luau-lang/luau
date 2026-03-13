@@ -22,6 +22,8 @@ LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
 LUAU_FASTFLAG(LuauACOnMTTWriteOnlyPropNoCrash)
+LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
 
 using namespace Luau;
 
@@ -5071,6 +5073,68 @@ x.@1
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.empty());
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_table_insert")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+    };
+
+    check(R"(
+        local function addToTable(t: {{ foobar: number }})
+            table.insert(t, { f@1 })
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("foobar") > 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_react")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+    };
+
+    check(R"(
+        type React_Node = any
+        type ReactElement<P, T> = any
+
+        type React_StatelessFunctionalComponent<Props> = (props: Props, context: any) -> React_Node
+        type React_Component<Props, State = nil> = {}
+        type createElementFn = <P, T>(
+            type_:
+              | React_StatelessFunctionalComponent<P>
+              | React_Component<P>
+              | string,
+            props: P?,
+            ...(React_Node | (...any) -> React_Node)
+        ) -> ReactElement<P, T>
+
+        local createElement: createElementFn = nil :: any
+
+        local function MyComponent(props: { foobar: string, barbaz: { bazquxx: string } })
+        	return nil
+        end
+
+        createElement(MyComponent, { f@1 })
+        createElement(MyComponent, { barbaz = { b@2 } })
+        createElement(MyComponent, { foobar = {}, b@3 })
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("foobar") > 0);
+
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.count("bazquxx") > 0);
+
+    ac = autocomplete('3');
+    CHECK(ac.entryMap.count("barbaz") > 0);
 }
 
 

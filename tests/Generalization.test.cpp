@@ -16,6 +16,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -391,7 +393,11 @@ TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
 
 TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauOverloadGetsInstantiated, true},
+    };
 
     CheckResult result = check(R"(
 local func: <T>(T, (T) -> ()) -> () = nil :: any
@@ -402,14 +408,10 @@ end)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const GenericBoundsMismatch* gbm = get<GenericBoundsMismatch>(result.errors[0]);
-    REQUIRE_MESSAGE(gbm, "Expected GenericBoundsMismatch but got: " << toString(result.errors[0]));
-    CHECK_EQ(gbm->genericName, "T");
-    CHECK_EQ(gbm->lowerBounds.size(), 1);
-    CHECK_EQ(toString(gbm->lowerBounds[0]), "{  }");
-    CHECK_EQ(gbm->upperBounds.size(), 1);
-    CHECK_EQ(toString(gbm->upperBounds[0]), "number");
-    CHECK_EQ(result.errors[0].location, Location{Position{3, 0}, Position{3, 4}});
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("number", toString(err->wantedType));
+    CHECK_EQ("{  }", toString(err->givenType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_with_singleton_oss_1808")
@@ -455,5 +457,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional
     CheckResult result2 = getFrontend().check("Module/B");
     LUAU_REQUIRE_NO_ERRORS(result);
 }
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_fuzzer_crash")
+{
+    LUAU_REQUIRE_ERRORS(check(R"(
+        type function t0<A>(l0,...):""
+        type t0 = any
+        do
+        _()
+        _ = {_=...,}
+        _ = {_=rawget({_=_,l0,},_,- _),}
+        end
+        end
+    )"));
+}
+
 
 TEST_SUITE_END();
