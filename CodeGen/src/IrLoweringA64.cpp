@@ -15,7 +15,6 @@
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenOpReadOnly)
-LUAU_FASTFLAG(LuauCodegenLinearNonNumComp)
 LUAU_FASTFLAG(LuauCodegenCounterSupport)
 LUAU_FASTFLAGVARIABLE(LuauCodegenA64ClosureOffset)
 
@@ -1111,7 +1110,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         Label skip, exit;
 
         // For equality comparison, 'luaV_lessequal' expects tag to be equal before the call
-        if (FFlag::LuauCodegenLinearNonNumComp && cond == IrCondition::Equal)
+        if (cond == IrCondition::Equal)
         {
             RegisterA64 tempa = regs.allocTemp(KindA64::w);
             RegisterA64 tempb = regs.allocTemp(KindA64::w);
@@ -1144,7 +1143,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         inst.regA64 = regs.takeReg(w0, index);
 
-        if (FFlag::LuauCodegenLinearNonNumComp && cond == IrCondition::Equal)
+        if (cond == IrCondition::Equal)
         {
             build.b(exit);
             build.setLabel(skip);

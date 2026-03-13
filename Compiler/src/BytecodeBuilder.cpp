@@ -7,8 +7,6 @@
 #include <algorithm>
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCompileCorrectLocalPc)
-
 namespace Luau
 {
 
@@ -1220,30 +1218,26 @@ void BytecodeBuilder::expandJumps()
     insns.swap(newinsns);
     lines.swap(newlines);
 
-    if (FFlag::LuauCompileCorrectLocalPc)
+    for (DebugLocal& debugLocal : debugLocals)
     {
-        for (DebugLocal& debugLocal : debugLocals)
-        {
-            // endpc is exclusive, to get the right remapping, we need to remap the location before the end
-            if (debugLocal.startpc != debugLocal.endpc)
-                debugLocal.endpc = remap[debugLocal.endpc - 1] + 1;
-            else
-                debugLocal.endpc = remap[debugLocal.endpc];
+        // endpc is exclusive, to get the right remapping, we need to remap the location before the end
+        if (debugLocal.startpc != debugLocal.endpc)
+            debugLocal.endpc = remap[debugLocal.endpc - 1] + 1;
+        else
+            debugLocal.endpc = remap[debugLocal.endpc];
 
-            debugLocal.startpc = remap[debugLocal.startpc];
+        debugLocal.startpc = remap[debugLocal.startpc];
+    }
 
-        }
+    for (TypedLocal& typedLocal : typedLocals)
+    {
+        // endpc is exclusive, to get the right remapping, we need to remap the location before the end
+        if (typedLocal.startpc != typedLocal.endpc)
+            typedLocal.endpc = remap[typedLocal.endpc - 1] + 1;
+        else
+            typedLocal.endpc = remap[typedLocal.endpc];
 
-        for (TypedLocal& typedLocal : typedLocals)
-        {
-            // endpc is exclusive, to get the right remapping, we need to remap the location before the end
-            if (typedLocal.startpc != typedLocal.endpc)
-                typedLocal.endpc = remap[typedLocal.endpc - 1] + 1;
-            else
-                typedLocal.endpc = remap[typedLocal.endpc];
-
-            typedLocal.startpc = remap[typedLocal.startpc];
-        }
+        typedLocal.startpc = remap[typedLocal.startpc];
     }
 }
 

@@ -126,7 +126,9 @@ private:
 
     UnifyResult unify_(TypePackId subTp, TypePackId superTp);
 
-    std::optional<TypeId> generalize(TypeId ty);
+    
+    template<typename TID>
+    TID instantiateWithBoundTypes(TID ty);
 
     /**
      * @returns simplify(left | right)

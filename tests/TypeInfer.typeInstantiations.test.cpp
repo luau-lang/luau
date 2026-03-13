@@ -9,7 +9,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
@@ -64,13 +63,9 @@ TEST_CASE_FIXTURE(Fixture, "as_expression_incorrect")
                 "Operator '+' could not be applied to operands of types string and number; there is no corresponding overload for __add"
             );
         }
-        else if (FFlag::LuauBetterTypeMismatchErrors)
-        {
-            REQUIRE_EQ(toString(result.errors[0]), "Expected this to be 'number', but got 'string'");
-        }
         else
         {
-            REQUIRE_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
+            REQUIRE_EQ(toString(result.errors[0]), "Expected this to be 'number', but got 'string'");
         }
     }
 }
@@ -129,23 +124,14 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
         else if (!FFlag::DebugLuauForceOldSolver)
         {
             LUAU_REQUIRE_ERROR_COUNT(1, result);
-            if (FFlag::LuauBetterTypeMismatchErrors)
-                REQUIRE_EQ(toString(result.errors[0]), "Expected this to be 'boolean | number', but got 'string'");
-            else
-                REQUIRE_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'boolean | number'");
+            REQUIRE_EQ(toString(result.errors[0]), "Expected this to be 'boolean | number', but got 'string'");
         }
         else
         {
             LUAU_REQUIRE_ERROR_COUNT(1, result);
-            if (FFlag::LuauBetterTypeMismatchErrors)
-                REQUIRE_EQ(
-                    toString(result.errors[0]), "Expected this to be 'boolean | number', but got 'string'; none of the union options are compatible"
-                );
-            else
-                REQUIRE_EQ(
-                    toString(result.errors[0]),
-                    "Type 'string' could not be converted into 'boolean | number'; none of the union options are compatible"
-                );
+            REQUIRE_EQ(
+                toString(result.errors[0]), "Expected this to be 'boolean | number', but got 'string'; none of the union options are compatible"
+            );
         }
     }
 }

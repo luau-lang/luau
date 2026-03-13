@@ -30,7 +30,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileVectorReveseMul)
 LUAU_FASTFLAGVARIABLE(LuauCompileTableIndexTemp)
-LUAU_FASTFLAGVARIABLE(LuauCompileInlinedBuiltins)
 LUAU_FASTFLAGVARIABLE(LuauCompileVectorConstLimit)
 
 namespace Luau
@@ -363,16 +362,8 @@ struct Compiler
         // note: optimizationLevel check is technically redundant but it's important that we never optimize based on builtins in O1
         if (options.optimizationLevel >= 2)
         {
-            if (FFlag::LuauCompileInlinedBuiltins)
-            {
-                if (int* bfid = builtins.find(expr); bfid && *bfid != LBF_NONE)
-                    return getBuiltinInfo(*bfid).results != 1;
-            }
-            else
-            {
-                if (int* bfid = builtins.find(expr))
-                    return getBuiltinInfo(*bfid).results != 1;
-            }
+            if (int* bfid = builtins.find(expr); bfid && *bfid != LBF_NONE)
+                return getBuiltinInfo(*bfid).results != 1;
         }
 
         // handles local function calls where we know only one argument is returned
@@ -826,27 +817,24 @@ struct Compiler
         // the inline frame will be used to compile return statements as well as to reject recursive inlining attempts
         inlineFrames.push_back({func, oldLocals, target, targetCount});
 
-        if (FFlag::LuauCompileInlinedBuiltins)
+        // this pass tracks which calls are builtins and can be compiled more efficiently
+        analyzeBuiltins(inlineBuiltins, globals, variables, options, func->body, names);
+
+        // If we found new builtins, apply them, but record which expressions we changed so we can undo later
+        if (!inlineBuiltins.empty())
         {
-            // this pass tracks which calls are builtins and can be compiled more efficiently
-            analyzeBuiltins(inlineBuiltins, globals, variables, options, func->body, names);
-
-            // If we found new builtins, apply them, but record which expressions we changed so we can undo later
-            if (!inlineBuiltins.empty())
+            for (auto [callExpr, bfid] : inlineBuiltins)
             {
-                for (auto [callExpr, bfid] : inlineBuiltins)
+                int& builtin = builtins[callExpr]; // If there was no builtin previously, we will get LBF_NONE
+
+                if (bfid != builtin)
                 {
-                    int& builtin = builtins[callExpr]; // If there was no builtin previously, we will get LBF_NONE
-
-                    if (bfid != builtin)
-                    {
-                        inlineBuiltinsBackup[callExpr] = builtin;
-                        builtin = bfid;
-                    }
+                    inlineBuiltinsBackup[callExpr] = builtin;
+                    builtin = bfid;
                 }
-
-                inlineBuiltins.clear();
             }
+
+            inlineBuiltins.clear();
         }
 
         // fold constant values updated above into expressions in the function body
@@ -902,15 +890,12 @@ struct Compiler
                 lv->init = nullptr;
         }
 
-        if (FFlag::LuauCompileInlinedBuiltins)
+        if (!inlineBuiltinsBackup.empty())
         {
-            if (!inlineBuiltinsBackup.empty())
-            {
-                for (auto [callExpr, bfid] : inlineBuiltinsBackup)
-                    builtins[callExpr] = bfid;
+            for (auto [callExpr, bfid] : inlineBuiltinsBackup)
+                builtins[callExpr] = bfid;
 
-                inlineBuiltinsBackup.clear();
-            }
+            inlineBuiltinsBackup.clear();
         }
 
         foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
@@ -967,16 +952,8 @@ struct Compiler
 
         if (options.optimizationLevel >= 1 && !expr->self)
         {
-            if (FFlag::LuauCompileInlinedBuiltins)
-            {
-                if (const int* id = builtins.find(expr); id && *id != LBF_NONE)
-                    bfid = *id;
-            }
-            else
-            {
-                if (const int* id = builtins.find(expr))
-                    bfid = *id;
-            }
+            if (const int* id = builtins.find(expr); id && *id != LBF_NONE)
+                bfid = *id;
         }
 
         if (bfid >= 0 && bytecode.needsDebugRemarks())
@@ -3625,7 +3602,7 @@ struct Compiler
             {
                 // allocate a consecutive range of regs for all remaining vars and compute everything into temps
                 // note, this also handles trailing nils
-                unsigned rest = stat->vars.size - stat->values.size + 1;
+                unsigned rest = unsigned(stat->vars.size - stat->values.size + 1);
                 uint8_t temp = allocReg(stat, rest);
 
                 compileExprTempN(value, temp, uint8_t(rest), /* targetTop= */ true);

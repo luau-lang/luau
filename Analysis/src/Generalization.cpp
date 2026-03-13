@@ -17,7 +17,7 @@
 
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxDepth, 15)
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxSteps, 1500)
-LUAU_FASTFLAGVARIABLE(LuauGeneralizationMoreAwareOfBounds)
+LUAU_FASTFLAGVARIABLE(LuauGeneralizationMoreAwareOfBounds3)
 
 namespace Luau
 {
@@ -728,7 +728,7 @@ void removeType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, Ty
 
 } // namespace
 
-GeneralizationResult<TypeId> generalizeType_DEPRECATED(
+GeneralizationResult<TypeId> generalizeType(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Scope> scope,
@@ -736,7 +736,6 @@ GeneralizationResult<TypeId> generalizeType_DEPRECATED(
     const GeneralizationParams<TypeId>& params
 )
 {
-    LUAU_ASSERT(!FFlag::LuauGeneralizationMoreAwareOfBounds);
     freeTy = follow(freeTy);
 
     FreeType* ft = getMutable<FreeType>(freeTy);
@@ -769,7 +768,21 @@ GeneralizationResult<TypeId> generalizeType_DEPRECATED(
     {
         TypeId lb = follow(ft->lowerBound);
         if (FreeType* lowerFree = getMutable<FreeType>(lb); lowerFree && lowerFree->upperBound == freeTy)
-            lowerFree->upperBound = builtinTypes->unknownType;
+        {
+            // If we are generalizing 'a in:
+            //
+            //  LO <: 'b <: 'a <: UP
+            //
+            // ... we can hold onto the bound UP and forward it to 'b.
+            if (FFlag::LuauGeneralizationMoreAwareOfBounds3)
+            {
+                TypeId upperBound = follow(ft->upperBound);
+                removeType(arena, builtinTypes, upperBound, freeTy);
+                lowerFree->upperBound = follow(upperBound);
+            }
+            else
+                lowerFree->upperBound = builtinTypes->unknownType;
+        }
         else
             removeType(arena, builtinTypes, lb, freeTy);
 
@@ -788,7 +801,21 @@ GeneralizationResult<TypeId> generalizeType_DEPRECATED(
     {
         TypeId ub = follow(ft->upperBound);
         if (FreeType* upperFree = getMutable<FreeType>(ub); upperFree && upperFree->lowerBound == freeTy)
-            upperFree->lowerBound = builtinTypes->neverType;
+        {
+            if (FFlag::LuauGeneralizationMoreAwareOfBounds3)
+            {
+                // If we are generalizing 'a in:
+                //
+                //  LO <: 'a <: 'b <: UP
+                //
+                // ... we can hold onto the bound LO and forward it to 'b.
+                TypeId lowerBound = follow(ft->lowerBound);
+                removeType(arena, builtinTypes, lowerBound, freeTy);
+                upperFree->lowerBound = follow(lowerBound);
+            }
+            else
+                upperFree->lowerBound = builtinTypes->neverType;
+        }
         else
             removeType(arena, builtinTypes, ub, freeTy);
 
@@ -818,177 +845,6 @@ GeneralizationResult<TypeId> generalizeType_DEPRECATED(
     }
 
     return {freeTy, /*wasReplacedByGeneric*/ false};
-}
-
-GeneralizationResult<TypeId> generalizeType(
-    NotNull<TypeArena> arena,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Scope> scope,
-    TypeId freeTy,
-    const GeneralizationParams<TypeId>& params
-)
-{
-    LUAU_ASSERT(FFlag::LuauGeneralizationMoreAwareOfBounds);
-    freeTy = follow(freeTy);
-
-    FreeType* ft = getMutable<FreeType>(freeTy);
-    LUAU_ASSERT(ft);
-
-    LUAU_ASSERT(isKnown(params.polarity));
-
-    const auto lowerBound = follow(ft->lowerBound);
-    const auto upperBound = follow(ft->upperBound);
-
-    const bool hasLowerBound = get<NeverType>(lowerBound) == nullptr && lowerBound != freeTy;
-    const bool hasUpperBound = get<UnknownType>(upperBound) == nullptr && upperBound != freeTy;
-
-    const bool isWithinFunction = !params.foundOutsideFunctions;
-
-    auto generic = [&]() -> GeneralizationResult<TypeId>
-    {
-        emplaceType<GenericType>(asMutable(freeTy), scope, params.polarity);
-        return {freeTy, /* wasReplacedByGeneric */ true};
-    };
-
-    auto notGeneric = [&](auto replacement) -> GeneralizationResult<TypeId>
-    {
-        emplaceType<BoundType>(asMutable(freeTy), replacement);
-        return {freeTy, /* wasReplacedByGeneric */ false};
-    };
-
-    if (!hasLowerBound && !hasUpperBound)
-    {
-        // If the lower bound of `freeTy` is itself, surely the upper bound must be
-        // as well.
-        if (!isWithinFunction)
-            return notGeneric(builtinTypes->unknownType);
-
-        return generic();
-    }
-
-    // It is possible that this free type has other free types in its upper
-    // or lower bounds.  If this is the case, we must replace those
-    // references with never (for the lower bound) or unknown (for the upper
-    // bound).
-    //
-    // If we do not do this, we get tautological bounds like a <: a <: unknown.
-    if (isPositive(params.polarity) && !hasUpperBound)
-    {
-        // If we have some free type like:
-        //
-        //  B <: 'a <: unknown
-        //
-        // ... then we should replace this type with its lower bound.
-        if (FreeType* lowerFree = getMutable<FreeType>(lowerBound); lowerFree && lowerFree->upperBound == freeTy)
-            lowerFree->upperBound = builtinTypes->unknownType;
-        else
-            removeType(arena, builtinTypes, lowerBound, freeTy);
-
-        if (follow(lowerBound) != freeTy)
-            return notGeneric(lowerBound);
-
-        if (!isWithinFunction)
-        {
-            // This is the case where we still have:
-            //
-            //  'a <: 'a
-            //
-            // ... which is the same as having no bounds.
-            return notGeneric(builtinTypes->unknownType);
-        }
-
-        // if the lower bound is the type in question (eg 'a <: 'a), we don't actually have a lower bound.
-        return generic();
-    }
-
-    if (isNegative(params.polarity) && !hasLowerBound)
-    {
-        // If we have some free type like:
-        //
-        //  never <: 'a <: B
-        //
-        // ... then we should replace this type with its upper bound.
-
-        if (FreeType* upperFree = getMutable<FreeType>(upperBound); upperFree && upperFree->lowerBound == freeTy)
-            upperFree->lowerBound = builtinTypes->neverType;
-        else
-            removeType(arena, builtinTypes, upperBound, freeTy);
-
-        if (follow(upperBound) != freeTy)
-            return notGeneric(upperBound);
-
-        if (!isWithinFunction)
-        {
-            // This is the case where we still have:
-            //
-            //  'a <: 'a
-            //
-            // ... which is the same as having no bounds.
-            // NOTE: `never` may be the correct choice here.
-            return notGeneric(builtinTypes->unknownType);
-        }
-
-        // if the upper bound is the type in question, we don't actually have an upper bound.
-        return generic();
-    }
-
-    auto upperFree = getMutable<FreeType>(upperBound);
-    auto lowerFree = getMutable<FreeType>(lowerBound);
-
-    // If we want to generalize `'a` in:
-    //
-    //  LB <: 'a <: 'b <: UB
-    //
-    // ... then we can blindly replace `'a` with `'b'.
-    if (upperFree && upperFree->lowerBound == freeTy)
-    {
-        // If `LB` contains `'a`, we'll need to remove that to avoid some
-        // degenerate types later on.
-        removeType(arena, builtinTypes, lowerBound, freeTy);
-        upperFree->lowerBound = lowerBound;
-        return notGeneric(upperBound);
-    }
-
-    // If we want to generalize `'a' in:
-    //
-    //  LB <: 'b <: 'a <: UB
-    //
-    // ... then we can blindly replace `'a` with `'b`
-
-    if (lowerFree && lowerFree->upperBound == freeTy)
-    {
-        // If `UB` contains `'a`, we'll need to remove that to avoid some
-        // degenerate types later on.
-        removeType(arena, builtinTypes, upperBound, freeTy);
-        lowerFree->upperBound = upperBound;
-        return notGeneric(lowerBound);
-    }
-
-    if (params.polarity != Polarity::Mixed || upperBound == lowerBound)
-    {
-        // FIXME CLI-187299: This is probably not correct, but gets us the
-        // best results the most often.
-        removeType(arena, builtinTypes, upperBound, freeTy);
-        return notGeneric(upperBound);
-    }
-
-    if (!isWithinFunction || params.useCount == 1)
-    {
-        // If we have some free type:
-        //
-        //  A <: 'b < C
-        //
-        // We can approximately generalize this to the intersection of its
-        // bounds, taking care to avoid constructing a degenerate
-        // union or intersection by clipping the free type from the upper
-        // and lower bounds, then also cleaning the resulting intersection.
-        removeType(arena, builtinTypes, lowerBound, freeTy);
-        TypeId cleanedTy = arena->addType(IntersectionType{{lowerBound, upperBound}});
-        removeType(arena, builtinTypes, cleanedTy, freeTy);
-        return notGeneric(cleanedTy);
-    }
-
-    return generic();
 }
 
 GeneralizationResult<TypePackId> generalizeTypePack(
@@ -1069,10 +925,7 @@ std::optional<TypeId> generalize(
     {
         if (!generalizationTarget || freeTy == *generalizationTarget)
         {
-            GeneralizationResult<TypeId> res =
-                FFlag::LuauGeneralizationMoreAwareOfBounds
-                    ? generalizeType(arena, builtinTypes, scope, freeTy, params)
-                    : generalizeType_DEPRECATED(arena, builtinTypes, scope, freeTy, params);
+            GeneralizationResult<TypeId> res = generalizeType(arena, builtinTypes, scope, freeTy, params);
 
             if (res.resourceLimitsExceeded)
                 return std::nullopt;

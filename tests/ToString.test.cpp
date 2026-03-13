@@ -14,8 +14,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-LUAU_FASTFLAG(LuauToStringDecomposition)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -847,21 +845,14 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
     )");
 
     std::string expected;
-    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauBetterTypeMismatchErrors)
+    if (!FFlag::DebugLuauForceOldSolver)
         expected = "Expected this to be\n\t"
                    "'{ a: number, b: string, c: { d: number } }'\n"
                    "but got\n\t"
                    "'{ a: number, b: string, c: { d: string } }'; \n"
                    "accessing `c.d` results in `string` in the latter type and `number` in the former "
                    "type, and `string` is not exactly `number`";
-    else if (!FFlag::DebugLuauForceOldSolver)
-        expected = "Type\n\t"
-                   "'{ a: number, b: string, c: { d: string } }'\n"
-                   "could not be converted into\n\t"
-                   "'{ a: number, b: string, c: { d: number } }'; \n"
-                   "this is because accessing `c.d` results in `string` in the former type and `number` in the latter "
-                   "type, and `string` is not exactly `number`";
-    else if (FFlag::LuauBetterTypeMismatchErrors)
+    else
         expected = "Expected this to be exactly\n\t"
                    "'{ a: number, b: string, c: { d: number } }'\n"
                    "but got\n\t"
@@ -875,20 +866,6 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
                    "caused by:\n  "
                    "Property 'd' is not compatible.\n"
                    "Expected this to be exactly 'number', but got 'string'";
-    else
-        expected = "Type\n\t"
-                   "'{ a: number, b: string, c: { d: string } }'\n"
-                   "could not be converted into\n\t"
-                   "'{ a: number, b: string, c: { d: number } }'\n"
-                   "caused by:\n  "
-                   "Property 'c' is not compatible.\n"
-                   "Type\n\t"
-                   "'{ d: string }'\n"
-                   "could not be converted into\n\t"
-                   "'{ d: number }'\n"
-                   "caused by:\n  "
-                   "Property 'd' is not compatible.\n"
-                   "Type 'string' could not be converted into 'number' in an invariant context";
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     std::string actual = toString(result.errors[0]);
@@ -969,8 +946,6 @@ TEST_CASE_FIXTURE(Fixture, "correct_stringification_user_defined_type_functions"
 
 TEST_CASE_FIXTURE(Fixture, "record_type_compositions_table")
 {
-    ScopedFastFlag _{FFlag::LuauToStringDecomposition, true};
-
     CheckResult checkResult = check(R"(
         type Table = {}
     )");
@@ -992,8 +967,6 @@ TEST_CASE_FIXTURE(Fixture, "record_type_compositions_table")
 
 TEST_CASE_FIXTURE(Fixture, "record_type_compositions_union_intersection")
 {
-    ScopedFastFlag _{FFlag::LuauToStringDecomposition, true};
-
     CheckResult checkResult = check(R"(
         type TableA = {}
         type TableB = {}
@@ -1027,8 +1000,6 @@ TEST_CASE_FIXTURE(Fixture, "record_type_compositions_union_intersection")
 
 TEST_CASE_FIXTURE(Fixture, "record_type_compositions_union_handle_resorted_results")
 {
-    ScopedFastFlag _{FFlag::LuauToStringDecomposition, true};
-
     CheckResult checkResult = check(R"(
         type Zebra = {}
         type Alpha = {}
@@ -1061,8 +1032,6 @@ TEST_CASE_FIXTURE(Fixture, "record_type_compositions_union_handle_resorted_resul
 
 TEST_CASE_FIXTURE(Fixture, "record_type_compositions_generic")
 {
-    ScopedFastFlag _{FFlag::LuauToStringDecomposition, true};
-
     CheckResult checkResult = check(R"(
         type Object = {}
         type Box<T> = { inner: T }
