@@ -13,9 +13,7 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauContainsAnyGenericDoesntTraverseIntoExtern)
-LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 namespace Luau
 {
@@ -139,25 +137,8 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
             const auto& fit = itt->props.find(name);
             if (fit != itt->props.end())
             {
-                // This is only used in the old solver?
-                if (FFlag::LuauAnalysisUsesSolverMode)
-                {
-                    if (useNewSolver)
-                    {
-                        switch (context)
-                        {
-                        case ValueContext::RValue:
-                            return fit->second.readTy;
-                        case ValueContext::LValue:
-                            return fit->second.writeTy;
-                        }
-                    }
-                    else
-                    {
-                        return fit->second.readTy;
-                    }
-                }
-                else if (FFlag::LuauSolverV2)
+
+                if (useNewSolver)
                 {
                     switch (context)
                     {
@@ -168,7 +149,9 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
                     }
                 }
                 else
-                    return fit->second.type_DEPRECATED();
+                {
+                    return fit->second.readTy;
+                }
             }
         }
         else if (const auto& itf = get<FunctionType>(index))

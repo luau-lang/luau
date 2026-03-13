@@ -6,8 +6,6 @@
 #include "doctest.h"
 #include "Fixture.h"
 
-LUAU_FASTFLAG(LuauQueryLocalFunctionBinding)
-
 using namespace Luau;
 
 struct DocumentationSymbolFixture : BuiltinsFixture
@@ -411,13 +409,10 @@ TEST_CASE_FIXTURE(Fixture, "interior_binding_location_is_consistent_with_exterio
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauQueryLocalFunctionBinding)
-    {
-        std::optional<Binding> declBinding = findBindingAtPosition(*getMainModule(), *getMainSourceModule(), {1, 26});
-        REQUIRE(declBinding);
+    std::optional<Binding> declBinding = findBindingAtPosition(*getMainModule(), *getMainSourceModule(), {1, 26});
+    REQUIRE(declBinding);
 
-        CHECK(declBinding->location == Location{{1, 23}, {1, 27}});
-    }
+    CHECK(declBinding->location == Location{{1, 23}, {1, 27}});
 
     std::optional<Binding> innerCallBinding = findBindingAtPosition(*getMainModule(), *getMainSourceModule(), {2, 15});
     REQUIRE(innerCallBinding);

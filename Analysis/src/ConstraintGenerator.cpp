@@ -41,9 +41,9 @@ LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAGVARIABLE(LuauDontIncludeVarargWithAnnotation)
-LUAU_FASTFLAGVARIABLE(LuauUdtfIndirectAliases)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAGVARIABLE(LuauUnpackRespectsAnnotations)
+LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAGVARIABLE(LuauForwardPolarityForFunctionTypes)
 
 namespace Luau
@@ -908,8 +908,7 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
             // Fill it with all visible type functions and referenced type aliases
             if (mainTypeFun)
             {
-                if (FFlag::LuauUdtfIndirectAliases)
-                    createdTypeFunctions.push_back(mainTypeFun);
+                createdTypeFunctions.push_back(mainTypeFun);
 
                 GlobalNameCollector globalNameCollector;
                 stat->visit(&globalNameCollector);
@@ -928,8 +927,7 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
 
                         userFuncData.environmentFunction[name] = std::make_pair(ty->userFuncData.definition, level);
 
-                        if (FFlag::LuauUdtfIndirectAliases)
-                            referencedTypeFunctions[ty->userFuncData.definition] = ty;
+                        referencedTypeFunctions[ty->userFuncData.definition] = ty;
 
                         if (auto it = astTypeFunctionEnvironmentScopes.find(ty->userFuncData.definition))
                         {
@@ -973,27 +971,24 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
         }
     }
 
-    if (FFlag::LuauUdtfIndirectAliases)
+    // Finally, we need to include aliases from functions we might call
+    for (TypeFunctionInstanceType* type : createdTypeFunctions)
     {
-        // Finally, we need to include aliases from functions we might call
-        for (TypeFunctionInstanceType* type : createdTypeFunctions)
+        UserDefinedFunctionData& sourceFuncData = type->userFuncData;
+
+        // Go over all functions in our environment
+        for (const auto& [targetFuncName, definitionAndLevel] : sourceFuncData.environmentFunction)
         {
-            UserDefinedFunctionData& sourceFuncData = type->userFuncData;
-
-            // Go over all functions in our environment
-            for (const auto& [targetFuncName, definitionAndLevel] : sourceFuncData.environmentFunction)
+            if (const TypeFunctionInstanceType** it = referencedTypeFunctions.find(definitionAndLevel.first))
             {
-                if (const TypeFunctionInstanceType** it = referencedTypeFunctions.find(definitionAndLevel.first))
-                {
-                    const UserDefinedFunctionData& targetFuncData = (*it)->userFuncData;
+                const UserDefinedFunctionData& targetFuncData = (*it)->userFuncData;
 
-                    for (const auto& [aliasName, typeAndLevel] : targetFuncData.environmentAlias)
+                for (const auto& [aliasName, typeAndLevel] : targetFuncData.environmentAlias)
+                {
+                    if (!sourceFuncData.environmentAlias.find(aliasName))
                     {
-                        if (!sourceFuncData.environmentAlias.find(aliasName))
-                        {
-                            // Combine definition levels because we are viewing target function aliases from the perspective of the target function
-                            sourceFuncData.environmentAlias[aliasName] = {typeAndLevel.first, typeAndLevel.second + definitionAndLevel.second};
-                        }
+                        // Combine definition levels because we are viewing target function aliases from the perspective of the target function
+                        sourceFuncData.environmentAlias[aliasName] = {typeAndLevel.first, typeAndLevel.second + definitionAndLevel.second};
                     }
                 }
             }
@@ -2757,7 +2752,8 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprGlobal* globa
      */
     if (auto ty = lookup(scope, global->location, def, /*prototype=*/false))
     {
-        rootScope->lvalueTypes[def] = *ty;
+        if (!FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2)
+            rootScope->lvalueTypes[def] = *ty;
         return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
     }
     else

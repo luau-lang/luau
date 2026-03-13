@@ -29,6 +29,7 @@ LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingReplaceBounds)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
 
 namespace Luau
 {
@@ -2419,15 +2420,39 @@ SubtypingResult Subtyping::isCovariantWith(
 
     if (*subFunction->argTypes == *superFunction->argTypes && *subFunction->retTypes == *superFunction->retTypes)
     {
-        if (superFunction->generics.size() != subFunction->generics.size())
-            result.andAlso({false}).withError(
-                TypeError{scope->location, GenericTypeCountMismatch{superFunction->generics.size(), subFunction->generics.size()}}
-            );
-        if (superFunction->genericPacks.size() != subFunction->genericPacks.size())
-            result.andAlso({false}).withError(
-                TypeError{scope->location, GenericTypePackCountMismatch{superFunction->genericPacks.size(), subFunction->genericPacks.size()}}
-            );
-    }
+        if (FFlag::LuauOverloadGetsInstantiated)
+        {
+            // It's fine to upcast a function with generics to a function without, for example:
+            //
+            //  local f: ({number}) -> number = (nil :: <T>({T}) -> T)
+            //
+            // ... or even ...
+            //
+            //  local f: () -> () = (nil :: <T>() -> ())
+            //
+            // Intuitively: a generic function should always be a subtype of its instantiations.
+            if (superFunction->generics.size() != subFunction->generics.size() && !superFunction->generics.empty())
+                result.andAlso({false}).withError(
+                    TypeError{scope->location, GenericTypeCountMismatch{superFunction->generics.size(), subFunction->generics.size()}}
+                );
+
+            if (superFunction->genericPacks.size() != subFunction->genericPacks.size() && !superFunction->genericPacks.empty())
+                result.andAlso({false}).withError(
+                    TypeError{scope->location, GenericTypePackCountMismatch{superFunction->genericPacks.size(), subFunction->genericPacks.size()}}
+                );
+        }
+        else
+        {
+            if (superFunction->generics.size() != subFunction->generics.size())
+                result.andAlso({false}).withError(
+                    TypeError{scope->location, GenericTypeCountMismatch{superFunction->generics.size(), subFunction->generics.size()}}
+                );
+            if (superFunction->genericPacks.size() != subFunction->genericPacks.size())
+                result.andAlso({false}).withError(
+                    TypeError{scope->location, GenericTypePackCountMismatch{superFunction->genericPacks.size(), subFunction->genericPacks.size()}}
+                );
+        }
+     }
 
     if (!subFunction->generics.empty())
     {

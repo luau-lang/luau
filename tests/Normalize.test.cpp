@@ -15,6 +15,9 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
+LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 
 using namespace Luau;
 
@@ -1250,11 +1253,14 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_flatten_type_pack_cycle")
 {
-    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}};
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
+    };
 
-    // Note: if this stops throwing an exception, it means we fixed cycle construction and can replace with a regular check
-    CHECK_THROWS_AS(
-        check(R"(
+    LUAU_REQUIRE_ERRORS(check(R"(
 function _(_).readu32<t0...>()
 repeat
 until function<t4>()
@@ -1263,9 +1269,7 @@ return if _ then _,_(_)
 end
 _(_(_(_)),``)
 do end
-    )"),
-        InternalCompilerError
-    );
+    )"));
 }
 
 #if 0

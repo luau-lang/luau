@@ -11,7 +11,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState2)
-LUAU_FASTFLAG(LuauCodegenLinearNonNumComp)
 
 namespace Luau
 {
@@ -1352,15 +1351,11 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
             case LOP_JUMPIFNOTLE:
             case LOP_JUMPIFNOTLT:
             {
-                if (FFlag::LuauCodegenLinearNonNumComp)
-                {
-                    int ra = LUAU_INSN_A(*pc);
-                    int rb = pc[1];
+                int ra = LUAU_INSN_A(*pc);
+                int rb = pc[1];
 
-                    bcType.a = regTags[ra];
-                    bcType.b = regTags[rb];
-                }
-
+                bcType.a = regTags[ra];
+                bcType.b = regTags[rb];
                 break;
             }
             case LOP_JUMPX:

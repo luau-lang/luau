@@ -43,7 +43,7 @@ inline constexpr RegisterX64 rConstants = r12;     // TValue* k
 
 inline constexpr unsigned kExtraLocals = 3;            // Number of 8 byte slots available for specialized local variables specified below
 inline constexpr unsigned kSpillSlots_DEPRECATED = 13; // Number of 8 byte slots available for register allocator to spill data into
-inline constexpr unsigned kSpillSlots_NEW = 12;        // TODO: after removal of FFlagLuauCodegenExtraSpills, re-adjust kExtraLocals/kSpillSlots
+inline constexpr unsigned kSpillSlots_NEW = 12;        // TODO: re-adjust kExtraLocals/kSpillSlots to the new value
 static_assert((kExtraLocals + kSpillSlots_DEPRECATED) * 8 % 16 == 0, "locals have to preserve 16 byte alignment");
 static_assert(kSpillSlots_NEW <= kSpillSlots_DEPRECATED, "new spill slot allocation cannot exceed deprecated one");
 static_assert(kSpillSlots_NEW % 2 == 0, "spill slots have to be sized in 16 byte TValue chunks, for valid extra register spill-over");

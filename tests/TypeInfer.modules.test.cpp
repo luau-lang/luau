@@ -16,7 +16,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINT(LuauSolverConstraintLimit)
 LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 
 using namespace Luau;
@@ -262,10 +261,7 @@ a = tbl.abc.def
 
     CheckResult result = getFrontend().check("game/B");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ("Expected this to be 'string', but got 'number'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[0]));
+    CHECK_EQ("Expected this to be 'string', but got 'number'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "general_require_type_mismatch")
@@ -280,10 +276,7 @@ local tbl: string = require(game.A)
 
     CheckResult result = getFrontend().check("game/B");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ("Expected this to be 'string', but got '{ def: number }'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Type '{ def: number }' could not be converted into 'string'", toString(result.errors[0]));
+    CHECK_EQ("Expected this to be 'string', but got '{ def: number }'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "bound_free_table_export_is_ok")
@@ -470,29 +463,17 @@ local b: B.T = a
     if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected =
-            FFlag::LuauBetterTypeMismatchErrors
-                ? "Expected this to be 'T' from 'game/B', but got 'T' from 'game/A'; \n"
-                  "accessing `x` results in `number` in the latter type and `string` in the former type, and "
-                  "`number` is not exactly `string`"
-                : "Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'; \n"
-                  "this is because accessing `x` results in `number` in the former type and `string` in the latter type, and "
-                  "`number` is not exactly `string`";
+            "Expected this to be 'T' from 'game/B', but got 'T' from 'game/A'; \n"
+            "accessing `x` results in `number` in the latter type and `string` in the former type, and "
+            "`number` is not exactly `string`";
         CHECK(expected == toString(result.errors[0]));
     }
-    else if (FFlag::LuauBetterTypeMismatchErrors)
+    else
     {
         const std::string expected = R"(Expected this to be exactly 'T' from 'game/B', but got 'T' from 'game/A'
 caused by:
   Property 'x' is not compatible.
 Expected this to be exactly 'string', but got 'number')";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        const std::string expected = R"(Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'
-caused by:
-  Property 'x' is not compatible.
-Type 'number' could not be converted into 'string' in an invariant context)";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
 }
@@ -529,29 +510,17 @@ local b: B.T = a
     if (!FFlag::DebugLuauForceOldSolver)
     {
         const std::string expected =
-            FFlag::LuauBetterTypeMismatchErrors
-                ? "Expected this to be 'T' from 'game/C', but got 'T' from 'game/B'; \n"
-                  "accessing `x` results in `number` in the latter type and `string` in the former type, and "
-                  "`number` is not exactly `string`"
-                : "Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'; \n"
-                  "this is because accessing `x` results in `number` in the former type and `string` in the latter type, and "
-                  "`number` is not exactly `string`";
+            "Expected this to be 'T' from 'game/C', but got 'T' from 'game/B'; \n"
+            "accessing `x` results in `number` in the latter type and `string` in the former type, and "
+            "`number` is not exactly `string`";
         CHECK(expected == toString(result.errors[0]));
     }
-    else if (FFlag::LuauBetterTypeMismatchErrors)
+    else
     {
         const std::string expected = R"(Expected this to be exactly 'T' from 'game/C', but got 'T' from 'game/B'
 caused by:
   Property 'x' is not compatible.
 Expected this to be exactly 'string', but got 'number')";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        const std::string expected = R"(Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'
-caused by:
-  Property 'x' is not compatible.
-Type 'number' could not be converted into 'string' in an invariant context)";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
 }

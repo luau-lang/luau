@@ -11,7 +11,6 @@
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAG(LuauUnionOfTablesPreservesReadWrite)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
@@ -518,26 +517,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_an_incompatible_function_after_using_ty
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-        if (FFlag::LuauBetterTypeMismatchErrors)
-            CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[0]));
-        else
-            CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
+        CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[0]));
         CHECK(Location{{7, 18}, {7, 19}} == result.errors[0].location);
     }
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-        if (FFlag::LuauBetterTypeMismatchErrors)
-            CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[0]));
-        else
-            CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
+        CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[0]));
         CHECK(Location{{7, 18}, {7, 19}} == result.errors[0].location);
 
-        if (FFlag::LuauBetterTypeMismatchErrors)
-            CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[1]));
-        else
-            CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[1]));
+        CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[1]));
         CHECK(Location{{13, 18}, {13, 19}} == result.errors[1].location);
     }
 }

@@ -8,8 +8,6 @@
 
 #include "lstate.h"
 
-LUAU_FASTFLAG(LuauCodegenExtraSpills)
-
 namespace Luau
 {
 namespace CodeGen
@@ -206,7 +204,7 @@ void IrRegAllocX64::preserve(IrInst& inst)
     {
         unsigned i = findSpillStackSlot(spill.valueKind);
 
-        if (FFlag::LuauCodegenExtraSpills && isExtraSpillSlot(i))
+        if (isExtraSpillSlot(i))
         {
             int extraOffset = getExtraSpillAddressOffset(i);
 
@@ -300,7 +298,7 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
 
             if (spill.stackSlot != kNoStackSlot)
             {
-                if (FFlag::LuauCodegenExtraSpills && isExtraSpillSlot(spill.stackSlot))
+                if (isExtraSpillSlot(spill.stackSlot))
                 {
                     int extraOffset = getExtraSpillAddressOffset(spill.stackSlot);
 
@@ -366,7 +364,7 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
                 CODEGEN_ASSERT(!"value kind not supported for restore");
             }
 
-            if (FFlag::LuauCodegenExtraSpills && spill.stackSlot != kNoStackSlot && isExtraSpillSlot(spill.stackSlot))
+            if (spill.stackSlot != kNoStackSlot && isExtraSpillSlot(spill.stackSlot))
             {
                 if (reg.size == SizeX64::xmmword)
                     build.mov(emergencyTemp, qword[sTemporarySlot + 0]);
