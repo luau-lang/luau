@@ -6716,7 +6716,6 @@ TEST_CASE_FIXTURE(Fixture, "large_data_like_array_can_simplify")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauRelateHandlesCoincidentTables, true},
     };
 
