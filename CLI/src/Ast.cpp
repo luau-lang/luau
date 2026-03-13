@@ -34,6 +34,11 @@ int main(int argc, char** argv)
         displayHelp(argv[0]);
         return 0;
     }
+    else if (argc >= 2 && strcmp(argv[1], "--version") == 0)
+    {
+        printf("Luau %s\n", LUAU_VERSION);
+        return 0;
+    }
     else if (argc < 2)
     {
         displayHelp(argv[0]);
