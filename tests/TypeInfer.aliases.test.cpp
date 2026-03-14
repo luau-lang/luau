@@ -10,7 +10,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
 
 TEST_SUITE_BEGIN("TypeAliases");
@@ -215,10 +214,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(result.errors[0].location == Location{{4, 37}, {4, 42}});
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
@@ -234,10 +230,7 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(result.errors[0].location == Location{{4, 43}, {4, 48}});
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")

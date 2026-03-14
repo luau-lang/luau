@@ -19,7 +19,6 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 
 namespace
 {
@@ -1259,10 +1258,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "parse_only")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("game/Gui/Modules/A", result.errors[0].moduleName);
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "markdirty_early_return")

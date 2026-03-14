@@ -27,6 +27,7 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauForceAllNewSolverTests)
+LUAU_FASTFLAG(DebugLuauForceAllOldSolverTests)
 
 LUAU_FASTFLAG(DebugLuauAlwaysShowConstraintSolvingIncomplete);
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
@@ -34,6 +35,12 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::DebugLuauForceOldSolver, !FFlag::DebugLuauForceAllNewSolverTests};
 
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD() DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(__LINE__)
+
+#define DOES_NOT_PASS_OLD_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::DebugLuauForceOldSolver, FFlag::DebugLuauForceAllOldSolverTests};
+
+#define DOES_NOT_PASS_OLD_SOLVER_GUARD() DOES_NOT_PASS_OLD_SOLVER_GUARD_IMPL(__LINE__)
+
+
 
 namespace Luau
 {

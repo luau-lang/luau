@@ -32,6 +32,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
+LUAU_FASTFLAG(LuauTypeFunctionsCaptureNestedInstances)
 
 namespace Luau
 {
@@ -379,17 +380,31 @@ struct TypeFunctionReducer
         if (reduction.result)
         {
             replace(subject, *reduction.result);
-            for (auto ty : reduction.freshTypes)
+            if (FFlag::LuauTypeFunctionsCaptureNestedInstances)
             {
-                if constexpr (std::is_same_v<T, TypeId>)
+                for (auto ty : ctx->freshInstances)
+                {
                     queuedTys.push_back(ty);
-                else if constexpr (std::is_same_v<T, TypePackId>)
-                    queuedTps.push_back(ty);
+                    if (ctx->solver)
+                        ctx->pushConstraint(ReduceConstraint{ty});
+                }
+            }
+            else
+            {
+                for (auto ty : reduction.freshTypes_DEPRECATED)
+                {
+                    if constexpr (std::is_same_v<T, TypeId>)
+                        queuedTys.push_back(ty);
+                    else if constexpr (std::is_same_v<T, TypePackId>)
+                        queuedTps.push_back(ty);
+                }
             }
         }
         else
         {
-            LUAU_ASSERT(reduction.freshTypes.empty());
+            if (!FFlag::LuauTypeFunctionsCaptureNestedInstances)
+                LUAU_ASSERT(reduction.freshTypes_DEPRECATED.empty());
+
             irreducible.insert(subject);
 
             if (reduction.error.has_value())
@@ -448,6 +463,9 @@ struct TypeFunctionReducer
             else
                 LUAU_ASSERT(!"Unreachable");
         }
+
+        if (FFlag::LuauTypeFunctionsCaptureNestedInstances)
+            ctx->freshInstances.clear();
     }
 
     bool done() const
