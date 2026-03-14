@@ -17,6 +17,7 @@
 
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxDepth, 15)
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxSteps, 1500)
+LUAU_FASTFLAGVARIABLE(LuauGeneralizationMoreAwareOfBounds3)
 
 namespace Luau
 {
@@ -767,7 +768,21 @@ GeneralizationResult<TypeId> generalizeType(
     {
         TypeId lb = follow(ft->lowerBound);
         if (FreeType* lowerFree = getMutable<FreeType>(lb); lowerFree && lowerFree->upperBound == freeTy)
-            lowerFree->upperBound = builtinTypes->unknownType;
+        {
+            // If we are generalizing 'a in:
+            //
+            //  LO <: 'b <: 'a <: UP
+            //
+            // ... we can hold onto the bound UP and forward it to 'b.
+            if (FFlag::LuauGeneralizationMoreAwareOfBounds3)
+            {
+                TypeId upperBound = follow(ft->upperBound);
+                removeType(arena, builtinTypes, upperBound, freeTy);
+                lowerFree->upperBound = follow(upperBound);
+            }
+            else
+                lowerFree->upperBound = builtinTypes->unknownType;
+        }
         else
             removeType(arena, builtinTypes, lb, freeTy);
 
@@ -786,7 +801,21 @@ GeneralizationResult<TypeId> generalizeType(
     {
         TypeId ub = follow(ft->upperBound);
         if (FreeType* upperFree = getMutable<FreeType>(ub); upperFree && upperFree->lowerBound == freeTy)
-            upperFree->lowerBound = builtinTypes->neverType;
+        {
+            if (FFlag::LuauGeneralizationMoreAwareOfBounds3)
+            {
+                // If we are generalizing 'a in:
+                //
+                //  LO <: 'a <: 'b <: UP
+                //
+                // ... we can hold onto the bound LO and forward it to 'b.
+                TypeId lowerBound = follow(ft->lowerBound);
+                removeType(arena, builtinTypes, lowerBound, freeTy);
+                upperFree->lowerBound = follow(lowerBound);
+            }
+            else
+                upperFree->lowerBound = builtinTypes->neverType;
+        }
         else
             removeType(arena, builtinTypes, ub, freeTy);
 
@@ -897,6 +926,7 @@ std::optional<TypeId> generalize(
         if (!generalizationTarget || freeTy == *generalizationTarget)
         {
             GeneralizationResult<TypeId> res = generalizeType(arena, builtinTypes, scope, freeTy, params);
+
             if (res.resourceLimitsExceeded)
                 return std::nullopt;
 

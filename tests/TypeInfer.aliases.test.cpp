@@ -9,8 +9,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
 
 TEST_SUITE_BEGIN("TypeAliases");
@@ -74,7 +73,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK(
             result.errors[0] == TypeError{
@@ -204,7 +203,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_aliases")
 
 TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type T<a> = { v: a }
@@ -215,15 +214,12 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(result.errors[0].location == Location{{4, 37}, {4, 42}});
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type T<a> = { v: a }
@@ -234,10 +230,7 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(result.errors[0].location == Location{{4, 43}, {4, 48}});
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
@@ -653,7 +646,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_of_an_imported_recursive_generic_
     ty2 = lookupType("X");
     REQUIRE(ty2);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK(toString(*ty1, {true}) == "t1 where t1 = { C: t1?, a: T, b: U }");
         CHECK(toString(*ty2, {true}) == "t1 where t1 = { C: t1?, a: U, b: T }");
@@ -1078,7 +1071,7 @@ TEST_CASE_FIXTURE(Fixture, "typeof_is_not_a_valid_alias_name")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK("typeof cannot be used as an identifier for a type function or alias" == toString(result.errors[0]));
     }
@@ -1110,7 +1103,7 @@ type Foo<T> = Foo<T>
 
 TEST_CASE_FIXTURE(Fixture, "recursive_type_alias_bad_pack_use_warns")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
 type Foo<T> = Foo<T...>
@@ -1152,7 +1145,7 @@ type Foo<T> = Foo<T> | string
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_adds_reduce_constraint_for_type_function")
 {
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -1166,7 +1159,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_adds_reduce_constraint_for_type_f
 
 TEST_CASE_FIXTURE(Fixture, "bound_type_in_alias_segfault")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!nonstrict
@@ -1183,7 +1176,7 @@ TEST_CASE_FIXTURE(Fixture, "bound_type_in_alias_segfault")
 TEST_CASE_FIXTURE(BuiltinsFixture, "gh1632_no_infinite_recursion_in_normalization")
 {
     ScopedFastFlag flags[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
     };
 
     CheckResult result = check(R"(
@@ -1225,7 +1218,7 @@ TEST_CASE_FIXTURE(Fixture, "exported_alias_location_is_accessible_on_module")
 TEST_CASE_FIXTURE(Fixture, "exported_type_function_location_is_accessible_on_module")
 {
     ScopedFastFlag flags[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
     };
 
     CheckResult result = check(R"(
@@ -1253,7 +1246,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_cursed_type_aliases")
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_dont_crash_on_bad_name")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type typeof = typeof(nil :: any)
@@ -1292,7 +1285,7 @@ local A = {}
 type B<T = typeof(A)> = unknown
 )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result);
     else
     {
@@ -1308,7 +1301,7 @@ local A = {}
 type B<T... = ...typeof(A)> = unknown
 )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result);
     else
     {
@@ -1320,7 +1313,7 @@ type B<T... = ...typeof(A)> = unknown
 TEST_CASE_FIXTURE(Fixture, "evaluating_generic_default_type_for_symbol_before_definition_is_an_error")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
     };
 
     auto result = check(R"(
@@ -1335,7 +1328,7 @@ local A = {}
 TEST_CASE_FIXTURE(Fixture, "evaluating_generic_default_type_pack_for_symbol_before_definition_is_an_error")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
     };
 
     auto result = check(R"(

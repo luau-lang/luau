@@ -3,6 +3,8 @@
 
 #include "Luau/BytecodeBuilder.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCompileExtraTypes)
+
 namespace Luau
 {
 
@@ -129,6 +131,14 @@ static LuauBytecodeType getType(
     {
         return LBC_TYPE_NIL;
     }
+    else if (FFlag::LuauCompileExtraTypes && ty->is<AstTypeSingletonBool>())
+    {
+        return LBC_TYPE_BOOLEAN;
+    }
+    else if (FFlag::LuauCompileExtraTypes && ty->is<AstTypeSingletonString>())
+    {
+        return LBC_TYPE_STRING;
+    }
 
     return LBC_TYPE_ANY;
 }
@@ -211,6 +221,7 @@ struct TypeMapVisitor : AstVisitor
     std::vector<std::pair<AstName, AstStatTypeAlias*>> typeAliasStack;
     DenseHashMap<AstLocal*, const AstType*> resolvedLocals;
     DenseHashMap<AstExpr*, const AstType*> resolvedExprs;
+    DenseHashMap<AstLocal*, const AstType*> functionReturnTypes{nullptr};
 
     TypeMapVisitor(
         DenseHashMap<AstExprFunction*, std::string>& functionTypes,
@@ -344,6 +355,14 @@ struct TypeMapVisitor : AstVisitor
         return false;
     }
 
+    bool visit(AstStatFor* node) override
+    {
+        if (FFlag::LuauCompileExtraTypes)
+            recordResolvedType(node->var, &builtinTypes.numberType);
+
+        return true; // Let generic visitor step into all expressions
+    }
+
     // for...in statement can contain type annotations on locals (we might even infer some for ipairs/pairs/generalized iteration)
     bool visit(AstStatForIn* node) override
     {
@@ -393,6 +412,20 @@ struct TypeMapVisitor : AstVisitor
         node->body->visit(this);
 
         return false;
+    }
+
+    bool visit(AstStatLocalFunction* node) override
+    {
+        if (FFlag::LuauCompileExtraTypes && node->func->returnAnnotation != nullptr)
+        {
+            if (AstTypePackExplicit* type = node->func->returnAnnotation->as<AstTypePackExplicit>())
+            {
+                if (type->typeList.types.size >= 1)
+                    functionReturnTypes[node->name] = type->typeList.types.data[0];
+            }
+        }
+
+        return true; // Let generic visitor step into all expressions
     }
 
     bool visit(AstExprFunction* node) override
@@ -483,6 +516,11 @@ struct TypeMapVisitor : AstVisitor
             if (*typeBcPtr == LBC_TYPE_VECTOR)
             {
                 if (node->index == "X" || node->index == "Y" || node->index == "Z")
+                {
+                    recordResolvedType(node, &builtinTypes.numberType);
+                    return false;
+                }
+                else if (FFlag::LuauCompileExtraTypes && (node->index == "x" || node->index == "y" || node->index == "z"))
                 {
                     recordResolvedType(node, &builtinTypes.numberType);
                     return false;
@@ -777,6 +815,14 @@ struct TypeMapVisitor : AstVisitor
             case LBF_VECTOR_LERP:
                 recordResolvedType(node, &builtinTypes.vectorType);
                 break;
+            }
+        }
+        else if (FFlag::LuauCompileExtraTypes)
+        {
+            if (AstExprLocal* local = node->func->as<AstExprLocal>())
+            {
+                if (const AstType** typePtr = functionReturnTypes.find(local->local))
+                    recordResolvedType(node, *typePtr);
             }
         }
 

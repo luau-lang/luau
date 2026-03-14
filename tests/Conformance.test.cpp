@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Common.h"
+#include "Luau/Type.h"
 #include "lua.h"
 #include "lualib.h"
 #include "luacode.h"
@@ -40,8 +41,9 @@ LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauStacklessPcall)
-LUAU_FASTFLAG(LuauCodegenExtraSimd)
-LUAU_FASTFLAG(LuauCodegenExtraSpills)
+LUAU_FASTFLAG(LuauCodegenA64ClosureOffset)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauNewMathConstantsRuntime)
 LUAU_FASTFLAG(LuauActivationRecordStopDeadnaming)
 
 static lua_CompileOptions defaultOptions()
@@ -849,6 +851,7 @@ TEST_CASE("Buffers")
 
 TEST_CASE("Math")
 {
+    ScopedFastFlag newMathConstants{FFlag::LuauNewMathConstantsRuntime, true};
     runConformance("math.luau");
 }
 
@@ -1351,8 +1354,6 @@ TEST_CASE("Vector")
 
 TEST_CASE("VectorLibrary")
 {
-    ScopedFastFlag luauCodegenExtraSimd{FFlag::LuauCodegenExtraSimd, true};
-
     lua_CompileOptions copts = defaultOptions();
 
     SUBCASE("O0")
@@ -1462,7 +1463,7 @@ TEST_CASE("Types")
             Luau::NullModuleResolver moduleResolver;
             Luau::NullFileResolver fileResolver;
             Luau::NullConfigResolver configResolver;
-            Luau::Frontend frontend{&fileResolver, &configResolver};
+            Luau::Frontend frontend{!FFlag::DebugLuauForceOldSolver ? Luau::SolverMode::New : Luau::SolverMode::Old, &fileResolver, &configResolver};
             Luau::registerBuiltinGlobals(frontend, frontend.globals);
             Luau::freeze(frontend.globals.globalTypes);
 
@@ -2367,7 +2368,7 @@ TEST_CASE("ApiAtoms")
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
-    lua_callbacks(L)->useratom = [](const char* s, size_t l) -> int16_t
+    lua_callbacks(L)->useratom = [](lua_State* L, const char* s, size_t l) -> int16_t
     {
         if (strcmp(s, "string") == 0)
             return 0;
@@ -3471,8 +3472,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauCodegenExtraSpills{FFlag::LuauCodegenExtraSpills, true};
-
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
@@ -3828,6 +3827,55 @@ TEST_CASE("HugeConstantTable")
     REQUIRE(status == 0);
 
     CHECK(lua_tonumber(L, -1) == 3);
+}
+
+TEST_CASE("LargeNestedClosure")
+{
+    ScopedFastFlag luauCodegenA64ClosureOffset{FFlag::LuauCodegenA64ClosureOffset, true};
+
+    const int kCount = 2048;
+    std::string source;
+
+    source += "local function test()\n";
+    source += "local x = 0\n";
+
+    for (int i = 0; i < kCount; ++i)
+    {
+        std::string n = std::to_string(i + 1);
+        source += "    function f" + n + "() x = x + 1; return " + n + " end\n";
+    }
+
+    source += "    return f" + std::to_string(kCount) + "\n";
+    source += "end\n";
+    source += "return test()()\n";
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    if (codegen && luau_codegen_supported())
+        luau_codegen_create(L);
+
+    luaL_openlibs(L);
+    luaL_sandbox(L);
+    luaL_sandboxthread(L);
+
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source.data(), source.size(), nullptr, &bytecodeSize);
+    int result = luau_load(L, "=LargeNestedClosure", bytecode, bytecodeSize, 0);
+    free(bytecode);
+
+    REQUIRE(result == 0);
+
+    if (codegen && luau_codegen_supported())
+    {
+        Luau::CodeGen::CompilationOptions nativeOptions{Luau::CodeGen::CodeGen_ColdFunctions};
+        Luau::CodeGen::compile(L, -1, nativeOptions);
+    }
+
+    int status = lua_resume(L, nullptr, 0);
+    REQUIRE(status == 0);
+
+    CHECK(lua_tonumber(L, -1) == kCount);
 }
 
 TEST_CASE("IrInstructionLimit")

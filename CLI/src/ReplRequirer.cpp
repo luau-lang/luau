@@ -168,11 +168,18 @@ static int load(lua_State* L, void* ctx, const char* path, const char* chunkname
         if (req->codegenEnabled())
         {
             Luau::CodeGen::CompilationOptions nativeOptions;
+
+            if (req->countersActive())
+                nativeOptions.recordCounters = true;
+
             Luau::CodeGen::compile(ML, -1, nativeOptions);
         }
 
         if (req->coverageActive())
             req->coverageTrack(ML, -1);
+
+        if (req->countersActive())
+            req->countersTrack(ML, -1);
 
         int status = lua_resume(ML, L, 0);
 
@@ -224,10 +231,19 @@ void requireConfigInit(luarequire_Configuration* config)
     config->load = load;
 }
 
-ReplRequirer::ReplRequirer(CompileOptions copts, BoolCheck coverageActive, BoolCheck codegenEnabled, Coverage coverageTrack)
+ReplRequirer::ReplRequirer(
+    CompileOptions copts,
+    BoolCheck coverageActive,
+    BoolCheck codegenEnabled,
+    Coverage coverageTrack,
+    BoolCheck countersActive,
+    Coverage countersTrack
+)
     : copts(copts)
     , coverageActive(coverageActive)
     , codegenEnabled(codegenEnabled)
     , coverageTrack(coverageTrack)
+    , countersActive(countersActive)
+    , countersTrack(countersTrack)
 {
 }

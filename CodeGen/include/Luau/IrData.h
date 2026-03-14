@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Bytecode.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
 #include "Luau/RegisterX64.h"
@@ -794,8 +795,18 @@ enum class IrCmd : uint8_t
     FALLBACK_FORGPREP,
 
     // Instruction that passes value through, it is produced by constant folding and users substitute it with the value
-    SUBSTITUTE,
     // A: operand of any type
+    SUBSTITUTE,
+
+    // Pseudo instruction to mark VM registers as implicitly used at the location
+    // A: Rn (start)
+    // B: int (count, -1 to mark all registers after start)
+    MARK_USED,
+
+    // Pseudo instruction to mark VM registers as dead at the location
+    // A: Rn (start)
+    // B: int (count, -1 to mark all registers after start)
+    MARK_DEAD,
 
     // Performs bitwise and/xor/or on two unsigned integers
     // A, B: int
@@ -1202,6 +1213,7 @@ struct IrBlock
     uint32_t chainkey = 0;
     uint32_t expectedNextBlock = ~0u;
 
+    // Bytecode PC position at which the block was generated
     uint32_t startpc = kBlockNoStartPc;
 
     Label label;
@@ -1268,6 +1280,8 @@ struct IrFunction
     uint32_t entryLocation = 0;
     uint32_t endLocation = 0;
 
+    std::vector<uint32_t> extraNativeData;
+
     // For each instruction, an operand that can be used to recompute the value
     std::vector<ValueRestoreLocation> valueRestoreOps;
     std::vector<uint32_t> validRestoreOpBlocks;
@@ -1281,6 +1295,8 @@ struct IrFunction
     CfgInfo cfg;
 
     LoweringStats* stats = nullptr;
+
+    bool recordCounters = false; // Taken from CompilationOptions for easy access
 
     IrBlock& blockOp(IrOp op)
     {

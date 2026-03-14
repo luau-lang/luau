@@ -41,7 +41,9 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
-LUAU_FASTFLAG(LuauStandaloneParseType)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+
+LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
 
 namespace Luau
 {
@@ -426,6 +428,19 @@ static TypeCheckLimits makeTypeCheckLimits(const FrontendOptions& options)
     limits.cancellationToken = options.cancellationToken;
 
     return limits;
+}
+
+Frontend::Frontend(SolverMode mode, FileResolver* fileResolver, ConfigResolver* configResolver, FrontendOptions options)
+    : useNewLuauSolver(mode)
+    , builtinTypes(NotNull{&builtinTypes_})
+    , fileResolver(fileResolver)
+    , moduleResolver(this)
+    , moduleResolverForAutocomplete(this)
+    , globals(builtinTypes, getLuauSolverMode())
+    , globalsForAutocomplete(builtinTypes, getLuauSolverMode())
+    , configResolver(configResolver)
+    , options(std::move(options))
+{
 }
 
 Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options)
@@ -1614,15 +1629,32 @@ ModulePtr check(
         !FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete)
         module->errors.clear();
 
-    ExpectedTypeVisitor etv{
-        NotNull{&module->astTypes},
-        NotNull{&module->astExpectedTypes},
-        NotNull{&module->astResolvedTypes},
-        NotNull{&module->internalTypes},
-        builtinTypes,
-        NotNull{parentScope.get()}
-    };
-    sourceModule.root->visit(&etv);
+    if (FFlag::LuauOverloadGetsInstantiated)
+    {
+        ExpectedTypeVisitor etv{
+            NotNull{&module->astTypes},
+            NotNull{&module->astExpectedTypes},
+            NotNull{&module->astResolvedTypes},
+            NotNull{&module->astOverloadResolvedTypes},
+            NotNull{&module->internalTypes},
+            builtinTypes,
+            NotNull{parentScope.get()}
+        };
+        sourceModule.root->visit(&etv);
+    }
+    else
+    {
+
+        ExpectedTypeVisitor etv{
+            NotNull{&module->astTypes},
+            NotNull{&module->astExpectedTypes},
+            NotNull{&module->astResolvedTypes},
+            NotNull{&module->internalTypes},
+            builtinTypes,
+            NotNull{parentScope.get()}
+        };
+        sourceModule.root->visit(&etv);
+    }
 
     // NOTE: This used to be done prior to cloning the public interface, but
     // we now replace "internal" types with `*error-type*`.

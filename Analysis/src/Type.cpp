@@ -25,13 +25,10 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 
-LUAU_FASTFLAG(LuauSolverV2)
-
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 namespace Luau
 {
@@ -923,17 +920,11 @@ void persist(TypeId ty)
 
             for (const auto& [_name, prop] : ttv->props)
             {
-                if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
-                {
-                    if (prop.readTy)
-                        queue.push_back(*prop.readTy);
-                    if (prop.writeTy)
-                        queue.push_back(*prop.writeTy);
-                }
-                else
-                    queue.push_back(prop.type_DEPRECATED());
+                if (prop.readTy)
+                    queue.push_back(*prop.readTy);
+                if (prop.writeTy)
+                    queue.push_back(*prop.writeTy);
             }
-
 
             if (ttv->indexer)
             {
@@ -945,15 +936,11 @@ void persist(TypeId ty)
         {
             for (const auto& [_name, prop] : etv->props)
             {
-                if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
-                {
-                    if (prop.readTy)
-                        queue.push_back(*prop.readTy);
-                    if (prop.writeTy)
-                        queue.push_back(*prop.writeTy);
-                }
-                else
-                    queue.push_back(prop.type_DEPRECATED());
+
+                if (prop.readTy)
+                    queue.push_back(*prop.readTy);
+                if (prop.writeTy)
+                    queue.push_back(*prop.writeTy);
             }
         }
         else if (auto utv = get<UnionType>(t))

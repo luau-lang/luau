@@ -1,12 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "IrLoweringX64.h"
 
+#include "Luau/CodeGenOptions.h"
 #include "Luau/DenseHash.h"
+#include "Luau/IrCallWrapperX64.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 #include "Luau/LoweringStats.h"
-
-#include "Luau/IrCallWrapperX64.h"
 
 #include "EmitBuiltinsX64.h"
 #include "EmitCommonX64.h"
@@ -16,14 +16,11 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenLocationEndFix)
-LUAU_FASTFLAGVARIABLE(LuauCodegenExtraSpills)
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAG(LuauCodegenOpReadOnly)
-LUAU_FASTFLAG(LuauCodegenLinearNonNumComp)
 LUAU_FASTFLAG(LuauCodegenIsNanAndDirectCompare)
+LUAU_FASTFLAG(LuauCodegenCounterSupport)
 
 namespace Luau
 {
@@ -1166,7 +1163,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         Label skip, exit;
 
         // For equality comparison, 'luaV_lessequal' expects tag to be equal before the call
-        if (FFlag::LuauCodegenLinearNonNumComp && cond == IrCondition::Equal)
+        if (cond == IrCondition::Equal)
         {
             ScopedRegX64 tmp{regs, SizeX64::dword};
 
@@ -1177,29 +1174,9 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.jcc(ConditionX64::NotEqual, skip);
         }
 
-        if (FFlag::LuauCodegenLinearNonNumComp)
         {
-            // When flag is removed, this extra scope remains for the ScopedSpills object
-            {
-                ScopedSpills spillGuard(regs);
+            ScopedSpills spillGuard(regs);
 
-                IrCallWrapperX64 callWrap(regs, build);
-                callWrap.addArgument(SizeX64::qword, rState);
-                callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_A(inst))));
-                callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_B(inst))));
-
-                if (cond == IrCondition::LessEqual)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessequal)]);
-                else if (cond == IrCondition::Less)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessthan)]);
-                else if (cond == IrCondition::Equal)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_equalval)]);
-                else
-                    CODEGEN_ASSERT(!"Unsupported condition");
-            }
-        }
-        else
-        {
             IrCallWrapperX64 callWrap(regs, build);
             callWrap.addArgument(SizeX64::qword, rState);
             callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_A(inst))));
@@ -1219,7 +1196,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         inst.regX64 = regs.takeReg(eax, index);
 
-        if (FFlag::LuauCodegenLinearNonNumComp && cond == IrCondition::Equal)
+        if (cond == IrCondition::Equal)
         {
             build.jmp(exit);
             build.setLabel(skip);
@@ -1863,50 +1840,25 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::GET_UPVALUE:
     {
-        if (FFlag::LuauCodegenUpvalueLoadProp2)
-        {
-            inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
+        inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
 
-            ScopedRegX64 tmp1{regs, SizeX64::qword};
+        ScopedRegX64 tmp1{regs, SizeX64::qword};
 
-            build.mov(tmp1.reg, sClosure);
-            build.add(tmp1.reg, offsetof(Closure, l.uprefs) + sizeof(TValue) * vmUpvalueOp(OP_A(inst)));
+        build.mov(tmp1.reg, sClosure);
+        build.add(tmp1.reg, offsetof(Closure, l.uprefs) + sizeof(TValue) * vmUpvalueOp(OP_A(inst)));
 
-            // uprefs[] is either an actual value, or it points to UpVal object which has a pointer to value
-            Label skip;
-            build.cmp(dword[tmp1.reg + offsetof(TValue, tt)], LUA_TUPVAL);
-            build.jcc(ConditionX64::NotEqual, skip);
+        // uprefs[] is either an actual value, or it points to UpVal object which has a pointer to value
+        Label skip;
+        build.cmp(dword[tmp1.reg + offsetof(TValue, tt)], LUA_TUPVAL);
+        build.jcc(ConditionX64::NotEqual, skip);
 
-            // UpVal.v points to the value (either on stack, or on heap inside each UpVal, but we can deref it unconditionally)
-            build.mov(tmp1.reg, qword[tmp1.reg + offsetof(TValue, value.gc)]);
-            build.mov(tmp1.reg, qword[tmp1.reg + offsetof(UpVal, v)]);
+        // UpVal.v points to the value (either on stack, or on heap inside each UpVal, but we can deref it unconditionally)
+        build.mov(tmp1.reg, qword[tmp1.reg + offsetof(TValue, value.gc)]);
+        build.mov(tmp1.reg, qword[tmp1.reg + offsetof(UpVal, v)]);
 
-            build.setLabel(skip);
+        build.setLabel(skip);
 
-            build.vmovups(inst.regX64, xmmword[tmp1.reg]);
-        }
-        else
-        {
-            ScopedRegX64 tmp1{regs, SizeX64::qword};
-            ScopedRegX64 tmp2{regs, SizeX64::xmmword};
-
-            build.mov(tmp1.reg, sClosure);
-            build.add(tmp1.reg, offsetof(Closure, l.uprefs) + sizeof(TValue) * vmUpvalueOp(OP_B(inst)));
-
-            // uprefs[] is either an actual value, or it points to UpVal object which has a pointer to value
-            Label skip;
-            build.cmp(dword[tmp1.reg + offsetof(TValue, tt)], LUA_TUPVAL);
-            build.jcc(ConditionX64::NotEqual, skip);
-
-            // UpVal.v points to the value (either on stack, or on heap inside each UpVal, but we can deref it unconditionally)
-            build.mov(tmp1.reg, qword[tmp1.reg + offsetof(TValue, value.gc)]);
-            build.mov(tmp1.reg, qword[tmp1.reg + offsetof(UpVal, v)]);
-
-            build.setLabel(skip);
-
-            build.vmovups(tmp2.reg, xmmword[tmp1.reg]);
-            build.vmovups(luauReg(vmRegOp(OP_A(inst))), tmp2.reg);
-        }
+        build.vmovups(inst.regX64, xmmword[tmp1.reg]);
         break;
     }
     case IrCmd::SET_UPVALUE:
@@ -1918,33 +1870,15 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.mov(tmp2.reg, qword[tmp1.reg + offsetof(Closure, l.uprefs) + sizeof(TValue) * vmUpvalueOp(OP_A(inst)) + offsetof(TValue, value.gc)]);
 
         build.mov(tmp1.reg, qword[tmp2.reg + offsetof(UpVal, v)]);
-
-        if (FFlag::LuauCodegenUpvalueLoadProp2)
-        {
-            build.vmovups(xmmword[tmp1.reg], regOp(OP_B(inst)));
-        }
-        else
-        {
-            // If LuauCodegenUpvalueLoadProp2 is removed as false, this scope has to be preserved!
-            {
-                ScopedRegX64 tmp3{regs, SizeX64::xmmword};
-                build.vmovups(tmp3.reg, luauReg(vmRegOp(OP_B(inst))));
-                build.vmovups(xmmword[tmp1.reg], tmp3.reg);
-            }
-        }
+        build.vmovups(xmmword[tmp1.reg], regOp(OP_B(inst)));
 
         tmp1.free();
 
         if (OP_C(inst).kind == IrOpKind::Undef || isGCO(tagOp(OP_C(inst))))
         {
-            if (FFlag::LuauCodegenUpvalueLoadProp2)
-                callBarrierObject(
-                    regs, build, tmp2.release(), {}, regOp(OP_B(inst)), OP_B(inst), OP_C(inst).kind == IrOpKind::Undef ? -1 : tagOp(OP_C(inst))
-                );
-            else
-                callBarrierObject_DEPRECATED(
-                    regs, build, tmp2.release(), {}, OP_B(inst), OP_C(inst).kind == IrOpKind::Undef ? -1 : tagOp(OP_C(inst))
-                );
+            callBarrierObject(
+                regs, build, tmp2.release(), {}, regOp(OP_B(inst)), OP_B(inst), OP_C(inst).kind == IrOpKind::Undef ? -1 : tagOp(OP_C(inst))
+            );
         }
         break;
     }
@@ -2263,14 +2197,9 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         callStepGc(regs, build);
         break;
     case IrCmd::BARRIER_OBJ:
-        if (FFlag::LuauCodegenUpvalueLoadProp2)
-            callBarrierObject(
-                regs, build, regOp(OP_A(inst)), OP_A(inst), noreg, OP_B(inst), OP_C(inst).kind == IrOpKind::Undef ? -1 : tagOp(OP_C(inst))
-            );
-        else
-            callBarrierObject_DEPRECATED(
-                regs, build, regOp(OP_A(inst)), OP_A(inst), OP_B(inst), OP_C(inst).kind == IrOpKind::Undef ? -1 : tagOp(OP_C(inst))
-            );
+        callBarrierObject(
+            regs, build, regOp(OP_A(inst)), OP_A(inst), noreg, OP_B(inst), OP_C(inst).kind == IrOpKind::Undef ? -1 : tagOp(OP_C(inst))
+        );
         break;
     case IrCmd::BARRIER_TABLE_BACK:
         callBarrierTableFast(regs, build, regOp(OP_A(inst)), OP_A(inst));
@@ -2281,14 +2210,9 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         ScopedRegX64 tmp{regs, SizeX64::qword};
 
-        if (FFlag::LuauCodegenUpvalueLoadProp2)
-            checkObjectBarrierConditions(
-                build, tmp.reg, regOp(OP_A(inst)), noreg, OP_B(inst), OP_C(inst).kind == IrOpKind::Undef ? -1 : tagOp(OP_C(inst)), skip
-            );
-        else
-            checkObjectBarrierConditions_DEPRECATED(
-                build, tmp.reg, regOp(OP_A(inst)), OP_B(inst), OP_C(inst).kind == IrOpKind::Undef ? -1 : tagOp(OP_C(inst)), skip
-            );
+        checkObjectBarrierConditions(
+            build, tmp.reg, regOp(OP_A(inst)), noreg, OP_B(inst), OP_C(inst).kind == IrOpKind::Undef ? -1 : tagOp(OP_C(inst)), skip
+        );
 
         {
             ScopedSpills spillGuard(regs);
@@ -2981,6 +2905,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     // Pseudo instructions
     case IrCmd::NOP:
     case IrCmd::SUBSTITUTE:
+    case IrCmd::MARK_USED:
+    case IrCmd::MARK_DEAD:
         CODEGEN_ASSERT(!"Pseudo instructions should not be lowered");
         break;
     }
@@ -2990,6 +2916,16 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     regs.currInstIdx = kInvalidInstIdx;
 
     regs.freeLastUseRegs(inst, index);
+}
+
+void IrLoweringX64::startBlock(const IrBlock& curr)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenCounterSupport);
+
+    if (curr.startpc != kBlockNoStartPc)
+        allocAndIncrementCounterAt(
+            curr.kind == IrBlockKind::Fallback ? CodeGenCounter::FallbackBlockExecuted : CodeGenCounter::RegularBlockExecuted, curr.startpc
+        );
 }
 
 void IrLoweringX64::finishBlock(const IrBlock& curr, const IrBlock& next)
@@ -3023,30 +2959,45 @@ void IrLoweringX64::finishFunction()
 
     for (ExitHandler& handler : exitHandlers)
     {
-        CODEGEN_ASSERT(handler.pcpos != kVmExitEntryGuardPc);
+        if (FFlag::LuauCodegenCounterSupport)
+        {
+            if (handler.pcpos == kVmExitEntryGuardPc)
+            {
+                build.setLabel(handler.self);
 
-        build.setLabel(handler.self);
+                allocAndIncrementCounterAt(CodeGenCounter::VmExitTaken, ~0u);
 
-        build.mov(edx, handler.pcpos * sizeof(Instruction));
-        build.jmp(helpers.updatePcAndContinueInVm);
+                build.jmp(helpers.exitContinueVmClearNativeFlag);
+            }
+            else
+            {
+                build.setLabel(handler.self);
+
+                allocAndIncrementCounterAt(CodeGenCounter::VmExitTaken, handler.pcpos);
+
+                build.mov(edx, handler.pcpos * sizeof(Instruction));
+                build.jmp(helpers.updatePcAndContinueInVm);
+            }
+        }
+        else
+        {
+            CODEGEN_ASSERT(handler.pcpos != kVmExitEntryGuardPc);
+
+            build.setLabel(handler.self);
+
+            build.mov(edx, handler.pcpos * sizeof(Instruction));
+            build.jmp(helpers.updatePcAndContinueInVm);
+        }
     }
 
     // An undefined instruction is placed after the function to be used as an aborting jump offset
-    function.endLocation = FFlag::LuauCodegenLocationEndFix ? build.getLabelOffset(build.setLabel()) : build.setLabel().location;
+    function.endLocation = build.getLabelOffset(build.setLabel());
     build.ud2();
 
     if (stats)
     {
-        if (FFlag::LuauCodegenExtraSpills)
-        {
-            if (regs.maxUsedSlot > kSpillSlots_NEW + kExtraSpillSlots)
-                stats->regAllocErrors++;
-        }
-        else
-        {
-            if (regs.maxUsedSlot > kSpillSlots_DEPRECATED)
-                stats->regAllocErrors++;
-        }
+        if (regs.maxUsedSlot > kSpillSlots_NEW + kExtraSpillSlots)
+            stats->regAllocErrors++;
 
         if (regs.maxUsedSlot > stats->maxSpillSlotsUsed)
             stats->maxSpillSlotsUsed = regs.maxUsedSlot;
@@ -3056,16 +3007,8 @@ void IrLoweringX64::finishFunction()
 bool IrLoweringX64::hasError() const
 {
     // If register allocator had to use more stack slots than we have available, this function can't run natively
-    if (FFlag::LuauCodegenExtraSpills)
-    {
-        if (regs.maxUsedSlot > kSpillSlots_NEW + kExtraSpillSlots)
-            return true;
-    }
-    else
-    {
-        if (regs.maxUsedSlot > kSpillSlots_DEPRECATED)
-            return true;
-    }
+    if (regs.maxUsedSlot > kSpillSlots_NEW + kExtraSpillSlots)
+        return true;
 
     return false;
 }
@@ -3082,9 +3025,12 @@ Label& IrLoweringX64::getTargetLabel(IrOp op, Label& fresh)
 
     if (op.kind == IrOpKind::VmExit)
     {
-        // Special exit case that doesn't have to update pcpos
-        if (vmExitOp(op) == kVmExitEntryGuardPc)
-            return helpers.exitContinueVmClearNativeFlag;
+        if (!FFlag::LuauCodegenCounterSupport)
+        {
+            // Special exit case that doesn't have to update pcpos
+            if (vmExitOp(op) == kVmExitEntryGuardPc)
+                return helpers.exitContinueVmClearNativeFlag;
+        }
 
         if (uint32_t* index = exitHandlerMap.find(vmExitOp(op)))
             return exitHandlers[*index].self;
@@ -3097,7 +3043,7 @@ Label& IrLoweringX64::getTargetLabel(IrOp op, Label& fresh)
 
 void IrLoweringX64::finalizeTargetLabel(IrOp op, Label& fresh)
 {
-    if (op.kind == IrOpKind::VmExit && fresh.id != 0 && fresh.id != helpers.exitContinueVmClearNativeFlag.id)
+    if (op.kind == IrOpKind::VmExit && fresh.id != 0 && (FFlag::LuauCodegenCounterSupport || fresh.id != helpers.exitContinueVmClearNativeFlag.id))
     {
         exitHandlerMap[vmExitOp(op)] = uint32_t(exitHandlers.size());
         exitHandlers.push_back({fresh, vmExitOp(op)});
@@ -3194,6 +3140,39 @@ void IrLoweringX64::checkSafeEnv(IrOp target, const IrBlock& next)
     build.cmp(byte[tmp.reg + offsetof(LuaTable, safeenv)], 0);
 
     jumpOrAbortOnUndef(ConditionX64::Equal, target, next);
+}
+
+void IrLoweringX64::allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcpos)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenCounterSupport);
+
+    if (!function.recordCounters)
+        return;
+
+    if (build.logText)
+        build.logAppend("; counter kind %u at pcpos %d\n", unsigned(kind), pcpos);
+
+    // {uint32_t, uint32_t, uint64_t}
+    function.extraNativeData.push_back(unsigned(kind));
+    function.extraNativeData.push_back(pcpos);
+    incrementCounterAt(function.extraNativeData.size());
+    function.extraNativeData.push_back(0);
+    function.extraNativeData.push_back(0);
+}
+
+void IrLoweringX64::incrementCounterAt(size_t offset)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenCounterSupport);
+
+    ScopedRegX64 tmp{regs, SizeX64::qword};
+
+    // Get counter slot
+    build.mov(tmp.reg, sClosure);
+    build.mov(tmp.reg, qword[tmp.reg + offsetof(Closure, l.p)]);
+    build.mov(tmp.reg, qword[tmp.reg + offsetof(Proto, execdata)]);
+
+    // Increment
+    build.inc(qword[tmp.reg + uint32_t(function.proto->sizecode + uint32_t(offset)) * 4]);
 }
 
 OperandX64 IrLoweringX64::memRegDoubleOp(IrOp op)
@@ -3321,16 +3300,8 @@ RegisterX64 IrLoweringX64::vecOp(IrOp op, ScopedRegX64& tmp)
     // source that comes from memory or from tag instruction has .w = TVECTOR, which is denormal
     // to avoid performance degradation on some CPUs we mask this component to produce zero
     // otherwise we conservatively assume the vector is a result of a well formed math op so .w is a normal number or zero
-    if (FFlag::LuauCodegenUpvalueLoadProp2)
-    {
-        if (source.cmd != IrCmd::LOAD_TVALUE && source.cmd != IrCmd::GET_UPVALUE && source.cmd != IrCmd::TAG_VECTOR)
-            return regOp(op);
-    }
-    else
-    {
-        if (source.cmd != IrCmd::LOAD_TVALUE && source.cmd != IrCmd::TAG_VECTOR)
-            return regOp(op);
-    }
+    if (source.cmd != IrCmd::LOAD_TVALUE && source.cmd != IrCmd::GET_UPVALUE && source.cmd != IrCmd::TAG_VECTOR)
+        return regOp(op);
 
     tmp.alloc(SizeX64::xmmword);
     build.vandps(tmp.reg, regOp(op), vectorAndMaskOp());

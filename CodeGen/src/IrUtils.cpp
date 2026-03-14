@@ -16,9 +16,8 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
-LUAU_FASTFLAGVARIABLE(LuauCodegenBufferBaseFold)
+LUAU_FASTFLAGVARIABLE(LuauCodegenTruncatedSubsts)
 
 namespace Luau
 {
@@ -287,7 +286,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::CONCAT:
         return IrValueKind::None;
     case IrCmd::GET_UPVALUE:
-        return FFlag::LuauCodegenUpvalueLoadProp2 ? IrValueKind::Tvalue : IrValueKind::None;
+        return IrValueKind::Tvalue;
     case IrCmd::SET_UPVALUE:
     case IrCmd::CHECK_TAG:
     case IrCmd::CHECK_TRUTHY:
@@ -331,6 +330,9 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::None;
     case IrCmd::SUBSTITUTE:
         return IrValueKind::Unknown;
+    case IrCmd::MARK_USED:
+    case IrCmd::MARK_DEAD:
+        return IrValueKind::None;
     case IrCmd::BITAND_UINT:
     case IrCmd::BITXOR_UINT:
     case IrCmd::BITOR_UINT:
@@ -706,6 +708,16 @@ bool compare(int a, int b, IrCondition cond)
     }
 
     return false;
+}
+
+static void substituteWithTruncatedUint(IrFunction& function, IrBlock& block, IrInst& inst, IrOp op)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenTruncatedSubsts);
+
+    if (IrInst* srcOfSrc = function.asInstOp(op); srcOfSrc && producesDirtyHighRegisterBits(srcOfSrc->cmd))
+        replace(function, block, function.getInstIndex(inst), IrInst{IrCmd::TRUNCATE_UINT, {op}});
+    else
+        substitute(function, inst, op);
 }
 
 void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint32_t index)
@@ -1168,13 +1180,27 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         else
         {
             if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == 0) // (0 & b) -> 0
+            {
                 substitute(function, inst, build.constInt(0));
+            }
             else if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == -1) // (-1 & b) -> b
-                substitute(function, inst, OP_B(inst));
+            {
+                if (FFlag::LuauCodegenTruncatedSubsts)
+                    substituteWithTruncatedUint(function, block, inst, OP_B(inst));
+                else
+                    substitute(function, inst, OP_B(inst));
+            }
             else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0) // (a & 0) -> 0
+            {
                 substitute(function, inst, build.constInt(0));
+            }
             else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == -1) // (a & -1) -> a
-                substitute(function, inst, OP_A(inst));
+            {
+                if (FFlag::LuauCodegenTruncatedSubsts)
+                    substituteWithTruncatedUint(function, block, inst, OP_A(inst));
+                else
+                    substitute(function, inst, OP_A(inst));
+            }
         }
         break;
     case IrCmd::BITXOR_UINT:
@@ -1187,13 +1213,27 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         else
         {
             if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == 0) // (0 ^ b) -> b
-                substitute(function, inst, OP_B(inst));
+            {
+                if (FFlag::LuauCodegenTruncatedSubsts)
+                    substituteWithTruncatedUint(function, block, inst, OP_B(inst));
+                else
+                    substitute(function, inst, OP_B(inst));
+            }
             else if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == -1) // (-1 ^ b) -> ~b
+            {
                 replace(function, block, index, {IrCmd::BITNOT_UINT, {OP_B(inst)}});
+            }
             else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0) // (a ^ 0) -> a
-                substitute(function, inst, OP_A(inst));
+            {
+                if (FFlag::LuauCodegenTruncatedSubsts)
+                    substituteWithTruncatedUint(function, block, inst, OP_A(inst));
+                else
+                    substitute(function, inst, OP_A(inst));
+            }
             else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == -1) // (a ^ -1) -> ~a
+            {
                 replace(function, block, index, {IrCmd::BITNOT_UINT, {OP_A(inst)}});
+            }
         }
         break;
     case IrCmd::BITOR_UINT:
@@ -1206,13 +1246,27 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         else
         {
             if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == 0) // (0 | b) -> b
-                substitute(function, inst, OP_B(inst));
+            {
+                if (FFlag::LuauCodegenTruncatedSubsts)
+                    substituteWithTruncatedUint(function, block, inst, OP_B(inst));
+                else
+                    substitute(function, inst, OP_B(inst));
+            }
             else if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == -1) // (-1 | b) -> -1
+            {
                 substitute(function, inst, build.constInt(-1));
+            }
             else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0) // (a | 0) -> a
-                substitute(function, inst, OP_A(inst));
+            {
+                if (FFlag::LuauCodegenTruncatedSubsts)
+                    substituteWithTruncatedUint(function, block, inst, OP_A(inst));
+                else
+                    substitute(function, inst, OP_A(inst));
+            }
             else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == -1) // (a | -1) -> -1
+            {
                 substitute(function, inst, build.constInt(-1));
+            }
         }
         break;
     case IrCmd::BITNOT_UINT:
@@ -1229,7 +1283,10 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         }
         else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
         {
-            substitute(function, inst, OP_A(inst));
+            if (FFlag::LuauCodegenTruncatedSubsts)
+                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
+            else
+                substitute(function, inst, OP_A(inst));
         }
         break;
     case IrCmd::BITRSHIFT_UINT:
@@ -1242,7 +1299,10 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         }
         else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
         {
-            substitute(function, inst, OP_A(inst));
+            if (FFlag::LuauCodegenTruncatedSubsts)
+                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
+            else
+                substitute(function, inst, OP_A(inst));
         }
         break;
     case IrCmd::BITARSHIFT_UINT:
@@ -1257,20 +1317,37 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         }
         else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
         {
-            substitute(function, inst, OP_A(inst));
+            if (FFlag::LuauCodegenTruncatedSubsts)
+                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
+            else
+                substitute(function, inst, OP_A(inst));
         }
         break;
     case IrCmd::BITLROTATE_UINT:
         if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
             substitute(function, inst, build.constInt(lrotate(unsigned(function.intOp(OP_A(inst))), function.intOp(OP_B(inst)))));
+        }
         else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
-            substitute(function, inst, OP_A(inst));
+        {
+            if (FFlag::LuauCodegenTruncatedSubsts)
+                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
+            else
+                substitute(function, inst, OP_A(inst));
+        }
         break;
     case IrCmd::BITRROTATE_UINT:
         if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
             substitute(function, inst, build.constInt(rrotate(unsigned(function.intOp(OP_A(inst))), function.intOp(OP_B(inst)))));
+        }
         else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
-            substitute(function, inst, OP_A(inst));
+        {
+            if (FFlag::LuauCodegenTruncatedSubsts)
+                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
+            else
+                substitute(function, inst, OP_A(inst));
+        }
         break;
     case IrCmd::BITCOUNTLZ_UINT:
         if (OP_A(inst).kind == IrOpKind::Constant)
@@ -1291,7 +1368,7 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 else
                     replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}}); // Shows a conflict in assumptions on this path
             }
-            else if (FFlag::LuauCodegenBufferBaseFold && OP_B(inst).kind == IrOpKind::Inst && OP_E(inst).kind == IrOpKind::Constant)
+            else if (OP_B(inst).kind == IrOpKind::Inst && OP_E(inst).kind == IrOpKind::Constant)
             {
                 // If only the base offset source double value is a constant, it means we couldn't constant-fold NUM_TO_INT
                 CODEGEN_ASSERT(function.instOp(OP_B(inst)).cmd == IrCmd::NUM_TO_INT && OP_A(function.instOp(OP_B(inst))) == OP_E(inst));

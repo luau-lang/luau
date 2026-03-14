@@ -43,6 +43,16 @@ struct TypeFunctionContext
 
     std::optional<AstName> userFuncName; // Name of the user-defined type function; only available for UDTFs
 
+    // Some type functions will create fresh instances as part of
+    // being solved, for example:
+    //
+    //  add<number | number, number>
+    //
+    // ... will mint:
+    //
+    //  union<number, number>
+    std::vector<TypeId> freshInstances;
+
     TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint);
 
     TypeFunctionContext(
@@ -104,10 +114,11 @@ struct TypeFunctionReductionResult
     std::optional<std::string> error;
     /// Messages printed out from user-defined type functions
     std::vector<std::string> messages;
+    // Clip this with LuauTypeFunctionsCaptureNestedInstances
     /// Some type function reduction rules may _create_ type functions (e.g.
     /// the numeric type functions can "distribute" over an inner union). If
     /// any type functions were created this way, we must add them here.
-    std::vector<Ty> freshTypes;
+    std::vector<Ty> freshTypes_DEPRECATED;
 };
 
 template<typename T>

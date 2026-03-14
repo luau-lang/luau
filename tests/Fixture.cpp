@@ -25,11 +25,13 @@
 
 static const char* mainModuleName = "MainModule";
 
-LUAU_FASTFLAG(LuauSolverV2);
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceAllNewSolverTests);
+LUAU_FASTFLAGVARIABLE(DebugLuauForceAllOldSolverTests);
+
 LUAU_FASTINT(LuauStackGuardThreshold)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -283,7 +285,7 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
         // if AST is available, check how lint and typecheck handle error nodes
         if (result.root)
         {
-            if (FFlag::LuauSolverV2)
+            if (!FFlag::DebugLuauForceOldSolver)
             {
                 Mode mode = sourceModule->mode ? *sourceModule->mode : Mode::Strict;
                 Frontend::Stats stats;
@@ -426,7 +428,7 @@ ParseResult Fixture::matchParseErrorPrefix(const std::string& source, const std:
 
 ModulePtr Fixture::getMainModule(bool forAutocomplete)
 {
-    if (forAutocomplete && !FFlag::LuauSolverV2)
+    if (forAutocomplete && FFlag::DebugLuauForceOldSolver)
         return getFrontend().moduleResolverForAutocomplete.getModule(fromString(mainModuleName));
 
     return getFrontend().moduleResolver.getModule(fromString(mainModuleName));
@@ -459,7 +461,7 @@ std::optional<TypeId> Fixture::getType(const std::string& name, bool forAutocomp
     if (!module->hasModuleScope())
         return std::nullopt;
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return linearSearchForBinding(module->getModuleScope().get(), name.c_str());
     else
         return lookupName(module->getModuleScope(), name);
@@ -697,6 +699,7 @@ Frontend& Fixture::getFrontend()
         return *frontend;
 
     Frontend& f = frontend.emplace(
+        FFlag::DebugLuauForceOldSolver ? SolverMode::Old : SolverMode::New,
         &fileResolver,
         &configResolver,
         FrontendOptions{

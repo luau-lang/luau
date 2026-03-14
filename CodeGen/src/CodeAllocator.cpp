@@ -119,7 +119,8 @@ static void freePagesImpl(uint8_t* mem, size_t size)
 
 static void flushInstructionCache(uint8_t* mem, size_t size)
 {
-#ifdef __APPLE__
+#ifdef __EMSCRIPTEN__
+#elif defined(__APPLE__)
     sys_icache_invalidate(mem, size);
 #else
     __builtin___clear_cache((char*)mem, (char*)mem + size);

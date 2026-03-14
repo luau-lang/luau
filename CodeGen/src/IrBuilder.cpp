@@ -15,6 +15,8 @@
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenIsNanAndDirectCompare)
+LUAU_FASTFLAGVARIABLE(LuauCodegenSafeEnvPreserve)
+LUAU_FASTFLAG(LuauCodegenCounterSupport)
 
 namespace Luau
 {
@@ -590,7 +592,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
 
             IrOp loopRepeat = blockAtInst(i + 1 + LUAU_INSN_D(*pc));
             IrOp loopExit = blockAtInst(i + getOpLength(LuauOpcode(LOP_FORGLOOP)));
-            IrOp fallback = block(IrBlockKind::Fallback);
+            IrOp fallback = FFlag::LuauCodegenCounterSupport ? fallbackBlock(i) : block(IrBlockKind::Fallback);
 
             inst(IrCmd::INTERRUPT, constUint(i));
             loadAndCheckTag(vmReg(ra), LUA_TNIL, fallback);
@@ -748,6 +750,16 @@ void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTermin
 
             kill(function, term);
             inTerminatedBlock = false;
+        }
+
+        if (FFlag::LuauCodegenSafeEnvPreserve)
+        {
+            // Implicit safe environment checks become materialized as real ones
+            if ((source.flags & kBlockFlagSafeEnvCheck) != 0)
+            {
+                CODEGEN_ASSERT(source.startpc != kBlockNoStartPc);
+                inst(IrCmd::CHECK_SAFE_ENV, vmExit(source.startpc));
+            }
         }
 
         for (uint32_t index = source.start; index <= source.finish; index++)
@@ -933,6 +945,9 @@ IrOp IrBuilder::inst(IrCmd cmd, const IrOps& ops)
 
 IrOp IrBuilder::block(IrBlockKind kind)
 {
+    if (FFlag::LuauCodegenCounterSupport)
+        CODEGEN_ASSERT(kind != IrBlockKind::Fallback && "fallbackBlock must be used for fallback block creation");
+
     if (kind == IrBlockKind::Internal && activeFastcallFallback)
         kind = IrBlockKind::Fallback;
 
@@ -948,7 +963,29 @@ IrOp IrBuilder::blockAtInst(uint32_t index)
     if (blockIndex != kNoAssociatedBlockIndex)
         return IrOp{IrOpKind::Block, blockIndex};
 
-    return block(IrBlockKind::Internal);
+    if (FFlag::LuauCodegenCounterSupport)
+    {
+        IrOp result = block(IrBlockKind::Internal);
+        function.blockOp(result).startpc = index;
+
+        return result;
+    }
+    else
+    {
+        return block(IrBlockKind::Internal);
+    }
+}
+
+IrOp IrBuilder::fallbackBlock(uint32_t pcpos)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenCounterSupport);
+
+    uint32_t index = uint32_t(function.blocks.size());
+    function.blocks.push_back(IrBlock{IrBlockKind::Fallback});
+    CODEGEN_ASSERT(index != 0 && "IR cannot start with a fallback block");
+
+    function.blocks.back().startpc = pcpos;
+    return IrOp{IrOpKind::Block, index};
 }
 
 IrOp IrBuilder::vmReg(uint8_t index)
