@@ -10,7 +10,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver);
-LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 struct ToDotClassFixture : Fixture
 {
@@ -336,10 +335,7 @@ n1 [label="FreeType 1"];
 
 TEST_CASE_FIXTURE(Fixture, "free_with_constraints")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauAnalysisUsesSolverMode, true},
-    };
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     Type type{TypeVariant{FreeType{nullptr, getBuiltins()->numberType, getBuiltins()->optionalNumberType}}};
 

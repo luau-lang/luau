@@ -1050,24 +1050,26 @@ AstStat* Parser::parseAttributeStat()
     case Lexeme::Type::ReservedFunction:
         return parseFunctionStat(attributes);
     case Lexeme::Type::ReservedLocal:
-        if(FFlag::LuauConst)
-            return parseLocal(attributes.size > 0 ? attributes.data[0]->location : lexer.current().location, lexer.current().location.begin, attributes, false);
+        if (FFlag::LuauConst)
+            return parseLocal(
+                attributes.size > 0 ? attributes.data[0]->location : lexer.current().location, lexer.current().location.begin, attributes, false
+            );
         else
             return parseLocal_DEPRECATED(attributes);
     case Lexeme::Type::Name:
+    {
+        if (FFlag::LuauConst && strcmp("const", lexer.current().data) == 0)
         {
-            if (FFlag::LuauConst && strcmp("const", lexer.current().data) == 0)
-            {
-                Location keywordLoc = lexer.current().location;
-                nextLexeme();
-                return parseLocal(attributes.size > 0 ? attributes.data[0]->location : keywordLoc, keywordLoc.begin, attributes, true);
-            }
-            if (options.allowDeclarationSyntax && !strcmp("declare", lexer.current().data))
-            {
-                AstExpr* expr = parsePrimaryExpr(/* asStatement= */ true);
-                return parseDeclaration(expr->location, attributes);
-            }
+            Location keywordLoc = lexer.current().location;
+            nextLexeme();
+            return parseLocal(attributes.size > 0 ? attributes.data[0]->location : keywordLoc, keywordLoc.begin, attributes, true);
         }
+        if (options.allowDeclarationSyntax && !strcmp("declare", lexer.current().data))
+        {
+            AstExpr* expr = parsePrimaryExpr(/* asStatement= */ true);
+            return parseDeclaration(expr->location, attributes);
+        }
+    }
         [[fallthrough]];
     default:
         if (FFlag::LuauConst)
@@ -1075,7 +1077,8 @@ AstStat* Parser::parseAttributeStat()
                 lexer.current().location,
                 {},
                 {},
-                "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got %s instead",
+                "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+                "%s instead",
                 lexer.current().toString().c_str()
             );
         else
@@ -1270,12 +1273,7 @@ AstStat* Parser::parseLocal(const Location start, const Position keywordPosition
         Location end = values.empty() ? lexer.previousLocation() : values.back()->location;
 
         if (isConst && !isEnoughValues(values, vars.size()))
-            return reportStatError(
-                Location(start, end),
-                {},
-                {},
-                "Missing initializer in const declaration"
-            );
+            return reportStatError(Location(start, end), {}, {}, "Missing initializer in const declaration");
 
         AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation);
         if (options.storeCstData)
@@ -1663,7 +1661,8 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
 
 static bool isExprLValue(AstExpr* expr)
 {
-    return (expr->is<AstExprLocal>() && (!FFlag::LuauConst || !expr->as<AstExprLocal>()->local->isConst)) || expr->is<AstExprGlobal>() || expr->is<AstExprIndexExpr>() || expr->is<AstExprIndexName>();
+    return (expr->is<AstExprLocal>() && (!FFlag::LuauConst || !expr->as<AstExprLocal>()->local->isConst)) || expr->is<AstExprGlobal>() ||
+           expr->is<AstExprIndexExpr>() || expr->is<AstExprIndexName>();
 }
 
 // varlist `=' explist

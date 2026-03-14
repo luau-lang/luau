@@ -10,9 +10,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
-
 namespace Luau
 {
 
@@ -272,22 +269,11 @@ void StateDot::visitChildren(TypeId ty, int index)
             finishNodeLabel(ty);
             finishNode();
 
-            if (FFlag::LuauAnalysisUsesSolverMode)
-            {
-                if (t.lowerBound && !get<NeverType>(t.lowerBound))
-                    visitChild(t.lowerBound, index, "[lowerBound]");
+            if (t.lowerBound && !get<NeverType>(t.lowerBound))
+                visitChild(t.lowerBound, index, "[lowerBound]");
 
-                if (t.upperBound && !get<UnknownType>(t.upperBound))
-                    visitChild(t.upperBound, index, "[upperBound]");
-            }
-            else if (FFlag::LuauSolverV2)
-            {
-                if (!get<NeverType>(t.lowerBound))
-                    visitChild(t.lowerBound, index, "[lowerBound]");
-
-                if (!get<UnknownType>(t.upperBound))
-                    visitChild(t.upperBound, index, "[upperBound]");
-            }
+            if (t.upperBound && !get<UnknownType>(t.upperBound))
+                visitChild(t.upperBound, index, "[upperBound]");
         }
         else if constexpr (std::is_same_v<T, AnyType>)
         {

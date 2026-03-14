@@ -16,7 +16,6 @@
 using namespace Luau;
 
 
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
@@ -948,10 +947,7 @@ TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string_2")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ("Expected this to be unreachable, but got 'number'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Type 'number' could not be converted into 'never'", toString(result.errors[0]));
+    CHECK_EQ("Expected this to be unreachable, but got 'number'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string_3")

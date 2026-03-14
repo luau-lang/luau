@@ -194,7 +194,7 @@ bool NormalizedType::isUnknown() const
     bool isTopExternType = false;
     for (const auto& [t, disj] : externTypes.externTypes)
     {
-        if (auto ct = get<ExternType>(t))
+        if (get<ExternType>(t))
         {
             if (t == builtinTypes->externType && disj.empty())
             {

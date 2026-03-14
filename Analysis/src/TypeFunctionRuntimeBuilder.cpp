@@ -20,8 +20,6 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks)
-
 namespace Luau
 {
 
@@ -933,7 +931,7 @@ private:
         for (auto ty : f2->generics)
         {
             auto gty = get<TypeFunctionGenericType>(ty);
-            if (FFlag::LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks && (!gty || gty->isPack))
+            if (!gty || gty->isPack)
             {
                 state->errors.emplace_back("Encountered unexpected generic");
                 return;
@@ -959,7 +957,7 @@ private:
         for (auto tp : f2->genericPacks)
         {
             auto gtp = get<TypeFunctionGenericTypePack>(tp);
-            if (FFlag::LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks && !gtp)
+            if (!gtp)
             {
                 state->errors.emplace_back("Encountered unexpected generic type pack");
                 return;

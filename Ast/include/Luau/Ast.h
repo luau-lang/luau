@@ -74,7 +74,15 @@ struct AstLocal
 
     AstType* annotation;
 
-    AstLocal(const AstName& name, const Location& location, AstLocal* shadow, size_t functionDepth, size_t loopDepth, AstType* annotation, bool isConst = false)
+    AstLocal(
+        const AstName& name,
+        const Location& location,
+        AstLocal* shadow,
+        size_t functionDepth,
+        size_t loopDepth,
+        AstType* annotation,
+        bool isConst = false
+    )
         : name(name)
         , location(location)
         , shadow(shadow)
