@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAGVARIABLE(LuauUnpackRespectsAnnotations)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAGVARIABLE(LuauForwardPolarityForFunctionTypes)
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 namespace Luau
 {
@@ -2046,16 +2047,16 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
         }
     }
 
-    for (const AstDeclaredExternTypeProperty& prop : declaredExternType->props)
+    for (const AstDeclaredExternTypeProperty& externProp : declaredExternType->props)
     {
-        Name propName(prop.name.value);
-        TypeId propTy = resolveType(scope, prop.ty, /* inTypeArguments */ false, /* replaceErrorWithFresh */ false, /* initialPolarity */ Polarity::Mixed);
+        Name propName(externProp.name.value);
+        TypeId propTy = resolveType(scope, externProp.ty, /* inTypeArguments */ false, /* replaceErrorWithFresh */ false, /* initialPolarity */ Polarity::Mixed);
 
         bool assignToMetatable = isMetamethod(propName);
 
         // Function typeArguments always take 'self', but this isn't reflected in the
         // parsed annotation. Add it here.
-        if (prop.isMethod)
+        if (externProp.isMethod)
         {
             if (FunctionType* ftv = getMutable<FunctionType>(propTy))
             {
@@ -2067,9 +2068,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 FunctionDefinition defn;
 
                 defn.definitionModuleName = module->name;
-                defn.definitionLocation = prop.location;
+                defn.definitionLocation = externProp.location;
                 // No data is preserved for varargLocation
-                defn.originalNameLocation = prop.nameLocation;
+                defn.originalNameLocation = externProp.nameLocation;
 
                 ftv->definition = defn;
             }
@@ -2079,11 +2080,30 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
 
         if (props.count(propName) == 0)
         {
-            props[propName] = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
+            Property tableProp;
+
+            if (FFlag::LuauExternReadWriteAttributes)
+            {
+                if (externProp.access == AstTableAccess::Read)
+                    tableProp = Property::readonly(propTy);
+                else if (externProp.access == AstTableAccess::Write)
+                    tableProp = Property::writeonly(propTy);
+                else
+                    tableProp = Property::rw(propTy);
+
+                tableProp.location = externProp.location;
+            }
+            else
+            {
+                tableProp = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", externProp.location};
+            }
+
+            props[propName] = tableProp;
         }
         else
         {
             Luau::Property& prop = props[propName];
+            bool addedWriteTypeByOverload = false;
 
             if (auto readTy = prop.readTy)
             {
@@ -2105,14 +2125,30 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 }
                 else
                 {
-                    reportError(
-                        declaredExternType->location,
-                        GenericError{format("Cannot overload read type of non-function class member '%s'", propName.c_str())}
-                    );
+                    if (FFlag::LuauExternReadWriteAttributes)
+                    {
+                        if (externProp.access == AstTableAccess::Write && !prop.writeTy.has_value())
+                        {
+                            prop.writeTy = propTy;
+                            addedWriteTypeByOverload = true;
+                        }
+                        else
+                            reportError(
+                                declaredExternType->location,
+                                GenericError{format("Cannot overload read type of non-function extern type member '%s'", propName.c_str())}
+                            );
+                    }
+                    else
+                    {
+                        reportError(
+                            declaredExternType->location,
+                            GenericError{format("Cannot overload read type of non-function extern type member '%s'", propName.c_str())}
+                        );
+                    }
                 }
             }
 
-            if (auto writeTy = prop.writeTy)
+            if (auto writeTy = prop.writeTy; writeTy && !addedWriteTypeByOverload)
             {
                 // We special-case this logic to keep the intersection flat; otherwise we
                 // would create a ton of nested intersection typeArguments.
@@ -2132,10 +2168,23 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 }
                 else
                 {
-                    reportError(
-                        declaredExternType->location,
-                        GenericError{format("Cannot overload write type of non-function class member '%s'", propName.c_str())}
-                    );
+                    if (FFlag::LuauExternReadWriteAttributes)
+                    {
+                        if (externProp.access == AstTableAccess::Read && !prop.readTy.has_value())
+                            prop.readTy = propTy;
+                        else
+                            reportError(
+                                declaredExternType->location,
+                                GenericError{format("Cannot overload write type of non-function extern type member '%s'", propName.c_str())}
+                            );
+                    }
+                    else
+                    {
+                        reportError(
+                            declaredExternType->location,
+                            GenericError{format("Cannot overload write type of non-function extern type member '%s'", propName.c_str())}
+                        );
+                    }
                 }
             }
         }
