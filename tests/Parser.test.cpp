@@ -3005,7 +3005,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_function")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_function_with_attr")
 {
-    ScopedFastFlag sff{ FFlag::LuauConst, true };
+    ScopedFastFlag sff{FFlag::LuauConst, true};
     AstStatBlock* stat = parse(R"(
         @deprecated
         const function f() return 42 end
@@ -4197,8 +4197,9 @@ if a<0 then a = 0 end)");
         1,
         Location(Position(2, 0), Position(2, 2)),
         FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'if' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'if' instead"
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'if' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'if' instead"
     );
 
     ParseResult pr2 = tryParse(R"(
@@ -4213,8 +4214,9 @@ end)");
         1,
         Location(Position(3, 0), Position(3, 5)),
         FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'while' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'while' instead"
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'while' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'while' instead"
     );
 
     ParseResult pr3 = tryParse(R"(
@@ -4230,8 +4232,9 @@ end)");
         1,
         Location(Position(2, 0), Position(2, 2)),
         FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'do' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'do' instead"
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'do' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'do' instead"
     );
 
     ParseResult pr4 = tryParse(R"(
@@ -4243,8 +4246,9 @@ for i=1,10 do print(i) end
         1,
         Location(Position(2, 0), Position(2, 3)),
         FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'for' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'for' instead"
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'for' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'for' instead"
     );
 
     ParseResult pr5 = tryParse(R"(
@@ -4258,8 +4262,9 @@ until line ~= ""
         1,
         Location(Position(2, 0), Position(2, 6)),
         FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'repeat' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'repeat' instead"
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'repeat' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'repeat' instead"
     );
 
 
@@ -4283,8 +4288,9 @@ end
         1,
         Location(Position(3, 31), Position(3, 36)),
         FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'break' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'break' instead"
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'break' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'break' instead"
     );
 
 
@@ -4296,8 +4302,9 @@ function foo1 () @checked return 'a' end
         1,
         Location(Position(1, 26), Position(1, 32)),
         FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'return' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'return' instead"
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'return' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'return' instead"
     );
 }
 

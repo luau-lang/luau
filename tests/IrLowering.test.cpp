@@ -16,14 +16,12 @@
 #include <memory>
 #include <string_view>
 
-LUAU_FASTFLAG(LuauCodegenExtraSimd)
 LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState2)
 LUAU_FASTFLAG(LuauCodegenTableLoadProp2)
 LUAU_FASTFLAG(LuauCodegenGcoDse2)
-LUAU_FASTFLAG(LuauCodegenLinearNonNumComp)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAG(LuauCodegenBit32SingleArg)
 LUAU_FASTFLAG(LuauCodegenCounterSupport)
@@ -35,6 +33,7 @@ LUAU_FASTFLAG(LuauCompileTableIndexTemp)
 LUAU_FASTFLAG(LuauCodegenDsoPairTrackFix)
 LUAU_FASTFLAG(LuauCodegenDsoTagOverlayFix)
 LUAU_FASTFLAG(LuauCodegenExtraBlockers)
+LUAU_FASTFLAG(LuauCodegenLengthBaseInst)
 LUAU_FASTFLAG(LuauCodegenTruncatedSubsts)
 
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
@@ -560,7 +559,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "VectorMinMax")
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
-    ScopedFastFlag luauCodegenExtraSimd{FFlag::LuauCodegenExtraSimd, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -596,7 +594,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "VectorFloorCeilAbs")
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
-    ScopedFastFlag luauCodegenExtraSimd{FFlag::LuauCodegenExtraSimd, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -946,7 +943,6 @@ bb_bytecode_4:
 
 TEST_CASE_FIXTURE(LoweringFixture, "NumberCompare3")
 {
-    ScopedFastFlag luauCodegenLinearNonNumComp{FFlag::LuauCodegenLinearNonNumComp, true};
     ScopedFastFlag luauCodegenIsNanAndDirectCompare{FFlag::LuauCodegenIsNanAndDirectCompare, true};
 
     CHECK_EQ(
@@ -2824,7 +2820,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "TableNodeLoadStoreProp5")
 {
     ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState2, true};
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
-    ScopedFastFlag luauCodegenExtraSimd{FFlag::LuauCodegenExtraSimd, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
     ScopedFastFlag luauCodegenTableLoadProp{FFlag::LuauCodegenTableLoadProp2, true};
@@ -4756,7 +4751,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorComparison1")
 {
-    ScopedFastFlag luauCodegenLinearNonNumComp{FFlag::LuauCodegenLinearNonNumComp, true};
     ScopedFastFlag luauCodegenIsNanAndDirectCompare{FFlag::LuauCodegenIsNanAndDirectCompare, true};
 
     CHECK_EQ(
@@ -4788,7 +4782,6 @@ bb_bytecode_3:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorComparison2")
 {
-    ScopedFastFlag luauCodegenLinearNonNumComp{FFlag::LuauCodegenLinearNonNumComp, true};
     ScopedFastFlag luauCodegenIsNanAndDirectCompare{FFlag::LuauCodegenIsNanAndDirectCompare, true};
 
     CHECK_EQ(
@@ -4820,7 +4813,6 @@ bb_bytecode_3:
 TEST_CASE_FIXTURE(LoweringFixture, "ComparisonPropagationWall")
 {
     ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-    ScopedFastFlag luauCodegenLinearNonNumComp{FFlag::LuauCodegenLinearNonNumComp, true};
     ScopedFastFlag luauCodegenIsNanAndDirectCompare{FFlag::LuauCodegenIsNanAndDirectCompare, true};
     ScopedFastFlag luauCodegenExtraBlockers{FFlag::LuauCodegenExtraBlockers, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters, true};
@@ -4908,7 +4900,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "NonNumericalComparison1")
 {
-    ScopedFastFlag luauCodegenLinearNonNumComp{FFlag::LuauCodegenLinearNonNumComp, true};
     ScopedFastFlag luauCodegenIsNanAndDirectCompare{FFlag::LuauCodegenIsNanAndDirectCompare, true};
 
     CHECK_EQ(
@@ -4948,8 +4939,6 @@ bb_bytecode_3:
 
 TEST_CASE_FIXTURE(LoweringFixture, "NonNumericalComparison2")
 {
-    ScopedFastFlag luauCodegenLinearNonNumComp{FFlag::LuauCodegenLinearNonNumComp, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo(a: string, b: string, c: {}, d: {})
@@ -6335,6 +6324,23 @@ local function f(...)
     if buffer.readf64(_, bit32.bxor(0,_,0), function() _ += _ end) then
     elseif ... then
     end
+end
+)")
+            .size() > 0
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest13")
+{
+    ScopedFastFlag luauCodegenLengthBaseInst{FFlag::LuauCodegenLengthBaseInst, true};
+
+    // Check that this compiles with no assertions
+    CHECK(
+        getCodegenAssembly(R"(
+local function f(...)
+    local l0 = require(module0)
+    buffer.writeu8(l0,1697972224 * 4,function(l0,...)end)
+    buffer.writef32(l0,1697972224 * 4,function(l0,...)end)
 end
 )")
             .size() > 0

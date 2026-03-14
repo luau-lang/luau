@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
 TEST_SUITE_BEGIN("TypePackTests");
@@ -930,24 +929,17 @@ a = b
     {
 
         const std::string expected =
-            FFlag::LuauBetterTypeMismatchErrors
-                ? "Expected this to be\n\t"
-                  "'() -> (number, ...string)'"
-                  "\nbut got\n\t"
-                  "'() -> (number, ...boolean)'"
-                  "; \n"
-                  "it returns a tail of the variadic `boolean` in the latter type and `string` in the former "
-                  "type, and `boolean` is not a subtype of `string`"
-                : "Type\n\t"
-                  "'() -> (number, ...boolean)'"
-                  "\ncould not be converted into\n\t"
-                  "'() -> (number, ...string)'; \n"
-                  "this is because it returns a tail of the variadic `boolean` in the former type and `string` in the latter "
-                  "type, and `boolean` is not a subtype of `string`";
+            "Expected this to be\n\t"
+            "'() -> (number, ...string)'"
+            "\nbut got\n\t"
+            "'() -> (number, ...boolean)'"
+            "; \n"
+            "it returns a tail of the variadic `boolean` in the latter type and `string` in the former "
+            "type, and `boolean` is not a subtype of `string`";
 
         CHECK(expected == toString(result.errors[0]));
     }
-    else if (FFlag::LuauBetterTypeMismatchErrors)
+    else
     {
         const std::string expected = R"(Expected this to be
 	'() -> (number, ...string)'
@@ -955,16 +947,6 @@ but got
 	'() -> (number, ...boolean)'
 caused by:
   Expected this to be 'string', but got 'boolean')";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        const std::string expected = R"(Type
-	'() -> (number, ...boolean)'
-could not be converted into
-	'() -> (number, ...string)'
-caused by:
-  Type 'boolean' could not be converted into 'string')";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
 }
@@ -1074,10 +1056,7 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ(toString(result.errors[0]), "Expected this to be 'string', but got 'number'");
-    else
-        CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'string'");
+    CHECK_EQ(toString(result.errors[0]), "Expected this to be 'string', but got 'number'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
@@ -1095,21 +1074,13 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        if (FFlag::LuauBetterTypeMismatchErrors)
-            CHECK(
-                toString(result.errors.at(0)) == "Expected this to be 'boolean', but got '...number'; \n"
-                                                 "it has a tail of `...number`, which is not a subtype of `boolean`"
-            );
-        else
-            CHECK(
-                toString(result.errors.at(0)) == "Type pack '...number' could not be converted into 'boolean'; \nthis is because it has a tail of "
-                                                 "`...number`, which is not a subtype of `boolean`"
-            );
+        CHECK(
+            toString(result.errors.at(0)) == "Expected this to be 'boolean', but got '...number'; \n"
+                                                "it has a tail of `...number`, which is not a subtype of `boolean`"
+        );
     }
-    else if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ(toString(result.errors[0]), "Expected this to be 'boolean', but got 'number'");
     else
-        CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'boolean'");
+        CHECK_EQ(toString(result.errors[0]), "Expected this to be 'boolean', but got 'number'");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")

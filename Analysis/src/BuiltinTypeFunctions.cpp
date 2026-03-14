@@ -21,6 +21,8 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAGVARIABLE(LuauBuiltinTypeFunctionsUseNewOverloadResolution)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsCaptureNestedInstances)
 
 namespace Luau
 {
@@ -108,10 +110,18 @@ std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunctionApp(
             }
         );
 
-        if (ctx->solver)
-            ctx->pushConstraint(ReduceConstraint{resultTy});
+        if (FFlag::LuauTypeFunctionsCaptureNestedInstances)
+        {
+            ctx->freshInstances.emplace_back(resultTy);
+            return {{resultTy, Reduction::MaybeOk}};
+        }
+        else
+        {
+            if (ctx->solver)
+                ctx->pushConstraint(ReduceConstraint{resultTy});
 
-        return {{resultTy, Reduction::MaybeOk, {}, {}, {}, {}, {resultTy}}};
+            return {{resultTy, Reduction::MaybeOk, {}, {}, {}, {}, {resultTy}}};
+        }
     }
 
     return std::nullopt;
@@ -169,6 +179,19 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
             return std::nullopt;
         else
             retPack = *subst;
+    }
+
+    if (FFlag::LuauOverloadGetsInstantiated)
+    {
+        // After we solve for the instantiated function type of this metamethod,
+        // we may have new free types if the metamethod was generic. We capture
+        // these so that they can be generalized later and we don't end up with
+        // free types in type checking.
+        for (const auto& ty : unifier.newFreshTypes)
+            trackInteriorFreeType(ctx->scope, ty);
+
+        for (const auto& tp : unifier.newFreshTypePacks)
+            trackInteriorFreeTypePack(ctx->scope, tp);
     }
 
     return retPack;

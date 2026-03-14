@@ -11,7 +11,6 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAG(LuauCompileInlinedBuiltins)
 
 namespace Luau
 {
@@ -146,45 +145,23 @@ struct CostVisitor : AstVisitor
         {
             // builtin cost modeling is different from regular calls because we use FASTCALL to compile these
             // thus we use a cheaper baseline, don't account for function, and assume constant/local copy is free
-            if (FFlag::LuauCompileInlinedBuiltins)
+            const int* bfid = builtins.find(expr);
+            bool builtin = bfid != nullptr && *bfid != LBF_NONE;
+            bool builtinShort = builtin && expr->args.size <= 2; // FASTCALL1/2
+
+            Cost cost = builtin ? 2 : 3;
+
+            if (!builtin)
+                cost += model(expr->func);
+
+            for (size_t i = 0; i < expr->args.size; ++i)
             {
-                const int* bfid = builtins.find(expr);
-                bool builtin = bfid != nullptr && *bfid != LBF_NONE;
-                bool builtinShort = builtin && expr->args.size <= 2; // FASTCALL1/2
-
-                Cost cost = builtin ? 2 : 3;
-
-                if (!builtin)
-                    cost += model(expr->func);
-
-                for (size_t i = 0; i < expr->args.size; ++i)
-                {
-                    Cost ac = model(expr->args.data[i]);
-                    // for constants/locals we still need to copy them to the argument list
-                    cost += ac.model == 0 && !builtinShort ? Cost(1) : ac;
-                }
-
-                return cost;
+                Cost ac = model(expr->args.data[i]);
+                // for constants/locals we still need to copy them to the argument list
+                cost += ac.model == 0 && !builtinShort ? Cost(1) : ac;
             }
-            else
-            {
-                bool builtin = builtins.find(expr) != nullptr;
-                bool builtinShort = builtin && expr->args.size <= 2; // FASTCALL1/2
 
-                Cost cost = builtin ? 2 : 3;
-
-                if (!builtin)
-                    cost += model(expr->func);
-
-                for (size_t i = 0; i < expr->args.size; ++i)
-                {
-                    Cost ac = model(expr->args.data[i]);
-                    // for constants/locals we still need to copy them to the argument list
-                    cost += ac.model == 0 && !builtinShort ? Cost(1) : ac;
-                }
-
-                return cost;
-            }
+            return cost;
         }
         else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
         {

@@ -10,15 +10,10 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauMorePermissiveNewtableType)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-LUAU_FASTFLAG(LuauUnionofIntersectionofFlattens)
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks)
 LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
-LUAU_FASTFLAG(LuauUdtfIndirectAliases)
 LUAU_FASTFLAG(LuauUdtfReserveStack)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
@@ -443,7 +438,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_union_methods_work")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_unionof")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauUnionofIntersectionofFlattens, true};
 
     CheckResult result = check(R"(
         type function foobar()
@@ -467,7 +461,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_unionof")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_unionof_empty")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauUnionofIntersectionofFlattens, true};
 
     CheckResult result = check(R"(
         type function foobar()
@@ -484,7 +477,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_unionof_empty")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_unionof_two_things")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauUnionofIntersectionofFlattens, true};
 
     CheckResult result = check(R"(
         type function foobar()
@@ -503,7 +495,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_unionof_two_things")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_intersectionof")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauUnionofIntersectionofFlattens, true};
 
     CheckResult result = check(R"(
         type function foobar()
@@ -525,7 +516,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_intersectionof")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_intersectionof_empty")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauUnionofIntersectionofFlattens, true};
 
     CheckResult result = check(R"(
         type function foobar()
@@ -542,7 +532,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_intersectionof_empty")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_flatten_on_intersectionof_two_things")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauUnionofIntersectionofFlattens, true};
 
     CheckResult result = check(R"(
         type function foobar()
@@ -682,7 +671,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_can_do_readonly_or_writeonly_types")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauMorePermissiveNewtableType, true};
 
     CheckResult result = check(R"(
         type function gettable()
@@ -1462,19 +1450,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tag_field")
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
 
-
-    if (FFlag::LuauBetterTypeMismatchErrors)
-    {
-        CHECK("Expected this to be unreachable, but got '\"number\"'" == toString(result.errors[0]));
-        CHECK("Expected this to be unreachable, but got '\"string\"'" == toString(result.errors[1]));
-        CHECK("Expected this to be unreachable, but got '\"table\"'" == toString(result.errors[2]));
-    }
-    else
-    {
-        CHECK(toString(result.errors[0]) == "Type '\"number\"' could not be converted into 'never'");
-        CHECK(toString(result.errors[1]) == "Type '\"string\"' could not be converted into 'never'");
-        CHECK(toString(result.errors[2]) == "Type '\"table\"' could not be converted into 'never'");
-    }
+    CHECK("Expected this to be unreachable, but got '\"number\"'" == toString(result.errors[0]));
+    CHECK("Expected this to be unreachable, but got '\"string\"'" == toString(result.errors[1]));
+    CHECK("Expected this to be unreachable, but got '\"table\"'" == toString(result.errors[2]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_serialization")
@@ -1502,10 +1480,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_serialization")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK(toString(result.errors[0]) == R"(Expected this to be 'number', but got '{ @metatable { ma: boolean }, { a: number } }')");
-    else
-        CHECK(toString(result.errors[0]) == R"(Type '{ @metatable { ma: boolean }, { a: number } }' could not be converted into 'number')");
+    CHECK(toString(result.errors[0]) == R"(Expected this to be 'number', but got '{ @metatable { ma: boolean }, { a: number } }')");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "nonstrict_mode")
@@ -2379,7 +2354,6 @@ local y: foo<{b: number}> = { b = 2 }
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_indirect")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauUdtfIndirectAliases{FFlag::LuauUdtfIndirectAliases, true};
 
     CheckResult result = check(R"(
 type Test<T> = T?
@@ -2405,7 +2379,6 @@ local y: bar<{b: number}> = { b = 2 }
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_indirect_levels")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauUdtfIndirectAliases{FFlag::LuauUdtfIndirectAliases, true};
 
     CheckResult result = check(R"(
 type Test<T> = T?
@@ -2456,7 +2429,6 @@ local y: foo<string> = "a"
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_unordered")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauUdtfIndirectAliases{FFlag::LuauUdtfIndirectAliases, true};
 
     CheckResult result = check(R"(
 type function foobar(ty)
@@ -2536,8 +2508,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_implicit_export_indirect")
 {
     if (FFlag::DebugLuauForceOldSolver)
         return;
-
-    ScopedFastFlag luauUdtfIndirectAliases{FFlag::LuauUdtfIndirectAliases, true};
 
     fileResolver.source["game/A"] = R"(
 type Test<T> = rawget<T, "a">
@@ -2825,7 +2795,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_basic_match")
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag noCrash{FFlag::LuauTypeFunctionDeserializationShouldNotCrashOnGenericPacks, true};
     ScopedFastFlag noErrors{FFlag::LuauDontIncludeVarargWithAnnotation, true};
     CheckResult results = check(R"(
         type function identity(t: type)

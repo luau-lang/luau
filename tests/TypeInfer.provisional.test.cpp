@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Luau/TypeInfer.h"
+#include "Luau/Error.h"
 #include "Luau/RecursionCounter.h"
 
 #include "Fixture.h"
@@ -17,7 +18,6 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -211,11 +211,7 @@ TEST_CASE_FIXTURE(Fixture, "while_body_are_also_refined")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ("Expected this to be 'Node<T>', but got 'Node<T>?'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Type 'Node<T>?' could not be converted into 'Node<T>'", toString(result.errors[0]));
+    CHECK_EQ("Expected this to be 'Node<T>', but got 'Node<T>?'", toString(result.errors[0]));
 }
 
 // Originally from TypeInfer.test.cpp.
@@ -839,7 +835,7 @@ TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_ty
 
     if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result); // This is wrong.  We should be rejecting this assignment.
-    else if (FFlag::LuauBetterTypeMismatchErrors)
+    else
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         const std::string expected =
@@ -850,19 +846,6 @@ but got
 caused by:
   Property 'x' is not compatible.
 Expected this to be exactly 'number', but got 'number?')";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        const std::string expected =
-            R"(Type
-	'{ x: number? }'
-could not be converted into
-	'{ x: number }'
-caused by:
-  Property 'x' is not compatible.
-Type 'number?' could not be converted into 'number' in an invariant context)";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
 }
@@ -1501,6 +1484,60 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typech
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(get<TypeMismatch>(result.errors[0]));
     CHECK(get<TypeMismatch>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "while_loops_fail_to_apply_refinements_1")
+{
+
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    // CLI-191924 - Refinements are not correctly getting emitted for the `and` operator in while loops
+    // This test currently fails because the refinement on `opts` is not getting applied
+    // to the table access opts.recursive, either in this while loop, or within its body.
+    // We need to make sure that dataflowgraph can correctly apply refinements within this context
+    // so that this no longer yields an error.
+    LUAU_REQUIRE_ERROR(
+        check(R"(
+type walkoptions = {
+	recursive: boolean?,
+}
+
+function bing(path : string  | walkoptions, opts: walkoptions?)
+    return function ()
+        while opts and opts.recursive do
+        end
+    end
+end
+    )"),
+        OptionalValueAccess
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "while_loops_fail_to_apply_refinements_2")
+{
+
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    // CLI-191924 - Refinements are not correctly getting emitted for the `and` operator in while loops
+    // This test currently fails because the refinement on `opts` is not getting applied
+    // to the table access opts.recursive, either in this while loop, or within its body.
+    // We need to make sure that dataflowgraph can correctly apply refinements within this context
+    // so that this no longer yields an error.
+    LUAU_REQUIRE_ERROR(
+        check(R"(
+type walkoptions = {
+	recursive: boolean?,
+}
+
+function bing(path : string  | walkoptions, opts: walkoptions?)
+    return function ()
+        while true do
+            if opts and opts.recursive then
+            end
+        end
+    end
+end
+    )"),
+        OptionalValueAccess
+    );
 }
 
 TEST_SUITE_END();
