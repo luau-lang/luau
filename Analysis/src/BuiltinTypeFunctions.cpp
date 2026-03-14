@@ -365,7 +365,7 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 }
 
-TypeFunctionContext::TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint)
+TypeFunctionContext::TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint, NotNull<Subtyping> subtyping)
     : arena(cs->arena)
     , builtins(cs->builtinTypes)
     , scope(scope)
@@ -373,6 +373,7 @@ TypeFunctionContext::TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<S
     , typeFunctionRuntime(cs->typeFunctionRuntime)
     , ice(NotNull{&cs->iceReporter})
     , limits(NotNull{&cs->limits})
+    , subtyping(subtyping)
     , solver(cs.get())
     , constraint(constraint.get())
 {
