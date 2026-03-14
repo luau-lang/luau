@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAGVARIABLE(LuauUnpackRespectsAnnotations)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAGVARIABLE(LuauForwardPolarityForFunctionTypes)
+LUAU_FASTFLAGVARIABLE(LuauRefinementTypeVector)
 
 namespace Luau
 {
@@ -3209,8 +3210,18 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
             // For now, we don't really care about being accurate with userdata if the typeguard was using typeof.
             discriminantTy = builtinTypes->externType;
         }
-        else if (!typeguard->isTypeof && typeguard->type == "vector")
-            discriminantTy = builtinTypes->neverType; // TODO: figure out a way to deal with this quirky type
+        else if (typeguard->type == "vector" && !typeguard->isTypeof)
+        {
+            if (FFlag::LuauRefinementTypeVector)
+            {
+                // `vector` is defined in EmbeddedBultinDefinitions, not as an actual built-in type
+                auto typeFun = globalScope->lookupType("vector");
+                if (typeFun)
+                    discriminantTy = follow(typeFun->type);
+            }
+            else
+                discriminantTy = builtinTypes->neverType; // TODO: figure out a way to deal with this quirky type
+        }
         else if (!typeguard->isTypeof)
             discriminantTy = builtinTypes->neverType;
         else if (auto typeFun = globalScope->lookupType(typeguard->type); typeFun && typeFun->typeParams.empty() && typeFun->typePackParams.empty())
