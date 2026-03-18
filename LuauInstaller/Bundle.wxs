@@ -1,0 +1,10 @@
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:bal="http://schemas.microsoft.com/wix/BalExtension">
+  <Bundle UpgradeCode="F586B415-D633-4955-A974-1317BFD598B2" Compressed="yes" Manufacturer="Luau" Name="Luau" Version="0.7.12">
+    <Chain>
+      <MsiPackage SourceFile="WixPieOutput\Luau-Installer.msi" />
+    </Chain>
+    <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.RtfLicense">
+      <bal:WixStandardBootstrapperApplication LicenseFile="License\license.rtf" LogoFile="Icons\BundleIcon.png" />
+    </BootstrapperApplicationRef>
+  </Bundle>
+</Wix>

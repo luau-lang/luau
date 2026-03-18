@@ -1,0 +1,97 @@
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product 
+    Id="6BB338AE-4C14-4690-9B08-E559C8FB14C2"
+    UpgradeCode="4A92FD3A-2083-417F-AE0D-4E344F73B1FF"
+    Language="1033"
+    Name="Luau"
+    Manufacturer="Luau"
+    Version="0.7.12">
+
+    <Package 
+      InstallerVersion="200"
+      InstallScope="perMachine"
+      InstallPrivileges="elevated"
+      Compressed="yes"
+      Manufacturer="Luau" />
+
+    <Media Id="1" Cabinet="media1.cab" EmbedCab="yes"/>
+
+    <Icon Id="MyIcon" SourceFile="Icons\icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="MyIcon" />
+
+    <WixVariable Id="WixUIDialogBmp" Value="Assets\background.png" />
+    <WixVariable Id="WixUIBannerBmp" Value="Assets\header.png" />
+    <WixVariable Id="WixUILicenseRtf" Value="License\license.rtf" />
+
+    <Property Id="WIXUI_INSTALLDIR" Value="MyAppFolder" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="MyAppFolder" Name="Luau" />
+      </Directory>
+    </Directory>
+
+    <!-- Remove folder on uninstall -->
+    <DirectoryRef Id="ProgramFiles64Folder">
+      <Component Id="Remove.ProgramFiles64Folder" Guid="4E93983A-0220-4BE6-92D5-18F44B157435" Win64="yes">
+        <RemoveFolder Id="RemoveMyAppFolder" Directory="MyAppFolder" On="uninstall"/>
+        <RegistryValue Root="HKLM" Key="Software\Luau" Type="string" Value="" KeyPath="yes"/>
+      </Component>
+    </DirectoryRef>
+
+    <!-- Main files -->
+    <DirectoryRef Id="MyAppFolder">
+
+      <!-- Main component (adds PATH) -->
+      <Component Id="CIdF4ECCBCB" Guid="38EFF4D5-D84B-46AE-8D2E-E5F7F761FBB3" Win64="yes">
+        <File Id="FId13B2A8B1" Name="luau.exe" Source="C:\Users\zohan\OneDrive\Desktop\LuauInstaller\Binaries\luau.exe" />
+        <CreateFolder />
+
+        <!-- Add install folder to PATH -->
+        <Environment
+          Id="AddToPath"
+          Name="PATH"
+          Value="[MyAppFolder]"
+          Permanent="no"
+          Part="last"
+          Action="set"
+          System="yes"/>
+      </Component>
+
+      <Component Id="CId11EA57C9" Guid="5F210D71-A367-47D1-AD89-4516DE6AA600" Win64="yes">
+        <File Id="FId1B0A093B" Name="luau-analyze.exe" Source="C:\Users\zohan\OneDrive\Desktop\LuauInstaller\Binaries\luau-analyze.exe" />
+      </Component>
+
+      <Component Id="CId34014586" Guid="D55E4418-1922-435B-9CEB-F42A0196CC56" Win64="yes">
+        <File Id="FId9DE182AA" Name="luau-ast.exe" Source="C:\Users\zohan\OneDrive\Desktop\LuauInstaller\Binaries\luau-ast.exe" />
+      </Component>
+
+      <Component Id="CIdCFA9FA1C" Guid="C1750BC8-8F2E-4DAF-93C7-104C87E8FB4B" Win64="yes">
+        <File Id="FIdBB751ED7" Name="luau-compile.exe" Source="C:\Users\zohan\OneDrive\Desktop\LuauInstaller\Binaries\luau-compile.exe" />
+      </Component>
+
+    </DirectoryRef>
+
+    <!-- Groups -->
+    <ComponentGroup Id="RemoveFolders">
+      <ComponentRef Id="Remove.ProgramFiles64Folder" />
+    </ComponentGroup>
+
+    <ComponentGroup Id="luau">
+      <ComponentRef Id="CIdCFA9FA1C" />
+      <ComponentRef Id="CId34014586" />
+      <ComponentRef Id="CId11EA57C9" />
+      <ComponentRef Id="CIdF4ECCBCB" />
+    </ComponentGroup>
+
+    <!-- Feature -->
+    <Feature Id="ProductFeature" Title="MainFeature" Description="MainLuauFeature" Level="1">
+      <ComponentGroupRef Id="RemoveFolders" />
+      <ComponentGroupRef Id="luau" />
+    </Feature>
+
+    <!-- UI -->
+    <UIRef Id="WixUI_InstallDir" />
+
+  </Product>
+</Wix>
