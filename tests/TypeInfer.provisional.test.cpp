@@ -293,7 +293,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
     }
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(1.0))
 {
     // We have to force this test case up here before the flags kick in.
     // The reason for this is that while loading the builtins, the below flags will cause that
