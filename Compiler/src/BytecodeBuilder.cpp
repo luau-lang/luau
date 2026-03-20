@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <string.h>
 
+LUAU_FASTFLAG(LuauCompileDuptableConstantPack)
+
 namespace Luau
 {
 
@@ -141,7 +143,22 @@ bool BytecodeBuilder::StringRef::operator==(const StringRef& other) const
 
 bool BytecodeBuilder::TableShape::operator==(const TableShape& other) const
 {
-    return length == other.length && memcmp(keys, other.keys, length * sizeof(keys[0])) == 0;
+    if (!FFlag::LuauCompileDuptableConstantPack)
+    {
+
+        return length == other.length && memcmp(keys, other.keys, length * sizeof(keys[0])) == 0;
+    }
+    else
+    {
+        bool equal = length == other.length && memcmp(keys, other.keys, length * sizeof(keys[0])) == 0 && hasConstants == other.hasConstants;
+
+        if (hasConstants)
+        {
+            equal = equal && memcmp(constants, other.constants, length * sizeof(constants[0])) == 0;
+        }
+
+        return equal;
+    }
 }
 
 size_t BytecodeBuilder::StringRefHash::operator()(const StringRef& v) const
@@ -199,6 +216,12 @@ size_t BytecodeBuilder::TableShapeHash::operator()(const TableShape& v) const
     {
         hash ^= v.keys[i];
         hash *= 16777619;
+
+        if (FFlag::LuauCompileDuptableConstantPack && v.hasConstants)
+        {
+            hash ^= v.constants[i];
+            hash *= 16777619;
+        }
     }
 
     return hash;
@@ -817,10 +840,23 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
         case Constant::Type_Table:
         {
             const TableShape& shape = tableShapes[c.valueTable];
-            writeByte(ss, LBC_CONSTANT_TABLE);
-            writeVarInt(ss, uint32_t(shape.length));
-            for (unsigned int i = 0; i < shape.length; ++i)
-                writeVarInt(ss, shape.keys[i]);
+            if (FFlag::LuauCompileDuptableConstantPack && shape.hasConstants)
+            {
+                writeByte(ss, LBC_CONSTANT_TABLE_WITH_CONSTANTS);
+                writeVarInt(ss, uint32_t(shape.length));
+                for (unsigned int i = 0; i < shape.length; ++i)
+                {
+                    writeVarInt(ss, shape.keys[i]);
+                    writeInt(ss, shape.constants[i]);
+                }
+            }
+            else
+            {
+                writeByte(ss, LBC_CONSTANT_TABLE);
+                writeVarInt(ss, uint32_t(shape.length));
+                for (unsigned int i = 0; i < shape.length; ++i)
+                    writeVarInt(ss, shape.keys[i]);
+            }
             break;
         }
 
@@ -1253,6 +1289,10 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
+    // LBC_CONSTANT_TABLE_WITH_CONSTANTS requires version 7
+    if (FFlag::LuauCompileDuptableConstantPack)
+        return 7;
+
     return LBC_VERSION_TARGET;
 }
 

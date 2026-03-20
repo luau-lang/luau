@@ -6,6 +6,7 @@ target_sources(Luau.Common PRIVATE
     Common/include/Luau/DenseHash.h
     Common/include/Luau/ExperimentalFlags.h
     Common/include/Luau/HashUtil.h
+    Common/include/Luau/InsertionOrderedMap.h
     Common/include/Luau/SmallVector.h
     Common/include/Luau/StringUtils.h
     Common/include/Luau/TimeTrace.h
@@ -202,7 +203,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Frontend.h
     Analysis/include/Luau/Generalization.h
     Analysis/include/Luau/GlobalTypes.h
-    Analysis/include/Luau/InsertionOrderedMap.h
     Analysis/include/Luau/Instantiation.h
     Analysis/include/Luau/Instantiation2.h
     Analysis/include/Luau/IostreamHelpers.h
