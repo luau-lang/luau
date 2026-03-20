@@ -29,6 +29,7 @@ LUAU_FASTINT(LuauGenericCounterMaxSteps)
 LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTINT(LuauSubtypingIterationLimit)
 LUAU_FASTINT(LuauStackGuardThreshold)
+LUAU_FASTINT(LuauNormalizerInitialFuel)
 
 struct LimitFixture : BuiltinsFixture
 {
@@ -701,6 +702,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_oom_unions" * doctest::timeout(4.0))
         _ = _,l0,_
         do end
         _.readstring += _
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "comparison_to_nil_when_normalization_fails_should_not_crash")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastInt sfi{FInt::LuauNormalizerInitialFuel, 3};
+    LUAU_REQUIRE_ERRORS(check(R"(
+        type T = { foo: number } | { bar: number } | { baz: number }
+        type U = { oof: number } | { rab: number } | { zab: number }
+        type TU = T & U
+        local function check(t: TU): boolean
+            return t == nil
+        end
     )"));
 }
 

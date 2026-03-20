@@ -17,6 +17,7 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauCodegenFreeBlocks)
+LUAU_FASTFLAG(LuauCodegenProtectData)
 
 using namespace Luau::CodeGen;
 
@@ -25,6 +26,7 @@ TEST_SUITE_BEGIN("CodeAllocation");
 TEST_CASE("CodeAllocation")
 {
     ScopedFastFlag luauCodegenFreeBlocks{FFlag::LuauCodegenFreeBlocks, true};
+    ScopedFastFlag luauCodegenProtectData{FFlag::LuauCodegenProtectData, false};
 
     size_t blockSize = 1024 * 1024;
     size_t maxTotalSize = 1024 * 1024;
@@ -134,6 +136,7 @@ TEST_CASE("CodeAllocationFailure")
 TEST_CASE("CodeAllocationWithUnwindCallbacks")
 {
     ScopedFastFlag luauCodegenFreeBlocks{FFlag::LuauCodegenFreeBlocks, true};
+    ScopedFastFlag luauCodegenProtectData{FFlag::LuauCodegenProtectData, false};
 
     struct Info
     {
@@ -183,6 +186,100 @@ TEST_CASE("CodeAllocationWithUnwindCallbacks")
         CHECK(result.size == kCodeAlignment + 128);
         CHECK(result.codeStart != nullptr);
         CHECK(result.codeStart == result.start + kCodeAlignment);
+        CHECK(result.start == info.block + kCodeAlignment);
+
+        allocator.deallocate(result);
+    }
+
+    CHECK(info.destroyCalled);
+}
+
+TEST_CASE("CodeAllocationProtectData")
+{
+    ScopedFastFlag luauCodegenFreeBlocks{FFlag::LuauCodegenFreeBlocks, true};
+    ScopedFastFlag luauCodegenProtectData{FFlag::LuauCodegenProtectData, true};
+
+    size_t blockSize = 1024 * 1024;
+    size_t maxTotalSize = 1024 * 1024;
+    CodeAllocator allocator(blockSize, maxTotalSize);
+
+    // dataSize = 0 should not waste a page for read only
+    std::vector<uint8_t> code(128);
+    CodeAllocationData result1 = allocator.allocate(nullptr, 0, code.data(), code.size());
+    CHECK(result1.start != nullptr);
+    CHECK(result1.size == 128);
+    CHECK(result1.codeStart != nullptr);
+    CHECK(result1.codeStart == result1.start);
+
+    // dataSize != 0 should page-align the code start so that data page is read only
+    std::vector<uint8_t> data(8);
+    CodeAllocationData result2 = allocator.allocate(data.data(), data.size(), code.data(), code.size());
+    CHECK(result2.start != nullptr);
+    CHECK(result2.size == CodeAllocator::alignToPageSize(data.size()) + code.size());
+    CHECK(result2.codeStart != nullptr);
+    // Code must start on a page boundary
+    CHECK(uintptr_t(result2.codeStart) == CodeAllocator::alignToPageSize(uintptr_t(result2.codeStart)));
+    // Data is placed immediately before code
+    CHECK(result2.codeStart - data.size() >= result2.start);
+
+    allocator.deallocate(result1);
+    allocator.deallocate(result2);
+}
+
+TEST_CASE("CodeAllocationProtectDataWithUnwindCallbacks")
+{
+    ScopedFastFlag luauCodegenFreeBlocks{FFlag::LuauCodegenFreeBlocks, true};
+    ScopedFastFlag luauCodegenProtectData{FFlag::LuauCodegenProtectData, true};
+
+    struct Info
+    {
+        std::vector<uint8_t> unwind;
+        uint8_t* block = nullptr;
+        bool destroyCalled = false;
+    };
+    Info info;
+    info.unwind.resize(8);
+
+    {
+        size_t blockSize = 1024 * 1024;
+        size_t maxTotalSize = 1024 * 1024;
+        CodeAllocator allocator(blockSize, maxTotalSize);
+
+        std::vector<uint8_t> code;
+        code.resize(128);
+
+        std::vector<uint8_t> data;
+        data.resize(8);
+
+        allocator.context = &info;
+        allocator.createBlockUnwindInfo = [](void* context, uint8_t* block, size_t blockSize, size_t& beginOffset) -> void*
+        {
+            Info& info = *(Info*)context;
+
+            CHECK(info.unwind.size() == 8);
+            memcpy(block, info.unwind.data(), info.unwind.size());
+            beginOffset = 8;
+
+            info.block = block;
+
+            return new int(7);
+        };
+        allocator.destroyBlockUnwindInfo = [](void* context, void* unwindData)
+        {
+            Info& info = *(Info*)context;
+
+            info.destroyCalled = true;
+
+            CHECK(*(int*)unwindData == 7);
+            delete (int*)unwindData;
+        };
+
+        CodeAllocationData result = allocator.allocate(data.data(), data.size(), code.data(), code.size());
+        CHECK(result.start != nullptr);
+        CHECK(result.size == CodeAllocator::alignToPageSize(data.size()) + code.size());
+        CHECK(result.codeStart != nullptr);
+        // Code must start on a page boundary as data is non zero size
+        CHECK(uintptr_t(result.codeStart) == CodeAllocator::alignToPageSize(uintptr_t(result.codeStart)));
         CHECK(result.start == info.block + kCodeAlignment);
 
         allocator.deallocate(result);

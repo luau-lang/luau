@@ -4,6 +4,8 @@
 #include "Luau/Parser.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Common.h"
+#include "Luau/InsertionOrderedMap.h"
+#include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
 
 #include "Builtins.h"
@@ -28,9 +30,12 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
+LUAU_FASTFLAGVARIABLE(LuauCompileDuptableConstantPack)
 LUAU_FASTFLAGVARIABLE(LuauCompileVectorReveseMul)
 LUAU_FASTFLAGVARIABLE(LuauCompileTableIndexTemp)
 LUAU_FASTFLAGVARIABLE(LuauCompileVectorConstLimit)
+
+LUAU_FASTFLAG(DebugLuauNoInline)
 
 namespace Luau
 {
@@ -319,7 +324,14 @@ struct Compiler
         // record information for inlining
         if (options.optimizationLevel >= 2 && !func->vararg && !func->self && !getfenvUsed && !setfenvUsed)
         {
-            f.canInline = true;
+            if (FFlag::DebugLuauNoInline && func->hasAttribute(AstAttr::Type::DebugNoinline))
+            {
+                f.canInline = false;
+            }
+            else
+            {
+                f.canInline = true;
+            }
             f.stackSize = stackSize;
             f.costModel = modelCost(func->body, func->args.data, func->args.size, builtins, constants);
 
@@ -2057,26 +2069,67 @@ struct Compiler
         // Optimization: if target is a temp register, we can clobber it which allows us to compute the result directly into it
         uint8_t reg = targetTemp ? target : allocReg(expr, 1u);
 
+        // flattening operation where we only load the last element
+        // this optimizes for tables like: { data = 43, data = function() end, data = 9 }
+        // in this case, we know that data = 9 should be the element, so we can just skip the rest
+        InsertionOrderedMap<int32_t, int32_t> lastKeyVal;
         // Optimization: when all items are record fields, use template tables to compile expression
         if (arraySize == 0 && indexSize == 0 && hashSize == recordSize && recordSize >= 1 && recordSize <= BytecodeBuilder::TableShape::kMaxLength)
         {
             BytecodeBuilder::TableShape shape;
 
-            for (size_t i = 0; i < expr->items.size; ++i)
+            if (FFlag::LuauCompileDuptableConstantPack)
             {
-                const AstExprTable::Item& item = expr->items.data[i];
-                LUAU_ASSERT(item.kind == AstExprTable::Item::Record);
+                for (size_t i = 0; i < expr->items.size; ++i)
+                {
+                    const AstExprTable::Item& item = expr->items.data[i];
+                    LUAU_ASSERT(item.kind == AstExprTable::Item::Record);
 
-                AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
-                LUAU_ASSERT(ckey);
+                    AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
+                    LUAU_ASSERT(ckey);
 
-                int cid = bytecode.addConstantString(sref(ckey->value));
-                if (cid < 0)
-                    CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
+                    int keyCid = bytecode.addConstantString(sref(ckey->value));
+                    if (keyCid < 0)
+                        CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
 
-                LUAU_ASSERT(shape.length < BytecodeBuilder::TableShape::kMaxLength);
+                    int32_t valueCid = getConstantIndex(item.value);
+                    lastKeyVal[keyCid] = valueCid;
+                }
 
-                shape.keys[shape.length++] = cid;
+                for (auto& [keyCid, valueCid] : lastKeyVal)
+                {
+                    LUAU_ASSERT(shape.length < BytecodeBuilder::TableShape::kMaxLength);
+
+                    size_t idx = shape.length;
+                    shape.keys[idx] = keyCid;
+
+                    shape.constants[idx] = valueCid;
+                    if (valueCid >= 0)
+                    {
+                        shape.hasConstants = true;
+                    }
+
+                    shape.length++;
+                }
+            }
+            else
+            {
+                for (size_t i = 0; i < expr->items.size; ++i)
+                {
+                    const AstExprTable::Item& item = expr->items.data[i];
+                    LUAU_ASSERT(item.kind == AstExprTable::Item::Record);
+
+                    AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
+                    LUAU_ASSERT(ckey);
+
+                    int cid = bytecode.addConstantString(sref(ckey->value));
+                    if (cid < 0)
+                        CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
+
+                    LUAU_ASSERT(shape.length < BytecodeBuilder::TableShape::kMaxLength);
+
+                    shape.keys[shape.length++] = cid;
+                }
             }
 
             int32_t tid = bytecode.addConstantTable(shape);
@@ -2091,6 +2144,13 @@ struct Compiler
             }
             else
             {
+                // must disable duptable constant optimization here, as we're defaulting back to new table
+                if (FFlag::LuauCompileDuptableConstantPack)
+                {
+                    shape.hasConstants = false;
+                    lastKeyVal.clear();
+                }
+
                 bytecode.emitABC(LOP_NEWTABLE, reg, uint8_t(encodedHashSize), 0);
                 bytecode.emitAux(0);
             }
@@ -2130,6 +2190,23 @@ struct Compiler
 
             AstExpr* key = item.key;
             AstExpr* value = item.value;
+
+            if (FFlag::LuauCompileDuptableConstantPack && lastKeyVal.size() > 0 && key && key->is<AstExprConstantString>())
+            {
+                AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
+                LUAU_ASSERT(ckey);
+
+                int keyCid = bytecode.addConstantString(sref(ckey->value));
+                if (const int32_t* valueCid = lastKeyVal.get(keyCid))
+                {
+                    // do not generate assignments for constants
+                    if (*valueCid >= 0)
+                    {
+                        continue;
+                    }
+                }
+            }
+
 
             // some key/value pairs don't require us to compile the expressions, so we need to setup the line info here
             setDebugLine(value);

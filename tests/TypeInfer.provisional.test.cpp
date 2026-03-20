@@ -409,21 +409,6 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
 }
 
 // Belongs in TypeInfer.builtins.test.cpp.
-TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_returns_at_least_two_value_but_function_returns_nothing")
-{
-    CheckResult result = check(R"(
-        local function f(): () end
-        local ok, res = pcall(f)
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Function only returns 1 value, but 2 are required here", toString(result.errors[0]));
-    // LUAU_REQUIRE_NO_ERRORS(result);
-    // CHECK_EQ("boolean", toString(requireType("ok")));
-    // CHECK_EQ("any", toString(requireType("res")));
-}
-
-// Belongs in TypeInfer.builtins.test.cpp.
 TEST_CASE_FIXTURE(BuiltinsFixture, "choose_the_right_overload_for_pcall")
 {
     CheckResult result = check(R"(

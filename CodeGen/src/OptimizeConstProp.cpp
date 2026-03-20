@@ -1590,7 +1590,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 // Unpack the STORE_TVALUE of a TAG_VECTOR value
                 if (prev.cmd == IrCmd::TAG_VECTOR)
                 {
-                    if (IrInst* untaggedValue = function.asInstOp(OP_A(prev)))
+                    if (function.asInstOp(OP_A(prev)))
                         prevIdx = OP_A(prev).index;
                 }
 

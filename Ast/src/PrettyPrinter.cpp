@@ -9,6 +9,7 @@
 #include <limits>
 #include <math.h>
 
+LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
 
@@ -1505,6 +1506,13 @@ struct Printer
         case AstAttr::Deprecated:
             writer.keyword("@deprecated");
             break;
+        case AstAttr::DebugNoinline:
+            if (FFlag::DebugLuauNoInline)
+            {
+                writer.keyword("@debugnoinline");
+                break;
+            }
+            LUAU_FALLTHROUGH;
         case AstAttr::Unknown:
             writer.keyword("@" + std::string{attribute.name.value});
             break;
