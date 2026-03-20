@@ -212,6 +212,7 @@ public:
         Checked,
         Native,
         Deprecated,
+        DebugNoinline,
         Unknown
     };
 

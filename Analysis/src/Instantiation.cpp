@@ -13,6 +13,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauReplacerRespectsReboundGenerics)
+LUAU_FASTFLAGVARIABLE(LuauReplacerIsSolverAgnostic)
 
 namespace Luau
 {
@@ -152,22 +153,38 @@ bool ReplaceGenerics::isDirty(TypePackId tp)
 TypeId ReplaceGenerics::clean(TypeId ty)
 {
     LUAU_ASSERT(isDirty(ty));
-    if (const TableType* ttv = log->getMutable<TableType>(ty))
+
+    if (FFlag::LuauReplacerIsSolverAgnostic)
     {
-        TableType clone = TableType{ttv->props, ttv->indexer, level, scope, TableState::Free};
-        clone.definitionModuleName = ttv->definitionModuleName;
-        clone.definitionLocation = ttv->definitionLocation;
-        return addType(std::move(clone));
-    }
-    else if (FFlag::LuauSolverV2)
-    {
-        TypeId res = freshType(NotNull{arena}, builtinTypes, scope);
-        getMutable<FreeType>(res)->level = level;
-        return res;
+        if (const TableType* ttv = log->getMutable<TableType>(ty))
+        {
+            TableType clone = TableType{ttv->props, ttv->indexer, level, scope, TableState::Free};
+            clone.definitionModuleName = ttv->definitionModuleName;
+            clone.definitionLocation = ttv->definitionLocation;
+            return addType(std::move(clone));
+        }
+        else
+            return arena->freshType(builtinTypes, scope, level);
     }
     else
     {
-        return arena->freshType(builtinTypes, scope, level);
+        if (const TableType* ttv = log->getMutable<TableType>(ty))
+        {
+            TableType clone = TableType{ttv->props, ttv->indexer, level, scope, TableState::Free};
+            clone.definitionModuleName = ttv->definitionModuleName;
+            clone.definitionLocation = ttv->definitionLocation;
+            return addType(std::move(clone));
+        }
+        else if (FFlag::LuauSolverV2)
+        {
+            TypeId res = freshType(NotNull{arena}, builtinTypes, scope);
+            getMutable<FreeType>(res)->level = level;
+            return res;
+        }
+        else
+        {
+            return arena->freshType(builtinTypes, scope, level);
+        }
     }
 }
 
