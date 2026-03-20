@@ -112,14 +112,6 @@ struct OverloadResolution
 
 struct OverloadResolver
 {
-    enum Analysis
-    {
-        Ok,
-        TypeIsNotAFunction,
-        ArityMismatch,
-        OverloadIsNonviable, // Arguments were incompatible with the overloads parameters but were otherwise compatible by arity
-    };
-
     OverloadResolver(
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<TypeArena> arena,
@@ -140,13 +132,6 @@ struct OverloadResolver
     NotNull<TypeCheckLimits> limits;
     Subtyping subtyping;
     Location callLoc;
-
-    // Resolver results
-    std::vector<TypeId> ok;
-    std::vector<TypeId> nonFunctions;
-    std::vector<std::pair<TypeId, ErrorVec>> arityMismatches;
-    std::vector<std::pair<TypeId, ErrorVec>> nonviableOverloads;
-    InsertionOrderedMap<TypeId, std::pair<OverloadResolver::Analysis, size_t>> resolution;
 
     // Given a (potentially overloaded) function and a set of arguments, test each overload.
     OverloadResolution resolveOverload(
@@ -186,35 +171,6 @@ private:
         NotNull<DenseHashSet<TypeId>> uniqueTypes
     );
 
-public:
-    // Clip this with LuauBuiltinTypeFunctionsUseNewOverloadResolution
-    std::pair<Analysis, TypeId> selectOverload_DEPRECATED(
-        TypeId ty,
-        TypePackId args,
-        NotNull<DenseHashSet<TypeId>> uniqueTypes,
-        bool useFreeTypeBounds
-    );
-
-private:
-    std::pair<Analysis, ErrorVec> checkOverload(
-        TypeId fnTy,
-        const TypePack* args,
-        AstExpr* fnLoc,
-        const std::vector<AstExpr*>* argExprs,
-        NotNull<DenseHashSet<TypeId>> uniqueTypes,
-        bool callMetamethodOk = true
-    );
-    LUAU_NOINLINE
-    std::pair<Analysis, ErrorVec> checkOverload_(
-        TypeId fnTy,
-        const FunctionType* fn,
-        const TypePack* args,
-        AstExpr* fnExpr,
-        const std::vector<AstExpr*>* argExprs,
-        NotNull<DenseHashSet<TypeId>> uniqueTypes
-    );
-    size_t indexof(Analysis analysis);
-    void add(Analysis analysis, TypeId ty, ErrorVec&& errors);
     void maybeEmplaceError(
         ErrorVec* errors,
         Location argLocation,
@@ -255,47 +211,10 @@ private:
     // We do not accept nil in place of a generic unless that generic is explicitly optional.
     bool isArityCompatible(TypePackId candidate, TypePackId desired, NotNull<BuiltinTypes> builtinTypes) const;
 
-    bool testFunctionTypeForOverloadSelection(
-        const FunctionType* ftv,
-        NotNull<DenseHashSet<TypeId>> uniqueTypes,
-        TypePackId argsPack,
-        bool useFreeTypeBounds
-    );
-};
-
-struct SolveResult
-{
-    enum OverloadCallResult
-    {
-        Ok,
-        CodeTooComplex,
-        OccursCheckFailed,
-        NoMatchingOverload,
-    };
-
-    OverloadCallResult result;
-    std::optional<TypePackId> typePackId; // nullopt if result != Ok
-
-    TypeId overloadToUse = nullptr;
-    TypeId inferredTy = nullptr;
-    DenseHashMap<TypeId, std::vector<TypeId>> expandedFreeTypes{nullptr};
 };
 
 // Helper utility, presently used for binary operator type functions.
 //
 // Given a function and a set of arguments, select a suitable overload.
-// Clip with FFlag::LuauBuiltinTypeFunctionsUseNewOverloadResolution
-SolveResult solveFunctionCall_DEPRECATED(
-    NotNull<TypeArena> arena,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Normalizer> normalizer,
-    NotNull<TypeFunctionRuntime> typeFunctionRuntime,
-    NotNull<InternalErrorReporter> iceReporter,
-    NotNull<TypeCheckLimits> limits,
-    NotNull<Scope> scope,
-    const Location& location,
-    TypeId fn,
-    TypePackId argsPack
-);
 
 } // namespace Luau

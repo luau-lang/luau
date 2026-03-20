@@ -19,7 +19,8 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
-LUAU_FASTFLAG(LuauConst)
+LUAU_FASTFLAG(LuauConst2)
+LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -2961,7 +2962,7 @@ TEST_CASE_FIXTURE(Fixture, "do_end_block_with_cst")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         const f = 42
     )");
@@ -2981,7 +2982,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_const")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_multi_initialize")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         const a, b = 42, 32
 
@@ -2995,7 +2996,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_multi_initialize")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_function")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         const function f() return 42 end
     )");
@@ -3005,7 +3006,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_function")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_function_with_attr")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         @deprecated
         const function f() return 42 end
@@ -3016,7 +3017,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_function_with_attr")
 
 TEST_CASE_FIXTURE(Fixture, "parse_local_const")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         local const
     )");
@@ -3026,7 +3027,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_local_const")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_call")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         local const = function(t) return t end
         const { a = "a" }
@@ -3037,7 +3038,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_call")
 
 TEST_CASE_FIXTURE(Fixture, "error_const_not_initialized")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
 
     matchParseError("const c", "Missing initializer in const declaration");
 
@@ -3050,7 +3051,7 @@ TEST_CASE_FIXTURE(Fixture, "error_const_not_initialized")
 
 TEST_CASE_FIXTURE(Fixture, "error_const_reassignment")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
 
     matchParseError("const a = 42; a = 43", "Assigned expression must be a variable or a field");
 
@@ -3059,18 +3060,20 @@ TEST_CASE_FIXTURE(Fixture, "error_const_reassignment")
     matchParseError("local b; const a = 42; b, a = 43", "Assigned expression must be a variable or a field");
 
     matchParseError("local b; const a = 42; b, a = ...", "Assigned expression must be a variable or a field");
+
+    matchParseError("const a = 42; function a() end", "Assigned expression must be a variable or a field");
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_const_function_reassignment")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
 
     matchParseError("const function a() return 42 end; a = 43", "Assigned expression must be a variable or a field");
 }
 
 TEST_CASE_FIXTURE(Fixture, "const_shadow")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
 
     AstStatBlock* stat = parse(R"(
         const a = 42
@@ -4176,6 +4179,38 @@ end)");
     checkAttribute(attributes.data[0], AstAttr::Type::Checked, Location(Position(1, 4), Position(1, 12)));
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_debugnoinline_on_local_function")
+{
+    ScopedFastFlag noInline{FFlag::DebugLuauNoInline, true};
+    AstStatBlock* stat = parse(R"(
+    @debugnoinline
+local function hello(x, y)
+    return x + y
+end)");
+
+    LUAU_ASSERT(stat != nullptr);
+
+    AstStatLocalFunction* statFun = stat->body.data[0]->as<AstStatLocalFunction>();
+    LUAU_ASSERT(statFun != nullptr);
+
+    AstArray<AstAttr*> attributes = statFun->func->attributes;
+
+    CHECK_EQ(attributes.size, 1);
+
+    checkAttribute(attributes.data[0], AstAttr::Type::DebugNoinline, Location(Position(1, 4), Position(1, 18)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "debugnoinline_not_allowed_without_flag")
+{
+    ParseResult result = tryParse(R"(
+@debugnoinline
+local function hello(x, y)
+    return x + y
+end)");
+
+    checkFirstErrorForAttributes(result.errors, 1, Location(Position(1, 0), Position(1, 14)), "Invalid attribute '@debugnoinline'");
+}
+
 TEST_CASE_FIXTURE(Fixture, "empty_attribute_name_is_not_allowed")
 {
     ParseResult result = tryParse(R"(
@@ -4196,7 +4231,7 @@ if a<0 then a = 0 end)");
         pr1.errors,
         1,
         Location(Position(2, 0), Position(2, 2)),
-        FFlag::LuauConst
+        FFlag::LuauConst2
             ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
               "'if' instead"
             : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'if' instead"
@@ -4213,7 +4248,7 @@ end)");
         pr2.errors,
         1,
         Location(Position(3, 0), Position(3, 5)),
-        FFlag::LuauConst
+        FFlag::LuauConst2
             ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
               "'while' instead"
             : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'while' instead"
@@ -4231,7 +4266,7 @@ end)");
         pr3.errors,
         1,
         Location(Position(2, 0), Position(2, 2)),
-        FFlag::LuauConst
+        FFlag::LuauConst2
             ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
               "'do' instead"
             : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'do' instead"
@@ -4245,7 +4280,7 @@ for i=1,10 do print(i) end
         pr4.errors,
         1,
         Location(Position(2, 0), Position(2, 3)),
-        FFlag::LuauConst
+        FFlag::LuauConst2
             ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
               "'for' instead"
             : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'for' instead"
@@ -4261,7 +4296,7 @@ until line ~= ""
         pr5.errors,
         1,
         Location(Position(2, 0), Position(2, 6)),
-        FFlag::LuauConst
+        FFlag::LuauConst2
             ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
               "'repeat' instead"
             : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'repeat' instead"
@@ -4287,7 +4322,7 @@ end
         pr7.errors,
         1,
         Location(Position(3, 31), Position(3, 36)),
-        FFlag::LuauConst
+        FFlag::LuauConst2
             ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
               "'break' instead"
             : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'break' instead"
@@ -4301,7 +4336,7 @@ function foo1 () @checked return 'a' end
         pr8.errors,
         1,
         Location(Position(1, 26), Position(1, 32)),
-        FFlag::LuauConst
+        FFlag::LuauConst2
             ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
               "'return' instead"
             : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'return' instead"

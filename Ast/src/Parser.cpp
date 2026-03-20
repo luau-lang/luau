@@ -22,7 +22,8 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, f
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCstStatDoWithStatsStart)
 LUAU_FASTFLAGVARIABLE(DesugaredArrayTypeReferenceIsEmpty)
-LUAU_FASTFLAGVARIABLE(LuauConst)
+LUAU_FASTFLAGVARIABLE(LuauConst2)
+LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(LuauExternReadWriteAttributes)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -90,6 +91,10 @@ AttributeEntry kAttributeEntries[] = {
     {"native", AstAttr::Type::Native, {}},
     {"deprecated", AstAttr::Type::Deprecated, deprecatedArgsValidator},
     {nullptr, AstAttr::Type::Checked, {}}
+};
+
+std::pair<AttributeEntry, Luau::FValue<bool>&> kDebugAttributeEntries[] = {
+    {{"debugnoinline", AstAttr::Type::DebugNoinline, {}}, FFlag::DebugLuauNoInline},
 };
 
 ParseError::ParseError(const Location& location, std::string message)
@@ -443,7 +448,7 @@ AstStat* Parser::parseStat()
     case Lexeme::ReservedFunction:
         return parseFunctionStat(AstArray<AstAttr*>({nullptr, 0}));
     case Lexeme::ReservedLocal:
-        if (FFlag::LuauConst)
+        if (FFlag::LuauConst2)
         {
             Location start = lexer.current().location;
             return parseLocal(start, start.begin, {nullptr, 0}, false);
@@ -492,7 +497,7 @@ AstStat* Parser::parseStat()
     if (ident == "continue")
         return parseContinue(expr->location);
 
-    if (FFlag::LuauConst && ident == "const")
+    if (FFlag::LuauConst2 && ident == "const")
         return parseLocal(expr->location, expr->location.begin, AstArray<AstAttr*>({nullptr, 0}), true);
 
     if (options.allowDeclarationSyntax)
@@ -865,6 +870,12 @@ AstExpr* Parser::parseFunctionName(bool& hasself, AstName& debugname)
     return expr;
 }
 
+static bool isExprLValue(AstExpr* expr)
+{
+    return (expr->is<AstExprLocal>() && (!FFlag::LuauConst2 || !expr->as<AstExprLocal>()->local->isConst)) || expr->is<AstExprGlobal>() ||
+           expr->is<AstExprIndexExpr>() || expr->is<AstExprIndexName>();
+}
+
 // function funcname funcbody
 AstStat* Parser::parseFunctionStat(const AstArray<AstAttr*>& attributes)
 {
@@ -879,6 +890,11 @@ AstStat* Parser::parseFunctionStat(const AstArray<AstAttr*>& attributes)
     bool hasself = false;
     AstName debugname;
     AstExpr* expr = parseFunctionName(hasself, debugname);
+
+    if (FFlag::LuauConst2 && !isExprLValue(expr))
+    {
+        expr = reportExprError(expr->location, copy({expr}), "Assigned expression must be a variable or a field");
+    }
 
     matchRecoveryStopOnToken[Lexeme::ReservedEnd]++;
 
@@ -909,6 +925,16 @@ std::optional<AstAttr::Type> Parser::validateAttribute(
         {
             type = kAttributeEntries[i].type;
             argsValidator = kAttributeEntries[i].argsValidator;
+            break;
+        }
+    }
+
+    for (const auto& [attributeEntry, fflagBool] : kDebugAttributeEntries)
+    {
+        if (fflagBool && strcmp(attributeName, attributeEntry.name) == 0)
+        {
+            type = attributeEntry.type;
+            argsValidator = attributeEntry.argsValidator;
             break;
         }
     }
@@ -1051,7 +1077,7 @@ AstStat* Parser::parseAttributeStat()
     case Lexeme::Type::ReservedFunction:
         return parseFunctionStat(attributes);
     case Lexeme::Type::ReservedLocal:
-        if (FFlag::LuauConst)
+        if (FFlag::LuauConst2)
             return parseLocal(
                 attributes.size > 0 ? attributes.data[0]->location : lexer.current().location, lexer.current().location.begin, attributes, false
             );
@@ -1059,7 +1085,7 @@ AstStat* Parser::parseAttributeStat()
             return parseLocal_DEPRECATED(attributes);
     case Lexeme::Type::Name:
     {
-        if (FFlag::LuauConst && strcmp("const", lexer.current().data) == 0)
+        if (FFlag::LuauConst2 && strcmp("const", lexer.current().data) == 0)
         {
             Location keywordLoc = lexer.current().location;
             nextLexeme();
@@ -1073,7 +1099,7 @@ AstStat* Parser::parseAttributeStat()
     }
         [[fallthrough]];
     default:
-        if (FFlag::LuauConst)
+        if (FFlag::LuauConst2)
             return reportStatError(
                 lexer.current().location,
                 {},
@@ -1684,12 +1710,6 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
     }
 }
 
-static bool isExprLValue(AstExpr* expr)
-{
-    return (expr->is<AstExprLocal>() && (!FFlag::LuauConst || !expr->as<AstExprLocal>()->local->isConst)) || expr->is<AstExprGlobal>() ||
-           expr->is<AstExprIndexExpr>() || expr->is<AstExprIndexName>();
-}
-
 // varlist `=' explist
 AstStat* Parser::parseAssignment(AstExpr* initial)
 {
@@ -1830,7 +1850,7 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
 
     if (localName)
     {
-        if (FFlag::LuauConst)
+        if (FFlag::LuauConst2)
             funLocal = pushLocal(Binding(*localName, nullptr, {0, 0}, isConst));
         else
             funLocal = pushLocal(Binding(*localName, nullptr));

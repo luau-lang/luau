@@ -11,6 +11,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
+LUAU_FASTFLAG(DebugLuauNoInline)
 
 using namespace Luau;
 
@@ -2127,6 +2128,16 @@ TEST_CASE("prettyPrint_function_attributes")
         end
     )";
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    {
+
+        ScopedFastFlag noInline{FFlag::DebugLuauNoInline, true};
+        code = R"(
+        @debugnoinline
+        local function t() end
+        )";
+        CHECK_EQ(code, prettyPrint(code, {}, true).code);
+    }
 }
 
 TEST_CASE("transpile_explicit_type_instantiations")
