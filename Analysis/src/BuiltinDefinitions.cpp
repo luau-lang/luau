@@ -32,6 +32,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAGVARIABLE(LuauSilenceDynamicFormatStringErrors)
+LUAU_FASTFLAGVARIABLE(LuauPcallCallbackCanReturnZeroValues)
 
 namespace Luau
 {
@@ -149,6 +150,17 @@ struct MagicGmatch final : MagicFunction
 };
 
 struct MagicFind final : MagicFunction
+{
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
+    bool infer(const MagicFunctionCallContext& ctx) override;
+};
+
+struct MagicPcall final : MagicFunction
 {
     std::optional<WithPredicate<TypePackId>> handleOldSolver(
         struct TypeChecker&,
@@ -464,6 +476,8 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     finalizeGlobalBindings(globals.globalScope);
 
     attachMagicFunction(getGlobalBinding(globals, "assert"), std::make_shared<MagicAssert>());
+    if (FFlag::LuauPcallCallbackCanReturnZeroValues)
+        attachMagicFunction(getGlobalBinding(globals, "pcall"), std::make_shared<MagicPcall>());
 
     if (frontend.getLuauSolverMode() == SolverMode::New)
     {
@@ -1125,6 +1139,42 @@ bool MagicFind::infer(const MagicFunctionCallContext& context)
 
     const TypePackId returnList = arena->addTypePack(std::move(returnTypes));
     asMutable(context.result)->ty.emplace<BoundTypePack>(returnList);
+    return true;
+}
+
+std::optional<WithPredicate<TypePackId>> MagicPcall::handleOldSolver(
+    TypeChecker& typechecker,
+    const ScopePtr& scope,
+    const AstExprCall& expr,
+    WithPredicate<TypePackId> withPredicate
+)
+{
+    // pcall() is only magic in the new solver.
+    return std::nullopt;
+}
+
+// In the specific case that pcall's first argument returns 0 values, the result
+// of pcall is itself (boolean, unknown) Else treat it as an ordinary function
+// per its type in EmbeddedBuiltinDefinitions.cpp
+bool MagicPcall::infer(const MagicFunctionCallContext& ctx)
+{
+    const auto [argHead, argTail] = flatten(ctx.arguments);
+
+    if (argHead.empty())
+        return false;
+
+    TypeId fnTy = follow(argHead[0]);
+    const FunctionType* fn = get<FunctionType>(fnTy);
+    if (!fn)
+        return false;
+
+    const auto [fnReturnHead, fnReturnTail] = flatten(fn->retTypes);
+    if (!fnReturnHead.empty() || fnReturnTail.has_value())
+        return false;
+
+    TypePackId res = ctx.solver->arena->addTypePack({ctx.solver->builtinTypes->booleanType, ctx.solver->builtinTypes->unknownType});
+    asMutable(ctx.result)->ty.emplace<BoundTypePack>(res);
+
     return true;
 }
 

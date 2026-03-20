@@ -26,7 +26,7 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
-LUAU_FASTFLAG(LuauComparisonToNilsIsAlwaysOk)
+LUAU_FASTFLAG(LuauComparisonToNilsIsAlwaysOk2)
 LUAU_FASTFLAG(LuauGeneralizationMoreAwareOfBounds3)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
@@ -6568,7 +6568,7 @@ TEST_CASE_FIXTURE(Fixture, "cmpeq_any_with_nil_ok")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk, true},
+        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
     };
 
     CheckResult result = check(R"(
@@ -6591,7 +6591,7 @@ TEST_CASE_FIXTURE(Fixture, "cmpneq_any_with_nil_ok")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk, true},
+        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
     };
 
     CheckResult result = check(R"(
@@ -6614,7 +6614,7 @@ TEST_CASE_FIXTURE(Fixture, "cmpneq_any_with_nil_ok_in_if")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk, true},
+        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
     };
 
     CheckResult result = check(R"(
@@ -6640,7 +6640,7 @@ TEST_CASE_FIXTURE(Fixture, "cmpeq_any_with_nil_ok_in_if")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk, true},
+        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
     };
 
     CheckResult result = check(R"(
@@ -6738,7 +6738,7 @@ TEST_CASE_FIXTURE(Fixture, "cmpeq_any_with_nil_ok")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk, true},
+        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
     };
 
     CheckResult result = check(R"(
@@ -6761,7 +6761,7 @@ TEST_CASE_FIXTURE(Fixture, "cmpneq_any_with_nil_ok")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk, true},
+        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
     };
 
     CheckResult result = check(R"(
@@ -6784,7 +6784,7 @@ TEST_CASE_FIXTURE(Fixture, "cmpneq_any_with_nil_ok_in_if")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk, true},
+        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
     };
 
     CheckResult result = check(R"(
@@ -6810,7 +6810,7 @@ TEST_CASE_FIXTURE(Fixture, "cmpeq_any_with_nil_ok_in_if")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk, true},
+        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
     };
 
     CheckResult result = check(R"(

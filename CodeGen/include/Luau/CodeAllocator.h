@@ -54,6 +54,9 @@ struct CodeAllocator
     // Called to destroy unwinding information returned by 'createBlockUnwindInfo'
     void (*destroyBlockUnwindInfo)(void* context, void* unwindData) = nullptr;
 
+    // Rounds 'size' up to the nearest OS page boundary
+    static size_t alignToPageSize(size_t size);
+
 private:
     // Unwind information can be placed inside the block with some implementation-specific reservations at the beginning
     // But to simplify block space checks, we limit the max size of all that data

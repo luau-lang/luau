@@ -6,6 +6,7 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenFreeBlocks)
+LUAU_FASTFLAGVARIABLE(LuauCodegenProtectData)
 
 #if defined(_WIN32)
 
@@ -33,22 +34,18 @@ const size_t kPageSize = sysconf(_SC_PAGESIZE);
 extern "C" void sys_icache_invalidate(void* start, size_t len);
 #endif
 
-static size_t alignToPageSize(size_t size)
-{
-    return (size + kPageSize - 1) & ~(kPageSize - 1);
-}
 
 #if defined(_WIN32)
 static uint8_t* allocatePagesImpl(size_t size)
 {
-    CODEGEN_ASSERT(size == alignToPageSize(size));
+    CODEGEN_ASSERT(size == Luau::CodeGen::CodeAllocator::alignToPageSize(size));
 
     return (uint8_t*)VirtualAlloc(nullptr, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
 static void freePagesImpl(uint8_t* mem, size_t size)
 {
-    CODEGEN_ASSERT(size == alignToPageSize(size));
+    CODEGEN_ASSERT(size == Luau::CodeGen::CodeAllocator::alignToPageSize(size));
 
     if (VirtualFree(mem, 0, MEM_RELEASE) == 0)
         CODEGEN_ASSERT(!"failed to deallocate block memory");
@@ -57,7 +54,7 @@ static void freePagesImpl(uint8_t* mem, size_t size)
 [[nodiscard]] static bool makePagesExecutable(uint8_t* mem, size_t size)
 {
     CODEGEN_ASSERT((uintptr_t(mem) & (kPageSize - 1)) == 0);
-    CODEGEN_ASSERT(size == alignToPageSize(size));
+    CODEGEN_ASSERT(size == Luau::CodeGen::CodeAllocator::alignToPageSize(size));
 
     DWORD oldProtect;
     return VirtualProtect(mem, size, PAGE_EXECUTE_READ, &oldProtect) != 0;
@@ -66,10 +63,19 @@ static void freePagesImpl(uint8_t* mem, size_t size)
 [[nodiscard]] static bool makePagesNotExecutable(uint8_t* mem, size_t size)
 {
     CODEGEN_ASSERT((uintptr_t(mem) & (kPageSize - 1)) == 0);
-    CODEGEN_ASSERT(size == alignToPageSize(size));
+    CODEGEN_ASSERT(size == Luau::CodeGen::CodeAllocator::alignToPageSize(size));
 
     DWORD oldProtect;
     return VirtualProtect(mem, size, PAGE_READWRITE, &oldProtect) != 0;
+}
+
+[[nodiscard]] static bool makePagesReadOnly(uint8_t* mem, size_t size)
+{
+    CODEGEN_ASSERT((uintptr_t(mem) & (kPageSize - 1)) == 0);
+    CODEGEN_ASSERT(size == Luau::CodeGen::CodeAllocator::alignToPageSize(size));
+
+    DWORD oldProtect;
+    return VirtualProtect(mem, size, PAGE_READONLY, &oldProtect) != 0;
 }
 
 static void flushInstructionCache(uint8_t* mem, size_t size)
@@ -82,7 +88,7 @@ static void flushInstructionCache(uint8_t* mem, size_t size)
 #else
 static uint8_t* allocatePagesImpl(size_t size)
 {
-    CODEGEN_ASSERT(size == alignToPageSize(size));
+    CODEGEN_ASSERT(size == Luau::CodeGen::CodeAllocator::alignToPageSize(size));
 
 #ifdef __APPLE__
     void* result = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
@@ -95,7 +101,7 @@ static uint8_t* allocatePagesImpl(size_t size)
 
 static void freePagesImpl(uint8_t* mem, size_t size)
 {
-    CODEGEN_ASSERT(size == alignToPageSize(size));
+    CODEGEN_ASSERT(size == Luau::CodeGen::CodeAllocator::alignToPageSize(size));
 
     if (munmap(mem, size) != 0)
         CODEGEN_ASSERT(!"Failed to deallocate block memory");
@@ -104,7 +110,7 @@ static void freePagesImpl(uint8_t* mem, size_t size)
 [[nodiscard]] static bool makePagesExecutable(uint8_t* mem, size_t size)
 {
     CODEGEN_ASSERT((uintptr_t(mem) & (kPageSize - 1)) == 0);
-    CODEGEN_ASSERT(size == alignToPageSize(size));
+    CODEGEN_ASSERT(size == Luau::CodeGen::CodeAllocator::alignToPageSize(size));
 
     return mprotect(mem, size, PROT_READ | PROT_EXEC) == 0;
 }
@@ -112,9 +118,17 @@ static void freePagesImpl(uint8_t* mem, size_t size)
 [[nodiscard]] static bool makePagesNotExecutable(uint8_t* mem, size_t size)
 {
     CODEGEN_ASSERT((uintptr_t(mem) & (kPageSize - 1)) == 0);
-    CODEGEN_ASSERT(size == alignToPageSize(size));
+    CODEGEN_ASSERT(size == Luau::CodeGen::CodeAllocator::alignToPageSize(size));
 
     return mprotect(mem, size, PROT_READ | PROT_WRITE) == 0;
+}
+
+[[nodiscard]] static bool makePagesReadOnly(uint8_t* mem, size_t size)
+{
+    CODEGEN_ASSERT((uintptr_t(mem) & (kPageSize - 1)) == 0);
+    CODEGEN_ASSERT(size == Luau::CodeGen::CodeAllocator::alignToPageSize(size));
+
+    return mprotect(mem, size, PROT_READ) == 0;
 }
 
 static void flushInstructionCache(uint8_t* mem, size_t size)
@@ -132,6 +146,11 @@ namespace Luau
 {
 namespace CodeGen
 {
+
+size_t CodeAllocator::alignToPageSize(size_t size)
+{
+    return (size + kPageSize - 1) & ~(kPageSize - 1);
+}
 
 CodeAllocator::CodeAllocator(size_t blockSize, size_t maxTotalSize)
     : CodeAllocator(blockSize, maxTotalSize, nullptr, nullptr)
@@ -238,40 +257,112 @@ CodeAllocationData CodeAllocator::allocate(const uint8_t* data, size_t dataSize,
 {
     CODEGEN_ASSERT(FFlag::LuauCodegenFreeBlocks);
 
-    // 'Round up' to preserve code alignment
-    size_t alignedDataSize = (dataSize + (kCodeAlignment - 1)) & ~(kCodeAlignment - 1);
-
-    size_t totalSize = alignedDataSize + codeSize;
-
-    // Function has to fit into a single block with unwinding information
-    if (totalSize > blockSize - kMaxReservedDataSize)
-        return {};
-
     size_t startOffset = 0;
+    size_t codeOffset;
+    size_t dataOffset;
+    size_t pageAlignedSize;
+    size_t totalSize;
 
-    // We might need a new block
-    if (totalSize > size_t(blockEnd - blockPos))
+    if (FFlag::LuauCodegenProtectData)
     {
-        if (!allocateNewBlock(startOffset))
+        if (dataSize != 0)
+        {
+            // Data and code sections occupy separate page ranges so that data can be made read-only
+            // and code can be made executable independently. The code section starts on the first page
+            // boundary after the unwind info header and data.
+
+            // Function has to fit into a single block with unwinding information
+            if (alignToPageSize(kMaxReservedDataSize + dataSize) + codeSize > blockSize)
+                return {};
+
+            // We might need a new block
+            if (alignToPageSize(dataSize) + codeSize > size_t(blockEnd - blockPos))
+            {
+                if (!allocateNewBlock(startOffset))
+                    return {};
+
+                CODEGEN_ASSERT(alignToPageSize(startOffset + dataSize) + codeSize <= size_t(blockEnd - blockPos));
+            }
+
+            codeOffset = alignToPageSize(startOffset + dataSize);
+            dataOffset = codeOffset - dataSize;
+            totalSize = alignToPageSize(dataSize) + codeSize;
+            pageAlignedSize = alignToPageSize(codeOffset + codeSize);
+        }
+        else
+        {
+            // No data to protect — code starts directly after the unwind info header
+            totalSize = codeSize;
+
+            if (totalSize > blockSize - kMaxReservedDataSize)
+                return {};
+
+            if (totalSize > size_t(blockEnd - blockPos))
+            {
+                if (!allocateNewBlock(startOffset))
+                    return {};
+
+                CODEGEN_ASSERT(totalSize <= size_t(blockEnd - blockPos));
+            }
+
+            dataOffset = startOffset;
+            codeOffset = startOffset;
+            pageAlignedSize = alignToPageSize(startOffset + totalSize);
+        }
+    }
+    else
+    {
+        // 'Round up' to preserve code alignment
+        size_t alignedDataSize = (dataSize + (kCodeAlignment - 1)) & ~(kCodeAlignment - 1);
+
+        totalSize = alignedDataSize + codeSize;
+
+        // Function has to fit into a single block with unwinding information
+        if (totalSize > blockSize - kMaxReservedDataSize)
             return {};
 
-        CODEGEN_ASSERT(totalSize <= size_t(blockEnd - blockPos));
+        // We might need a new block
+        if (totalSize > size_t(blockEnd - blockPos))
+        {
+            if (!allocateNewBlock(startOffset))
+                return {};
+
+            CODEGEN_ASSERT(totalSize <= size_t(blockEnd - blockPos));
+        }
+
+        dataOffset = startOffset + alignedDataSize - dataSize;
+        codeOffset = startOffset + alignedDataSize;
+        pageAlignedSize = alignToPageSize(startOffset + totalSize);
     }
 
     CODEGEN_ASSERT((uintptr_t(blockPos) & (kPageSize - 1)) == 0); // Allocation starts on page boundary
-
-    size_t dataOffset = startOffset + alignedDataSize - dataSize;
-    size_t codeOffset = startOffset + alignedDataSize;
 
     if (dataSize != 0)
         memcpy(blockPos + dataOffset, data, dataSize);
     if (codeSize != 0)
         memcpy(blockPos + codeOffset, code, codeSize);
 
-    size_t pageAlignedSize = alignToPageSize(startOffset + totalSize);
-
-    if (!makePagesExecutable(blockPos, pageAlignedSize))
-        return {};
+    if (FFlag::LuauCodegenProtectData)
+    {
+        if (dataSize != 0)
+        {
+            // Make data pages read-only and code pages executable independently
+            if (!makePagesReadOnly(blockPos, codeOffset))
+                return {};
+            if (!makePagesExecutable(blockPos + codeOffset, pageAlignedSize - codeOffset))
+                return {};
+        }
+        else
+        {
+            if (!makePagesExecutable(blockPos, pageAlignedSize))
+                return {};
+        }
+    }
+    else
+    {
+        if (!makePagesExecutable(blockPos, pageAlignedSize))
+            return {};
+    }
 
     liveAllocations++;
 

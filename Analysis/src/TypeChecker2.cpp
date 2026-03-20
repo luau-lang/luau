@@ -41,7 +41,7 @@ LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
-LUAU_FASTFLAGVARIABLE(LuauComparisonToNilsIsAlwaysOk)
+LUAU_FASTFLAGVARIABLE(LuauComparisonToNilsIsAlwaysOk2)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 
 namespace Luau
@@ -2291,7 +2291,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
     NotNull<Scope> scope = stack.back();
 
     bool isEquality = expr->op == AstExprBinary::Op::CompareEq || expr->op == AstExprBinary::Op::CompareNe;
-    bool isComparison = FFlag::LuauComparisonToNilsIsAlwaysOk ? isComparisonOp(expr->op)
+    bool isComparison = FFlag::LuauComparisonToNilsIsAlwaysOk2 ? isComparisonOp(expr->op)
                                                               : expr->op >= AstExprBinary::Op::CompareEq && expr->op <= AstExprBinary::Op::CompareGe;
     bool isLogical = expr->op == AstExprBinary::Op::And || expr->op == AstExprBinary::Op::Or;
 
@@ -2339,21 +2339,22 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
 
     NormalizationResult typesHaveIntersection = normalizer.isIntersectionInhabited(leftType, rightType);
 
-    if (FFlag::LuauComparisonToNilsIsAlwaysOk)
+    if (FFlag::LuauComparisonToNilsIsAlwaysOk2)
     {
         if (isEquality || isComparison)
         {
-            bool canCompare = isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight);
-            if (!canCompare)
+            if (!isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight))
             {
                 reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
                 return builtinTypes->errorType;
             }
-            else if (isEquality && (normLeft->isNil() || normRight->isNil()))
-            {
-                // For equality operations, if either operand is nil, we should allow this comparison through
+
+            auto eitherExprIsNil = (normLeft && normLeft->isNil()) || (normRight && normRight->isNil());
+
+            // For equality operations, if either operand is nil, we should allow this comparison through
+            if (isEquality && eitherExprIsNil)
                 return builtinTypes->booleanType;
-            }
+
         }
     }
     else
