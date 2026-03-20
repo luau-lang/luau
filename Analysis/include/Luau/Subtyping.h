@@ -127,8 +127,8 @@ struct SubtypingResult
     /// If any generic bounds were invalid, report them here
     std::vector<GenericBoundsMismatch> genericBoundsMismatches;
 
-    SubtypingResult& andAlso(const SubtypingResult& other, SubtypingSuppressionPolicy policy = SubtypingSuppressionPolicy::Any);
-    SubtypingResult& orElse(const SubtypingResult& other);
+    SubtypingResult& andAlso(SubtypingResult other, SubtypingSuppressionPolicy policy = SubtypingSuppressionPolicy::Any);
+    SubtypingResult& orElse(SubtypingResult other);
     SubtypingResult& withBothComponent(TypePath::Component component);
     SubtypingResult& withSuperComponent(TypePath::Component component);
     SubtypingResult& withSubComponent(TypePath::Component component);
@@ -142,8 +142,6 @@ struct SubtypingResult
 
     // Only negates the `isSubtype`.
     static SubtypingResult negate(const SubtypingResult& result);
-    static SubtypingResult all(const std::vector<SubtypingResult>& results);
-    static SubtypingResult any(const std::vector<SubtypingResult>& results);
 };
 
 struct SubtypingEnvironment
@@ -407,9 +405,15 @@ private:
 
     // Pack subtyping
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypePackId subTp, TypePackId superTp, NotNull<Scope> scope);
-    std::optional<SubtypingResult> isSubTailCovariantWith(
+
+    enum class EarlyExit {
+        Yes,
+        No
+    };
+
+    EarlyExit isSubTailCovariantWith(
         SubtypingEnvironment& env,
-        std::vector<SubtypingResult>& outputResults,
+        SubtypingResult& outputResult,
         TypePackId subTp,
         TypePackId subTail,
         TypePackId superTp,
@@ -418,9 +422,10 @@ private:
         std::optional<TypePackId> superTail,
         NotNull<Scope> scope
     );
-    std::optional<SubtypingResult> isCovariantWithSuperTail(
+
+    EarlyExit isCovariantWithSuperTail(
         SubtypingEnvironment& env,
-        std::vector<SubtypingResult>& outputResults,
+        SubtypingResult& outputResult,
         TypePackId subTp,
         size_t subHeadStartIndex,
         const std::vector<TypeId>& subHead,

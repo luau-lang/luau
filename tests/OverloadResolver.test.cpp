@@ -104,53 +104,6 @@ struct OverloadResolverFixture : Fixture
 
 TEST_SUITE_BEGIN("OverloadResolverTest");
 
-TEST_CASE_FIXTURE(OverloadResolverFixture, "basic_overload_selection")
-{
-    // ty: (number) -> number & (string) -> string
-    // args: (number)
-    auto [analysis, overload] =
-        resolver.selectOverload_DEPRECATED(numberToNumberAndStringToString, pack({getBuiltins()->numberType}), emptySet, false);
-
-    REQUIRE_EQ(OverloadResolver::Analysis::Ok, analysis);
-    REQUIRE_EQ(numberToNumber, overload);
-}
-
-TEST_CASE_FIXTURE(OverloadResolverFixture, "basic_overload_selection1")
-{
-    // ty: (number) -> number & (string) -> string
-    // args: (string)
-    auto [analysis, overload] =
-        resolver.selectOverload_DEPRECATED(numberToNumberAndStringToString, pack({getBuiltins()->stringType}), emptySet, false);
-
-    REQUIRE_EQ(OverloadResolver::Analysis::Ok, analysis);
-    REQUIRE_EQ(stringToString, overload);
-}
-
-TEST_CASE_FIXTURE(OverloadResolverFixture, "overloads_with_different_arities")
-{
-    // ty: (number) -> number & (number, number) -> number
-    // args: (number)
-    auto [analysis, overload] =
-        resolver.selectOverload_DEPRECATED(numberToNumberAndNumberNumberToNumber, pack({getBuiltins()->numberType}), emptySet, false);
-
-    REQUIRE_EQ(OverloadResolver::Analysis::Ok, analysis);
-    REQUIRE_EQ(numberToNumber, overload);
-}
-
-TEST_CASE_FIXTURE(OverloadResolverFixture, "overloads_with_different_arities1")
-{
-    // ty: (number) -> number & (number, number) -> number
-    // args: (number, number)
-    auto [analysis, overload] = resolver.selectOverload_DEPRECATED(
-        numberToNumberAndNumberNumberToNumber, pack({getBuiltins()->numberType, getBuiltins()->numberType}), emptySet, false
-    );
-
-    REQUIRE_EQ(OverloadResolver::Analysis::Ok, analysis);
-    REQUIRE_EQ(numberNumberToNumber, overload);
-}
-
-/////////////////////////////////////////////////////////////////
-
 TEST_CASE_FIXTURE(OverloadResolverFixture, "new_basic_overload_selection")
 {
     // ty: (number) -> number & (string) -> string

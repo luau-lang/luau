@@ -502,6 +502,48 @@ static int loadsafe(
                 break;
             }
 
+            case LBC_CONSTANT_TABLE_WITH_CONSTANTS:
+            {
+                uint32_t keys = readVarInt(data, size, offset);
+                LuaTable* h = luaH_new(L, 0, keys);
+
+                TempBuffer<int32_t> nilKeys;
+                nilKeys.allocate(L, keys);
+                size_t nilKeysSize = 0;
+
+                for (uint32_t i = 0; i < keys; ++i)
+                {
+                    int32_t key = readVarInt(data, size, offset);
+                    TValue* val = luaH_set(L, h, &p->k[key]);
+                    int32_t constantIdx = read<int32_t>(data, size, offset);
+                    if (constantIdx >= 0)
+                    {
+                        TValue* constant = &p->k[constantIdx];
+                        if (ttisnil(constant))
+                        {
+                            nilKeys[nilKeysSize++] = key;
+                        }
+                        else
+                        {
+                            setobj2t(L, val, constant);
+                            luaC_barriert(L, h, constant);
+                            continue;
+                        }
+                    }
+                    setnvalue(val, 0.0);
+                }
+
+                for (size_t idx = 0; idx < nilKeysSize; idx++)
+                {
+                    int32_t key = nilKeys[idx];
+                    TValue* val = luaH_set(L, h, &p->k[key]);
+                    setnilvalue(val);
+                }
+
+                sethvalue(L, &p->k[j], h);
+                break;
+            }
+
             case LBC_CONSTANT_CLOSURE:
             {
                 uint32_t fid = readVarInt(data, size, offset);

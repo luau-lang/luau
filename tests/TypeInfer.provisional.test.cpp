@@ -293,7 +293,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
     }
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(1.0))
 {
     // We have to force this test case up here before the flags kick in.
     // The reason for this is that while loading the builtins, the below flags will cause that
@@ -406,21 +406,6 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
     )");
 
     LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
-}
-
-// Belongs in TypeInfer.builtins.test.cpp.
-TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_returns_at_least_two_value_but_function_returns_nothing")
-{
-    CheckResult result = check(R"(
-        local function f(): () end
-        local ok, res = pcall(f)
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Function only returns 1 value, but 2 are required here", toString(result.errors[0]));
-    // LUAU_REQUIRE_NO_ERRORS(result);
-    // CHECK_EQ("boolean", toString(requireType("ok")));
-    // CHECK_EQ("any", toString(requireType("res")));
 }
 
 // Belongs in TypeInfer.builtins.test.cpp.

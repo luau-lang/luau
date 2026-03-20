@@ -18,6 +18,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauNativeCodeTargetCheck)
+
 // All external function calls that can cause stack realloc or Lua calls have to be wrapped in VM_PROTECT
 // This makes sure that we save the pc (in case the Lua call needs to generate a backtrace) before the call,
 // and restores the stack pointer after in case stack gets reallocated
@@ -287,7 +289,7 @@ Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
         // keep executing new function
         ci->savedpc = p->code;
 
-        if (LUAU_LIKELY(p->execdata != NULL))
+        if (LUAU_LIKELY(FFlag::LuauNativeCodeTargetCheck ? p->exectarget != 0 : p->execdata != NULL))
             ci->flags = LUA_CALLINFO_NATIVE;
 
         return ccl;
