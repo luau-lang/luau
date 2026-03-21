@@ -28,6 +28,8 @@ static const char* mainModuleName = "MainModule";
 LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceAllNewSolverTests);
+LUAU_FASTFLAGVARIABLE(DebugLuauForceAllOldSolverTests);
+
 LUAU_FASTINT(LuauStackGuardThreshold)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 

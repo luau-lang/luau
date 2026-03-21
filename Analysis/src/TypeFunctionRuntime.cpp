@@ -24,7 +24,6 @@
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 
-LUAU_FASTFLAGVARIABLE(LuauUnionofIntersectionofFlattens)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauUdtfReserveStack)
 
@@ -512,40 +511,26 @@ static int createUnion(lua_State* L)
 {
     // get the number of arguments for union
     int argSize = lua_gettop(L);
-    if (!FFlag::LuauUnionofIntersectionofFlattens && argSize < 2)
-        luaL_error(L, "types.unionof: expected at least 2 types to union, but got %d", argSize);
 
     std::vector<TypeFunctionTypeId> components;
     components.reserve(argSize);
 
     for (int i = 1; i <= argSize; i++)
     {
-        if (FFlag::LuauUnionofIntersectionofFlattens)
-        {
-            TypeFunctionTypeId component = getTypeUserData(L, i);
+        TypeFunctionTypeId component = getTypeUserData(L, i);
 
-            if (auto unionComponent = get<TypeFunctionUnionType>(component))
-                components.insert(components.end(), unionComponent->components.begin(), unionComponent->components.end());
-            else if (get<TypeFunctionNeverType>(component))
-                continue;
-            else
-                components.push_back(component);
-        }
+        if (auto unionComponent = get<TypeFunctionUnionType>(component))
+            components.insert(components.end(), unionComponent->components.begin(), unionComponent->components.end());
+        else if (get<TypeFunctionNeverType>(component))
+            continue;
         else
-        {
-            components.push_back(getTypeUserData(L, i));
-        }
+            components.push_back(component);
     }
 
-    if (FFlag::LuauUnionofIntersectionofFlattens)
-    {
-        if (components.size() == 0)
-            allocTypeUserData(L, TypeFunctionNeverType{});
-        else if (components.size() == 1)
-            pushType(L, components[0]);
-        else
-            allocTypeUserData(L, TypeFunctionUnionType{std::move(components)});
-    }
+    if (components.size() == 0)
+        allocTypeUserData(L, TypeFunctionNeverType{});
+    else if (components.size() == 1)
+        pushType(L, components[0]);
     else
         allocTypeUserData(L, TypeFunctionUnionType{std::move(components)});
 
@@ -558,40 +543,26 @@ static int createIntersection(lua_State* L)
 {
     // get the number of arguments for intersection
     int argSize = lua_gettop(L);
-    if (!FFlag::LuauUnionofIntersectionofFlattens && argSize < 2)
-        luaL_error(L, "types.intersectionof: expected at least 2 types to intersection, but got %d", argSize);
 
     std::vector<TypeFunctionTypeId> components;
     components.reserve(argSize);
 
     for (int i = 1; i <= argSize; i++)
     {
-        if (FFlag::LuauUnionofIntersectionofFlattens)
-        {
-            TypeFunctionTypeId component = getTypeUserData(L, i);
+        TypeFunctionTypeId component = getTypeUserData(L, i);
 
-            if (auto intersectionComponent = get<TypeFunctionIntersectionType>(component))
-                components.insert(components.end(), intersectionComponent->components.begin(), intersectionComponent->components.end());
-            else if (get<TypeFunctionUnknownType>(component))
-                continue;
-            else
-                components.push_back(component);
-        }
+        if (auto intersectionComponent = get<TypeFunctionIntersectionType>(component))
+            components.insert(components.end(), intersectionComponent->components.begin(), intersectionComponent->components.end());
+        else if (get<TypeFunctionUnknownType>(component))
+            continue;
         else
-        {
-            components.push_back(getTypeUserData(L, i));
-        }
+            components.push_back(component);
     }
 
-    if (FFlag::LuauUnionofIntersectionofFlattens)
-    {
-        if (components.size() == 0)
-            allocTypeUserData(L, TypeFunctionUnknownType{});
-        else if (components.size() == 1)
-            pushType(L, components[0]);
-        else
-            allocTypeUserData(L, TypeFunctionIntersectionType{std::move(components)});
-    }
+    if (components.size() == 0)
+        allocTypeUserData(L, TypeFunctionUnknownType{});
+    else if (components.size() == 1)
+        pushType(L, components[0]);
     else
         allocTypeUserData(L, TypeFunctionIntersectionType{std::move(components)});
 

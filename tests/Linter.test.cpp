@@ -10,7 +10,6 @@
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 using namespace Luau;
 
@@ -1270,7 +1269,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "read_write_table_props")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauAnalysisUsesSolverMode, true}, {FFlag::DebugLuauForceOldSolver, false}};
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     LintResult result = lint(R"(-- line 1
         type A = {x: number}

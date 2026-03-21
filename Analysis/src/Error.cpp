@@ -18,7 +18,6 @@
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
-LUAU_FASTFLAGVARIABLE(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 
 static std::string wrongNumberOfArgsString(
@@ -116,32 +115,23 @@ struct ErrorConverter
             std::string given = givenModule ? quote(givenType) + " from " + quote(*givenModule) : quote(givenType);
             std::string wanted = wantedModule ? quote(wantedType) + " from " + quote(*wantedModule) : quote(wantedType);
             size_t luauIndentTypeMismatchMaxTypeLength = size_t(FInt::LuauIndentTypeMismatchMaxTypeLength);
-            if (FFlag::LuauBetterTypeMismatchErrors)
+            if (get<NeverType>(follow(tm.wantedType)))
             {
-                if (get<NeverType>(follow(tm.wantedType)))
-                {
-                    if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength)
-                        return "Expected this to be unreachable, but got " + given;
-                    return "Expected this to be unreachable, but got\n\t" + given;
-                }
-
-                if (tm.context == TypeMismatch::InvariantContext)
-                {
-                    if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength || wantedType.length() <= luauIndentTypeMismatchMaxTypeLength)
-                        return "Expected this to be exactly " + wanted + ", but got " + given;
-                    return "Expected this to be exactly\n\t" + wanted + "\nbut got\n\t" + given;
-                }
-
-                if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength || wantedType.length() <= luauIndentTypeMismatchMaxTypeLength)
-                    return "Expected this to be " + wanted + ", but got " + given;
-                return "Expected this to be\n\t" + wanted + "\nbut got\n\t" + given;
+                if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength)
+                    return "Expected this to be unreachable, but got " + given;
+                return "Expected this to be unreachable, but got\n\t" + given;
             }
-            else
+
+            if (tm.context == TypeMismatch::InvariantContext)
             {
                 if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength || wantedType.length() <= luauIndentTypeMismatchMaxTypeLength)
-                    return "Type " + given + " could not be converted into " + wanted;
-                return "Type\n\t" + given + "\ncould not be converted into\n\t" + wanted;
+                    return "Expected this to be exactly " + wanted + ", but got " + given;
+                return "Expected this to be exactly\n\t" + wanted + "\nbut got\n\t" + given;
             }
+
+            if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength || wantedType.length() <= luauIndentTypeMismatchMaxTypeLength)
+                return "Expected this to be " + wanted + ", but got " + given;
+            return "Expected this to be\n\t" + wanted + "\nbut got\n\t" + given;
         };
 
         if (givenTypeName == wantedTypeName)
@@ -180,10 +170,6 @@ struct ErrorConverter
         else if (!tm.reason.empty())
         {
             result += "; " + tm.reason;
-        }
-        else if (!FFlag::LuauBetterTypeMismatchErrors && tm.context == TypeMismatch::InvariantContext)
-        {
-            result += " in an invariant context";
         }
 
         return result;
@@ -627,9 +613,7 @@ struct ErrorConverter
 
     std::string operator()(const TypePackMismatch& e) const
     {
-        std::string ss = FFlag::LuauBetterTypeMismatchErrors
-                             ? "Expected this to be '" + toString(e.wantedTp) + "', but got '" + toString(e.givenTp) + "'"
-                             : "Type pack '" + toString(e.givenTp) + "' could not be converted into '" + toString(e.wantedTp) + "'";
+        std::string ss = "Expected this to be '" + toString(e.wantedTp) + "', but got '" + toString(e.givenTp) + "'";
 
         if (!e.reason.empty())
             ss += "; " + e.reason;

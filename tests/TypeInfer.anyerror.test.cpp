@@ -160,7 +160,6 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error2")
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-
         CHECK_EQ("*error-type*", toString(requireType("a")));
     }
 }

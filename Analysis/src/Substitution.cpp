@@ -242,20 +242,10 @@ void Tarjan::visitChildren(TypeId ty, int index)
     {
         for (const auto& [name, prop] : etv->props)
         {
-            if (FFlag::LuauAnalysisUsesSolverMode)
-            {
-                if (prop.readTy)
-                    visitChild(prop.readTy);
-                if (prop.writeTy)
-                    visitChild(prop.writeTy);
-            }
-            else if (FFlag::LuauSolverV2)
-            {
+            if (prop.readTy)
                 visitChild(prop.readTy);
+            if (prop.writeTy)
                 visitChild(prop.writeTy);
-            }
-            else
-                visitChild(prop.type_DEPRECATED());
         }
 
         if (etv->parent)
@@ -836,15 +826,10 @@ void Substitution::replaceChildren(TypeId ty)
     {
         for (auto& [name, prop] : etv->props)
         {
-            if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
-            {
-                if (prop.readTy)
-                    prop.readTy = replace(prop.readTy);
-                if (prop.writeTy)
-                    prop.writeTy = replace(prop.writeTy);
-            }
-            else
-                prop.setType(replace(prop.type_DEPRECATED()));
+            if (prop.readTy)
+                prop.readTy = replace(prop.readTy);
+            if (prop.writeTy)
+                prop.writeTy = replace(prop.writeTy);
         }
 
         if (etv->parent)

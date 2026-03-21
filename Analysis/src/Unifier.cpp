@@ -18,11 +18,8 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping)
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart)
-LUAU_FASTFLAGVARIABLE(LuauUnifierDoesntReferToNewSolver)
 
 namespace Luau
 {
@@ -1497,10 +1494,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
         auto mkFreshType = [this](Scope* scope, TypeLevel level)
         {
-            if (FFlag::LuauSolverV2 || FFlag::LuauUnifierDoesntReferToNewSolver)
-                return freshType(NotNull{types}, builtinTypes, scope);
-            else
-                return types->freshType(builtinTypes, scope, level);
+            return freshType(NotNull{types}, builtinTypes, scope);
         };
 
         const TypePackId emptyTp = types->addTypePack(TypePack{{}, std::nullopt});
@@ -2196,8 +2190,7 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
 
     auto fail = [&](std::optional<TypeError> e)
     {
-        std::string reason = FFlag::LuauBetterTypeMismatchErrors ? "The given type's metatable does not satisfy the requirements."
-                                                                 : "The former's metatable does not satisfy the requirements.";
+        std::string reason = "The given type's metatable does not satisfy the requirements.";
         if (e)
             reportError(location, TypeMismatch{osuperTy, osubTy, std::move(reason), std::move(e), mismatchContext()});
         else

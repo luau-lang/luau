@@ -2,7 +2,6 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerUdtfRenameClassToExtern)
-LUAU_FASTFLAGVARIABLE(LuauMorePermissiveNewtableType)
 LUAU_FASTFLAGVARIABLE(LuauNewMathConstantsAnalysis)
 
 namespace Luau
@@ -510,31 +509,6 @@ declare types: {
 }
 )BUILTIN_SRC";
 
-static constexpr const char* kBuiltinDefinitionTypesLibSrc_DEPRECATED = R"BUILTIN_SRC(
-
-declare types: {
-    unknown: type,
-    never: type,
-    any: type,
-    boolean: type,
-    number: type,
-    string: type,
-    thread: type,
-    buffer: type,
-
-    singleton: @checked (arg: string | boolean | nil) -> type,
-    optional: @checked (arg: type) -> type,
-    generic: @checked (name: string, ispack: boolean?) -> type,
-    negationof: @checked (arg: type) -> type,
-    unionof: @checked (...type) -> type,
-    intersectionof: @checked (...type) -> type,
-    newtable: @checked (props: {[type]: type} | {[type]: { read: type, write: type } } | nil, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> type,
-    newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> type,
-    copy: @checked (arg: type) -> type,
-}
-)BUILTIN_SRC";
-
-
 std::string getTypeFunctionDefinitionSource()
 {
     std::string result;
@@ -544,10 +518,7 @@ std::string getTypeFunctionDefinitionSource()
     else
         result += kBuiltinDefinitionTypeMethodSrc_DEPRECATED;
 
-    if (FFlag::LuauMorePermissiveNewtableType)
-        result += kBuiltinDefinitionTypesLibSrc;
-    else
-        result += kBuiltinDefinitionTypesLibSrc_DEPRECATED;
+    result += kBuiltinDefinitionTypesLibSrc;
 
     return result;
 }

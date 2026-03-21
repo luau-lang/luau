@@ -190,11 +190,11 @@ bool NormalizedType::isUnknown() const
     bool hasAllPrimitives = isPrim(booleans, PrimitiveType::Boolean) && isPrim(nils, PrimitiveType::NilType) && isNumber(numbers) &&
                             strings.isString() && isThread(threads) && isBuffer(buffers);
 
-    // Check is class
+    // Check is extern type
     bool isTopExternType = false;
     for (const auto& [t, disj] : externTypes.externTypes)
     {
-        if (auto ct = get<ExternType>(t))
+        if (get<ExternType>(t))
         {
             if (t == builtinTypes->externType && disj.empty())
             {

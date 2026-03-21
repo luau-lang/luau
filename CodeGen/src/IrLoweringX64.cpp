@@ -16,11 +16,9 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenExtraSpills)
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAG(LuauCodegenOpReadOnly)
-LUAU_FASTFLAG(LuauCodegenLinearNonNumComp)
 LUAU_FASTFLAG(LuauCodegenIsNanAndDirectCompare)
 LUAU_FASTFLAG(LuauCodegenCounterSupport)
 
@@ -1165,7 +1163,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         Label skip, exit;
 
         // For equality comparison, 'luaV_lessequal' expects tag to be equal before the call
-        if (FFlag::LuauCodegenLinearNonNumComp && cond == IrCondition::Equal)
+        if (cond == IrCondition::Equal)
         {
             ScopedRegX64 tmp{regs, SizeX64::dword};
 
@@ -1176,29 +1174,9 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.jcc(ConditionX64::NotEqual, skip);
         }
 
-        if (FFlag::LuauCodegenLinearNonNumComp)
         {
-            // When flag is removed, this extra scope remains for the ScopedSpills object
-            {
-                ScopedSpills spillGuard(regs);
+            ScopedSpills spillGuard(regs);
 
-                IrCallWrapperX64 callWrap(regs, build);
-                callWrap.addArgument(SizeX64::qword, rState);
-                callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_A(inst))));
-                callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_B(inst))));
-
-                if (cond == IrCondition::LessEqual)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessequal)]);
-                else if (cond == IrCondition::Less)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessthan)]);
-                else if (cond == IrCondition::Equal)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_equalval)]);
-                else
-                    CODEGEN_ASSERT(!"Unsupported condition");
-            }
-        }
-        else
-        {
             IrCallWrapperX64 callWrap(regs, build);
             callWrap.addArgument(SizeX64::qword, rState);
             callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_A(inst))));
@@ -1218,7 +1196,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         inst.regX64 = regs.takeReg(eax, index);
 
-        if (FFlag::LuauCodegenLinearNonNumComp && cond == IrCondition::Equal)
+        if (cond == IrCondition::Equal)
         {
             build.jmp(exit);
             build.setLabel(skip);
@@ -3018,16 +2996,8 @@ void IrLoweringX64::finishFunction()
 
     if (stats)
     {
-        if (FFlag::LuauCodegenExtraSpills)
-        {
-            if (regs.maxUsedSlot > kSpillSlots_NEW + kExtraSpillSlots)
-                stats->regAllocErrors++;
-        }
-        else
-        {
-            if (regs.maxUsedSlot > kSpillSlots_DEPRECATED)
-                stats->regAllocErrors++;
-        }
+        if (regs.maxUsedSlot > kSpillSlots_NEW + kExtraSpillSlots)
+            stats->regAllocErrors++;
 
         if (regs.maxUsedSlot > stats->maxSpillSlotsUsed)
             stats->maxSpillSlotsUsed = regs.maxUsedSlot;
@@ -3037,16 +3007,8 @@ void IrLoweringX64::finishFunction()
 bool IrLoweringX64::hasError() const
 {
     // If register allocator had to use more stack slots than we have available, this function can't run natively
-    if (FFlag::LuauCodegenExtraSpills)
-    {
-        if (regs.maxUsedSlot > kSpillSlots_NEW + kExtraSpillSlots)
-            return true;
-    }
-    else
-    {
-        if (regs.maxUsedSlot > kSpillSlots_DEPRECATED)
-            return true;
-    }
+    if (regs.maxUsedSlot > kSpillSlots_NEW + kExtraSpillSlots)
+        return true;
 
     return false;
 }

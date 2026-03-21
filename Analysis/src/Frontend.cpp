@@ -41,6 +41,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
 
@@ -1628,15 +1629,32 @@ ModulePtr check(
         !FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete)
         module->errors.clear();
 
-    ExpectedTypeVisitor etv{
-        NotNull{&module->astTypes},
-        NotNull{&module->astExpectedTypes},
-        NotNull{&module->astResolvedTypes},
-        NotNull{&module->internalTypes},
-        builtinTypes,
-        NotNull{parentScope.get()}
-    };
-    sourceModule.root->visit(&etv);
+    if (FFlag::LuauOverloadGetsInstantiated)
+    {
+        ExpectedTypeVisitor etv{
+            NotNull{&module->astTypes},
+            NotNull{&module->astExpectedTypes},
+            NotNull{&module->astResolvedTypes},
+            NotNull{&module->astOverloadResolvedTypes},
+            NotNull{&module->internalTypes},
+            builtinTypes,
+            NotNull{parentScope.get()}
+        };
+        sourceModule.root->visit(&etv);
+    }
+    else
+    {
+
+        ExpectedTypeVisitor etv{
+            NotNull{&module->astTypes},
+            NotNull{&module->astExpectedTypes},
+            NotNull{&module->astResolvedTypes},
+            NotNull{&module->internalTypes},
+            builtinTypes,
+            NotNull{parentScope.get()}
+        };
+        sourceModule.root->visit(&etv);
+    }
 
     // NOTE: This used to be done prior to cloning the public interface, but
     // we now replace "internal" types with `*error-type*`.

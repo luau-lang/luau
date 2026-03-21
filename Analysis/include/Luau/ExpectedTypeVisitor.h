@@ -21,6 +21,16 @@ struct ExpectedTypeVisitor : public AstVisitor
         NotNull<Scope> rootScope
     );
 
+    explicit ExpectedTypeVisitor(
+        NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
+        NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
+        NotNull<DenseHashMap<const AstType*, TypeId>> astResolvedTypes,
+        NotNull<DenseHashMap<const AstNode*, TypeId>> astOverloadResolvedTypes,
+        NotNull<TypeArena> arena,
+        NotNull<BuiltinTypes> builtinTypes,
+        NotNull<Scope> rootScope
+    );
+
     // When we have an assignment, we grab the type of the left-hand-side
     // and we use it to inform what the type of the right-hand-side ought
     // to be. This is important for something like:
@@ -67,6 +77,8 @@ private:
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
     NotNull<DenseHashMap<const AstType*, TypeId>> astResolvedTypes;
+    // Make NotNull when clipping LuauOverloadGetsInstantiated
+    DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes;
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<Scope> rootScope;

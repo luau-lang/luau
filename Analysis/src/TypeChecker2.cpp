@@ -37,12 +37,12 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
-LUAU_FASTFLAGVARIABLE(LuauComparisonToNilsIsAlwaysOk)
+LUAU_FASTFLAGVARIABLE(LuauComparisonToNilsIsAlwaysOk2)
+LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 
 namespace Luau
 {
@@ -2278,13 +2278,20 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         expr->op != AstExprBinary::CompareNe)
         inContext.emplace(&typeContext, TypeContext::Default);
 
+    if (FFlag::LuauLValueCompoundAssignmentVisitLhs)
+    {
+        // In compound assignments, the left side is both read-from and written-to, so we have to visit it in both contexts.
+        if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
+            visit(expr->left, ValueContext::LValue);
+    }
+
     visit(expr->left, ValueContext::RValue);
     visit(expr->right, ValueContext::RValue);
 
     NotNull<Scope> scope = stack.back();
 
     bool isEquality = expr->op == AstExprBinary::Op::CompareEq || expr->op == AstExprBinary::Op::CompareNe;
-    bool isComparison = FFlag::LuauComparisonToNilsIsAlwaysOk ? isComparisonOp(expr->op)
+    bool isComparison = FFlag::LuauComparisonToNilsIsAlwaysOk2 ? isComparisonOp(expr->op)
                                                               : expr->op >= AstExprBinary::Op::CompareEq && expr->op <= AstExprBinary::Op::CompareGe;
     bool isLogical = expr->op == AstExprBinary::Op::And || expr->op == AstExprBinary::Op::Or;
 
@@ -2332,21 +2339,22 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
 
     NormalizationResult typesHaveIntersection = normalizer.isIntersectionInhabited(leftType, rightType);
 
-    if (FFlag::LuauComparisonToNilsIsAlwaysOk)
+    if (FFlag::LuauComparisonToNilsIsAlwaysOk2)
     {
         if (isEquality || isComparison)
         {
-            bool canCompare = isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight);
-            if (!canCompare)
+            if (!isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight))
             {
                 reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
                 return builtinTypes->errorType;
             }
-            else if (isEquality && (normLeft->isNil() || normRight->isNil()))
-            {
-                // For equality operations, if either operand is nil, we should allow this comparison through
+
+            auto eitherExprIsNil = (normLeft && normLeft->isNil()) || (normRight && normRight->isNil());
+
+            // For equality operations, if either operand is nil, we should allow this comparison through
+            if (isEquality && eitherExprIsNil)
                 return builtinTypes->booleanType;
-            }
+
         }
     }
     else
@@ -3076,12 +3084,9 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
 
         std::stringstream reason;
 
-        if (FFlag::LuauBetterTypeMismatchErrors && reasoning.subPath == reasoning.superPath)
+        if (reasoning.subPath == reasoning.superPath)
             reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` in the latter type and `" << superLeafAsString
                    << "` in the former type, and " << baseReason;
-        else if (reasoning.subPath == reasoning.superPath)
-            reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` in the former type and `" << superLeafAsString
-                   << "` in the latter type, and " << baseReason;
         else if (!reasoning.subPath.empty() && !reasoning.superPath.empty())
             reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` and " << toStringHuman(reasoning.superPath) << "`"
                    << superLeafAsString << "`, and " << baseReason;

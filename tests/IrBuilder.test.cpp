@@ -18,7 +18,6 @@ LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenGcoDse2)
 LUAU_FASTFLAG(LuauCodegenDsoPairTrackFix)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
-LUAU_FASTFLAG(LuauCodegenBufferBaseFold)
 LUAU_FASTFLAG(LuauCodegenTableLoadProp2)
 LUAU_FASTFLAG(LuauCodegenDsoTagOverlayFix)
 LUAU_FASTFLAG(LuauCodegenCounterSupport)
@@ -2935,7 +2934,6 @@ bb_fallback_1:
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksIntegerMatch2")
 {
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge3, true};
-    ScopedFastFlag luauCodegenBufferBaseFold{FFlag::LuauCodegenBufferBaseFold, true};
     ScopedFastFlag luauCodegenCounterSupport{FFlag::LuauCodegenCounterSupport, true};
 
     IrOp block = build.block(IrBlockKind::Internal);

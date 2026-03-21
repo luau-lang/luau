@@ -17,7 +17,6 @@ using namespace Luau::TypePath;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver);
 LUAU_DYNAMIC_FASTINT(LuauTypePathMaximumTraverseSteps);
-LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 struct TypePathFixture : Fixture
 {
@@ -588,7 +587,6 @@ TEST_SUITE_BEGIN("TypePathToString");
 
 TEST_CASE("field")
 {
-    ScopedFastFlag sff{FFlag::LuauAnalysisUsesSolverMode, true};
     CHECK(toString(PathBuilder().prop("foo").build()) == R"([read "foo"])");
 }
 

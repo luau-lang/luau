@@ -8,7 +8,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenExtraSimd)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBit32SingleArg)
 LUAU_FASTFLAG(LuauCodegenIsNanAndDirectCompare)
@@ -1260,44 +1259,6 @@ static BuiltinImplResult translateBuiltinVectorMinMax(
     return {BuiltinImplType::Full, 1};
 }
 
-static BuiltinImplResult translateBuiltinVectorMap2(
-    IrBuilder& build,
-    IrCmd cmd,
-    int nparams,
-    int ra,
-    int arg,
-    IrOp args,
-    IrOp arg3,
-    int nresults,
-    int pcpos
-)
-{
-    IrOp arg1 = build.vmReg(arg);
-
-    if (nparams != 2 || nresults > 1 || arg1.kind == IrOpKind::Constant || args.kind == IrOpKind::Constant)
-        return {BuiltinImplType::None, -1};
-
-    build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
-    build.loadAndCheckTag(args, LUA_TVECTOR, build.vmExit(pcpos));
-
-    IrOp x1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(0));
-    IrOp y1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(4));
-    IrOp z1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
-
-    IrOp x2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(0));
-    IrOp y2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(4));
-    IrOp z2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(8));
-
-    IrOp xr = build.inst(cmd, x1, x2);
-    IrOp yr = build.inst(cmd, y1, y2);
-    IrOp zr = build.inst(cmd, z1, z2);
-
-    build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xr, yr, zr);
-    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
-
-    return {BuiltinImplType::Full, 1};
-}
-
 BuiltinImplResult translateBuiltin(
     IrBuilder& build,
     int bfid,
@@ -1440,34 +1401,19 @@ BuiltinImplResult translateBuiltin(
     case LBF_VECTOR_DOT:
         return translateBuiltinVectorDot(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_FLOOR:
-        if (FFlag::LuauCodegenExtraSimd)
-            return translateBuiltinVectorMap1x4(build, IrCmd::FLOOR_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
-        else
-            return translateBuiltinVectorMap1(build, IrCmd::FLOOR_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinVectorMap1x4(build, IrCmd::FLOOR_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_CEIL:
-        if (FFlag::LuauCodegenExtraSimd)
-            return translateBuiltinVectorMap1x4(build, IrCmd::CEIL_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
-        else
-            return translateBuiltinVectorMap1(build, IrCmd::CEIL_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinVectorMap1x4(build, IrCmd::CEIL_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_ABS:
-        if (FFlag::LuauCodegenExtraSimd)
-            return translateBuiltinVectorMap1x4(build, IrCmd::ABS_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
-        else
-            return translateBuiltinVectorMap1(build, IrCmd::ABS_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinVectorMap1x4(build, IrCmd::ABS_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_SIGN:
         return translateBuiltinVectorMap1(build, IrCmd::SIGN_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_CLAMP:
         return translateBuiltinVectorClamp(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
     case LBF_VECTOR_MIN:
-        if (FFlag::LuauCodegenExtraSimd)
-            return translateBuiltinVectorMinMax(build, IrCmd::MIN_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
-        else
-            return translateBuiltinVectorMap2(build, IrCmd::MIN_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinVectorMinMax(build, IrCmd::MIN_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_MAX:
-        if (FFlag::LuauCodegenExtraSimd)
-            return translateBuiltinVectorMinMax(build, IrCmd::MAX_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
-        else
-            return translateBuiltinVectorMap2(build, IrCmd::MAX_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinVectorMinMax(build, IrCmd::MAX_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_LERP:
         return translateBuiltinVectorLerp(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_MATH_LERP:

@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCompileCorrectLocalPc)
+LUAU_FASTFLAG(LuauCompileDuptableConstantPack)
 
 namespace Luau
 {
@@ -143,7 +143,22 @@ bool BytecodeBuilder::StringRef::operator==(const StringRef& other) const
 
 bool BytecodeBuilder::TableShape::operator==(const TableShape& other) const
 {
-    return length == other.length && memcmp(keys, other.keys, length * sizeof(keys[0])) == 0;
+    if (!FFlag::LuauCompileDuptableConstantPack)
+    {
+
+        return length == other.length && memcmp(keys, other.keys, length * sizeof(keys[0])) == 0;
+    }
+    else
+    {
+        bool equal = length == other.length && memcmp(keys, other.keys, length * sizeof(keys[0])) == 0 && hasConstants == other.hasConstants;
+
+        if (hasConstants)
+        {
+            equal = equal && memcmp(constants, other.constants, length * sizeof(constants[0])) == 0;
+        }
+
+        return equal;
+    }
 }
 
 size_t BytecodeBuilder::StringRefHash::operator()(const StringRef& v) const
@@ -201,6 +216,12 @@ size_t BytecodeBuilder::TableShapeHash::operator()(const TableShape& v) const
     {
         hash ^= v.keys[i];
         hash *= 16777619;
+
+        if (FFlag::LuauCompileDuptableConstantPack && v.hasConstants)
+        {
+            hash ^= v.constants[i];
+            hash *= 16777619;
+        }
     }
 
     return hash;
@@ -819,10 +840,23 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
         case Constant::Type_Table:
         {
             const TableShape& shape = tableShapes[c.valueTable];
-            writeByte(ss, LBC_CONSTANT_TABLE);
-            writeVarInt(ss, uint32_t(shape.length));
-            for (unsigned int i = 0; i < shape.length; ++i)
-                writeVarInt(ss, shape.keys[i]);
+            if (FFlag::LuauCompileDuptableConstantPack && shape.hasConstants)
+            {
+                writeByte(ss, LBC_CONSTANT_TABLE_WITH_CONSTANTS);
+                writeVarInt(ss, uint32_t(shape.length));
+                for (unsigned int i = 0; i < shape.length; ++i)
+                {
+                    writeVarInt(ss, shape.keys[i]);
+                    writeInt(ss, shape.constants[i]);
+                }
+            }
+            else
+            {
+                writeByte(ss, LBC_CONSTANT_TABLE);
+                writeVarInt(ss, uint32_t(shape.length));
+                for (unsigned int i = 0; i < shape.length; ++i)
+                    writeVarInt(ss, shape.keys[i]);
+            }
             break;
         }
 
@@ -1220,30 +1254,26 @@ void BytecodeBuilder::expandJumps()
     insns.swap(newinsns);
     lines.swap(newlines);
 
-    if (FFlag::LuauCompileCorrectLocalPc)
+    for (DebugLocal& debugLocal : debugLocals)
     {
-        for (DebugLocal& debugLocal : debugLocals)
-        {
-            // endpc is exclusive, to get the right remapping, we need to remap the location before the end
-            if (debugLocal.startpc != debugLocal.endpc)
-                debugLocal.endpc = remap[debugLocal.endpc - 1] + 1;
-            else
-                debugLocal.endpc = remap[debugLocal.endpc];
+        // endpc is exclusive, to get the right remapping, we need to remap the location before the end
+        if (debugLocal.startpc != debugLocal.endpc)
+            debugLocal.endpc = remap[debugLocal.endpc - 1] + 1;
+        else
+            debugLocal.endpc = remap[debugLocal.endpc];
 
-            debugLocal.startpc = remap[debugLocal.startpc];
+        debugLocal.startpc = remap[debugLocal.startpc];
+    }
 
-        }
+    for (TypedLocal& typedLocal : typedLocals)
+    {
+        // endpc is exclusive, to get the right remapping, we need to remap the location before the end
+        if (typedLocal.startpc != typedLocal.endpc)
+            typedLocal.endpc = remap[typedLocal.endpc - 1] + 1;
+        else
+            typedLocal.endpc = remap[typedLocal.endpc];
 
-        for (TypedLocal& typedLocal : typedLocals)
-        {
-            // endpc is exclusive, to get the right remapping, we need to remap the location before the end
-            if (typedLocal.startpc != typedLocal.endpc)
-                typedLocal.endpc = remap[typedLocal.endpc - 1] + 1;
-            else
-                typedLocal.endpc = remap[typedLocal.endpc];
-
-            typedLocal.startpc = remap[typedLocal.startpc];
-        }
+        typedLocal.startpc = remap[typedLocal.startpc];
     }
 }
 
@@ -1259,6 +1289,10 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
+    // LBC_CONSTANT_TABLE_WITH_CONSTANTS requires version 7
+    if (FFlag::LuauCompileDuptableConstantPack)
+        return 7;
+
     return LBC_VERSION_TARGET;
 }
 

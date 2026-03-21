@@ -23,9 +23,11 @@ using namespace Luau;
 LUAU_FASTINT(LuauParseErrorLimit)
 
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
-LUAU_FASTFLAG(LuauFragmentRequiresCanBeResolvedToAModule)
 LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -3972,7 +3974,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "inline_prop_read_on_requires_provides_results")
 {
-    ScopedFastFlag sff{FFlag::LuauFragmentRequiresCanBeResolvedToAModule, true};
     const std::string moduleA = R"(
 local mod = { prop1 = true}
 mod.prop2 = "a"
@@ -4757,6 +4758,199 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_func
             CHECK(frag.result->acResults.entryMap.count("\"Val2\"") == 1);
         }
     );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_table_insert")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+    };
+
+    std::string src = R"(
+        local function addToTable(t: {{ foobar: number }})
+            table.insert(t, {})
+        end
+    )";
+
+    std::string dest = R"(
+        local function addToTable(t: {{ foobar: number }})
+            table.insert(t, { f@1 })
+        end
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        src,
+        dest,
+        '1',
+        [](auto& ac)
+        {
+            REQUIRE(ac.result);
+            CHECK(ac.result->acResults.entryMap.count("foobar") > 0);
+        }
+    );
+
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_properties")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
+    };
+
+    std::string src = R"(
+        type React_Node = any
+        type ReactElement<P, T> = any
+
+        type React_StatelessFunctionalComponent<Props> = (props: Props, context: any) -> React_Node
+        type React_Component<Props, State = nil> = {}
+        type createElementFn = <P, T>(
+            type_:
+              | React_StatelessFunctionalComponent<P>
+              | React_Component<P>
+              | string,
+            props: P?,
+            ...(React_Node | (...any) -> React_Node)
+        ) -> ReactElement<P, T>
+
+        local createElement: createElementFn = nil :: any
+
+        local function MyComponent(props: { foobar: string, barbaz: { bazquxx: string } })
+        	return nil
+        end
+
+    )";
+
+    std::string dest = R"(
+        type React_Node = any
+        type ReactElement<P, T> = any
+
+        type React_StatelessFunctionalComponent<Props> = (props: Props, context: any) -> React_Node
+        type React_Component<Props, State = nil> = {}
+        type createElementFn = <P, T>(
+            type_:
+              | React_StatelessFunctionalComponent<P>
+              | React_Component<P>
+              | string,
+            props: P?,
+            ...(React_Node | (...any) -> React_Node)
+        ) -> ReactElement<P, T>
+
+        local createElement: createElementFn = nil :: any
+
+        local function MyComponent(props: { foobar: string, barbaz: { bazquxx: string } })
+        	return nil
+        end
+
+        createElement(MyComponent, { f@1 })
+        createElement(MyComponent, { barbaz = { b@2 } })
+        createElement(MyComponent, { foobar = {}, b@3 })
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        src,
+        dest,
+        '1',
+        [](auto& ac)
+        {
+            REQUIRE(ac.result);
+            CHECK(ac.result->acResults.entryMap.count("foobar") > 0);
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        src,
+        dest,
+        '2',
+        [](auto& ac)
+        {
+            REQUIRE(ac.result);
+            CHECK(ac.result->acResults.entryMap.count("bazquxx") > 0);
+        }
+    );
+
+    autocompleteFragmentInBothSolvers(
+        src,
+        dest,
+        '3',
+        [](auto& ac)
+        {
+            REQUIRE(ac.result);
+            CHECK(ac.result->acResults.entryMap.count("barbaz") > 0);
+        }
+    );
+
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_narrow_fragment")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
+    };
+
+    std::string src = R"(
+        type React_Node = any
+        type ReactElement<P, T> = any
+
+        type React_StatelessFunctionalComponent<Props> = (props: Props, context: any) -> React_Node
+        type React_Component<Props, State = nil> = {}
+        type createElementFn = <P, T>(
+            type_:
+              | React_StatelessFunctionalComponent<P>
+              | React_Component<P>
+              | string,
+            props: P?,
+            ...(React_Node | (...any) -> React_Node)
+        ) -> ReactElement<P, T>
+
+        local createElement: createElementFn = nil :: any
+
+        local function MyComponent(props: { foobar: string, barbaz: { bazquxx: string } })
+        	return nil
+        end
+
+        createElement(MyComponent, { })
+    )";
+
+    std::string dest = R"(
+        type React_Node = any
+        type ReactElement<P, T> = any
+
+        type React_StatelessFunctionalComponent<Props> = (props: Props, context: any) -> React_Node
+        type React_Component<Props, State = nil> = {}
+        type createElementFn = <P, T>(
+            type_:
+              | React_StatelessFunctionalComponent<P>
+              | React_Component<P>
+              | string,
+            props: P?,
+            ...(React_Node | (...any) -> React_Node)
+        ) -> ReactElement<P, T>
+
+        local createElement: createElementFn = nil :: any
+
+        local function MyComponent(props: { foobar: string, barbaz: { bazquxx: string } })
+        	return nil
+        end
+
+        createElement(MyComponent, { f@1 })
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        src,
+        dest,
+        '1',
+        [](auto& ac)
+        {
+            REQUIRE(ac.result);
+            CHECK(ac.result->acResults.entryMap.count("foobar") > 0);
+        }
+    );
+
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)
