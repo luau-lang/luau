@@ -3226,10 +3226,10 @@ TEST_CASE_FIXTURE(Fixture, "cli_184413_refinement_of_union_of_read_types_is_read
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_vector_refine")
 {
-    if (!FFlag::LuauSolverV2)
-        return;
-
-    ScopedFastFlag sff{ FFlag::LuauRefinementTypeVector, true };
+    ScopedFastFlag _[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRefinementTypeVector, true}
+    };
 
     CheckResult result = check(R"(
         function foo(x: unknown)

@@ -636,7 +636,7 @@ TEST_CASE_FIXTURE(Fixture, "UnknownType")
 local game = ...
 local _e01 = type(game) == "Part"
 local _e02 = typeof(game) == "Bar"
-local _e03 = typeof(game) == "vector"
+local _ok = typeof(game) == "vector"
 
 local _o01 = type(game) == "number"
 local _o02 = type(game) == "vector"
