@@ -4800,7 +4800,7 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_errors")
 TEST_CASE_FIXTURE(Fixture, "extern_read_write_attributes")
 {
     ScopedFastFlag _[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExternReadWriteAttributes, true}
     };
 

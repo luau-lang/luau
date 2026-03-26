@@ -3663,15 +3663,11 @@ void TypeChecker2::checkIndexTypeFromType(
     {
         if (propTypes.foundOneProp())
             reportError(MissingUnionProperty{tableTy, propTypes.missingProp, prop}, location);
-        else if (!FFlag::LuauExternReadWriteAttributes && get<ExternType>(tableTy))
-        {
-            reportError(UnknownProperty{tableTy, prop}, location);
-        }
         // For class LValues, we don't want to report an extension error,
         // because extern typeArguments come into being with full knowledge of their
         // shape. We instead want to report the unknown property error of
         // the `else` branch.
-        else if (context == ValueContext::LValue)
+        else if (context == ValueContext::LValue && (FFlag::LuauExternReadWriteAttributes || !get<ExternType>(tableTy)))
         {
             const auto lvPropTypes = lookupProp(norm.get(), prop, ValueContext::RValue, location, astIndexExprType, dummy);
             if (lvPropTypes.foundOneProp() && lvPropTypes.noneMissingProp())
@@ -3680,13 +3676,13 @@ void TypeChecker2::checkIndexTypeFromType(
                 reportError(NotATable{tableTy}, location);
             else
             {
-                if (get<ExternType>(tableTy))
+                if (FFlag::LuauExternReadWriteAttributes && get<ExternType>(tableTy))
                     reportError(UnknownProperty{tableTy, prop}, location);
                 else
                     reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
             }
         }
-        else if (context == ValueContext::RValue)
+        else if (context == ValueContext::RValue && (FFlag::LuauExternReadWriteAttributes || !get<ExternType>(tableTy)))
         {
             const auto rvPropTypes = lookupProp(norm.get(), prop, ValueContext::LValue, location, astIndexExprType, dummy);
             if (rvPropTypes.foundOneProp() && rvPropTypes.noneMissingProp())
