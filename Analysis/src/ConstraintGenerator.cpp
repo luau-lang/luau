@@ -45,11 +45,8 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAGVARIABLE(LuauUnpackRespectsAnnotations)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAGVARIABLE(LuauForwardPolarityForFunctionTypes)
-<<<<<<< readonly-extern-props
-LUAU_FASTFLAG(LuauExternReadWriteAttributes)
-=======
 LUAU_FASTFLAGVARIABLE(LuauRefinementTypeVector)
->>>>>>> master
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 namespace Luau
 {
