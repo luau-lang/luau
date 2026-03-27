@@ -28,6 +28,17 @@ endif()
 
 project(Luau LANGUAGES CXX C)
 
+execute_process(
+    COMMAND git describe --tags
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE LUAU_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT LUAU_VERSION)
+    set(LUAU_VERSION "unknown")
+endif()
+
 if (LUAU_BUILD_SHARED)
     add_library(Luau.Common SHARED)
     add_library(Luau.CLI.lib SHARED)
@@ -253,6 +264,13 @@ if(LUAU_BUILD_CLI)
     target_compile_options(Luau.Compile.CLI PRIVATE ${LUAU_OPTIONS})
     target_compile_options(Luau.Bytecode.CLI PRIVATE ${LUAU_OPTIONS})
 
+    target_compile_definitions(Luau.Repl.CLI PRIVATE LUAU_VERSION="${LUAU_VERSION}")
+    target_compile_definitions(Luau.Analyze.CLI PRIVATE LUAU_VERSION="${LUAU_VERSION}")
+    target_compile_definitions(Luau.Ast.CLI PRIVATE LUAU_VERSION="${LUAU_VERSION}")
+    target_compile_definitions(Luau.Reduce.CLI PRIVATE LUAU_VERSION="${LUAU_VERSION}")
+    target_compile_definitions(Luau.Compile.CLI PRIVATE LUAU_VERSION="${LUAU_VERSION}")
+    target_compile_definitions(Luau.Bytecode.CLI PRIVATE LUAU_VERSION="${LUAU_VERSION}")
+
     target_include_directories(Luau.Repl.CLI PRIVATE extern extern/isocline/include)
 
     target_link_libraries(Luau.Repl.CLI PRIVATE Luau.Compiler Luau.Config Luau.CodeGen Luau.VM Luau.Require Luau.CLI.lib isocline)
@@ -295,6 +313,7 @@ if(LUAU_BUILD_TESTS)
     target_compile_definitions(Luau.Conformance PRIVATE LUAU_CONFORMANCE_SOURCE_DIR="${LUAU_CONFORMANCE_SOURCE_DIR}")
 
     target_compile_options(Luau.CLI.Test PRIVATE ${LUAU_OPTIONS})
+    target_compile_definitions(Luau.CLI.Test PRIVATE LUAU_VERSION="${LUAU_VERSION}")
     target_include_directories(Luau.CLI.Test PRIVATE extern CLI)
     target_link_libraries(Luau.CLI.Test PRIVATE Luau.Compiler Luau.Config Luau.CodeGen Luau.VM Luau.Require Luau.CLI.lib isocline)
     target_link_libraries(Luau.CLI.Test PRIVATE osthreads)
