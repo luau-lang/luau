@@ -1034,7 +1034,6 @@ end
 wrapper(test2, 1, "", 3)
     )");
 
-    // What the fuck? Do we not check for function argument overflow?
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (!FFlag::DebugLuauForceOldSolver)
     {

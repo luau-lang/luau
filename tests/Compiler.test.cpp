@@ -25,7 +25,7 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
-LUAU_FASTFLAG(LuauCompileDuptableConstantPack)
+LUAU_FASTFLAG(LuauCompileDuptableConstantPack2)
 LUAU_FASTFLAG(LuauCompileExtraTypes)
 LUAU_FASTFLAG(LuauCompileVectorReveseMul)
 LUAU_FASTFLAG(LuauCompileFastcallsSurvivePolyfills)
@@ -667,7 +667,7 @@ RETURN R0 0
 
 TEST_CASE("TableLiterals")
 {
-    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack, false};
+    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
 
     // empty table, note it's computed directly to target
     CHECK_EQ("\n" + compileFunction0("return {}"), R"(
@@ -741,13 +741,7 @@ RETURN R0 1
 
     // basic literals; note that we use DUPTABLE instead of NEWTABLE
     CHECK_EQ("\n" + compileFunction0("return {a=1,b=2,c=3}"), R"(
-DUPTABLE R0 3
-LOADN R1 1
-SETTABLEKS R1 R0 K0 ['a']
-LOADN R1 2
-SETTABLEKS R1 R0 K1 ['b']
-LOADN R1 3
-SETTABLEKS R1 R0 K2 ['c']
+DUPTABLE R0 6
 RETURN R0 1
 )");
 
@@ -777,28 +771,16 @@ RETURN R0 1
 
     // table template caching; two DUPTABLES out of three use the same slot. Note that caching is order dependent
     CHECK_EQ("\n" + compileFunction0("return {a=1,b=2},{b=3,a=4},{a=5,b=6}"), R"(
-DUPTABLE R0 2
-LOADN R1 1
-SETTABLEKS R1 R0 K0 ['a']
-LOADN R1 2
-SETTABLEKS R1 R0 K1 ['b']
-DUPTABLE R1 3
-LOADN R2 3
-SETTABLEKS R2 R1 K1 ['b']
-LOADN R2 4
-SETTABLEKS R2 R1 K0 ['a']
-DUPTABLE R2 2
-LOADN R3 5
-SETTABLEKS R3 R2 K0 ['a']
-LOADN R3 6
-SETTABLEKS R3 R2 K1 ['b']
+DUPTABLE R0 4
+DUPTABLE R1 7
+DUPTABLE R2 10
 RETURN R0 3
 )");
 }
 
 TEST_CASE("TableLiteralsConstantPackFlag")
 {
-    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack, true};
+    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
 
     // basic literals becomes a single duptable
     CHECK_EQ("\n" + compileFunction0("return {a=1,b=2,c=3}"), R"(
@@ -3453,7 +3435,7 @@ until f == 0
 
 TEST_CASE("DebugLineInfoSubTable")
 {
-    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack, true};
+    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
 
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
@@ -3562,7 +3544,7 @@ return
 
 TEST_CASE("DebugLineInfoAssignment")
 {
-    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack, true};
+    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
 
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
@@ -5095,7 +5077,7 @@ L1: RETURN R0 0
 
 TEST_CASE("TableConstantStringIndex")
 {
-    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack, true};
+    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -5123,9 +5105,36 @@ RETURN R0 0
     );
 }
 
+TEST_CASE("DuptableNoConstantPack")
+{
+    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
+
+    // function has duplicate keys that are not constant fold-able
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = { a = 2, a = function() end, a = 3 }
+return t['a']
+)",
+                   1
+               ),
+        R"(
+DUPTABLE R0 3
+LOADN R1 2
+SETTABLEKS R1 R0 K0 ['a']
+DUPCLOSURE R1 K4 ['a']
+SETTABLEKS R1 R0 K0 ['a']
+LOADN R1 3
+SETTABLEKS R1 R0 K0 ['a']
+GETTABLEKS R1 R0 K0 ['a']
+RETURN R1 1
+)"
+    );
+}
+
 TEST_CASE("Coverage")
 {
-    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack, true};
+    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
     // basic statement coverage
     CHECK_EQ(
         "\n" + compileFunction0Coverage(

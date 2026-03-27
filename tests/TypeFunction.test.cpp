@@ -15,7 +15,6 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAG(LuauTypeFunctionsCaptureNestedInstances)
@@ -2020,7 +2019,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2114_type_instantiation_on_type_function
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExplicitTypeInstantiationSyntax, true},
         {FFlag::LuauExplicitTypeInstantiationSupport, true},
     };
 
@@ -2045,7 +2043,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2144_type_instantiation_on_type_function
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExplicitTypeInstantiationSyntax, true},
         {FFlag::LuauExplicitTypeInstantiationSupport, true},
     };
 

@@ -9,8 +9,6 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-
 using namespace Luau;
 
 TEST_SUITE_BEGIN("Linter");
@@ -2549,8 +2547,6 @@ f(3)(4)
 
 TEST_CASE_FIXTURE(Fixture, "type_instantiation_lints")
 {
-    ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
-
     LintResult result = lint(R"(
 local function a<b>(cool: b)
     print(cool)

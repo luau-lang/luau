@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 LUAU_FASTFLAG(LuauComparisonToNilsIsAlwaysOk2)
 LUAU_FASTFLAG(LuauGeneralizationMoreAwareOfBounds3)
+LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
@@ -6732,6 +6733,26 @@ TEST_CASE_FIXTURE(Fixture, "oss_1890")
         }
 
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "compound_assignment_writes_lhs")
+{
+    // the old solver does not support read-only properties.
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauLValueCompoundAssignmentVisitLhs, true};
+
+    CheckResult result = check(R"(
+        type T = {
+            read x: number
+        }
+
+        local foo: T = { x = 5 }
+        foo.x += 5
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<PropertyAccessViolation>(result.errors[0]));
 }
 
 
