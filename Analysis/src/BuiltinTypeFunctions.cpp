@@ -22,6 +22,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsCaptureNestedInstances)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
 
 namespace Luau
 {
@@ -145,7 +146,9 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
     if (!selected.overload.has_value())
         return std::nullopt;
 
-    TypePackId retPack = ctx->arena->freshTypePack(ctx->scope);
+    TypePackId retPack = FFlag::LuauTypeFunctionsAddFreeTypePackWithPositivePolarity
+        ? ctx->arena->freshTypePack(ctx->scope, Polarity::Positive)
+        : ctx->arena->freshTypePack(ctx->scope);
     TypeId prospectiveFunction = ctx->arena->addType(FunctionType{argsPack, retPack});
 
     // FIXME: It's too bad that we have to bust out the Unifier here.  We should

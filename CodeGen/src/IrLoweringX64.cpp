@@ -17,7 +17,7 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenOpReadOnly)
 LUAU_FASTFLAG(LuauCodegenIsNanAndDirectCompare)
 LUAU_FASTFLAG(LuauCodegenCounterSupport)
@@ -2011,7 +2011,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CHECK_BUFFER_LEN:
     {
-        if (FFlag::LuauCodegenBufferRangeMerge3)
+        if (FFlag::LuauCodegenBufferRangeMerge4)
         {
             int minOffset = intOp(OP_C(inst));
             int maxOffset = intOp(OP_D(inst));

@@ -544,6 +544,17 @@ def luau_table_summary(valobj, internal_dict):
     result = f"LuaTable (size={len(array_entries) + len(hash_entries)})"
     return result
 
+def convert_ptr_size_to_array(name, ptr, num_elem):
+    """Converts a SBValue ptr into an array using the name and number of elements provided
+       num_elems may be a number of an SBValue with a numeric value. 
+    """
+    if isinstance(num_elem, lldb.SBValue):
+        if num_elem.GetType().GetTypeFlags() & lldb.eTypeIsSigned:
+            num_elem = num_elem.GetValueAsSigned()
+        else:
+            num_elem = num_elem.GetValueAsUnsigned()
+    return ptr.CreateValueFromAddress(name, int(ptr.GetValueAsAddress()), ptr.GetType().GetPointeeType().GetArrayType(num_elem))
+
 def read_from_pointer_to_array(ptr, index):
     """ Reads a single element from a pointer to an array. This function is useful because lldb only allows reading
         the 0'th element using GetChildAtIndex for a pointer type.
@@ -551,7 +562,7 @@ def read_from_pointer_to_array(ptr, index):
         ptr should be a SBValue that is a pointer
         index is the index of the array element to read (starting from 0)
     """
-    array = ptr.CreateValueFromAddress("ar", int(ptr.GetValueAsAddress()), ptr.GetType().GetPointeeType().GetArrayType(index+1))
+    array = convert_ptr_size_to_array('ar', ptr, index+1)
     return array.GetChildAtIndex(index)
 
 def remove_outer_quotes(s):
@@ -580,3 +591,77 @@ def luau_callinfo_summary(valobj, internal_dict):
         f = c.GetChildMemberWithName("f")
         debugname = c.GetChildMemberWithName("debugname")
         return f"=[C] function {remove_outer_quotes(debugname.GetSummary())} {f.GetSummary()}"
+
+def luau_proto_summary(valobj, internal_dict):
+    if valobj.GetType().IsPointerType():
+        valobj = valobj.Dereference()
+    valobj = valobj.GetNonSyntheticValue()
+    source = valobj.GetChildMemberWithName("source")
+    debugname = valobj.GetChildMemberWithName("debugname")
+    linedefined = valobj.GetChildMemberWithName("linedefined").GetValueAsUnsigned()
+    numparams = valobj.GetChildMemberWithName("numparams").GetValueAsUnsigned()
+    nups = valobj.GetChildMemberWithName("nups").GetValueAsUnsigned()
+    return f'{remove_outer_quotes(source.GetSummary())}:{linedefined} {"function " + remove_outer_quotes(debugname.GetSummary()) if debugname.GetValueAsUnsigned() != 0 else ""} [{numparams} arg, {nups} upval]'
+
+class ProtoSyntheticChildrenProvider:
+    def __init__(self, valobj, internal_dict):
+        if valobj.GetType().IsPointerType():
+           valobj = valobj.Dereference()
+        valobj = valobj.GetNonSyntheticValue()
+        
+        self.valobj = valobj
+
+    def num_children(self):
+        return len(self.children)
+
+    def has_children(self):
+        return len(self.children) > 0
+
+    def get_child_at_index(self, index):
+        if index < len(self.children):
+            return self.children[index]
+        return None
+
+    def update(self):
+        children = []
+        self.children = children
+        valobj = self.valobj
+
+        k = valobj.GetChildMemberWithName("k")
+        sizek = valobj.GetChildMemberWithName("sizek")
+        constants_array = convert_ptr_size_to_array("[constants]", k, sizek)
+        children.append(constants_array)
+
+        locvars = valobj.GetChildMemberWithName("locvars")
+        sizelocvars = valobj.GetChildMemberWithName("sizelocvars")
+        locvars_array = convert_ptr_size_to_array("[locvars]", locvars, sizelocvars)
+        children.append(locvars_array)
+
+        sizecode = valobj.GetChildMemberWithName("sizecode")
+        code = valobj.GetChildMemberWithName("code")
+        code_array = convert_ptr_size_to_array("[bytecode]", code, sizecode)
+        children.append(code_array)
+
+        sizep = valobj.GetChildMemberWithName("sizep")
+        p = valobj.GetChildMemberWithName("p")
+        p_array = convert_ptr_size_to_array("[functions]", p, sizep)
+        children.append(p_array)
+
+        sizeupvalues = valobj.GetChildMemberWithName("sizeupvalues")
+        upvalues = valobj.GetChildMemberWithName("upvalues")
+        upvalues_array = convert_ptr_size_to_array("[upvalues]", upvalues, sizeupvalues)
+        children.append(upvalues_array)
+
+        children.append(self.valobj.GetChildMemberWithName("source"))
+        return False
+
+
+# Note for future work:
+# LLDB is limited in terms of expansion. i.e. a child provider can expand to a set
+# of children, but it can't directly express how those children can be expanded further.
+# To acheive this functionality for special situations (e.g. showing callstacks in reverse
+# order) it may be necessary to create types that are only used for debugging purposes which
+# an then define how their children are expanded.
+#
+# Here's an example of how EvaluateExpression can be used to create such a type on the fly:
+# e = lldb.target.EvaluateExpression("struct DebuggerOnlyType{int a; float b;}; (DebuggerOnlyType*)0;")

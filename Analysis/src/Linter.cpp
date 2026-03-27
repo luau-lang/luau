@@ -13,8 +13,6 @@
 #include <climits>
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
-
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAGVARIABLE(LuauLinterVectorPrimitive)
 
 namespace Luau
@@ -191,7 +189,6 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
     }
     CASE(AstExprInstantiate)
     {
-        LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
         return similar(le->expr, re->expr);
     }
     else

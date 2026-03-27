@@ -820,4 +820,18 @@ do
   end
 end
 
+do
+  -- any optimization related to constant fields must preserve side effects that may be relied upon
+  local should_change = false
+
+  function side_effect()
+    should_change = true
+  end
+
+  local t = {a = 1, a = side_effect(), a = 3}
+
+  assert(should_change == true)
+  assert(t.a == 3)
+end
+
 return "OK"

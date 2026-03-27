@@ -35,6 +35,7 @@ LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAG(LuauForwardPolarityForFunctionTypes)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
+LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4127,6 +4128,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lute_tasklib_createtask")
         "((...any) -> (unknown, ...unknown), ...any) -> { co: thread, result: unknown, success: boolean }",
         toString(requireType("createtask"))
     );
+}
+
+TEST_CASE_FIXTURE(Fixture, "global_emplacing_steals_type_from_elsewhere")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauKeepExplicitMapForGlobalTypes, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f()
+            return 42
+        end
+        local a = f()
+        b = a
+        local c = b
+        function b()
+        end
+    )");
+
+    CHECK_EQ("number", toString(requireType("a")));
+    CHECK_EQ("() -> ()", toString(requireType("b")));
+    CHECK_EQ("number", toString(requireType("c")));
 }
 
 TEST_SUITE_END();

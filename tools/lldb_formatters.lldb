@@ -26,7 +26,9 @@ type summary add -x "^TString$" -F lldb_formatters.luau_tstring_summary
 type summary add -x "^TKey$" -F lldb_formatters.luau_tkey_summary
 
 type summary add --expand -x "^TValue$" -F lldb_formatters.luau_tvalue_summary
-type synthetic add --expand -x "^TValue$" -l lldb_formatters.TValueSyntheticChildrenProvider
+type synthetic add -x "^TValue$" -l lldb_formatters.TValueSyntheticChildrenProvider
+type summary add --expand -x "^lua_TValue$" -F lldb_formatters.luau_tvalue_summary
+type synthetic add -x "^lua_TValue$" -l lldb_formatters.TValueSyntheticChildrenProvider
 
 type summary add --expand -x "^LuaTable$" -F lldb_formatters.luau_table_summary
 type synthetic add -x "^LuaTable$" -l lldb_formatters.LuauTableSyntheticChildrenProvider
@@ -36,3 +38,5 @@ type summary add --expand -x "^CallInfo$" -F lldb_formatters.luau_callinfo_summa
 type summary add -x "^Luau::TryPair<.+>$" --summary-string "(${var.first%T}, ${var.second%T})"
 type summary add -x "^LuaNode$" --summary-string "[${var.key}] = ${var.val}"
 
+type summary add --expand -x "^Proto$" -F lldb_formatters.luau_proto_summary
+type synthetic add -x "^Proto$" -l lldb_formatters.ProtoSyntheticChildrenProvider
