@@ -134,19 +134,24 @@ struct AstJsonEncoder : public AstVisitor
 
     void writeString(std::string_view sv)
     {
-        // TODO escape more accurately?
         writeRaw("\"");
 
         for (char c : sv)
         {
-            if (c == '"')
+            unsigned char uc = static_cast<unsigned char>(c);
+
+            if (uc == '"')
                 writeRaw("\\\"");
-            else if (c == '\\')
+            else if (uc == '\\')
                 writeRaw("\\\\");
-            else if (c < ' ')
-                writeRaw(format("\\u%04x", c));
-            else if (c == '\n')
+            else if (uc == '\n') // New lines
                 writeRaw("\\n");
+            else if (uc == '\r') // Carriage returns
+                writeRaw("\\r");
+            else if (uc == '\t') // Tabs
+                writeRaw("\\t");
+            else if (uc < 32 || uc > 126)
+                writeRaw(format("\\u%04x", (int)uc)); 
             else
                 writeRaw(c);
         }
