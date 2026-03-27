@@ -34,7 +34,6 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
@@ -1406,10 +1405,7 @@ void TypeChecker2::visit(AstExpr* expr, ValueContext context)
     else if (auto e = expr->as<AstExprIfElse>())
         return visit(e);
     else if (auto e = expr->as<AstExprInstantiate>())
-    {
-        LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
         return visit(e);
-    }
     else if (auto e = expr->as<AstExprInterpString>())
         return visit(e);
     else if (auto e = expr->as<AstExprError>())
@@ -2693,7 +2689,6 @@ void TypeChecker2::visit(AstExprIfElse* expr)
 
 void TypeChecker2::visit(AstExprInstantiate* explicitTypeInstantiation)
 {
-    LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
     visit(explicitTypeInstantiation->expr, ValueContext::RValue);
     if (FFlag::LuauExplicitTypeInstantiationSupport)
         checkTypeInstantiation(

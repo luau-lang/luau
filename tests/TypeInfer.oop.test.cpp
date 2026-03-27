@@ -15,7 +15,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauTrackFreeInteriorTypePacks)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("TypeInferOOP");

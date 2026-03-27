@@ -26,7 +26,7 @@ LUAU_FASTFLAG(LuauCodegenDsoPairTrackFix)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSetBlockEntryState2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenBufferRangeMerge3)
+LUAU_FASTFLAGVARIABLE(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAGVARIABLE(LuauCodegenTableLoadProp2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenExtraBlockers)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLengthBaseInst)
@@ -842,7 +842,8 @@ struct ConstPropState
 
         if (newMinOffset != prevMinOffset)
             replace(function, OP_C(prevCheck), build.constInt(newMinOffset));
-        else if (newMaxOffset != prevMaxOffset)
+
+        if (newMaxOffset != prevMaxOffset)
             replace(function, OP_D(prevCheck), build.constInt(newMaxOffset));
 
         kill(function, currCheck);
@@ -2199,7 +2200,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     {
         std::optional<int> bufferOffset = function.asIntOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst)));
 
-        if (FFlag::LuauCodegenBufferRangeMerge3)
+        if (FFlag::LuauCodegenBufferRangeMerge4)
         {
             int minOffset = function.intOp(OP_C(inst));
             int maxOffset = function.intOp(OP_D(inst));
@@ -2776,7 +2777,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             break;
         }
 
-        if (FFlag::LuauCodegenBufferRangeMerge3 && src && src->cmd == IrCmd::ADD_NUM)
+        if (FFlag::LuauCodegenBufferRangeMerge4 && src && src->cmd == IrCmd::ADD_NUM)
         {
             if (std::optional<double> arg = function.asDoubleOp(OP_B(src)); arg && *arg == 0.0)
             {
