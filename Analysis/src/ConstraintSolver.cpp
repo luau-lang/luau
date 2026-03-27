@@ -425,7 +425,8 @@ ConstraintSolver::ConstraintSolver(
     DcrLogger* logger,
     NotNull<const DataFlowGraph> dfg,
     TypeCheckLimits limits,
-    ConstraintSet constraintSet_
+    ConstraintSet constraintSet_,
+    NotNull<Subtyping> subtyping
 )
     : arena(normalizer->arena)
     , builtinTypes(normalizer->builtinTypes)
@@ -443,6 +444,7 @@ ConstraintSolver::ConstraintSolver(
     , logger(logger)
     , limits(std::move(limits))
     , opts{/*exhaustive*/ true}
+    , subtyping(subtyping)
 {
     initFreeTypeTracking();
 }
@@ -458,7 +460,8 @@ ConstraintSolver::ConstraintSolver(
     std::vector<RequireCycle> requireCycles,
     DcrLogger* logger,
     NotNull<const DataFlowGraph> dfg,
-    TypeCheckLimits limits
+    TypeCheckLimits limits,
+    NotNull<Subtyping> subtyping
 )
     : arena(normalizer->arena)
     , builtinTypes(normalizer->builtinTypes)
@@ -476,6 +479,7 @@ ConstraintSolver::ConstraintSolver(
     , logger(logger)
     , limits(std::move(limits))
     , opts{/*exhaustive*/ true}
+    , subtyping{subtyping}
 {
     initFreeTypeTracking();
 }
@@ -683,7 +687,7 @@ void ConstraintSolver::finalizeTypeFunctions()
         TypeId ty = follow(t);
         if (get<TypeFunctionInstanceType>(ty))
         {
-            TypeFunctionContext context{NotNull{this}, constraint->scope, NotNull{constraint}};
+            TypeFunctionContext context{NotNull{this}, constraint->scope, NotNull{constraint}, subtyping};
             FunctionGraphReductionResult result = reduceTypeFunctions(t, constraint->location, NotNull{&context}, true);
 
             for (TypeId r : result.reducedTypes)
@@ -2635,7 +2639,7 @@ bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Cons
 {
     TypeId ty = follow(c.ty);
 
-    TypeFunctionContext context{NotNull{this}, constraint->scope, constraint};
+    TypeFunctionContext context{NotNull{this}, constraint->scope, constraint, subtyping};
     FunctionGraphReductionResult result = reduceTypeFunctions(ty, constraint->location, NotNull{&context}, force);
 
     for (TypeId r : result.reducedTypes)
@@ -2691,7 +2695,7 @@ bool ConstraintSolver::tryDispatch(const ReducePackConstraint& c, NotNull<const 
 {
     TypePackId tp = follow(c.tp);
 
-    TypeFunctionContext context{NotNull{this}, constraint->scope, constraint};
+    TypeFunctionContext context{NotNull{this}, constraint->scope, constraint, subtyping};
     FunctionGraphReductionResult result = reduceTypeFunctions(tp, constraint->location, NotNull{&context}, force);
 
     for (TypeId r : result.reducedTypes)
