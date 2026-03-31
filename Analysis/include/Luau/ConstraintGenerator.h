@@ -13,6 +13,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/Polarity.h"
 #include "Luau/Refinement.h"
+#include "Luau/Set.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeIds.h"
@@ -177,6 +178,8 @@ private:
     std::vector<InteriorFreeTypes> interiorFreeTypes;
 
     std::vector<TypeId> unionsToSimplify;
+
+    Set<TypeId> uninitializedGlobals{nullptr};
 
     Polarity polarity = Polarity::None;
 
@@ -445,6 +448,17 @@ private:
         bool replaceErrorWithFresh = false,
         Polarity initialPolarity = Polarity::Positive
     );
+
+    // Clip with LuauForwardPolarityForFunctionTypes
+    TypePackId resolveTypePack_DEPRECATED(
+        const ScopePtr& scope,
+        const AstTypeList& list,
+        bool inTypeArguments,
+        bool replaceErrorWithFresh = false,
+        Polarity initialPolarity = Polarity::Positive
+    );
+
+    TypePackId resolveTypePack_(const ScopePtr& scope, const AstTypeList& list, bool inTypeArguments, bool replaceErrorWithFresh);
 
     /**
      * Creates generic types given a list of AST definitions, resolving default

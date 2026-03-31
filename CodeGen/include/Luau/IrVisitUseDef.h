@@ -4,8 +4,6 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
-
 namespace Luau
 {
 namespace CodeGen
@@ -82,12 +80,8 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
         visitor.defRange(vmRegOp(OP_A(inst)), function.uintOp(OP_B(inst)));
         break;
     case IrCmd::GET_UPVALUE:
-        if (!FFlag::LuauCodegenUpvalueLoadProp2)
-            visitor.def(OP_A(inst));
         break;
     case IrCmd::SET_UPVALUE:
-        if (!FFlag::LuauCodegenUpvalueLoadProp2)
-            visitor.use(OP_B(inst));
         break;
     case IrCmd::INTERRUPT:
         break;
@@ -221,6 +215,13 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
 
     case IrCmd::FINDUPVAL:
         visitor.use(OP_A(inst));
+        break;
+
+    case IrCmd::MARK_USED:
+        visitor.useRange(vmRegOp(OP_A(inst)), function.intOp(OP_B(inst)));
+        break;
+    case IrCmd::MARK_DEAD:
+        // Does not affect VM def/use info
         break;
 
     default:

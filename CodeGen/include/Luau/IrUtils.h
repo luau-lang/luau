@@ -5,7 +5,8 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp2)
+LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
+LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 
 namespace Luau
 {
@@ -129,6 +130,11 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::DIV_VEC:
     case IrCmd::IDIV_VEC:
     case IrCmd::UNM_VEC:
+    case IrCmd::MIN_VEC:
+    case IrCmd::MAX_VEC:
+    case IrCmd::FLOOR_VEC:
+    case IrCmd::CEIL_VEC:
+    case IrCmd::ABS_VEC:
     case IrCmd::DOT_VEC:
     case IrCmd::EXTRACT_VEC:
     case IrCmd::NOT_ANY:
@@ -151,7 +157,6 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::NUM_TO_UINT:
     case IrCmd::FLOAT_TO_NUM:
     case IrCmd::NUM_TO_FLOAT:
-    case IrCmd::NUM_TO_VEC_DEPRECATED:
     case IrCmd::FLOAT_TO_VEC:
     case IrCmd::TAG_VECTOR:
     case IrCmd::TRUNCATE_UINT:
@@ -180,9 +185,8 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::BUFFER_READI32:
     case IrCmd::BUFFER_READF32:
     case IrCmd::BUFFER_READF64:
-        return true;
     case IrCmd::GET_UPVALUE:
-        return FFlag::LuauCodegenUpvalueLoadProp2;
+        return true;
     default:
         break;
     }
@@ -219,7 +223,10 @@ inline bool canInvalidateSafeEnv(IrCmd cmd)
 inline bool isPseudo(IrCmd cmd)
 {
     // Instructions that are used for internal needs and are not a part of final lowering
-    return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
+    if (FFlag::LuauCodegenMarkDeadRegisters2 || FFlag::LuauCodegenDseOnCondJump)
+        return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE || cmd == IrCmd::MARK_USED || cmd == IrCmd::MARK_DEAD;
+    else
+        return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
 }
 
 inline bool hasSideEffects(IrCmd cmd)
@@ -280,6 +287,7 @@ inline IrCondition getNegatedCondition(IrCondition cond)
 }
 
 IrValueKind getCmdValueKind(IrCmd cmd);
+IrValueKind getConstValueKind(const IrConst& constant);
 
 template<typename F>
 void visitArguments(IrInst& inst, F&& func)
@@ -366,6 +374,9 @@ IrBlock& getNextBlock(IrFunction& function, const std::vector<uint32_t>& sortedB
 IrBlock* tryGetNextBlockInChain(IrFunction& function, IrBlock& block);
 
 bool isEntryBlock(const IrBlock& block);
+
+// When an operand is an instruction, try to extract the tag which is contained inside that value
+std::optional<uint8_t> tryGetOperandTag(IrFunction& function, IrOp op);
 
 } // namespace CodeGen
 } // namespace Luau

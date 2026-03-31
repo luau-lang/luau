@@ -217,6 +217,16 @@ const char* getCmdName(IrCmd cmd)
         return "MULADD_VEC";
     case IrCmd::UNM_VEC:
         return "UNM_VEC";
+    case IrCmd::MIN_VEC:
+        return "MIN_VEC";
+    case IrCmd::MAX_VEC:
+        return "MAX_VEC";
+    case IrCmd::FLOOR_VEC:
+        return "FLOOR_VEC";
+    case IrCmd::CEIL_VEC:
+        return "CEIL_VEC";
+    case IrCmd::ABS_VEC:
+        return "ABS_VEC";
     case IrCmd::DOT_VEC:
         return "DOT_VEC";
     case IrCmd::EXTRACT_VEC:
@@ -281,8 +291,6 @@ const char* getCmdName(IrCmd cmd)
         return "FLOAT_TO_NUM";
     case IrCmd::NUM_TO_FLOAT:
         return "NUM_TO_FLOAT";
-    case IrCmd::NUM_TO_VEC_DEPRECATED:
-        return "NUM_TO_VEC";
     case IrCmd::FLOAT_TO_VEC:
         return "FLOAT_TO_VEC";
     case IrCmd::TAG_VECTOR:
@@ -391,6 +399,10 @@ const char* getCmdName(IrCmd cmd)
         return "FALLBACK_FORGPREP";
     case IrCmd::SUBSTITUTE:
         return "SUBSTITUTE";
+    case IrCmd::MARK_USED:
+        return "MARK_USED";
+    case IrCmd::MARK_DEAD:
+        return "MARK_DEAD";
     case IrCmd::BITAND_UINT:
         return "BITAND_UINT";
     case IrCmd::BITXOR_UINT:

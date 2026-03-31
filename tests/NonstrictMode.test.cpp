@@ -14,6 +14,7 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("NonstrictModeTests");
 
@@ -320,7 +321,7 @@ TEST_CASE_FIXTURE(Fixture, "returning_too_many_values")
 TEST_CASE_FIXTURE(Fixture, "standalone_constraint_solving_incomplete_is_hidden_nonstrict")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauMagicTypes, true},
         // This debug flag is normally on, but we turn it off as we're testing
         // the exact behavior it enables.
@@ -338,7 +339,7 @@ TEST_CASE_FIXTURE(Fixture, "standalone_constraint_solving_incomplete_is_hidden_n
 TEST_CASE_FIXTURE(BuiltinsFixture, "non_standalone_constraint_solving_incomplete_is_hidden_nonstrict")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauMagicTypes, true},
     };
 

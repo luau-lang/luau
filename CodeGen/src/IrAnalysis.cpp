@@ -13,8 +13,6 @@
 
 #include <stddef.h>
 
-LUAU_FASTFLAG(LuauCodegenChainLink)
-
 namespace Luau
 {
 namespace CodeGen
@@ -117,10 +115,8 @@ uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t s
     return targetInst.lastUse;
 }
 
-std::pair<uint32_t, uint32_t> getLiveInOutValueCount_NEW(IrFunction& function, IrBlock& start, bool visitChain)
+std::pair<uint32_t, uint32_t> getLiveInOutValueCount(IrFunction& function, IrBlock& start, bool visitChain)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenChainLink);
-
     // TODO: the function is not called often, but having a small vector would help here
     std::vector<uint32_t> blocks;
 
@@ -180,54 +176,14 @@ std::pair<uint32_t, uint32_t> getLiveInOutValueCount_NEW(IrFunction& function, I
     return std::make_pair(liveIns, liveOuts);
 }
 
-std::pair<uint32_t, uint32_t> getLiveInOutValueCount_DEPRECATED(IrFunction& function, IrBlock& block)
-{
-    CODEGEN_ASSERT(!FFlag::LuauCodegenChainLink);
-
-    uint32_t liveIns = 0;
-    uint32_t liveOuts = 0;
-
-    auto checkOp = [&](IrOp op)
-    {
-        if (op.kind == IrOpKind::Inst)
-        {
-            if (op.index >= block.start && op.index <= block.finish)
-                liveOuts--;
-            else
-                liveIns++;
-        }
-    };
-
-    for (uint32_t instIdx = block.start; instIdx <= block.finish; instIdx++)
-    {
-        IrInst& inst = function.instructions[instIdx];
-
-        if (isPseudo(inst.cmd))
-            continue;
-
-        liveOuts += inst.useCount;
-
-        for (IrOp& op : inst.ops)
-            checkOp(op);
-    }
-
-    return std::make_pair(liveIns, liveOuts);
-}
-
 uint32_t getLiveInValueCount(IrFunction& function, IrBlock& block)
 {
-    if (FFlag::LuauCodegenChainLink)
-        return getLiveInOutValueCount_NEW(function, block, false).first;
-    else
-        return getLiveInOutValueCount_DEPRECATED(function, block).first;
+    return getLiveInOutValueCount(function, block, false).first;
 }
 
 uint32_t getLiveOutValueCount(IrFunction& function, IrBlock& block)
 {
-    if (FFlag::LuauCodegenChainLink)
-        return getLiveInOutValueCount_NEW(function, block, false).second;
-    else
-        return getLiveInOutValueCount_DEPRECATED(function, block).second;
+    return getLiveInOutValueCount(function, block, false).second;
 }
 
 void requireVariadicSequence(RegisterSet& sourceRs, const RegisterSet& defRs, uint8_t varargStart)

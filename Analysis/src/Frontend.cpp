@@ -40,9 +40,10 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
-LUAU_FASTFLAGVARIABLE(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
-LUAU_FASTFLAG(LuauStandaloneParseType)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+
+LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
 
 namespace Luau
 {
@@ -429,6 +430,19 @@ static TypeCheckLimits makeTypeCheckLimits(const FrontendOptions& options)
     return limits;
 }
 
+Frontend::Frontend(SolverMode mode, FileResolver* fileResolver, ConfigResolver* configResolver, FrontendOptions options)
+    : useNewLuauSolver(mode)
+    , builtinTypes(NotNull{&builtinTypes_})
+    , fileResolver(fileResolver)
+    , moduleResolver(this)
+    , moduleResolverForAutocomplete(this)
+    , globals(builtinTypes, getLuauSolverMode())
+    , globalsForAutocomplete(builtinTypes, getLuauSolverMode())
+    , configResolver(configResolver)
+    , options(std::move(options))
+{
+}
+
 Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options)
     : useNewLuauSolver(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old)
     , builtinTypes(NotNull{&builtinTypes_})
@@ -449,12 +463,7 @@ void Frontend::setLuauSolverMode(SolverMode mode)
 
 SolverMode Frontend::getLuauSolverMode() const
 {
-    if (FFlag::LuauUseWorkspacePropToChooseSolver)
-        return useNewLuauSolver.load();
-    else if (FFlag::LuauSolverV2)
-        return SolverMode::New;
-    else
-        return SolverMode::Old;
+    return useNewLuauSolver.load();
 }
 
 void Frontend::parse(const ModuleName& name)
@@ -1620,15 +1629,32 @@ ModulePtr check(
         !FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete)
         module->errors.clear();
 
-    ExpectedTypeVisitor etv{
-        NotNull{&module->astTypes},
-        NotNull{&module->astExpectedTypes},
-        NotNull{&module->astResolvedTypes},
-        NotNull{&module->internalTypes},
-        builtinTypes,
-        NotNull{parentScope.get()}
-    };
-    sourceModule.root->visit(&etv);
+    if (FFlag::LuauOverloadGetsInstantiated)
+    {
+        ExpectedTypeVisitor etv{
+            NotNull{&module->astTypes},
+            NotNull{&module->astExpectedTypes},
+            NotNull{&module->astResolvedTypes},
+            NotNull{&module->astOverloadResolvedTypes},
+            NotNull{&module->internalTypes},
+            builtinTypes,
+            NotNull{parentScope.get()}
+        };
+        sourceModule.root->visit(&etv);
+    }
+    else
+    {
+
+        ExpectedTypeVisitor etv{
+            NotNull{&module->astTypes},
+            NotNull{&module->astExpectedTypes},
+            NotNull{&module->astResolvedTypes},
+            NotNull{&module->internalTypes},
+            builtinTypes,
+            NotNull{parentScope.get()}
+        };
+        sourceModule.root->visit(&etv);
+    }
 
     // NOTE: This used to be done prior to cloning the public interface, but
     // we now replace "internal" types with `*error-type*`.
@@ -1664,10 +1690,7 @@ ModulePtr check(
 
 
     unfreeze(module->interfaceTypes);
-    if (FFlag::LuauUseWorkspacePropToChooseSolver)
-        module->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::New);
-    else
-        module->clonePublicInterface_DEPRECATED(builtinTypes, *iceHandler);
+    module->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::New);
 
     // It would be nice if we could freeze the arenas before doing type
     // checking, but we'll have to do some work to get there.

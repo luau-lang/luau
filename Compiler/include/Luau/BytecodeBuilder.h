@@ -39,7 +39,11 @@ public:
         static const unsigned int kMaxLength = 32;
 
         int32_t keys[kMaxLength];
+        // constants are indices that correspond to the proto constant table
+        // if a key does not have an associated constant to fill in, it has a sentinel value of -1
+        int32_t constants[kMaxLength];
         unsigned int length = 0;
+        bool hasConstants = false;
 
         bool operator==(const TableShape& other) const;
     };
@@ -106,6 +110,7 @@ public:
         Dump_Locals = 1 << 3,
         Dump_Remarks = 1 << 4,
         Dump_Types = 1 << 5,
+        Dump_Constants = 1 << 6,
     };
 
     void setDumpFlags(uint32_t flags)

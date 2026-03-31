@@ -11,10 +11,8 @@ struct FileNavigationContext : Luau::Require::NavigationContext
 
     FileNavigationContext(std::string requirerPath);
 
-    std::string getRequirerIdentifier() const override;
-
     // Navigation interface
-    NavigateResult reset(const std::string& identifier) override;
+    NavigateResult resetToRequirer() override;
     NavigateResult jumpToAlias(const std::string& path) override;
 
     NavigateResult toParent() override;

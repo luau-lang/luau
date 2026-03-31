@@ -2,17 +2,20 @@
 #include "ConstantFolding.h"
 
 #include "BuiltinFolding.h"
+#include "Luau/Bytecode.h"
 #include "Luau/Lexer.h"
 
 #include <vector>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
+LUAU_FASTFLAGVARIABLE(LuauCompileFoldStringLimit)
 
 namespace Luau
 {
 namespace Compile
 {
+
+constexpr size_t kConstantFoldStringLimit = 4096;
 
 static bool constantsEqual(const Constant& la, const Constant& ra)
 {
@@ -286,7 +289,8 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         break;
 
     case AstExprBinary::Concat:
-        if (la.type == Constant::Type_String && ra.type == Constant::Type_String)
+        if (la.type == Constant::Type_String && ra.type == Constant::Type_String &&
+            (!FFlag::LuauCompileFoldStringLimit || la.stringLength + ra.stringLength <= kConstantFoldStringLimit))
         {
             result.type = Constant::Type_String;
             result.stringLength = la.stringLength + ra.stringLength;
@@ -387,8 +391,12 @@ static void foldInterpString(Constant& result, AstExprInterpString* expr, DenseH
             resultLength += c->stringLength;
         }
     }
+
+    if (FFlag::LuauCompileFoldStringLimit && resultLength > kConstantFoldStringLimit)
+        return;
+
     result.type = Constant::Type_String;
-    result.stringLength = resultLength;
+    result.stringLength = unsigned(resultLength);
 
     if (resultLength == 0)
     {
@@ -410,7 +418,7 @@ static void foldInterpString(Constant& result, AstExprInterpString* expr, DenseH
         }
     }
     result.type = Constant::Type_String;
-    result.stringLength = resultLength;
+    result.stringLength = unsigned(resultLength);
     AstName name = stringTable.getOrAdd(tmp.c_str(), resultLength);
     result.valueString = name.value;
 }
@@ -499,7 +507,9 @@ struct ConstantVisitor : AstVisitor
         {
             analyze(expr->func);
 
-            if (const int* bfid = builtins ? builtins->find(expr) : nullptr)
+            const int* bfid = builtins ? builtins->find(expr) : nullptr;
+
+            if (bfid && *bfid != LBF_NONE)
             {
                 // since recursive calls to analyze() may reuse the vector we need to be careful and preserve existing contents
                 size_t offset = builtinArgs.size();
@@ -533,9 +543,30 @@ struct ConstantVisitor : AstVisitor
         }
         else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
         {
-            analyze(expr->expr);
+            Constant value = analyze(expr->expr);
 
-            if (foldLibraryK)
+            if (value.type == Constant::Type_Vector)
+            {
+                if (expr->index == "x" || expr->index == "X")
+                {
+                    result.type = Constant::Type_Number;
+                    result.valueNumber = value.valueVector[0];
+                }
+                else if (expr->index == "y" || expr->index == "Y")
+                {
+                    result.type = Constant::Type_Number;
+                    result.valueNumber = value.valueVector[1];
+                }
+                else if (expr->index == "z" || expr->index == "Z")
+                {
+                    result.type = Constant::Type_Number;
+                    result.valueNumber = value.valueVector[2];
+                }
+
+                // Do not handle 'w' component because it isn't known if the runtime will be configured in 3-wide or 4-wide mode
+                // In 3-wide, access to 'w' will call unspecified metamethod or fail
+            }
+            else if (foldLibraryK)
             {
                 if (AstExprGlobal* eg = expr->expr->as<AstExprGlobal>())
                 {
@@ -613,7 +644,6 @@ struct ConstantVisitor : AstVisitor
         }
         else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
         {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
             result = analyze(expr->expr);
         }
         else

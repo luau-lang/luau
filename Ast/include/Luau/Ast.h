@@ -70,15 +70,25 @@ struct AstLocal
     AstLocal* shadow;
     size_t functionDepth;
     size_t loopDepth;
+    bool isConst;
 
     AstType* annotation;
 
-    AstLocal(const AstName& name, const Location& location, AstLocal* shadow, size_t functionDepth, size_t loopDepth, AstType* annotation)
+    AstLocal(
+        const AstName& name,
+        const Location& location,
+        AstLocal* shadow,
+        size_t functionDepth,
+        size_t loopDepth,
+        AstType* annotation,
+        bool isConst = false
+    )
         : name(name)
         , location(location)
         , shadow(shadow)
         , functionDepth(functionDepth)
         , loopDepth(loopDepth)
+        , isConst(isConst)
         , annotation(annotation)
     {
     }
@@ -202,6 +212,7 @@ public:
         Checked,
         Native,
         Deprecated,
+        DebugNoinline,
         Unknown
     };
 

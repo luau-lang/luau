@@ -14,7 +14,9 @@
 
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState2)
-LUAU_FASTFLAG(LuauCodegenChainLink)
+LUAU_FASTFLAGVARIABLE(LuauCodegenIsNanAndDirectCompare)
+LUAU_FASTFLAGVARIABLE(LuauCodegenSafeEnvPreserve)
+LUAU_FASTFLAG(LuauCodegenCounterSupport)
 
 namespace Luau
 {
@@ -385,6 +387,16 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstJumpIf(*this, pc, i, /* not_ */ true);
         break;
     case LOP_JUMPIFEQ:
+        if (FFlag::LuauCodegenIsNanAndDirectCompare && isDirectCompare(function.proto, pc, i))
+        {
+            translateInstJumpIfEqShortcut(*this, pc, i, /* not_ */ false);
+
+            // We complete the current instruction and the first LOADB, but we do not skip the second LOADB
+            // This is because the second LOADB was a jump target so there is a block prepared to handle it
+            cmdSkipTarget = i + 3;
+            break;
+        }
+
         translateInstJumpIfEq(*this, pc, i, /* not_ */ false);
         break;
     case LOP_JUMPIFLE:
@@ -394,6 +406,16 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstJumpIfCond(*this, pc, i, IrCondition::Less);
         break;
     case LOP_JUMPIFNOTEQ:
+        if (FFlag::LuauCodegenIsNanAndDirectCompare && isDirectCompare(function.proto, pc, i))
+        {
+            translateInstJumpIfEqShortcut(*this, pc, i, /* not_ */ true);
+
+            // We complete the current instruction and the first LOADB, but we do not skip the second LOADB
+            // This is because the second LOADB was a jump target so there is a block prepared to handle it
+            cmdSkipTarget = i + 3;
+            break;
+        }
+
         translateInstJumpIfEq(*this, pc, i, /* not_ */ true);
         break;
     case LOP_JUMPIFNOTLE:
@@ -570,7 +592,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
 
             IrOp loopRepeat = blockAtInst(i + 1 + LUAU_INSN_D(*pc));
             IrOp loopExit = blockAtInst(i + getOpLength(LuauOpcode(LOP_FORGLOOP)));
-            IrOp fallback = block(IrBlockKind::Fallback);
+            IrOp fallback = FFlag::LuauCodegenCounterSupport ? fallbackBlock(i) : block(IrBlockKind::Fallback);
 
             inst(IrCmd::INTERRUPT, constUint(i));
             loadAndCheckTag(vmReg(ra), LUA_TNIL, fallback);
@@ -702,10 +724,8 @@ void IrBuilder::checkSafeEnv(int pcpos)
     inst(IrCmd::CHECK_SAFE_ENV, vmExit(pcpos));
 }
 
-void IrBuilder::clone_NEW(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator)
+void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenChainLink);
-
     DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
 
     auto redirect = [&instRedir](IrOp& op)
@@ -732,6 +752,16 @@ void IrBuilder::clone_NEW(std::vector<uint32_t> sourceIdxs, bool removeCurrentTe
             inTerminatedBlock = false;
         }
 
+        if (FFlag::LuauCodegenSafeEnvPreserve)
+        {
+            // Implicit safe environment checks become materialized as real ones
+            if ((source.flags & kBlockFlagSafeEnvCheck) != 0)
+            {
+                CODEGEN_ASSERT(source.startpc != kBlockNoStartPc);
+                inst(IrCmd::CHECK_SAFE_ENV, vmExit(source.startpc));
+            }
+        }
+
         for (uint32_t index = source.start; index <= source.finish; index++)
         {
             CODEGEN_ASSERT(index < function.instructions.size());
@@ -756,58 +786,6 @@ void IrBuilder::clone_NEW(std::vector<uint32_t> sourceIdxs, bool removeCurrentTe
             // Reconstruct the fresh clone
             inst(clone.cmd, clone.ops);
         }
-    }
-}
-
-void IrBuilder::clone_DEPRECATED(const IrBlock& source, bool removeCurrentTerminator)
-{
-    CODEGEN_ASSERT(!FFlag::LuauCodegenChainLink);
-
-    DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
-
-    auto redirect = [&instRedir](IrOp& op)
-    {
-        if (op.kind == IrOpKind::Inst)
-        {
-            if (const uint32_t* newIndex = instRedir.find(op.index))
-                op.index = *newIndex;
-            else
-                CODEGEN_ASSERT(!"Values can only be used if they are defined in the same block");
-        }
-    };
-
-    if (removeCurrentTerminator && inTerminatedBlock)
-    {
-        IrBlock& active = function.blocks[activeBlockIdx];
-        IrInst& term = function.instructions[active.finish];
-
-        kill(function, term);
-        inTerminatedBlock = false;
-    }
-
-    for (uint32_t index = source.start; index <= source.finish; index++)
-    {
-        CODEGEN_ASSERT(index < function.instructions.size());
-        IrInst clone = function.instructions[index];
-
-        // Skip pseudo instructions to make clone more compact, but validate that they have no users
-        if (isPseudo(clone.cmd))
-        {
-            CODEGEN_ASSERT(clone.useCount == 0);
-            continue;
-        }
-
-        for (auto& op : clone.ops)
-            redirect(op);
-
-        for (auto& op : clone.ops)
-            addUse(function, op);
-
-        // Instructions that referenced the original will have to be adjusted to use the clone
-        instRedir[index] = uint32_t(function.instructions.size());
-
-        // Reconstruct the fresh clone
-        inst(clone.cmd, clone.ops);
     }
 }
 
@@ -967,6 +945,9 @@ IrOp IrBuilder::inst(IrCmd cmd, const IrOps& ops)
 
 IrOp IrBuilder::block(IrBlockKind kind)
 {
+    if (FFlag::LuauCodegenCounterSupport)
+        CODEGEN_ASSERT(kind != IrBlockKind::Fallback && "fallbackBlock must be used for fallback block creation");
+
     if (kind == IrBlockKind::Internal && activeFastcallFallback)
         kind = IrBlockKind::Fallback;
 
@@ -982,7 +963,29 @@ IrOp IrBuilder::blockAtInst(uint32_t index)
     if (blockIndex != kNoAssociatedBlockIndex)
         return IrOp{IrOpKind::Block, blockIndex};
 
-    return block(IrBlockKind::Internal);
+    if (FFlag::LuauCodegenCounterSupport)
+    {
+        IrOp result = block(IrBlockKind::Internal);
+        function.blockOp(result).startpc = index;
+
+        return result;
+    }
+    else
+    {
+        return block(IrBlockKind::Internal);
+    }
+}
+
+IrOp IrBuilder::fallbackBlock(uint32_t pcpos)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenCounterSupport);
+
+    uint32_t index = uint32_t(function.blocks.size());
+    function.blocks.push_back(IrBlock{IrBlockKind::Fallback});
+    CODEGEN_ASSERT(index != 0 && "IR cannot start with a fallback block");
+
+    function.blocks.back().startpc = pcpos;
+    return IrOp{IrOpKind::Block, index};
 }
 
 IrOp IrBuilder::vmReg(uint8_t index)

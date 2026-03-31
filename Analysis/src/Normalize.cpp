@@ -19,8 +19,9 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
+
+LUAU_FASTFLAGVARIABLE(LuauExternTypesNormalizeWithShapes)
 
 namespace Luau
 {
@@ -141,6 +142,8 @@ void NormalizedExternType::resetToNever()
 {
     ordering.clear();
     externTypes.clear();
+    if (FFlag::LuauExternTypesNormalizeWithShapes)
+        shapeExtensions.clear();
 }
 
 bool NormalizedExternType::isNever() const
@@ -187,11 +190,11 @@ bool NormalizedType::isUnknown() const
     bool hasAllPrimitives = isPrim(booleans, PrimitiveType::Boolean) && isPrim(nils, PrimitiveType::NilType) && isNumber(numbers) &&
                             strings.isString() && isThread(threads) && isBuffer(buffers);
 
-    // Check is class
+    // Check is extern type
     bool isTopExternType = false;
     for (const auto& [t, disj] : externTypes.externTypes)
     {
-        if (auto ct = get<ExternType>(t))
+        if (get<ExternType>(t))
         {
             if (t == builtinTypes->externType && disj.empty())
             {
@@ -1292,6 +1295,12 @@ void Normalizer::unionExternTypes(NormalizedExternType& heres, const NormalizedE
         if (insert)
         {
             heres.pushPair(thereTy, thereNegations);
+
+            if (FFlag::LuauExternTypesNormalizeWithShapes)
+            {
+                for (TypeId shape : theres.shapeExtensions)
+                    heres.shapeExtensions.insert(shape);
+            }
         }
     }
 }
@@ -1690,7 +1699,7 @@ bool Normalizer::withinResourceLimits()
 
 bool Normalizer::useNewLuauSolver() const
 {
-    return FFlag::LuauUseWorkspacePropToChooseSolver ? (solverMode == SolverMode::New) : FFlag::LuauSolverV2;
+    return solverMode == SolverMode::New;
 }
 
 NormalizationResult Normalizer::intersectNormalWithNegationTy(TypeId toNegate, NormalizedType& intersect)
@@ -2334,6 +2343,82 @@ void Normalizer::intersectExternTypesWithExternType(NormalizedExternType& heres,
             heres.externTypes.erase(hereTy);
         }
     }
+}
+
+void Normalizer::intersectExternTypesWithShape(NormalizedExternType& heres, TypeId there)
+{
+    LUAU_ASSERT(FFlag::LuauExternTypesNormalizeWithShapes);
+
+    consumeFuel();
+
+    // in this case, we want to take the foreign function types we have here, and we want to intersect a table type into them.
+    // the idea here is that table types function as structural definitions for the shape of some data type.
+
+    auto shape = get<TableType>(there);
+
+    // if the type we're intersecting with isn't a table type, it can't be used to describe a shape.
+    if (!shape)
+        return;
+
+    // we need to check that every property in the shape is compatible with the main extern type, `hereTy`.
+    // if any intersection of their property types is uninhabited, then the whole thing is uninhabited.
+    // but if the type is inhabited, we'll want to add it to the shapes on the externtype.
+
+    bool isCoincident = true;
+    for (const auto& [name, shapeProp] : shape->props)
+    {
+        for (auto it = heres.ordering.begin(); it != heres.ordering.end(); it++)
+        {
+            // TODO: do we need to take into account any of the negations here as well for the compatibility check?
+
+            TypeId hereTy = *it;
+            ExternType* externTy = getMutable<ExternType>(hereTy);
+
+            auto found = externTy->props.find(name);
+            // if the property isn't present, we can move onto the next property since it's a fine extension.
+            if (found == externTy->props.end())
+            {
+                isCoincident = false;
+                continue;
+            }
+
+            // if the property is present, we need to check that the two properties are compatible.
+            // if they're not, then the whole thing is `never`, as with other incompatible intersections.
+
+            Property prop = found->second;
+
+            // if they both have read properties, we have to check that the intersection of those read properties is inhabited
+            if (prop.readTy && shapeProp.readTy)
+            {
+                // if the intersection is uninhabited, then we can reset to `never` and we're done.
+                if (isIntersectionInhabited(*prop.readTy, *shapeProp.readTy) != NormalizationResult::True)
+                {
+                    heres.resetToNever();
+                    return;
+                }
+
+                if (relate(*prop.readTy, *shapeProp.readTy) != Relation::Coincident)
+                    isCoincident = false;
+            }
+
+            // if they both have write properties, we also want to check if they're coincident.
+            // unlike with read types, we don't have to check that the intersection is inhabited because
+            // even if the types don't overlap, something like `{ write prop: string } & { write prop: number }`
+            // behaviorally suggests that we could write `string` or `number` into `prop`.
+            if (prop.writeTy && shapeProp.writeTy)
+            {
+                // if the types aren't coincident, then the whole shapes can't be coincident
+                if (relate(*prop.writeTy, *shapeProp.writeTy) != Relation::Coincident)
+                    isCoincident = false;
+            }
+        }
+    }
+
+    // if we've made it here, then we should've validated that the intersection between the shape and the extern type is legal, so we can add it to
+    // the collection of shapes.
+    // TODO: we may want to look into some more deduplication here.
+    if (!isCoincident)
+        heres.shapeExtensions.insert(there);
 }
 
 void Normalizer::intersectStrings(NormalizedStringType& here, const NormalizedStringType& there)
@@ -3194,7 +3279,19 @@ NormalizationResult Normalizer::intersectNormalWithTy(
             NormalizedExternType externTypes = std::move(here.externTypes);
             TypeIds tables = std::move(here.tables);
             clearNormal(here);
-            intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
+
+            if (FFlag::LuauExternTypesNormalizeWithShapes)
+            {
+                if (externTypes.isNever())
+                    intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
+                else
+                    intersectExternTypesWithShape(externTypes, there);
+            }
+            else
+            {
+                intersectTablesWithTable(tables, there, seenTablePropPairs, seenSetTypes);
+            }
+
             here.tables = std::move(tables);
             here.externTypes = std::move(externTypes);
         }
@@ -3402,7 +3499,7 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
         {
             const TypeIds& normNegations = norm.externTypes.externTypes.at(normTy);
 
-            if (normNegations.empty())
+            if (normNegations.empty() && (!FFlag::LuauExternTypesNormalizeWithShapes || norm.externTypes.shapeExtensions.empty()))
             {
                 parts.push_back(normTy);
             }
@@ -3415,6 +3512,14 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
                 for (TypeId negation : normNegations)
                 {
                     intersection.push_back(arena->addType(NegationType{negation}));
+                }
+
+                if (FFlag::LuauExternTypesNormalizeWithShapes)
+                {
+                    for (TypeId shape : norm.externTypes.shapeExtensions)
+                    {
+                        intersection.push_back(shape);
+                    }
                 }
 
                 parts.push_back(arena->addType(IntersectionType{std::move(intersection)}));
@@ -3540,8 +3645,6 @@ bool isSubtype(
         NotNull{&ice}, NotNull{&limits}
     }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
-    if (FFlag::LuauUseWorkspacePropToChooseSolver)
-    {
         Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, solverMode};
         if (solverMode == SolverMode::New)
         {
@@ -3556,24 +3659,6 @@ bool isSubtype(
             u.tryUnify(subTy, superTy);
             return !u.failure;
         }
-    }
-    else
-    {
-        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
-        if (FFlag::LuauSolverV2)
-        {
-            Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
-
-            return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
-        }
-        else
-        {
-            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
-
-            u.tryUnify(subTy, superTy);
-            return !u.failure;
-        }
-    }
 }
 
 bool isSubtype(
@@ -3592,8 +3677,6 @@ bool isSubtype(
         NotNull{&ice}, NotNull{&limits}
     }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
-    if (FFlag::LuauUseWorkspacePropToChooseSolver)
-    {
         Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, solverMode};
         if (solverMode == SolverMode::New)
         {
@@ -3608,24 +3691,6 @@ bool isSubtype(
             u.tryUnify(subPack, superPack);
             return !u.failure;
         }
-    }
-    else
-    {
-        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
-        if (FFlag::LuauSolverV2)
-        {
-            Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
-
-            return subtyping.isSubtype(subPack, superPack, scope, {}).isSubtype;
-        }
-        else
-        {
-            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
-
-            u.tryUnify(subPack, superPack);
-            return !u.failure;
-        }
-    }
 }
 
 } // namespace Luau

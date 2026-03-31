@@ -3,8 +3,6 @@
 #include "Luau/Cst.h"
 #include "Luau/Common.h"
 
-LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
-
 namespace Luau
 {
 
@@ -89,14 +87,6 @@ CstStatDo::CstStatDo(Position statsStartPosition, Position endPosition)
     , statsStartPosition(statsStartPosition)
     , endPosition(endPosition)
 {
-    LUAU_ASSERT(FFlag::LuauCstStatDoWithStatsStart);
-}
-
-CstStatDo_DEPRECATED::CstStatDo_DEPRECATED(Position endPosition)
-    : CstNode(CstClassIndex())
-    , endPosition(endPosition)
-{
-    LUAU_ASSERT(!FFlag::LuauCstStatDoWithStatsStart);
 }
 
 CstStatRepeat::CstStatRepeat(Position untilPosition)

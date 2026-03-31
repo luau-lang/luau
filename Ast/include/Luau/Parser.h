@@ -169,7 +169,8 @@ private:
 
     // local function Name funcbody |
     // local namelist [`=' explist]
-    AstStat* parseLocal(const AstArray<AstAttr*>& attributes);
+    AstStat* parseLocal_DEPRECATED(const AstArray<AstAttr*>& attributes);
+    AstStat* parseLocal(const Location start, const Position keywordPosition, const AstArray<AstAttr*>& attributes, bool isConst);
 
     // return [explist]
     AstStat* parseReturn();
@@ -203,14 +204,15 @@ private:
         const Lexeme& matchFunction,
         const AstName& debugname,
         const Name* localName,
-        const AstArray<AstAttr*>& attributes
+        const AstArray<AstAttr*>& attributes,
+        const bool isConst = false
     );
 
     // explist ::= {exp `,'} exp
     void parseExprList(TempVector<AstExpr*>& result, TempVector<Position>* commaPositions = nullptr);
 
     // binding ::= Name [`:` Type]
-    Binding parseBinding();
+    Binding parseBinding(bool isConst = false);
     AstArray<Position> extractAnnotationColonPositions(const TempVector<Binding>& bindings);
 
     // bindinglist ::= (binding | `...') {`,' bindinglist}
@@ -220,7 +222,8 @@ private:
         bool allowDot3 = false,
         AstArray<Position>* commaPositions = nullptr,
         Position* initialCommaPosition = nullptr,
-        Position* varargAnnotationColonPosition = nullptr
+        Position* varargAnnotationColonPosition = nullptr,
+        bool isConst = false
     );
 
     AstType* parseOptionalType();
@@ -476,11 +479,13 @@ private:
         Name name;
         AstType* annotation;
         Position colonPosition;
+        bool isConst;
 
-        explicit Binding(const Name& name, AstType* annotation = nullptr, Position colonPosition = {0, 0})
+        explicit Binding(const Name& name, AstType* annotation = nullptr, Position colonPosition = {0, 0}, bool isConst = false)
             : name(name)
             , annotation(annotation)
             , colonPosition(colonPosition)
+            , isConst(isConst)
         {
         }
     };

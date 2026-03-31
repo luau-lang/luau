@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Bytecode.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
 #include "Luau/RegisterX64.h"
@@ -24,14 +25,14 @@
 
 struct Proto;
 
-LUAU_FASTFLAG(LuauCodegenChainedSpills)
-
 namespace Luau
 {
 namespace CodeGen
 {
 
 struct LoweringStats;
+
+constexpr uint8_t kUnknownTag = 0xff;
 
 // IR extensions to LuauBuiltinFunction enum (these only exist inside IR, and start from 256 to avoid collisions)
 enum
@@ -264,22 +265,40 @@ enum class IrCmd : uint8_t
     SELECT_IF_TRUTHY,
 
     // Add/Sub/Mul/Div/Idiv two vectors
-    // A, B: TValue
+    // A, B: TValue (vector)
     ADD_VEC,
     SUB_VEC,
     MUL_VEC,
     DIV_VEC,
     IDIV_VEC,
     // Lanewise A * B + C
-    // A, B, C: TValue
+    // A, B, C: TValue (vector)
     MULADD_VEC,
 
     // Negate a vector
-    // A: TValue
+    // A: TValue (vector)
     UNM_VEC,
 
+    // Get the minimum/maximum of two vector elements
+    // If one of the element values is NaN, 'B' is returned as the result
+    // A, B: TValue (vector)
+    MIN_VEC,
+    MAX_VEC,
+
+    // Round vector elements to negative infinity
+    // A: TValue (vector)
+    FLOOR_VEC,
+
+    // Round vector elements to positive infinity
+    // A: TValue (vector)
+    CEIL_VEC,
+
+    // Get absolute value of vector elements
+    // A: TValue (vector)
+    ABS_VEC,
+
     // Compute dot product between two vectors as a float number (use FLOAT_TO_NUM to convert to double)
-    // A, B: TValue
+    // A, B: TValue (vector)
     DOT_VEC,
 
     // Extract a component of a vector (use FLOAT_TO_NUM to convert to double)
@@ -443,10 +462,6 @@ enum class IrCmd : uint8_t
     // Converts a double number to a float
     // A: double
     NUM_TO_FLOAT,
-
-    // Converts a double number to a vector with the value in X/Y/Z
-    // A: double
-    NUM_TO_VEC_DEPRECATED,
 
     // Converts a float number to a vector with the value in X/Y/Z (use NUM_TO_FLOAT to convert from double)
     // A: float
@@ -780,8 +795,18 @@ enum class IrCmd : uint8_t
     FALLBACK_FORGPREP,
 
     // Instruction that passes value through, it is produced by constant folding and users substitute it with the value
-    SUBSTITUTE,
     // A: operand of any type
+    SUBSTITUTE,
+
+    // Pseudo instruction to mark VM registers as implicitly used at the location
+    // A: Rn (start)
+    // B: int (count, -1 to mark all registers after start)
+    MARK_USED,
+
+    // Pseudo instruction to mark VM registers as dead at the location
+    // A: Rn (start)
+    // B: int (count, -1 to mark all registers after start)
+    MARK_DEAD,
 
     // Performs bitwise and/xor/or on two unsigned integers
     // A, B: int
@@ -1024,7 +1049,7 @@ struct IrInst
     IrCmd cmd;
 
     // Operands
-    // All frequiently used instructions use only A-D slots.
+    // All frequently used instructions use only A-F slots.
     IrOps ops;
 
     uint32_t lastUse = 0;
@@ -1051,6 +1076,28 @@ inline IrOp& getOp(IrInst* inst, uint32_t idx)
 {
     return getOp(*inst, idx);
 }
+
+inline bool hasOp(IrInst& inst, uint32_t idx)
+{
+    return idx < inst.ops.size();
+}
+
+// TODO: once we update kind checks to not use getOp, it will no longer cause a resize and second part can be removed
+#define HAS_OP_A(inst) (0 < (inst).ops.size() && (inst).ops[0].kind != IrOpKind::None)
+#define HAS_OP_B(inst) (1 < (inst).ops.size() && (inst).ops[1].kind != IrOpKind::None)
+#define HAS_OP_C(inst) (2 < (inst).ops.size() && (inst).ops[2].kind != IrOpKind::None)
+#define HAS_OP_D(inst) (3 < (inst).ops.size() && (inst).ops[3].kind != IrOpKind::None)
+#define HAS_OP_E(inst) (4 < (inst).ops.size() && (inst).ops[4].kind != IrOpKind::None)
+#define HAS_OP_F(inst) (5 < (inst).ops.size() && (inst).ops[5].kind != IrOpKind::None)
+#define HAS_OP_G(inst) (6 < (inst).ops.size() && (inst).ops[6].kind != IrOpKind::None)
+
+#define OPT_OP_A(inst) (0 < (inst).ops.size() && (inst).ops[0].kind != IrOpKind::None ? (inst).ops[0] : IrOp{})
+#define OPT_OP_B(inst) (1 < (inst).ops.size() && (inst).ops[1].kind != IrOpKind::None ? (inst).ops[1] : IrOp{})
+#define OPT_OP_C(inst) (2 < (inst).ops.size() && (inst).ops[2].kind != IrOpKind::None ? (inst).ops[2] : IrOp{})
+#define OPT_OP_D(inst) (3 < (inst).ops.size() && (inst).ops[3].kind != IrOpKind::None ? (inst).ops[3] : IrOp{})
+#define OPT_OP_E(inst) (4 < (inst).ops.size() && (inst).ops[4].kind != IrOpKind::None ? (inst).ops[4] : IrOp{})
+#define OPT_OP_F(inst) (5 < (inst).ops.size() && (inst).ops[5].kind != IrOpKind::None ? (inst).ops[5] : IrOp{})
+#define OPT_OP_G(inst) (6 < (inst).ops.size() && (inst).ops[6].kind != IrOpKind::None ? (inst).ops[6] : IrOp{})
 
 // When IrInst operands are used, current instruction index is often required to track lifetime
 inline constexpr uint32_t kInvalidInstIdx = ~0u;
@@ -1166,6 +1213,7 @@ struct IrBlock
     uint32_t chainkey = 0;
     uint32_t expectedNextBlock = ~0u;
 
+    // Bytecode PC position at which the block was generated
     uint32_t startpc = kBlockNoStartPc;
 
     Label label;
@@ -1232,9 +1280,10 @@ struct IrFunction
     uint32_t entryLocation = 0;
     uint32_t endLocation = 0;
 
+    std::vector<uint32_t> extraNativeData;
+
     // For each instruction, an operand that can be used to recompute the value
-    std::vector<IrOp> valueRestoreOps_DEPRECATED; // TODO: Remove with FFlagLuauCodegenChainedSpills
-    std::vector<ValueRestoreLocation> valueRestoreOps_NEW;
+    std::vector<ValueRestoreLocation> valueRestoreOps;
     std::vector<uint32_t> validRestoreOpBlocks;
 
     BytecodeTypeInfo bcOriginalTypeInfo; // Bytecode type information as loaded
@@ -1246,6 +1295,8 @@ struct IrFunction
     CfgInfo cfg;
 
     LoweringStats* stats = nullptr;
+
+    bool recordCounters = false; // Taken from CompilationOptions for easy access
 
     IrBlock& blockOp(IrOp op)
     {
@@ -1379,63 +1430,19 @@ struct IrFunction
         return uint32_t(&inst - instructions.data());
     }
 
-    void recordRestoreOp_DEPRECATED(uint32_t instIdx, IrOp location)
-    {
-        CODEGEN_ASSERT(!FFlag::LuauCodegenChainedSpills);
-
-        if (instIdx >= valueRestoreOps_DEPRECATED.size())
-            valueRestoreOps_DEPRECATED.resize(instIdx + 1);
-
-        valueRestoreOps_DEPRECATED[instIdx] = location;
-    }
-
-    IrOp findRestoreOp_DEPRECATED(uint32_t instIdx, bool limitToCurrentBlock) const
-    {
-        CODEGEN_ASSERT(!FFlag::LuauCodegenChainedSpills);
-
-        if (instIdx >= valueRestoreOps_DEPRECATED.size())
-            return {};
-
-        // When spilled, values can only reference restore operands in the current block chain
-        if (limitToCurrentBlock)
-        {
-            for (uint32_t blockIdx : validRestoreOpBlocks)
-            {
-                const IrBlock& block = blocks[blockIdx];
-
-                if (instIdx >= block.start && instIdx <= block.finish)
-                    return valueRestoreOps_DEPRECATED[instIdx];
-            }
-
-            return {};
-        }
-
-        return valueRestoreOps_DEPRECATED[instIdx];
-    }
-
-    IrOp findRestoreOp_DEPRECATED(const IrInst& inst, bool limitToCurrentBlock) const
-    {
-        CODEGEN_ASSERT(!FFlag::LuauCodegenChainedSpills);
-
-        return findRestoreOp_DEPRECATED(getInstIndex(inst), limitToCurrentBlock);
-    }
-
     void recordRestoreLocation(uint32_t instIdx, ValueRestoreLocation location)
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
         CODEGEN_ASSERT(location.op.kind == IrOpKind::None || location.op.kind == IrOpKind::VmReg || location.op.kind == IrOpKind::VmConst);
 
-        if (instIdx >= valueRestoreOps_NEW.size())
-            valueRestoreOps_NEW.resize(instIdx + 1);
+        if (instIdx >= valueRestoreOps.size())
+            valueRestoreOps.resize(instIdx + 1);
 
-        valueRestoreOps_NEW[instIdx] = location;
+        valueRestoreOps[instIdx] = location;
     }
 
     ValueRestoreLocation findRestoreLocation(uint32_t instIdx, bool limitToCurrentBlock) const
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
-
-        if (instIdx >= valueRestoreOps_NEW.size())
+        if (instIdx >= valueRestoreOps.size())
             return {};
 
         // When spilled, values can only reference restore operands in the current block chain
@@ -1446,26 +1453,22 @@ struct IrFunction
                 const IrBlock& block = blocks[blockIdx];
 
                 if (instIdx >= block.start && instIdx <= block.finish)
-                    return valueRestoreOps_NEW[instIdx];
+                    return valueRestoreOps[instIdx];
             }
 
             return {};
         }
 
-        return valueRestoreOps_NEW[instIdx];
+        return valueRestoreOps[instIdx];
     }
 
     ValueRestoreLocation findRestoreLocation(const IrInst& inst, bool limitToCurrentBlock) const
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
-
         return findRestoreLocation(getInstIndex(inst), limitToCurrentBlock);
     }
 
     bool hasRestoreLocation(const IrInst& inst, bool limitToCurrentBlock) const
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenChainedSpills);
-
         return findRestoreLocation(getInstIndex(inst), limitToCurrentBlock).op.kind != IrOpKind::None;
     }
 

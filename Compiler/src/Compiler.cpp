@@ -4,6 +4,8 @@
 #include "Luau/Parser.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Common.h"
+#include "Luau/InsertionOrderedMap.h"
+#include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
 
 #include "Builtins.h"
@@ -27,11 +29,13 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAGVARIABLE(LuauCompileCallCostModel)
-LUAU_FASTFLAGVARIABLE(LuauCompileNoInterpStorage)
-LUAU_FASTFLAGVARIABLE(LuauCompileInlineInitializers)
-LUAU_FASTFLAGVARIABLE(LuauCompileExtraTableHints)
+LUAU_FASTFLAGVARIABLE(LuauCompileDuptableConstantPack2)
+LUAU_FASTFLAGVARIABLE(LuauCompileVectorReveseMul)
+LUAU_FASTFLAGVARIABLE(LuauCompileTableIndexTemp)
+LUAU_FASTFLAGVARIABLE(LuauCompileVectorConstLimit)
+LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpWithZero)
+
+LUAU_FASTFLAG(DebugLuauNoInline)
 
 namespace Luau
 {
@@ -169,23 +173,7 @@ struct Compiler
 
     bool alwaysTerminates(AstStat* node)
     {
-        if (FFlag::LuauCompileCallCostModel)
-        {
-            return Compile::alwaysTerminates(constants, node);
-        }
-        else
-        {
-            if (AstStatBlock* stat = node->as<AstStatBlock>())
-                return stat->body.size > 0 && alwaysTerminates(stat->body.data[stat->body.size - 1]);
-            else if (node->is<AstStatReturn>())
-                return true;
-            else if (node->is<AstStatBreak>() || node->is<AstStatContinue>())
-                return true;
-            else if (AstStatIf* stat = node->as<AstStatIf>())
-                return stat->elsebody && alwaysTerminates(stat->thenbody) && alwaysTerminates(stat->elsebody);
-            else
-                return false;
-        }
+        return Compile::alwaysTerminates(constants, node);
     }
 
     void emitLoadK(uint8_t target, int32_t cid)
@@ -254,46 +242,28 @@ struct Compiler
 
         AstStatBlock* stat = func->body;
 
-        if (FFlag::LuauCompileCallCostModel)
+        bool terminatesEarly = false;
+
+        for (size_t i = 0; i < stat->body.size; ++i)
         {
-            bool terminatesEarly = false;
+            AstStat* bodyStat = stat->body.data[i];
+            compileStat(bodyStat);
 
-            for (size_t i = 0; i < stat->body.size; ++i)
+            if (alwaysTerminates(bodyStat))
             {
-                AstStat* bodyStat = stat->body.data[i];
-                compileStat(bodyStat);
-
-                if (alwaysTerminates(bodyStat))
-                {
-                    terminatesEarly = true;
-                    break;
-                }
-            }
-
-            // valid function bytecode must always end with RETURN
-            // we elide this if we're guaranteed to hit a RETURN statement regardless of the control flow
-            if (!terminatesEarly)
-            {
-                setDebugLineEnd(stat);
-                closeLocals(0);
-
-                bytecode.emitABC(LOP_RETURN, 0, 1, 0);
+                terminatesEarly = true;
+                break;
             }
         }
-        else
+
+        // valid function bytecode must always end with RETURN
+        // we elide this if we're guaranteed to hit a RETURN statement regardless of the control flow
+        if (!terminatesEarly)
         {
-            for (size_t i = 0; i < stat->body.size; ++i)
-                compileStat(stat->body.data[i]);
+            setDebugLineEnd(stat);
+            closeLocals(0);
 
-            // valid function bytecode must always end with RETURN
-            // we elide this if we're guaranteed to hit a RETURN statement regardless of the control flow
-            if (!alwaysTerminates(stat))
-            {
-                setDebugLineEnd(stat);
-                closeLocals(0);
-
-                bytecode.emitABC(LOP_RETURN, 0, 1, 0);
-            }
+            bytecode.emitABC(LOP_RETURN, 0, 1, 0);
         }
 
         // constant folding may remove some upvalue refs from bytecode, so this puts them back
@@ -354,7 +324,14 @@ struct Compiler
         // record information for inlining
         if (options.optimizationLevel >= 2 && !func->vararg && !func->self && !getfenvUsed && !setfenvUsed)
         {
-            f.canInline = true;
+            if (FFlag::DebugLuauNoInline && func->hasAttribute(AstAttr::Type::DebugNoinline))
+            {
+                f.canInline = false;
+            }
+            else
+            {
+                f.canInline = true;
+            }
             f.stackSize = stackSize;
             f.costModel = modelCost(func->body, func->args.data, func->args.size, builtins, constants);
 
@@ -396,8 +373,10 @@ struct Compiler
         // handles builtin calls that can't be constant-folded but are known to return one value
         // note: optimizationLevel check is technically redundant but it's important that we never optimize based on builtins in O1
         if (options.optimizationLevel >= 2)
-            if (int* bfid = builtins.find(expr))
+        {
+            if (int* bfid = builtins.find(expr); bfid && *bfid != LBF_NONE)
                 return getBuiltinInfo(*bfid).results != 1;
+        }
 
         // handles local function calls where we know only one argument is returned
         AstExprFunction* func = getFunctionExpr(expr->func);
@@ -457,6 +436,7 @@ struct Compiler
 
     void compileExprVarargs(AstExprVarargs* expr, uint8_t target, uint8_t targetCount, bool multRet = false)
     {
+        LUAU_ASSERT(targetCount < 255);
         LUAU_ASSERT(!multRet || unsigned(target + targetCount) == regTop);
 
         setDebugLine(expr); // normally compileExpr sets up line info, but compileExprVarargs can be called directly
@@ -525,6 +505,7 @@ struct Compiler
         LUAU_ASSERT(expr->args.size >= 1);
         LUAU_ASSERT(expr->args.size <= 3);
         LUAU_ASSERT(bfid == LBF_BIT32_EXTRACTK ? bfK >= 0 : bfK < 0);
+        LUAU_ASSERT(targetCount < 255);
 
         LuauOpcode opc = LOP_NOP;
 
@@ -677,11 +658,11 @@ struct Compiler
         // If we had constant arguments that can affect the cost model of this specific call in non-trivial ways
         uint64_t callCostModel = fi->costModel;
 
-        if (FFlag::LuauCompileCallCostModel && hasConstant)
+        if (hasConstant)
             callCostModel = costModelInlinedCall(expr, func);
 
         // we use a dynamic cost threshold that's based on the fixed limit boosted by the cost advantage we gain due to inlining
-        int inlinedCost = computeCost(FFlag::LuauCompileCallCostModel ? callCostModel : fi->costModel, varc, std::min(int(func->args.size), 8));
+        int inlinedCost = computeCost(callCostModel, varc, std::min(int(func->args.size), 8));
         int baselineCost = computeCost(fi->costModel, nullptr, 0) + 3;
         int inlineProfit = (inlinedCost == 0) ? thresholdMaxBoost : std::min(thresholdMaxBoost, 100 * baselineCost / inlinedCost);
 
@@ -703,8 +684,6 @@ struct Compiler
 
     uint64_t costModelInlinedCall(AstExprCall* expr, AstExprFunction* func)
     {
-        LUAU_ASSERT(FFlag::LuauCompileCallCostModel);
-
         for (size_t i = 0; i < func->args.size; ++i)
         {
             AstLocal* var = func->args.data[i];
@@ -781,7 +760,7 @@ struct Compiler
             else if (Variable* vv = variables.find(var); vv && vv->written)
             {
                 // if the argument is mutated, we need to allocate a fresh register even if it's a constant
-                uint8_t reg = allocReg(arg, 1);
+                uint8_t reg = allocReg(arg, 1u);
                 uint32_t allocpc = bytecode.getDebugPC();
 
                 if (arg)
@@ -813,15 +792,12 @@ struct Compiler
                 }
                 else
                 {
-                    uint8_t temp = allocReg(arg, 1);
+                    uint8_t temp = allocReg(arg, 1u);
                     uint32_t allocpc = bytecode.getDebugPC();
 
                     compileExprTemp(arg, temp);
 
-                    if (FFlag::LuauCompileInlineInitializers)
-                        args.push_back({var, temp, {Constant::Type_Unknown}, allocpc, arg});
-                    else
-                        args.push_back({var, temp, {Constant::Type_Unknown}, allocpc});
+                    args.push_back({var, temp, {Constant::Type_Unknown}, allocpc, arg});
                 }
             }
         }
@@ -853,70 +829,58 @@ struct Compiler
         // the inline frame will be used to compile return statements as well as to reject recursive inlining attempts
         inlineFrames.push_back({func, oldLocals, target, targetCount});
 
+        // this pass tracks which calls are builtins and can be compiled more efficiently
+        analyzeBuiltins(inlineBuiltins, globals, variables, options, func->body, names);
+
+        // If we found new builtins, apply them, but record which expressions we changed so we can undo later
+        if (!inlineBuiltins.empty())
+        {
+            for (auto [callExpr, bfid] : inlineBuiltins)
+            {
+                int& builtin = builtins[callExpr]; // If there was no builtin previously, we will get LBF_NONE
+
+                if (bfid != builtin)
+                {
+                    inlineBuiltinsBackup[callExpr] = builtin;
+                    builtin = bfid;
+                }
+            }
+
+            inlineBuiltins.clear();
+        }
+
         // fold constant values updated above into expressions in the function body
         foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
 
-        if (FFlag::LuauCompileCallCostModel)
+        bool terminatesEarly = false;
+
+        for (size_t i = 0; i < func->body->body.size; ++i)
         {
-            bool terminatesEarly = false;
+            AstStat* stat = func->body->body.data[i];
+            compileStat(stat);
 
-            for (size_t i = 0; i < func->body->body.size; ++i)
+            if (alwaysTerminates(stat))
             {
-                AstStat* stat = func->body->body.data[i];
-                compileStat(stat);
+                terminatesEarly = true;
 
-                if (alwaysTerminates(stat))
+                // Remove the last jump which jumps directly to the next instruction
+                InlineFrame& currFrame = inlineFrames.back();
+                if (!currFrame.returnJumps.empty() && currFrame.returnJumps.back() == bytecode.emitLabel() - 1)
                 {
-                    terminatesEarly = true;
-
-                    // Remove the last jump which jumps directly to the next instruction
-                    InlineFrame& currFrame = inlineFrames.back();
-                    if (!currFrame.returnJumps.empty() && currFrame.returnJumps.back() == bytecode.emitLabel() - 1)
-                    {
-                        bytecode.undoEmit(LOP_JUMP);
-                        currFrame.returnJumps.pop_back();
-                    }
-                    break;
+                    bytecode.undoEmit(LOP_JUMP);
+                    currFrame.returnJumps.pop_back();
                 }
-            }
-
-            // for the fallthrough path we need to ensure we clear out target registers
-            if (!terminatesEarly)
-            {
-                for (size_t i = 0; i < targetCount; ++i)
-                    bytecode.emitABC(LOP_LOADNIL, uint8_t(target + i), 0, 0);
-
-                closeLocals(oldLocals);
+                break;
             }
         }
-        else
+
+        // for the fallthrough path we need to ensure we clear out target registers
+        if (!terminatesEarly)
         {
-            bool usedFallthrough = false;
+            for (size_t i = 0; i < targetCount; ++i)
+                bytecode.emitABC(LOP_LOADNIL, uint8_t(target + i), 0, 0);
 
-            for (size_t i = 0; i < func->body->body.size; ++i)
-            {
-                AstStat* stat = func->body->body.data[i];
-
-                if (AstStatReturn* ret = stat->as<AstStatReturn>())
-                {
-                    // Optimization: use fallthrough when compiling return at the end of the function to avoid an extra JUMP
-                    compileInlineReturn(ret, /* fallthrough= */ true);
-                    // TODO: This doesn't work when return is part of control flow; ideally we would track the state somehow and generalize this
-                    usedFallthrough = true;
-                    break;
-                }
-                else
-                    compileStat(stat);
-            }
-
-            // for the fallthrough path we need to ensure we clear out target registers
-            if (!usedFallthrough && !alwaysTerminates(func->body))
-            {
-                for (size_t i = 0; i < targetCount; ++i)
-                    bytecode.emitABC(LOP_LOADNIL, uint8_t(target + i), 0, 0);
-
-                closeLocals(oldLocals);
-            }
+            closeLocals(oldLocals);
         }
 
         popLocals(oldLocals);
@@ -938,11 +902,20 @@ struct Compiler
                 lv->init = nullptr;
         }
 
+        if (!inlineBuiltinsBackup.empty())
+        {
+            for (auto [callExpr, bfid] : inlineBuiltinsBackup)
+                builtins[callExpr] = bfid;
+
+            inlineBuiltinsBackup.clear();
+        }
+
         foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
     }
 
     void compileExprCall(AstExprCall* expr, uint8_t target, uint8_t targetCount, bool targetTop = false, bool multRet = false)
     {
+        LUAU_ASSERT(targetCount < 255);
         LUAU_ASSERT(!targetTop || unsigned(target + targetCount) == regTop);
 
         setDebugLine(expr); // normally compileExpr sets up line info, but compileExprCall can be called directly
@@ -990,8 +963,10 @@ struct Compiler
         int bfid = -1;
 
         if (options.optimizationLevel >= 1 && !expr->self)
-            if (const int* id = builtins.find(expr))
+        {
+            if (const int* id = builtins.find(expr); id && *id != LBF_NONE)
                 bfid = *id;
+        }
 
         if (bfid >= 0 && bytecode.needsDebugRemarks())
         {
@@ -1213,7 +1188,7 @@ struct Compiler
             else if (const Constant* uc = locstants.find(uv); uc && uc->type != Constant::Type_Unknown)
             {
                 // inlining can result in an upvalue capture of a constant, in which case we can't capture without a temporary register
-                uint8_t reg = allocReg(expr, 1);
+                uint8_t reg = allocReg(expr, 1u);
                 compileExprConstant(expr, uc, reg);
 
                 captures.push_back({LCT_VAL, reg});
@@ -1340,30 +1315,12 @@ struct Compiler
 
     bool isConstantTrue(AstExpr* node)
     {
-        if (FFlag::LuauCompileCallCostModel)
-        {
-            return Compile::isConstantTrue(constants, node);
-        }
-        else
-        {
-            const Constant* cv = constants.find(node);
-
-            return cv && cv->type != Constant::Type_Unknown && cv->isTruthful();
-        }
+        return Compile::isConstantTrue(constants, node);
     }
 
     bool isConstantFalse(AstExpr* node)
     {
-        if (FFlag::LuauCompileCallCostModel)
-        {
-            return Compile::isConstantFalse(constants, node);
-        }
-        else
-        {
-            const Constant* cv = constants.find(node);
-
-            return cv && cv->type != Constant::Type_Unknown && !cv->isTruthful();
-        }
+        return Compile::isConstantFalse(constants, node);
     }
 
     bool isConstantVector(AstExpr* node)
@@ -1726,7 +1683,7 @@ struct Compiler
 
         // Optimization: if target is a temp register, we can clobber it which allows us to compute the result directly into it
         // If it's not a temp register, then something like `a = a > 1 or a + 2` may clobber `a` while evaluating left hand side, and `a+2` will break
-        uint8_t reg = targetTemp ? target : allocReg(expr, 1);
+        uint8_t reg = targetTemp ? target : allocReg(expr, 1u);
 
         std::vector<size_t> skipJump;
         compileConditionValue(expr->left, &reg, skipJump, /* onlyTruth= */ !and_);
@@ -1808,18 +1765,43 @@ struct Compiler
                 else if (options.optimizationLevel >= 2 && (expr->op == AstExprBinary::Add || expr->op == AstExprBinary::Mul))
                 {
                     // Optimization: replace k*r with r*k when r is known to be a number (otherwise metamethods may be called)
-                    if (LuauBytecodeType* ty = exprTypes.find(expr); ty && *ty == LBC_TYPE_NUMBER)
+                    if (FFlag::LuauCompileVectorReveseMul)
                     {
-                        int32_t lc = getConstantNumber(expr->left);
-
-                        if (lc >= 0 && lc <= 255)
+                        if (LuauBytecodeType* ty = exprTypes.find(expr))
                         {
-                            uint8_t rr = compileExprAuto(expr->right, rs);
+                            // Note: for vectors, it only makes sense to do for a multiplication as number+vector is an error
+                            if (*ty == LBC_TYPE_NUMBER ||
+                                (FFlag::LuauCompileVectorReveseMul && *ty == LBC_TYPE_VECTOR && expr->op == AstExprBinary::Mul))
+                            {
+                                int32_t lc = getConstantNumber(expr->left);
 
-                            bytecode.emitABC(getBinaryOpArith(expr->op, /* k= */ true), target, rr, uint8_t(lc));
+                                if (lc >= 0 && lc <= 255)
+                                {
+                                    uint8_t rr = compileExprAuto(expr->right, rs);
 
-                            hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
-                            return;
+                                    bytecode.emitABC(getBinaryOpArith(expr->op, /* k= */ true), target, rr, uint8_t(lc));
+
+                                    hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (LuauBytecodeType* ty = exprTypes.find(expr); ty && *ty == LBC_TYPE_NUMBER)
+                        {
+                            int32_t lc = getConstantNumber(expr->left);
+
+                            if (lc >= 0 && lc <= 255)
+                            {
+                                uint8_t rr = compileExprAuto(expr->right, rs);
+
+                                bytecode.emitABC(getBinaryOpArith(expr->op, /* k= */ true), target, rr, uint8_t(lc));
+
+                                hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
+                                return;
+                            }
                         }
                     }
                 }
@@ -1985,26 +1967,19 @@ struct Compiler
 
         int32_t formatStringIndex = -1;
 
-        if (FFlag::LuauCompileNoInterpStorage)
+        if (formatString.empty())
         {
-            if (formatString.empty())
-                formatStringIndex = bytecode.addConstantString({"", 0});
-            else
-                formatStringIndex = bytecode.addConstantString(sref(names.getOrAdd(formatString.c_str(), formatString.size())));
+            formatStringIndex = bytecode.addConstantString({"", 0});
+        }
+        else if (FFlag::LuauCompileStringInterpWithZero)
+        {
+            AstName interned = names.getOrAdd(formatString.c_str(), formatString.size());
+            AstArray<const char> formatStringArray{interned.value, formatString.size()};
+            formatStringIndex = bytecode.addConstantString(sref(formatStringArray));
         }
         else
         {
-            size_t formatStringSize = formatString.size();
-
-            // We can't use formatStringRef.data() directly, because short strings don't have their data
-            // pinned in memory, so when interpFormatStrings grows, these pointers will move and become invalid.
-            std::unique_ptr<char[]> formatStringPtr(new char[formatStringSize]);
-            memcpy(formatStringPtr.get(), formatString.data(), formatStringSize);
-
-            AstArray<char> formatStringArray{formatStringPtr.get(), formatStringSize};
-            interpStrings_DEPRECATED.emplace_back(std::move(formatStringPtr)); // invalidates formatStringPtr, but keeps formatStringArray intact
-
-            formatStringIndex = bytecode.addConstantString(sref(formatStringArray));
+            formatStringIndex = bytecode.addConstantString(sref(names.getOrAdd(formatString.c_str(), formatString.size())));
         }
 
         if (formatStringIndex < 0)
@@ -2102,28 +2077,73 @@ struct Compiler
         RegScope rs(this);
 
         // Optimization: if target is a temp register, we can clobber it which allows us to compute the result directly into it
-        uint8_t reg = targetTemp ? target : allocReg(expr, 1);
+        uint8_t reg = targetTemp ? target : allocReg(expr, 1u);
 
+        // flattening operation where we only load the last element
+        // this optimizes for tables like: { data = 43, data = "true", data = 9 }
+        // this does not optimize for tables such as: { data = 43, data = function() end, data = 9}
+        // in this case, we know that data = 9 should be the element, so we can just skip the rest
+        InsertionOrderedMap<int32_t, int32_t> lastKeyVal;
         // Optimization: when all items are record fields, use template tables to compile expression
         if (arraySize == 0 && indexSize == 0 && hashSize == recordSize && recordSize >= 1 && recordSize <= BytecodeBuilder::TableShape::kMaxLength)
         {
             BytecodeBuilder::TableShape shape;
 
-            for (size_t i = 0; i < expr->items.size; ++i)
+            if (FFlag::LuauCompileDuptableConstantPack2)
             {
-                const AstExprTable::Item& item = expr->items.data[i];
-                LUAU_ASSERT(item.kind == AstExprTable::Item::Record);
+                for (size_t i = 0; i < expr->items.size; ++i)
+                {
+                    const AstExprTable::Item& item = expr->items.data[i];
+                    LUAU_ASSERT(item.kind == AstExprTable::Item::Record);
 
-                AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
-                LUAU_ASSERT(ckey);
+                    AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
+                    LUAU_ASSERT(ckey);
 
-                int cid = bytecode.addConstantString(sref(ckey->value));
-                if (cid < 0)
-                    CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
+                    int keyCid = bytecode.addConstantString(sref(ckey->value));
+                    if (keyCid < 0)
+                        CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
 
-                LUAU_ASSERT(shape.length < BytecodeBuilder::TableShape::kMaxLength);
+                    int32_t valueCid = getConstantIndex(item.value);
+                    if (lastKeyVal.contains(keyCid) && lastKeyVal[keyCid] == -1)
+                        continue;
 
-                shape.keys[shape.length++] = cid;
+                    lastKeyVal[keyCid] = valueCid;
+                }
+
+                for (auto& [keyCid, valueCid] : lastKeyVal)
+                {
+                    LUAU_ASSERT(shape.length < BytecodeBuilder::TableShape::kMaxLength);
+
+                    size_t idx = shape.length;
+                    shape.keys[idx] = keyCid;
+
+                    shape.constants[idx] = valueCid;
+                    if (valueCid >= 0)
+                    {
+                        shape.hasConstants = true;
+                    }
+
+                    shape.length++;
+                }
+            }
+            else
+            {
+                for (size_t i = 0; i < expr->items.size; ++i)
+                {
+                    const AstExprTable::Item& item = expr->items.data[i];
+                    LUAU_ASSERT(item.kind == AstExprTable::Item::Record);
+
+                    AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
+                    LUAU_ASSERT(ckey);
+
+                    int cid = bytecode.addConstantString(sref(ckey->value));
+                    if (cid < 0)
+                        CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
+
+                    LUAU_ASSERT(shape.length < BytecodeBuilder::TableShape::kMaxLength);
+
+                    shape.keys[shape.length++] = cid;
+                }
             }
 
             int32_t tid = bytecode.addConstantTable(shape);
@@ -2138,6 +2158,13 @@ struct Compiler
             }
             else
             {
+                // must disable duptable constant optimization here, as we're defaulting back to new table
+                if (FFlag::LuauCompileDuptableConstantPack2)
+                {
+                    shape.hasConstants = false;
+                    lastKeyVal.clear();
+                }
+
                 bytecode.emitABC(LOP_NEWTABLE, reg, uint8_t(encodedHashSize), 0);
                 bytecode.emitAux(0);
             }
@@ -2177,6 +2204,23 @@ struct Compiler
 
             AstExpr* key = item.key;
             AstExpr* value = item.value;
+
+            if (FFlag::LuauCompileDuptableConstantPack2 && lastKeyVal.size() > 0 && key && key->is<AstExprConstantString>())
+            {
+                AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
+                LUAU_ASSERT(ckey);
+
+                int keyCid = bytecode.addConstantString(sref(ckey->value));
+                if (const int32_t* valueCid = lastKeyVal.get(keyCid))
+                {
+                    // do not generate assignments for constants
+                    if (*valueCid >= 0)
+                    {
+                        continue;
+                    }
+                }
+            }
+
 
             // some key/value pairs don't require us to compile the expressions, so we need to setup the line info here
             setDebugLine(value);
@@ -2240,7 +2284,7 @@ struct Compiler
         return options.optimizationLevel >= 1 && getGlobalState(globals, expr->name) == Global::Default;
     }
 
-    void compileExprIndexName(AstExprIndexName* expr, uint8_t target)
+    void compileExprIndexName(AstExprIndexName* expr, uint8_t target, bool targetTemp = false)
     {
         setDebugLine(expr); // normally compileExpr sets up line info, but compileExprIndexName can be called directly
 
@@ -2286,7 +2330,18 @@ struct Compiler
         }
 
         RegScope rs(this);
-        uint8_t reg = compileExprAuto(expr->expr, rs);
+
+        uint8_t reg = FFlag::LuauCompileTableIndexTemp ? target : compileExprAuto(expr->expr, rs);
+
+        if (FFlag::LuauCompileTableIndexTemp)
+        {
+            if (int localReg = getExprLocalReg(expr->expr); localReg >= 0) // Locals can be indexed directly
+                reg = uint8_t(localReg);
+            else if (targetTemp) // If target is a temp register, we can clobber it which allows us to compute the result directly into it
+                compileExprTemp(expr->expr, target);
+            else
+                reg = compileExprAuto(expr->expr, rs);
+        }
 
         setDebugLine(expr->indexLocation);
 
@@ -2317,8 +2372,7 @@ struct Compiler
 
             bytecode.emitABC(LOP_GETTABLEN, target, rt, i);
 
-            if (FFlag::LuauCompileExtraTableHints)
-                hintTemporaryExprRegType(expr->expr, rt, LBC_TYPE_TABLE, /* instLength */ 1);
+            hintTemporaryExprRegType(expr->expr, rt, LBC_TYPE_TABLE, /* instLength */ 1);
         }
         else if (cv.type == Constant::Type_String)
         {
@@ -2334,8 +2388,7 @@ struct Compiler
             bytecode.emitABC(LOP_GETTABLEKS, target, rt, uint8_t(BytecodeBuilder::getStringHash(iname)));
             bytecode.emitAux(cid);
 
-            if (FFlag::LuauCompileExtraTableHints)
-                hintTemporaryExprRegType(expr->expr, rt, LBC_TYPE_TABLE, /* instLength */ 2);
+            hintTemporaryExprRegType(expr->expr, rt, LBC_TYPE_TABLE, /* instLength */ 2);
         }
         else
         {
@@ -2344,11 +2397,8 @@ struct Compiler
 
             bytecode.emitABC(LOP_GETTABLE, target, rt, ri);
 
-            if (FFlag::LuauCompileExtraTableHints)
-            {
-                hintTemporaryExprRegType(expr->expr, rt, LBC_TYPE_TABLE, /* instLength */ 1);
-                hintTemporaryExprRegType(expr->index, ri, LBC_TYPE_NUMBER, /* instLength */ 1);
-            }
+            hintTemporaryExprRegType(expr->expr, rt, LBC_TYPE_TABLE, /* instLength */ 1);
+            hintTemporaryExprRegType(expr->index, ri, LBC_TYPE_NUMBER, /* instLength */ 1);
         }
     }
 
@@ -2422,6 +2472,9 @@ struct Compiler
         case Constant::Type_Vector:
         {
             int32_t cid = bytecode.addConstantVector(cv->valueVector[0], cv->valueVector[1], cv->valueVector[2], cv->valueVector[3]);
+            if (FFlag::LuauCompileVectorConstLimit && cid < 0)
+                CompileError::raise(node->location, "Exceeded constant limit; simplify the code to compile");
+
             emitLoadK(target, cid);
         }
         break;
@@ -2520,7 +2573,10 @@ struct Compiler
         }
         else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
         {
-            compileExprIndexName(expr, target);
+            if (FFlag::LuauCompileTableIndexTemp)
+                compileExprIndexName(expr, target, targetTemp);
+            else
+                compileExprIndexName(expr, target);
         }
         else if (AstExprIndexExpr* expr = node->as<AstExprIndexExpr>())
         {
@@ -2556,7 +2612,6 @@ struct Compiler
         }
         else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
         {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
             compileExpr(expr->expr, target, targetTemp);
         }
         else
@@ -2577,7 +2632,7 @@ struct Compiler
             return uint8_t(reg);
 
         // note: the register is owned by the parent scope
-        uint8_t reg = allocReg(node, 1);
+        uint8_t reg = allocReg(node, 1u);
 
         compileExprTemp(node, reg);
 
@@ -2606,6 +2661,10 @@ struct Compiler
         // we assume that target range is at the top of the register space and can be clobbered
         // this is what allows us to compile the last call expression - if it's a call - using targetTop=true
         LUAU_ASSERT(!targetTop || unsigned(target + targetCount) == regTop);
+
+        // LOP_CALL/LOP_GETVARARGS encoding uses 255 to signal a multret
+        if (targetCount == 255)
+            CompileError::raise(node->location, "Exceeded result count limit; simplify the code to compile");
 
         if (AstExprCall* expr = node->as<AstExprCall>())
         {
@@ -2810,7 +2869,7 @@ struct Compiler
             bytecode.emitABC(set ? LOP_SETTABLEKS : LOP_GETTABLEKS, reg, lv.reg, uint8_t(BytecodeBuilder::getStringHash(lv.name)));
             bytecode.emitAux(cid);
 
-            if (FFlag::LuauCompileExtraTableHints && targetExpr)
+            if (targetExpr)
             {
                 if (AstExprIndexName* targetExprIndexName = targetExpr->as<AstExprIndexName>())
                     hintTemporaryExprRegType(targetExprIndexName->expr, lv.reg, LBC_TYPE_TABLE, /* instLength */ 2);
@@ -2821,7 +2880,7 @@ struct Compiler
         case LValue::Kind_IndexNumber:
             bytecode.emitABC(set ? LOP_SETTABLEN : LOP_GETTABLEN, reg, lv.reg, lv.number);
 
-            if (FFlag::LuauCompileExtraTableHints && targetExpr)
+            if (targetExpr)
             {
                 if (AstExprIndexExpr* targetExprIndexExpr = targetExpr->as<AstExprIndexExpr>())
                     hintTemporaryExprRegType(targetExprIndexExpr->expr, lv.reg, LBC_TYPE_TABLE, /* instLength */ 1);
@@ -2831,7 +2890,7 @@ struct Compiler
         case LValue::Kind_IndexExpr:
             bytecode.emitABC(set ? LOP_SETTABLE : LOP_GETTABLE, reg, lv.reg, lv.index);
 
-            if (FFlag::LuauCompileExtraTableHints && targetExpr)
+            if (targetExpr)
             {
                 if (AstExprIndexExpr* targetExprIndexExpr = targetExpr->as<AstExprIndexExpr>())
                 {
@@ -3130,27 +3189,18 @@ struct Compiler
 
         closeLocals(frame.localOffset);
 
-        if (FFlag::LuauCompileCallCostModel)
-        {
-            size_t jumpLabel = bytecode.emitLabel();
-            bytecode.emitAD(LOP_JUMP, 0, 0);
+        size_t jumpLabel = bytecode.emitLabel();
+        bytecode.emitAD(LOP_JUMP, 0, 0);
 
-            inlineFrames.back().returnJumps.push_back(jumpLabel);
-        }
-        else
-        {
-            if (!fallthrough)
-            {
-                size_t jumpLabel = bytecode.emitLabel();
-                bytecode.emitAD(LOP_JUMP, 0, 0);
-
-                inlineFrames.back().returnJumps.push_back(jumpLabel);
-            }
-        }
+        inlineFrames.back().returnJumps.push_back(jumpLabel);
     }
 
     void compileStatReturn(AstStatReturn* stat)
     {
+        // LOP_RETURN encoding uses 255 to signal a multret
+        if (stat->list.size >= 255)
+            CompileError::raise(stat->location, "Exceeded return count limit; simplify the code to compile");
+
         RegScope rs(this);
 
         uint8_t temp = 0;
@@ -3356,7 +3406,7 @@ struct Compiler
         hasLoops = true;
 
         // register layout: limit, step, index
-        uint8_t regs = allocReg(stat, 3);
+        uint8_t regs = allocReg(stat, 3u);
 
         // if the iteration index is assigned from within the loop, we need to protect the internal index from the assignment
         // to do that, we will copy the index into an actual local variable on each iteration
@@ -3366,7 +3416,7 @@ struct Compiler
         uint32_t varregallocpc = bytecode.getDebugPC();
 
         if (Variable* il = variables.find(stat->var); il && il->written)
-            varreg = allocReg(stat, 1);
+            varreg = allocReg(stat, 1u);
 
         compileExprTemp(stat->from, uint8_t(regs + 2));
         compileExprTemp(stat->to, uint8_t(regs + 0));
@@ -3422,7 +3472,7 @@ struct Compiler
         hasLoops = true;
 
         // register layout: generator, state, index, variables...
-        uint8_t regs = allocReg(stat, 3);
+        uint8_t regs = allocReg(stat, 3u);
 
         // this puts initial values of (generator, state, index) into the loop registers
         compileExprListTemp(stat->values, regs, 3, /* targetTop= */ true);
@@ -3590,7 +3640,7 @@ struct Compiler
             const LValue& li = var.lvalue;
 
             if (li.kind == LValue::Kind_Local && visitor.conflict[li.reg])
-                var.conflictReg = allocReg(stat, 1);
+                var.conflictReg = allocReg(stat, 1u);
         }
     }
 
@@ -3614,10 +3664,7 @@ struct Compiler
 
                 setDebugLine(stat->vars.data[0]);
 
-                if (FFlag::LuauCompileExtraTableHints)
-                    compileAssign(var, reg, stat->vars.data[0]);
-                else
-                    compileAssign(var, reg, nullptr);
+                compileAssign(var, reg, stat->vars.data[0]);
             }
             return;
         }
@@ -3645,10 +3692,10 @@ struct Compiler
             {
                 // allocate a consecutive range of regs for all remaining vars and compute everything into temps
                 // note, this also handles trailing nils
-                uint8_t rest = uint8_t(stat->vars.size - stat->values.size + 1);
+                unsigned rest = unsigned(stat->vars.size - stat->values.size + 1);
                 uint8_t temp = allocReg(stat, rest);
 
-                compileExprTempN(value, temp, rest, /* targetTop= */ true);
+                compileExprTempN(value, temp, uint8_t(rest), /* targetTop= */ true);
 
                 for (size_t j = i; j < stat->vars.size; ++j)
                     vars[j].valueReg = uint8_t(temp + (j - i));
@@ -3686,14 +3733,13 @@ struct Compiler
             {
                 setDebugLine(var.lvalue.location);
 
-                if (FFlag::LuauCompileExtraTableHints && varPos < stat->vars.size)
+                if (varPos < stat->vars.size)
                     compileAssign(var.lvalue, var.valueReg, stat->vars.data[varPos]);
                 else
                     compileAssign(var.lvalue, var.valueReg, nullptr);
             }
 
-            if (FFlag::LuauCompileExtraTableHints)
-                varPos++;
+            varPos++;
         }
 
         // all regular local writes are done by the prior loops by computing result directly into target, so this just handles conflicts OR
@@ -3712,7 +3758,7 @@ struct Compiler
         LValue var = compileLValue(stat->var, rs);
 
         // Optimization: assign to locals directly
-        uint8_t target = (var.kind == LValue::Kind_Local) ? var.reg : allocReg(stat, 1);
+        uint8_t target = (var.kind == LValue::Kind_Local) ? var.reg : allocReg(stat, 1u);
 
         switch (stat->op)
         {
@@ -3725,7 +3771,7 @@ struct Compiler
         case AstExprBinary::Pow:
         {
             if (var.kind != LValue::Kind_Local)
-                compileLValueUse(var, target, /* set= */ false, FFlag::LuauCompileExtraTableHints ? stat->var : nullptr);
+                compileLValueUse(var, target, /* set= */ false, stat->var);
 
             int32_t rc = getConstantNumber(stat->value);
 
@@ -3756,7 +3802,7 @@ struct Compiler
 
             uint8_t regs = allocReg(stat, unsigned(1 + args.size()));
 
-            compileLValueUse(var, regs, /* set= */ false, FFlag::LuauCompileExtraTableHints ? stat->var : nullptr);
+            compileLValueUse(var, regs, /* set= */ false, stat->var);
 
             for (size_t i = 0; i < args.size(); ++i)
                 compileExprTemp(args[i], uint8_t(regs + 1 + i));
@@ -3770,7 +3816,7 @@ struct Compiler
         }
 
         if (var.kind != LValue::Kind_Local)
-            compileAssign(var, target, FFlag::LuauCompileExtraTableHints ? stat->var : nullptr);
+            compileAssign(var, target, stat->var);
     }
 
     void compileStatFunction(AstStatFunction* stat)
@@ -3783,12 +3829,12 @@ struct Compiler
         }
 
         RegScope rs(this);
-        uint8_t reg = allocReg(stat, 1);
+        uint8_t reg = allocReg(stat, 1u);
 
         compileExprTemp(stat->func, reg);
 
         LValue var = compileLValue(stat->name, rs);
-        compileAssign(var, reg, FFlag::LuauCompileExtraTableHints ? stat->name : nullptr);
+        compileAssign(var, reg, stat->name);
     }
 
     void compileStat(AstStat* node)
@@ -3806,21 +3852,13 @@ struct Compiler
 
             size_t oldLocals = localStack.size();
 
-            if (FFlag::LuauCompileCallCostModel)
+            for (size_t i = 0; i < stat->body.size; ++i)
             {
-                for (size_t i = 0; i < stat->body.size; ++i)
-                {
-                    AstStat* bodyStat = stat->body.data[i];
-                    compileStat(bodyStat);
+                AstStat* bodyStat = stat->body.data[i];
+                compileStat(bodyStat);
 
-                    if (alwaysTerminates(bodyStat))
-                        break;
-                }
-            }
-            else
-            {
-                for (size_t i = 0; i < stat->body.size; ++i)
-                    compileStat(stat->body.data[i]);
+                if (alwaysTerminates(bodyStat))
+                    break;
             }
 
             closeLocals(oldLocals);
@@ -3919,7 +3957,7 @@ struct Compiler
         }
         else if (AstStatLocalFunction* stat = node->as<AstStatLocalFunction>())
         {
-            uint8_t var = allocReg(stat, 1);
+            uint8_t var = allocReg(stat, 1u);
 
             pushLocal(stat->name, var, kDefaultAllocPc);
             compileExprFunction(stat->func, var);
@@ -4123,6 +4161,9 @@ struct Compiler
 
         return uint8_t(top);
     }
+
+    template<typename T>
+    uint8_t allocReg(AstNode* node, T count) = delete;
 
     void setDebugLine(AstNode* node)
     {
@@ -4428,6 +4469,9 @@ struct Compiler
     DenseHashMap<AstLocal*, LuauBytecodeType> localTypes;
     DenseHashMap<AstExpr*, LuauBytecodeType> exprTypes;
 
+    DenseHashMap<AstExprCall*, int> inlineBuiltins{nullptr};
+    DenseHashMap<AstExprCall*, int> inlineBuiltinsBackup{nullptr};
+
     BuiltinAstTypes builtinTypes;
     AstNameTable& names;
 
@@ -4449,7 +4493,6 @@ struct Compiler
     std::vector<Loop> loops;
     std::vector<InlineFrame> inlineFrames;
     std::vector<Capture> captures;
-    std::vector<std::unique_ptr<char[]>> interpStrings_DEPRECATED; // TODO: remove with FFlagLuauCompileNoInterpStorage
 };
 
 static void setCompileOptionsForNativeCompilation(CompileOptions& options)

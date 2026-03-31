@@ -5,6 +5,16 @@ import lldb
 # HACK: LLDB's python API doesn't afford anything helpful for getting at variadic template parameters.
 # We're forced to resort to parsing names as strings.
 
+def read_non_cstring_from_data(data):
+    str_text = ""
+    for c in data.uint8s:
+        str_text += chr(c)
+
+    return str_text
+
+def create_quoted_escaped_c_str(s):
+    """Given a string, this function quotes the string and escapes any special characters (e.g. '\n', '\t')"""
+    return f'"{repr(s)[1:-1]}"'
 
 def templateParams(s):
     depth = 0
@@ -387,3 +397,271 @@ def luau_typepath_property_summary(valobj, internal_dict, options):
     result += name
     result += "]"
     return result
+
+def luau_tstring_summary(valobj, internal_dict):
+    str_start = valobj.GetChildMemberWithName("data")
+    str_len = valobj.GetChildMemberWithName("len").GetValueAsUnsigned(0)
+    str_data = read_non_cstring_from_data(str_start.GetPointeeData(0, str_len))
+    return create_quoted_escaped_c_str(str_data)
+
+def tvalue_get_type_name(valobj):
+    type_val = valobj.GetChildMemberWithName("tt").GetValueAsUnsigned(0)
+    type_map = [
+    'TNIL',
+    'TBOOLEAN',
+    'TLIGHTUSERDATA',
+    'TNUMBER',
+    'TVECTOR',
+    'TSTRING',
+    'TTABLE',
+    'TFUNCTION',
+    'TUSERDATA',
+    'TTHREAD',
+    'TBUFFER',
+    'TPROTO',
+    'TUPVAL',
+    'TDEADKEY',
+    ]
+
+    return f"{type_map[type_val] if type_val < len(type_map) else '<invalid type>'}"
+
+def luau_tvalue_summary(valobj, internal_dict):
+    if valobj.GetType().IsPointerType():
+        valobj = valobj.Dereference()
+    valobj = valobj.GetNonSyntheticValue()
+
+    type_name = tvalue_get_type_name(valobj)
+
+    if type_name == 'TBOOLEAN':
+        bool_val = valobj.GetChildMemberWithName("value").GetChildMemberWithName("b").GetValueAsUnsigned(0)
+        bool_str = ["false", "true"][bool_val]
+        return f"{bool_str} ({type_name})"
+    elif type_name == 'TNUMBER':
+        num_val = valobj.GetChildMemberWithName("value").GetChildMemberWithName("n")
+        return f"{num_val.GetValue()}"
+    elif type_name == 'TVECTOR':
+        target = valobj.GetTarget()
+        float_type = target.GetBasicType(lldb.eBasicTypeFloat)
+
+        x_val = valobj.GetChildMemberWithName("value").GetChildMemberWithName("v").GetChildAtIndex(0).GetValue()
+        y_val = valobj.GetChildMemberWithName("value").GetChildMemberWithName("v").GetChildAtIndex(1).GetValue()
+        z_val_addr = valobj.GetChildMemberWithName("extra").GetChildAtIndex(0).GetAddress()
+        z_val = target.CreateValueFromAddress("z", z_val_addr, float_type).GetValue()
+        return f"({x_val}, {y_val}, {z_val}) ({type_name})"
+    elif type_name == 'TSTRING':
+        ts = valobj.GetChildMemberWithName("value").GetChildMemberWithName("gc").GetChildMemberWithName("ts")
+        return f"{ts.GetSummary()}"
+
+    return type_name
+
+class TValueSyntheticChildrenProvider:
+    def __init__(self, valobj, internal_dict):
+        if valobj.GetType().IsPointerType():
+            valobj = valobj.Dereference()
+        valobj = valobj.GetNonSyntheticValue()
+        
+        self.valobj = valobj
+
+    def num_children(self):
+        return len(self.children)
+
+    def has_children(self):
+        return len(self.children) > 0
+
+    def get_child_at_index(self, index):
+        if index < len(self.children):
+            return self.children[index]
+        return None
+    
+    def update(self):
+        type_name = tvalue_get_type_name(self.valobj)
+        if type_name == 'TTABLE':
+            luatable = self.valobj.GetChildMemberWithName("value").GetChildMemberWithName("gc").GetChildMemberWithName("h")
+            self.children = [luatable.Clone("table")]
+        return False
+    
+def luau_tkey_summary(valobj, internal_dict):
+    """TKey has virtually the same layout as TValue, so we can reuse the same summary logic."""
+    return luau_tvalue_summary(valobj, internal_dict)
+
+def luau_table_get_entries(valobj):
+    """Returns all the valid table entries of a table as two lists. The first list contains the array entries, and the second list contains the hash entries."""
+    array_entries = []
+    size_array = valobj.GetChildMemberWithName("sizearray").GetValueAsSigned(0)
+    array = valobj.GetChildMemberWithName("array")
+    array_addr = array.GetValueAsAddress()
+    tvalue_type = array.GetType().GetPointeeType()
+    tvalue_size = tvalue_type.GetByteSize()
+    for i in range(size_array):
+        entry = array.CreateValueFromAddress(str(i+1), int(array_addr) + i * tvalue_size, tvalue_type).GetNonSyntheticValue()
+        tt = entry.GetChildMemberWithName("tt").GetValueAsUnsigned()
+        if tt != 0: # Skip over nil entries.
+            array_entries.append(entry)
+
+    hash_entries = []
+    size_node = 1 << valobj.GetChildMemberWithName("lsizenode").GetValueAsUnsigned()
+    node = valobj.GetChildMemberWithName("node")
+    node_addr = node.GetValueAsAddress()
+    node_type = node.GetType().GetPointeeType()
+    node_size = node_type.GetByteSize()
+
+    for i in range(size_node):
+        entry = array.CreateValueFromAddress(f'Node_{i}', int(node_addr) + i * node_size, node_type).GetNonSyntheticValue()
+        key = entry.GetChildMemberWithName("key")
+        val = entry.GetChildMemberWithName("val").GetNonSyntheticValue()
+        tt = val.GetChildMemberWithName("tt").GetValueAsUnsigned()
+        if tt != 0: # Skip over entries with nil values.
+            hash_entries.append(entry)
+
+    return array_entries, hash_entries
+
+class LuauTableSyntheticChildrenProvider:
+    def __init__(self, valobj, internal_dict):
+        self.valobj = valobj
+        self.array_entries = []
+        self.hash_entries = []
+
+    def num_children(self):
+        return len(self.array_entries) + len(self.hash_entries)
+
+    def has_children(self):
+        return True
+
+    def get_child_at_index(self, index):
+        array_count = len(self.array_entries)
+        if index < array_count:
+            return self.array_entries[index]
+        else:
+            return self.hash_entries[index - array_count]
+
+    def update(self):
+        self.array_entries, self.hash_entries = luau_table_get_entries(self.valobj)
+        return False
+
+def luau_table_summary(valobj, internal_dict):
+    valobj = valobj.GetNonSyntheticValue()
+    array_entries, hash_entries = luau_table_get_entries(valobj)
+    result = f"LuaTable (size={len(array_entries) + len(hash_entries)})"
+    return result
+
+def convert_ptr_size_to_array(name, ptr, num_elem):
+    """Converts a SBValue ptr into an array using the name and number of elements provided
+       num_elems may be a number of an SBValue with a numeric value. 
+    """
+    if isinstance(num_elem, lldb.SBValue):
+        if num_elem.GetType().GetTypeFlags() & lldb.eTypeIsSigned:
+            num_elem = num_elem.GetValueAsSigned()
+        else:
+            num_elem = num_elem.GetValueAsUnsigned()
+    return ptr.CreateValueFromAddress(name, int(ptr.GetValueAsAddress()), ptr.GetType().GetPointeeType().GetArrayType(num_elem))
+
+def read_from_pointer_to_array(ptr, index):
+    """ Reads a single element from a pointer to an array. This function is useful because lldb only allows reading
+        the 0'th element using GetChildAtIndex for a pointer type.
+
+        ptr should be a SBValue that is a pointer
+        index is the index of the array element to read (starting from 0)
+    """
+    array = convert_ptr_size_to_array('ar', ptr, index+1)
+    return array.GetChildAtIndex(index)
+
+def remove_outer_quotes(s):
+    return s[1:-1]
+
+def luau_callinfo_summary(valobj, internal_dict):
+    func = valobj.GetChildMemberWithName("func").GetNonSyntheticValue()
+    cl = func.GetChildMemberWithName("value").GetChildMemberWithName("gc").GetChildMemberWithName("cl")
+    isC = cl.GetChildMemberWithName("isC").GetValueAsUnsigned(0) != 0
+    if not isC:
+        savedpc = valobj.GetChildMemberWithName("savedpc").GetValueAsAddress()
+        proto = cl.GetChildMemberWithName("l").GetChildMemberWithName("p")
+        code = proto.GetChildMemberWithName("code").GetValueAsAddress()
+        linegaplog2 = proto.GetChildMemberWithName("linegaplog2").GetValueAsUnsigned()
+        pcRel = 0
+        if int(savedpc) != 0:
+            pcRel = (int(savedpc) - int(code))//4 - 1
+        abslineinfo = proto.GetChildMemberWithName("abslineinfo")
+        lineinfo = proto.GetChildMemberWithName("lineinfo")
+        source = proto.GetChildMemberWithName("source")
+        line = read_from_pointer_to_array(abslineinfo, pcRel >> linegaplog2).GetValueAsUnsigned() + read_from_pointer_to_array(lineinfo, pcRel).GetValueAsUnsigned()
+        debugname = proto.GetChildMemberWithName("debugname")
+        return f"{remove_outer_quotes(source.GetSummary())}:{line} function {remove_outer_quotes(debugname.GetSummary())}"
+    else:
+        c = cl.GetChildMemberWithName("c")
+        f = c.GetChildMemberWithName("f")
+        debugname = c.GetChildMemberWithName("debugname")
+        return f"=[C] function {remove_outer_quotes(debugname.GetSummary())} {f.GetSummary()}"
+
+def luau_proto_summary(valobj, internal_dict):
+    if valobj.GetType().IsPointerType():
+        valobj = valobj.Dereference()
+    valobj = valobj.GetNonSyntheticValue()
+    source = valobj.GetChildMemberWithName("source")
+    debugname = valobj.GetChildMemberWithName("debugname")
+    linedefined = valobj.GetChildMemberWithName("linedefined").GetValueAsUnsigned()
+    numparams = valobj.GetChildMemberWithName("numparams").GetValueAsUnsigned()
+    nups = valobj.GetChildMemberWithName("nups").GetValueAsUnsigned()
+    return f'{remove_outer_quotes(source.GetSummary())}:{linedefined} {"function " + remove_outer_quotes(debugname.GetSummary()) if debugname.GetValueAsUnsigned() != 0 else ""} [{numparams} arg, {nups} upval]'
+
+class ProtoSyntheticChildrenProvider:
+    def __init__(self, valobj, internal_dict):
+        if valobj.GetType().IsPointerType():
+           valobj = valobj.Dereference()
+        valobj = valobj.GetNonSyntheticValue()
+        
+        self.valobj = valobj
+
+    def num_children(self):
+        return len(self.children)
+
+    def has_children(self):
+        return len(self.children) > 0
+
+    def get_child_at_index(self, index):
+        if index < len(self.children):
+            return self.children[index]
+        return None
+
+    def update(self):
+        children = []
+        self.children = children
+        valobj = self.valobj
+
+        k = valobj.GetChildMemberWithName("k")
+        sizek = valobj.GetChildMemberWithName("sizek")
+        constants_array = convert_ptr_size_to_array("[constants]", k, sizek)
+        children.append(constants_array)
+
+        locvars = valobj.GetChildMemberWithName("locvars")
+        sizelocvars = valobj.GetChildMemberWithName("sizelocvars")
+        locvars_array = convert_ptr_size_to_array("[locvars]", locvars, sizelocvars)
+        children.append(locvars_array)
+
+        sizecode = valobj.GetChildMemberWithName("sizecode")
+        code = valobj.GetChildMemberWithName("code")
+        code_array = convert_ptr_size_to_array("[bytecode]", code, sizecode)
+        children.append(code_array)
+
+        sizep = valobj.GetChildMemberWithName("sizep")
+        p = valobj.GetChildMemberWithName("p")
+        p_array = convert_ptr_size_to_array("[functions]", p, sizep)
+        children.append(p_array)
+
+        sizeupvalues = valobj.GetChildMemberWithName("sizeupvalues")
+        upvalues = valobj.GetChildMemberWithName("upvalues")
+        upvalues_array = convert_ptr_size_to_array("[upvalues]", upvalues, sizeupvalues)
+        children.append(upvalues_array)
+
+        children.append(self.valobj.GetChildMemberWithName("source"))
+        return False
+
+
+# Note for future work:
+# LLDB is limited in terms of expansion. i.e. a child provider can expand to a set
+# of children, but it can't directly express how those children can be expanded further.
+# To acheive this functionality for special situations (e.g. showing callstacks in reverse
+# order) it may be necessary to create types that are only used for debugging purposes which
+# an then define how their children are expanded.
+#
+# Here's an example of how EvaluateExpression can be used to create such a type on the fly:
+# e = lldb.target.EvaluateExpression("struct DebuggerOnlyType{int a; float b;}; (DebuggerOnlyType*)0;")

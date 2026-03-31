@@ -57,14 +57,6 @@ struct InConditionalContext
 
 using ScopePtr = std::shared_ptr<struct Scope>;
 
-std::optional<Property> findTableProperty(
-    NotNull<BuiltinTypes> builtinTypes,
-    ErrorVec& errors,
-    TypeId ty,
-    const std::string& name,
-    Location location
-);
-
 std::optional<TypeId> findMetatableEntry(
     NotNull<BuiltinTypes> builtinTypes,
     ErrorVec& errors,
@@ -77,7 +69,8 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
     ErrorVec& errors,
     TypeId ty,
     const std::string& name,
-    Location location
+    Location location,
+    bool useNewSolver
 );
 std::optional<TypeId> findTablePropertyRespectingMeta(
     NotNull<BuiltinTypes> builtinTypes,
@@ -85,7 +78,8 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
     TypeId ty,
     const std::string& name,
     ValueContext context,
-    Location location
+    Location location,
+    bool useNewSolver
 );
 
 bool occursCheck(TypeId needle, TypeId haystack);
