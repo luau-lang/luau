@@ -13,11 +13,11 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters)
+LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenGcoDse2)
 LUAU_FASTFLAG(LuauCodegenDsoPairTrackFix)
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenTableLoadProp2)
 LUAU_FASTFLAG(LuauCodegenDsoTagOverlayFix)
 LUAU_FASTFLAG(LuauCodegenCounterSupport)
@@ -2788,7 +2788,7 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateBufferLengthChecks")
 {
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge3, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenCounterSupport{FFlag::LuauCodegenCounterSupport, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -2858,7 +2858,7 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksNegativeIndex")
 {
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge3, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenCounterSupport{FFlag::LuauCodegenCounterSupport, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -2894,7 +2894,7 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksIntegerMatch")
 {
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge3, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenCounterSupport{FFlag::LuauCodegenCounterSupport, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -2933,7 +2933,7 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksIntegerMatch2")
 {
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge3, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenCounterSupport{FFlag::LuauCodegenCounterSupport, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -5031,7 +5031,7 @@ bb_2:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotReturnWithPartialStores")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters, true};
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);

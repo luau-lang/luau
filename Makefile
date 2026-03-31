@@ -66,6 +66,8 @@ BYTECODE_CLI_SOURCES=CLI/src/FileUtils.cpp CLI/src/Flags.cpp CLI/src/Bytecode.cp
 BYTECODE_CLI_OBJECTS=$(BYTECODE_CLI_SOURCES:%=$(BUILD)/%.o)
 BYTECODE_CLI_TARGET=$(BUILD)/luau-bytecode
 
+MUTATOR_LIBS=build/libprotobuf-mutator/src/libfuzzer/libprotobuf-mutator-libfuzzer.a build/libprotobuf-mutator/src/libprotobuf-mutator.a
+
 FUZZ_SOURCES=$(wildcard fuzz/*.cpp) fuzz/luau.pb.cpp
 FUZZ_OBJECTS=$(FUZZ_SOURCES:%=$(BUILD)/%.o)
 
@@ -165,10 +167,14 @@ $(FUZZ_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -ICompiler/
 $(TESTS_TARGET): LDFLAGS+=-lpthread
 $(REPL_CLI_TARGET): LDFLAGS+=-lpthread
 $(ANALYZE_CLI_TARGET): LDFLAGS+=-lpthread
-fuzz-proto fuzz-prototest: LDFLAGS+=build/libprotobuf-mutator/src/libfuzzer/libprotobuf-mutator-libfuzzer.a build/libprotobuf-mutator/src/libprotobuf-mutator.a $(LPROTOBUF)
+fuzz-proto fuzz-prototest: LDFLAGS+=$(LPROTOBUF)
 
 # pseudo targets
-.PHONY: all test clean coverage format luau-size aliases
+.PHONY: all test clean coverage format luau-size aliases build-mutator-libs
+
+# Explicitly make 'all' the default goal ensuring that even if targets are added before 'all', they won't
+# implicitly become the default target built by make.
+.DEFAULT_GOAL:=all
 
 all: $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET) $(TESTS_TARGET) aliases
 
@@ -182,6 +188,7 @@ conformance: $(TESTS_TARGET)
 
 clean:
 	rm -rf $(BUILD)
+	rm -rf build/fuzz fuzz-proto fuzz-prototest
 	rm -rf $(EXECUTABLE_ALIASES)
 
 coverage: $(TESTS_TARGET) $(COMPILE_CLI_TARGET)
@@ -207,6 +214,8 @@ coverage: $(TESTS_TARGET) $(COMPILE_CLI_TARGET)
 
 format:
 	git ls-files '*.h' '*.cpp' | xargs clang-format-11 -i
+
+FUZZ_OBJECTS: $(MUTATOR_LIBS)
 
 luau-size: luau
 	nm --print-size --demangle luau | grep ' t void luau_execute<false>' | awk -F ' ' '{sum += strtonum("0x" $$2)} END {print sum " interpreter" }'
@@ -246,8 +255,8 @@ $(TESTS_TARGET) $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET) $(COMPILE_CLI_TARGET) $
 fuzz-%: $(BUILD)/fuzz/%.cpp.o $(ANALYSIS_TARGET) $(EQSAT_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(CONFIG_TARGET) $(CODEGEN_TARGET) $(VM_TARGET) $(COMMON_TARGET)
 	$(CXX) $^ $(LDFLAGS) -o $@
 
-fuzz-proto: $(BUILD)/fuzz/proto.cpp.o $(BUILD)/fuzz/protoprint.cpp.o $(BUILD)/fuzz/luau.pb.cpp.o $(ANALYSIS_TARGET) $(EQSAT_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(CONFIG_TARGET) $(VM_TARGET) $(COMMON_TARGET) | build/libprotobuf-mutator
-fuzz-prototest: $(BUILD)/fuzz/prototest.cpp.o $(BUILD)/fuzz/protoprint.cpp.o $(BUILD)/fuzz/luau.pb.cpp.o $(ANALYSIS_TARGET) $(EQSAT_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(CONFIG_TARGET) $(VM_TARGET) $(COMMON_TARGET) | build/libprotobuf-mutator
+fuzz-proto: $(BUILD)/fuzz/proto.cpp.o $(BUILD)/fuzz/protoprint.cpp.o $(BUILD)/fuzz/luau.pb.cpp.o $(ANALYSIS_TARGET) $(EQSAT_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(CONFIG_TARGET) $(VM_TARGET) $(COMMON_TARGET) $(MUTATOR_LIBS) | build/libprotobuf-mutator
+fuzz-prototest: $(BUILD)/fuzz/prototest.cpp.o $(BUILD)/fuzz/protoprint.cpp.o $(BUILD)/fuzz/luau.pb.cpp.o $(ANALYSIS_TARGET) $(EQSAT_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(CONFIG_TARGET) $(VM_TARGET) $(COMMON_TARGET) $(MUTATOR_LIBS) | build/libprotobuf-mutator
 
 # static library targets
 $(COMMON_TARGET): $(COMMON_OBJECTS)
@@ -274,7 +283,7 @@ $(BUILD)/%.c.o: %.c
 	$(CXX) -x c $< $(CXXFLAGS) -c -MMD -MP -o $@
 
 # protobuf fuzzer setup
-fuzz/luau.pb.cpp: fuzz/luau.proto build/libprotobuf-mutator
+fuzz/luau.pb.cpp: fuzz/luau.proto $(MUTATOR_LIBS)
 	cd fuzz && $(EPROTOC) luau.proto --cpp_out=.
 	mv fuzz/luau.pb.cc fuzz/luau.pb.cpp
 
@@ -282,11 +291,20 @@ $(BUILD)/fuzz/proto.cpp.o: fuzz/luau.pb.cpp
 $(BUILD)/fuzz/protoprint.cpp.o: fuzz/luau.pb.cpp
 $(BUILD)/fuzz/prototest.cpp.o: fuzz/luau.pb.cpp
 
+# Clone and checkout the expected version of libprotobuf-mutator
 build/libprotobuf-mutator:
 	git clone https://github.com/google/libprotobuf-mutator build/libprotobuf-mutator
 	git -C build/libprotobuf-mutator checkout 212a7be1eb08e7f9c79732d2aab9b2097085d936
+
+build/libprotobuf-mutator/Makefile: build/libprotobuf-mutator
 	$(CMAKE_PATH) -DCMAKE_CXX_COMPILER=$(CMAKE_CXX) -DCMAKE_C_COMPILER=$(CMAKE_CC) -DCMAKE_CXX_COMPILER_LAUNCHER=$(CMAKE_PROXY) -S build/libprotobuf-mutator -B build/libprotobuf-mutator $(DPROTOBUF)
+
+build-mutator-libs: build/libprotobuf-mutator/Makefile
 	$(MAKE) -C build/libprotobuf-mutator
+
+# MUTATOR_LIBS depends on a phony target because if we directly called make within this
+# target it could be invoked multiple times (once per library) and break the build.
+$(MUTATOR_LIBS): build-mutator-libs
 
 # picks up include dependencies for all object files
 -include $(OBJECTS:.o=.d)

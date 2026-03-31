@@ -10,7 +10,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 
 using namespace Luau;
@@ -2142,8 +2141,6 @@ TEST_CASE("prettyPrint_function_attributes")
 
 TEST_CASE("transpile_explicit_type_instantiations")
 {
-    ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
-
     std::string code = "f<<A, B, C...>>() t.f<<A, B, C...>>() t:f<<A, B, C>>()";
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
 

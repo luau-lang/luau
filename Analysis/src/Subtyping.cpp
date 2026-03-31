@@ -29,6 +29,7 @@ LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingReplaceBounds)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAGVARIABLE(LuauFollowGenericBeforeCheckingIfMapped)
 
 namespace Luau
 {
@@ -146,7 +147,6 @@ bool MappedGenericEnvironment::bindGeneric(TypePackId genericTp, TypePackId bind
     }
     else
     {
-        LUAU_ASSERT(!"bindGeneric called on a non-bindable generic type pack");
         return false;
     }
 }
@@ -534,6 +534,8 @@ struct ApplyMappedGenerics : Substitution
         {
             for (TypeId g : f->generics)
             {
+                if (FFlag::LuauFollowGenericBeforeCheckingIfMapped)
+                    g = follow(g);
                 if (const std::vector<SubtypingEnvironment::GenericBounds>* bounds = env->mappedGenerics.find(g); bounds && !bounds->empty())
                     // We don't want to mutate the generics of a function that's being subtyped
                     return true;

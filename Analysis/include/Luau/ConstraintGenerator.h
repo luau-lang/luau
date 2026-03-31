@@ -13,6 +13,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/Polarity.h"
 #include "Luau/Refinement.h"
+#include "Luau/Set.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeIds.h"
@@ -177,6 +178,8 @@ private:
     std::vector<InteriorFreeTypes> interiorFreeTypes;
 
     std::vector<TypeId> unionsToSimplify;
+
+    Set<TypeId> uninitializedGlobals{nullptr};
 
     Polarity polarity = Polarity::None;
 

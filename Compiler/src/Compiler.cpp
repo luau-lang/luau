@@ -29,11 +29,11 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAGVARIABLE(LuauCompileDuptableConstantPack)
+LUAU_FASTFLAGVARIABLE(LuauCompileDuptableConstantPack2)
 LUAU_FASTFLAGVARIABLE(LuauCompileVectorReveseMul)
 LUAU_FASTFLAGVARIABLE(LuauCompileTableIndexTemp)
 LUAU_FASTFLAGVARIABLE(LuauCompileVectorConstLimit)
+LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpWithZero)
 
 LUAU_FASTFLAG(DebugLuauNoInline)
 
@@ -1968,9 +1968,19 @@ struct Compiler
         int32_t formatStringIndex = -1;
 
         if (formatString.empty())
+        {
             formatStringIndex = bytecode.addConstantString({"", 0});
+        }
+        else if (FFlag::LuauCompileStringInterpWithZero)
+        {
+            AstName interned = names.getOrAdd(formatString.c_str(), formatString.size());
+            AstArray<const char> formatStringArray{interned.value, formatString.size()};
+            formatStringIndex = bytecode.addConstantString(sref(formatStringArray));
+        }
         else
+        {
             formatStringIndex = bytecode.addConstantString(sref(names.getOrAdd(formatString.c_str(), formatString.size())));
+        }
 
         if (formatStringIndex < 0)
             CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
@@ -2070,7 +2080,8 @@ struct Compiler
         uint8_t reg = targetTemp ? target : allocReg(expr, 1u);
 
         // flattening operation where we only load the last element
-        // this optimizes for tables like: { data = 43, data = function() end, data = 9 }
+        // this optimizes for tables like: { data = 43, data = "true", data = 9 }
+        // this does not optimize for tables such as: { data = 43, data = function() end, data = 9}
         // in this case, we know that data = 9 should be the element, so we can just skip the rest
         InsertionOrderedMap<int32_t, int32_t> lastKeyVal;
         // Optimization: when all items are record fields, use template tables to compile expression
@@ -2078,7 +2089,7 @@ struct Compiler
         {
             BytecodeBuilder::TableShape shape;
 
-            if (FFlag::LuauCompileDuptableConstantPack)
+            if (FFlag::LuauCompileDuptableConstantPack2)
             {
                 for (size_t i = 0; i < expr->items.size; ++i)
                 {
@@ -2093,6 +2104,9 @@ struct Compiler
                         CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
 
                     int32_t valueCid = getConstantIndex(item.value);
+                    if (lastKeyVal.contains(keyCid) && lastKeyVal[keyCid] == -1)
+                        continue;
+
                     lastKeyVal[keyCid] = valueCid;
                 }
 
@@ -2145,7 +2159,7 @@ struct Compiler
             else
             {
                 // must disable duptable constant optimization here, as we're defaulting back to new table
-                if (FFlag::LuauCompileDuptableConstantPack)
+                if (FFlag::LuauCompileDuptableConstantPack2)
                 {
                     shape.hasConstants = false;
                     lastKeyVal.clear();
@@ -2191,7 +2205,7 @@ struct Compiler
             AstExpr* key = item.key;
             AstExpr* value = item.value;
 
-            if (FFlag::LuauCompileDuptableConstantPack && lastKeyVal.size() > 0 && key && key->is<AstExprConstantString>())
+            if (FFlag::LuauCompileDuptableConstantPack2 && lastKeyVal.size() > 0 && key && key->is<AstExprConstantString>())
             {
                 AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
                 LUAU_ASSERT(ckey);
@@ -2598,7 +2612,6 @@ struct Compiler
         }
         else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
         {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
             compileExpr(expr->expr, target, targetTemp);
         }
         else
