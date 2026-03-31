@@ -293,7 +293,13 @@ static double recordDeltaTime(double& timer)
     return delta;
 }
 
-static bool compileFile(const char* name, CompileFormat format, Luau::CodeGen::AssemblyOptions::Target assemblyTarget, CompileStats& stats)
+static bool compileFile(
+    const char* name,
+    CompileFormat format,
+    Luau::CodeGen::AssemblyOptions::Target assemblyTarget,
+    CompileStats& stats,
+    bool dumpConstants
+)
 {
     double currts = Luau::TimeTrace::getClock();
 
@@ -330,10 +336,11 @@ static bool compileFile(const char* name, CompileFormat format, Luau::CodeGen::A
 
         if (format == CompileFormat::Text)
         {
-            bcb.setDumpFlags(
-                Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |
-                Luau::BytecodeBuilder::Dump_Remarks | Luau::BytecodeBuilder::Dump_Types
-            );
+            uint32_t flags = Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |
+                             Luau::BytecodeBuilder::Dump_Remarks | Luau::BytecodeBuilder::Dump_Types;
+            if (dumpConstants)
+                flags |= Luau::BytecodeBuilder::Dump_Constants;
+            bcb.setDumpFlags(flags);
             bcb.setDumpSource(*source);
         }
         else if (format == CompileFormat::Remarks)
@@ -423,6 +430,7 @@ static void displayHelp(const char* argv0)
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
     printf("  --record-stats=<granularity>: granularity of compilation stats (total, file, function).\n");
     printf("  --bytecode-summary: Compute bytecode operation distribution.\n");
+    printf("  --dump-constants: Dump constant table for each function (text mode only).\n");
     printf("  --stats-file=<filename>: file in which compilation stats will be recored (default 'stats.json').\n");
     printf("  --vector-lib=<name>: name of the library providing vector type operations.\n");
     printf("  --vector-ctor=<name>: name of the function constructing a vector value.\n");
@@ -471,6 +479,7 @@ int main(int argc, char** argv)
     RecordStats recordStats = RecordStats::None;
     std::string statsFile("stats.json");
     bool bytecodeSummary = false;
+    bool dumpConstants = false;
 
     for (int i = 1; i < argc; i++)
     {
@@ -551,6 +560,10 @@ int main(int argc, char** argv)
         {
             bytecodeSummary = true;
         }
+        else if (strcmp(argv[i], "--dump-constants") == 0)
+        {
+            dumpConstants = true;
+        }
         else if (strncmp(argv[i], "--stats-file=", 13) == 0)
         {
             statsFile = argv[i] + 13;
@@ -624,7 +637,7 @@ int main(int argc, char** argv)
     {
         CompileStats fileStat = {};
         fileStat.lowerStats.functionStatsFlags = functionStats;
-        failed += !compileFile(path.c_str(), compileFormat, assemblyTarget, fileStat);
+        failed += !compileFile(path.c_str(), compileFormat, assemblyTarget, fileStat, dumpConstants);
         stats += fileStat;
         if (recordStats == RecordStats::File || recordStats == RecordStats::Function)
             fileStats.push_back(fileStat);

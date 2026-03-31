@@ -12,7 +12,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauPcallCallbackCanReturnZeroValues)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauSilenceDynamicFormatStringErrors)
@@ -1917,7 +1916,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vector_lerp_should_not_crash")
 TEST_CASE_FIXTURE(BuiltinsFixture, "instantiation_works_on_builtins")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauExplicitTypeInstantiationSyntax, true},
         {FFlag::LuauExplicitTypeInstantiationSupport, true},
     };
 

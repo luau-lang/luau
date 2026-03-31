@@ -224,17 +224,6 @@ public:
     Position endPosition;
 };
 
-// Clip with FFlag::LuauCstStatBlock
-class CstStatDo_DEPRECATED : public CstNode
-{
-public:
-    LUAU_CST_RTTI(CstStatDo_DEPRECATED)
-
-    explicit CstStatDo_DEPRECATED(Position endPosition);
-
-    Position endPosition;
-};
-
 class CstStatRepeat : public CstNode
 {
 public:

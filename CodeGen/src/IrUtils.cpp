@@ -16,7 +16,7 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge3)
+LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAGVARIABLE(LuauCodegenTruncatedSubsts)
 
 namespace Luau
@@ -1358,7 +1358,7 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             substitute(function, inst, build.constInt(countrz(unsigned(function.intOp(OP_A(inst))))));
         break;
     case IrCmd::CHECK_BUFFER_LEN:
-        if (FFlag::LuauCodegenBufferRangeMerge3)
+        if (FFlag::LuauCodegenBufferRangeMerge4)
         {
             if (OP_B(inst).kind == IrOpKind::Constant && OP_E(inst).kind == IrOpKind::Constant)
             {

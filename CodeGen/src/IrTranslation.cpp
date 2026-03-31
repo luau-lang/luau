@@ -15,7 +15,7 @@
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenCounterSupport)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
-LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters)
+LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
 
 namespace Luau
 {
@@ -1014,7 +1014,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
         if (nresults == LUA_MULTRET)
             build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(ra), build.constInt(br.actualResultCount));
-        else if (FFlag::LuauCodegenMarkDeadRegisters)
+        else if (FFlag::LuauCodegenMarkDeadRegisters2)
             build.inst(IrCmd::MARK_DEAD, build.vmReg(ra + 1), build.constInt(-1));
 
         if (br.type != BuiltinImplType::UsesFallback)
