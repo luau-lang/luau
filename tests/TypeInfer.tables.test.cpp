@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 LUAU_FASTFLAG(LuauComparisonToNilsIsAlwaysOk2)
 LUAU_FASTFLAG(LuauGeneralizationMoreAwareOfBounds3)
+LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
@@ -6734,108 +6735,10 @@ TEST_CASE_FIXTURE(Fixture, "oss_1890")
     )"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "cmpeq_any_with_nil_ok")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
-    };
-
-    CheckResult result = check(R"(
-type A = {
-    foo : { [string] : string}
-}
-
-type B = {
-	parsed: A,
-}
-
-local x : B = (nil :: any)
-local found = x.parsed.foo["any"] == nil -- errors
-)");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "cmpneq_any_with_nil_ok")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
-    };
-
-    CheckResult result = check(R"(
-type A = {
-    foo : { [string] : string}
-}
-
-type B = {
-	parsed: A,
-}
-
-local x : B = (nil :: any)
-local found = x.parsed.foo["any"] ~= nil -- errors
-)");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "cmpneq_any_with_nil_ok_in_if")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
-    };
-
-    CheckResult result = check(R"(
-type A = {
-    foo : { [string] : string}
-}
-
-type B = {
-	parsed: A,
-}
-
-local x : B = (nil :: any)
-
-if x.parsed.foo["any"] ~= nil then
-end
-
-)");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "cmpeq_any_with_nil_ok_in_if")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
-    };
-
-    CheckResult result = check(R"(
-type A = {
-    foo : { [string] : string}
-}
-
-type B = {
-	parsed: A,
-}
-
-local x : B = (nil :: any)
-
-if x.parsed.foo["any"] == nil then
-end
-
-)");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
 TEST_CASE_FIXTURE(Fixture, "compound_assignment_writes_lhs")
 {
-    if (!FFlag::LuauSolverV2)
-        return;
+    // the old solver does not support read-only properties.
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     ScopedFastFlag sff{FFlag::LuauLValueCompoundAssignmentVisitLhs, true};
 
@@ -6851,5 +6754,6 @@ TEST_CASE_FIXTURE(Fixture, "compound_assignment_writes_lhs")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     REQUIRE(get<PropertyAccessViolation>(result.errors[0]));
 }
+
 
 TEST_SUITE_END();

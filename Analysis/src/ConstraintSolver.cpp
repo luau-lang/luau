@@ -49,6 +49,7 @@ LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 LUAU_FASTFLAG(LuauUnpackRespectsAnnotations)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAGVARIABLE(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAGVARIABLE(LuauFollowInExplicitInstantiation)
 
 namespace Luau
 {
@@ -2923,11 +2924,14 @@ TypeId ConstraintSolver::instantiateFunctionType(
     const Location& location
 )
 {
+    if (FFlag::LuauFollowInExplicitInstantiation)
+        functionTypeId = follow(functionTypeId);
+
     // no work to be done if we're not instantiating with anything
     if (typeArguments.empty() && typePackArguments.empty())
         return functionTypeId;
 
-    const FunctionType* ft = get<FunctionType>(follow(functionTypeId));
+    const FunctionType* ft = get<FunctionType>(FFlag::LuauFollowInExplicitInstantiation ? functionTypeId : follow(functionTypeId));
     if (!ft)
     {
         return functionTypeId;

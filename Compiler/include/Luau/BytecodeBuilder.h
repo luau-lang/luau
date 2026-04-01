@@ -110,6 +110,7 @@ public:
         Dump_Locals = 1 << 3,
         Dump_Remarks = 1 << 4,
         Dump_Types = 1 << 5,
+        Dump_Constants = 1 << 6,
     };
 
     void setDumpFlags(uint32_t flags)
