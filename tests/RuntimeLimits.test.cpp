@@ -15,6 +15,7 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <climits>
 
 using namespace Luau;
 

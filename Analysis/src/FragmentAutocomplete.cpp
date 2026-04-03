@@ -1230,7 +1230,6 @@ FragmentTypeCheckResult typecheckFragment_(
             NotNull{freshChildOfNearestScope.get()}
         };
         root->visit(&etv);
-
     }
     else
     {
@@ -1294,7 +1293,8 @@ std::pair<FragmentTypeCheckStatus, FragmentTypeCheckResult> typecheckFragment(
 
     FrontendOptions frontendOptions = opts.value_or(frontend.options);
     const ScopePtr& closestScope = findClosestScope(module, parseResult.scopePos);
-    FragmentTypeCheckResult result = typecheckFragment_(frontend, parseResult.root, module, closestScope, cursorPos, std::move(parseResult.alloc), frontendOptions, reporter);
+    FragmentTypeCheckResult result =
+        typecheckFragment_(frontend, parseResult.root, module, closestScope, cursorPos, std::move(parseResult.alloc), frontendOptions, reporter);
     result.ancestry = std::move(parseResult.ancestry);
     reportFragmentString(reporter, tryParse->fragmentToParse);
     return {FragmentTypeCheckStatus::Success, result};

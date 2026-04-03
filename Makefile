@@ -296,8 +296,16 @@ build/libprotobuf-mutator:
 	git clone https://github.com/google/libprotobuf-mutator build/libprotobuf-mutator
 	git -C build/libprotobuf-mutator checkout 212a7be1eb08e7f9c79732d2aab9b2097085d936
 
+# cmake complains if we pass empty variables and may determine that variables
+# don't match values previously used (even if they were also empty). This causes
+# cmake to re-configure and rebuild unnecessarily. To avoid this issue we only
+# pass variables to cmake that have values.
+CMAKE_OPTIONS=$(if $(CMAKE_CXX),-DCMAKE_CXX_COMPILER=$(CMAKE_CXX))
+CMAKE_OPTIONS+=$(if $(CMAKE_CC),-DCMAKE_C_COMPILER=$(CMAKE_CC))
+CMAKE_OPTIONS+=$(if $(CMAKE_PROXY),-DCMAKE_CXX_COMPILER_LAUNCHER=$(CMAKE_PROXY))
+
 build/libprotobuf-mutator/Makefile: build/libprotobuf-mutator
-	$(CMAKE_PATH) -DCMAKE_CXX_COMPILER=$(CMAKE_CXX) -DCMAKE_C_COMPILER=$(CMAKE_CC) -DCMAKE_CXX_COMPILER_LAUNCHER=$(CMAKE_PROXY) -S build/libprotobuf-mutator -B build/libprotobuf-mutator $(DPROTOBUF)
+	$(CMAKE_PATH) $(CMAKE_OPTIONS) -S build/libprotobuf-mutator -B build/libprotobuf-mutator $(DPROTOBUF)
 
 build-mutator-libs: build/libprotobuf-mutator/Makefile
 	$(MAKE) -C build/libprotobuf-mutator

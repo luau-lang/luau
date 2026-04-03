@@ -44,12 +44,12 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(LuauUnifyWithSubtyping2)
-LUAU_FASTFLAGVARIABLE(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 LUAU_FASTFLAG(LuauUnpackRespectsAnnotations)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAGVARIABLE(LuauOverloadGetsInstantiated)
 LUAU_FASTFLAGVARIABLE(LuauFollowInExplicitInstantiation)
+LUAU_FASTFLAGVARIABLE(LuauUseConstraintSetsToTrackFreeTypes)
 
 namespace Luau
 {
@@ -348,71 +348,47 @@ struct InfiniteTypeFinder : IterativeTypeVisitor
 
     bool visit(TypeId ty) override
     {
-        if (FFlag::LuauReworkInfiniteTypeFinder)
-            return !foundInfiniteType;
-        else
-            return true;
+        return !foundInfiniteType;
     }
 
     bool visit(TypeId ty, const PendingExpansionType& petv) override
     {
-        if (FFlag::LuauReworkInfiniteTypeFinder)
-        {
-            if (foundInfiniteType)
-                return false;
-
-            const std::optional<TypeFun> tf =
-                petv.prefix ? scope->lookupImportedType(petv.prefix->value, petv.name.value) : scope->lookupType(petv.name.value);
-
-            if (!tf)
-                return true;
-
-            // If `tf->type` is different from `signature.fn.type` then we
-            // have two different type aliases.
-            if (follow(tf->type) != follow(signature.fn.type))
-                return true;
-
-            // We want to check that the arguments to this pending expansion
-            // type are exactly the generic arguments provided.
-            for (size_t i = 0; i < std::min(petv.typeArguments.size(), tf->typeParams.size()); ++i)
-            {
-                if (petv.typeArguments[i] != tf->typeParams[i].ty)
-                {
-                    foundInfiniteType = true;
-                    return false;
-                }
-            }
-
-            // Ditto with packs.
-            for (size_t i = 0; i < std::min(petv.packArguments.size(), tf->typePackParams.size()); ++i)
-            {
-                if (petv.packArguments[i] != tf->typePackParams[i].tp)
-                {
-                    foundInfiniteType = true;
-                    return false;
-                }
-            }
-
+        if (foundInfiniteType)
             return false;
-        }
-        else
+
+        const std::optional<TypeFun> tf =
+            petv.prefix ? scope->lookupImportedType(petv.prefix->value, petv.name.value) : scope->lookupType(petv.name.value);
+
+        if (!tf)
+            return true;
+
+        // If `tf->type` is different from `signature.fn.type` then we
+        // have two different type aliases.
+        if (follow(tf->type) != follow(signature.fn.type))
+            return true;
+
+        // We want to check that the arguments to this pending expansion
+        // type are exactly the generic arguments provided.
+        for (size_t i = 0; i < std::min(petv.typeArguments.size(), tf->typeParams.size()); ++i)
         {
-            const std::optional<TypeFun> tf =
-                (petv.prefix) ? scope->lookupImportedType(petv.prefix->value, petv.name.value) : scope->lookupType(petv.name.value);
-
-            if (!tf.has_value())
-                return true;
-
-            auto [typeArguments, packArguments] = saturateArguments(solver->arena, solver->builtinTypes, *tf, petv.typeArguments, petv.packArguments);
-
-            if (follow(tf->type) == follow(signature.fn.type) && (signature.arguments != typeArguments || signature.packArguments != packArguments))
+            if (petv.typeArguments[i] != tf->typeParams[i].ty)
             {
                 foundInfiniteType = true;
                 return false;
             }
-
-            return true;
         }
+
+        // Ditto with packs.
+        for (size_t i = 0; i < std::min(petv.packArguments.size(), tf->typePackParams.size()); ++i)
+        {
+            if (petv.packArguments[i] != tf->typePackParams[i].tp)
+            {
+                foundInfiniteType = true;
+                return false;
+            }
+        }
+
+        return false;
     }
 };
 
@@ -522,10 +498,21 @@ void ConstraintSolver::run()
     }
 
     // Free types that have no constraints at all can be generalized right away.
-    for (TypeId ty : constraintSet.freeTypes)
+    if (FFlag::LuauUseConstraintSetsToTrackFreeTypes)
     {
-        if (auto it = mutatedFreeTypeToConstraint.find(ty); it == mutatedFreeTypeToConstraint.end() || it->second.empty())
-            generalizeOneType(ty);
+        for (TypeId ty : constraintSet.freeTypes)
+        {
+            if (auto it = typeToConstraintSet.find(ty); it == typeToConstraintSet.end() || it->second.empty())
+                generalizeOneType(ty);
+        }
+    }
+    else
+    {
+        for (TypeId ty : constraintSet.freeTypes)
+        {
+            if (auto it = DEPRECATED_mutatedFreeTypeToConstraint.find(ty); it == DEPRECATED_mutatedFreeTypeToConstraint.end() || it->second.empty())
+                generalizeOneType(ty);
+        }
     }
 
     constraintSet.freeTypes.clear();
@@ -574,37 +561,83 @@ void ConstraintSolver::run()
                 unblock(c);
                 unsolvedConstraints.erase(unsolvedConstraints.begin() + ptrdiff_t(i));
 
-                if (const auto maybeMutated = maybeMutatedFreeTypes.find(c); maybeMutated != maybeMutatedFreeTypes.end())
+                if (FFlag::LuauUseConstraintSetsToTrackFreeTypes)
                 {
-                    DenseHashSet<TypeId> seen{nullptr};
-                    for (auto ty : maybeMutated->second)
+                    if (auto entry = constraintToMutatedTypes.find(c.get()))
                     {
-                        // There is a high chance that this type has been rebound
-                        // across blocked types, rebound free types, pending
-                        // expansion types, etc, so we need to follow it.
-                        ty = follow(ty);
+                        DenseHashSet<TypeId> seen{nullptr};
+                        for (auto ty : *entry)
+                        {
+                            // There is a high chance that this type has been rebound
+                            // across blocked types, rebound free types, pending
+                            // expansion types, etc, so we need to follow it.
+                            ty = follow(ty);
+                            if (seen.contains(ty))
+                                continue;
+                            seen.insert(ty);
 
-                        if (seen.contains(ty))
-                            continue;
-                        seen.insert(ty);
+                            if (auto it = typeToConstraintSet.find(ty); it != typeToConstraintSet.end())
+                            {
+                                // TODO CLI-195994
+                                //
+                                // Eager generalization of free types is
+                                // analagous to garbage collection (and ref
+                                // counting). In a GC, we need to identify
+                                // the roots for reachable objects. For
+                                // generalization those roots are the unsolved
+                                // constraints. We keep a mapping from types
+                                // to their roots in order to quickly check which
+                                // free types might need to get generalized.
+                                //
+                                // We would like to assert that the constraint set
+                                // contained this constraint prior to trying to
+                                // erase it, but we are not in a posture to be
+                                // able to do so right now.
+                                //
+                                it->second.erase(c.get());
+                                if (it->second.size() <= 1)
+                                    unblock(ty, Location{});
 
-                        size_t& refCount = unresolvedConstraints[ty];
-                        if (refCount > 0)
-                            refCount -= 1;
-
-                        // We have two constraints that are designed to wait for the
-                        // refCount on a free type to be equal to 1: the
-                        // PrimitiveTypeConstraint and ReduceConstraint. We
-                        // therefore wake any constraint waiting for a free type's
-                        // refcount to be 1 or 0.
-                        if (refCount <= 1)
-                            unblock(ty, Location{});
-
-                        if (refCount == 0)
-                            generalizeOneType(ty);
+                                if (it->second.empty())
+                                    generalizeOneType(ty);
+                            }
+                        }
                     }
                 }
+                else
+                {
 
+                    if (const auto maybeMutated = DEPRECATED_maybeMutatedFreeTypes.find(c); maybeMutated != DEPRECATED_maybeMutatedFreeTypes.end())
+                    {
+                        DenseHashSet<TypeId> seen{nullptr};
+                        for (auto ty : maybeMutated->second)
+                        {
+                            // There is a high chance that this type has been rebound
+                            // across blocked types, rebound free types, pending
+                            // expansion types, etc, so we need to follow it.
+                            ty = follow(ty);
+
+                            if (seen.contains(ty))
+                                continue;
+                            seen.insert(ty);
+
+                            size_t& refCount = DEPRECATED_unresolvedConstraints[ty];
+                            if (refCount > 0)
+                                refCount -= 1;
+
+                            // We have two constraints that are designed to wait for the
+                            // refCount on a free type to be equal to 1: the
+                            // PrimitiveTypeConstraint and ReduceConstraint. We
+                            // therefore wake any constraint waiting for a free type's
+                            // refcount to be 1 or 0.
+                            if (refCount <= 1)
+                                unblock(ty, Location{});
+
+                            if (refCount == 0)
+                                generalizeOneType(ty);
+                        }
+                    }
+                }
 
                 if (logger)
                 {
@@ -770,24 +803,49 @@ struct TypeSearcher : TypeVisitor
 
 void ConstraintSolver::initFreeTypeTracking()
 {
-    for (auto c : this->constraints)
+    if (FFlag::LuauUseConstraintSetsToTrackFreeTypes)
     {
-        unsolvedConstraints.emplace_back(c);
-
-        auto maybeMutatedTypesPerConstraint = c->getMaybeMutatedFreeTypes();
-        for (auto ty : maybeMutatedTypesPerConstraint)
+        for (auto c : this->constraints)
         {
-            auto [refCount, _] = unresolvedConstraints.try_insert(ty, 0);
-            refCount += 1;
+            unsolvedConstraints.emplace_back(c);
+            auto [types, _typePacks] = c->getMaybeMutatedTypes();
+            for (auto ty: types)
+            {
+                auto [it, _] = typeToConstraintSet.try_emplace(ty, Set<const Constraint*>{nullptr});
+                // We don't care if this is fresh, we can blindly insert.
+                it->second.insert(c.get());
+            }
+            const auto [_types, fresh1] = constraintToMutatedTypes.try_insert(c.get(), std::move(types));
+            LUAU_ASSERT(fresh1);
 
-            auto [it, fresh] = mutatedFreeTypeToConstraint.try_emplace(ty);
-            it->second.insert(c.get());
+            for (NotNull<const Constraint> dep : c->dependencies)
+            {
+                block(dep, c);
+            }
+
         }
-        maybeMutatedFreeTypes.emplace(c, maybeMutatedTypesPerConstraint);
-
-        for (NotNull<const Constraint> dep : c->dependencies)
+    }
+    else
+    {
+        for (auto c : this->constraints)
         {
-            block(dep, c);
+            unsolvedConstraints.emplace_back(c);
+
+            auto maybeMutatedTypesPerConstraint = c->DEPRECATED_getMaybeMutatedFreeTypes();
+            for (auto ty : maybeMutatedTypesPerConstraint)
+            {
+                auto [refCount, _] = DEPRECATED_unresolvedConstraints.try_insert(ty, 0);
+                refCount += 1;
+
+                auto [it, fresh] = DEPRECATED_mutatedFreeTypeToConstraint.try_emplace(ty);
+                it->second.insert(c.get());
+            }
+            DEPRECATED_maybeMutatedFreeTypes.emplace(c, maybeMutatedTypesPerConstraint);
+
+            for (NotNull<const Constraint> dep : c->dependencies)
+            {
+                block(dep, c);
+            }
         }
     }
 }
@@ -1197,10 +1255,7 @@ bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constr
 
         if (itf.foundInfiniteType)
         {
-            if (FFlag::LuauReworkInfiniteTypeFinder)
-                constraint->scope->invalidTypeAliases[c.name] = constraint->location;
-            else
-                constraint->scope->invalidTypeAliasNames_DEPRECATED.insert(c.name);
+            constraint->scope->invalidTypeAliases[c.name] = constraint->location;
             shiftReferences(target, builtinTypes->errorType);
             emplaceType<BoundType>(asMutable(target), builtinTypes->errorType);
             return true;
@@ -1346,12 +1401,8 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
     if (itf.foundInfiniteType)
     {
-        // TODO (CLI-56761): Report an error.
         bindResult(builtinTypes->errorType);
-        if (FFlag::LuauReworkInfiniteTypeFinder)
-            constraint->scope->invalidTypeAliases[petv->name.value] = constraint->location;
-        else
-            reportError(GenericError{"Recursive type being used with different parameters"}, constraint->location);
+        constraint->scope->invalidTypeAliases[petv->name.value] = constraint->location;
         return true;
     }
 
@@ -1677,15 +1728,15 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
                     clonedFn->genericPacks.clear();
                     // NOTE: This can be one call!
                     if (auto inst = instantiate2(
-                        arena,
-                        // Intentional copy, could be by reference.
-                        std::move(u2.genericSubstitutions),
-                        // Intentional copy, could be by reference.
-                        std::move(u2.genericPackSubstitutions),
-                        NotNull{&subtyping},
-                        constraint->scope,
-                        clonedTy
-                    ))
+                            arena,
+                            // Intentional copy, could be by reference.
+                            std::move(u2.genericSubstitutions),
+                            // Intentional copy, could be by reference.
+                            std::move(u2.genericPackSubstitutions),
+                            NotNull{&subtyping},
+                            constraint->scope,
+                            clonedTy
+                        ))
                     {
                         auto instantiatedFn = get<FunctionType>(inst);
                         LUAU_ASSERT(instantiatedFn);
@@ -1803,7 +1854,6 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
                 break;
             }
         }
-
     }
 
     InstantiationQueuer queuer{constraint->scope, constraint->location, this};
@@ -1975,10 +2025,21 @@ bool ConstraintSolver::tryDispatch(const PrimitiveTypeConstraint& c, NotNull<con
 
     // We will wait if there are any other references to the free type mentioned here.
     // This is probably the only thing that makes this not insane to do.
-    if (auto refCount = unresolvedConstraints.find(c.freeType); refCount && *refCount > 1)
+    if (FFlag::LuauUseConstraintSetsToTrackFreeTypes)
     {
-        block(c.freeType, constraint);
-        return false;
+        if (auto it = typeToConstraintSet.find(c.freeType); it != typeToConstraintSet.end() && it->second.size() > 1)
+        {
+            block(c.freeType, constraint);
+            return false;
+        }
+    }
+    else
+    {
+        if (auto refCount = DEPRECATED_unresolvedConstraints.find(c.freeType); refCount && *refCount > 1)
+        {
+            block(c.freeType, constraint);
+            return false;
+        }
     }
 
     TypeId bindTo = c.primitiveType;
@@ -3022,7 +3083,6 @@ TypeId ConstraintSolver::instantiateFunctionType(
 
         return *result;
     }
-
 }
 
 bool ConstraintSolver::tryDispatch(const PushTypeConstraint& c, NotNull<const Constraint> constraint, bool force)
@@ -3984,55 +4044,75 @@ void ConstraintSolver::shiftReferences(TypeId source, TypeId target)
     if (source == target)
         return;
 
-    auto sourceRefs = unresolvedConstraints.find(source);
-    if (sourceRefs)
+    if (FFlag::LuauUseConstraintSetsToTrackFreeTypes)
     {
-        // we read out the count before proceeding to avoid hash invalidation issues.
-        size_t count = *sourceRefs;
-
-        auto [targetRefs, _] = unresolvedConstraints.try_insert(target, 0);
-        targetRefs += count;
-    }
-
-    // Any constraint that might have mutated source may now mutate target
-    if (auto it = mutatedFreeTypeToConstraint.find(source); it != mutatedFreeTypeToConstraint.end())
-    {
-        const OrderedSet<const Constraint*>& constraintsAffectedBySource = it->second;
-        auto [it2, fresh2] = mutatedFreeTypeToConstraint.try_emplace(target);
-
-        OrderedSet<const Constraint*>& constraintsAffectedByTarget = it2->second;
-
-        for (const Constraint* constraint : constraintsAffectedBySource)
+        if (auto sourcerefs = typeToConstraintSet.find(source); sourcerefs != typeToConstraintSet.end())
         {
-            constraintsAffectedByTarget.insert(constraint);
-            auto [it3, fresh3] = maybeMutatedFreeTypes.try_emplace(NotNull{constraint}, TypeIds{});
-            it3->second.insert(target);
+            auto [targetrefs, _] = typeToConstraintSet.try_emplace(target, Set<const Constraint*>{nullptr});
+            
+            // This is a little sketchy as we are iterating over a hash set.
+            // It _should_ be fine as we aren't depending on the order here,
+            // this is all just moving values into different hash sets.
+            //
+            // NOTE: I wonder if there's a way we could preemptively resize
+            // `targetrefs` so that we only ever do one extra allocation here.
+            for (const auto* constraint : sourcerefs->second)
+            {
+                // For every constraint that the source might be modified by,
+                // add that constraint to the set of constraints the target
+                // might be modified by.
+                targetrefs->second.insert(constraint);
+
+                // Additionally, note that said constraint now may modify the target.
+                auto [it, _] = constraintToMutatedTypes.try_insert(constraint, TypeIds{});
+                it.insert(target);
+            }
+        }
+    }
+    else
+    {
+
+        auto sourceRefs = DEPRECATED_unresolvedConstraints.find(source);
+        if (sourceRefs)
+        {
+            // we read out the count before proceeding to avoid hash invalidation issues.
+            size_t count = *sourceRefs;
+
+            auto [targetRefs, _] = DEPRECATED_unresolvedConstraints.try_insert(target, 0);
+            targetRefs += count;
+        }
+
+        // Any constraint that might have mutated source may now mutate target
+        if (auto it = DEPRECATED_mutatedFreeTypeToConstraint.find(source); it != DEPRECATED_mutatedFreeTypeToConstraint.end())
+        {
+            const OrderedSet<const Constraint*>& constraintsAffectedBySource = it->second;
+            auto [it2, fresh2] = DEPRECATED_mutatedFreeTypeToConstraint.try_emplace(target);
+
+            OrderedSet<const Constraint*>& constraintsAffectedByTarget = it2->second;
+
+            for (const Constraint* constraint : constraintsAffectedBySource)
+            {
+                constraintsAffectedByTarget.insert(constraint);
+                auto [it3, fresh3] = DEPRECATED_maybeMutatedFreeTypes.try_emplace(NotNull{constraint}, TypeIds{});
+                it3->second.insert(target);
+            }
         }
     }
 }
 
-std::optional<TypeId> ConstraintSolver::generalizeFreeType(NotNull<Scope> scope, TypeId type)
-{
-    TypeId t = follow(type);
-    if (get<FreeType>(t))
-    {
-        auto refCount = unresolvedConstraints.find(t);
-        if (refCount && *refCount > 0)
-            return {};
-
-        // if no reference count is present, then that means the only constraints referring to
-        // this free type need only for it to be generalized. in principle, this means we could
-        // have actually never generated the free type in the first place, but we couldn't know
-        // that until all constraint generation is complete.
-    }
-
-    return generalize(NotNull{arena}, builtinTypes, scope, generalizedTypes, type);
-}
-
 bool ConstraintSolver::hasUnresolvedConstraints(TypeId ty)
 {
-    if (auto refCount = unresolvedConstraints.find(ty))
-        return *refCount > 0;
+    if (FFlag::LuauUseConstraintSetsToTrackFreeTypes)
+    {
+        ty = follow(ty);
+        if (auto it = typeToConstraintSet.find(ty); it != typeToConstraintSet.end())
+            return !it->second.empty();
+    }
+    else
+    {
+        if (auto refCount = DEPRECATED_unresolvedConstraints.find(ty))
+            return *refCount > 0;
+    }
 
     return false;
 }

@@ -135,16 +135,16 @@ bool areEqual(SeenSet& seen, const TableType& lhs, const TableType& rhs)
             if (!areEqual(seen, **l->second.readTy, **r->second.readTy))
                 return false;
         }
-            else if (l->second.readTy || r->second.readTy)
-                return false;
+        else if (l->second.readTy || r->second.readTy)
+            return false;
 
-            if (l->second.writeTy && r->second.writeTy)
-            {
-                if (!areEqual(seen, **l->second.writeTy, **r->second.writeTy))
-                    return false;
-            }
-            else if (l->second.writeTy || r->second.writeTy)
+        if (l->second.writeTy && r->second.writeTy)
+        {
+            if (!areEqual(seen, **l->second.writeTy, **r->second.writeTy))
                 return false;
+        }
+        else if (l->second.writeTy || r->second.writeTy)
+            return false;
 
 
         ++l;

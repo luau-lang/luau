@@ -4,7 +4,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauUnionOfTablesPreservesReadWrite)
 
 using namespace Luau;
 
@@ -360,7 +359,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type"
 
 TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type_2")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauUnionOfTablesPreservesReadWrite, true}};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local t = {x = nil}

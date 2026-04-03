@@ -121,7 +121,7 @@ struct CostVisitor : AstVisitor
             return model(expr->expr);
         }
         else if (node->is<AstExprConstantNil>() || node->is<AstExprConstantBool>() || node->is<AstExprConstantNumber>() ||
-                 node->is<AstExprConstantString>())
+                 node->is<AstExprConstantString>() || node->is<AstExprConstantInteger>())
         {
             return Cost(0, Cost::kLiteral);
         }

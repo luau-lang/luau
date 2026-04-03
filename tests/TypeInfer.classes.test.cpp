@@ -469,10 +469,9 @@ b(a)
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected =
-            "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
-            "accessing `Y` results in `number` in the latter type and `string` in the former type, "
-            "and `number` is not a subtype of `string`";
+        const std::string expected = "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
+                                     "accessing `Y` results in `number` in the latter type and `string` in the former type, "
+                                     "and `number` is not a subtype of `string`";
         CHECK_EQ(expected, toString(result.errors.at(0)));
     }
     else

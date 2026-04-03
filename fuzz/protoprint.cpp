@@ -196,6 +196,29 @@ static const std::string kNames[] = {
     "intersectionof",
     "newtable",
     "newfunction",
+    "integer",
+    "neg",
+    "add",
+    "sub",
+    "mul",
+    "div",
+    "rem",
+    "idiv",
+    "mod",
+    "udiv",
+    "urem",
+    "lt",
+    "le",
+    "gt",
+    "ge",
+    "ult",
+    "ule",
+    "ugt",
+    "uge",
+    "readinteger",
+    "writeinteger",
+    "mininteger",
+    "maxinteger",
 };
 
 static const std::string kTypes[] = {
@@ -204,6 +227,7 @@ static const std::string kTypes[] = {
     "buffer",
     "nil",
     "number",
+    "integer",
     "string",
     "thread",
     "vector",
@@ -331,6 +355,8 @@ struct ProtoToLuau
             print(expr.bool_());
         else if (expr.has_number())
             print(expr.number());
+        else if (expr.has_integer())
+            print(expr.integer());
         else if (expr.has_string())
             print(expr.string());
         else if (expr.has_local())
@@ -399,6 +425,11 @@ struct ProtoToLuau
     void print(const luau::ExprConstantNumber& expr)
     {
         source += std::to_string(expr.val());
+    }
+
+    void print(const luau::ExprConstantInteger& expr)
+    {
+        source += std::to_string(expr.val()) + "i";
     }
 
     void print(const luau::ExprConstantString& expr)
@@ -1206,6 +1237,8 @@ struct ProtoToLuau
             print(lit.bool_());
         else if (lit.has_number())
             print(lit.number());
+        else if (lit.has_integer())
+            print(lit.integer());
         else if (lit.has_string())
             print(lit.string());
     }

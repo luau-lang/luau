@@ -835,7 +835,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyping_and_visiting_alias_has_the_same_
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("Expected this to be 'number', but got 'nil'", toString(result.errors[0]));
-        
+
     CHECK_EQ("nil", toString(requireTypeAtPosition({9, 43})));
 }
 

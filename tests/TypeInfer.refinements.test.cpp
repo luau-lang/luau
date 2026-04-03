@@ -12,8 +12,8 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
-LUAU_FASTFLAG(LuauUnionOfTablesPreservesReadWrite)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
+LUAU_FASTFLAG(LuauUseConstraintSetsToTrackFreeTypes)
 
 using namespace Luau;
 
@@ -789,6 +789,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_narrow_to_vector")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+        {FFlag::LuauUseConstraintSetsToTrackFreeTypes, true},
+    };
+
     CheckResult result = check(R"(
         local t = {"hello"}
         local v = t[2]
@@ -809,11 +814,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({4, 24})));  // type(v) == "nil"
-        CHECK("string & unknown & unknown & ~nil" == toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
+        CHECK("nil & string" == toString(requireTypeAtPosition({4, 24})));  // type(v) == "nil"
+        CHECK("string & ~nil" == toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
 
-        CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({10, 24})));  // equivalent to type(v) == "nil"
-        CHECK("string & unknown & unknown & ~nil" == toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
+        CHECK("nil & string" == toString(requireTypeAtPosition({10, 24})));  // equivalent to type(v) == "nil"
+        CHECK("string & ~nil" == toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
     }
     else
     {
@@ -3194,8 +3199,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181549_refined_string_should_be_subtype_
 
 TEST_CASE_FIXTURE(Fixture, "cli_184413_refinement_of_union_of_read_types_is_read_type")
 {
-    ScopedFastFlag _{FFlag::LuauUnionOfTablesPreservesReadWrite, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         export type States = "Closed" | "Closing" | "Opening" | "Open"
         export type MyType<A = any> = {
