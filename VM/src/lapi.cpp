@@ -442,6 +442,23 @@ int lua_toboolean(lua_State* L, int idx)
     return !l_isfalse(o);
 }
 
+int64_t lua_tointeger64(lua_State* L, int idx, int* isinteger)
+{
+    const TValue* o = index2addr(L, idx);
+    if (ttisinteger(o))
+    {
+        if (isinteger)
+            *isinteger = 1;
+        return lvalue(o);
+    }
+    else
+    {
+        if (isinteger)
+            *isinteger = 0;
+        return 0;
+    }
+}
+
 const char* lua_tolstring(lua_State* L, int idx, size_t* len)
 {
     StkId o = index2addr(L, idx);
@@ -643,6 +660,12 @@ void lua_pushnumber(lua_State* L, double n)
 void lua_pushinteger(lua_State* L, int n)
 {
     setnvalue(L->top, cast_num(n));
+    api_incr_top(L);
+}
+
+void lua_pushinteger64(lua_State* L, int64_t n)
+{
+    setlvalue(L->top, n);
     api_incr_top(L);
 }
 

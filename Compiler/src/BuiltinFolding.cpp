@@ -85,6 +85,9 @@ static Constant ctype(const Constant& c)
     case Constant::Type_Number:
         return cstring("number");
 
+    case Constant::Type_Integer:
+        return cstring("integer");
+
     case Constant::Type_Vector:
         return cstring("vector");
 
@@ -111,6 +114,9 @@ static Constant ctypeof(const Constant& c)
 
     case Constant::Type_Number:
         return cstring("number");
+
+    case Constant::Type_Integer:
+        return cstring("integer");
 
     case Constant::Type_Vector:
         return cvar(); // vector can have a custom typeof name at runtime

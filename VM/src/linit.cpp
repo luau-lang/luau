@@ -1,10 +1,30 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
+#include "lstate.h"
 
 #include <stdlib.h>
 
+LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauIntegerLibrary)
+
 static const luaL_Reg lualibs[] = {
+    {"", luaopen_base},
+    {LUA_COLIBNAME, luaopen_coroutine},
+    {LUA_TABLIBNAME, luaopen_table},
+    {LUA_OSLIBNAME, luaopen_os},
+    {LUA_STRLIBNAME, luaopen_string},
+    {LUA_MATHLIBNAME, luaopen_math},
+    {LUA_DBLIBNAME, luaopen_debug},
+    {LUA_UTF8LIBNAME, luaopen_utf8},
+    {LUA_BITLIBNAME, luaopen_bit32},
+    {LUA_BUFFERLIBNAME, luaopen_buffer},
+    {LUA_VECLIBNAME, luaopen_vector},
+    {LUA_INTLIBNAME, luaopen_integer},
+    {NULL, NULL},
+};
+
+static const luaL_Reg lualibs_NOINTEGER[] = {
     {"", luaopen_base},
     {LUA_COLIBNAME, luaopen_coroutine},
     {LUA_TABLIBNAME, luaopen_table},
@@ -21,7 +41,12 @@ static const luaL_Reg lualibs[] = {
 
 void luaL_openlibs(lua_State* L)
 {
-    const luaL_Reg* lib = lualibs;
+    const luaL_Reg* lib;
+    if (FFlag::LuauIntegerType && FFlag::LuauIntegerLibrary)
+        lib = lualibs;
+    else
+        lib = lualibs_NOINTEGER;
+
     for (; lib->func; lib++)
     {
         lua_pushcfunction(L, lib->func, NULL);

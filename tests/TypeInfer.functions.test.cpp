@@ -25,17 +25,15 @@ LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
-LUAU_FASTFLAG(LuauContainsAnyGenericDoesntTraverseIntoExtern)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
-LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAG(LuauForwardPolarityForFunctionTypes)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes)
+LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes2)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -740,9 +738,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_2")
 TEST_CASE_FIXTURE(Fixture, "higher_order_function_3")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true}
+        {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReplacerRespectsReboundGenerics, true}, {FFlag::LuauOverloadGetsInstantiated, true}
     };
 
     CheckResult result = check(R"(
@@ -1331,11 +1327,11 @@ f(function(a, b, c, ...) return a + b end)
     if (FFlag::LuauInstantiateInSubtyping)
     {
         expected = "Expected this to be\n\t"
-            "'(number, number) -> number'"
-            "\nbut got\n\t"
-            "'<a>(number, number, a) -> number'"
-            "\ncaused by:\n"
-            "  Argument count mismatch. Function expects 3 arguments, but only 2 are specified";
+                   "'(number, number) -> number'"
+                   "\nbut got\n\t"
+                   "'<a>(number, number, a) -> number'"
+                   "\ncaused by:\n"
+                   "  Argument count mismatch. Function expects 3 arguments, but only 2 are specified";
     }
     else
     {
@@ -1542,13 +1538,12 @@ local b: B = a
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        "Expected this to be\n\t"
-        "'(number) -> string'"
-        "\nbut got\n\t"
-        "'(number, number) -> string'"
-        "\ncaused by:\n"
-        "  Argument count mismatch. Function expects 2 arguments, but only 1 is specified";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'(number) -> string'"
+                                 "\nbut got\n\t"
+                                 "'(number, number) -> string'"
+                                 "\ncaused by:\n"
+                                 "  Argument count mismatch. Function expects 2 arguments, but only 1 is specified";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -1566,14 +1561,13 @@ local b: B = a
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        "Expected this to be\n\t"
-        "'(number, string) -> string'"
-        "\nbut got\n\t"
-        "'(number, number) -> string'"
-        "\ncaused by:\n"
-        "  Argument #2 type is not compatible.\n"
-        "Expected this to be 'number', but got 'string'";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'(number, string) -> string'"
+                                 "\nbut got\n\t"
+                                 "'(number, number) -> string'"
+                                 "\ncaused by:\n"
+                                 "  Argument #2 type is not compatible.\n"
+                                 "Expected this to be 'number', but got 'string'";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -1591,13 +1585,12 @@ local b: B = a
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        "Expected this to be\n\t"
-        "'(number, number) -> (number, boolean)'"
-        "\nbut got\n\t"
-        "'(number, number) -> number'"
-        "\ncaused by:\n"
-        "  Function only returns 1 value, but 2 are required here";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'(number, number) -> (number, boolean)'"
+                                 "\nbut got\n\t"
+                                 "'(number, number) -> number'"
+                                 "\ncaused by:\n"
+                                 "  Function only returns 1 value, but 2 are required here";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -1615,14 +1608,13 @@ local b: B = a
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        "Expected this to be\n\t"
-        "'(number, number) -> number'"
-        "\nbut got\n\t"
-        "'(number, number) -> string'"
-        "\ncaused by:\n"
-        "  Return type is not compatible.\n"
-        "Expected this to be 'number', but got 'string'";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'(number, number) -> number'"
+                                 "\nbut got\n\t"
+                                 "'(number, number) -> string'"
+                                 "\ncaused by:\n"
+                                 "  Return type is not compatible.\n"
+                                 "Expected this to be 'number', but got 'string'";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -1640,14 +1632,13 @@ local b: B = a
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        "Expected this to be\n\t"
-        "'(number, number) -> (number, boolean)'"
-        "\nbut got\n\t"
-        "'(number, number) -> (number, string)'"
-        "\ncaused by:\n"
-        "  Return #2 type is not compatible.\n"
-        "Expected this to be 'boolean', but got 'string'";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'(number, number) -> (number, boolean)'"
+                                 "\nbut got\n\t"
+                                 "'(number, number) -> (number, string)'"
+                                 "\ncaused by:\n"
+                                 "  Return #2 type is not compatible.\n"
+                                 "Expected this to be 'boolean', but got 'string'";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -1833,15 +1824,15 @@ function t:b() return 2 end -- not OK
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-        CHECK_EQ(
-            "Expected this to be\n\t"
-            "'() -> number'"
-            "\nbut got\n\t"
-            "'(*error-type*) -> number'"
-            "\ncaused by:\n"
-            "  Argument count mismatch. Function expects 1 argument, but none are specified",
-            toString(result.errors[0])
-        );
+    CHECK_EQ(
+        "Expected this to be\n\t"
+        "'() -> number'"
+        "\nbut got\n\t"
+        "'(*error-type*) -> number'"
+        "\ncaused by:\n"
+        "  Argument count mismatch. Function expects 1 argument, but none are specified",
+        toString(result.errors[0])
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")
@@ -2554,7 +2545,7 @@ end
         // This check is unstable between different machines and different runs of DCR because it depends on string equality between
         // blocked type numbers, which is not guaranteed.
         bool r = toString(result.errors[1]) == "Expected this to be 'boolean', but got '*blocked-tp-1*'; type *blocked-tp-1*.tail() "
-            "(*blocked-tp-1*) is not a subtype of boolean (boolean)";
+                                               "(*blocked-tp-1*) is not a subtype of boolean (boolean)";
         CHECK(r);
         CHECK(
             toString(result.errors[2]) ==
@@ -3386,7 +3377,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2065_bidirectional_inference_function_call")
 TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_lambda_with_partially_resolved_generic")
 {
     ScopedFastFlag sffs[] = {
-	{FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
@@ -3408,7 +3399,7 @@ TEST_CASE_FIXTURE(Fixture, "bidirectionally_infer_lambda_with_partially_resolved
 TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_goes_through_ifelse")
 {
     ScopedFastFlag sffs[] = {
-	{FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
@@ -3806,8 +3797,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_example")
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "bidirectional_function_statement_inference_with_extern")
 {
-    ScopedFastFlag _{FFlag::LuauContainsAnyGenericDoesntTraverseIntoExtern, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type HasClass = { f: (ClassWithGenericMethod) -> () }
         local t = {} :: HasClass
@@ -3978,10 +3967,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_187542_recursive_call_in_loop")
 
 TEST_CASE_FIXTURE(Fixture, "global_function_redefinition")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
-        {FFlag::DebugLuauAssertOnForcedConstraint, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true}, {FFlag::DebugLuauAssertOnForcedConstraint, true}};
 
     CheckResult result = check(R"(
         function fact(n: number)
@@ -4030,7 +4016,6 @@ TEST_CASE_FIXTURE(Fixture, "unify_type_pack_stack_overflow")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauDontIncludeVarargWithAnnotation, true},
         {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
     };
 
@@ -4124,17 +4109,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lute_tasklib_createtask")
 
     // FIXME CLI-192091: This is wrong but it's less wrong than before where we
     // just leaked the generics entirely.
-    CHECK_EQ(
-        "((...any) -> (unknown, ...unknown), ...any) -> { co: thread, result: unknown, success: boolean }",
-        toString(requireType("createtask"))
-    );
+    CHECK_EQ("((...any) -> (unknown, ...unknown), ...any) -> { co: thread, result: unknown, success: boolean }", toString(requireType("createtask")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "global_emplacing_steals_type_from_elsewhere")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauKeepExplicitMapForGlobalTypes, true},
+        {FFlag::LuauKeepExplicitMapForGlobalTypes2, true},
     };
 
     CheckResult result = check(R"(

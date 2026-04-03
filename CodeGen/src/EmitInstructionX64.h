@@ -17,10 +17,10 @@ namespace X64
 class AssemblyBuilderX64;
 struct IrRegAllocX64;
 
-void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int nparams, int nresults);
+void emitInstCall(IrRegAllocX64& regs, AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int nparams, int nresults);
 void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int actualResults, bool functionVariadic);
 void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, int count, uint32_t index, int knownSize);
-void emitInstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRepeat);
+void emitInstForGLoop(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int aux, Label& loopRepeat);
 
 } // namespace X64
 } // namespace CodeGen

@@ -142,7 +142,16 @@ void countersDump(const char* path)
             for (const auto& [line, counters] : sortedCounters)
             {
                 if (counters.regularExecuted != 0 || counters.fallbackExecuted != 0 || counters.vmExitTaken != 0)
-                    fprintf(f, "%d %lld %lld %lld\n", line, (long long)counters.regularExecuted, (long long)counters.fallbackExecuted, (long long)counters.vmExitTaken);
+                {
+                    fprintf(
+                        f,
+                        "%d %lld %lld %lld\n",
+                        line,
+                        (long long)counters.regularExecuted,
+                        (long long)counters.fallbackExecuted,
+                        (long long)counters.vmExitTaken
+                    );
+                }
             }
         }
     }

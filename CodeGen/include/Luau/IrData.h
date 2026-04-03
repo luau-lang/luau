@@ -1298,6 +1298,9 @@ struct IrFunction
 
     bool recordCounters = false; // Taken from CompilationOptions for easy access
 
+    // Stores register tags that are known after constant propagating through a block, indexed by that block's index
+    std::vector<std::vector<uint8_t>> blockExitTags; // blockIdx → tag array
+
     IrBlock& blockOp(IrOp op)
     {
         CODEGEN_ASSERT(op.kind == IrOpKind::Block);

@@ -23,15 +23,15 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAG(LuauCodegenDsoPairTrackFix)
+LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBlockSafeEnv)
-LUAU_FASTFLAGVARIABLE(LuauCodegenSetBlockEntryState2)
+LUAU_FASTFLAGVARIABLE(LuauCodegenSetBlockEntryState3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufferRangeMerge4)
-LUAU_FASTFLAGVARIABLE(LuauCodegenTableLoadProp2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenExtraBlockers)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLengthBaseInst)
-LUAU_FASTFLAG(LuauCodegenOpReadOnly)
 LUAU_FASTFLAG(LuauCodegenTruncatedSubsts)
+LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateTagsAcrossChains2)
+LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDuplicateDoubleIntValues)
 
 namespace Luau
 {
@@ -107,6 +107,9 @@ static uint8_t tryGetTagForTypename(std::string_view name, bool forTypeof)
 
     if (name == "number")
         return LUA_TNUMBER;
+
+    if (name == "integer")
+        return LUA_TINTEGER;
 
     // typeof(vector) can be changed by environment
     // TODO: support the environment option
@@ -292,14 +295,11 @@ struct ConstPropState
 
         bufferLoadStoreInfo.clear();
 
-        if (FFlag::LuauCodegenTableLoadProp2)
-        {
-            hashValueCache.clear();
-            arrayValueCache.clear();
+        hashValueCache.clear();
+        arrayValueCache.clear();
 
-            // While other map clears already prevent instValue keys from matching again, this saves memory and map size
-            instValue.clear();
-        }
+        // While other map clears already prevent instValue keys from matching again, this saves memory and map size
+        instValue.clear();
     }
 
     // If table memory has changed, we can't reuse previously computed and validated table slot lookups
@@ -308,19 +308,13 @@ struct ConstPropState
     {
         getSlotNodeCache.clear();
 
-        if (FFlag::LuauCodegenTableLoadProp2)
-            checkSlotMatchCache.clear();
-        else
-            checkSlotMatchCache_DEPRECATED.clear();
+        checkSlotMatchCache.clear();
 
         getArrAddrCache.clear();
         checkArraySizeCache.clear();
 
-        if (FFlag::LuauCodegenTableLoadProp2)
-        {
-            hashValueCache.clear();
-            arrayValueCache.clear();
-        }
+        hashValueCache.clear();
+        arrayValueCache.clear();
     }
 
     void invalidateHeapBufferData()
@@ -359,13 +353,10 @@ struct ConstPropState
         invalidateHeap();
         invalidateCapturedRegisters();
 
-        if (FFlag::LuauCodegenExtraBlockers)
-        {
-            // We cannot guarantee right now that all live values can be rematerialized from non-stack memory locations
-            // To prevent earlier values from being propagated to after operation which might call, we have to clear the maps
-            // TODO: remove only the values that don't have a guaranteed restore location
-            invalidateValuePropagation();
-        }
+        // We cannot guarantee right now that all live values can be rematerialized from non-stack memory locations
+        // To prevent earlier values from being propagated to after operation which might call, we have to clear the maps
+        // TODO: remove only the values that don't have a guaranteed restore location
+        invalidateValuePropagation();
 
         upvalueMap.clear();
 
@@ -441,15 +432,8 @@ struct ConstPropState
     {
         IrInst inst = versionedVmRegLoad(loadCmd, opA);
 
-        if (FFlag::LuauCodegenOpReadOnly)
-        {
-            CODEGEN_ASSERT(inst.ops.size() == 1);
-            inst.ops.push_back(opB);
-        }
-        else
-        {
-            OP_B(inst) = opB;
-        }
+        CODEGEN_ASSERT(inst.ops.size() == 1);
+        inst.ops.push_back(opB);
 
         return inst;
     }
@@ -526,10 +510,8 @@ struct ConstPropState
         if (function.cfg.captured.regs.test(vmRegOp(OP_A(loadInst))))
             return false;
 
-        IrInst versionedLoad =
-            loadInst.cmd == IrCmd::LOAD_FLOAT
-                ? versionedVmRegLoad(loadInst.cmd, OP_A(loadInst), FFlag::LuauCodegenOpReadOnly ? OPT_OP_B(loadInst) : OP_B(loadInst))
-                : versionedVmRegLoad(loadInst.cmd, OP_A(loadInst));
+        IrInst versionedLoad = loadInst.cmd == IrCmd::LOAD_FLOAT ? versionedVmRegLoad(loadInst.cmd, OP_A(loadInst), OPT_OP_B(loadInst))
+                                                                 : versionedVmRegLoad(loadInst.cmd, OP_A(loadInst));
 
         // Check if there is a value that already has this version of the register
         if (uint32_t* prevIdx = getPreviousInstIndex(versionedLoad))
@@ -594,56 +576,35 @@ struct ConstPropState
 
         if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_TVALUE, OP_A(loadInst)))
         {
-            if (FFlag::LuauCodegenTableLoadProp2)
+            if (IrOp* valueOp = instValue.find(*prevIdx))
             {
-                if (IrOp* valueOp = instValue.find(*prevIdx))
+                if (IrInst* value = function.asInstOp(*valueOp))
                 {
-                    if (IrInst* value = function.asInstOp(*valueOp))
+                    if (value->useCount != 0 && value->cmd == loadInst.cmd)
                     {
-                        if (value->useCount != 0 && value->cmd == loadInst.cmd)
-                        {
-                            substitute(function, loadInst, IrOp{IrOpKind::Inst, valueOp->index});
-                            return true;
-                        }
-
-                        if (value->useCount != 0 && getCmdValueKind(value->cmd) == getCmdValueKind(loadInst.cmd))
-                        {
-                            substitute(function, loadInst, IrOp{IrOpKind::Inst, valueOp->index});
-                            return true;
-                        }
+                        substitute(function, loadInst, IrOp{IrOpKind::Inst, valueOp->index});
+                        return true;
                     }
-                    else if (valueOp->kind == IrOpKind::Constant)
+
+                    if (value->useCount != 0 && getCmdValueKind(value->cmd) == getCmdValueKind(loadInst.cmd))
                     {
-                        if (getConstValueKind(function.constOp(*valueOp)) == getCmdValueKind(loadInst.cmd))
-                        {
-                            substitute(function, loadInst, *valueOp);
-                            return true;
-                        }
+                        substitute(function, loadInst, IrOp{IrOpKind::Inst, valueOp->index});
+                        return true;
                     }
                 }
-                else
+                else if (valueOp->kind == IrOpKind::Constant)
                 {
-                    // Current instruction is now the holder of the value in the TValue
-                    instValue[*prevIdx] = IrOp{IrOpKind::Inst, function.getInstIndex(loadInst)};
+                    if (getConstValueKind(function.constOp(*valueOp)) == getCmdValueKind(loadInst.cmd))
+                    {
+                        substitute(function, loadInst, *valueOp);
+                        return true;
+                    }
                 }
             }
             else
             {
-                if (uint32_t* valueIdx = instValue_DEPRECATED.find(*prevIdx))
-                {
-                    IrInst& value = function.instructions[*valueIdx];
-
-                    if (value.useCount != 0 && value.cmd == loadInst.cmd)
-                    {
-                        substitute(function, loadInst, IrOp{IrOpKind::Inst, *valueIdx});
-                        return true;
-                    }
-                }
-                else
-                {
-                    // Current instruction is now the holder of the value in the TValue
-                    instValue_DEPRECATED[*prevIdx] = function.getInstIndex(loadInst);
-                }
+                // Current instruction is now the holder of the value in the TValue
+                instValue[*prevIdx] = IrOp{IrOpKind::Inst, function.getInstIndex(loadInst)};
             }
         }
 
@@ -756,10 +717,10 @@ struct ConstPropState
 
             IrInst& inst = function.instOp(base.op);
 
-            std::optional<double> lhsNum = function.asDoubleOp(FFlag::LuauCodegenOpReadOnly ? OPT_OP_A(inst) : OP_A(inst));
-            std::optional<double> rhsNum = function.asDoubleOp(FFlag::LuauCodegenOpReadOnly ? OPT_OP_B(inst) : OP_B(inst));
-            std::optional<int> lhsInt = function.asIntOp(FFlag::LuauCodegenOpReadOnly ? OPT_OP_A(inst) : OP_A(inst));
-            std::optional<int> rhsInt = function.asIntOp(FFlag::LuauCodegenOpReadOnly ? OPT_OP_B(inst) : OP_B(inst));
+            std::optional<double> lhsNum = function.asDoubleOp(OPT_OP_A(inst));
+            std::optional<double> rhsNum = function.asDoubleOp(OPT_OP_B(inst));
+            std::optional<int> lhsInt = function.asIntOp(OPT_OP_A(inst));
+            std::optional<int> rhsInt = function.asIntOp(OPT_OP_B(inst));
 
             if (inst.cmd == IrCmd::ADD_NUM && lhsNum && isValidDoubleForImmediate(*lhsNum))
             {
@@ -920,8 +881,7 @@ struct ConstPropState
             return;
 
         int offset = function.intOp(OP_B(loadInst));
-        uint8_t tag = (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_C(loadInst) : OP_C(loadInst).kind == IrOpKind::None) ? LUA_TBUFFER
-                                                                                                                   : function.tagOp(OP_C(loadInst));
+        uint8_t tag = !FFlag::LuauCodegenBufNoDefTag && !HAS_OP_C(loadInst) ? LUA_TBUFFER : function.tagOp(OP_C(loadInst));
 
         // Find if we have data for this kind of load
         for (BufferLoadStoreInfo& info : bufferLoadStoreInfo)
@@ -1054,9 +1014,7 @@ struct ConstPropState
 
     void forwardBufferStoreToLoad(IrInst& storeInst, IrCmd loadCmd, uint8_t accessSize)
     {
-        uint8_t tag = (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_D(storeInst) : OP_D(storeInst).kind == IrOpKind::None)
-                          ? LUA_TBUFFER
-                          : function.tagOp(OP_D(storeInst));
+        uint8_t tag = !FFlag::LuauCodegenBufNoDefTag && !HAS_OP_D(storeInst) ? LUA_TBUFFER : function.tagOp(OP_D(storeInst));
 
         // Writing at unknown offset removes everything in the same kind of memory (buffer/userdata)
         // For userdata, we could check where the pointer is coming from, but we don't have an example of such usage
@@ -1334,11 +1292,7 @@ struct ConstPropState
         instLink.clear();
 
         instTag.clear();
-
-        if (FFlag::LuauCodegenTableLoadProp2)
-            instValue.clear();
-        else
-            instValue_DEPRECATED.clear();
+        instValue.clear();
 
         invalidateValuePropagation();
         invalidateHeapTableData();
@@ -1365,7 +1319,6 @@ struct ConstPropState
 
     // Stored the tag of a TValue stored in an instruction and will never change
     DenseHashMap<uint32_t, uint8_t> instTag{kInvalidInstIdx};
-    DenseHashMap<uint32_t, uint32_t> instValue_DEPRECATED{kInvalidInstIdx};
     DenseHashMap<uint32_t, IrOp> instValue{kInvalidInstIdx};
 
     DenseHashMap<IrInst, uint32_t, IrInstHash, IrInstEq> valueMap;
@@ -1381,8 +1334,7 @@ struct ConstPropState
     std::vector<uint32_t> tryNumToIndexCache; // Fallback block argument might be different
 
     // Heap changes might affect table state
-    std::vector<NumberedInstruction> getSlotNodeCache; // Additionally, pcpos argument might be different
-    std::vector<uint32_t> checkSlotMatchCache_DEPRECATED; // Additionally, fallback block argument might be different
+    std::vector<NumberedInstruction> getSlotNodeCache;    // Additionally, pcpos argument might be different
     std::vector<NodeSlotState> checkSlotMatchCache;       // Additionally, fallback block argument might be different
 
     std::vector<uint32_t> getArrAddrCache;
@@ -1494,6 +1446,43 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_MATH_ISNAN:
     case LBF_MATH_ISINF:
     case LBF_MATH_ISFINITE:
+    case LBF_INTEGER_ADD:
+    case LBF_INTEGER_MUL:
+    case LBF_INTEGER_IDIV:
+    case LBF_INTEGER_LT:
+    case LBF_INTEGER_CREATE:
+    case LBF_INTEGER_MOD:
+    case LBF_INTEGER_SUB:
+    case LBF_INTEGER_LE:
+    case LBF_INTEGER_GT:
+    case LBF_INTEGER_GE:
+    case LBF_INTEGER_ULT:
+    case LBF_INTEGER_ULE:
+    case LBF_INTEGER_UGT:
+    case LBF_INTEGER_UGE:
+    case LBF_INTEGER_DIV:
+    case LBF_INTEGER_NEG:
+    case LBF_INTEGER_BSWAP:
+    case LBF_INTEGER_MIN:
+    case LBF_INTEGER_MAX:
+    case LBF_INTEGER_REM:
+    case LBF_INTEGER_UDIV:
+    case LBF_INTEGER_UREM:
+    case LBF_INTEGER_BAND:
+    case LBF_INTEGER_BOR:
+    case LBF_INTEGER_BNOT:
+    case LBF_INTEGER_BXOR:
+    case LBF_INTEGER_BTEST:
+    case LBF_INTEGER_COUNTRZ:
+    case LBF_INTEGER_COUNTLZ:
+    case LBF_INTEGER_LSHIFT:
+    case LBF_INTEGER_RSHIFT:
+    case LBF_INTEGER_ARSHIFT:
+    case LBF_INTEGER_LROTATE:
+    case LBF_INTEGER_RROTATE:
+    case LBF_INTEGER_CLAMP:
+    case LBF_INTEGER_EXTRACT:
+    case LBF_INTEGER_TONUMBER:
         break;
     case LBF_TABLE_INSERT:
         state.invalidateHeap();
@@ -1642,7 +1631,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::LOAD_TVALUE:
         if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            if (!state.substituteOrRecordVmRegLoad(inst) && (FFlag::LuauCodegenOpReadOnly ? !HAS_OP_C(inst) : OP_C(inst).kind == IrOpKind::None))
+            if (!state.substituteOrRecordVmRegLoad(inst) && !HAS_OP_C(inst))
             {
                 // Provide information about what kind of tag is being loaded, this helps dead store elimination later
                 if (uint8_t tag = state.tryGetTag(OP_A(inst)); tag != 0xff)
@@ -1651,65 +1640,62 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         else if (IrInst* source = function.asInstOp(OP_A(inst)))
         {
-            if (FFlag::LuauCodegenTableLoadProp2)
+            if (source->cmd == IrCmd::GET_SLOT_NODE_ADDR)
             {
-                if (source->cmd == IrCmd::GET_SLOT_NODE_ADDR)
+                uint32_t* prevIdx = state.hashValueCache.find(OP_A(inst).index);
+
+                if (prevIdx && *prevIdx != kInvalidInstIdx)
                 {
-                    uint32_t* prevIdx = state.hashValueCache.find(OP_A(inst).index);
+                    IrInst& prev = function.instructions[*prevIdx];
 
-                    if (prevIdx && *prevIdx != kInvalidInstIdx)
+                    if (prev.cmd == IrCmd::LOAD_TVALUE)
                     {
-                        IrInst& prev = function.instructions[*prevIdx];
-
-                        if (prev.cmd == IrCmd::LOAD_TVALUE)
-                        {
-                            if (prev.useCount != 0)
-                                substitute(function, inst, IrOp{IrOpKind::Inst, *prevIdx});
-                        }
-                        else if (prev.cmd == IrCmd::STORE_SPLIT_TVALUE)
-                        {
-                            state.instTag[index] = function.tagOp(OP_B(prev));
-                            state.instValue[index] = OP_C(prev);
-                        }
-
-                        break;
+                        if (prev.useCount != 0)
+                            substitute(function, inst, IrOp{IrOpKind::Inst, *prevIdx});
+                    }
+                    else if (prev.cmd == IrCmd::STORE_SPLIT_TVALUE)
+                    {
+                        state.instTag[index] = function.tagOp(OP_B(prev));
+                        state.instValue[index] = OP_C(prev);
                     }
 
-                    state.hashValueCache[OP_A(inst).index] = index;
+                    break;
                 }
-                else if (source->cmd == IrCmd::GET_ARR_ADDR)
-                {
-                    IrOp offsetOp = state.getCombinedArrayLoadOffsetOp(*source, FFlag::LuauCodegenOpReadOnly ? OPT_OP_B(inst) : OP_B(inst));
 
-                    auto it = std::find_if(
-                        state.arrayValueCache.begin(),
-                        state.arrayValueCache.end(),
-                        [&](const ArrayValueEntry& el)
-                        {
-                            return el.pointer == OP_A(inst).index && el.offset == offsetOp;
-                        }
-                    );
+                state.hashValueCache[OP_A(inst).index] = index;
+            }
+            else if (source->cmd == IrCmd::GET_ARR_ADDR)
+            {
+                IrOp offsetOp = state.getCombinedArrayLoadOffsetOp(*source, OPT_OP_B(inst));
 
-                    if (it != state.arrayValueCache.end() && it->value != kInvalidInstIdx)
+                auto it = std::find_if(
+                    state.arrayValueCache.begin(),
+                    state.arrayValueCache.end(),
+                    [&](const ArrayValueEntry& el)
                     {
-                        IrInst& prev = function.instructions[it->value];
+                        return el.pointer == OP_A(inst).index && el.offset == offsetOp;
+                    }
+                );
 
-                        if (prev.cmd == IrCmd::LOAD_TVALUE)
-                        {
-                            if (prev.useCount != 0)
-                                substitute(function, inst, IrOp{IrOpKind::Inst, it->value});
-                        }
-                        else if (prev.cmd == IrCmd::STORE_SPLIT_TVALUE)
-                        {
-                            state.instTag[index] = function.tagOp(OP_B(prev));
-                            state.instValue[index] = OP_C(prev);
-                        }
+                if (it != state.arrayValueCache.end() && it->value != kInvalidInstIdx)
+                {
+                    IrInst& prev = function.instructions[it->value];
 
-                        break;
+                    if (prev.cmd == IrCmd::LOAD_TVALUE)
+                    {
+                        if (prev.useCount != 0)
+                            substitute(function, inst, IrOp{IrOpKind::Inst, it->value});
+                    }
+                    else if (prev.cmd == IrCmd::STORE_SPLIT_TVALUE)
+                    {
+                        state.instTag[index] = function.tagOp(OP_B(prev));
+                        state.instValue[index] = OP_C(prev);
                     }
 
-                    state.arrayValueCache.push_back({OP_A(inst).index, offsetOp, index});
+                    break;
                 }
+
+                state.arrayValueCache.push_back({OP_A(inst).index, offsetOp, index});
             }
         }
         break;
@@ -1760,6 +1746,18 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::STORE_POINTER:
         if (OP_A(inst).kind == IrOpKind::VmReg)
         {
+            if (FFlag::LuauCodegenRemoveDuplicateDoubleIntValues && OP_B(inst).kind == IrOpKind::Inst)
+            {
+                if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_POINTER, OP_A(inst)))
+                {
+                    if (*prevIdx == OP_B(inst).index)
+                    {
+                        kill(function, inst);
+                        break;
+                    }
+                }
+            }
+
             state.invalidateValue(OP_A(inst));
 
             if (OP_B(inst).kind == IrOpKind::Inst)
@@ -1790,6 +1788,18 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
             else
             {
+                if (FFlag::LuauCodegenRemoveDuplicateDoubleIntValues)
+                {
+                    if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_DOUBLE, OP_A(inst)))
+                    {
+                        if (*prevIdx == OP_B(inst).index)
+                        {
+                            kill(function, inst);
+                            break;
+                        }
+                    }
+                }
+
                 state.invalidateValue(OP_A(inst));
                 state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_DOUBLE);
             }
@@ -1811,6 +1821,18 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
             else
             {
+                if (FFlag::LuauCodegenRemoveDuplicateDoubleIntValues)
+                {
+                    if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_INT, OP_A(inst)))
+                    {
+                        if (*prevIdx == OP_B(inst).index)
+                        {
+                            kill(function, inst);
+                            break;
+                        }
+                    }
+                }
+
                 state.invalidateValue(OP_A(inst));
                 state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_INT);
             }
@@ -1866,7 +1888,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                         if (arg->cmd == IrCmd::TAG_VECTOR)
                             tag = LUA_TVECTOR;
 
-                        if (arg->cmd == IrCmd::LOAD_TVALUE && (FFlag::LuauCodegenOpReadOnly ? HAS_OP_C(*arg) : OP_C(arg).kind != IrOpKind::None))
+                        if (arg->cmd == IrCmd::LOAD_TVALUE && HAS_OP_C(*arg))
                             tag = function.tagOp(OP_C(arg));
                     }
                 }
@@ -1899,11 +1921,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 }
             }
 
-            if (FFlag::LuauCodegenTableLoadProp2)
-            {
-                if (IrInst* target = function.asInstOp(OP_A(inst)))
-                    state.invalidateTableStoreLocation(*target, FFlag::LuauCodegenOpReadOnly ? OPT_OP_C(inst) : OP_C(inst), tag);
-            }
+            if (IrInst* target = function.asInstOp(OP_A(inst)))
+                state.invalidateTableStoreLocation(*target, OPT_OP_C(inst), tag);
 
             // If we have constant tag and value, replace TValue store with tag/value pair store
             bool canSplitTvalueStore = false;
@@ -1919,7 +1938,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
             if (canSplitTvalueStore)
             {
-                if (!FFlag::LuauCodegenOpReadOnly || HAS_OP_C(inst))
+                if (HAS_OP_C(inst))
                     replace(function, block, index, {IrCmd::STORE_SPLIT_TVALUE, {OP_A(inst), build.constTag(tag), value, OP_C(inst)}});
                 else
                     replace(function, block, index, {IrCmd::STORE_SPLIT_TVALUE, {OP_A(inst), build.constTag(tag), value}});
@@ -1928,11 +1947,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 if (OP_A(inst).kind == IrOpKind::VmReg && activeLoadValue != kInvalidInstIdx)
                     state.valueMap[state.versionedVmRegLoad(activeLoadCmd, OP_A(inst))] = activeLoadValue;
 
-                if (FFlag::LuauCodegenTableLoadProp2)
-                {
-                    if (IrInst* target = function.asInstOp(OP_A(inst)))
-                        state.forwardTableStoreToLoad(*target, FFlag::LuauCodegenOpReadOnly ? OPT_OP_D(inst) : OP_D(inst), index);
-                }
+                if (IrInst* target = function.asInstOp(OP_A(inst)))
+                    state.forwardTableStoreToLoad(*target, OPT_OP_D(inst), index);
             }
             else if (OP_A(inst).kind == IrOpKind::VmReg)
             {
@@ -1952,16 +1968,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         else
         {
-            if (FFlag::LuauCodegenTableLoadProp2)
+            if (IrInst* target = function.asInstOp(OP_A(inst)))
             {
-                if (IrInst* target = function.asInstOp(OP_A(inst)))
-                {
-                    state.invalidateTableStoreLocation(
-                        *target, FFlag::LuauCodegenOpReadOnly ? OPT_OP_D(inst) : OP_D(inst), function.tagOp(OP_B(inst))
-                    );
+                state.invalidateTableStoreLocation(*target, OPT_OP_D(inst), function.tagOp(OP_B(inst)));
 
-                    state.forwardTableStoreToLoad(*target, FFlag::LuauCodegenOpReadOnly ? OPT_OP_D(inst) : OP_D(inst), index);
-                }
+                state.forwardTableStoreToLoad(*target, OPT_OP_D(inst), index);
             }
         }
         break;
@@ -2353,7 +2364,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::BUFFER_WRITEI8:
         if (IrInst* src = function.asInstOp(OP_C(inst)))
         {
-            std::optional<int> intSrcB = function.asIntOp(FFlag::LuauCodegenOpReadOnly ? OPT_OP_B(*src) : OP_B(src));
+            std::optional<int> intSrcB = function.asIntOp(OPT_OP_B(*src));
 
             if (src->cmd == IrCmd::SEXTI8_INT)
                 replace(function, OP_C(inst), OP_A(src));
@@ -2372,7 +2383,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::BUFFER_WRITEI16:
         if (IrInst* src = function.asInstOp(OP_C(inst)))
         {
-            std::optional<int> intSrcB = function.asIntOp(FFlag::LuauCodegenOpReadOnly ? OPT_OP_B(*src) : OP_B(src));
+            std::optional<int> intSrcB = function.asIntOp(OPT_OP_B(*src));
 
             if (src->cmd == IrCmd::SEXTI16_INT)
                 replace(function, OP_C(inst), OP_A(src));
@@ -2971,50 +2982,30 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         break;
     }
     case IrCmd::CHECK_SLOT_MATCH:
-        if (FFlag::LuauCodegenTableLoadProp2)
+        for (auto& el : state.checkSlotMatchCache)
         {
-            for (auto& el : state.checkSlotMatchCache)
+            IrInst& prev = function.instructions[el.pointer];
+
+            if (OP_A(prev) == OP_A(inst) && OP_B(prev) == OP_B(inst))
             {
-                IrInst& prev = function.instructions[el.pointer];
-
-                if (OP_A(prev) == OP_A(inst) && OP_B(prev) == OP_B(inst))
+                if (uint8_t* info = state.instTag.find(OP_A(inst).index))
                 {
-                    if (uint8_t* info = state.instTag.find(OP_A(inst).index))
-                    {
-                        if (*info != LUA_TNIL)
-                            el.knownToNotBeNil = true;
-                    }
-
-                    if (el.knownToNotBeNil)
-                        kill(function, inst);
-                    else
-                        replace(function, block, index, {IrCmd::CHECK_NODE_VALUE, {OP_A(inst), OP_C(inst)}}); // Only a check for 'nil' value is left
-
-                    el.knownToNotBeNil = true;
-                    return; // Break out from both the loop and the switch
+                    if (*info != LUA_TNIL)
+                        el.knownToNotBeNil = true;
                 }
+
+                if (el.knownToNotBeNil)
+                    kill(function, inst);
+                else
+                    replace(function, block, index, {IrCmd::CHECK_NODE_VALUE, {OP_A(inst), OP_C(inst)}}); // Only a check for 'nil' value is left
+
+                el.knownToNotBeNil = true;
+                return; // Break out from both the loop and the switch
             }
-
-            if (int(state.checkSlotMatchCache.size()) < FInt::LuauCodeGenReuseSlotLimit)
-                state.checkSlotMatchCache.push_back({index, true});
         }
-        else
-        {
-            for (uint32_t prevIdx : state.checkSlotMatchCache_DEPRECATED)
-            {
-                IrInst& prev = function.instructions[prevIdx];
 
-                if (OP_A(prev) == OP_A(inst) && OP_B(prev) == OP_B(inst))
-                {
-                    // Only a check for 'nil' value is left
-                    replace(function, block, index, {IrCmd::CHECK_NODE_VALUE, {OP_A(inst), OP_C(inst)}});
-                    return; // Break out from both the loop and the switch
-                }
-            }
-
-            if (int(state.checkSlotMatchCache_DEPRECATED.size()) < FInt::LuauCodeGenReuseSlotLimit)
-                state.checkSlotMatchCache_DEPRECATED.push_back(index);
-        }
+        if (int(state.checkSlotMatchCache.size()) < FInt::LuauCodeGenReuseSlotLimit)
+            state.checkSlotMatchCache.push_back({index, true});
         break;
 
     case IrCmd::ADD_VEC:
@@ -3104,22 +3095,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::GET_CACHED_IMPORT:
         state.invalidate(OP_A(inst));
 
-        if (FFlag::LuauCodegenExtraBlockers)
-        {
-            // Outside of safe environment, environment traversal for an import can execute custom code
-            if (!state.inSafeEnv)
-                state.invalidateUserCall();
-            else
-                state.invalidateValuePropagation();
-        }
+        // Outside of safe environment, environment traversal for an import can execute custom code
+        if (!state.inSafeEnv)
+            state.invalidateUserCall();
         else
-        {
-            // Outside of safe environment, environment traversal for an import can execute custom code
-            if (!state.inSafeEnv)
-                state.invalidateUserCall();
-
             state.invalidateValuePropagation();
-        }
         break;
     case IrCmd::CONCAT:
         state.invalidateRegisterRange(vmRegOp(OP_A(inst)), function.uintOp(OP_B(inst)));
@@ -3140,14 +3120,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::CALL:
         state.invalidateRegistersFrom(vmRegOp(OP_A(inst)));
         state.invalidateUserCall();
-
-        if (!FFlag::LuauCodegenExtraBlockers)
-        {
-            // We cannot guarantee right now that all live values can be rematerialized from non-stack memory locations
-            // To prevent earlier values from being propagated to after the call, we have to clear the map
-            // TODO: remove only the values that don't have a guaranteed restore location
-            state.invalidateValuePropagation();
-        }
         break;
     case IrCmd::FORGLOOP:
         state.invalidateRegistersFrom(vmRegOp(OP_A(inst)) + 2); // Rn and Rn+1 are not modified
@@ -3229,44 +3201,39 @@ static void setupBlockEntryState(IrBuilder& build, IrFunction& function, IrBlock
         if (function.cfg.captured.regs[i])
             continue;
 
-        switch (tag)
-        {
-        case LBC_TYPE_NIL:
-            state.regs[i].tag = LUA_TNIL;
-            break;
-        case LBC_TYPE_BOOLEAN:
-            state.regs[i].tag = LUA_TBOOLEAN;
-            break;
-        case LBC_TYPE_NUMBER:
-            state.regs[i].tag = LUA_TNUMBER;
-            break;
-        case LBC_TYPE_STRING:
-            state.regs[i].tag = LUA_TSTRING;
-            break;
-        case LBC_TYPE_TABLE:
-            state.regs[i].tag = LUA_TTABLE;
-            break;
-        case LBC_TYPE_FUNCTION:
-            state.regs[i].tag = LUA_TFUNCTION;
-            break;
-        case LBC_TYPE_THREAD:
-            state.regs[i].tag = LUA_TTHREAD;
-            break;
-        case LBC_TYPE_USERDATA:
-            state.regs[i].tag = LUA_TUSERDATA;
-            break;
-        case LBC_TYPE_VECTOR:
-            state.regs[i].tag = LUA_TVECTOR;
-            break;
-        case LBC_TYPE_BUFFER:
-            state.regs[i].tag = LUA_TBUFFER;
-            break;
-        default:
-            if (tag >= LBC_TYPE_TAGGED_USERDATA_BASE && tag < LBC_TYPE_TAGGED_USERDATA_END)
-                state.regs[i].tag = LUA_TUSERDATA;
-            break;
-        }
+        if (std::optional<uint8_t> vmTag = tryGetLuauTagForBcType(tag, /* ignoreOptionalPart */ true))
+            state.updateTag(build.vmReg(uint8_t(i)), *vmTag);
     }
+
+    if (FFlag::LuauCodegenPropagateTagsAcrossChains2)
+    {
+        propagateTagsFromPredecessors(
+            function,
+            block,
+            [&](size_t i)
+            {
+                return state.regs[i].tag;
+            },
+            [&](size_t i, uint8_t tag)
+            {
+                state.updateTag(build.vmReg(uint8_t(i)), tag);
+            }
+        );
+    }
+}
+
+static void saveBlockExitState(IrFunction& function, const IrBlock& block, ConstPropState& state)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenPropagateTagsAcrossChains2);
+
+    std::vector<uint8_t> tags;
+    tags.reserve(state.maxReg + 1);
+
+    for (int i = 0; i <= state.maxReg; ++i)
+        tags.emplace_back(state.regs[i].tag);
+
+    uint32_t blockIdx = function.getBlockIndex(block);
+    function.blockExitTags[blockIdx] = std::move(tags);
 }
 
 static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& state)
@@ -3303,11 +3270,13 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
 
     state.clear();
 
-    if (FFlag::LuauCodegenSetBlockEntryState2)
+    if (FFlag::LuauCodegenSetBlockEntryState3)
         setupBlockEntryState(build, function, *block, state);
 
     const uint32_t startSortkey = block->sortkey;
     uint32_t chainPos = 0;
+
+    IrBlock* lastBlock = nullptr;
 
     while (block)
     {
@@ -3356,8 +3325,13 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
             }
         }
 
+        if (FFlag::LuauCodegenPropagateTagsAcrossChains2)
+            lastBlock = block;
         block = nextBlock;
     }
+
+    if (FFlag::LuauCodegenPropagateTagsAcrossChains2 && lastBlock)
+        saveBlockExitState(function, *lastBlock, state);
 }
 
 // Note that blocks in the collected path are marked as visited
@@ -3543,6 +3517,9 @@ void constPropInBlockChains(IrBuilder& build)
     ConstPropState state{build, function};
 
     std::vector<uint8_t> visited(function.blocks.size(), false);
+
+    if (FFlag::LuauCodegenPropagateTagsAcrossChains2)
+        function.blockExitTags.resize(function.blocks.size());
 
     for (IrBlock& block : function.blocks)
     {

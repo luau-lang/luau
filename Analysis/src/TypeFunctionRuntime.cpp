@@ -23,9 +23,11 @@
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
+LUAU_FASTFLAG(LuauIntegerType)
 
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauUdtfReserveStack)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 
 namespace Luau
 {
@@ -51,7 +53,7 @@ TypeFunctionRuntime::TypeFunctionRuntime(NotNull<InternalErrorReporter> ice, Not
 
 TypeFunctionRuntime::~TypeFunctionRuntime() {}
 
-std::optional<std::string> TypeFunctionRuntime::registerFunction(AstStatTypeFunction* function)
+std::optional<std::string> TypeFunctionRuntime::registerFunction_DEPRECATED(AstStatTypeFunction* function)
 {
     // If evaluation is disabled, we do not generate additional error messages
     if (!allowEvaluation)
@@ -116,6 +118,92 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction(AstStatTypeFunc
     lua_pop(L, 1);
 
     // Load bytecode into Luau state
+    if (auto error = checkResultForError_DEPRECATED(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
+        return error;
+
+    // Execute the global function which should return our user-defined type function
+    if (auto error = checkResultForError_DEPRECATED(L, name.value, lua_resume(L, nullptr, 0)))
+        return error;
+
+    if (!lua_isfunction(L, -1))
+    {
+        lua_pop(L, 1);
+        return format("Could not find '%s' type function in the global scope", name.value);
+    }
+
+    // Store resulting function in the registry
+    lua_pushlightuserdata(global, function);
+    lua_xmove(L, global, 1);
+    lua_settable(global, LUA_REGISTRYINDEX);
+
+    return std::nullopt;
+}
+
+std::optional<TypeFunctionError> TypeFunctionRuntime::registerFunction(AstStatTypeFunction* function)
+{
+    // If evaluation is disabled, we do not generate additional error messages
+    if (!allowEvaluation)
+        return std::nullopt;
+
+    // Do not evaluate type functions with parse errors inside
+    if (function->hasErrors)
+        return std::nullopt;
+
+    prepareState();
+
+    lua_State* global = state.get();
+
+    // Fetch to check if function is already registered
+    lua_pushlightuserdata(global, function);
+    lua_gettable(global, LUA_REGISTRYINDEX);
+
+    if (!lua_isnil(global, -1))
+    {
+        lua_pop(global, 1);
+        return std::nullopt;
+    }
+
+    lua_pop(global, 1);
+
+    AstName name = function->name;
+
+    // Construct ParseResult containing the type function
+    Allocator allocator;
+    AstNameTable names(allocator);
+
+    AstExpr* exprFunction = function->body;
+    AstArray<AstExpr*> exprReturns{&exprFunction, 1};
+    AstStatReturn stmtReturn{Location{}, exprReturns};
+    AstStat* stmtArray[] = {&stmtReturn};
+    AstArray<AstStat*> stmts{stmtArray, 1};
+    AstStatBlock exec{Location{}, stmts};
+    ParseResult parseResult{&exec, 1, {}, {}, {}, CstNodeMap{nullptr}};
+
+    BytecodeBuilder builder;
+    try
+    {
+        compileOrThrow(builder, parseResult, names);
+    }
+    catch (CompileError& e)
+    {
+        return TypeFunctionError{Location{}, FailedToCompile{name.value, e.what()}};
+    }
+
+    std::string bytecode = builder.getBytecode();
+
+    // Separate sandboxed thread for individual execution and private globals
+    lua_State* L = lua_newthread(global);
+    LuauTempThreadPopper popper(global);
+
+    // Create individual environment for the type function
+    luaL_sandboxthread(L);
+
+    // Do not allow global writes to that environment
+    lua_pushvalue(L, LUA_GLOBALSINDEX);
+    lua_setreadonly(L, -1, true);
+    lua_pop(L, 1);
+
+    // Load bytecode into Luau state
     if (auto error = checkResultForError(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
         return error;
 
@@ -126,7 +214,7 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction(AstStatTypeFunc
     if (!lua_isfunction(L, -1))
     {
         lua_pop(L, 1);
-        return format("Could not find '%s' type function in the global scope", name.value);
+        return TypeFunctionError{Location{}, TypeFunctionMissing{name.value}};
     }
 
     // Store resulting function in the registry
@@ -181,7 +269,7 @@ void* typeFunctionAlloc(void* ud, void* ptr, size_t osize, size_t nsize)
     }
 }
 
-std::optional<std::string> checkResultForError(lua_State* L, const char* typeFunctionName, int luaResult)
+std::optional<std::string> checkResultForError_DEPRECATED(lua_State* L, const char* typeFunctionName, int luaResult)
 {
     switch (luaResult)
     {
@@ -198,6 +286,31 @@ std::optional<std::string> checkResultForError(lua_State* L, const char* typeFun
             return format("'%s' type function errored at runtime: %s", typeFunctionName, lua_tostring(L, -1));
 
         return format("'%s' type function errored at runtime: raised an error of type %s", typeFunctionName, lua_typename(L, -1));
+    }
+}
+
+std::optional<TypeFunctionError> checkResultForError(lua_State* L, const char* typeFunctionName, int luaResult)
+{
+    switch (luaResult)
+    {
+    case LUA_OK:
+        return std::nullopt;
+    case LUA_YIELD:
+    case LUA_BREAK:
+        return TypeFunctionError{Location{}, RuntimeError{format("'%s' type function errored: unexpected yield or break", typeFunctionName)}};
+    default:
+        if (!lua_gettop(L))
+            return TypeFunctionError{Location{}, RuntimeError{format("'%s' type function errored unexpectedly", typeFunctionName)}};
+
+        if (lua_isstring(L, -1))
+            return TypeFunctionError{
+                Location{}, RuntimeError{format("'%s' type function errored at runtime: %s", typeFunctionName, lua_tostring(L, -1))}
+            };
+
+        return TypeFunctionError{
+            Location{},
+            RuntimeError{format("'%s' type function errored at runtime: raised an error of type %s", typeFunctionName, lua_typename(L, -1))}
+        };
     }
 }
 
@@ -285,6 +398,8 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
         return "boolean";
     else if (auto n = get<TypeFunctionPrimitiveType>(ty); n && n->type == TypeFunctionPrimitiveType::Type::Number)
         return "number";
+    else if (auto n = get<TypeFunctionPrimitiveType>(ty); n && (FFlag::LuauIntegerType && (n->type == TypeFunctionPrimitiveType::Type::Integer)))
+        return "integer";
     else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::String)
         return "string";
     else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::Thread)

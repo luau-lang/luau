@@ -33,6 +33,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 LUAU_FASTFLAG(LuauTypeFunctionsCaptureNestedInstances)
+LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
 
 namespace Luau
 {
@@ -325,6 +326,8 @@ struct TypeFunctionReducer
     template<typename T>
     void replace(T subject, T replacement)
     {
+        static_assert(std::is_same_v<T, TypeId> || std::is_same_v<T, TypePackId>, "Can only replace types or type packs");
+
         if (subject->owningArena != ctx->arena.get())
         {
             result.errors.emplace_back(location, InternalError{"Attempting to modify a type function instance from another arena"});
