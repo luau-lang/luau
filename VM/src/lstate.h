@@ -213,7 +213,16 @@ typedef struct global_State
 
     lua_ExecutionCallbacks ecb;
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4324)
+#endif
+
     alignas(16) uint8_t ecbdata[LUA_EXECUTION_CALLBACK_STORAGE];
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
     size_t memcatbytes[LUA_MEMORY_CATEGORIES]; // total amount of memory used by each memory category
 
