@@ -20,6 +20,8 @@
 // currently, controls serialization, deserialization, and `type.copy`
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
+LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
+
 namespace Luau
 {
 
@@ -61,7 +63,7 @@ public:
         shallowSerialize(ty);
         run();
 
-        if (hasExceededIterationLimit() || state->errors.size() != 0)
+        if (hasExceededIterationLimit() || hasErrors())
             return nullptr;
 
         return find(ty).value_or(nullptr);
@@ -72,13 +74,20 @@ public:
         shallowSerialize(tp);
         run();
 
-        if (hasExceededIterationLimit() || state->errors.size() != 0)
+        if (hasExceededIterationLimit() || hasErrors())
             return nullptr;
 
         return find(tp).value_or(nullptr);
     }
 
 private:
+    bool hasErrors() const
+    {
+        if (FFlag::LuauTypeFunctionStructuredErrors)
+            return !state->errors.empty();
+        return state->errors_DEPRECATED.size() != 0;
+    }
+
     bool hasExceededIterationLimit() const
     {
         if (DFInt::LuauTypeFunctionSerdeIterationLimit == 0)
@@ -93,7 +102,7 @@ private:
         {
             ++steps;
 
-            if (hasExceededIterationLimit() || state->errors.size() != 0)
+            if (hasExceededIterationLimit() || hasErrors())
                 break;
 
             auto [ty, tfti] = queue.back();
@@ -154,6 +163,9 @@ private:
             case PrimitiveType::Number:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Number));
                 break;
+            case PrimitiveType::Integer:
+                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Integer));
+                break;
             case PrimitiveType::String:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::String));
                 break;
@@ -166,10 +178,12 @@ private:
             case PrimitiveType::Function:
             case PrimitiveType::Table:
             default:
-            {
-                std::string error = format("Argument of primitive type %s is not currently serializable by type functions", toString(ty).c_str());
-                state->errors.push_back(error);
-            }
+                if (FFlag::LuauTypeFunctionStructuredErrors)
+                    state->errors.emplace_back(Location{}, UnsupportedType{ty});
+                else
+                    state->errors_DEPRECATED.push_back(
+                        format("Argument of primitive type %s is not currently serializable by type functions", toString(ty).c_str())
+                    );
             }
         }
         else if (get<UnknownType>(ty))
@@ -186,8 +200,12 @@ private:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionSingletonType{TypeFunctionStringSingleton{ss->value}});
             else
             {
-                std::string error = format("Argument of singleton type %s is not currently serializable by type functions", toString(ty).c_str());
-                state->errors.push_back(error);
+                if (FFlag::LuauTypeFunctionStructuredErrors)
+                    state->errors.emplace_back(Location{}, UnsupportedType{ty});
+                else
+                    state->errors_DEPRECATED.push_back(
+                        format("Argument of singleton type %s is not currently serializable by type functions", toString(ty).c_str())
+                    );
             }
         }
         else if (get<UnionType>(ty))
@@ -222,8 +240,12 @@ private:
         }
         else
         {
-            std::string error = format("Argument of type %s is not currently serializable by type functions", toString(ty).c_str());
-            state->errors.push_back(error);
+            if (FFlag::LuauTypeFunctionStructuredErrors)
+                state->errors.emplace_back(Location{}, UnsupportedType{ty});
+            else
+                state->errors_DEPRECATED.push_back(
+                    format("Argument of type %s is not currently serializable by type functions", toString(ty).c_str())
+                );
         }
 
         types[ty] = target;
@@ -255,8 +277,12 @@ private:
         }
         else
         {
-            std::string error = format("Argument of type pack %s is not currently serializable by type functions", toString(tp).c_str());
-            state->errors.push_back(error);
+            if (FFlag::LuauTypeFunctionStructuredErrors)
+                state->errors.emplace_back(Location{}, UnsupportedTypePack{tp});
+            else
+                state->errors_DEPRECATED.push_back(
+                    format("Argument of type pack %s is not currently serializable by type functions", toString(tp).c_str())
+                );
         }
 
         packs[tp] = target;
@@ -293,9 +319,14 @@ private:
         else if (auto [g1, g2] = std::tuple{get<GenericType>(ty), getMutable<TypeFunctionGenericType>(tfti)}; g1 && g2)
             serializeChildren(g1, g2);
         else
-        { // Either this or ty and tfti do not represent the same type
-            std::string error = format("Argument of type %s is not currently serializable by type functions", toString(ty).c_str());
-            state->errors.push_back(error);
+        {
+            // Either this or ty and tfti do not represent the same type
+            if (FFlag::LuauTypeFunctionStructuredErrors)
+                state->errors.emplace_back(Location{}, UnsupportedType{ty});
+            else
+                state->errors_DEPRECATED.push_back(
+                    format("Argument of type %s is not currently serializable by type functions", toString(ty).c_str())
+                );
         }
     }
 
@@ -308,9 +339,12 @@ private:
         else if (auto [gPack1, gPack2] = std::tuple{get<GenericTypePack>(tp), getMutable<TypeFunctionGenericTypePack>(tftp)}; gPack1 && gPack2)
             serializeChildren(gPack1, gPack2);
         else
-        { // Either this or ty and tfti do not represent the same type
-            std::string error = format("Argument of type pack %s is not currently serializable by type functions", toString(tp).c_str());
-            state->errors.push_back(error);
+        {
+            // Either this or tp and tftp do not represent the same type
+            if (FFlag::LuauTypeFunctionStructuredErrors)
+                state->errors.emplace_back(Location{}, UnsupportedTypePack{tp});
+            else
+                state->errors_DEPRECATED.push_back(format("Type functions do not currently support types of the form '%s'", toString(tp).c_str()));
         }
     }
 
@@ -548,7 +582,7 @@ public:
         shallowDeserialize(ty);
         run();
 
-        if (hasExceededIterationLimit() || state->errors.size() != 0)
+        if (hasExceededIterationLimit() || hasErrors())
         {
             TypeId error = state->ctx->builtins->errorType;
             types[ty] = error;
@@ -563,7 +597,7 @@ public:
         shallowDeserialize(tp);
         run();
 
-        if (hasExceededIterationLimit() || state->errors.size() != 0)
+        if (hasExceededIterationLimit() || hasErrors())
         {
             TypePackId error = state->ctx->builtins->errorTypePack;
             packs[tp] = error;
@@ -582,13 +616,28 @@ private:
         return steps + queue.size() >= size_t(DFInt::LuauTypeFunctionSerdeIterationLimit);
     }
 
+    bool hasErrors() const
+    {
+        if (FFlag::LuauTypeFunctionStructuredErrors)
+            return !state->errors.empty();
+        return state->errors_DEPRECATED.size() != 0;
+    }
+
+    void pushRuntimeError(std::string message)
+    {
+        if (FFlag::LuauTypeFunctionStructuredErrors)
+            state->errors.emplace_back(Location{}, RuntimeError{std::move(message)});
+        else
+            state->errors_DEPRECATED.push_back(std::move(message));
+    }
+
     void run()
     {
         while (!queue.empty())
         {
             ++steps;
 
-            if (hasExceededIterationLimit() || state->errors.size() != 0)
+            if (hasExceededIterationLimit() || hasErrors())
                 break;
 
             auto [tfti, ty] = queue.back();
@@ -597,7 +646,7 @@ private:
             deserializeChildren(tfti, ty);
 
             // If we have completed working on all children of a function, remove the generic parameters from scope
-            if (!functionScopes.empty() && queue.size() == functionScopes.back().oldQueueSize && state->errors.empty())
+            if (!functionScopes.empty() && queue.size() == functionScopes.back().oldQueueSize && !hasErrors())
             {
                 closeFunctionScope(functionScopes.back().function);
                 functionScopes.pop_back();
@@ -669,6 +718,9 @@ private:
             case TypeFunctionPrimitiveType::Type::Number:
                 target = state->ctx->builtins->numberType;
                 break;
+            case TypeFunctionPrimitiveType::Type::Integer:
+                target = state->ctx->builtins->integerType;
+                break;
             case TypeFunctionPrimitiveType::Type::String:
                 target = state->ctx->builtins->stringType;
                 break;
@@ -723,7 +775,7 @@ private:
         {
             if (g->isPack)
             {
-                state->errors.push_back(format("Generic type pack '%s...' cannot be placed in a type position", g->name.c_str()));
+                pushRuntimeError(format("Generic type pack '%s...' cannot be placed in a type position", g->name.c_str()));
                 return nullptr;
             }
             else
@@ -739,7 +791,7 @@ private:
 
                 if (it == genericTypes.rend())
                 {
-                    state->errors.push_back(format("Generic type '%s' is not in a scope of the active generic function", g->name.c_str()));
+                    pushRuntimeError(format("Generic type '%s' is not in a scope of the active generic function", g->name.c_str()));
                     return nullptr;
                 }
 
@@ -782,7 +834,7 @@ private:
 
             if (it == genericPacks.rend())
             {
-                state->errors.push_back(format("Generic type pack '%s...' is not in a scope of the active generic function", gPack->name.c_str()));
+                pushRuntimeError(format("Generic type pack '%s...' is not in a scope of the active generic function", gPack->name.c_str()));
                 return nullptr;
             }
 
@@ -933,7 +985,7 @@ private:
             auto gty = get<TypeFunctionGenericType>(ty);
             if (!gty || gty->isPack)
             {
-                state->errors.emplace_back("Encountered unexpected generic");
+                pushRuntimeError("Encountered unexpected generic");
                 return;
             }
             else
@@ -944,7 +996,7 @@ private:
             // Duplicates are not allowed
             if (genericNames.find(nameKey) != genericNames.end())
             {
-                state->errors.push_back(format("Duplicate type parameter '%s'", gty->name.c_str()));
+                pushRuntimeError(format("Duplicate type parameter '%s'", gty->name.c_str()));
                 return;
             }
 
@@ -959,7 +1011,7 @@ private:
             auto gtp = get<TypeFunctionGenericTypePack>(tp);
             if (!gtp)
             {
-                state->errors.emplace_back("Encountered unexpected generic type pack");
+                pushRuntimeError("Encountered unexpected generic type pack");
                 return;
             }
             else
@@ -970,7 +1022,7 @@ private:
             // Duplicates are not allowed
             if (genericNames.find(nameKey) != genericNames.end())
             {
-                state->errors.push_back(format("Duplicate type parameter '%s'", gtp->name.c_str()));
+                pushRuntimeError(format("Duplicate type parameter '%s'", gtp->name.c_str()));
                 return;
             }
 

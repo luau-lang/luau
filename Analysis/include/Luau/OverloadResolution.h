@@ -210,7 +210,6 @@ private:
     // Used during overload selection to do arity-based filtering of overloads.
     // We do not accept nil in place of a generic unless that generic is explicitly optional.
     bool isArityCompatible(TypePackId candidate, TypePackId desired, NotNull<BuiltinTypes> builtinTypes) const;
-
 };
 
 // Helper utility, presently used for binary operator type functions.

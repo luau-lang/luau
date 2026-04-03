@@ -23,6 +23,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsCaptureNestedInstances)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
+LUAU_FASTFLAGVARIABLE(LuauThreadUniferStateThroughTypeFunctionReduction)
 
 namespace Luau
 {
@@ -146,9 +147,8 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
     if (!selected.overload.has_value())
         return std::nullopt;
 
-    TypePackId retPack = FFlag::LuauTypeFunctionsAddFreeTypePackWithPositivePolarity
-        ? ctx->arena->freshTypePack(ctx->scope, Polarity::Positive)
-        : ctx->arena->freshTypePack(ctx->scope);
+    TypePackId retPack = FFlag::LuauTypeFunctionsAddFreeTypePackWithPositivePolarity ? ctx->arena->freshTypePack(ctx->scope, Polarity::Positive)
+                                                                                     : ctx->arena->freshTypePack(ctx->scope);
     TypeId prospectiveFunction = ctx->arena->addType(FunctionType{argsPack, retPack});
 
     // FIXME: It's too bad that we have to bust out the Unifier here.  We should
@@ -1951,22 +1951,45 @@ bool searchPropsAndIndexer(
                 indexType = follow(tblIndexer->indexResultType);
         }
 
-        if (isSubtype(ty, indexType, ctx->scope, ctx->builtins, *ctx->ice, SolverMode::New))
+        if (FFlag::LuauThreadUniferStateThroughTypeFunctionReduction)
         {
-            TypeId idxResultTy = follow(tblIndexer->indexResultType);
-
-            // indexResultType is a union type -> we need to extend our reduction type
-            if (auto idxResUnionTy = get<UnionType>(idxResultTy))
+            if (isSubtype(ty, indexType, ctx->arena, ctx->builtins, ctx->scope, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice))
             {
-                for (TypeId option : idxResUnionTy->options)
-                {
-                    result.insert(follow(option));
-                }
-            }
-            else // indexResultType is a singular type or intersection type -> we can simply append
-                result.insert(idxResultTy);
+                TypeId idxResultTy = follow(tblIndexer->indexResultType);
 
-            return true;
+                // indexResultType is a union type -> we need to extend our reduction type
+                if (auto idxResUnionTy = get<UnionType>(idxResultTy))
+                {
+                    for (TypeId option : idxResUnionTy->options)
+                    {
+                        result.insert(follow(option));
+                    }
+                }
+                else // indexResultType is a singular type or intersection type -> we can simply append
+                    result.insert(idxResultTy);
+
+                return true;
+            }
+        }
+        else
+        {
+            if (isSubtype_DEPRECATED(ty, indexType, ctx->scope, ctx->builtins, *ctx->ice, SolverMode::New))
+            {
+                TypeId idxResultTy = follow(tblIndexer->indexResultType);
+
+                // indexResultType is a union type -> we need to extend our reduction type
+                if (auto idxResUnionTy = get<UnionType>(idxResultTy))
+                {
+                    for (TypeId option : idxResUnionTy->options)
+                    {
+                        result.insert(follow(option));
+                    }
+                }
+                else // indexResultType is a singular type or intersection type -> we can simply append
+                    result.insert(idxResultTy);
+
+                return true;
+            }
         }
     }
 

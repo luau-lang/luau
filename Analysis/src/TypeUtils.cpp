@@ -13,8 +13,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAGVARIABLE(LuauContainsAnyGenericDoesntTraverseIntoExtern)
-
 namespace Luau
 {
 
@@ -844,7 +842,7 @@ ContainsAnyGeneric::ContainsAnyGeneric()
 
 bool ContainsAnyGeneric::visit(TypeId ty, const ExternType&)
 {
-    return !FFlag::LuauContainsAnyGenericDoesntTraverseIntoExtern;
+    return false;
 }
 
 bool ContainsAnyGeneric::visit(TypeId ty)
