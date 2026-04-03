@@ -1987,7 +1987,11 @@ struct Compiler
 
         RegScope rs(this);
 
-        uint8_t baseReg = allocReg(expr, unsigned(2 + expr->expressions.size - skippedSubExpr));
+        unsigned int regCount = unsigned(2 + expr->expressions.size - skippedSubExpr);
+
+        // Optimization: have the format call place the result directly into the target to avoid an extra MOVE
+        bool targetTop = targetTemp && target == regTop - 1;
+        uint8_t baseReg = targetTop ? allocReg(expr, regCount - 1) - 1 : allocReg(expr, regCount);
 
         emitLoadK(baseReg, formatStringIndex);
 
@@ -2011,7 +2015,8 @@ struct Compiler
         bytecode.emitABC(LOP_NAMECALL, baseReg, baseReg, uint8_t(BytecodeBuilder::getStringHash(formatMethod)));
         bytecode.emitAux(formatMethodIndex);
         bytecode.emitABC(LOP_CALL, baseReg, uint8_t(expr->expressions.size + 2 - skippedSubExpr), 2);
-        bytecode.emitABC(LOP_MOVE, target, baseReg, 0);
+        if (!targetTop)
+            bytecode.emitABC(LOP_MOVE, target, baseReg, 0);
     }
 
     static uint8_t encodeHashSize(unsigned int hashSize)
