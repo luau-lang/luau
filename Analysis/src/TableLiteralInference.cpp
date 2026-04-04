@@ -13,8 +13,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAGVARIABLE(LuauPushTypeUnifyConstantHandling)
-
 namespace Luau
 {
 
@@ -117,133 +115,44 @@ struct BidirectionalTypePusher
             // just return the original expression type.
             return exprType;
 
-        if (FFlag::LuauPushTypeUnifyConstantHandling)
+        if (expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantBool>() ||
+            expr->is<AstExprConstantNil>())
         {
-            if (expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantBool>() ||
-                expr->is<AstExprConstantNil>())
+            if (auto ft = get<FreeType>(exprType))
             {
-                if (auto ft = get<FreeType>(exprType))
+                if (maybeSingleton(expectedType) && maybeSingleton(ft->lowerBound))
                 {
-                    if (maybeSingleton(expectedType) && maybeSingleton(ft->lowerBound))
-                    {
-                        // If we see a pattern like:
-                        //
-                        //  local function foo<T>(my_enum: "foo" | "bar" | T) -> T
-                        //      return my_enum
-                        //  end
-                        //  local var = foo("meow")
-                        //
-                        // ... where we are attempting to push a singleton onto any string
-                        // literal, and the lower bound is still a singleton, then snap
-                        // to said lower bound.
-                        solver->bind(constraint, exprType, ft->lowerBound);
-                        return exprType;
-                    }
-
-                    // if the upper bound is a subtype of the expected type, we can push the expected type in
-                    Relation upperBoundRelation = relate(ft->upperBound, expectedType);
-                    if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
-                    {
-                        solver->bind(constraint, exprType, expectedType);
-                        return exprType;
-                    }
-
-                    // likewise, if the lower bound is a subtype, we can force the expected type in
-                    // if this is the case and the previous relation failed, it means that the primitive type
-                    // constraint was going to have to select the lower bound for this type anyway.
-                    Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
-                    if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
-                    {
-                        solver->bind(constraint, exprType, expectedType);
-                        return exprType;
-                    }
-                }
-            }
-        }
-        else
-        {
-            if (expr->is<AstExprConstantString>())
-            {
-                auto ft = get<FreeType>(exprType);
-                if (ft && get<SingletonType>(ft->lowerBound) && fastIsSubtype(solver->builtinTypes->stringType, ft->upperBound) &&
-                    fastIsSubtype(ft->lowerBound, solver->builtinTypes->stringType))
-                {
-                    if (maybeSingleton(expectedType) && maybeSingleton(ft->lowerBound))
-                    {
-                        // If we see a pattern like:
-                        //
-                        //  local function foo<T>(my_enum: "foo" | "bar" | T) -> T
-                        //      return my_enum
-                        //  end
-                        //  local var = foo("meow")
-                        //
-                        // ... where we are attempting to push a singleton onto any string
-                        // literal, and the lower bound is still a singleton, then snap
-                        // to said lower bound.
-                        solver->bind(constraint, exprType, ft->lowerBound);
-                        return exprType;
-                    }
-
-                    // if the upper bound is a subtype of the expected type, we can push the expected type in
-                    Relation upperBoundRelation = relate(ft->upperBound, expectedType);
-                    if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
-                    {
-                        solver->bind(constraint, exprType, expectedType);
-                        return exprType;
-                    }
-
-                    // likewise, if the lower bound is a subtype, we can force the expected type in
-                    // if this is the case and the previous relation failed, it means that the primitive type
-                    // constraint was going to have to select the lower bound for this type anyway.
-                    Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
-                    if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
-                    {
-                        solver->bind(constraint, exprType, expectedType);
-                        return exprType;
-                    }
-                }
-            }
-            else if (expr->is<AstExprConstantBool>())
-            {
-                auto ft = get<FreeType>(exprType);
-                if (ft && get<SingletonType>(ft->lowerBound) && fastIsSubtype(solver->builtinTypes->booleanType, ft->upperBound) &&
-                    fastIsSubtype(ft->lowerBound, solver->builtinTypes->booleanType))
-                {
-                    // if the upper bound is a subtype of the expected type, we can push the expected type in
-                    Relation upperBoundRelation = relate(ft->upperBound, expectedType);
-                    if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
-                    {
-                        solver->bind(constraint, exprType, expectedType);
-                        return exprType;
-                    }
-
-                    // likewise, if the lower bound is a subtype, we can force the expected type in
-                    // if this is the case and the previous relation failed, it means that the primitive type
-                    // constraint was going to have to select the lower bound for this type anyway.
-                    Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
-                    if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
-                    {
-                        solver->bind(constraint, exprType, expectedType);
-                        return exprType;
-                    }
-                }
-            }
-
-            if (expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantBool>() ||
-                expr->is<AstExprConstantNil>())
-            {
-                if (auto ft = get<FreeType>(exprType); ft && fastIsSubtype(ft->upperBound, expectedType))
-                {
-                    emplaceType<BoundType>(asMutable(exprType), expectedType);
-                    solver->unblock(exprType, expr->location);
+                    // If we see a pattern like:
+                    //
+                    //  local function foo<T>(my_enum: "foo" | "bar" | T) -> T
+                    //      return my_enum
+                    //  end
+                    //  local var = foo("meow")
+                    //
+                    // ... where we are attempting to push a singleton onto any string
+                    // literal, and the lower bound is still a singleton, then snap
+                    // to said lower bound.
+                    solver->bind(constraint, exprType, ft->lowerBound);
                     return exprType;
                 }
 
-                Relation r = relate(exprType, expectedType);
-                if (r == Relation::Coincident || r == Relation::Subset)
-                    return expectedType;
+                // if the upper bound is a subtype of the expected type, we can push the expected type in
+                Relation upperBoundRelation = relate(ft->upperBound, expectedType);
+                if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
+                {
+                    solver->bind(constraint, exprType, expectedType);
+                    return exprType;
+                }
 
-                return exprType;
+                // likewise, if the lower bound is a subtype, we can force the expected type in
+                // if this is the case and the previous relation failed, it means that the primitive type
+                // constraint was going to have to select the lower bound for this type anyway.
+                Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
+                if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
+                {
+                    solver->bind(constraint, exprType, expectedType);
+                    return exprType;
+                }
             }
         }
 

@@ -13,10 +13,9 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenGcoDse2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDsoPairTrackFix)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDsoTagOverlayFix)
-LUAU_FASTFLAG(LuauCodegenOpReadOnly)
-LUAU_FASTFLAG(LuauCodegenSafeEnvPreserve)
 LUAU_FASTFLAGVARIABLE(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDseOnCondJump)
+LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
@@ -640,7 +639,7 @@ static bool tryReplaceVectorValueWithFullStore(
         IrInst& storeInst = function.instructions[instIndex];
         CODEGEN_ASSERT(storeInst.cmd == IrCmd::STORE_VECTOR);
 
-        if (FFlag::LuauCodegenOpReadOnly && !HAS_OP_E(storeInst))
+        if (!HAS_OP_E(storeInst))
             storeInst.ops.push_back({});
 
         replace(function, OP_E(storeInst), prevTagOp);
@@ -668,7 +667,7 @@ static bool tryReplaceVectorValueWithFullStore(
             IrInst& storeInst = function.instructions[instIndex];
             CODEGEN_ASSERT(storeInst.cmd == IrCmd::STORE_VECTOR);
 
-            if (FFlag::LuauCodegenOpReadOnly && !HAS_OP_E(storeInst))
+            if (!HAS_OP_E(storeInst))
                 storeInst.ops.push_back({});
 
             replace(function, OP_E(storeInst), prevTagOp);
@@ -690,7 +689,7 @@ static bool tryReplaceVectorValueWithFullStore(
             IrInst& storeInst = function.instructions[instIndex];
             CODEGEN_ASSERT(storeInst.cmd == IrCmd::STORE_VECTOR);
 
-            if (FFlag::LuauCodegenOpReadOnly && !HAS_OP_E(storeInst))
+            if (!HAS_OP_E(storeInst))
                 storeInst.ops.push_back({});
 
             replace(function, OP_E(storeInst), prevTagOp);
@@ -912,7 +911,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
                     if (arg->cmd == IrCmd::TAG_VECTOR)
                         regInfo.maybeGco = false;
 
-                    if (arg->cmd == IrCmd::LOAD_TVALUE && (FFlag::LuauCodegenOpReadOnly ? HAS_OP_C(*arg) : OP_C(arg).kind != IrOpKind::None))
+                    if (arg->cmd == IrCmd::LOAD_TVALUE && HAS_OP_C(*arg))
                         regInfo.maybeGco = isGCO(function.tagOp(OP_C(arg)));
                 }
             }
@@ -1087,12 +1086,9 @@ static void markDeadStoresInBlock(IrBuilder& build, IrBlock& block, RemoveDeadSt
 {
     IrFunction& function = build.function;
 
-    if (FFlag::LuauCodegenSafeEnvPreserve)
-    {
-        // Block might establish a safe environment right at the start and might take a VM exit
-        if ((block.flags & kBlockFlagSafeEnvCheck) != 0)
-            state.readAllRegs();
-    }
+    // Block might establish a safe environment right at the start and might take a VM exit
+    if ((block.flags & kBlockFlagSafeEnvCheck) != 0)
+        state.readAllRegs();
 
     for (uint32_t index = block.start; index <= block.finish; index++)
     {
@@ -1101,6 +1097,24 @@ static void markDeadStoresInBlock(IrBuilder& build, IrBlock& block, RemoveDeadSt
 
         markDeadStoresInInst(state, build, function, block, inst, index);
     }
+}
+
+static void setupBlockEntryState(const IrFunction& function, const IrBlock& block, RemoveDeadStoreState& state)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenPropagateTagsAcrossChains2);
+
+    propagateTagsFromPredecessors(
+        function,
+        block,
+        [&](size_t i)
+        {
+            return state.info[i].knownTag;
+        },
+        [&](size_t i, uint8_t tag)
+        {
+            state.info[i].knownTag = tag;
+        }
+    );
 }
 
 static void markDeadStoresInBlockChain(
@@ -1121,6 +1135,9 @@ static void markDeadStoresInBlockChain(
         // Clear the storage we reuse
         blockIdxChain.clear();
     }
+
+    if (FFlag::LuauCodegenPropagateTagsAcrossChains2)
+        setupBlockEntryState(function, *block, state);
 
     while (block)
     {

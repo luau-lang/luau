@@ -43,7 +43,6 @@
 #include <signal.h>
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
-LUAU_FASTFLAG(LuauCodegenCounterSupport)
 
 constexpr int MaxTraversalLimit = 50;
 
@@ -738,7 +737,6 @@ int replMain(int argc, char** argv)
         else if (strcmp(argv[i], "--counters") == 0)
         {
             counters = true;
-            FFlag::LuauCodegenCounterSupport.value = true;
         }
         else if (strcmp(argv[i], "--timetrace") == 0)
         {

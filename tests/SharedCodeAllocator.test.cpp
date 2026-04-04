@@ -83,6 +83,7 @@ TEST_CASE("NativeModuleRefRefcounting")
     {
         NativeModuleRef modRef1{modRefA};
         NativeModuleRef modRef2{std::move(modRef1)};
+        // NOLINTNEXTLINE(bugprone-use-after-move) -- verifying moved-from state
         REQUIRE(modRef1.empty());
         REQUIRE(modRef2.get() == modRefA.get());
         REQUIRE(modRefA->getRefcount() == 2);
@@ -95,6 +96,7 @@ TEST_CASE("NativeModuleRefRefcounting")
     {
         NativeModuleRef modRef1{};
         NativeModuleRef modRef2{std::move(modRef1)};
+        // NOLINTNEXTLINE(bugprone-use-after-move) -- verifying moved-from state
         REQUIRE(modRef1.empty());
         REQUIRE(modRef2.empty());
     }
@@ -155,6 +157,7 @@ TEST_CASE("NativeModuleRefRefcounting")
         NativeModuleRef modRef1{modRefA};
         NativeModuleRef modRef2{};
         modRef2 = std::move(modRef1);
+        // NOLINTNEXTLINE(bugprone-use-after-move) -- verifying moved-from state
         REQUIRE(modRef1.empty());
         REQUIRE(modRef2.get() == modRefA.get());
         REQUIRE(modRefA->getRefcount() == 2);
@@ -168,6 +171,7 @@ TEST_CASE("NativeModuleRefRefcounting")
         NativeModuleRef modRef1{};
         NativeModuleRef modRef2{};
         modRef2 = std::move(modRef1);
+        // NOLINTNEXTLINE(bugprone-use-after-move) -- verifying moved-from state
         REQUIRE(modRef1.empty());
         REQUIRE(modRef2.empty());
     }
@@ -195,6 +199,7 @@ TEST_CASE("NativeModuleRefRefcounting")
         NativeModuleRef modRef1{modRefA};
         NativeModuleRef modRef2{modRefB};
         modRef2 = std::move(modRef1);
+        // NOLINTNEXTLINE(bugprone-use-after-move) -- verifying moved-from state
         REQUIRE(modRef1.empty());
         REQUIRE(modRef2.get() == modRefA.get());
         REQUIRE(modRefA->getRefcount() == 2);

@@ -2,6 +2,8 @@
 
 #include "Luau/GlobalTypes.h"
 
+LUAU_FASTFLAG(LuauIntegerType)
+
 namespace Luau
 {
 
@@ -15,6 +17,8 @@ GlobalTypes::GlobalTypes(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
     globalScope->addBuiltinTypeBinding("any", TypeFun{{}, builtinTypes->anyType});
     globalScope->addBuiltinTypeBinding("nil", TypeFun{{}, builtinTypes->nilType});
     globalScope->addBuiltinTypeBinding("number", TypeFun{{}, builtinTypes->numberType});
+    if (FFlag::LuauIntegerType)
+        globalScope->addBuiltinTypeBinding("integer", TypeFun{{}, builtinTypes->integerType});
     globalScope->addBuiltinTypeBinding("string", TypeFun{{}, builtinTypes->stringType});
     globalScope->addBuiltinTypeBinding("boolean", TypeFun{{}, builtinTypes->booleanType});
     globalScope->addBuiltinTypeBinding("thread", TypeFun{{}, builtinTypes->threadType});

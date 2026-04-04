@@ -8,6 +8,7 @@
 #include <vector>
 #include <math.h>
 
+LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAGVARIABLE(LuauCompileFoldStringLimit)
 
 namespace Luau
@@ -38,6 +39,11 @@ static bool constantsEqual(const Constant& la, const Constant& ra)
 
     case Constant::Type_String:
         return ra.type == Constant::Type_String && la.stringLength == ra.stringLength && memcmp(la.valueString, ra.valueString, la.stringLength) == 0;
+
+    case Constant::Type_Integer:
+        if (FFlag::LuauIntegerType)
+            return ra.type == Constant::Type_Integer && la.valueInteger64 == ra.valueInteger64;
+        [[fallthrough]];
 
     default:
         LUAU_ASSERT(!"Unexpected constant type in comparison");
@@ -481,6 +487,11 @@ struct ConstantVisitor : AstVisitor
         {
             result.type = Constant::Type_Number;
             result.valueNumber = expr->value;
+        }
+        else if (AstExprConstantInteger* expr = node->as<AstExprConstantInteger>())
+        {
+            result.type = Constant::Type_Integer;
+            result.valueInteger64 = expr->value;
         }
         else if (AstExprConstantString* expr = node->as<AstExprConstantString>())
         {

@@ -58,7 +58,11 @@ struct Replacer : Substitution
     NotNull<DenseHashMap<TypeId, TypeId>> replacements;
     NotNull<DenseHashMap<TypePackId, TypePackId>> replacementPacks;
 
-    Replacer(NotNull<TypeArena> arena, NotNull<DenseHashMap<TypeId, TypeId>> replacements, NotNull<DenseHashMap<TypePackId, TypePackId>> replacementPacks);
+    Replacer(
+        NotNull<TypeArena> arena,
+        NotNull<DenseHashMap<TypeId, TypeId>> replacements,
+        NotNull<DenseHashMap<TypePackId, TypePackId>> replacementPacks
+    );
 
     bool isDirty(TypeId ty) override;
 
@@ -77,7 +81,6 @@ private:
      * isn't the case.
      */
     bool checkReplacementKeys() const;
-
 };
 
 // A substitution which replaces generic functions by monomorphic functions

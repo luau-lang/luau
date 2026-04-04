@@ -406,7 +406,8 @@ private:
     // Pack subtyping
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypePackId subTp, TypePackId superTp, NotNull<Scope> scope);
 
-    enum class EarlyExit {
+    enum class EarlyExit
+    {
         Yes,
         No
     };

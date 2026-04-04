@@ -18,6 +18,7 @@ struct Constant
         Type_Nil,
         Type_Boolean,
         Type_Number,
+        Type_Integer,
         Type_Vector,
         Type_String,
     };
@@ -29,6 +30,7 @@ struct Constant
     {
         bool valueBoolean;
         double valueNumber;
+        int64_t valueInteger64;
         float valueVector[4];
         const char* valueString = nullptr; // length stored in stringLength
     };

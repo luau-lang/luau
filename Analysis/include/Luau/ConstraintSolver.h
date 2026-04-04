@@ -138,10 +138,29 @@ struct ConstraintSolver
     DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors{nullptr};
 
     // A mapping from free types to the number of unresolved constraints that mention them.
-    DenseHashMap<TypeId, size_t> unresolvedConstraints{{}};
+    DenseHashMap<TypeId, size_t> DEPRECATED_unresolvedConstraints{{}};
 
-    std::unordered_map<NotNull<const Constraint>, TypeIds> maybeMutatedFreeTypes;
-    std::unordered_map<TypeId, OrderedSet<const Constraint*>> mutatedFreeTypeToConstraint;
+    std::unordered_map<NotNull<const Constraint>, TypeIds> DEPRECATED_maybeMutatedFreeTypes;
+    std::unordered_map<TypeId, OrderedSet<const Constraint*>> DEPRECATED_mutatedFreeTypeToConstraint;
+
+    /**
+     * A mapping from reference counted types (blocked types, free types,
+     * unsealed table types, etc.) to the constraints that may mutate them.
+     * When this set is empty, we can eagerly generalize the respective key.
+     *
+     * NOTE: Preferrably this would be a DenseHashMap rather than an
+     * unordered_map, but DenseHashMaps require that their elements are
+     * trivially constructable.
+     */
+    std::unordered_map<TypeId, Set<const Constraint*>> typeToConstraintSet;
+
+
+    /**
+     * A mapping from constraints to the types that they mutate. We
+     * use this set to keep track of what constraints to remove
+     * from the values in the typeToConstraintSet.
+     */
+    DenseHashMap<const Constraint*, TypeIds> constraintToMutatedTypes{nullptr};
 
     // Irreducible/uninhabited type functions or type pack functions.
     DenseHashSet<const void*> uninhabitedTypeFunctions{{}};
@@ -399,15 +418,6 @@ public:
      */
     void bind(NotNull<const Constraint> constraint, TypeId ty, TypeId boundTo);
     void bind(NotNull<const Constraint> constraint, TypePackId tp, TypePackId boundTo);
-
-    /**
-     * Generalizes the given free type if the reference counting allows it.
-     * @param the scope to generalize in
-     * @param type the free type we want to generalize
-     * @returns a non-free type that generalizes the argument, or `std::nullopt` if one
-     * does not exist
-     */
-    std::optional<TypeId> generalizeFreeType(NotNull<Scope> scope, TypeId type);
 
     /**
      * Checks the existing set of constraints to see if there exist any that contain

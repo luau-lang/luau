@@ -10,7 +10,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
-LUAU_FASTFLAG(LuauUnionOfTablesPreservesReadWrite)
 
 namespace
 {
@@ -710,8 +709,6 @@ TEST_CASE_FIXTURE(SimplifyFixture, "relate_write_only_number_with_number")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "relate_read_only_number_with_number")
 {
-    ScopedFastFlag _{FFlag::LuauUnionOfTablesPreservesReadWrite, true};
-
     TypeId leftTy = mkTable({{"x", Property::readonly(builtinTypes->numberType)}});
     TypeId rightTy = mkTable({{"x", Property::rw(arena->addType(UnionType{{builtinTypes->nilType, builtinTypes->numberType}}))}});
 
@@ -730,17 +727,12 @@ TEST_CASE_FIXTURE(SimplifyFixture, "relate_read_only_number_with_number")
 TEST_CASE_FIXTURE(SimplifyFixture, "relate_coincident_minus_one_prop_tables")
 {
     // { x: number, y: boolean }
-    TypeId leftTy = mkTable({
-    {"x", Property::rw(builtinTypes->numberType)},
-        {"y", Property::rw(builtinTypes->booleanType)}
-    });
+    TypeId leftTy = mkTable({{"x", Property::rw(builtinTypes->numberType)}, {"y", Property::rw(builtinTypes->booleanType)}});
 
     // { x: number, y: boolean, z: string }
-    TypeId rightTy = mkTable({
-    {"x", Property::rw(builtinTypes->numberType)},
-        {"y", Property::rw(builtinTypes->booleanType)},
-        {"z", Property::rw(builtinTypes->stringType)}
-    });
+    TypeId rightTy = mkTable(
+        {{"x", Property::rw(builtinTypes->numberType)}, {"y", Property::rw(builtinTypes->booleanType)}, {"z", Property::rw(builtinTypes->stringType)}}
+    );
 
     // By width subtyping this could be { x: number, y: boolean, z: string }
     CHECK("{ x: number, y: boolean } & { x: number, y: boolean, z: string }" == toString(intersect(leftTy, rightTy)));

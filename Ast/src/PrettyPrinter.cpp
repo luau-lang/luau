@@ -9,8 +9,6 @@
 #include <limits>
 #include <math.h>
 
-LUAU_FASTFLAG(DebugLuauNoInline)
-
 namespace
 {
 bool isIdentifierStartChar(char c)
@@ -508,6 +506,28 @@ struct Printer
                         size_t len = snprintf(buffer, sizeof(buffer), "%.17g", a->value);
                         writer.literal(std::string_view{buffer, len});
                     }
+                }
+            }
+        }
+        else if (const auto& a = expr.as<AstExprConstantInteger>())
+        {
+            if (const auto cstNode = lookupCstNode<CstExprConstantInteger>(a))
+            {
+                writer.literal(std::string_view(cstNode->value.data, cstNode->value.size));
+            }
+            else
+            {
+                if (a->value >= 0)
+                {
+                    char buffer[100];
+                    size_t len = snprintf(buffer, sizeof(buffer), "%lldi", (long long)a->value);
+                    writer.literal(std::string_view{buffer, len});
+                }
+                else
+                {
+                    char buffer[100];
+                    size_t len = snprintf(buffer, sizeof(buffer), "0x%llxi", (unsigned long long)a->value);
+                    writer.literal(std::string_view{buffer, len});
                 }
             }
         }
@@ -1469,28 +1489,8 @@ struct Printer
     void visualizeAttribute(AstAttr& attribute)
     {
         advance(attribute.location.begin);
-        switch (attribute.type)
-        {
-        case AstAttr::Checked:
-            writer.keyword("@checked");
-            break;
-        case AstAttr::Native:
-            writer.keyword("@native");
-            break;
-        case AstAttr::Deprecated:
-            writer.keyword("@deprecated");
-            break;
-        case AstAttr::DebugNoinline:
-            if (FFlag::DebugLuauNoInline)
-            {
-                writer.keyword("@debugnoinline");
-                break;
-            }
-            LUAU_FALLTHROUGH;
-        case AstAttr::Unknown:
-            writer.keyword("@" + std::string{attribute.name.value});
-            break;
-        }
+        writer.symbol("@");
+        writer.identifier(attribute.name.value);
     }
 
     void visualizeTypeAnnotation(AstType& typeAnnotation)

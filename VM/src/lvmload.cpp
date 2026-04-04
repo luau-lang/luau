@@ -13,6 +13,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauIntegerType)
+
 template<typename T>
 struct TempBuffer
 {
@@ -136,6 +138,23 @@ static unsigned int readVarInt(const char* data, size_t size, size_t& offset)
     {
         byte = read<uint8_t>(data, size, offset);
         result |= (byte & 127) << shift;
+        shift += 7;
+    } while (byte & 128);
+
+    return result;
+}
+
+static uint64_t readVarInt64(const char* data, size_t size, size_t& offset)
+{
+    uint64_t result = 0;
+    unsigned int shift = 0;
+
+    uint8_t byte;
+
+    do
+    {
+        byte = read<uint8_t>(data, size, offset);
+        result |= ((uint64_t)(byte & 127)) << shift;
         shift += 7;
     } while (byte & 128);
 
@@ -552,6 +571,16 @@ static int loadsafe(
                 setclvalue(L, &p->k[j], cl);
                 break;
             }
+
+            case LBC_CONSTANT_INTEGER:
+                if (FFlag::LuauIntegerType)
+                {
+                    bool isNegative = read<uint8_t>(data, size, offset);
+                    uint64_t magnitude = readVarInt64(data, size, offset);
+                    setlvalue(&p->k[j], isNegative ? (int64_t)(~magnitude + 1) : (int64_t)magnitude);
+                    break;
+                }
+                [[fallthrough]];
 
             default:
                 LUAU_ASSERT(!"Unexpected constant kind");
