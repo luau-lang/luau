@@ -1976,6 +1976,14 @@ bool FrontendModuleResolver::setModule(const ModuleName& moduleName, ModulePtr m
     return replaced;
 }
 
+void FrontendModuleResolver::eraseModules(const std::vector<ModuleName>& names)
+{
+    std::scoped_lock lock(moduleMutex);
+
+    for (const ModuleName& name : names)
+        modules.erase(name);
+}
+
 void FrontendModuleResolver::clearModules()
 {
     std::scoped_lock lock(moduleMutex);
@@ -2048,6 +2056,34 @@ void Frontend::clear()
     moduleResolver.clearModules();
     moduleResolverForAutocomplete.clearModules();
     requireTrace.clear();
+}
+
+void Frontend::clearModules(const std::vector<ModuleName>& names)
+{
+    for (const ModuleName& name : names)
+        markDirty(name);
+
+    for (const ModuleName& name : names)
+    {
+        auto it = sourceNodes.find(name);
+        if (it == sourceNodes.end())
+            continue;
+
+        // Remove this module from the dependents set of each of its dependencies
+        for (const ModuleName& dep : it->second->requireSet)
+        {
+            auto depIt = sourceNodes.find(dep);
+            if (depIt != sourceNodes.end())
+                depIt->second->dependents.erase(name);
+        }
+
+        sourceNodes.erase(it);
+        sourceModules.erase(name);
+        requireTrace.erase(name);
+    }
+
+    moduleResolver.eraseModules(names);
+    moduleResolverForAutocomplete.eraseModules(names);
 }
 
 void Frontend::clearBuiltinEnvironments()
