@@ -14,6 +14,7 @@
 #include <utility>
 
 LUAU_FASTFLAGVARIABLE(LuauRequireAliasOverrideOrderFix)
+LUAU_FASTFLAGVARIABLE(LuauRequireResolveAliasNullCheck)
 
 namespace Luau::Require
 {
@@ -272,10 +273,17 @@ Error Navigator::navigateToAndPopulateConfig(const std::string& desiredAlias, Co
         {
             if (navigationContext.getConfigBehavior() == NavigationContext::ConfigBehavior::GetAlias)
             {
-                std::optional<std::string> aliasPath = navigationContext.getAlias(desiredAlias);
-                if (!aliasPath)
-                    return "could not resolve alias \"" + desiredAlias + "\"";
-                config.setAlias(desiredAlias, *aliasPath, /* configLocation = */ "unused");
+                if (FFlag::LuauRequireResolveAliasNullCheck)
+                {
+                    std::optional<std::string> aliasPath = navigationContext.getAlias(desiredAlias);
+                    if (!aliasPath)
+                        return "could not resolve alias \"" + desiredAlias + "\"";
+                    config.setAlias(desiredAlias, *aliasPath, /* configLocation = */ "unused");
+                }
+                else
+                {
+                    config.setAlias(desiredAlias, *navigationContext.getAlias(desiredAlias), /* configLocation = */ "unused");
+                }
                 break;
             }
 
