@@ -179,7 +179,7 @@ private:
 
     std::vector<TypeId> unionsToSimplify;
 
-    Set<TypeId> uninitializedGlobals{nullptr};
+    Set<AstName> uninitializedGlobals{{}};
 
     Polarity polarity = Polarity::None;
 

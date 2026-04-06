@@ -37,11 +37,12 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
-LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauComparisonToNilsIsAlwaysOk2)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
+LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
 
 namespace Luau
 {
@@ -980,7 +981,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
             else
                 reportError(GenericError{"next() does not return enough values"}, forInStatement->values.data[0]->location);
 
-           return;
+            return;
         }
 
         // nextFn is going to be invoked with (arrayTy, startIndexTy)
@@ -1012,7 +1013,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
             else
                 reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->values.data[0]->location);
 
-             return;
+            return;
         }
         else if (actualArgCount < minCount)
         {
@@ -1021,7 +1022,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
             else
                 reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->values.data[0]->location);
 
-             return;
+            return;
         }
 
         const TypeId iterFunc = follow(iterTys[0]);
@@ -1307,16 +1308,8 @@ void TypeChecker2::visit(AstStatTypeAlias* stat)
 
     if (const Scope* scope = findInnermostScope(stat->location))
     {
-        if (FFlag::LuauReworkInfiniteTypeFinder)
-        {
-            if (auto loc = scope->isInvalidTypeAlias(stat->name.value))
-                reportError(RecursiveRestraintViolation{}, *loc);
-        }
-        else
-        {
-            if (scope->isInvalidTypeAliasName_DEPRECATED(stat->name.value))
-                reportError(RecursiveRestraintViolation{}, stat->location);
-        }
+        if (auto loc = scope->isInvalidTypeAlias(stat->name.value))
+            reportError(RecursiveRestraintViolation{}, *loc);
     }
 
     visitGenerics(stat->generics, stat->genericPacks);
@@ -1374,6 +1367,8 @@ void TypeChecker2::visit(AstExpr* expr, ValueContext context)
     else if (auto e = expr->as<AstExprConstantBool>())
         return visit(e);
     else if (auto e = expr->as<AstExprConstantNumber>())
+        return visit(e);
+    else if (auto e = expr->as<AstExprConstantInteger>())
         return visit(e);
     else if (auto e = expr->as<AstExprConstantString>())
         return visit(e);
@@ -1455,6 +1450,18 @@ void TypeChecker2::visit(AstExprConstantNumber* expr)
 {
 #if defined(LUAU_ENABLE_ASSERT)
     const TypeId bestType = builtinTypes->numberType;
+    const TypeId inferredType = lookupType(expr);
+    NotNull<Scope> scope{findInnermostScope(expr->location)};
+
+    const SubtypingResult r = subtyping->isSubtype(bestType, inferredType, scope);
+    LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, inferredType));
+#endif
+}
+
+void TypeChecker2::visit(AstExprConstantInteger* expr)
+{
+#if defined(LUAU_ENABLE_ASSERT)
+    const TypeId bestType = builtinTypes->integerType;
     const TypeId inferredType = lookupType(expr);
     NotNull<Scope> scope{findInnermostScope(expr->location)};
 
@@ -2288,7 +2295,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
 
     bool isEquality = expr->op == AstExprBinary::Op::CompareEq || expr->op == AstExprBinary::Op::CompareNe;
     bool isComparison = FFlag::LuauComparisonToNilsIsAlwaysOk2 ? isComparisonOp(expr->op)
-                                                              : expr->op >= AstExprBinary::Op::CompareEq && expr->op <= AstExprBinary::Op::CompareGe;
+                                                               : expr->op >= AstExprBinary::Op::CompareEq && expr->op <= AstExprBinary::Op::CompareGe;
     bool isLogical = expr->op == AstExprBinary::Op::And || expr->op == AstExprBinary::Op::Or;
 
     TypeId leftType = follow(lookupType(expr->left));
@@ -2350,7 +2357,6 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
             // For equality operations, if either operand is nil, we should allow this comparison through
             if (isEquality && eitherExprIsNil)
                 return builtinTypes->booleanType;
-
         }
     }
     else
@@ -3051,9 +3057,7 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
 
         if (!subLeafTy && !superLeafTy && !subLeafTp && !superLeafTp)
         {
-            reportError(
-                InternalError{"Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack."}, location
-            );
+            reportError(InternalError{"Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack."}, location);
             return {};
         }
 
@@ -3661,7 +3665,7 @@ void TypeChecker2::checkIndexTypeFromType(
         // because extern typeArguments come into being with full knowledge of their
         // shape. We instead want to report the unknown property error of
         // the `else` branch.
-        else if (context == ValueContext::LValue && !get<ExternType>(tableTy))
+        else if (context == ValueContext::LValue && (FFlag::LuauExternReadWriteAttributes || !get<ExternType>(tableTy)))
         {
             const auto lvPropTypes = lookupProp(norm.get(), prop, ValueContext::RValue, location, astIndexExprType, dummy);
             if (lvPropTypes.foundOneProp() && lvPropTypes.noneMissingProp())
@@ -3669,9 +3673,14 @@ void TypeChecker2::checkIndexTypeFromType(
             else if (get<PrimitiveType>(tableTy) || get<FunctionType>(tableTy))
                 reportError(NotATable{tableTy}, location);
             else
-                reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
+            {
+                if (FFlag::LuauExternReadWriteAttributes && get<ExternType>(tableTy))
+                    reportError(UnknownProperty{tableTy, prop}, location);
+                else
+                    reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
+            }
         }
-        else if (context == ValueContext::RValue && !get<ExternType>(tableTy))
+        else if (context == ValueContext::RValue && (FFlag::LuauExternReadWriteAttributes || !get<ExternType>(tableTy)))
         {
             const auto rvPropTypes = lookupProp(norm.get(), prop, ValueContext::LValue, location, astIndexExprType, dummy);
             if (rvPropTypes.foundOneProp() && rvPropTypes.noneMissingProp())
@@ -3720,8 +3729,16 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         {
             TypeId indexType = follow(tt->indexer->indexType);
             TypeId givenType = module->internalTypes.addType(SingletonType{StringSingleton{prop}});
-            if (isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}, builtinTypes, *ice, SolverMode::New))
-                return {NormalizationResult::True, {tt->indexer->indexResultType}};
+            if (FFlag::LuauThreadUniferStateThroughTypeFunctionReduction)
+            {
+                if (subtyping->isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}).isSubtype)
+                    return {NormalizationResult::True, {tt->indexer->indexResultType}};
+            }
+            else
+            {
+                if (isSubtype_DEPRECATED(givenType, indexType, NotNull{module->getModuleScope().get()}, builtinTypes, *ice, SolverMode::New))
+                    return {NormalizationResult::True, {tt->indexer->indexResultType}};
+            }
         }
 
         return {NormalizationResult::False, {builtinTypes->unknownType}};
@@ -3733,7 +3750,14 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         // is compatible with the indexer's indexType
         // Construct the intersection and test inhabitedness!
         if (auto property = lookupExternTypeProp(cls, prop))
-            return {NormalizationResult::True, context == ValueContext::LValue ? property->writeTy : property->readTy};
+        {
+            if (FFlag::LuauExternReadWriteAttributes
+                && ((context == ValueContext::LValue && !property->writeTy) || (context == ValueContext::RValue && !property->readTy))
+            )
+                return {NormalizationResult::False, {}};
+            else
+                return {NormalizationResult::True, context == ValueContext::LValue ? property->writeTy : property->readTy};
+        }
         if (cls->indexer)
         {
             TypeId inhabitedTestType = module->internalTypes.addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});

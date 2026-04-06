@@ -735,9 +735,8 @@ SubtypingResult Subtyping::cache(SubtypingEnvironment& env, SubtypingResult resu
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId subTy, TypeId superTy, NotNull<Scope> scope)
 {
-    UnifierCounters& counters = normalizer->sharedState->counters;
-    RecursionCounter rc(&counters.recursionCount);
-    if (DFInt::LuauSubtypingRecursionLimit > 0 && DFInt::LuauSubtypingRecursionLimit < counters.recursionCount)
+    NonExceptionalRecursionLimiter nerl(&normalizer->sharedState->counters.recursionCount);
+    if (!nerl.isOk(DFInt::LuauSubtypingRecursionLimit))
         return SubtypingResult{false, true};
 
     if (FFlag::LuauUnifyWithSubtyping2)
@@ -1115,10 +1114,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
  */
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId subTp, TypePackId superTp, NotNull<Scope> scope)
 {
-    UnifierCounters& counters = normalizer->sharedState->counters;
-    RecursionCounter rc{&counters.recursionCount};
-
-    if (DFInt::LuauSubtypingRecursionLimit > 0 && counters.recursionCount > DFInt::LuauSubtypingRecursionLimit)
+    NonExceptionalRecursionLimiter nerl{&normalizer->sharedState->counters.recursionCount};
+    if (!nerl.isOk(DFInt::LuauSubtypingRecursionLimit))
         return SubtypingResult{false, true};
 
     subTp = follow(subTp);
@@ -1144,9 +1141,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
     // Match head types pairwise
 
     for (size_t i = 0; i < headSize; ++i)
-        result->andAlso(
-            isCovariantWith(env, subHead[i], superHead[i], scope).withBothComponent(TypePath::Index{i, TypePath::Index::Variant::Pack})
-        );
+        result->andAlso(isCovariantWith(env, subHead[i], superHead[i], scope).withBothComponent(TypePath::Index{i, TypePath::Index::Variant::Pack}));
 
     // Handle mismatched head sizes
 
@@ -1316,8 +1311,8 @@ Subtyping::EarlyExit Subtyping::isSubTailCovariantWith(
     {
         for (size_t i = superHeadStartIndex; i < superHead.size(); ++i)
             outputResult.andAlso(isCovariantWith(env, vt->ty, superHead[i], scope)
-                                        .withSubPath(TypePath::PathBuilder().tail().variadic().build())
-                                        .withSuperComponent(TypePath::Index{i, TypePath::Index::Variant::Pack}));
+                                     .withSubPath(TypePath::PathBuilder().tail().variadic().build())
+                                     .withSuperComponent(TypePath::Index{i, TypePath::Index::Variant::Pack}));
         return EarlyExit::No;
     }
     else if (get<GenericTypePack>(subTail))
@@ -1374,9 +1369,8 @@ Subtyping::EarlyExit Subtyping::isSubTailCovariantWith(
     }
     else
     {
-        outputResult = SubtypingResult{false}
-            .withSubComponent(TypePath::PackField::Tail)
-            .withError({scope->location, UnexpectedTypePackInSubtyping{subTail}});
+        outputResult =
+            SubtypingResult{false}.withSubComponent(TypePath::PackField::Tail).withError({scope->location, UnexpectedTypePackInSubtyping{subTail}});
         return EarlyExit::Yes;
     }
 }
@@ -1397,8 +1391,8 @@ Subtyping::EarlyExit Subtyping::isCovariantWithSuperTail(
     {
         for (size_t i = subHeadStartIndex; i < subHead.size(); ++i)
             outputResult.andAlso(isCovariantWith(env, subHead[i], vt->ty, scope)
-                                  .withSubComponent(TypePath::Index{i, TypePath::Index::Variant::Pack})
-                                  .withSuperPath(TypePath::PathBuilder().tail().variadic().build()));
+                                     .withSubComponent(TypePath::Index{i, TypePath::Index::Variant::Pack})
+                                     .withSuperPath(TypePath::PathBuilder().tail().variadic().build()));
         return EarlyExit::No;
     }
     else if (get<GenericTypePack>(superTail))
@@ -1455,8 +1449,8 @@ Subtyping::EarlyExit Subtyping::isCovariantWithSuperTail(
     else
     {
         outputResult = SubtypingResult{false}
-            .withSuperComponent(TypePath::PackField::Tail)
-            .withError({scope->location, UnexpectedTypePackInSubtyping{superTail}});
+                           .withSuperComponent(TypePath::PackField::Tail)
+                           .withError({scope->location, UnexpectedTypePackInSubtyping{superTail}});
         return EarlyExit::Yes;
     }
 }
@@ -1850,7 +1844,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Nega
     {
         // ¬(A ∪ B) ~ ¬A ∩ ¬B
         // follow intersection rules: A & B <: T iff A <: T && B <: T
-        result = { true };
+        result = {true};
 
         for (TypeId ty : u)
         {
@@ -1867,7 +1861,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Nega
     {
         // ¬(A ∩ B) ~ ¬A ∪ ¬B
         // follow union rules: A | B <: T iff A <: T || B <: T
-        result = { false };
+        result = {false};
 
         for (TypeId ty : i)
         {
@@ -1920,7 +1914,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
         // ¬(A ∪ B) ~ ¬A ∩ ¬B
         // follow intersection rules: A & B <: T iff A <: T && B <: T
         std::vector<SubtypingResult> subtypings;
-        result = { true };
+        result = {true};
 
         for (TypeId ty : u)
         {
@@ -1937,7 +1931,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
     {
         // ¬(A ∩ B) ~ ¬A ∪ ¬B
         // follow union rules: A | B <: T iff A <: T || B <: T
-        result = { false };
+        result = {false};
 
         for (TypeId ty : i)
         {
@@ -2435,7 +2429,7 @@ SubtypingResult Subtyping::isCovariantWith(
                     TypeError{scope->location, GenericTypePackCountMismatch{superFunction->genericPacks.size(), subFunction->genericPacks.size()}}
                 );
         }
-     }
+    }
 
     if (!subFunction->generics.empty())
     {
@@ -3086,7 +3080,6 @@ SubtypingResult Subtyping::checkGenericBounds(
         }
 
         result.andAlso(boundsResult);
-
     }
 
     return result;

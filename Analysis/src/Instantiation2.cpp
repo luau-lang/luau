@@ -4,15 +4,19 @@
 #include "Luau/Scope.h"
 #include "Luau/Instantiation2.h"
 
-LUAU_FASTFLAGVARIABLE(LuauInstantiationUsesGenericPolarityFollow)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 
 namespace Luau
 {
 
-Replacer::Replacer(NotNull<TypeArena> arena, NotNull<DenseHashMap<TypeId, TypeId> > replacements, NotNull<DenseHashMap<TypePackId, TypePackId> > replacementPacks)
-    : Substitution(TxnLog::empty(), arena),
-      replacements(replacements), replacementPacks(replacementPacks)
+Replacer::Replacer(
+    NotNull<TypeArena> arena,
+    NotNull<DenseHashMap<TypeId, TypeId>> replacements,
+    NotNull<DenseHashMap<TypePackId, TypePackId>> replacementPacks
+)
+    : Substitution(TxnLog::empty(), arena)
+    , replacements(replacements)
+    , replacementPacks(replacementPacks)
 {
     LUAU_ASSERT(FFlag::LuauReplacerRespectsReboundGenerics);
     LUAU_ASSERT(checkReplacementKeys());
@@ -132,7 +136,7 @@ TypeId Instantiation2::clean(TypeId ty)
     LUAU_ASSERT(ft);
 
     TypeId res;
-    if (is<NeverType>(FFlag::LuauInstantiationUsesGenericPolarityFollow ? follow(ft->lowerBound) : ft->lowerBound))
+    if (is<NeverType>(follow(ft->lowerBound)))
     {
         // If the lower bound is never, assume that we can pick the
         // upper bound, and that this will provide a reasonable type.
@@ -143,7 +147,7 @@ TypeId Instantiation2::clean(TypeId ty)
         // This seems ... fine.
         res = ft->upperBound;
     }
-    else if (is<UnknownType>(FFlag::LuauInstantiationUsesGenericPolarityFollow ? follow(ft->upperBound) : ft->upperBound))
+    else if (is<UnknownType>(follow(ft->upperBound)))
     {
         // If the upper bound is unknown, assume we can pick the
         // lower bound, and that this will provide a reasonable

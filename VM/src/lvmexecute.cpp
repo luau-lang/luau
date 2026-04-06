@@ -16,6 +16,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauIntegerType)
+
 // Disable c99-designator to avoid the warning in computed goto dispatch table
 #ifdef __clang__
 #if __has_warning("-Wc99-designator")
@@ -1179,6 +1181,15 @@ reentry:
                         // slow path after switch()
                         break;
 
+                    case LUA_TINTEGER:
+                        if (FFlag::LuauIntegerType)
+                        {
+                            pc += lvalue(ra) == lvalue(rb) ? LUAU_INSN_D(insn) : 1;
+                            LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                            VM_NEXT();
+                        }
+                        [[fallthrough]];
+
                     default:
                         LUAU_ASSERT(!"Unknown value type");
                         LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
@@ -1293,6 +1304,15 @@ reentry:
                         }
                         // slow path after switch()
                         break;
+
+                    case LUA_TINTEGER:
+                        if (FFlag::LuauIntegerType)
+                        {
+                            pc += lvalue(ra) != lvalue(rb) ? LUAU_INSN_D(insn) : 1;
+                            LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                            VM_NEXT();
+                        }
+                        [[fallthrough]];
 
                     default:
                         LUAU_ASSERT(!"Unknown value type");

@@ -18,6 +18,10 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
+LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
+LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
+LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -63,13 +67,29 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
             if type(a) == 'boolean' then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
             elseif a.fn() then
+                local a2:{fn:()->(unknown,...unknown)}&(userdata|function|nil|number|integer|string|thread|buffer|table)=a
+            end
+        end
+    )";
+
+    const std::string expectedWithNewSolver_NOINTEGER =
+        R"(
+        function f(a:{fn:()->(unknown,...unknown)}): ()
+            if type(a) == 'boolean' then
+                local a1:{fn:()->(unknown,...unknown)}&boolean=a
+            elseif a.fn() then
                 local a2:{fn:()->(unknown,...unknown)}&(userdata|function|nil|number|string|thread|buffer|table)=a
             end
         end
     )";
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ(expectedWithNewSolver, decorateWithTypes(code));
+    {
+        if (FFlag::LuauIntegerType)
+            CHECK_EQ(expectedWithNewSolver, decorateWithTypes(code));
+        else
+            CHECK_EQ(expectedWithNewSolver_NOINTEGER, decorateWithTypes(code));
+    }
     else
         CHECK_EQ(expected, decorateWithTypes(code));
 }
@@ -637,23 +657,6 @@ return wrapStrictTable(Constants, "Constants")
         CHECK("any" == toString(*result));
     }
 }
-
-namespace
-{
-struct IsSubtypeFixture : Fixture
-{
-    bool isSubtype(TypeId a, TypeId b)
-    {
-        ModulePtr module = getMainModule();
-        REQUIRE(module);
-
-        if (!module->hasModuleScope())
-            FAIL("isSubtype: module scope data is not available");
-
-        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, getBuiltins(), ice, SolverMode::New);
-    }
-};
-} // namespace
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "intersection_of_functions_of_different_arities")
 {
@@ -1522,6 +1525,37 @@ function bing(path : string  | walkoptions, opts: walkoptions?)
 end
     )"),
         OptionalValueAccess
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauThreadUniferStateThroughTypeFunctionReduction, true},
+        {FFlag::LuauUnifyWithSubtyping2, true},
+        {FFlag::LuauSubtypingReplaceBounds, true},
+    };
+
+    CHECK_THROWS_AS(
+        check(R"(
+        local settingsTable = {}
+
+        type Settings = typeof(settingsTable)
+
+        local settings = {}
+
+        function settings.getTopic<T>(topic: keyof<Settings> & T): { setting: <U>(setting: keyof<index<Settings, T>> & U) -> (index<index<Settings, T>, U>) }
+            return {
+                setting = function<U>(setting: keyof<index<Settings, T>> & U): index<index<Settings, T>, U>
+                    return settingsTable[topic][setting]
+                end
+            }
+        end
+
+        return settings
+        )"),
+        InternalCompilerError
     );
 }
 

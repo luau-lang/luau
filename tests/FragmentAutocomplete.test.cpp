@@ -4789,7 +4789,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_ta
             CHECK(ac.result->acResults.entryMap.count("foobar") > 0);
         }
     );
-
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_properties")
@@ -4881,7 +4880,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_prop
             CHECK(ac.result->acResults.entryMap.count("barbaz") > 0);
         }
     );
-
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_narrow_fragment")
@@ -4950,7 +4948,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_narr
             CHECK(ac.result->acResults.entryMap.count("foobar") > 0);
         }
     );
-
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)

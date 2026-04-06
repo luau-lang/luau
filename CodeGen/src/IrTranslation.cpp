@@ -13,7 +13,6 @@
 #include "ltm.h"
 
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
-LUAU_FASTFLAG(LuauCodegenCounterSupport)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
 
@@ -48,7 +47,7 @@ struct FallbackStreamScope
 static IrOp getInitializedFallback(IrBuilder& build, IrOp& fallback, int pcpos)
 {
     if (fallback.kind == IrOpKind::None)
-        fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+        fallback = build.fallbackBlock(pcpos);
 
     return fallback;
 }
@@ -183,7 +182,7 @@ void translateInstJumpIfEq(IrBuilder& build, const Instruction* pc, int pcpos, b
     // fast-path: number (when both operands are expected to be a number or are unknown)
     if (isExpectedOrUnknownBytecodeType(bcTypes.a, LBC_TYPE_NUMBER) && isExpectedOrUnknownBytecodeType(bcTypes.b, LBC_TYPE_NUMBER))
     {
-        IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+        IrOp fallback = build.fallbackBlock(pcpos);
 
         IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
         build.inst(IrCmd::CHECK_TAG, ta, build.constTag(LUA_TNUMBER), fallback);
@@ -291,7 +290,7 @@ void translateInstJumpIfCond(IrBuilder& build, const Instruction* pc, int pcpos,
     // fast-path: number (when both operands are expected to be a number or are unknown)
     if (isExpectedOrUnknownBytecodeType(bcTypes.a, LBC_TYPE_NUMBER) && isExpectedOrUnknownBytecodeType(bcTypes.b, LBC_TYPE_NUMBER))
     {
-        IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+        IrOp fallback = build.fallbackBlock(pcpos);
 
         IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
         build.inst(IrCmd::CHECK_TAG, ta, build.constTag(LUA_TNUMBER), fallback);
@@ -890,7 +889,7 @@ void translateInstLength(IrBuilder& build, const Instruction* pc, int pcpos)
         return;
     }
 
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
     build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
@@ -996,7 +995,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
     IrOp builtinArg3 = customParams ? customArg3 : build.vmReg(ra + 3);
 
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
 
     // In unsafe environment, instead of retrying fastcall at 'pcpos' we side-exit directly to fallback sequence
     if (FFlag::LuauCodegenBlockSafeEnv)
@@ -1198,7 +1197,7 @@ void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpo
     int ra = LUAU_INSN_A(*pc);
 
     IrOp target = build.blockAtInst(pcpos + 1 + LUAU_INSN_D(*pc));
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
 
     // fast-path: pairs/next
     if (FFlag::LuauCodegenBlockSafeEnv)
@@ -1229,7 +1228,7 @@ void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcp
     int ra = LUAU_INSN_A(*pc);
 
     IrOp target = build.blockAtInst(pcpos + 1 + LUAU_INSN_D(*pc));
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
     IrOp finish = build.block(IrBlockKind::Internal);
 
     // fast-path: ipairs/inext
@@ -1268,7 +1267,7 @@ void translateInstForGLoopIpairs(IrBuilder& build, const Instruction* pc, int pc
 
     IrOp loopRepeat = build.blockAtInst(getJumpTarget(*pc, pcpos));
     IrOp loopExit = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LUAU_INSN_OP(*pc))));
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
 
     IrOp hasElem = build.block(IrBlockKind::Internal);
 
@@ -1332,7 +1331,7 @@ void translateInstGetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
         return;
     }
 
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
     build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
@@ -1370,7 +1369,7 @@ void translateInstSetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
         return;
     }
 
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
     build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
@@ -1411,7 +1410,7 @@ void translateInstGetTable(IrBuilder& build, const Instruction* pc, int pcpos)
         return;
     }
 
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
     build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
@@ -1457,7 +1456,7 @@ void translateInstSetTable(IrBuilder& build, const Instruction* pc, int pcpos)
         return;
     }
 
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
     build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
@@ -1577,7 +1576,7 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
         return;
     }
 
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
 
     build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
 
@@ -1615,7 +1614,7 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
         return;
     }
 
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
 
     build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
 
@@ -1643,7 +1642,7 @@ void translateInstGetGlobal(IrBuilder& build, const Instruction* pc, int pcpos)
     int ra = LUAU_INSN_A(*pc);
     uint32_t aux = pc[1];
 
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
 
     IrOp env = build.inst(IrCmd::LOAD_ENV);
     IrOp addrSlotEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, env, build.constUint(pcpos), build.vmConst(aux));
@@ -1665,7 +1664,7 @@ void translateInstSetGlobal(IrBuilder& build, const Instruction* pc, int pcpos)
     int ra = LUAU_INSN_A(*pc);
     uint32_t aux = pc[1];
 
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
 
     IrOp env = build.inst(IrCmd::LOAD_ENV);
     IrOp addrSlotEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, env, build.constUint(pcpos), build.vmConst(aux));
@@ -1778,7 +1777,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
     }
 
     IrOp next = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LOP_NAMECALL)));
-    IrOp fallback = FFlag::LuauCodegenCounterSupport ? build.fallbackBlock(pcpos) : build.block(IrBlockKind::Fallback);
+    IrOp fallback = build.fallbackBlock(pcpos);
     IrOp firstFastPathSuccess = build.block(IrBlockKind::Internal);
     IrOp secondFastPath = build.block(IrBlockKind::Internal);
 

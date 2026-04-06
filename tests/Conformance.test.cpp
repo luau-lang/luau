@@ -40,7 +40,8 @@ void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauStacklessPcall)
-LUAU_FASTFLAG(LuauCodegenA64ClosureOffset)
+LUAU_FASTFLAG(LuauIntegerLibrary)
+LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewMathConstantsRuntime)
 LUAU_FASTFLAG(LuauCompileStringInterpWithZero)
@@ -854,6 +855,12 @@ TEST_CASE("Math")
     runConformance("math.luau");
 }
 
+TEST_CASE("Integers")
+{
+    if (FFlag::LuauIntegerType && FFlag::LuauIntegerLibrary)
+        runConformance("integers.luau");
+}
+
 TEST_CASE("Tables")
 {
     runConformance(
@@ -1397,6 +1404,11 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
         case Luau::PrimitiveType::Number:
             lua_pushstring(L, "number");
+            break;
+
+        case Luau::PrimitiveType::Integer:
+            if (FFlag::LuauIntegerType)
+                lua_pushstring(L, "integer");
             break;
 
         case Luau::PrimitiveType::String:
@@ -3828,8 +3840,6 @@ TEST_CASE("HugeConstantTable")
 
 TEST_CASE("LargeNestedClosure")
 {
-    ScopedFastFlag luauCodegenA64ClosureOffset{FFlag::LuauCodegenA64ClosureOffset, true};
-
     const int kCount = 2048;
     std::string source;
 

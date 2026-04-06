@@ -18,6 +18,7 @@
 
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAGVARIABLE(LuauCodegenTruncatedSubsts)
+LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
 
 namespace Luau
 {
@@ -1513,6 +1514,104 @@ std::optional<uint8_t> tryGetOperandTag(IrFunction& function, IrOp op)
 
         if (arg->cmd == IrCmd::LOAD_TVALUE && HAS_OP_C(*arg))
             return function.tagOp(OP_C(*arg));
+    }
+
+    return std::nullopt;
+}
+
+void propagateTagsFromPredecessors(
+    const IrFunction& function,
+    const IrBlock& block,
+    std::function<uint8_t(size_t)> getTag,
+    std::function<void(size_t, uint8_t)> setTag
+)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenPropagateTagsAcrossChains2);
+
+    uint32_t blockIdx = function.getBlockIndex(block);
+
+    if (blockIdx >= function.cfg.predecessorsOffsets.size())
+        return;
+
+    BlockIteratorWrapper preds = predecessors(function.cfg, blockIdx);
+
+    if (preds.empty())
+        return;
+
+    size_t minRegsKnown = std::numeric_limits<size_t>::max();
+
+    const size_t numBlockExitTags = function.blockExitTags.size();
+
+    for (uint32_t predIdx : preds)
+    {
+        if (predIdx >= numBlockExitTags)
+            return;
+
+        minRegsKnown = std::min(minRegsKnown, function.blockExitTags[predIdx].size());
+    }
+
+    const RegisterSet& in = function.cfg.in[blockIdx];
+
+    bool firstPredecessor = true;
+
+    for (uint32_t predIdx : preds)
+    {
+        const std::vector<uint8_t>& predTags = function.blockExitTags[predIdx];
+
+        CODEGEN_ASSERT(minRegsKnown <= predTags.size());
+
+        for (size_t i = 0; i < minRegsKnown; ++i)
+        {
+            // Only registers that are live in can receive information from the predecessors
+            if (in.regs.test(i) || (in.varargSeq && i >= in.varargStart))
+            {
+                uint8_t currentTag = getTag(i);
+
+                if (firstPredecessor)
+                    setTag(i, predTags[i]);
+                else if (currentTag != kUnknownTag && currentTag != predTags[i])
+                    setTag(i, kUnknownTag);
+            }
+        }
+
+        firstPredecessor = false;
+    }
+}
+
+std::optional<uint8_t> tryGetLuauTagForBcType(uint8_t bcType, bool ignoreOptionalPart)
+{
+    if (ignoreOptionalPart)
+        bcType = bcType & ~LBC_TYPE_OPTIONAL_BIT;
+
+    switch (bcType)
+    {
+    case LBC_TYPE_NIL:
+        return LUA_TNIL;
+    case LBC_TYPE_BOOLEAN:
+        return LUA_TBOOLEAN;
+    case LBC_TYPE_NUMBER:
+        return LUA_TNUMBER;
+    case LBC_TYPE_INTEGER:
+        return LUA_TINTEGER;
+    case LBC_TYPE_STRING:
+        return LUA_TSTRING;
+    case LBC_TYPE_TABLE:
+        return LUA_TTABLE;
+    case LBC_TYPE_FUNCTION:
+        return LUA_TFUNCTION;
+    case LBC_TYPE_THREAD:
+        return LUA_TTHREAD;
+    case LBC_TYPE_USERDATA:
+        return LUA_TUSERDATA;
+    case LBC_TYPE_VECTOR:
+        return LUA_TVECTOR;
+    case LBC_TYPE_BUFFER:
+        return LUA_TBUFFER;
+    default:
+        if (bcType >= LBC_TYPE_TAGGED_USERDATA_BASE && bcType < LBC_TYPE_TAGGED_USERDATA_END)
+            return LUA_TUSERDATA;
+
+        break;
     }
 
     return std::nullopt;
