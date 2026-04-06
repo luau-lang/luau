@@ -32,6 +32,7 @@ LUAU_FASTFLAG(LuauCompileFastcallsSurvivePolyfills)
 LUAU_FASTFLAG(LuauCompileTableIndexTemp)
 LUAU_FASTFLAG(LuauCompileFoldStringLimit)
 LUAU_FASTFLAG(LuauCompileNewMathConstantsFolded)
+LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAG(DebugLuauNoInline)
 
 using namespace Luau;
@@ -1523,6 +1524,8 @@ TEST_CASE("InterpStringWithNoExpressions")
 
 TEST_CASE("InterpStringZeroCost")
 {
+    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
+
     CHECK_EQ(
         "\n" + compileFunction0(R"(local _ = `hello, {42}!`)"), R"(
 LOADK R0 K0 ['hello, %*!']
@@ -1562,8 +1565,10 @@ RETURN R0 0
 
 TEST_CASE("InterpStringRegisterLimit")
 {
+    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
+
     CHECK_THROWS_AS(compileFunction0(("local a = `" + rep("{1}", 254) + "`").c_str()), std::exception);
-    CHECK_NOTHROW(compileFunction0(("local a = `" + rep("{1}", 253) + "`").c_str()));
+    CHECK_NOTHROW(compileFunction0(("local a = `" + rep("{1}", 253) + "`").c_str())); // This check can be removed once the fflag is removed
 }
 
 TEST_CASE("InterpStringConstFold")
@@ -1583,6 +1588,8 @@ LOADK R0 K0 ['hello, world!']
 RETURN R0 1
 )"
     );
+
+    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(local not_string = 42; local world = "world"; return `hello, {world} {not_string}!`)"),
@@ -10555,6 +10562,8 @@ CONCAT R1 R2 R11
 RETURN R1 1
 )"
     );
+
+    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
 
     CHECK_EQ(
         "\n" + compileFunction(

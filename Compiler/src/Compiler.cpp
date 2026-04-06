@@ -34,6 +34,7 @@ LUAU_FASTFLAGVARIABLE(LuauCompileVectorReveseMul)
 LUAU_FASTFLAGVARIABLE(LuauCompileTableIndexTemp)
 LUAU_FASTFLAGVARIABLE(LuauCompileVectorConstLimit)
 LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpWithZero)
+LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpTargetTop)
 
 LUAU_FASTFLAG(DebugLuauNoInline)
 
@@ -1990,7 +1991,7 @@ struct Compiler
         unsigned int regCount = unsigned(2 + expr->expressions.size - skippedSubExpr);
 
         // Optimization: have the format call place the result directly into the target to avoid an extra MOVE
-        bool targetTop = targetTemp && target == regTop - 1;
+        bool targetTop = FFlag::LuauCompileStringInterpTargetTop && targetTemp && target == regTop - 1;
         uint8_t baseReg = targetTop ? allocReg(expr, regCount - 1) - 1 : allocReg(expr, regCount);
 
         emitLoadK(baseReg, formatStringIndex);
