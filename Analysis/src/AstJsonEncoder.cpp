@@ -988,6 +988,8 @@ struct AstJsonEncoder : public AstVisitor
                     PROP(prefix);
                 if (node->prefixLocation)
                     write("prefixLocation", *node->prefixLocation);
+                if (node->prefixLocal)
+                    write("prefixLocal", node->prefixLocal);
                 PROP(name);
                 PROP(nameLocation);
                 PROP(parameters);

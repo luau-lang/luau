@@ -500,6 +500,94 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_span_is_correct")
     REQUIRE(Location{Position{2, 8}, Position{2, 75}} == t2->location);
 }
 
+TEST_CASE_FIXTURE(Fixture, "prefixed_type_reference_links_to_local")
+{
+    AstStatBlock* block = parse(R"(
+        local Types = nil
+        type Foo = Types.Bar
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(2 == block->body.size);
+
+    AstStatLocal* local = block->body.data[0]->as<AstStatLocal>();
+    REQUIRE(local);
+    REQUIRE(1 == local->vars.size);
+
+    AstStatTypeAlias* alias = block->body.data[1]->as<AstStatTypeAlias>();
+    REQUIRE(alias);
+
+    AstTypeReference* ref = alias->type->as<AstTypeReference>();
+    REQUIRE(ref);
+    REQUIRE(ref->prefix);
+    CHECK(ref->prefix->value == std::string("Types"));
+    CHECK(ref->name == "Bar");
+    REQUIRE(ref->prefixLocal != nullptr);
+    CHECK(ref->prefixLocal == local->vars.data[0]);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_prefixed_type_reference_has_no_local")
+{
+    AstStatBlock* block = parse(R"(
+        type Foo = Unknown.Bar
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(1 == block->body.size);
+
+    AstStatTypeAlias* alias = block->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(alias);
+
+    AstTypeReference* ref = alias->type->as<AstTypeReference>();
+    REQUIRE(ref);
+    REQUIRE(ref->prefix);
+    CHECK(ref->prefix->value == std::string("Unknown"));
+    CHECK(ref->prefixLocal == nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "prefixed_type_reference_shadowing")
+{
+    AstStatBlock* block = parse(R"(
+        local Types = nil
+        do
+            local Types = nil
+            type Foo = Types.Bar
+        end
+        type Bar = Types.Baz
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(3 == block->body.size);
+
+    AstStatLocal* outerLocal = block->body.data[0]->as<AstStatLocal>();
+    REQUIRE(outerLocal);
+
+    AstStatBlock* doBlock = block->body.data[1]->as<AstStatBlock>();
+    REQUIRE(doBlock);
+    REQUIRE(2 == doBlock->body.size);
+
+    AstStatLocal* innerLocal = doBlock->body.data[0]->as<AstStatLocal>();
+    REQUIRE(innerLocal);
+
+    AstStatTypeAlias* innerAlias = doBlock->body.data[1]->as<AstStatTypeAlias>();
+    REQUIRE(innerAlias);
+
+    AstTypeReference* innerRef = innerAlias->type->as<AstTypeReference>();
+    REQUIRE(innerRef);
+    REQUIRE(innerRef->prefixLocal != nullptr);
+    CHECK(innerRef->prefixLocal == innerLocal->vars.data[0]);
+
+    AstStatTypeAlias* outerAlias = block->body.data[2]->as<AstStatTypeAlias>();
+    REQUIRE(outerAlias);
+
+    AstTypeReference* outerRef = outerAlias->type->as<AstTypeReference>();
+    REQUIRE(outerRef);
+    REQUIRE(outerRef->prefixLocal != nullptr);
+    CHECK(outerRef->prefixLocal == outerLocal->vars.data[0]);
+
+    CHECK(innerRef->prefixLocal != outerRef->prefixLocal);
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_error_messages")
 {
     matchParseError(

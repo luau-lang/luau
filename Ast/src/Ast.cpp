@@ -1088,12 +1088,14 @@ AstTypeReference::AstTypeReference(
     std::optional<Location> prefixLocation,
     const Location& nameLocation,
     bool hasParameterList,
-    const AstArray<AstTypeOrPack>& parameters
+    const AstArray<AstTypeOrPack>& parameters,
+    AstLocal* prefixLocal
 )
     : AstType(ClassIndex(), location)
     , hasParameterList(hasParameterList)
     , prefix(prefix)
     , prefixLocation(prefixLocation)
+    , prefixLocal(prefixLocal)
     , name(name)
     , nameLocation(nameLocation)
     , parameters(parameters)

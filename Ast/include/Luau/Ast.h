@@ -1140,7 +1140,8 @@ public:
         std::optional<Location> prefixLocation,
         const Location& nameLocation,
         bool hasParameterList = false,
-        const AstArray<AstTypeOrPack>& parameters = {}
+        const AstArray<AstTypeOrPack>& parameters = {},
+        AstLocal* prefixLocal = nullptr
     );
 
     void visit(AstVisitor* visitor) override;
@@ -1148,6 +1149,7 @@ public:
     bool hasParameterList;
     std::optional<AstName> prefix;
     std::optional<Location> prefixLocation;
+    AstLocal* prefixLocal;
     AstName name;
     Location nameLocation;
     AstArray<AstTypeOrPack> parameters;
