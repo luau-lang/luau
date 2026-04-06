@@ -654,6 +654,7 @@ struct TypeFunctionInstanceType
     UserDefinedFunctionData userFuncData;
 
     TypeFunctionInstanceState state = TypeFunctionInstanceState::Unsolved;
+    bool isBuiltinApplied = false;
 
     TypeFunctionInstanceType(
         NotNull<const TypeFunction> function,

@@ -43,6 +43,7 @@ LUAU_FASTFLAGVARIABLE(LuauComparisonToNilsIsAlwaysOk2)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
+LUAU_FASTFLAG(LuauTypeNegationSupport)
 
 namespace Luau
 {
@@ -2795,6 +2796,8 @@ void TypeChecker2::visit(AstType* ty)
         return visit(t);
     else if (auto t = ty->as<AstTypeGroup>())
         return visit(t->type);
+    else if (auto t = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && t)
+        visit(t->inner);
 }
 
 void TypeChecker2::visit(AstTypeReference* ty)
@@ -2961,6 +2964,11 @@ void TypeChecker2::visit(AstTypeFunction* ty)
 void TypeChecker2::visit(AstTypeTypeof* ty)
 {
     visit(ty->expr, ValueContext::RValue);
+}
+
+void TypeChecker2::visit(AstTypeNegation* ty)
+{
+    visit(ty->inner);
 }
 
 void TypeChecker2::visit(AstTypeUnion* ty)

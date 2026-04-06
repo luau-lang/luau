@@ -2535,6 +2535,41 @@ TypeFunctionReductionResult<TypeId> weakoptionalTypeFunc(
     return {targetTy, Reduction::MaybeOk, {}, {}};
 }
 
+TypeFunctionReductionResult<TypeId> negateTypeFunction(
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
+{
+    if (typeParams.size() != 1 || !packParams.empty())
+    {
+        ctx->ice->ice("negate type function: encountered a type function instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId inner = follow(typeParams.at(0));
+
+    if (isPending(inner, ctx->solver))
+        return {std::nullopt, Reduction::MaybeOk, {inner}, {}};
+
+    if (is<TableType>(inner) || is<MetatableType>(inner) || is<FunctionType>(inner) || is<GenericType>(inner))
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
+
+    if (is<ErrorType>(inner))
+        return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
+
+    TypeId negated = ctx->arena->addType(NegationType{inner});
+    std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(negated);
+    NormalizationResult inhabited = ctx->normalizer->isInhabited(normTy.get());
+
+    // if the type failed to normalize, we can't reduce, but know nothing about inhabitance.
+    if (!normTy || inhabited == NormalizationResult::HitLimits)
+        return {std::nullopt, Reduction::MaybeOk, {}, {}};
+
+    return {negated, Reduction::MaybeOk, {}, {}};
+}
+
 BuiltinTypeFunctions::BuiltinTypeFunctions()
     : userFunc{"user", userDefinedTypeFunction}
     , notFunc{"not", notTypeFunction}
@@ -2556,6 +2591,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , singletonFunc{"singleton", singletonTypeFunction}
     , unionFunc{"union", unionTypeFunction}
     , intersectFunc{"intersect", intersectTypeFunction}
+    , negateFunc{"negate", negateTypeFunction}
     , keyofFunc{"keyof", keyofTypeFunction}
     , rawkeyofFunc{"rawkeyof", rawkeyofTypeFunction}
     , indexFunc{"index", indexTypeFunction}
