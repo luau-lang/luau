@@ -21,6 +21,7 @@ LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauTrackPrefixLocal)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -502,6 +503,8 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_span_is_correct")
 
 TEST_CASE_FIXTURE(Fixture, "prefixed_type_reference_links_to_local")
 {
+    ScopedFastFlag sff{FFlag::LuauTrackPrefixLocal, true};
+
     AstStatBlock* block = parse(R"(
         local Types = nil
         type Foo = Types.Bar
@@ -528,6 +531,8 @@ TEST_CASE_FIXTURE(Fixture, "prefixed_type_reference_links_to_local")
 
 TEST_CASE_FIXTURE(Fixture, "unknown_prefixed_type_reference_has_no_local")
 {
+    ScopedFastFlag sff{FFlag::LuauTrackPrefixLocal, true};
+
     AstStatBlock* block = parse(R"(
         type Foo = Unknown.Bar
     )");
@@ -547,6 +552,8 @@ TEST_CASE_FIXTURE(Fixture, "unknown_prefixed_type_reference_has_no_local")
 
 TEST_CASE_FIXTURE(Fixture, "prefixed_type_reference_shadowing")
 {
+    ScopedFastFlag sff{FFlag::LuauTrackPrefixLocal, true};
+
     AstStatBlock* block = parse(R"(
         local Types = nil
         do

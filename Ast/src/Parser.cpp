@@ -24,6 +24,7 @@ LUAU_FASTFLAGVARIABLE(DesugaredArrayTypeReferenceIsEmpty)
 LUAU_FASTFLAGVARIABLE(LuauConst2)
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(LuauExternReadWriteAttributes)
+LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -2798,8 +2799,11 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
             prefix = name.name;
             prefixLocation = name.location;
 
-            AstLocal* const* prefixLocalValue = localMap.find(name.name);
-            prefixLocal = (prefixLocalValue && *prefixLocalValue) ? *prefixLocalValue : nullptr;
+            if (FFlag::LuauTrackPrefixLocal)
+            {
+                AstLocal* const* prefixLocalValue = localMap.find(name.name);
+                prefixLocal = (prefixLocalValue && *prefixLocalValue) ? *prefixLocalValue : nullptr;
+            }
 
             name = parseIndexName("field name", *prefixPointPosition);
         }
