@@ -25,13 +25,10 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 
-LUAU_FASTFLAG(LuauSolverV2)
-
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
 
 namespace Luau
 {
@@ -191,6 +188,11 @@ bool isBoolean(TypeId ty)
 bool isNumber(TypeId ty)
 {
     return isPrim(ty, PrimitiveType::Number);
+}
+
+bool isInteger(TypeId ty)
+{
+    return isPrim(ty, PrimitiveType::Integer);
 }
 
 // Returns true when ty is a subtype of string
@@ -844,6 +846,7 @@ BuiltinTypes::BuiltinTypes()
     , typeFunctions(std::make_unique<BuiltinTypeFunctions>())
     , nilType(arena->addType(Type{PrimitiveType{PrimitiveType::NilType}, /*persistent*/ true}))
     , numberType(arena->addType(Type{PrimitiveType{PrimitiveType::Number}, /*persistent*/ true}))
+    , integerType(arena->addType(Type{PrimitiveType{PrimitiveType::Integer}, /*persistent*/ true}))
     , stringType(arena->addType(Type{PrimitiveType{PrimitiveType::String}, /*persistent*/ true}))
     , booleanType(arena->addType(Type{PrimitiveType{PrimitiveType::Boolean}, /*persistent*/ true}))
     , threadType(arena->addType(Type{PrimitiveType{PrimitiveType::Thread}, /*persistent*/ true}))
@@ -923,17 +926,11 @@ void persist(TypeId ty)
 
             for (const auto& [_name, prop] : ttv->props)
             {
-                if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
-                {
-                    if (prop.readTy)
-                        queue.push_back(*prop.readTy);
-                    if (prop.writeTy)
-                        queue.push_back(*prop.writeTy);
-                }
-                else
-                    queue.push_back(prop.type_DEPRECATED());
+                if (prop.readTy)
+                    queue.push_back(*prop.readTy);
+                if (prop.writeTy)
+                    queue.push_back(*prop.writeTy);
             }
-
 
             if (ttv->indexer)
             {
@@ -945,15 +942,11 @@ void persist(TypeId ty)
         {
             for (const auto& [_name, prop] : etv->props)
             {
-                if (FFlag::LuauAnalysisUsesSolverMode || FFlag::LuauSolverV2)
-                {
-                    if (prop.readTy)
-                        queue.push_back(*prop.readTy);
-                    if (prop.writeTy)
-                        queue.push_back(*prop.writeTy);
-                }
-                else
-                    queue.push_back(prop.type_DEPRECATED());
+
+                if (prop.readTy)
+                    queue.push_back(*prop.readTy);
+                if (prop.writeTy)
+                    queue.push_back(*prop.writeTy);
             }
         }
         else if (auto utv = get<UnionType>(t))

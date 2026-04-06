@@ -20,7 +20,10 @@
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
-LUAU_FASTFLAGVARIABLE(LuauBuiltinTypeFunctionsUseNewOverloadResolution)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsCaptureNestedInstances)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
+LUAU_FASTFLAGVARIABLE(LuauThreadUniferStateThroughTypeFunctionReduction)
 
 namespace Luau
 {
@@ -108,10 +111,18 @@ std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunctionApp(
             }
         );
 
-        if (ctx->solver)
-            ctx->pushConstraint(ReduceConstraint{resultTy});
+        if (FFlag::LuauTypeFunctionsCaptureNestedInstances)
+        {
+            ctx->freshInstances.emplace_back(resultTy);
+            return {{resultTy, Reduction::MaybeOk}};
+        }
+        else
+        {
+            if (ctx->solver)
+                ctx->pushConstraint(ReduceConstraint{resultTy});
 
-        return {{resultTy, Reduction::MaybeOk, {}, {}, {}, {}, {resultTy}}};
+            return {{resultTy, Reduction::MaybeOk, {}, {}, {}, {}, {resultTy}}};
+        }
     }
 
     return std::nullopt;
@@ -136,7 +147,8 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
     if (!selected.overload.has_value())
         return std::nullopt;
 
-    TypePackId retPack = ctx->arena->freshTypePack(ctx->scope);
+    TypePackId retPack = FFlag::LuauTypeFunctionsAddFreeTypePackWithPositivePolarity ? ctx->arena->freshTypePack(ctx->scope, Polarity::Positive)
+                                                                                     : ctx->arena->freshTypePack(ctx->scope);
     TypeId prospectiveFunction = ctx->arena->addType(FunctionType{argsPack, retPack});
 
     // FIXME: It's too bad that we have to bust out the Unifier here.  We should
@@ -169,6 +181,19 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
             return std::nullopt;
         else
             retPack = *subst;
+    }
+
+    if (FFlag::LuauOverloadGetsInstantiated)
+    {
+        // After we solve for the instantiated function type of this metamethod,
+        // we may have new free types if the metamethod was generic. We capture
+        // these so that they can be generalized later and we don't end up with
+        // free types in type checking.
+        for (const auto& ty : unifier.newFreshTypes)
+            trackInteriorFreeType(ctx->scope, ty);
+
+        for (const auto& tp : unifier.newFreshTypePacks)
+            trackInteriorFreeTypePack(ctx->scope, tp);
     }
 
     return retPack;
@@ -442,50 +467,21 @@ TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(
 
     TypePackId argPack = ctx->arena->addTypePack({lhsTy, rhsTy});
 
-    if (FFlag::LuauBuiltinTypeFunctionsUseNewOverloadResolution)
+    if (reversed)
     {
-        if (reversed)
-        {
-            TypePack* p = getMutable<TypePack>(argPack);
-            std::swap(p->head.front(), p->head.back());
-        }
-
-        std::optional<TypePackId> retPack = solveFunctionCall(ctx, location, *mmType, argPack);
-        if (!retPack.has_value())
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-        TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *retPack, 1);
-        if (extracted.head.empty())
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-        return {extracted.head.front(), Reduction::MaybeOk, {}, {}};
+        TypePack* p = getMutable<TypePack>(argPack);
+        std::swap(p->head.front(), p->head.back());
     }
-    else
-    {
-        SolveResult solveResult;
 
-        if (!reversed)
-            solveResult = solveFunctionCall_DEPRECATED(
-                ctx->arena, ctx->builtins, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice, ctx->limits, ctx->scope, location, *mmType, argPack
-            );
-        else
-        {
-            TypePack* p = getMutable<TypePack>(argPack);
-            std::swap(p->head.front(), p->head.back());
-            solveResult = solveFunctionCall_DEPRECATED(
-                ctx->arena, ctx->builtins, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice, ctx->limits, ctx->scope, location, *mmType, argPack
-            );
-        }
+    std::optional<TypePackId> retPack = solveFunctionCall(ctx, location, *mmType, argPack);
+    if (!retPack.has_value())
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
 
-        if (!solveResult.typePackId.has_value())
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
+    TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *retPack, 1);
+    if (extracted.head.empty())
+        return {std::nullopt, Reduction::Erroneous, {}, {}};
 
-        TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *solveResult.typePackId, 1);
-        if (extracted.head.empty())
-            return {std::nullopt, Reduction::Erroneous, {}, {}};
-
-        return {extracted.head.front(), Reduction::MaybeOk, {}, {}};
-    }
+    return {extracted.head.front(), Reduction::MaybeOk, {}, {}};
 }
 
 TypeFunctionReductionResult<TypeId> addTypeFunction(
@@ -1955,22 +1951,45 @@ bool searchPropsAndIndexer(
                 indexType = follow(tblIndexer->indexResultType);
         }
 
-        if (isSubtype(ty, indexType, ctx->scope, ctx->builtins, *ctx->ice, SolverMode::New))
+        if (FFlag::LuauThreadUniferStateThroughTypeFunctionReduction)
         {
-            TypeId idxResultTy = follow(tblIndexer->indexResultType);
-
-            // indexResultType is a union type -> we need to extend our reduction type
-            if (auto idxResUnionTy = get<UnionType>(idxResultTy))
+            if (isSubtype(ty, indexType, ctx->arena, ctx->builtins, ctx->scope, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice))
             {
-                for (TypeId option : idxResUnionTy->options)
-                {
-                    result.insert(follow(option));
-                }
-            }
-            else // indexResultType is a singular type or intersection type -> we can simply append
-                result.insert(idxResultTy);
+                TypeId idxResultTy = follow(tblIndexer->indexResultType);
 
-            return true;
+                // indexResultType is a union type -> we need to extend our reduction type
+                if (auto idxResUnionTy = get<UnionType>(idxResultTy))
+                {
+                    for (TypeId option : idxResUnionTy->options)
+                    {
+                        result.insert(follow(option));
+                    }
+                }
+                else // indexResultType is a singular type or intersection type -> we can simply append
+                    result.insert(idxResultTy);
+
+                return true;
+            }
+        }
+        else
+        {
+            if (isSubtype_DEPRECATED(ty, indexType, ctx->scope, ctx->builtins, *ctx->ice, SolverMode::New))
+            {
+                TypeId idxResultTy = follow(tblIndexer->indexResultType);
+
+                // indexResultType is a union type -> we need to extend our reduction type
+                if (auto idxResUnionTy = get<UnionType>(idxResultTy))
+                {
+                    for (TypeId option : idxResUnionTy->options)
+                    {
+                        result.insert(follow(option));
+                    }
+                }
+                else // indexResultType is a singular type or intersection type -> we can simply append
+                    result.insert(idxResultTy);
+
+                return true;
+            }
         }
     }
 
@@ -2012,45 +2031,17 @@ bool tblIndexInto(
     {
         TypePackId argPack = ctx->arena->addTypePack({indexer});
 
-        if (FFlag::LuauBuiltinTypeFunctionsUseNewOverloadResolution)
-        {
-            std::optional<TypePackId> retPack = solveFunctionCall(ctx, ctx->scope->location, indexee, argPack);
+        std::optional<TypePackId> retPack = solveFunctionCall(ctx, ctx->scope->location, indexee, argPack);
 
-            if (!retPack.has_value())
-                return false;
+        if (!retPack.has_value())
+            return false;
 
-            TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *retPack, 1);
-            if (extracted.head.empty())
-                return false;
+        TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *retPack, 1);
+        if (extracted.head.empty())
+            return false;
 
-            result.insert(follow(extracted.head.front()));
-            return true;
-        }
-        else
-        {
-            SolveResult solveResult = solveFunctionCall_DEPRECATED(
-                ctx->arena,
-                ctx->builtins,
-                ctx->normalizer,
-                ctx->typeFunctionRuntime,
-                ctx->ice,
-                ctx->limits,
-                ctx->scope,
-                ctx->scope->location,
-                indexee,
-                argPack
-            );
-
-            if (!solveResult.typePackId.has_value())
-                return false;
-
-            TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *solveResult.typePackId, 1);
-            if (extracted.head.empty())
-                return false;
-
-            result.insert(follow(extracted.head.front()));
-            return true;
-        }
+        result.insert(follow(extracted.head.front()));
+        return true;
     }
 
     // we have a table type to try indexing

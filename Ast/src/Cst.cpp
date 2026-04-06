@@ -3,8 +3,6 @@
 #include "Luau/Cst.h"
 #include "Luau/Common.h"
 
-LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
-
 namespace Luau
 {
 
@@ -23,6 +21,12 @@ CstExprConstantString::CstExprConstantString(AstArray<char> sourceString, QuoteS
     , blockDepth(blockDepth)
 {
     LUAU_ASSERT(blockDepth == 0 || quoteStyle == QuoteStyle::QuotedRaw);
+}
+
+CstExprConstantInteger::CstExprConstantInteger(const AstArray<char>& value)
+    : CstNode(CstClassIndex())
+    , value(value)
+{
 }
 
 CstExprCall::CstExprCall(std::optional<Position> openParens, std::optional<Position> closeParens, AstArray<Position> commaPositions)
@@ -89,14 +93,6 @@ CstStatDo::CstStatDo(Position statsStartPosition, Position endPosition)
     , statsStartPosition(statsStartPosition)
     , endPosition(endPosition)
 {
-    LUAU_ASSERT(FFlag::LuauCstStatDoWithStatsStart);
-}
-
-CstStatDo_DEPRECATED::CstStatDo_DEPRECATED(Position endPosition)
-    : CstNode(CstClassIndex())
-    , endPosition(endPosition)
-{
-    LUAU_ASSERT(!FFlag::LuauCstStatDoWithStatsStart);
 }
 
 CstStatRepeat::CstStatRepeat(Position untilPosition)

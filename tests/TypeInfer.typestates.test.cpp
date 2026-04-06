@@ -4,8 +4,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-LUAU_FASTFLAG(LuauUnionOfTablesPreservesReadWrite)
 
 using namespace Luau;
 
@@ -137,10 +135,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "assign_a_local_and_then_refine_it")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK("Expected this to be unreachable, but got 'string'" == toString(result.errors[0]));
-    else
-        CHECK("Type 'string' could not be converted into 'never'" == toString(result.errors[0]));
+    CHECK("Expected this to be unreachable, but got 'string'" == toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(TypeStateFixture, "recursive_local_function")
@@ -364,7 +359,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type"
 
 TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type_2")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauUnionOfTablesPreservesReadWrite, true}};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local t = {x = nil}

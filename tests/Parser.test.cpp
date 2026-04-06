@@ -17,9 +17,10 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
-LUAU_FASTFLAG(LuauConst)
+LUAU_FASTFLAG(LuauConst2)
+LUAU_FASTFLAG(DebugLuauNoInline)
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
+LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(LuauTypeNegationSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -102,6 +103,7 @@ TEST_CASE("moved_out_Allocator_can_still_be_used")
     Luau::Allocator outer;
     Luau::Allocator inner{std::move(outer)};
 
+    // NOLINTNEXTLINE(bugprone-use-after-move) -- verifying moved-from state
     int* i = outer.alloc<int>();
     REQUIRE(i != nullptr);
     *i = 55;
@@ -712,11 +714,24 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_decimal")
     CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, 1.0e-5);
     CHECK_EQ(str->list.data[4]->as<AstExprConstantNumber>()->value, 1.5e-5);
     CHECK_EQ(str->list.data[5]->as<AstExprConstantNumber>()->value, 12345.125);
+
+    if (FFlag::LuauIntegerType)
+    {
+        stat = parse("return 1i, 1_000_000i");
+        REQUIRE(stat != nullptr);
+
+        str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        CHECK(str->list.size == 2);
+        CHECK(str->list.data[0]->is<AstExprConstantInteger>());
+        CHECK_EQ(str->list.data[0]->as<AstExprConstantInteger>()->value, 1);
+        CHECK(str->list.data[1]->is<AstExprConstantInteger>());
+        CHECK_EQ(str->list.data[1]->as<AstExprConstantInteger>()->value, 1000000);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_hexadecimal")
 {
-    AstStat* stat = parse("return 0xab, 0XAB05, 0xff_ff, 0xffffffffffffffff");
+    AstStat* stat = parse("return 0xab, 0xAB05, 0xff_ff, 0xffffffffffffffff");
     REQUIRE(stat != nullptr);
 
     AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
@@ -725,6 +740,21 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_hexadecimal")
     CHECK_EQ(str->list.data[1]->as<AstExprConstantNumber>()->value, 0xAB05);
     CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 0xFFFF);
     CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
+
+    if (FFlag::LuauIntegerType)
+    {
+        stat = parse("return 0xabi, 0XAB05i, 0xff_ffi, 0x7fffffffffffffffi, 0x8000000000000000i, 0xffffffffffffffffi");
+        REQUIRE(stat != nullptr);
+
+        str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        CHECK(str->list.size == 6);
+        CHECK_EQ(str->list.data[0]->as<AstExprConstantInteger>()->value, 0xab);
+        CHECK_EQ(str->list.data[1]->as<AstExprConstantInteger>()->value, 0xAB05);
+        CHECK_EQ(str->list.data[2]->as<AstExprConstantInteger>()->value, 0xFFFF);
+        CHECK_EQ(str->list.data[3]->as<AstExprConstantInteger>()->value, LLONG_MAX);
+        CHECK_EQ(str->list.data[4]->as<AstExprConstantInteger>()->value, LLONG_MIN);
+        CHECK_EQ(str->list.data[5]->as<AstExprConstantInteger>()->value, -1);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
@@ -738,6 +768,24 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
     CHECK_EQ(str->list.data[1]->as<AstExprConstantNumber>()->value, 0);
     CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 42);
     CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
+
+    if (FFlag::LuauIntegerType)
+    {
+        AstStat* stat = parse(
+            "return 0b1i, 0b0i, 0b101010i, 0b111111111111111111111111111111111111111111111111111111111111111i, "
+            "0b1000000000000000000000000000000000000000000000000000000000000000i, 0b1111111111111111111111111111111111111111111111111111111111111111i"
+        );
+        REQUIRE(stat != nullptr);
+
+        str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        CHECK(str->list.size == 6);
+        CHECK_EQ(str->list.data[0]->as<AstExprConstantInteger>()->value, 1);
+        CHECK_EQ(str->list.data[1]->as<AstExprConstantInteger>()->value, 0);
+        CHECK_EQ(str->list.data[2]->as<AstExprConstantInteger>()->value, 42);
+        CHECK_EQ(str->list.data[3]->as<AstExprConstantInteger>()->value, LLONG_MAX);
+        CHECK_EQ(str->list.data[4]->as<AstExprConstantInteger>()->value, LLONG_MIN);
+        CHECK_EQ(str->list.data[5]->as<AstExprConstantInteger>()->value, -1);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
@@ -748,6 +796,21 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
     matchParseError("return 0x0x123", "Malformed number");
     matchParseError("return 0xffffffffffffffffffffllllllg", "Malformed number");
     matchParseError("return 0x0xffffffffffffffffffffffffffff", "Malformed number");
+    if (FFlag::LuauIntegerType)
+    {
+        matchParseError("return 0x0xABCi", "Malformed integer");
+        matchParseError("return 0xABCMi", "Malformed integer");
+        matchParseError("return 0b250i", "Malformed integer");
+        matchParseError("return 0bbbbi", "Malformed integer");
+        matchParseError("return 123ii", "Malformed integer");
+        matchParseError("return 0xABii", "Malformed integer");
+
+        matchParseError("return 99999999999999999999i", "Integer overflow");
+        matchParseError("return 0xFFFFFFFFFFFFFFFFFFi", "Integer overflow");
+        matchParseError("return 0b10000000000000000000000000000000000000000000000000000000000000000i", "Integer overflow");
+        matchParseError("return 123ii", "Malformed integer");
+        matchParseError("return 0xABii", "Malformed integer");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "break_return_not_last_error")
@@ -2849,8 +2912,6 @@ TEST_CASE_FIXTURE(Fixture, "for_loop_with_single_var_has_comma_positions_of_size
 
 TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_expression_call")
 {
-    ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
-
     std::string source = "local x = f<<T, U>>()";
 
     ParseResult result = parseEx(source);
@@ -2875,24 +2936,18 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_expression_call")
 
 TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_expression")
 {
-    ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
-
     AstStat* stat = parse("local x = f<<T, U>>");
     REQUIRE(stat != nullptr);
 }
 
 TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_statement")
 {
-    ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
-
     AstStat* stat = parse("f<<T, U>>()");
     REQUIRE(stat != nullptr);
 }
 
 TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_indexing")
 {
-    ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
-
     AstStat* stat = parse(R"(
         t.f<<T, U>>()
         t:f<<T, U>>()
@@ -2903,8 +2958,6 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_indexing")
 
 TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_empty_list")
 {
-    ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
-
     AstStat* stat = parse(R"(
         f<<>>()
     )");
@@ -2929,8 +2982,6 @@ TEST_CASE_FIXTURE(Fixture, "basic_less_than_check_no_explicit_type_instantiaton"
 
 TEST_CASE_FIXTURE(Fixture, "do_end_block_with_cst")
 {
-    ScopedFastFlag sff{FFlag::LuauCstStatDoWithStatsStart, true};
-
     ParseOptions parseOptions;
     parseOptions.storeCstData = true;
 
@@ -2961,7 +3012,7 @@ TEST_CASE_FIXTURE(Fixture, "do_end_block_with_cst")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         const f = 42
     )");
@@ -2981,7 +3032,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_const")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_multi_initialize")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         const a, b = 42, 32
 
@@ -2995,7 +3046,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_multi_initialize")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_function")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         const function f() return 42 end
     )");
@@ -3005,7 +3056,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_function")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_function_with_attr")
 {
-    ScopedFastFlag sff{ FFlag::LuauConst, true };
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         @deprecated
         const function f() return 42 end
@@ -3016,7 +3067,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_function_with_attr")
 
 TEST_CASE_FIXTURE(Fixture, "parse_local_const")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         local const
     )");
@@ -3026,7 +3077,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_local_const")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_call")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         local const = function(t) return t end
         const { a = "a" }
@@ -3037,7 +3088,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_call")
 
 TEST_CASE_FIXTURE(Fixture, "error_const_not_initialized")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
 
     matchParseError("const c", "Missing initializer in const declaration");
 
@@ -3050,7 +3101,7 @@ TEST_CASE_FIXTURE(Fixture, "error_const_not_initialized")
 
 TEST_CASE_FIXTURE(Fixture, "error_const_reassignment")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
 
     matchParseError("const a = 42; a = 43", "Assigned expression must be a variable or a field");
 
@@ -3059,18 +3110,20 @@ TEST_CASE_FIXTURE(Fixture, "error_const_reassignment")
     matchParseError("local b; const a = 42; b, a = 43", "Assigned expression must be a variable or a field");
 
     matchParseError("local b; const a = 42; b, a = ...", "Assigned expression must be a variable or a field");
+
+    matchParseError("const a = 42; function a() end", "Assigned expression must be a variable or a field");
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_const_function_reassignment")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
 
     matchParseError("const function a() return 42 end; a = 43", "Assigned expression must be a variable or a field");
 }
 
 TEST_CASE_FIXTURE(Fixture, "const_shadow")
 {
-    ScopedFastFlag sff{FFlag::LuauConst, true};
+    ScopedFastFlag sff{FFlag::LuauConst2, true};
 
     AstStatBlock* stat = parse(R"(
         const a = 42
@@ -4176,6 +4229,38 @@ end)");
     checkAttribute(attributes.data[0], AstAttr::Type::Checked, Location(Position(1, 4), Position(1, 12)));
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_debugnoinline_on_local_function")
+{
+    ScopedFastFlag noInline{FFlag::DebugLuauNoInline, true};
+    AstStatBlock* stat = parse(R"(
+    @debugnoinline
+local function hello(x, y)
+    return x + y
+end)");
+
+    LUAU_ASSERT(stat != nullptr);
+
+    AstStatLocalFunction* statFun = stat->body.data[0]->as<AstStatLocalFunction>();
+    LUAU_ASSERT(statFun != nullptr);
+
+    AstArray<AstAttr*> attributes = statFun->func->attributes;
+
+    CHECK_EQ(attributes.size, 1);
+
+    checkAttribute(attributes.data[0], AstAttr::Type::DebugNoinline, Location(Position(1, 4), Position(1, 18)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "debugnoinline_not_allowed_without_flag")
+{
+    ParseResult result = tryParse(R"(
+@debugnoinline
+local function hello(x, y)
+    return x + y
+end)");
+
+    checkFirstErrorForAttributes(result.errors, 1, Location(Position(1, 0), Position(1, 14)), "Invalid attribute '@debugnoinline'");
+}
+
 TEST_CASE_FIXTURE(Fixture, "empty_attribute_name_is_not_allowed")
 {
     ParseResult result = tryParse(R"(
@@ -4196,9 +4281,10 @@ if a<0 then a = 0 end)");
         pr1.errors,
         1,
         Location(Position(2, 0), Position(2, 2)),
-        FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'if' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'if' instead"
+        FFlag::LuauConst2
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'if' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'if' instead"
     );
 
     ParseResult pr2 = tryParse(R"(
@@ -4212,9 +4298,10 @@ end)");
         pr2.errors,
         1,
         Location(Position(3, 0), Position(3, 5)),
-        FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'while' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'while' instead"
+        FFlag::LuauConst2
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'while' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'while' instead"
     );
 
     ParseResult pr3 = tryParse(R"(
@@ -4229,9 +4316,10 @@ end)");
         pr3.errors,
         1,
         Location(Position(2, 0), Position(2, 2)),
-        FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'do' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'do' instead"
+        FFlag::LuauConst2
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'do' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'do' instead"
     );
 
     ParseResult pr4 = tryParse(R"(
@@ -4242,9 +4330,10 @@ for i=1,10 do print(i) end
         pr4.errors,
         1,
         Location(Position(2, 0), Position(2, 3)),
-        FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'for' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'for' instead"
+        FFlag::LuauConst2
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'for' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'for' instead"
     );
 
     ParseResult pr5 = tryParse(R"(
@@ -4257,9 +4346,10 @@ until line ~= ""
         pr5.errors,
         1,
         Location(Position(2, 0), Position(2, 6)),
-        FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'repeat' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'repeat' instead"
+        FFlag::LuauConst2
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'repeat' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'repeat' instead"
     );
 
 
@@ -4282,9 +4372,10 @@ end
         pr7.errors,
         1,
         Location(Position(3, 31), Position(3, 36)),
-        FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'break' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'break' instead"
+        FFlag::LuauConst2
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'break' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'break' instead"
     );
 
 
@@ -4295,9 +4386,10 @@ function foo1 () @checked return 'a' end
         pr8.errors,
         1,
         Location(Position(1, 26), Position(1, 32)),
-        FFlag::LuauConst
-        ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got 'return' instead"
-        : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'return' instead"
+        FFlag::LuauConst2
+            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+              "'return' instead"
+            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'return' instead"
     );
 }
 
@@ -4750,9 +4842,40 @@ TEST_CASE_FIXTURE(Fixture, "parse_type_name")
 
 TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_errors")
 {
-    ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
-
     matchParseError("local a = x:a<<T>>", "Expected '(', '{' or <string> when parsing function call, got <eof>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "extern_read_write_attributes")
+{
+    ScopedFastFlag _[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExternReadWriteAttributes, true}
+    };
+
+    ParseResult result = tryParse(R"(
+        declare extern type Foo with
+            read ReadOnlyMember: string
+            write WriteOnlyMember: number
+            ReadWriteMember: vector
+            wRITE BadAttributeMember: buffer
+        end
+    )");
+
+    REQUIRE_EQ(result.errors.size(), 1);
+    CHECK_EQ(result.errors[0].getLocation().begin.line, 5);
+    CHECK_EQ(result.errors[0].getMessage(), "Expected blank or 'read' or 'write' attribute, got 'wRITE'");
+
+    AstStatBlock* stat = result.root;
+
+    REQUIRE_EQ(stat->body.size, 1);
+
+    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
+    CHECK_EQ(declaredExternType->props.size, 4);
+
+    CHECK_EQ(declaredExternType->props.data[0].access, AstTableAccess::Read);
+    CHECK_EQ(declaredExternType->props.data[1].access, AstTableAccess::Write);
+    CHECK_EQ(declaredExternType->props.data[2].access, AstTableAccess::ReadWrite);
+    CHECK_EQ(declaredExternType->props.data[3].access, AstTableAccess::ReadWrite);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_negation_syntax")

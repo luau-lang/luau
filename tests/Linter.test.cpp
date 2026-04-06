@@ -8,9 +8,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
+LUAU_FASTFLAG(LuauLinterVectorPrimitive)
 
 using namespace Luau;
 
@@ -636,20 +634,31 @@ TEST_CASE_FIXTURE(Fixture, "UnknownType")
 local game = ...
 local _e01 = type(game) == "Part"
 local _e02 = typeof(game) == "Bar"
-local _e03 = typeof(game) == "vector"
+local _ok = typeof(game) == "vector"
 
 local _o01 = type(game) == "number"
 local _o02 = type(game) == "vector"
 local _o03 = typeof(game) == "Part"
 )");
 
-    REQUIRE(3 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].location.begin.line, 2);
-    CHECK_EQ(result.warnings[0].text, "Unknown type 'Part' (expected primitive type)");
-    CHECK_EQ(result.warnings[1].location.begin.line, 3);
-    CHECK_EQ(result.warnings[1].text, "Unknown type 'Bar'");
-    CHECK_EQ(result.warnings[2].location.begin.line, 4);
-    CHECK_EQ(result.warnings[2].text, "Unknown type 'vector' (expected primitive or userdata type)");
+    if (FFlag::LuauLinterVectorPrimitive)
+    {
+        REQUIRE(2 == result.warnings.size());
+        CHECK_EQ(result.warnings[0].location.begin.line, 2);
+        CHECK_EQ(result.warnings[0].text, "Unknown type 'Part' (expected primitive type)");
+        CHECK_EQ(result.warnings[1].location.begin.line, 3);
+        CHECK_EQ(result.warnings[1].text, "Unknown type 'Bar'");
+    }
+    else
+    {
+        REQUIRE(3 == result.warnings.size());
+        CHECK_EQ(result.warnings[0].location.begin.line, 2);
+        CHECK_EQ(result.warnings[0].text, "Unknown type 'Part' (expected primitive type)");
+        CHECK_EQ(result.warnings[1].location.begin.line, 3);
+        CHECK_EQ(result.warnings[1].text, "Unknown type 'Bar'");
+        CHECK_EQ(result.warnings[2].location.begin.line, 4);
+        CHECK_EQ(result.warnings[2].text, "Unknown type 'vector' (expected primitive or userdata type)");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "ForRangeTable")
@@ -1270,7 +1279,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "read_write_table_props")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauAnalysisUsesSolverMode, true}, {FFlag::DebugLuauForceOldSolver, false}};
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     LintResult result = lint(R"(-- line 1
         type A = {x: number}
@@ -2550,8 +2559,6 @@ f(3)(4)
 
 TEST_CASE_FIXTURE(Fixture, "type_instantiation_lints")
 {
-    ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
-
     LintResult result = lint(R"(
 local function a<b>(cool: b)
     print(cool)

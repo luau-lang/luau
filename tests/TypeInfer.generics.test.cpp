@@ -11,9 +11,12 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
-LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
+LUAU_FASTFLAG(LuauForwardPolarityForFunctionTypes)
+LUAU_FASTFLAG(LuauGeneralizationMoreAwareOfBounds3)
+LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 
 using namespace Luau;
 
@@ -922,7 +925,7 @@ y.a.c = y
         CHECK_EQ(toString(mismatch2->givenType), "number");
         CHECK_EQ(toString(mismatch2->wantedType), "string");
     }
-    else if (FFlag::LuauBetterTypeMismatchErrors)
+    else
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
         const std::string expected = R"(Expected this to be exactly 'T<string>', but got 'y'
@@ -932,18 +935,6 @@ Expected this to be exactly 'U<string>', but got '{| c: T<string>?, d: number |}
 caused by:
   Property 'd' is not compatible.
 Expected this to be exactly 'string', but got 'number')";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        const std::string expected = R"(Type 'y' could not be converted into 'T<string>'
-caused by:
-  Property 'a' is not compatible.
-Type '{| c: T<string>?, d: number |}' could not be converted into 'U<string>'
-caused by:
-  Property 'd' is not compatible.
-Type 'number' could not be converted into 'string' in an invariant context)";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
 }
@@ -1092,13 +1083,9 @@ TEST_CASE_FIXTURE(Fixture, "generic_argument_pack_type_inferred_from_return")
         CHECK_EQ(toString(tm->wantedType), "string");
         CHECK_EQ(toString(tm->givenType), "number");
     }
-    else if (FFlag::LuauBetterTypeMismatchErrors)
-    {
-        CHECK_EQ(toString(result.errors[0]), R"(Expected this to be 'string', but got 'number')");
-    }
     else
     {
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'number' could not be converted into 'string')");
+        CHECK_EQ(toString(result.errors[0]), R"(Expected this to be 'string', but got 'number')");
     }
 }
 
@@ -1170,10 +1157,7 @@ wrapper(foo, test2, "3") -- not ok (type mismatch, string instead of number)
     {
         CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function 'wrapper' expects 3 arguments, but 4 are specified)");
         CHECK_EQ(toString(result.errors[1]), R"(Argument count mismatch. Function 'wrapper' expects 3 arguments, but only 2 are specified)");
-        if (FFlag::LuauBetterTypeMismatchErrors)
-            CHECK_EQ(toString(result.errors[2]), R"(Expected this to be 'number', but got 'string')");
-        else
-            CHECK_EQ(toString(result.errors[2]), R"(Type 'string' could not be converted into 'number')");
+        CHECK_EQ(toString(result.errors[2]), R"(Expected this to be 'number', but got 'string')");
     }
 }
 
@@ -1474,29 +1458,63 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument_3")
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded_pt_1")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauForwardPolarityForFunctionTypes, true},
+        {FFlag::LuauGeneralizationMoreAwareOfBounds3, true},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauOverloadGetsInstantiated, true},
+    };
+
     CheckResult result = check(R"(
         local g12: (<T>(T, (T) -> T) -> T) & (<T>(T, T, (T, T) -> T) -> T)
 
-        g12(1, function(x) return x + x end)
-        g12(1, 2, function(x, y) return x + y end)
+        local a = g12(1, function(x) return x + x end)
+        local b = g12(1, 2, function(x, y) return x + y end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (!FFlag::DebugLuauForceOldSolver)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ("number | number", toString(requireType("a")));
+        // Prior this contained a leaked generic, so we'd report no type errors.
+        CHECK_EQ("add<unknown, unknown> | number", toString(requireType("b")));
+    }
+    else
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK_EQ("number", toString(requireType("a")));
+        CHECK_EQ("number", toString(requireType("b")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_overloaded_pt_2")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRelateHandlesCoincidentTables, true},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauOverloadGetsInstantiated, true},
+    };
+
     CheckResult result = check(R"(
         local g12: (<T>(T, (T) -> T) -> T) & (<T>(T, T, (T, T) -> T) -> T)
 
-        g12({x=1}, function(x) return {x=-x.x} end)
-        g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
+        local a = g12({x=1}, function(x) return {x=-x.x} end)
+        local b = g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
     )");
 
     if (!FFlag::DebugLuauForceOldSolver)
-        LUAU_REQUIRE_ERROR_COUNT(2, result); // FIXME CLI-161355
+    {
+        // FIXME CLI-161355: That's not _good_ but it's an improvement.
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        CHECK_EQ("{ x: number } | { x: unm<unknown> }", toString(requireType("a")));
+        CHECK_EQ("{ x: add<unknown, unknown> } | { x: number } | { x: number }", toString(requireType("b")));
+    }
     else
+    {
         LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK_EQ("{| x: number |}", toString(requireType("a")));
+        CHECK_EQ("{| x: number |}", toString(requireType("b")));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
@@ -1839,7 +1857,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_packs_shouldnt_be_bound_to_themselves")
 {
     ScopedFastFlag flags[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauDontIncludeVarargWithAnnotation, true},
     };
 
     CheckResult result = check(R"(
@@ -2005,6 +2022,11 @@ local u: U = t
 
 TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauOverloadGetsInstantiated, true},
+    };
+
     CheckResult res = check(R"(
         local func: <T>(T, (T) -> ()) -> () = nil :: any
         local foobar: (number) -> () = nil :: any
@@ -2012,14 +2034,16 @@ TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, res);
-    if (!FFlag::DebugLuauForceOldSolver)
-        CHECK(get<GenericBoundsMismatch>(res.errors[0]));
-    else
-        CHECK(get<TypeMismatch>(res.errors[0]));
+    CHECK(get<TypeMismatch>(res.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error_1")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauOverloadGetsInstantiated, true},
+    };
+
     CheckResult res = check(R"(
         --!strict
 
@@ -2033,10 +2057,7 @@ TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error_1")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, res);
-    if (!FFlag::DebugLuauForceOldSolver)
-        CHECK(get<GenericBoundsMismatch>(res.errors[0]));
-    else
-        CHECK(get<TypeMismatch>(res.errors[0]));
+    CHECK(get<TypeMismatch>(res.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall_should_work_with_generics")
@@ -2136,8 +2157,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2075_generic_packs_should_not_be_dropped
 
 TEST_CASE_FIXTURE(Fixture, "variadic_generics_dont_leak")
 {
-    ScopedFastFlag _{FFlag::LuauDontIncludeVarargWithAnnotation, true};
-
     CheckResult res = check(R"(
         local function makeApplier<A..., R...>(f: (A...) -> (R...))
             return function (... : A...): R...

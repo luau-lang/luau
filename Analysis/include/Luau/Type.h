@@ -162,6 +162,7 @@ struct PrimitiveType
         NilType, // ObjC #defines Nil :(
         Boolean,
         Number,
+        Integer,
         String,
         Thread,
         Function,
@@ -946,6 +947,7 @@ bool isPrim(TypeId ty, PrimitiveType::Type primType);
 bool isNil(TypeId ty);
 bool isBoolean(TypeId ty);
 bool isNumber(TypeId ty);
+bool isInteger(TypeId ty);
 bool isString(TypeId ty);
 bool isThread(TypeId ty);
 bool isBuffer(TypeId ty);
@@ -1004,6 +1006,7 @@ public:
     std::unique_ptr<BuiltinTypeFunctions> typeFunctions;
     const TypeId nilType;
     const TypeId numberType;
+    const TypeId integerType;
     const TypeId stringType;
     const TypeId booleanType;
     const TypeId threadType;

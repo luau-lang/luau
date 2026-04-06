@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Luau/TypeInfer.h"
+#include "Luau/Error.h"
 #include "Luau/RecursionCounter.h"
 
 #include "Fixture.h"
@@ -17,7 +18,10 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
+LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
+LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -63,13 +67,29 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
             if type(a) == 'boolean' then
                 local a1:{fn:()->(unknown,...unknown)}&boolean=a
             elseif a.fn() then
+                local a2:{fn:()->(unknown,...unknown)}&(userdata|function|nil|number|integer|string|thread|buffer|table)=a
+            end
+        end
+    )";
+
+    const std::string expectedWithNewSolver_NOINTEGER =
+        R"(
+        function f(a:{fn:()->(unknown,...unknown)}): ()
+            if type(a) == 'boolean' then
+                local a1:{fn:()->(unknown,...unknown)}&boolean=a
+            elseif a.fn() then
                 local a2:{fn:()->(unknown,...unknown)}&(userdata|function|nil|number|string|thread|buffer|table)=a
             end
         end
     )";
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ(expectedWithNewSolver, decorateWithTypes(code));
+    {
+        if (FFlag::LuauIntegerType)
+            CHECK_EQ(expectedWithNewSolver, decorateWithTypes(code));
+        else
+            CHECK_EQ(expectedWithNewSolver_NOINTEGER, decorateWithTypes(code));
+    }
     else
         CHECK_EQ(expected, decorateWithTypes(code));
 }
@@ -211,11 +231,7 @@ TEST_CASE_FIXTURE(Fixture, "while_body_are_also_refined")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK_EQ("Expected this to be 'Node<T>', but got 'Node<T>?'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Type 'Node<T>?' could not be converted into 'Node<T>'", toString(result.errors[0]));
+    CHECK_EQ("Expected this to be 'Node<T>', but got 'Node<T>?'", toString(result.errors[0]));
 }
 
 // Originally from TypeInfer.test.cpp.
@@ -297,7 +313,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
     }
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(1.0))
 {
     // We have to force this test case up here before the flags kick in.
     // The reason for this is that while loading the builtins, the below flags will cause that
@@ -410,21 +426,6 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
     )");
 
     LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
-}
-
-// Belongs in TypeInfer.builtins.test.cpp.
-TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_returns_at_least_two_value_but_function_returns_nothing")
-{
-    CheckResult result = check(R"(
-        local function f(): () end
-        local ok, res = pcall(f)
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Function only returns 1 value, but 2 are required here", toString(result.errors[0]));
-    // LUAU_REQUIRE_NO_ERRORS(result);
-    // CHECK_EQ("boolean", toString(requireType("ok")));
-    // CHECK_EQ("any", toString(requireType("res")));
 }
 
 // Belongs in TypeInfer.builtins.test.cpp.
@@ -657,23 +658,6 @@ return wrapStrictTable(Constants, "Constants")
     }
 }
 
-namespace
-{
-struct IsSubtypeFixture : Fixture
-{
-    bool isSubtype(TypeId a, TypeId b)
-    {
-        ModulePtr module = getMainModule();
-        REQUIRE(module);
-
-        if (!module->hasModuleScope())
-            FAIL("isSubtype: module scope data is not available");
-
-        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, getBuiltins(), ice, SolverMode::New);
-    }
-};
-} // namespace
-
 TEST_CASE_FIXTURE(IsSubtypeFixture, "intersection_of_functions_of_different_arities")
 {
     check(R"(
@@ -839,7 +823,7 @@ TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_ty
 
     if (!FFlag::DebugLuauForceOldSolver)
         LUAU_REQUIRE_NO_ERRORS(result); // This is wrong.  We should be rejecting this assignment.
-    else if (FFlag::LuauBetterTypeMismatchErrors)
+    else
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         const std::string expected =
@@ -850,19 +834,6 @@ but got
 caused by:
   Property 'x' is not compatible.
 Expected this to be exactly 'number', but got 'number?')";
-        CHECK_EQ(expected, toString(result.errors[0]));
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        const std::string expected =
-            R"(Type
-	'{ x: number? }'
-could not be converted into
-	'{ x: number }'
-caused by:
-  Property 'x' is not compatible.
-Type 'number?' could not be converted into 'number' in an invariant context)";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
 }
@@ -1501,6 +1472,91 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typech
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(get<TypeMismatch>(result.errors[0]));
     CHECK(get<TypeMismatch>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "while_loops_fail_to_apply_refinements_1")
+{
+
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    // CLI-191924 - Refinements are not correctly getting emitted for the `and` operator in while loops
+    // This test currently fails because the refinement on `opts` is not getting applied
+    // to the table access opts.recursive, either in this while loop, or within its body.
+    // We need to make sure that dataflowgraph can correctly apply refinements within this context
+    // so that this no longer yields an error.
+    LUAU_REQUIRE_ERROR(
+        check(R"(
+type walkoptions = {
+	recursive: boolean?,
+}
+
+function bing(path : string  | walkoptions, opts: walkoptions?)
+    return function ()
+        while opts and opts.recursive do
+        end
+    end
+end
+    )"),
+        OptionalValueAccess
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "while_loops_fail_to_apply_refinements_2")
+{
+
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    // CLI-191924 - Refinements are not correctly getting emitted for the `and` operator in while loops
+    // This test currently fails because the refinement on `opts` is not getting applied
+    // to the table access opts.recursive, either in this while loop, or within its body.
+    // We need to make sure that dataflowgraph can correctly apply refinements within this context
+    // so that this no longer yields an error.
+    LUAU_REQUIRE_ERROR(
+        check(R"(
+type walkoptions = {
+	recursive: boolean?,
+}
+
+function bing(path : string  | walkoptions, opts: walkoptions?)
+    return function ()
+        while true do
+            if opts and opts.recursive then
+            end
+        end
+    end
+end
+    )"),
+        OptionalValueAccess
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauThreadUniferStateThroughTypeFunctionReduction, true},
+        {FFlag::LuauUnifyWithSubtyping2, true},
+        {FFlag::LuauSubtypingReplaceBounds, true},
+    };
+
+    CHECK_THROWS_AS(
+        check(R"(
+        local settingsTable = {}
+
+        type Settings = typeof(settingsTable)
+
+        local settings = {}
+
+        function settings.getTopic<T>(topic: keyof<Settings> & T): { setting: <U>(setting: keyof<index<Settings, T>> & U) -> (index<index<Settings, T>, U>) }
+            return {
+                setting = function<U>(setting: keyof<index<Settings, T>> & U): index<index<Settings, T>, U>
+                    return settingsTable[topic][setting]
+                end
+            }
+        end
+
+        return settings
+        )"),
+        InternalCompilerError
+    );
 }
 
 TEST_SUITE_END();

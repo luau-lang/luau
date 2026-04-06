@@ -8,7 +8,7 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauConst)
+LUAU_FASTFLAG(LuauConst2)
 
 namespace Luau
 {
@@ -243,7 +243,7 @@ struct AstJsonEncoder : public AstVisitor
         else
             write("luauType", nullptr);
         write("name", local->name);
-        if (FFlag::LuauConst)
+        if (FFlag::LuauConst2)
             write("isConst", local->isConst);
         writeType("AstLocal");
         write("location", local->location);
@@ -1145,21 +1145,6 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(genericName);
             }
         );
-    }
-
-    void write(AstAttr::Type type)
-    {
-        switch (type)
-        {
-        case AstAttr::Type::Checked:
-            return writeString("checked");
-        case AstAttr::Type::Native:
-            return writeString("native");
-        case AstAttr::Type::Deprecated:
-            return writeString("deprecated");
-        case AstAttr::Type::Unknown:
-            return writeString("unknown");
-        }
     }
 
     void write(class AstAttr* node)

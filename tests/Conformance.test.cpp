@@ -38,15 +38,13 @@ void luaC_validate(lua_State* L);
 void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauStacklessPcall)
-LUAU_FASTFLAG(LuauCodegenExtraSimd)
-LUAU_FASTFLAG(LuauCodegenExtraSpills)
-LUAU_FASTFLAG(LuauCodegenA64ClosureOffset)
+LUAU_FASTFLAG(LuauIntegerLibrary)
+LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewMathConstantsRuntime)
-
+LUAU_FASTFLAG(LuauCompileStringInterpWithZero)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -857,6 +855,12 @@ TEST_CASE("Math")
     runConformance("math.luau");
 }
 
+TEST_CASE("Integers")
+{
+    if (FFlag::LuauIntegerType && FFlag::LuauIntegerLibrary)
+        runConformance("integers.luau");
+}
+
 TEST_CASE("Tables")
 {
     runConformance(
@@ -914,6 +918,8 @@ TEST_CASE("Strings")
 
 TEST_CASE("StringInterp")
 {
+    ScopedFastFlag luauCompileStringInterpWithZero{FFlag::LuauCompileStringInterpWithZero, true};
+
     runConformance("stringinterp.luau");
 }
 
@@ -1066,7 +1072,6 @@ TEST_CASE("Pack")
 
 TEST_CASE("ExplicitTypeInstantiations")
 {
-    ScopedFastFlag sff{FFlag::LuauExplicitTypeInstantiationSyntax, true};
     runConformance("explicit_type_instantiations.luau");
 }
 
@@ -1356,8 +1361,6 @@ TEST_CASE("Vector")
 
 TEST_CASE("VectorLibrary")
 {
-    ScopedFastFlag luauCodegenExtraSimd{FFlag::LuauCodegenExtraSimd, true};
-
     lua_CompileOptions copts = defaultOptions();
 
     SUBCASE("O0")
@@ -1401,6 +1404,11 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
         case Luau::PrimitiveType::Number:
             lua_pushstring(L, "number");
+            break;
+
+        case Luau::PrimitiveType::Integer:
+            if (FFlag::LuauIntegerType)
+                lua_pushstring(L, "integer");
             break;
 
         case Luau::PrimitiveType::String:
@@ -3473,8 +3481,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauCodegenExtraSpills{FFlag::LuauCodegenExtraSpills, true};
-
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
@@ -3834,8 +3840,6 @@ TEST_CASE("HugeConstantTable")
 
 TEST_CASE("LargeNestedClosure")
 {
-    ScopedFastFlag luauCodegenA64ClosureOffset{FFlag::LuauCodegenA64ClosureOffset, true};
-
     const int kCount = 2048;
     std::string source;
 

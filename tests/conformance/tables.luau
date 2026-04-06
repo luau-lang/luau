@@ -793,4 +793,45 @@ assert((function ()
   return t.hi
 end)() == nil)
 
-return"OK"
+
+-- check that tables with constant keys maintain their insertion/iteration order
+-- this is important to maintain for backwards compat
+do
+  local ordering = {
+    foo = 1,
+    bar = "string",
+    thing = true
+  }
+
+  local idx = 1
+  for key, val in ordering do
+    if idx == 3 then
+      assert(key == "foo")
+      assert(val == 1)
+    elseif idx == 2 then
+      assert(key == "bar")
+      assert(val == "string")
+    elseif idx == 1 then
+      assert(key == "thing")
+      assert(val == true)
+    end
+
+    idx += 1
+  end
+end
+
+do
+  -- any optimization related to constant fields must preserve side effects that may be relied upon
+  local should_change = false
+
+  function side_effect()
+    should_change = true
+  end
+
+  local t = {a = 1, a = side_effect(), a = 3}
+
+  assert(should_change == true)
+  assert(t.a == 3)
+end
+
+return "OK"

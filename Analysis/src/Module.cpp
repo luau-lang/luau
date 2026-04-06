@@ -14,9 +14,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAGVARIABLE(LuauAnalysisUsesSolverMode)
-
 namespace Luau
 {
 
@@ -117,18 +114,8 @@ struct ClonePublicInterface : Substitution
 {
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<Module> module;
-    // NOTE: This can be made non-optional after
-    // LuauUseWorkspacePropToChooseSolver is clipped.
-    std::optional<SolverMode> solverMode{std::nullopt};
+    SolverMode solverMode;
     bool internalTypeEscaped = false;
-
-    ClonePublicInterface(const TxnLog* log, NotNull<BuiltinTypes> builtinTypes, Module* module)
-        : Substitution(log, &module->interfaceTypes)
-        , builtinTypes(builtinTypes)
-        , module(module)
-    {
-        LUAU_ASSERT(module);
-    }
 
     ClonePublicInterface(const TxnLog* log, NotNull<BuiltinTypes> builtinTypes, Module* module, SolverMode solverMode)
         : Substitution(log, &module->interfaceTypes)
@@ -141,14 +128,7 @@ struct ClonePublicInterface : Substitution
 
     bool isNewSolver() const
     {
-        if (FFlag::LuauAnalysisUsesSolverMode)
-        {
-            return solverMode == SolverMode::New;
-        }
-        else
-        {
-            return FFlag::LuauSolverV2 || solverMode == SolverMode::New;
-        }
+        return solverMode == SolverMode::New;
     }
 
     bool isDirty(TypeId ty) override

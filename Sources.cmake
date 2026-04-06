@@ -6,6 +6,7 @@ target_sources(Luau.Common PRIVATE
     Common/include/Luau/DenseHash.h
     Common/include/Luau/ExperimentalFlags.h
     Common/include/Luau/HashUtil.h
+    Common/include/Luau/InsertionOrderedMap.h
     Common/include/Luau/SmallVector.h
     Common/include/Luau/StringUtils.h
     Common/include/Luau/TimeTrace.h
@@ -202,7 +203,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Frontend.h
     Analysis/include/Luau/Generalization.h
     Analysis/include/Luau/GlobalTypes.h
-    Analysis/include/Luau/InsertionOrderedMap.h
     Analysis/include/Luau/Instantiation.h
     Analysis/include/Luau/Instantiation2.h
     Analysis/include/Luau/IostreamHelpers.h
@@ -243,6 +243,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypeCheckLimits.h
     Analysis/include/Luau/TypedAllocator.h
     Analysis/include/Luau/TypeFunction.h
+    Analysis/include/Luau/TypeFunctionError.h
     Analysis/include/Luau/TypeFunctionReductionGuesser.h
     Analysis/include/Luau/TypeFunctionRuntime.h
     Analysis/include/Luau/TypeFunctionRuntimeBuilder.h
@@ -322,6 +323,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypeChecker2.cpp
     Analysis/src/TypedAllocator.cpp
     Analysis/src/TypeFunction.cpp
+    Analysis/src/TypeFunctionError.cpp
     Analysis/src/TypeFunctionReductionGuesser.cpp
     Analysis/src/TypeFunctionRuntime.cpp
     Analysis/src/TypeFunctionRuntimeBuilder.cpp
@@ -373,6 +375,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/ludata.cpp
     VM/src/lutf8lib.cpp
     VM/src/lveclib.cpp
+    VM/src/lintlib.cpp
     VM/src/lvmexecute.cpp
     VM/src/lvmload.cpp
     VM/src/lvmutils.cpp

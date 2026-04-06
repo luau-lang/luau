@@ -3,6 +3,7 @@
 #include "Luau/Unifier2.h"
 
 #include "Luau/Instantiation.h"
+#include "Luau/Instantiation2.h"
 #include "Luau/Scope.h"
 #include "Luau/Simplify.h"
 #include "Luau/Type.h"
@@ -24,6 +25,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
 LUAU_FASTFLAGVARIABLE(LuauUnifier2HandleMismatchedPacks2)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
 
 namespace Luau
 {
@@ -199,7 +201,14 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
 
     if (superFree)
     {
-        superFree->lowerBound = mkUnion(superFree->lowerBound, subTy);
+        if (FFlag::LuauOverloadGetsInstantiated)
+        {
+            superFree->lowerBound = mkUnion(superFree->lowerBound, instantiateWithBoundTypes(subTy));
+        }
+        else
+        {
+            superFree->lowerBound = mkUnion(superFree->lowerBound, subTy);
+        }
     }
 
     if (subFree)
@@ -237,27 +246,19 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
     {
         // If `never` is the subtype, then we can propagate that inward.
 
-        UnifyResult argResult =
-            FFlag::LuauUnifier2HandleMismatchedPacks2
-                ? unify_(superFn->argTypes, builtinTypes->neverTypePack)
-                : unify_DEPRECATED(superFn->argTypes, builtinTypes->neverTypePack);
-        UnifyResult retResult =
-            FFlag::LuauUnifier2HandleMismatchedPacks2
-                ? unify_(builtinTypes->neverTypePack, superFn->retTypes)
-                : unify_DEPRECATED(builtinTypes->neverTypePack, superFn->retTypes);
+        UnifyResult argResult = FFlag::LuauUnifier2HandleMismatchedPacks2 ? unify_(superFn->argTypes, builtinTypes->neverTypePack)
+                                                                          : unify_DEPRECATED(superFn->argTypes, builtinTypes->neverTypePack);
+        UnifyResult retResult = FFlag::LuauUnifier2HandleMismatchedPacks2 ? unify_(builtinTypes->neverTypePack, superFn->retTypes)
+                                                                          : unify_DEPRECATED(builtinTypes->neverTypePack, superFn->retTypes);
         return argResult & retResult;
     }
     else if (subFn && superNever)
     {
         // If `never` is the supertype, then we can propagate that inward.
-        UnifyResult argResult =
-            FFlag::LuauUnifier2HandleMismatchedPacks2
-                ? unify_(builtinTypes->neverTypePack, subFn->argTypes)
-                : unify_DEPRECATED(builtinTypes->neverTypePack, subFn->argTypes);
-        UnifyResult retResult =
-            FFlag::LuauUnifier2HandleMismatchedPacks2
-                ? unify_(subFn->retTypes, builtinTypes->neverTypePack)
-                : unify_DEPRECATED(subFn->retTypes, builtinTypes->neverTypePack);
+        UnifyResult argResult = FFlag::LuauUnifier2HandleMismatchedPacks2 ? unify_(builtinTypes->neverTypePack, subFn->argTypes)
+                                                                          : unify_DEPRECATED(builtinTypes->neverTypePack, subFn->argTypes);
+        UnifyResult retResult = FFlag::LuauUnifier2HandleMismatchedPacks2 ? unify_(subFn->retTypes, builtinTypes->neverTypePack)
+                                                                          : unify_DEPRECATED(subFn->retTypes, builtinTypes->neverTypePack);
         return argResult & retResult;
     }
 
@@ -311,6 +312,18 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
     return UnifyResult::Ok;
 }
 
+template TypeId Unifier2::instantiateWithBoundTypes(TypeId ty);
+template TypePackId Unifier2::instantiateWithBoundTypes(TypePackId ty);
+
+template<typename TID>
+TID Unifier2::instantiateWithBoundTypes(TID ty)
+{
+    Replacer r{arena, NotNull{&genericSubstitutions}, NotNull{&genericPackSubstitutions}};
+    if (auto newTy = r.substitute(ty))
+        return *newTy;
+    return ty;
+}
+
 // If superTy is a function and subTy already has a
 // potentially-compatible function in its upper bound, we assume that
 // the function is not overloaded and attempt to combine superTy into
@@ -322,8 +335,17 @@ UnifyResult Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
 
     auto doDefault = [&]()
     {
-        subFree->upperBound = mkIntersection(subFree->upperBound, superTy);
-        expandedFreeTypes[subTy].push_back(superTy);
+        if (FFlag::LuauOverloadGetsInstantiated)
+        {
+            auto newSuperTy = instantiateWithBoundTypes(superTy);
+            subFree->upperBound = mkIntersection(subFree->upperBound, newSuperTy);
+            expandedFreeTypes[subTy].push_back(newSuperTy);
+        }
+        else
+        {
+            subFree->upperBound = mkIntersection(subFree->upperBound, superTy);
+            expandedFreeTypes[subTy].push_back(superTy);
+        }
         return UnifyResult::Ok;
     };
 
@@ -377,11 +399,25 @@ UnifyResult Unifier2::unify_(TypeId subTy, const FunctionType* superFn)
 
     if (shouldInstantiate)
     {
-        for (TypeId generic : subFn->generics)
+
+        if (FFlag::LuauOverloadGetsInstantiated)
         {
-            const GenericType* gen = get<GenericType>(follow(generic));
-            if (gen)
-                genericSubstitutions[generic] = freshType(scope, gen->polarity);
+            for (TypeId generic : subFn->generics)
+            {
+                generic = follow(generic);
+                const GenericType* gen = get<GenericType>(generic);
+                if (gen)
+                    genericSubstitutions[generic] = freshType(scope, gen->polarity);
+            }
+        }
+        else
+        {
+            for (TypeId generic : subFn->generics)
+            {
+                const GenericType* gen = get<GenericType>(follow(generic));
+                if (gen)
+                    genericSubstitutions[generic] = freshType(scope, gen->polarity);
+            }
         }
 
         for (TypePackId genericPack : subFn->genericPacks)
@@ -514,10 +550,8 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
     while (subTypePackParamsIter != subTable->instantiatedTypePackParams.end() &&
            superTypePackParamsIter != superTable->instantiatedTypePackParams.end())
     {
-        result &=
-            FFlag::LuauUnifier2HandleMismatchedPacks2
-                ? unify_(*subTypePackParamsIter, *superTypePackParamsIter)
-                : unify_DEPRECATED(*subTypePackParamsIter, *superTypePackParamsIter);
+        result &= FFlag::LuauUnifier2HandleMismatchedPacks2 ? unify_(*subTypePackParamsIter, *superTypePackParamsIter)
+                                                            : unify_DEPRECATED(*subTypePackParamsIter, *superTypePackParamsIter);
 
         subTypePackParamsIter++;
         superTypePackParamsIter++;
@@ -695,6 +729,10 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
     auto emplaceFreeTypePack = [this](TypePackId target, TypePackId boundTo)
     {
         LUAU_ASSERT(is<FreeTypePack>(target));
+
+        if (FFlag::LuauOverloadGetsInstantiated)
+            boundTo = instantiateWithBoundTypes(boundTo);
+
         DenseHashSet<TypePackId> seen{nullptr};
         if (OccursCheckResult::Fail == occursCheck(seen, target, boundTo))
         {
@@ -788,8 +826,6 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
         return emplaceFreeTypePack(superTp, subTp);
 
     return UnifyResult::Ok;
-
-
 }
 
 // FIXME?  This should probably return an ErrorVec or an optional<TypeError>

@@ -11,10 +11,10 @@
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
-LUAU_FASTFLAG(LuauUnionOfTablesPreservesReadWrite)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
+LUAU_FASTFLAG(LuauUseConstraintSetsToTrackFreeTypes)
+LUAU_FASTFLAG(LuauRefinementTypeVector)
 
 using namespace Luau;
 
@@ -518,26 +518,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_an_incompatible_function_after_using_ty
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-        if (FFlag::LuauBetterTypeMismatchErrors)
-            CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[0]));
-        else
-            CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
+        CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[0]));
         CHECK(Location{{7, 18}, {7, 19}} == result.errors[0].location);
     }
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-        if (FFlag::LuauBetterTypeMismatchErrors)
-            CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[0]));
-        else
-            CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[0]));
+        CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[0]));
         CHECK(Location{{7, 18}, {7, 19}} == result.errors[0].location);
 
-        if (FFlag::LuauBetterTypeMismatchErrors)
-            CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[1]));
-        else
-            CHECK("Type 'string' could not be converted into 'number'" == toString(result.errors[1]));
+        CHECK("Expected this to be 'number', but got 'string'" == toString(result.errors[1]));
         CHECK(Location{{13, 18}, {13, 19}} == result.errors[1].location);
     }
 }
@@ -792,13 +783,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_narrow_to_vector")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("never", toString(requireTypeAtPosition({3, 28})));
+    {
+        if (FFlag::LuauRefinementTypeVector)
+            CHECK_EQ("unknown & vector", toString(requireTypeAtPosition({3, 28})));
+        else
+            CHECK_EQ("never", toString(requireTypeAtPosition({3, 28})));
+    }
     else
         CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 28})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true")
 {
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+        {FFlag::LuauUseConstraintSetsToTrackFreeTypes, true},
+    };
+
     CheckResult result = check(R"(
         local t = {"hello"}
         local v = t[2]
@@ -819,11 +820,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({4, 24})));  // type(v) == "nil"
-        CHECK("string & unknown & unknown & ~nil" == toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
+        CHECK("nil & string" == toString(requireTypeAtPosition({4, 24})));  // type(v) == "nil"
+        CHECK("string & ~nil" == toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
 
-        CHECK("nil & string & unknown & unknown" == toString(requireTypeAtPosition({10, 24})));  // equivalent to type(v) == "nil"
-        CHECK("string & unknown & unknown & ~nil" == toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
+        CHECK("nil & string" == toString(requireTypeAtPosition({10, 24})));  // equivalent to type(v) == "nil"
+        CHECK("string & ~nil" == toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
     }
     else
     {
@@ -3204,8 +3205,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181549_refined_string_should_be_subtype_
 
 TEST_CASE_FIXTURE(Fixture, "cli_184413_refinement_of_union_of_read_types_is_read_type")
 {
-    ScopedFastFlag _{FFlag::LuauUnionOfTablesPreservesReadWrite, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         export type States = "Closed" | "Closing" | "Opening" | "Open"
         export type MyType<A = any> = {
@@ -3226,6 +3225,26 @@ TEST_CASE_FIXTURE(Fixture, "cli_184413_refinement_of_union_of_read_types_is_read
             end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_vector_refine")
+{
+    ScopedFastFlag _[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRefinementTypeVector, true}
+    };
+
+    CheckResult result = check(R"(
+        function foo(x: unknown)
+            if type(x) == "vector" then
+                local y = x.y
+                local z = y.bad
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<UnknownProperty>(result.errors[0]));
 }
 
 TEST_SUITE_END();

@@ -15,10 +15,8 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
-LUAU_FASTFLAG(LuauReworkInfiniteTypeFinder)
+LUAU_FASTFLAG(LuauTypeFunctionsCaptureNestedInstances)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -123,16 +121,8 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "function_as_fn_arg")
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK("unknown" == toString(requireType("a")));
     CHECK("unknown" == toString(requireType("b")));
-    if (FFlag::LuauBetterTypeMismatchErrors)
-    {
-        CHECK("Expected this to be unreachable, but got 'number'" == toString(result.errors[0]));
-        CHECK("Expected this to be unreachable, but got 'boolean'" == toString(result.errors[1]));
-    }
-    else
-    {
-        CHECK("Type 'number' could not be converted into 'never'" == toString(result.errors[0]));
-        CHECK("Type 'boolean' could not be converted into 'never'" == toString(result.errors[1]));
-    }
+    CHECK("Expected this to be unreachable, but got 'number'" == toString(result.errors[0]));
+    CHECK("Expected this to be unreachable, but got 'boolean'" == toString(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "resolve_deep_functions")
@@ -160,16 +150,8 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "unsolvable_function")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    if (FFlag::LuauBetterTypeMismatchErrors)
-    {
-        CHECK("Expected this to be unreachable, but got 'number'" == toString(result.errors[0]));
-        CHECK("Expected this to be unreachable, but got 'boolean'" == toString(result.errors[1]));
-    }
-    else
-    {
-        CHECK(toString(result.errors[0]) == "Type 'number' could not be converted into 'never'");
-        CHECK(toString(result.errors[1]) == "Type 'boolean' could not be converted into 'never'");
-    }
+    CHECK("Expected this to be unreachable, but got 'number'" == toString(result.errors[0]));
+    CHECK("Expected this to be unreachable, but got 'boolean'" == toString(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(TypeFunctionFixture, "table_internal_functions")
@@ -1943,8 +1925,6 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "recursive_restraint_violation3")
 
 TEST_CASE_FIXTURE(Fixture, "recursive_restraint_violation4")
 {
-    ScopedFastFlag _{FFlag::LuauReworkInfiniteTypeFinder, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type A = { B<any> }
 
@@ -1954,8 +1934,6 @@ TEST_CASE_FIXTURE(Fixture, "recursive_restraint_violation4")
 
 TEST_CASE_FIXTURE(Fixture, "recursive_restraint_violation_with_defaults")
 {
-    ScopedFastFlag _{FFlag::LuauReworkInfiniteTypeFinder, true};
-
     // This is a fairly benign example, but the RFC claims it should be disallowed.
     // See: https://github.com/luau-lang/luau/pull/68.
     CheckResult result = check(R"(
@@ -1970,8 +1948,6 @@ TEST_CASE_FIXTURE(Fixture, "recursive_restraint_violation_with_defaults")
 
 TEST_CASE_FIXTURE(Fixture, "cli_184124_recursive_restraint_violation_from_devforum")
 {
-    ScopedFastFlag _{FFlag::LuauReworkInfiniteTypeFinder, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type TypeA<A... = ()> = { Func: (self: TypeA<A...>, func: (A...) -> ()) -> () }
         type TypeB<A = any> = { Value: TypeA<TypeB<A>> }
@@ -2036,7 +2012,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2114_type_instantiation_on_type_function
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExplicitTypeInstantiationSyntax, true},
         {FFlag::LuauExplicitTypeInstantiationSupport, true},
     };
 
@@ -2061,7 +2036,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2144_type_instantiation_on_type_function
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExplicitTypeInstantiationSyntax, true},
         {FFlag::LuauExplicitTypeInstantiationSupport, true},
     };
 
@@ -2082,6 +2056,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2144_type_instantiation_on_type_function
     )"));
 
     CHECK_EQ("number", toString(requireType("_b")));
+}
+
+TEST_CASE_FIXTURE(TFFixture, "reduce_cyclic_add")
+{
+    ScopedFastFlag _{FFlag::LuauTypeFunctionsCaptureNestedInstances, true};
+
+    TypeId root = arena->addType(BlockedType{});
+    TypeId addtfit = arena->addType(
+        TypeFunctionInstanceType{
+            getBuiltinTypeFunctions()->addFunc,
+            {
+                arena->addType(UnionType{{getBuiltins()->numberType, root}}),
+                arena->addType(UnionType{{getBuiltins()->numberType, root}}),
+            }
+        }
+    );
+    emplaceType<BoundType>(asMutable(root), addtfit);
+    FunctionGraphReductionResult res = reduceTypeFunctions(root, Location{}, tfc);
+
+    CHECK_EQ("number", toString(root));
+    CHECK(res.reducedTypes.size() == 3);
+    CHECK(res.errors.size() == 0);
+    CHECK(res.irreducibleTypes.size() == 0);
+    CHECK(res.blockedTypes.size() == 0);
 }
 
 TEST_SUITE_END();

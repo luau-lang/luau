@@ -13,6 +13,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauIntegerType)
+
 template<typename T>
 struct TempBuffer
 {
@@ -136,6 +138,23 @@ static unsigned int readVarInt(const char* data, size_t size, size_t& offset)
     {
         byte = read<uint8_t>(data, size, offset);
         result |= (byte & 127) << shift;
+        shift += 7;
+    } while (byte & 128);
+
+    return result;
+}
+
+static uint64_t readVarInt64(const char* data, size_t size, size_t& offset)
+{
+    uint64_t result = 0;
+    unsigned int shift = 0;
+
+    uint8_t byte;
+
+    do
+    {
+        byte = read<uint8_t>(data, size, offset);
+        result |= ((uint64_t)(byte & 127)) << shift;
         shift += 7;
     } while (byte & 128);
 
@@ -502,6 +521,48 @@ static int loadsafe(
                 break;
             }
 
+            case LBC_CONSTANT_TABLE_WITH_CONSTANTS:
+            {
+                uint32_t keys = readVarInt(data, size, offset);
+                LuaTable* h = luaH_new(L, 0, keys);
+
+                TempBuffer<int32_t> nilKeys;
+                nilKeys.allocate(L, keys);
+                size_t nilKeysSize = 0;
+
+                for (uint32_t i = 0; i < keys; ++i)
+                {
+                    int32_t key = readVarInt(data, size, offset);
+                    TValue* val = luaH_set(L, h, &p->k[key]);
+                    int32_t constantIdx = read<int32_t>(data, size, offset);
+                    if (constantIdx >= 0)
+                    {
+                        TValue* constant = &p->k[constantIdx];
+                        if (ttisnil(constant))
+                        {
+                            nilKeys[nilKeysSize++] = key;
+                        }
+                        else
+                        {
+                            setobj2t(L, val, constant);
+                            luaC_barriert(L, h, constant);
+                            continue;
+                        }
+                    }
+                    setnvalue(val, 0.0);
+                }
+
+                for (size_t idx = 0; idx < nilKeysSize; idx++)
+                {
+                    int32_t key = nilKeys[idx];
+                    TValue* val = luaH_set(L, h, &p->k[key]);
+                    setnilvalue(val);
+                }
+
+                sethvalue(L, &p->k[j], h);
+                break;
+            }
+
             case LBC_CONSTANT_CLOSURE:
             {
                 uint32_t fid = readVarInt(data, size, offset);
@@ -510,6 +571,16 @@ static int loadsafe(
                 setclvalue(L, &p->k[j], cl);
                 break;
             }
+
+            case LBC_CONSTANT_INTEGER:
+                if (FFlag::LuauIntegerType)
+                {
+                    bool isNegative = read<uint8_t>(data, size, offset);
+                    uint64_t magnitude = readVarInt64(data, size, offset);
+                    setlvalue(&p->k[j], isNegative ? (int64_t)(~magnitude + 1) : (int64_t)magnitude);
+                    break;
+                }
+                [[fallthrough]];
 
             default:
                 LUAU_ASSERT(!"Unexpected constant kind");

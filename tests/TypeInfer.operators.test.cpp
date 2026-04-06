@@ -19,7 +19,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -538,10 +537,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_mismatch_metatable")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK("Expected this to be 'V2', but got 'number'" == toString(result.errors[0]));
-    else
-        CHECK("Type 'number' could not be converted into 'V2'" == toString(result.errors[0]));
+    CHECK("Expected this to be 'V2', but got 'number'" == toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "CallOrOfFunctions")

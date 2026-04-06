@@ -13,10 +13,7 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
-LUAU_FASTFLAG(LuauCodegenSetBlockEntryState2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenIsNanAndDirectCompare)
-LUAU_FASTFLAGVARIABLE(LuauCodegenSafeEnvPreserve)
-LUAU_FASTFLAG(LuauCodegenCounterSupport)
+LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
 
 namespace Luau
 {
@@ -44,10 +41,10 @@ static bool hasTypedParameters(const BytecodeTypeInfo& typeInfo)
 
 static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 {
-    const BytecodeTypeInfo& typeInfo = FFlag::LuauCodegenSetBlockEntryState2 ? build.function.bcOriginalTypeInfo : build.function.bcTypeInfo;
+    const BytecodeTypeInfo& typeInfo = FFlag::LuauCodegenSetBlockEntryState3 ? build.function.bcOriginalTypeInfo : build.function.bcTypeInfo;
     CODEGEN_ASSERT(hasTypedParameters(typeInfo));
 
-    if (FFlag::LuauCodegenSetBlockEntryState2)
+    if (FFlag::LuauCodegenSetBlockEntryState3)
         build.function.blockOp(entry).flags |= kBlockFlagEntryArgCheck;
 
     for (size_t i = 0; i < typeInfo.argumentTypes.size(); i++)
@@ -72,7 +69,7 @@ static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 
             build.beginBlock(fallbackCheck);
 
-            if (FFlag::LuauCodegenSetBlockEntryState2)
+            if (FFlag::LuauCodegenSetBlockEntryState3)
                 build.function.blockOp(fallbackCheck).flags |= kBlockFlagEntryArgCheck;
         }
 
@@ -86,6 +83,9 @@ static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
             break;
         case LBC_TYPE_NUMBER:
             build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNUMBER), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        case LBC_TYPE_INTEGER:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TINTEGER), build.vmExit(kVmExitEntryGuardPc));
             break;
         case LBC_TYPE_STRING:
             build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TSTRING), build.vmExit(kVmExitEntryGuardPc));
@@ -126,7 +126,7 @@ static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 
             build.beginBlock(nextCheck);
 
-            if (FFlag::LuauCodegenSetBlockEntryState2)
+            if (FFlag::LuauCodegenSetBlockEntryState3)
                 build.function.blockOp(nextCheck).flags |= kBlockFlagEntryArgCheck;
         }
     }
@@ -387,7 +387,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstJumpIf(*this, pc, i, /* not_ */ true);
         break;
     case LOP_JUMPIFEQ:
-        if (FFlag::LuauCodegenIsNanAndDirectCompare && isDirectCompare(function.proto, pc, i))
+        if (isDirectCompare(function.proto, pc, i))
         {
             translateInstJumpIfEqShortcut(*this, pc, i, /* not_ */ false);
 
@@ -406,7 +406,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstJumpIfCond(*this, pc, i, IrCondition::Less);
         break;
     case LOP_JUMPIFNOTEQ:
-        if (FFlag::LuauCodegenIsNanAndDirectCompare && isDirectCompare(function.proto, pc, i))
+        if (isDirectCompare(function.proto, pc, i))
         {
             translateInstJumpIfEqShortcut(*this, pc, i, /* not_ */ true);
 
@@ -592,7 +592,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
 
             IrOp loopRepeat = blockAtInst(i + 1 + LUAU_INSN_D(*pc));
             IrOp loopExit = blockAtInst(i + getOpLength(LuauOpcode(LOP_FORGLOOP)));
-            IrOp fallback = FFlag::LuauCodegenCounterSupport ? fallbackBlock(i) : block(IrBlockKind::Fallback);
+            IrOp fallback = fallbackBlock(i);
 
             inst(IrCmd::INTERRUPT, constUint(i));
             loadAndCheckTag(vmReg(ra), LUA_TNIL, fallback);
@@ -752,14 +752,11 @@ void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTermin
             inTerminatedBlock = false;
         }
 
-        if (FFlag::LuauCodegenSafeEnvPreserve)
+        // Implicit safe environment checks become materialized as real ones
+        if ((source.flags & kBlockFlagSafeEnvCheck) != 0)
         {
-            // Implicit safe environment checks become materialized as real ones
-            if ((source.flags & kBlockFlagSafeEnvCheck) != 0)
-            {
-                CODEGEN_ASSERT(source.startpc != kBlockNoStartPc);
-                inst(IrCmd::CHECK_SAFE_ENV, vmExit(source.startpc));
-            }
+            CODEGEN_ASSERT(source.startpc != kBlockNoStartPc);
+            inst(IrCmd::CHECK_SAFE_ENV, vmExit(source.startpc));
         }
 
         for (uint32_t index = source.start; index <= source.finish; index++)
@@ -945,8 +942,7 @@ IrOp IrBuilder::inst(IrCmd cmd, const IrOps& ops)
 
 IrOp IrBuilder::block(IrBlockKind kind)
 {
-    if (FFlag::LuauCodegenCounterSupport)
-        CODEGEN_ASSERT(kind != IrBlockKind::Fallback && "fallbackBlock must be used for fallback block creation");
+    CODEGEN_ASSERT(kind != IrBlockKind::Fallback && "fallbackBlock must be used for fallback block creation");
 
     if (kind == IrBlockKind::Internal && activeFastcallFallback)
         kind = IrBlockKind::Fallback;
@@ -963,23 +959,14 @@ IrOp IrBuilder::blockAtInst(uint32_t index)
     if (blockIndex != kNoAssociatedBlockIndex)
         return IrOp{IrOpKind::Block, blockIndex};
 
-    if (FFlag::LuauCodegenCounterSupport)
-    {
-        IrOp result = block(IrBlockKind::Internal);
-        function.blockOp(result).startpc = index;
+    IrOp result = block(IrBlockKind::Internal);
+    function.blockOp(result).startpc = index;
 
-        return result;
-    }
-    else
-    {
-        return block(IrBlockKind::Internal);
-    }
+    return result;
 }
 
 IrOp IrBuilder::fallbackBlock(uint32_t pcpos)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenCounterSupport);
-
     uint32_t index = uint32_t(function.blocks.size());
     function.blocks.push_back(IrBlock{IrBlockKind::Fallback});
     CODEGEN_ASSERT(index != 0 && "IR cannot start with a fallback block");

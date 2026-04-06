@@ -11,8 +11,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(DebugLuauNewSolver)
-
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
 {
     for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)

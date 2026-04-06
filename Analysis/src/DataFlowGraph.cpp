@@ -13,9 +13,8 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
-LUAU_FASTFLAGVARIABLE(LuauCaptureRecursiveCallsForTablesAndGlobals)
+LUAU_FASTFLAGVARIABLE(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAG(LuauTypeNegationSyntax)
 
 namespace Luau
@@ -338,7 +337,7 @@ DefId DataFlowGraphBuilder::lookup(DefId def, const std::string& key, Location l
                 return NotNull{it->second};
         }
         else if (auto phi = get<Phi>(def);
-                 phi && phi->operands.empty() && (!FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals || current->scopeType == DfgScope::Function))
+                 phi && phi->operands.empty() && (!FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2 || current->scopeType == DfgScope::Function))
         {
             DefId result = defArena->freshCell(def->name, location);
             scope->props[def][key] = result;
@@ -706,7 +705,7 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatFunction* f)
     // but for bug compatibility, we'll assume the same thing here.
     visitLValue(f->name, defArena->freshCell(Symbol{}, f->name->location));
 
-    if (FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals)
+    if (FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2)
     {
         // This logic is for supporting:
         //
@@ -746,25 +745,18 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatFunction* f)
         //  end
         //
         // ... hence us only handling the common case of a single property deep.
+        DfgScope* signatureScope = makeChildScope(DfgScope::Function);
+        PushScope ps{scopeStack, signatureScope};
         if (auto global = f->name->as<AstExprGlobal>())
         {
-            DfgScope* signatureScope = makeChildScope(DfgScope::Function);
-            PushScope ps{scopeStack, signatureScope};
             signatureScope->bindings[global->name] = graph.getDef(f->name);
-            visitFunction(f->func, NotNull{signatureScope});
         }
         else if (auto name = f->name->as<AstExprIndexName>(); name && name->expr->is<AstExprLocal>())
         {
             auto receiver = name->expr->as<AstExprLocal>()->local;
-            DfgScope* signatureScope = makeChildScope(DfgScope::Function);
-            PushScope ps{scopeStack, signatureScope};
             signatureScope->props[lookup(receiver, f->func->location)][name->index.value] = graph.getDef(f->name);
-            visitFunction(f->func, NotNull{signatureScope});
         }
-        else
-        {
-            visitExpr(f->func);
-        }
+        visitFunction(f->func, NotNull{signatureScope});
     }
     else
     {
@@ -895,6 +887,8 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExpr* e)
             return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
         else if (auto c = e->as<AstExprConstantNumber>())
             return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
+        else if (auto c = e->as<AstExprConstantInteger>())
+            return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
         else if (auto c = e->as<AstExprConstantString>())
             return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
         else if (auto l = e->as<AstExprLocal>())
@@ -924,10 +918,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExpr* e)
         else if (auto i = e->as<AstExprInterpString>())
             return visitExpr(i);
         else if (auto i = e->as<AstExprInstantiate>())
-        {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
             return visitExpr(i);
-        }
         else if (auto error = e->as<AstExprError>())
             return visitExpr(error);
         else
@@ -1083,7 +1074,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprFunction* f)
     DfgScope* signatureScope = makeChildScope(DfgScope::Function);
     PushScope ps{scopeStack, signatureScope};
 
-    if (FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals)
+    if (FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2)
     {
         return visitFunction(f, NotNull{signatureScope});
     }

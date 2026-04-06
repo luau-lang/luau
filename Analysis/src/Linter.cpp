@@ -13,11 +13,7 @@
 #include <climits>
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
-
-LUAU_FASTFLAG(LuauSolverV2)
-
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAG(LuauAnalysisUsesSolverMode)
+LUAU_FASTFLAGVARIABLE(LuauLinterVectorPrimitive)
 
 namespace Luau
 {
@@ -122,6 +118,7 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
     CASE(AstExprConstantNil) return true;
     CASE(AstExprConstantBool) return le->value == re->value;
     CASE(AstExprConstantNumber) return le->value == re->value;
+    CASE(AstExprConstantInteger) return le->value == re->value;
     CASE(AstExprConstantString) return le->value.size == re->value.size && memcmp(le->value.data, re->value.data, le->value.size) == 0;
     CASE(AstExprLocal) return le->local == re->local;
     CASE(AstExprGlobal) return le->name == re->name;
@@ -193,7 +190,6 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
     }
     CASE(AstExprInstantiate)
     {
-        LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
         return similar(le->expr, re->expr);
     }
     else
@@ -1182,7 +1178,7 @@ private:
     {
         Kind_Unknown,
         Kind_Primitive, // primitive type supported by VM - boolean/userdata/etc. No differentiation between types of userdata.
-        Kind_Vector,    // 'vector' but only used when type is used
+        Kind_Vector,    // 'vector' but only used when type is used. Remove when `LuauLinterVectorPrimitive` is clipped
         Kind_Userdata,  // custom userdata type
     };
 
@@ -1193,7 +1189,12 @@ private:
             return Kind_Primitive;
 
         if (name == "vector")
-            return Kind_Vector;
+        {
+            if (FFlag::LuauLinterVectorPrimitive)
+                return Kind_Primitive;
+            else
+                return Kind_Vector;
+        }
 
         if (std::optional<TypeFun> maybeTy = context->scope->lookupType(name))
             return Kind_Userdata;
@@ -1993,69 +1994,8 @@ private:
             Location location;
         };
 
-        if (FFlag::LuauAnalysisUsesSolverMode && context->module->checkedInNewSolver)
+        if (context->module->checkedInNewSolver)
         {
-            DenseHashMap<AstName, Rec> names(AstName{});
-
-            for (const AstTableProp& item : node->props)
-            {
-                Rec* rec = names.find(item.name);
-                if (!rec)
-                {
-                    names[item.name] = Rec{item.access, item.location};
-                    continue;
-                }
-
-                if (int(rec->access) & int(item.access))
-                {
-                    if (rec->access == item.access)
-                        emitWarning(
-                            *context,
-                            LintWarning::Code_TableLiteral,
-                            item.location,
-                            "Table type field '%s' is a duplicate; previously defined at line %d",
-                            item.name.value,
-                            rec->location.begin.line + 1
-                        );
-                    else if (rec->access == AstTableAccess::ReadWrite)
-                        emitWarning(
-                            *context,
-                            LintWarning::Code_TableLiteral,
-                            item.location,
-                            "Table type field '%s' is already read-write; previously defined at line %d",
-                            item.name.value,
-                            rec->location.begin.line + 1
-                        );
-                    else if (rec->access == AstTableAccess::Read)
-                        emitWarning(
-                            *context,
-                            LintWarning::Code_TableLiteral,
-                            rec->location,
-                            "Table type field '%s' already has a read type defined at line %d",
-                            item.name.value,
-                            rec->location.begin.line + 1
-                        );
-                    else if (rec->access == AstTableAccess::Write)
-                        emitWarning(
-                            *context,
-                            LintWarning::Code_TableLiteral,
-                            rec->location,
-                            "Table type field '%s' already has a write type defined at line %d",
-                            item.name.value,
-                            rec->location.begin.line + 1
-                        );
-                    else
-                        LUAU_ASSERT(!"Unreachable");
-                }
-                else
-                    rec->access = AstTableAccess(int(rec->access) | int(item.access));
-            }
-
-            return true;
-        }
-        else if (FFlag::LuauSolverV2)
-        {
-
             DenseHashMap<AstName, Rec> names(AstName{});
 
             for (const AstTableProp& item : node->props)
@@ -3244,6 +3184,9 @@ private:
                 node->location,
                 "Hexadecimal number literal exceeded available precision and was truncated to 2^64"
             );
+            break;
+        case ConstantNumberParseResult::IntOverflow:
+            emitWarning(*context, LintWarning::Code_IntegerParsing, node->location, "Integer number literal was clamped because it was out of range");
             break;
         }
 
