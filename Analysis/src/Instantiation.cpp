@@ -259,7 +259,6 @@ std::optional<TypeId> instantiate(
 
         return res;
     }
-
 }
 
 } // namespace Luau

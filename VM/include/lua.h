@@ -74,6 +74,7 @@ enum lua_Type
 
     LUA_TLIGHTUSERDATA,
     LUA_TNUMBER,
+    LUA_TINTEGER,
     LUA_TVECTOR,
 
     LUA_TSTRING, // all types above this must be value types, all types below this must be GC types - see iscollectable
@@ -135,6 +136,7 @@ LUA_API void lua_xpush(lua_State* from, lua_State* to, int idx);
 
 LUA_API int lua_isnumber(lua_State* L, int idx);
 LUA_API int lua_isstring(lua_State* L, int idx);
+LUA_API int lua_isinteger64(lua_State* L, int idx);
 LUA_API int lua_iscfunction(lua_State* L, int idx);
 LUA_API int lua_isLfunction(lua_State* L, int idx);
 LUA_API int lua_isuserdata(lua_State* L, int idx);
@@ -150,6 +152,7 @@ LUA_API int lua_tointegerx(lua_State* L, int idx, int* isnum);
 LUA_API unsigned lua_tounsignedx(lua_State* L, int idx, int* isnum);
 LUA_API const float* lua_tovector(lua_State* L, int idx);
 LUA_API int lua_toboolean(lua_State* L, int idx);
+LUA_API int64_t lua_tointeger64(lua_State* L, int idx, int* isinteger);
 LUA_API const char* lua_tolstring(lua_State* L, int idx, size_t* len);
 LUA_API const char* lua_tostringatom(lua_State* L, int idx, int* atom);
 LUA_API const char* lua_tolstringatom(lua_State* L, int idx, size_t* len, int* atom);
@@ -172,6 +175,7 @@ LUA_API const void* lua_topointer(lua_State* L, int idx);
 LUA_API void lua_pushnil(lua_State* L);
 LUA_API void lua_pushnumber(lua_State* L, double n);
 LUA_API void lua_pushinteger(lua_State* L, int n);
+LUA_API void lua_pushinteger64(lua_State* L, int64_t n);
 LUA_API void lua_pushunsigned(lua_State* L, unsigned n);
 #if LUA_VECTOR_SIZE == 4
 LUA_API void lua_pushvector(lua_State* L, float x, float y, float z, float w);
@@ -374,6 +378,7 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_islightuserdata(L, n) (lua_type(L, (n)) == LUA_TLIGHTUSERDATA)
 #define lua_isnil(L, n) (lua_type(L, (n)) == LUA_TNIL)
 #define lua_isboolean(L, n) (lua_type(L, (n)) == LUA_TBOOLEAN)
+#define lua_isinteger64(L, n) (lua_type(L, (n)) == LUA_TINTEGER)
 #define lua_isvector(L, n) (lua_type(L, (n)) == LUA_TVECTOR)
 #define lua_isthread(L, n) (lua_type(L, (n)) == LUA_TTHREAD)
 #define lua_isbuffer(L, n) (lua_type(L, (n)) == LUA_TBUFFER)

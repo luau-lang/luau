@@ -283,6 +283,8 @@ int luaV_equalval(lua_State* L, const TValue* t1, const TValue* t2)
         return 1;
     case LUA_TNUMBER:
         return luai_numeq(nvalue(t1), nvalue(t2));
+    case LUA_TINTEGER:
+        return luai_inteq(lvalue(t1), lvalue(t2));
     case LUA_TVECTOR:
         return luai_veceq(vvalue(t1), vvalue(t2));
     case LUA_TBOOLEAN:

@@ -19,6 +19,7 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
+LUAU_FASTFLAGVARIABLE(LuauIntegerType)
 LUAU_FASTFLAGVARIABLE(DesugaredArrayTypeReferenceIsEmpty)
 LUAU_FASTFLAGVARIABLE(LuauConst2)
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
@@ -3365,6 +3366,55 @@ static ConstantNumberParseResult parseInteger(double& result, const char* data, 
     return ConstantNumberParseResult::Ok;
 }
 
+static ConstantNumberParseResult parseInteger64(int64_t& result, const char* data, int base)
+{
+    LUAU_ASSERT(base == 2 || base == 10 || base == 16);
+
+    char* end = nullptr;
+
+    if (base == 10)
+    {
+        result = strtoll(data, &end, 10);
+
+        if (end == data || *end != 'i' || end[1] != '\0')
+            return ConstantNumberParseResult::Malformed;
+
+        if (((result == LLONG_MIN) || (result == LLONG_MAX)) && (errno == ERANGE))
+        {
+            // 'errno' might have been set before we called 'strtoll', but we don't want the overhead of resetting a TLS variable on each call
+            // so we only reset it when we get a result that might be an out-of-range error and parse again to make sure
+            errno = 0;
+            result = strtoll(data, &end, 10);
+
+            if (errno == ERANGE)
+                return ConstantNumberParseResult::IntOverflow;
+        }
+    }
+    else
+    {
+        // hex and binary literals represent bit patterns covering the full uint64 range
+        unsigned long long u = strtoull(data, &end, base);
+
+        if (end == data || *end != 'i' || end[1] != '\0')
+            return ConstantNumberParseResult::Malformed;
+
+        if ((u == ULLONG_MAX) && (errno == ERANGE))
+        {
+            // 'errno' might have been set before we called 'strtoull', but we don't want the overhead of resetting a TLS variable on each call
+            // so we only reset it when we get a result that might be an out-of-range error and parse again to make sure
+            errno = 0;
+            u = strtoull(data, &end, base);
+
+            if (errno == ERANGE)
+                return base == 2 ? ConstantNumberParseResult::BinOverflow : ConstantNumberParseResult::HexOverflow;
+        }
+
+        result = (int64_t)u;
+    }
+
+    return ConstantNumberParseResult::Ok;
+}
+
 static ConstantNumberParseResult parseDouble(double& result, const char* data)
 {
     // binary literal
@@ -4308,17 +4358,44 @@ AstExpr* Parser::parseNumber()
         scratchData.erase(std::remove(scratchData.begin(), scratchData.end(), '_'), scratchData.end());
     }
 
-    double value = 0;
-    ConstantNumberParseResult result = parseDouble(value, scratchData.c_str());
-    nextLexeme();
+    if (FFlag::LuauIntegerType && (scratchData.back() == 'i'))
+    {
+        int64_t value = 0;
+        ConstantNumberParseResult result;
+        if ((strncmp(scratchData.c_str(), "0x", 2) == 0) || (strncmp(scratchData.c_str(), "0X", 2) == 0))
+            result = parseInteger64(value, scratchData.c_str(), 16); // pass in '0x' prefix, it's handled by strtoll
+        else if ((strncmp(scratchData.c_str(), "0b", 2) == 0) || (strncmp(scratchData.c_str(), "0B", 2) == 0))
+            result = parseInteger64(value, scratchData.c_str() + 2, 2);
+        else
+            result = parseInteger64(value, scratchData.c_str(), 10);
 
-    if (result == ConstantNumberParseResult::Malformed)
-        return reportExprError(start, {}, "Malformed number");
+        nextLexeme();
 
-    AstExprConstantNumber* node = allocator.alloc<AstExprConstantNumber>(start, value, result);
-    if (options.storeCstData)
-        cstNodeMap[node] = allocator.alloc<CstExprConstantNumber>(sourceData);
-    return node;
+        if (result == ConstantNumberParseResult::Malformed)
+            return reportExprError(start, {}, "Malformed integer");
+
+        if (result != ConstantNumberParseResult::Ok)
+            return reportExprError(start, {}, "Integer overflow");
+
+        AstExprConstantInteger* node = allocator.alloc<AstExprConstantInteger>(start, value, result);
+        if (options.storeCstData)
+            cstNodeMap[node] = allocator.alloc<CstExprConstantInteger>(sourceData);
+        return node;
+    }
+    else
+    {
+        double value = 0;
+        ConstantNumberParseResult result = parseDouble(value, scratchData.c_str());
+        nextLexeme();
+
+        if (result == ConstantNumberParseResult::Malformed)
+            return reportExprError(start, {}, "Malformed number");
+
+        AstExprConstantNumber* node = allocator.alloc<AstExprConstantNumber>(start, value, result);
+        if (options.storeCstData)
+            cstNodeMap[node] = allocator.alloc<CstExprConstantNumber>(sourceData);
+        return node;
+    }
 }
 
 AstLocal* Parser::pushLocal(const Binding& binding)

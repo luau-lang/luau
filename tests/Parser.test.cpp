@@ -20,6 +20,7 @@ LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
+LUAU_FASTFLAG(LuauIntegerType)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -101,6 +102,7 @@ TEST_CASE("moved_out_Allocator_can_still_be_used")
     Luau::Allocator outer;
     Luau::Allocator inner{std::move(outer)};
 
+    // NOLINTNEXTLINE(bugprone-use-after-move) -- verifying moved-from state
     int* i = outer.alloc<int>();
     REQUIRE(i != nullptr);
     *i = 55;
@@ -711,11 +713,24 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_decimal")
     CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, 1.0e-5);
     CHECK_EQ(str->list.data[4]->as<AstExprConstantNumber>()->value, 1.5e-5);
     CHECK_EQ(str->list.data[5]->as<AstExprConstantNumber>()->value, 12345.125);
+
+    if (FFlag::LuauIntegerType)
+    {
+        stat = parse("return 1i, 1_000_000i");
+        REQUIRE(stat != nullptr);
+
+        str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        CHECK(str->list.size == 2);
+        CHECK(str->list.data[0]->is<AstExprConstantInteger>());
+        CHECK_EQ(str->list.data[0]->as<AstExprConstantInteger>()->value, 1);
+        CHECK(str->list.data[1]->is<AstExprConstantInteger>());
+        CHECK_EQ(str->list.data[1]->as<AstExprConstantInteger>()->value, 1000000);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_hexadecimal")
 {
-    AstStat* stat = parse("return 0xab, 0XAB05, 0xff_ff, 0xffffffffffffffff");
+    AstStat* stat = parse("return 0xab, 0xAB05, 0xff_ff, 0xffffffffffffffff");
     REQUIRE(stat != nullptr);
 
     AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
@@ -724,6 +739,21 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_hexadecimal")
     CHECK_EQ(str->list.data[1]->as<AstExprConstantNumber>()->value, 0xAB05);
     CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 0xFFFF);
     CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
+
+    if (FFlag::LuauIntegerType)
+    {
+        stat = parse("return 0xabi, 0XAB05i, 0xff_ffi, 0x7fffffffffffffffi, 0x8000000000000000i, 0xffffffffffffffffi");
+        REQUIRE(stat != nullptr);
+
+        str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        CHECK(str->list.size == 6);
+        CHECK_EQ(str->list.data[0]->as<AstExprConstantInteger>()->value, 0xab);
+        CHECK_EQ(str->list.data[1]->as<AstExprConstantInteger>()->value, 0xAB05);
+        CHECK_EQ(str->list.data[2]->as<AstExprConstantInteger>()->value, 0xFFFF);
+        CHECK_EQ(str->list.data[3]->as<AstExprConstantInteger>()->value, LLONG_MAX);
+        CHECK_EQ(str->list.data[4]->as<AstExprConstantInteger>()->value, LLONG_MIN);
+        CHECK_EQ(str->list.data[5]->as<AstExprConstantInteger>()->value, -1);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
@@ -737,6 +767,24 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
     CHECK_EQ(str->list.data[1]->as<AstExprConstantNumber>()->value, 0);
     CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 42);
     CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
+
+    if (FFlag::LuauIntegerType)
+    {
+        AstStat* stat = parse(
+            "return 0b1i, 0b0i, 0b101010i, 0b111111111111111111111111111111111111111111111111111111111111111i, "
+            "0b1000000000000000000000000000000000000000000000000000000000000000i, 0b1111111111111111111111111111111111111111111111111111111111111111i"
+        );
+        REQUIRE(stat != nullptr);
+
+        str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        CHECK(str->list.size == 6);
+        CHECK_EQ(str->list.data[0]->as<AstExprConstantInteger>()->value, 1);
+        CHECK_EQ(str->list.data[1]->as<AstExprConstantInteger>()->value, 0);
+        CHECK_EQ(str->list.data[2]->as<AstExprConstantInteger>()->value, 42);
+        CHECK_EQ(str->list.data[3]->as<AstExprConstantInteger>()->value, LLONG_MAX);
+        CHECK_EQ(str->list.data[4]->as<AstExprConstantInteger>()->value, LLONG_MIN);
+        CHECK_EQ(str->list.data[5]->as<AstExprConstantInteger>()->value, -1);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
@@ -747,6 +795,21 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
     matchParseError("return 0x0x123", "Malformed number");
     matchParseError("return 0xffffffffffffffffffffllllllg", "Malformed number");
     matchParseError("return 0x0xffffffffffffffffffffffffffff", "Malformed number");
+    if (FFlag::LuauIntegerType)
+    {
+        matchParseError("return 0x0xABCi", "Malformed integer");
+        matchParseError("return 0xABCMi", "Malformed integer");
+        matchParseError("return 0b250i", "Malformed integer");
+        matchParseError("return 0bbbbi", "Malformed integer");
+        matchParseError("return 123ii", "Malformed integer");
+        matchParseError("return 0xABii", "Malformed integer");
+
+        matchParseError("return 99999999999999999999i", "Integer overflow");
+        matchParseError("return 0xFFFFFFFFFFFFFFFFFFi", "Integer overflow");
+        matchParseError("return 0b10000000000000000000000000000000000000000000000000000000000000000i", "Integer overflow");
+        matchParseError("return 123ii", "Malformed integer");
+        matchParseError("return 0xABii", "Malformed integer");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "break_return_not_last_error")

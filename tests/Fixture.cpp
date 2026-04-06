@@ -10,6 +10,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/Parser.h"
 #include "Luau/PrettyPrinter.h"
+#include "Luau/Subtyping.h"
 #include "Luau/Type.h"
 #include "Luau/TypeAttach.h"
 #include "Luau/TypeInfer.h"
@@ -773,6 +774,41 @@ Frontend& BuiltinsFixture::getFrontend()
 
     return *frontend;
 }
+
+bool IsSubtypeFixture::isSubtype(TypeId a, TypeId b)
+{
+    ModulePtr module = getMainModule();
+    REQUIRE(module);
+
+    if (!module->hasModuleScope())
+        FAIL("isSubtype: module scope data is not available");
+
+    UnifierSharedState sharedState{&ice};
+    NotNull<Scope> scope{module->getModuleScope().get()};
+    Normalizer normalizer{
+        &arena,
+        NotNull{builtinTypes},
+        NotNull{&sharedState},
+        FFlag::DebugLuauForceOldSolver ? SolverMode::Old : SolverMode::New,
+    };
+
+    if (FFlag::DebugLuauForceOldSolver)
+    {
+        Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+        u.tryUnify(a, b);
+        return !u.failure;
+    }
+    else
+    {
+        TypeArena arena;
+        TypeCheckLimits limits;
+        TypeFunctionRuntime typeFunctionRuntime{NotNull{&ice}, NotNull{&limits}};
+
+        Subtyping subtyping{NotNull{builtinTypes}, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
+        return subtyping.isSubtype(a, b, scope).isSubtype;
+    }
+}
+
 
 static std::vector<std::string_view> parsePathExpr(const AstExpr& pathExpr)
 {

@@ -126,7 +126,6 @@ private:
 
     UnifyResult unify_(TypePackId subTp, TypePackId superTp);
 
-    
     template<typename TID>
     TID instantiateWithBoundTypes(TID ty);
 

@@ -928,14 +928,13 @@ a = b
     if (!FFlag::DebugLuauForceOldSolver)
     {
 
-        const std::string expected =
-            "Expected this to be\n\t"
-            "'() -> (number, ...string)'"
-            "\nbut got\n\t"
-            "'() -> (number, ...boolean)'"
-            "; \n"
-            "it returns a tail of the variadic `boolean` in the latter type and `string` in the former "
-            "type, and `boolean` is not a subtype of `string`";
+        const std::string expected = "Expected this to be\n\t"
+                                     "'() -> (number, ...string)'"
+                                     "\nbut got\n\t"
+                                     "'() -> (number, ...boolean)'"
+                                     "; \n"
+                                     "it returns a tail of the variadic `boolean` in the latter type and `string` in the former "
+                                     "type, and `boolean` is not a subtype of `string`";
 
         CHECK(expected == toString(result.errors[0]));
     }
@@ -1076,7 +1075,7 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
     {
         CHECK(
             toString(result.errors.at(0)) == "Expected this to be 'boolean', but got '...number'; \n"
-                                                "it has a tail of `...number`, which is not a subtype of `boolean`"
+                                             "it has a tail of `...number`, which is not a subtype of `boolean`"
         );
     }
     else
