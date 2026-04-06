@@ -9,6 +9,7 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauConst2)
+LUAU_FASTFLAG(LuauTrackPrefixLocal)
 
 namespace Luau
 {
@@ -988,6 +989,8 @@ struct AstJsonEncoder : public AstVisitor
                     PROP(prefix);
                 if (node->prefixLocation)
                     write("prefixLocation", *node->prefixLocation);
+                if (FFlag::LuauTrackPrefixLocal && node->prefixLocal)
+                    write("prefixLocal", node->prefixLocal);
                 PROP(name);
                 PROP(nameLocation);
                 PROP(parameters);

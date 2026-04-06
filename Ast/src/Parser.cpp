@@ -24,6 +24,7 @@ LUAU_FASTFLAGVARIABLE(DesugaredArrayTypeReferenceIsEmpty)
 LUAU_FASTFLAGVARIABLE(LuauConst2)
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(LuauExternReadWriteAttributes)
+LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -2787,6 +2788,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
         std::optional<AstName> prefix;
         std::optional<Position> prefixPointPosition;
         std::optional<Location> prefixLocation;
+        AstLocal* prefixLocal = nullptr;
         Name name = parseName("type name");
 
         if (lexer.current().type == '.')
@@ -2796,6 +2798,13 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
 
             prefix = name.name;
             prefixLocation = name.location;
+
+            if (FFlag::LuauTrackPrefixLocal)
+            {
+                AstLocal* const* prefixLocalValue = localMap.find(name.name);
+                prefixLocal = (prefixLocalValue && *prefixLocalValue) ? *prefixLocalValue : nullptr;
+            }
+
             name = parseIndexName("field name", *prefixPointPosition);
         }
         else if (lexer.current().type == Lexeme::Dot3)
@@ -2838,7 +2847,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
         Location end = lexer.previousLocation();
 
         AstTypeReference* node =
-            allocator.alloc<AstTypeReference>(Location(start, end), prefix, name.name, prefixLocation, name.location, hasParameters, parameters);
+            allocator.alloc<AstTypeReference>(Location(start, end), prefix, name.name, prefixLocation, name.location, hasParameters, parameters, prefixLocal);
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstTypeReference>(
                 prefixPointPosition, parametersOpeningPosition, copy(parametersCommaPositions), parametersClosingPosition
