@@ -491,8 +491,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "os_time_takes_optional_date_table")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("number" == toString(requireType("n1")));
-    CHECK("number" == toString(requireType("n2")));
-    CHECK("number" == toString(requireType("n3")));
+    CHECK("number?" == toString(requireType("n2")));
+    CHECK("number?" == toString(requireType("n3")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "thread_is_a_type")
