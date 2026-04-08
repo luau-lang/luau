@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAG(LuauUdtfReserveStack)
+LUAU_FASTFLAG(LuauTypeFunctionTypeIsSubtypeOf)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2810,7 +2811,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "externs_are_extern")
 {
-    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true}};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare extern type Bar with
@@ -2930,6 +2931,40 @@ type function test(t: type) return t end
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]) == "Type functions do not currently support types of the form 'index<D, L>'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof")
+{
+    ScopedFastFlag _[] = {
+        { FFlag::LuauSolverV2, true },
+        { FFlag::LuauTypeFunctionTypeIsSubtypeOf, true }
+    };
+
+    CheckResult results = check(R"(
+        type function checksubtype(a, b)
+            if not a:issubtypeof(b) then
+                error("Not a subtype!")
+            end
+            return a
+        end
+
+        local x: checksubtype<nil, nil>                          -- S
+        local y: checksubtype<nil, string?>                      -- S
+        local z: checksubtype<"Hello", string>                   -- S
+        local w: checksubtype<string | vector | number, number>  -- F
+        local a: checksubtype<boolean, number>                   -- F
+        local b: checksubtype<false, nil>                        -- F
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, results);
+
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[0]));
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[1]));
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[2]));
+
+    CHECK_EQ(results.errors[0].location.begin.line, 11);
+    CHECK_EQ(results.errors[1].location.begin.line, 12);
+    CHECK_EQ(results.errors[2].location.begin.line, 13);
 }
 
 TEST_SUITE_END();

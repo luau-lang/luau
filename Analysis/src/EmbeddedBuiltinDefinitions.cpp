@@ -1,11 +1,11 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
-LUAU_FASTFLAGVARIABLE(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAGVARIABLE(LuauNewMathConstantsAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerVectorReadOnly)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAGVARIABLE(LuauTypeDefinitionsTypeIsSubtypeOf)
 
 namespace Luau
 {
@@ -519,6 +519,7 @@ export type type = {
          "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "extern" | "generic",
 
     is: (self: type, arg: string) -> boolean,
+    issubtypeof: (self: type, arg: type) -> boolean,
 
     -- for singleton type
     value: (self: type) -> (string | boolean | nil),
@@ -572,6 +573,7 @@ export type type = {
          "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "extern" | "generic",
 
     is: (self: type, arg: string) -> boolean,
+    issubtypeof: (self: type, arg: type) -> boolean,
 
     -- for singleton type
     value: (self: type) -> (string | boolean | nil),
@@ -675,7 +677,7 @@ static constexpr const char* kBuiltinDefinitionTypeMethodSrc_DEPRECATED_NOINTEGE
 
 export type type = {
     tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
-         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "class" | "generic",
+         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "extern" | "generic",
 
     is: (self: type, arg: string) -> boolean,
 
@@ -777,7 +779,7 @@ std::string getTypeFunctionDefinitionSource()
 {
     std::string result;
 
-    if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
+    if (FFlag::LuauTypeDefinitionsTypeIsSubtypeOf)
     {
         if (FFlag::LuauIntegerType)
             result += kBuiltinDefinitionTypeMethodSrc;

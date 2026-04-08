@@ -22,8 +22,8 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionTypeIsSubtypeOf)
 
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauUdtfReserveStack)
@@ -425,12 +425,7 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
     else if (get<TypeFunctionFunctionType>(ty))
         return "function";
     else if (get<TypeFunctionExternType>(ty))
-    {
-        if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
-            return "extern";
-        else
-            return "class";
-    }
+        return "extern";
     else if (get<TypeFunctionGenericType>(ty))
         return "generic";
 
@@ -1799,6 +1794,29 @@ static int checkTag(lua_State* L)
     return 1;
 }
 
+// Luau `self:issubtypeof(arg: type) -> boolean`
+// Returns true if self is a subtype of the given type
+static int isSubtypeOf(lua_State* L)
+{
+    int argumentCount = lua_gettop(L);
+    if (argumentCount != 2)
+        luaL_error(L, "type.issubtypeof: expected 2 arguments, but got %d", argumentCount);
+
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+    TypeFunctionTypeId arg = getTypeUserData(L, 2);
+
+    TypeFunctionRuntimeBuilderState* runtimeBuilder = Luau::getTypeFunctionRuntime(L)->runtimeBuilder;
+    NotNull<TypeFunctionContext> ctx = runtimeBuilder->ctx;
+
+    TypeId subTy = Luau::deserialize(self, runtimeBuilder);
+    TypeId superTy = Luau::deserialize(arg, runtimeBuilder);
+
+    SubtypingResult result = ctx->subtyping->isSubtype(subTy, superTy, ctx->scope);
+
+    lua_pushboolean(L, result.isSubtype);
+    return 1;
+}
+
 TypeFunctionTypeId deepClone(NotNull<TypeFunctionRuntime> runtime, TypeFunctionTypeId ty); // Forward declaration
 
 // Luau: `types.copy(arg: type) -> type`
@@ -1956,6 +1974,13 @@ void registerTypeUserData(lua_State* L)
     // Indexing will be a dynamic function because some type fields are dynamic
     lua_newtable(L);
     luaL_register(L, nullptr, typeUserdataMethods);
+
+    if (FFlag::LuauTypeFunctionTypeIsSubtypeOf)
+    {
+        lua_pushcfunction(L, isSubtypeOf, "issubtypeof");
+        lua_setfield(L, -2, "issubtypeof");
+    }
+
     lua_setreadonly(L, -1, true);
     lua_pushcclosure(L, typeUserdataIndex, "__index", 1);
     lua_setfield(L, -2, "__index");
