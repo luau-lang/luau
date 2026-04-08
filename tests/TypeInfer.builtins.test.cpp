@@ -12,7 +12,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauPcallCallbackCanReturnZeroValues)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauSilenceDynamicFormatStringErrors)
@@ -158,20 +157,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        "Expected this to be\n\t"
-        "'((string, string) -> boolean)?'"
-        "\nbut got\n\t"
-        "'(number, number) -> boolean'"
-        "\ncaused by:\n"
-        "  None of the union options are compatible. For example:\n"
-        "Expected this to be\n\t"
-        "'(string, string) -> boolean'"
-        "\nbut got\n\t"
-        "'(number, number) -> boolean'"
-        "\ncaused by:\n"
-        "  Argument #1 type is not compatible.\n"
-        "Expected this to be 'number', but got 'string'";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'((string, string) -> boolean)?'"
+                                 "\nbut got\n\t"
+                                 "'(number, number) -> boolean'"
+                                 "\ncaused by:\n"
+                                 "  None of the union options are compatible. For example:\n"
+                                 "Expected this to be\n\t"
+                                 "'(string, string) -> boolean'"
+                                 "\nbut got\n\t"
+                                 "'(number, number) -> boolean'"
+                                 "\ncaused by:\n"
+                                 "  Argument #1 type is not compatible.\n"
+                                 "Expected this to be 'number', but got 'string'";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -1917,7 +1915,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vector_lerp_should_not_crash")
 TEST_CASE_FIXTURE(BuiltinsFixture, "instantiation_works_on_builtins")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauExplicitTypeInstantiationSyntax, true},
         {FFlag::LuauExplicitTypeInstantiationSupport, true},
     };
 

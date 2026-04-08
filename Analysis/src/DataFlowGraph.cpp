@@ -13,7 +13,6 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 
@@ -887,6 +886,8 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExpr* e)
             return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
         else if (auto c = e->as<AstExprConstantNumber>())
             return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
+        else if (auto c = e->as<AstExprConstantInteger>())
+            return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
         else if (auto c = e->as<AstExprConstantString>())
             return {defArena->freshCell(Symbol{}, c->location), nullptr}; // ok
         else if (auto l = e->as<AstExprLocal>())
@@ -916,10 +917,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExpr* e)
         else if (auto i = e->as<AstExprInterpString>())
             return visitExpr(i);
         else if (auto i = e->as<AstExprInstantiate>())
-        {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
             return visitExpr(i);
-        }
         else if (auto error = e->as<AstExprError>())
             return visitExpr(error);
         else

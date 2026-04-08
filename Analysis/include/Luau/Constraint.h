@@ -350,11 +350,19 @@ struct Constraint
 
     std::vector<NotNull<Constraint>> dependencies;
 
-    TypeIds getMaybeMutatedFreeTypes() const;
+    TypeIds DEPRECATED_getMaybeMutatedFreeTypes() const;
+
+    /**
+     * Return the types and type packs that may be mutated by this constraint.
+     * Currently we do not do anything with type packs.
+     */
+    std::pair<TypeIds, TypePackIds> getMaybeMutatedTypes() const;
+
 };
 
 using ConstraintPtr = std::unique_ptr<Constraint>;
 
+bool isReferenceCountedType(TypePackId tp);
 bool isReferenceCountedType(const TypeId typ);
 
 inline Constraint& asMutable(const Constraint& c)

@@ -9,10 +9,6 @@
 #include <limits>
 #include <math.h>
 
-LUAU_FASTFLAG(DebugLuauNoInline)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAG(LuauCstStatDoWithStatsStart)
-
 namespace
 {
 bool isIdentifierStartChar(char c)
@@ -513,6 +509,28 @@ struct Printer
                 }
             }
         }
+        else if (const auto& a = expr.as<AstExprConstantInteger>())
+        {
+            if (const auto cstNode = lookupCstNode<CstExprConstantInteger>(a))
+            {
+                writer.literal(std::string_view(cstNode->value.data, cstNode->value.size));
+            }
+            else
+            {
+                if (a->value >= 0)
+                {
+                    char buffer[100];
+                    size_t len = snprintf(buffer, sizeof(buffer), "%lldi", (long long)a->value);
+                    writer.literal(std::string_view{buffer, len});
+                }
+                else
+                {
+                    char buffer[100];
+                    size_t len = snprintf(buffer, sizeof(buffer), "0x%llxi", (unsigned long long)a->value);
+                    writer.literal(std::string_view{buffer, len});
+                }
+            }
+        }
         else if (const auto& a = expr.as<AstExprConstantString>())
         {
             if (const auto cstNode = lookupCstNode<CstExprConstantString>(a))
@@ -542,12 +560,9 @@ struct Printer
 
             const auto cstNode = lookupCstNode<CstExprCall>(a);
 
-            if (FFlag::LuauExplicitTypeInstantiationSyntax)
+            if (writeTypes && (a->typeArguments.size > 0 || (cstNode && cstNode->explicitTypes)))
             {
-                if (writeTypes && (a->typeArguments.size > 0 || (cstNode && cstNode->explicitTypes)))
-                {
-                    visualizeExplicitTypeInstantiation(a->typeArguments, cstNode && cstNode->explicitTypes ? cstNode->explicitTypes : nullptr);
-                }
+                visualizeExplicitTypeInstantiation(a->typeArguments, cstNode && cstNode->explicitTypes ? cstNode->explicitTypes : nullptr);
             }
 
             if (cstNode)
@@ -832,8 +847,6 @@ struct Printer
         }
         else if (const auto& a = expr.as<AstExprInstantiate>())
         {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
-
             visualize(*a->expr);
 
             if (writeTypes)
@@ -877,44 +890,25 @@ struct Printer
 
         if (const auto& block = program.as<AstStatBlock>())
         {
-            if (FFlag::LuauCstStatDoWithStatsStart)
+            if (const auto cstNode = lookupCstNode<CstStatDo>(block))
             {
-                if (const auto cstNode = lookupCstNode<CstStatDo>(block))
-                {
-                    writer.keyword("do");
+                writer.keyword("do");
 
-                    advance(cstNode->statsStartPosition);
+                advance(cstNode->statsStartPosition);
 
-                    for (const auto& s : block->body)
-                        visualize(*s);
+                for (const auto& s : block->body)
+                    visualize(*s);
 
-                    advance(cstNode->endPosition);
-                    writer.keyword("end");
-                }
-                else
-                {
-                    for (const auto& s : block->body)
-                        visualize(*s);
-
-                    writer.advance(block->location.end);
-                    writeEnd(program.location);
-                }
+                advance(cstNode->endPosition);
+                writer.keyword("end");
             }
             else
             {
-                writer.keyword("do");
                 for (const auto& s : block->body)
                     visualize(*s);
-                if (const auto cstNode = lookupCstNode<CstStatDo_DEPRECATED>(block))
-                {
-                    advance(cstNode->endPosition);
-                    writer.keyword("end");
-                }
-                else
-                {
-                    writer.advance(block->location.end);
-                    writeEnd(program.location);
-                }
+
+                writer.advance(block->location.end);
+                writeEnd(program.location);
             }
         }
         else if (const auto& a = program.as<AstStatIf>())
@@ -1495,28 +1489,8 @@ struct Printer
     void visualizeAttribute(AstAttr& attribute)
     {
         advance(attribute.location.begin);
-        switch (attribute.type)
-        {
-        case AstAttr::Checked:
-            writer.keyword("@checked");
-            break;
-        case AstAttr::Native:
-            writer.keyword("@native");
-            break;
-        case AstAttr::Deprecated:
-            writer.keyword("@deprecated");
-            break;
-        case AstAttr::DebugNoinline:
-            if (FFlag::DebugLuauNoInline)
-            {
-                writer.keyword("@debugnoinline");
-                break;
-            }
-            LUAU_FALLTHROUGH;
-        case AstAttr::Unknown:
-            writer.keyword("@" + std::string{attribute.name.value});
-            break;
-        }
+        writer.symbol("@");
+        writer.identifier(attribute.name.value);
     }
 
     void visualizeTypeAnnotation(AstType& typeAnnotation)
@@ -1900,8 +1874,6 @@ struct Printer
 
     void visualizeExplicitTypeInstantiation(const AstArray<AstTypeOrPack>& typeArguments, const CstTypeInstantiation* cstNode)
     {
-        LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
-
         if (cstNode)
         {
             advance(cstNode->leftArrow1Position);

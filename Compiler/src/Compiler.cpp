@@ -29,12 +29,10 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-LUAU_FASTFLAGVARIABLE(LuauCompileDuptableConstantPack)
+LUAU_FASTFLAGVARIABLE(LuauCompileDuptableConstantPack2)
 LUAU_FASTFLAGVARIABLE(LuauCompileVectorReveseMul)
-LUAU_FASTFLAGVARIABLE(LuauCompileTableIndexTemp)
-LUAU_FASTFLAGVARIABLE(LuauCompileVectorConstLimit)
-
+LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpWithZero)
 LUAU_FASTFLAG(DebugLuauNoInline)
 
 namespace Luau
@@ -1310,7 +1308,7 @@ struct Compiler
     {
         const Constant* cv = constants.find(node);
 
-        return cv && cv->type != Constant::Type_Unknown;
+        return (cv != nullptr) && cv->type != Constant::Type_Unknown;
     }
 
     bool isConstantTrue(AstExpr* node)
@@ -1327,7 +1325,14 @@ struct Compiler
     {
         const Constant* cv = constants.find(node);
 
-        return cv && cv->type == Constant::Type_Vector;
+        return (cv != nullptr) && cv->type == Constant::Type_Vector;
+    }
+
+    bool isConstantInteger(AstExpr* node)
+    {
+        const Constant* cv = constants.find(node);
+
+        return cv && cv->type == Constant::Type_Integer;
     }
 
     Constant getConstant(AstExpr* node)
@@ -1353,8 +1358,8 @@ struct Compiler
                 std::swap(left, right);
         }
 
-        // disable fast path for vectors because supporting it would require a new opcode
-        if (operandIsConstant && isConstantVector(right))
+        // disable fast path for vectors and integers because supporting it would require a new opcode
+        if (operandIsConstant && (isConstantVector(right) || (FFlag::LuauIntegerType && isConstantInteger(right))))
             operandIsConstant = false;
 
         uint8_t rl = compileExprAuto(left, rs);
@@ -1464,6 +1469,10 @@ struct Compiler
 
         case Constant::Type_Number:
             cid = bytecode.addConstantNumber(c->valueNumber);
+            break;
+
+        case Constant::Type_Integer:
+            cid = bytecode.addConstantInteger(c->valueInteger64);
             break;
 
         case Constant::Type_Vector:
@@ -1701,6 +1710,18 @@ struct Compiler
     void compileExprUnary(AstExprUnary* expr, uint8_t target)
     {
         RegScope rs(this);
+
+        // Special case for integer constants, like -1000000000i
+        AstExprConstantInteger* cint = expr->expr->as<AstExprConstantInteger>();
+        if (FFlag::LuauIntegerType && (expr->op == AstExprUnary::Minus) && (cint != nullptr))
+        {
+            int32_t cid = bytecode.addConstantInteger((int64_t)(~(uint64_t)cint->value + 1));
+            if (cid < 0)
+                CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+            emitLoadK(target, cid);
+            return;
+        }
 
         uint8_t re = compileExprAuto(expr->expr, rs);
 
@@ -1968,9 +1989,19 @@ struct Compiler
         int32_t formatStringIndex = -1;
 
         if (formatString.empty())
+        {
             formatStringIndex = bytecode.addConstantString({"", 0});
+        }
+        else if (FFlag::LuauCompileStringInterpWithZero)
+        {
+            AstName interned = names.getOrAdd(formatString.c_str(), formatString.size());
+            AstArray<const char> formatStringArray{interned.value, formatString.size()};
+            formatStringIndex = bytecode.addConstantString(sref(formatStringArray));
+        }
         else
+        {
             formatStringIndex = bytecode.addConstantString(sref(names.getOrAdd(formatString.c_str(), formatString.size())));
+        }
 
         if (formatStringIndex < 0)
             CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
@@ -2070,7 +2101,8 @@ struct Compiler
         uint8_t reg = targetTemp ? target : allocReg(expr, 1u);
 
         // flattening operation where we only load the last element
-        // this optimizes for tables like: { data = 43, data = function() end, data = 9 }
+        // this optimizes for tables like: { data = 43, data = "true", data = 9 }
+        // this does not optimize for tables such as: { data = 43, data = function() end, data = 9}
         // in this case, we know that data = 9 should be the element, so we can just skip the rest
         InsertionOrderedMap<int32_t, int32_t> lastKeyVal;
         // Optimization: when all items are record fields, use template tables to compile expression
@@ -2078,7 +2110,7 @@ struct Compiler
         {
             BytecodeBuilder::TableShape shape;
 
-            if (FFlag::LuauCompileDuptableConstantPack)
+            if (FFlag::LuauCompileDuptableConstantPack2)
             {
                 for (size_t i = 0; i < expr->items.size; ++i)
                 {
@@ -2093,6 +2125,9 @@ struct Compiler
                         CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
 
                     int32_t valueCid = getConstantIndex(item.value);
+                    if (lastKeyVal.contains(keyCid) && lastKeyVal[keyCid] == -1)
+                        continue;
+
                     lastKeyVal[keyCid] = valueCid;
                 }
 
@@ -2145,7 +2180,7 @@ struct Compiler
             else
             {
                 // must disable duptable constant optimization here, as we're defaulting back to new table
-                if (FFlag::LuauCompileDuptableConstantPack)
+                if (FFlag::LuauCompileDuptableConstantPack2)
                 {
                     shape.hasConstants = false;
                     lastKeyVal.clear();
@@ -2191,7 +2226,7 @@ struct Compiler
             AstExpr* key = item.key;
             AstExpr* value = item.value;
 
-            if (FFlag::LuauCompileDuptableConstantPack && lastKeyVal.size() > 0 && key && key->is<AstExprConstantString>())
+            if (FFlag::LuauCompileDuptableConstantPack2 && lastKeyVal.size() > 0 && key && key->is<AstExprConstantString>())
             {
                 AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
                 LUAU_ASSERT(ckey);
@@ -2317,17 +2352,14 @@ struct Compiler
 
         RegScope rs(this);
 
-        uint8_t reg = FFlag::LuauCompileTableIndexTemp ? target : compileExprAuto(expr->expr, rs);
+        uint8_t reg = target;
 
-        if (FFlag::LuauCompileTableIndexTemp)
-        {
-            if (int localReg = getExprLocalReg(expr->expr); localReg >= 0) // Locals can be indexed directly
-                reg = uint8_t(localReg);
-            else if (targetTemp) // If target is a temp register, we can clobber it which allows us to compute the result directly into it
-                compileExprTemp(expr->expr, target);
-            else
-                reg = compileExprAuto(expr->expr, rs);
-        }
+        if (int localReg = getExprLocalReg(expr->expr); localReg >= 0) // Locals can be indexed directly
+            reg = uint8_t(localReg);
+        else if (targetTemp) // If target is a temp register, we can clobber it which allows us to compute the result directly into it
+            compileExprTemp(expr->expr, target);
+        else
+            reg = compileExprAuto(expr->expr, rs);
 
         setDebugLine(expr->indexLocation);
 
@@ -2455,10 +2487,22 @@ struct Compiler
         }
         break;
 
+        case Constant::Type_Integer:
+        {
+            int64_t l = cv->valueInteger64;
+
+            int32_t cid = bytecode.addConstantInteger(l);
+            if (cid < 0)
+                CompileError::raise(node->location, "Exceeded constant limit; simplify the code to compile");
+
+            emitLoadK(target, cid);
+        }
+        break;
+
         case Constant::Type_Vector:
         {
             int32_t cid = bytecode.addConstantVector(cv->valueVector[0], cv->valueVector[1], cv->valueVector[2], cv->valueVector[3]);
-            if (FFlag::LuauCompileVectorConstLimit && cid < 0)
+            if (cid < 0)
                 CompileError::raise(node->location, "Exceeded constant limit; simplify the code to compile");
 
             emitLoadK(target, cid);
@@ -2559,10 +2603,7 @@ struct Compiler
         }
         else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
         {
-            if (FFlag::LuauCompileTableIndexTemp)
-                compileExprIndexName(expr, target, targetTemp);
-            else
-                compileExprIndexName(expr, target);
+            compileExprIndexName(expr, target, targetTemp);
         }
         else if (AstExprIndexExpr* expr = node->as<AstExprIndexExpr>())
         {
@@ -2598,7 +2639,6 @@ struct Compiler
         }
         else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
         {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
             compileExpr(expr->expr, target, targetTemp);
         }
         else
@@ -4706,6 +4746,14 @@ void setCompileConstantNumber(CompileConstant* constant, double n)
 
     target->type = Compile::Constant::Type_Number;
     target->valueNumber = n;
+}
+
+void setCompileConstantInteger64(CompileConstant* constant, int64_t l)
+{
+    Compile::Constant* target = reinterpret_cast<Compile::Constant*>(constant);
+
+    target->type = Compile::Constant::Type_Integer;
+    target->valueInteger64 = l;
 }
 
 void setCompileConstantVector(CompileConstant* constant, float x, float y, float z, float w)

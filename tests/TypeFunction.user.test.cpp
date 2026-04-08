@@ -11,8 +11,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
+LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauDontIncludeVarargWithAnnotation)
 LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAG(LuauUdtfReserveStack)
 LUAU_FASTFLAG(LuauTypeFunctionTypeIsSubtypeOf)
@@ -2796,7 +2796,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_basic_match")
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag noErrors{FFlag::LuauDontIncludeVarargWithAnnotation, true};
     CheckResult results = check(R"(
         type function identity(t: type)
             return t
@@ -2914,6 +2913,24 @@ local x: many<number, any, any, any, any, any, any, any, any, any, any, any, any
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_unsupported_type_function_application_error")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag structuredErrors{FFlag::LuauTypeFunctionStructuredErrors, true};
+
+    CheckResult result = check(R"(
+local function f<D, L>(data: D & {}, index: L | "Test"): index<D, L>
+    return data[index]
+end
+
+local test = f :: test<typeof(f)>
+type function test(t: type) return t end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Type functions do not currently support types of the form 'index<D, L>'");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof")

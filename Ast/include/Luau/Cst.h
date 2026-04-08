@@ -61,10 +61,20 @@ public:
     AstArray<char> value;
 };
 
+class CstExprConstantInteger : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstExprConstantInteger)
+
+    explicit CstExprConstantInteger(const AstArray<char>& value);
+
+    AstArray<char> value;
+};
+
 class CstExprConstantString : public CstNode
 {
 public:
-    LUAU_CST_RTTI(CstExprConstantNumber)
+    LUAU_CST_RTTI(CstExprConstantString)
 
     enum QuoteStyle
     {
@@ -221,17 +231,6 @@ public:
     explicit CstStatDo(Position statsStartPosition, Position endPosition);
 
     Position statsStartPosition;
-    Position endPosition;
-};
-
-// Clip with FFlag::LuauCstStatBlock
-class CstStatDo_DEPRECATED : public CstNode
-{
-public:
-    LUAU_CST_RTTI(CstStatDo_DEPRECATED)
-
-    explicit CstStatDo_DEPRECATED(Position endPosition);
-
     Position endPosition;
 };
 

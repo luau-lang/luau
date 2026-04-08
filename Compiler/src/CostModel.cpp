@@ -10,8 +10,6 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
-
 namespace Luau
 {
 namespace Compile
@@ -123,7 +121,7 @@ struct CostVisitor : AstVisitor
             return model(expr->expr);
         }
         else if (node->is<AstExprConstantNil>() || node->is<AstExprConstantBool>() || node->is<AstExprConstantNumber>() ||
-                 node->is<AstExprConstantString>())
+                 node->is<AstExprConstantString>() || node->is<AstExprConstantInteger>())
         {
             return Cost(0, Cost::kLiteral);
         }
@@ -220,7 +218,6 @@ struct CostVisitor : AstVisitor
         }
         else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
         {
-            LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSyntax);
             return model(expr->expr);
         }
         else
