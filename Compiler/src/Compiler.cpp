@@ -2037,7 +2037,7 @@ struct Compiler
         bytecode.emitABC(LOP_NAMECALL, baseReg, baseReg, uint8_t(BytecodeBuilder::getStringHash(formatMethod)));
         bytecode.emitAux(formatMethodIndex);
         bytecode.emitABC(LOP_CALL, baseReg, uint8_t(expr->expressions.size + 2 - skippedSubExpr), 2);
-        if (!targetTop)
+        if (target != baseReg)
             bytecode.emitABC(LOP_MOVE, target, baseReg, 0);
     }
 
