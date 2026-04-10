@@ -228,7 +228,7 @@ type DateTypeResult = {
 declare os: {
     time: (time: DateTypeArg?) -> number,
     date: ((formatString: "*t" | "!*t", time: number?) -> DateTypeResult) & ((formatString: string?, time: number?) -> string),
-    difftime: (t2: DateTypeResult | number, t1: DateTypeResult | number) -> number,
+    difftime: (t2: number, t1: number) -> number,
     clock: () -> number,
 }
 
