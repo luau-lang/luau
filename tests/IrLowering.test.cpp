@@ -18,7 +18,6 @@
 
 LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
-LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
 LUAU_FASTFLAG(LuauCodegenGcoDse2)
@@ -26,10 +25,7 @@ LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenRemoveDuplicateDoubleIntValues)
 LUAU_FASTFLAG(LuauCompileExtraTypes)
 LUAU_FASTFLAG(LuauCompileVectorReveseMul)
-LUAU_FASTFLAG(LuauCodegenDsoPairTrackFix)
-LUAU_FASTFLAG(LuauCodegenDsoTagOverlayFix)
 LUAU_FASTFLAG(LuauCodegenLengthBaseInst)
-LUAU_FASTFLAG(LuauCodegenTruncatedSubsts)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
 
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
@@ -513,9 +509,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorLerp")
 {
-    ScopedFastFlag _[]{
-        {FFlag::LuauCodegenBlockSafeEnv, true},
-    };
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vec3lerp(a: vector, b: vector, t: number)
@@ -552,7 +545,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorMinMax")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -587,7 +579,6 @@ bb_bytecode_1:
 }
 TEST_CASE_FIXTURE(LoweringFixture, "VectorFloorCeilAbs")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -624,7 +615,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "ExtraMathMemoryOperands")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -666,8 +656,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "DseInitialStackState")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo()
@@ -702,8 +690,6 @@ bb_2:
 
 TEST_CASE_FIXTURE(LoweringFixture, "DseInitialStackState2")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo(a)
@@ -980,7 +966,6 @@ bb_bytecode_5:
 
 TEST_CASE_FIXTURE(LoweringFixture, "TypeCompare")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -1011,7 +996,6 @@ bb_bytecode_2:
 
 TEST_CASE_FIXTURE(LoweringFixture, "TypeofCompare")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -1041,7 +1025,6 @@ bb_bytecode_2:
 
 TEST_CASE_FIXTURE(LoweringFixture, "TypeofCompareCustom")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -1073,7 +1056,6 @@ bb_bytecode_2:
 
 TEST_CASE_FIXTURE(LoweringFixture, "TypeCondition")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -1117,7 +1099,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "TypeCondition2")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -1166,7 +1147,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "AssertTypeGuard")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -1599,7 +1579,6 @@ bb_6:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorLoadFloatPropagation")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState3, true};
 
     CHECK_EQ(
@@ -1633,7 +1612,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorLibraryChain")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -1949,7 +1927,6 @@ bb_4:
 
 TEST_CASE_FIXTURE(LoweringFixture, "EntryBlockChecksAreNotInferred")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState3, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -2004,7 +1981,6 @@ bb_bytecode_4:
 
 TEST_CASE_FIXTURE(LoweringFixture, "EntryBlockChecksWithOptional1")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState3, true};
 
     CHECK_EQ(
@@ -2049,7 +2025,6 @@ bb_bytecode_2:
 
 TEST_CASE_FIXTURE(LoweringFixture, "EntryBlockChecksWithOptional2")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState3, true};
 
     CHECK_EQ(
@@ -2093,7 +2068,6 @@ bb_bytecode_2:
 // This test captures how R4 check was previously incorrectly removed
 TEST_CASE_FIXTURE(LoweringFixture, "EntryBlockChecksWithOptional3")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState3, true};
 
     CHECK_EQ(
@@ -2152,7 +2126,6 @@ bb_bytecode_2:
 
 TEST_CASE_FIXTURE(LoweringFixture, "ExplicitUpvalueAndLocalTypes")
 {
-    ScopedFastFlag luauCodegenDsoPairTrackFix{FFlag::LuauCodegenDsoPairTrackFix, true};
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
 
     CHECK_EQ(
@@ -2856,7 +2829,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "TableNodeLoadStoreProp5")
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -3053,7 +3025,6 @@ bb_linear_11:
 #if LUA_VECTOR_SIZE == 3
 TEST_CASE_FIXTURE(LoweringFixture, "FastcallTypeInferThroughLocal")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
     ScopedFastFlag luauCodegenPropRegisterTagsAcrossChains{FFlag::LuauCodegenPropagateTagsAcrossChains2, true};
@@ -3111,8 +3082,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "FastcallTypeInferThroughUpvalue")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-    ScopedFastFlag luauCodegenDsoPairTrackFix{FFlag::LuauCodegenDsoPairTrackFix, true};
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -3255,7 +3224,6 @@ bb_bytecode_4:
 #if LUA_VECTOR_SIZE == 3
 TEST_CASE_FIXTURE(LoweringFixture, "ArgumentTypeRefinement")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -3640,8 +3608,6 @@ end
 
 TEST_CASE_FIXTURE(LoweringFixture, "ForInManualAnnotation")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -4187,8 +4153,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "CustomUserdataMapping")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
@@ -4333,8 +4297,6 @@ bb_bytecode_0:
 
 TEST_CASE_FIXTURE(LoweringFixture, "MathIsNan")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo(a: number)
@@ -4362,8 +4324,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "Bit32BtestDirect")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo(a: number)
@@ -4393,7 +4353,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "Bit32ReplaceDirect")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -4448,8 +4407,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "Bit32ExtractDirect")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo(a: number, b: number)
@@ -4488,7 +4445,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "Bit32SingleArg")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
 
     CHECK_EQ(
@@ -4529,8 +4485,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "Bit32SingleArgBtest")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function foo(a: number)
@@ -4590,8 +4544,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorShuffle1")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-
     // TODO: opportunity - if we introduce a separate vector shuffle instruction, this can be done in a single shuffle (+/- load and store)
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -4621,7 +4573,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorShuffle2")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -4730,8 +4681,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorCreateXY")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -4820,7 +4769,6 @@ bb_bytecode_3:
 
 TEST_CASE_FIXTURE(LoweringFixture, "ComparisonPropagationWall")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -4867,7 +4815,6 @@ bb_bytecode_2:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorLoadStoreOnlySamePrecision")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -4987,7 +4934,6 @@ bb_bytecode_3:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesPositiveBase")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5033,7 +4979,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesPositiveBaseInverted")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5081,7 +5026,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesPositiveDynamicBase")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5139,7 +5083,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesPositiveLoopRangeBase")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState3, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
@@ -5231,7 +5174,6 @@ bb_bytecode_3:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesPositiveAdvancingBase")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5290,7 +5232,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesNegativeBase")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5339,7 +5280,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesMixedBase")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5385,7 +5325,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferSanityPositive")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5453,7 +5392,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferSanityNegative")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5521,7 +5459,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "NumericConversionReplacementCheck")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5568,7 +5505,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesPositiveMultBase")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5617,7 +5553,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesPositiveMultBase2")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5672,7 +5607,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesPositiveMultBaseInt")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5727,7 +5661,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesMixedSizes")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -5772,7 +5705,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferVmExitSync")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
 
@@ -5826,7 +5758,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "Bit32NoDoubleTemporariesAdd")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -5875,7 +5806,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "Bit32HasToUseDoubleTemporariesAdd")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -5927,7 +5857,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "Bit32NoDoubleTemporariesSub")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -5976,7 +5905,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "Bit32HasToUseDoubleTemporariesSub")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -6262,7 +6190,6 @@ end
 
 TEST_CASE_FIXTURE(LoweringFixture, "FuzzTagsAcrossChains")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -6498,8 +6425,6 @@ end
 
 TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest12")
 {
-    ScopedFastFlag luauCodegenTruncatedSubsts{FFlag::LuauCodegenTruncatedSubsts, true};
-
     // Check that this compiles with no assertions
     CHECK(
         getCodegenAssembly(R"(
@@ -6532,7 +6457,6 @@ end
 
 TEST_CASE_FIXTURE(LoweringFixture, "UpvalueAccessLoadStore1")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
 
     CHECK_EQ(
@@ -6577,8 +6501,6 @@ bb_bytecode_0:
 
 TEST_CASE_FIXTURE(LoweringFixture, "UpvalueAccessLoadStore2")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-
     // TODO: opportunity - if the value was just stored to VM register in parts, we can use those parts to store upvalue
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -6622,8 +6544,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "UpvalueAccessLoadStore3")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local m = 1
@@ -6667,7 +6587,6 @@ bb_bytecode_0:
 
 TEST_CASE_FIXTURE(LoweringFixture, "UpvalueAccessLoadStore4")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState3, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -6804,7 +6723,6 @@ bb_bytecode_3:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferLoadStoreProp1")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -6844,7 +6762,6 @@ bb_bytecode_1:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferLoadStoreProp2")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
 
     CHECK_EQ(
@@ -6897,7 +6814,6 @@ bb_8:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferLoadStoreProp3")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
 
     CHECK_EQ(
@@ -7007,9 +6923,7 @@ bb_68:
 TEST_CASE_FIXTURE(LoweringFixture, "BufferLoadStoreProp4")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
-    ScopedFastFlag luauCodegenTruncatedSubsts{FFlag::LuauCodegenTruncatedSubsts, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -7267,7 +7181,6 @@ bb_bytecode_3:
 TEST_CASE_FIXTURE(LoweringFixture, "UintSourceSanity")
 {
     ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
@@ -7335,7 +7248,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "LibmIsPure")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
     ScopedFastFlag luauCompileExtraTypes{FFlag::LuauCompileExtraTypes, true};
@@ -7389,7 +7301,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VecOpReuse")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
 
@@ -7438,7 +7349,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VecOpReuse2")
 {
-    ScopedFastFlag luauCodegenBlockSafeEnv{FFlag::LuauCodegenBlockSafeEnv, true};
     ScopedFastFlag luauCompileVectorReveseMul{FFlag::LuauCompileVectorReveseMul, true};
 
     CHECK_EQ(

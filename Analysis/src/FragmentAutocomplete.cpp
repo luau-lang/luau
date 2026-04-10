@@ -30,7 +30,7 @@ LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 
 namespace Luau
 {
@@ -1218,7 +1218,7 @@ FragmentTypeCheckResult typecheckFragment_(
 
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::ConstraintSolverEnd);
 
-    if (FFlag::LuauOverloadGetsInstantiated)
+    if (FFlag::LuauOverloadGetsInstantiated2)
     {
         ExpectedTypeVisitor etv{
             NotNull{&incrementalModule->astTypes},

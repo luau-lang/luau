@@ -42,3 +42,5 @@ type summary add --expand -x "^Proto$" -F lldb_formatters.luau_proto_summary
 type synthetic add -x "^Proto$" -l lldb_formatters.ProtoSyntheticChildrenProvider
 
 type summary add --expand -x "^Closure$" -F lldb_formatters.luau_closure_summary
+
+type synthetic add -x "^lua_State$" -l lldb_formatters.LuaStateSyntheticChildrenProvider

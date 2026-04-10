@@ -7,7 +7,7 @@
 #include "Luau/DenseHash.h"
 #include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
-#include "Luau/OverloadResolution.h"
+#include "Luau/OverloadResolver.h"
 #include "Luau/Subtyping.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"

@@ -13,6 +13,7 @@
 #include <climits>
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
+LUAU_FASTFLAGVARIABLE(LuauLinterVectorPrimitive)
 
 namespace Luau
 {
@@ -1177,7 +1178,7 @@ private:
     {
         Kind_Unknown,
         Kind_Primitive, // primitive type supported by VM - boolean/userdata/etc. No differentiation between types of userdata.
-        Kind_Vector,    // 'vector' but only used when type is used
+        Kind_Vector,    // 'vector' but only used when type is used. Remove when `LuauLinterVectorPrimitive` is clipped
         Kind_Userdata,  // custom userdata type
     };
 
@@ -1188,7 +1189,12 @@ private:
             return Kind_Primitive;
 
         if (name == "vector")
-            return Kind_Vector;
+        {
+            if (FFlag::LuauLinterVectorPrimitive)
+                return Kind_Primitive;
+            else
+                return Kind_Vector;
+        }
 
         if (std::optional<TypeFun> maybeTy = context->scope->lookupType(name))
             return Kind_Userdata;

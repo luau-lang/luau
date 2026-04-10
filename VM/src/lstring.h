@@ -18,6 +18,12 @@
 
 #define luaS_fix(s) l_setbit((s)->marked, FIXEDBIT)
 
+#define luaS_updateatom(L, ts) \
+    { \
+        if (ts->atom == ATOM_UNDEF) \
+            ts->atom = L->global->cb.useratom ? L->global->cb.useratom(L, ts->data, ts->len) : -1; \
+    }
+
 LUAI_FUNC unsigned int luaS_hash(const char* str, size_t len);
 
 LUAI_FUNC void luaS_resize(lua_State* L, int newsize);

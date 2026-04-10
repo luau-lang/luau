@@ -3,6 +3,7 @@
 
 #include "Luau/AssemblyBuilderX64.h"
 #include "Luau/IrCallWrapperX64.h"
+#include "Luau/IrData.h"
 #include "Luau/IrRegAllocX64.h"
 #include "Luau/RegisterX64.h"
 
@@ -12,6 +13,7 @@
 #include "lstate.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodeGenCallWrapperEmitInst)
+LUAU_FASTFLAG(LuauCodegenSuggestArgumentRegisterX64)
 
 namespace Luau
 {
@@ -426,8 +428,19 @@ void emitInstForGLoop(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, in
     // This is a fast-path for builtin table iteration, tag check for 'ra' has to be performed before emitting this instruction
 
     // Registers are chosen in this way to simplify fallback code for the node part
-    RegisterX64 table = (build.abi == ABIX64::Windows) ? rdx : rsi;
-    RegisterX64 index = (build.abi == ABIX64::Windows) ? r8 : rdx;
+    RegisterX64 table{};
+    RegisterX64 index{};
+    if (FFlag::LuauCodegenSuggestArgumentRegisterX64)
+    {
+        table = IrCallWrapperX64::suggestArgumentRegister<1>(SizeX64::qword, build);
+        index = IrCallWrapperX64::suggestArgumentRegister<2>(SizeX64::qword, build);
+    }
+    else
+    {
+        table = (build.abi == ABIX64::Windows) ? rdx : rsi;
+        index = (build.abi == ABIX64::Windows) ? r8 : rdx;
+    }
+
     RegisterX64 elemPtr = rax;
 
     build.mov(table, luauRegValue(ra + 1));
