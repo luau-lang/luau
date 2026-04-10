@@ -49,6 +49,7 @@ LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauKeepExplicitMapForGlobalTypes2)
 LUAU_FASTFLAGVARIABLE(LuauRefinementTypeVector)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
+LUAU_FASTFLAGVARIABLE(LuauDeprecatedAttributeOnAnonymousFunctions)
 
 namespace Luau
 {
@@ -2948,6 +2949,9 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprFunction* fun
             std::vector<TypeId>{},
         }
     );
+
+    if (FFlag::LuauDeprecatedAttributeOnAnonymousFunctions)
+        propagateDeprecatedAttributeToConstraint(gc->c, func);
 
     sig.signatureScope->interiorFreeTypes = std::move(interiorFreeTypes.back().types);
     sig.signatureScope->interiorFreeTypePacks = std::move(interiorFreeTypes.back().typePacks);

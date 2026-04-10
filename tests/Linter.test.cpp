@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauLinterVectorPrimitive)
+LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 
 using namespace Luau;
 
@@ -1881,6 +1882,21 @@ end
 
         REQUIRE(1 == result.warnings.size());
         checkDeprecatedWarning(result.warnings[0], Position(12, 0), Position(12, 22), "Member 'deposit' is deprecated");
+    }
+
+    // @deprecated works on anonymous functions assigned to locals
+    {
+        ScopedFastFlag sflag{FFlag::LuauDeprecatedAttributeOnAnonymousFunctions, true};
+
+        LintResult result = lint(R"(
+local foo = @deprecated function()
+end
+
+foo()
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(result.warnings[0], Position(4, 0), Position(4, 3), "Function 'foo' is deprecated");
     }
 }
 
