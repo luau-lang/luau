@@ -31,8 +31,8 @@ LUAU_FASTFLAG(LuauGeneralizationMoreAwareOfBounds3)
 LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
-LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -3204,7 +3204,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_crash_when_setmetatable_does_not_produc
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
     CheckResult result = check("local x = setmetatable({})");
@@ -6103,7 +6103,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_insert_type_mismatch")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
     CheckResult result = check(R"(
@@ -6663,7 +6663,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "oss_1986")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type A<T> = { s: T, n: number? }
@@ -6678,7 +6678,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1986")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1947_partial")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
 
     // This fixes _one_ case of the given OSS issue, but we don't do
     // bidirectional inference of lambdas afterward.
@@ -6692,7 +6692,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1947_partial")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1890")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type ListConfig<T> = {

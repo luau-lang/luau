@@ -12,7 +12,7 @@
 #include "Luau/Instantiation.h"
 #include "Luau/Metamethods.h"
 #include "Luau/Normalize.h"
-#include "Luau/OverloadResolution.h"
+#include "Luau/OverloadResolver.h"
 #include "Luau/Subtyping.h"
 #include "Luau/TimeTrace.h"
 #include "Luau/ToString.h"

@@ -22,16 +22,14 @@ LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
-LUAU_FASTFLAG(LuauCodegenDsoPairTrackFix)
 LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
-LUAU_FASTFLAGVARIABLE(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSetBlockEntryState3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLengthBaseInst)
-LUAU_FASTFLAG(LuauCodegenTruncatedSubsts)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateTagsAcrossChains2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDuplicateDoubleIntValues)
+LUAU_FASTFLAGVARIABLE(LuauCodegenPreciseDupTableEffect)
 
 namespace Luau
 {
@@ -1876,23 +1874,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
             // We know the tag of some instructions that result in TValue
             if (tag == 0xff)
-            {
-                if (FFlag::LuauCodegenDsoPairTrackFix)
-                {
-                    tag = tryGetOperandTag(function, OP_B(inst)).value_or(kUnknownTag);
-                }
-                else
-                {
-                    if (IrInst* arg = function.asInstOp(OP_B(inst)))
-                    {
-                        if (arg->cmd == IrCmd::TAG_VECTOR)
-                            tag = LUA_TVECTOR;
-
-                        if (arg->cmd == IrCmd::LOAD_TVALUE && HAS_OP_C(*arg))
-                            tag = function.tagOp(OP_C(arg));
-                    }
-                }
-            }
+                tag = tryGetOperandTag(function, OP_B(inst)).value_or(kUnknownTag);
 
             IrOp value = state.tryGetValue(OP_B(inst));
 
@@ -2766,14 +2748,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         break;
     case IrCmd::UINT_TO_NUM:
     case IrCmd::UINT_TO_FLOAT:
-        if (FFlag::LuauCodegenTruncatedSubsts)
+        // UINT_TO_***(TRUNCATE_UINT(NUM_TO_UINT(x)) => UINT_TO_***(NUM_TO_UINT(x)) since instruction handles truncation of NUM_TO_UINT result
+        if (IrInst* src = function.asInstOp(OP_A(inst)); src && src->cmd == IrCmd::TRUNCATE_UINT)
         {
-            // UINT_TO_***(TRUNCATE_UINT(NUM_TO_UINT(x)) => UINT_TO_***(NUM_TO_UINT(x)) since instruction handles truncation of NUM_TO_UINT result
-            if (IrInst* src = function.asInstOp(OP_A(inst)); src && src->cmd == IrCmd::TRUNCATE_UINT)
-            {
-                if (IrInst* srcOfSrc = function.asInstOp(OP_A(src)); srcOfSrc && srcOfSrc->cmd == IrCmd::NUM_TO_UINT)
-                    replace(function, OP_A(inst), OP_A(src));
-            }
+            if (IrInst* srcOfSrc = function.asInstOp(OP_A(src)); srcOfSrc && srcOfSrc->cmd == IrCmd::NUM_TO_UINT)
+                replace(function, OP_A(inst), OP_A(src));
         }
 
         state.substituteOrRecord(inst, index);
@@ -3166,6 +3145,12 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         break;
     case IrCmd::FALLBACK_DUPCLOSURE:
         state.invalidate(OP_B(inst));
+
+        if (FFlag::LuauCodegenPreciseDupTableEffect)
+        {
+            // GC assist inside DUPCLOSURE might modify table data (hash part)
+            state.invalidateHeapTableData();
+        }
         break;
     case IrCmd::FALLBACK_FORGPREP:
         state.invalidate(IrOp{OP_B(inst).kind, vmRegOp(OP_B(inst)) + 0u});
@@ -3240,12 +3225,9 @@ static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& s
 {
     IrFunction& function = build.function;
 
-    if (FFlag::LuauCodegenBlockSafeEnv)
-    {
-        // Block might establish a safe environment right at the start
-        if ((block.flags & kBlockFlagSafeEnvCheck) != 0)
-            state.inSafeEnv = true;
-    }
+    // Block might establish a safe environment right at the start
+    if ((block.flags & kBlockFlagSafeEnvCheck) != 0)
+        state.inSafeEnv = true;
 
     for (uint32_t index = block.start; index <= block.finish; index++)
     {
@@ -3284,12 +3266,9 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
         CODEGEN_ASSERT(!visited[blockIdx]);
         visited[blockIdx] = true;
 
-        if (FFlag::LuauCodegenBlockSafeEnv)
-        {
-            // If we are still in safe env, block doesn't need to re-establish it
-            if (state.inSafeEnv && (block->flags & kBlockFlagSafeEnvCheck) != 0)
-                block->flags &= ~kBlockFlagSafeEnvCheck;
-        }
+        // If we are still in safe env, block doesn't need to re-establish it
+        if (state.inSafeEnv && (block->flags & kBlockFlagSafeEnvCheck) != 0)
+            block->flags &= ~kBlockFlagSafeEnvCheck;
 
         constPropInBlock(build, *block, state);
 

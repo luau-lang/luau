@@ -24,6 +24,7 @@ LUAU_FASTFLAGVARIABLE(DesugaredArrayTypeReferenceIsEmpty)
 LUAU_FASTFLAGVARIABLE(LuauConst2)
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(LuauExternReadWriteAttributes)
+LUAU_FASTFLAGVARIABLE(LuauConstJustReportErrorForUnderfill)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -1229,7 +1230,7 @@ AstStat* Parser::parseLocal(const Location start, const Position keywordPosition
 
         Location location{start.begin, body->location.end};
 
-        AstStatLocalFunction* node = allocator.alloc<AstStatLocalFunction>(location, var, body);
+        AstStatLocalFunction* node = allocator.alloc<AstStatLocalFunction>(location, var, body, isConst);
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstStatLocalFunction>(keywordPosition, functionKeywordPosition);
         return node;
@@ -1279,16 +1280,43 @@ AstStat* Parser::parseLocal(const Location start, const Position keywordPosition
 
         Location end = values.empty() ? lexer.previousLocation() : values.back()->location;
 
-        if (isConst && !isEnoughValues(values, vars.size()))
-            return reportStatError(Location(start, end), {}, {}, "Missing initializer in const declaration");
-
-        AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation);
-        if (options.storeCstData)
+        if (FFlag::LuauConstJustReportErrorForUnderfill)
         {
-            cstNodeMap[node] = allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
-        }
+            AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation, isConst);
+            if (options.storeCstData)
+            {
+                cstNodeMap[node] =
+                    allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
+            }
 
-        return node;
+            // It is a syntax error when a const declaration *definitely* does 
+            // not have enough values, for example:
+            //
+            //  const foo
+            //  const bar, baz = 42
+            //
+            // Both error as there's probably user error (`foo` and `baz` can
+            // only ever be `nil`). We report an error but return the
+            // declaration as-is, as it's still reasonable syntactically.
+            if (isConst && !isEnoughValues(values, vars.size()))
+                report(node->location, "Missing initializer in const declaration");
+
+            return node;
+        }
+        else
+        {
+            if (isConst && !isEnoughValues(values, vars.size()))
+                return reportStatError(Location(start, end), {}, {}, "Missing initializer in const declaration");
+
+            AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation, isConst);
+            if (options.storeCstData)
+            {
+                cstNodeMap[node] =
+                    allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
+            }
+
+            return node;
+        }
     }
 }
 

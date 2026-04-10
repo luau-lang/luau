@@ -14,6 +14,7 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAGVARIABLE(LuauReplacerIsSolverAgnostic)
+LUAU_FASTFLAGVARIABLE(LuauInstantiationUsesPolarity)
 
 namespace Luau
 {
@@ -214,11 +215,29 @@ std::optional<TypeId> instantiate(
     DenseHashMap<TypeId, TypeId> replacements{nullptr};
     DenseHashMap<TypePackId, TypePackId> replacementPacks{nullptr};
 
-    for (TypeId g : ft->generics)
-        replacements[g] = freshType(arena, builtinTypes, scope);
+    if (FFlag::LuauInstantiationUsesPolarity)
+    {
+        for (TypeId g : ft->generics)
+        {
+            if (auto gen = get<GenericType>(follow(g)))
+                replacements[g] = freshType(arena, builtinTypes, scope, gen->polarity);
+        }
 
-    for (TypePackId g : ft->genericPacks)
-        replacementPacks[g] = arena->freshTypePack(scope);
+        for (TypePackId g : ft->genericPacks)
+        {
+            if (auto gen = get<GenericTypePack>(follow(g)))
+                replacementPacks[g] = arena->freshTypePack(scope, gen->polarity);
+        }
+
+    }
+    else
+    {
+        for (TypeId g : ft->generics)
+            replacements[g] = freshType(arena, builtinTypes, scope);
+
+        for (TypePackId g : ft->genericPacks)
+            replacementPacks[g] = arena->freshTypePack(scope);
+    }
 
     if (FFlag::LuauReplacerRespectsReboundGenerics)
     {

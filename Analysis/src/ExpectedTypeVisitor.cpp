@@ -8,7 +8,7 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 
 namespace Luau
 {
@@ -28,7 +28,7 @@ ExpectedTypeVisitor::ExpectedTypeVisitor(
     , builtinTypes(builtinTypes)
     , rootScope(rootScope)
 {
-    LUAU_ASSERT(!FFlag::LuauOverloadGetsInstantiated);
+    LUAU_ASSERT(!FFlag::LuauOverloadGetsInstantiated2);
 }
 
 ExpectedTypeVisitor::ExpectedTypeVisitor(
@@ -48,7 +48,7 @@ ExpectedTypeVisitor::ExpectedTypeVisitor(
     , builtinTypes(builtinTypes)
     , rootScope(rootScope)
 {
-    LUAU_ASSERT(FFlag::LuauOverloadGetsInstantiated);
+    LUAU_ASSERT(FFlag::LuauOverloadGetsInstantiated2);
 }
 
 bool ExpectedTypeVisitor::visit(AstStatAssign* stat)
@@ -191,7 +191,7 @@ bool ExpectedTypeVisitor::visit(AstExprIndexExpr* expr)
 bool ExpectedTypeVisitor::visit(AstExprCall* expr)
 {
     TypeId* ty = nullptr;
-    if (FFlag::LuauOverloadGetsInstantiated)
+    if (FFlag::LuauOverloadGetsInstantiated2)
     {
         ty = astOverloadResolvedTypes->find(expr);
         if (!ty)
