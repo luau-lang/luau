@@ -23,7 +23,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
 LUAU_FASTFLAG(LuauACOnMTTWriteOnlyPropNoCrash)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 
 using namespace Luau;
 
@@ -5079,7 +5079,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_table_insert")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
     };
 
@@ -5097,7 +5097,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_react")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
     };
 
@@ -5135,6 +5135,29 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_react")
 
     ac = autocomplete('3');
     CHECK(ac.entryMap.count("barbaz") > 0);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "cli_197197_autocomplete_generic_keyof")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+    };
+
+    check(R"(
+        local function ToggleButton<T>(Table: T, Key: keyof<T>)
+            -- don't need to do anything here.
+        end
+
+        local tbl: { Changed: bool, RemoveTag: bool } = nil :: any
+
+        ToggleButton(tbl, "@1")
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("Changed") > 0);
+    CHECK(ac.entryMap.count("RemoveTag") > 0);
 }
 
 

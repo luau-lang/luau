@@ -832,13 +832,15 @@ public:
         const Location& location,
         const AstArray<AstLocal*>& vars,
         const AstArray<AstExpr*>& values,
-        const std::optional<Location>& equalsSignLocation
+        const std::optional<Location>& equalsSignLocation,
+        bool isConst = false
     );
 
     void visit(AstVisitor* visitor) override;
 
     AstArray<AstLocal*> vars;
     AstArray<AstExpr*> values;
+    bool isConst;
 
     std::optional<Location> equalsSignLocation;
 };
@@ -945,12 +947,13 @@ class AstStatLocalFunction : public AstStat
 public:
     LUAU_RTTI(AstStatLocalFunction)
 
-    AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func);
+    AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func, bool isConst = false);
 
     void visit(AstVisitor* visitor) override;
 
     AstLocal* name;
     AstExprFunction* func;
+    bool isConst;
 };
 
 class AstStatTypeAlias : public AstStat

@@ -16,7 +16,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 
@@ -1928,20 +1927,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         break;
     case IrCmd::CHECK_SAFE_ENV:
     {
-        if (FFlag::LuauCodegenBlockSafeEnv)
-        {
-            checkSafeEnv(OP_A(inst), next);
-        }
-        else
-        {
-            ScopedRegX64 tmp{regs, SizeX64::qword};
-
-            build.mov(tmp.reg, sClosure);
-            build.mov(tmp.reg, qword[tmp.reg + offsetof(Closure, env)]);
-            build.cmp(byte[tmp.reg + offsetof(LuaTable, safeenv)], 0);
-
-            jumpOrAbortOnUndef(ConditionX64::Equal, OP_A(inst), next);
-        }
+        checkSafeEnv(OP_A(inst), next);
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:

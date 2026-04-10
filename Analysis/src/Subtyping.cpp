@@ -28,7 +28,7 @@ LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingReplaceBounds)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAGVARIABLE(LuauFollowGenericBeforeCheckingIfMapped)
 
 namespace Luau
@@ -2397,7 +2397,7 @@ SubtypingResult Subtyping::isCovariantWith(
 
     if (*subFunction->argTypes == *superFunction->argTypes && *subFunction->retTypes == *superFunction->retTypes)
     {
-        if (FFlag::LuauOverloadGetsInstantiated)
+        if (FFlag::LuauOverloadGetsInstantiated2)
         {
             // It's fine to upcast a function with generics to a function without, for example:
             //

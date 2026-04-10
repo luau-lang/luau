@@ -20,6 +20,7 @@
 #define PCG32_INC 105
 
 LUAU_FASTFLAGVARIABLE(LuauNewMathConstantsRuntime)
+LUAU_FASTFLAGVARIABLE(FixMathNoisePrecision)
 
 static uint32_t pcg32_random(uint64_t* state)
 {
@@ -376,6 +377,17 @@ static int math_noise(lua_State* L)
     luaL_argexpected(L, nx, 1, "number");
     luaL_argexpected(L, ny || lua_isnoneornil(L, 2), 2, "number");
     luaL_argexpected(L, nz || lua_isnoneornil(L, 3), 3, "number");
+
+    if (FFlag::FixMathNoisePrecision)
+    {
+        // NOTES: input numbers from Luau are double with higher precision and range than float used by perlin().
+        // If we don't do this, for large numbers, perlin() will return almost always 0, since with larger inputs,
+        // most of the mantissa is used to store the integer part and perlin() is always 0 at integer cell values.
+        // Noise repeat exactly every 256 units in all dimensions, so we can wrap to prevent loss of precision for large numbers.
+        x = fmod(x, 256.0);
+        y = fmod(y, 256.0);
+        z = fmod(z, 256.0);
+    }
 
     double r = perlin((float)x, (float)y, (float)z);
 

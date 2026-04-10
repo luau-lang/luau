@@ -25,7 +25,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
 LUAU_FASTFLAGVARIABLE(LuauUnifier2HandleMismatchedPacks2)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 
 namespace Luau
 {
@@ -201,7 +201,7 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
 
     if (superFree)
     {
-        if (FFlag::LuauOverloadGetsInstantiated)
+        if (FFlag::LuauOverloadGetsInstantiated2)
         {
             superFree->lowerBound = mkUnion(superFree->lowerBound, instantiateWithBoundTypes(subTy));
         }
@@ -335,7 +335,7 @@ UnifyResult Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
 
     auto doDefault = [&]()
     {
-        if (FFlag::LuauOverloadGetsInstantiated)
+        if (FFlag::LuauOverloadGetsInstantiated2)
         {
             auto newSuperTy = instantiateWithBoundTypes(superTy);
             subFree->upperBound = mkIntersection(subFree->upperBound, newSuperTy);
@@ -400,7 +400,7 @@ UnifyResult Unifier2::unify_(TypeId subTy, const FunctionType* superFn)
     if (shouldInstantiate)
     {
 
-        if (FFlag::LuauOverloadGetsInstantiated)
+        if (FFlag::LuauOverloadGetsInstantiated2)
         {
             for (TypeId generic : subFn->generics)
             {
@@ -730,7 +730,7 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
     {
         LUAU_ASSERT(is<FreeTypePack>(target));
 
-        if (FFlag::LuauOverloadGetsInstantiated)
+        if (FFlag::LuauOverloadGetsInstantiated2)
             boundTo = instantiateWithBoundTypes(boundTo);
 
         DenseHashSet<TypePackId> seen{nullptr};

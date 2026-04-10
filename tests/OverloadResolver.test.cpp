@@ -3,7 +3,7 @@
 #include "doctest.h"
 #include "Fixture.h"
 
-#include "Luau/OverloadResolution.h"
+#include "Luau/OverloadResolver.h"
 #include "Luau/Normalize.h"
 #include "Luau/UnifierSharedState.h"
 

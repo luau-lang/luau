@@ -41,7 +41,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
 
@@ -1629,7 +1629,7 @@ ModulePtr check(
         !FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete)
         module->errors.clear();
 
-    if (FFlag::LuauOverloadGetsInstantiated)
+    if (FFlag::LuauOverloadGetsInstantiated2)
     {
         ExpectedTypeVisitor etv{
             NotNull{&module->astTypes},

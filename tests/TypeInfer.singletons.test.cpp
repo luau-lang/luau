@@ -9,7 +9,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 
 TEST_SUITE_BEGIN("TypeSingletons");
@@ -814,7 +814,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2010_but_with_booleans")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
     CheckResult results = check(R"(
