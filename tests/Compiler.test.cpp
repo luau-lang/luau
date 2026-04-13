@@ -10700,6 +10700,35 @@ RETURN R0 1
     CHECK_EQ(bc2[0], 0);
 }
 
+TEST_CASE("IntegerBcb")
+{
+    ScopedFastFlag luauInteger{FFlag::LuauIntegerType, true};
+
+    const char* source = R"(
+function foo()
+local a = 123i
+return a
+end)";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Types);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+
+    options.typeInfoLevel = 1;
+    options.optimizationLevel = 1;
+    options.debugLevel = 2;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+R0: integer from 0 to 2
+LOADK R0 K0 [123]
+RETURN R0 1
+)");
+}
+
 TEST_CASE("DebugNoInline")
 {
     ScopedFastFlag noInline{FFlag::DebugLuauNoInline, true};

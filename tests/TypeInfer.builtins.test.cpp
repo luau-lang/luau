@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauSilenceDynamicFormatStringErrors)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 LUAU_FASTFLAG(LuauNewMathConstantsAnalysis)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -449,7 +450,7 @@ local t = table.pack(f())
     CHECK_EQ("{ [number]: number | string, n: number }", toString(requireType("t")));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_1")
 {
     CheckResult result = check(R"(
         local t = table.pack(1, 2, true)
@@ -457,13 +458,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("{ [number]: boolean | number, n: number }", toString(requireType("t")));
+}
 
-    result = check(R"(
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_2")
+{
+    CheckResult result = check(R"(
         local t = table.pack("a", "b", "c")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("{ [number]: string, n: number }", toString(requireType("t")));
+    auto ty = requireType("t");
+
+    if (FFlag::LuauOverloadGetsInstantiated2 && !FFlag::DebugLuauForceOldSolver)
+    {
+        // FIXME: This is a result of us solving for `table.pack` before we
+        // generalize its arguments. After we've solved it, we end up
+        // with a type like:
+        //
+        //  { n: number, [number]: ("a" <: 'a <: string) | ("b" <: 'b <: string) | ("c" <: 'c <: string) }
+        //
+        // ... which we cannot reasonably know to simplify at this time.
+        CHECK_EQ("{ [number]: string | string | string, n: number }", toString(ty));
+    }
+    else
+    {
+        CHECK_EQ("{ [number]: string, n: number }", toString(ty));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gcinfo")

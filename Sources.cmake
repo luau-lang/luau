@@ -215,7 +215,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/ModuleResolver.h
     Analysis/include/Luau/NonStrictTypeChecker.h
     Analysis/include/Luau/Normalize.h
-    Analysis/include/Luau/OverloadResolution.h
+    Analysis/include/Luau/OverloadResolver.h
     Analysis/include/Luau/Polarity.h
     Analysis/include/Luau/Predicate.h
     Analysis/include/Luau/Quantify.h
@@ -300,7 +300,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Module.cpp
     Analysis/src/NonStrictTypeChecker.cpp
     Analysis/src/Normalize.cpp
-    Analysis/src/OverloadResolution.cpp
+    Analysis/src/OverloadResolver.cpp
     Analysis/src/Quantify.cpp
     Analysis/src/RecursionCounter.cpp
     Analysis/src/Refinement.cpp
@@ -518,6 +518,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.builtins.test.cpp
         tests/TypeInfer.cfa.test.cpp
         tests/TypeInfer.classes.test.cpp
+        tests/TypeInfer.const.test.cpp
         tests/TypeInfer.definitions.test.cpp
         tests/TypeInfer.typeInstantiations.test.cpp
         tests/TypeInfer.functions.test.cpp

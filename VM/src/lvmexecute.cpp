@@ -65,8 +65,10 @@ LUAU_FASTFLAG(LuauIntegerType)
 #define VM_KV(i) (LUAU_ASSERT(unsigned(i) < unsigned(cl->l.p->sizek)), &k[i])
 #define VM_UV(i) (LUAU_ASSERT(unsigned(i) < unsigned(cl->nupvalues)), &cl->l.uprefs[i])
 
+#define VM_PATCH_OP(pc, op) *const_cast<Instruction*>(pc) = (uint8_t(op) | (0xffffff00u & *(pc)))
 #define VM_PATCH_C(pc, slot) *const_cast<Instruction*>(pc) = ((uint8_t(slot) << 24) | (0x00ffffffu & *(pc)))
 #define VM_PATCH_E(pc, slot) *const_cast<Instruction*>(pc) = ((uint32_t(slot) << 8) | (0x000000ffu & *(pc)))
+#define VM_PATCH_AUX_SLOT(pc, k, slot) *const_cast<Instruction*>(pc) = ((k) | (uint32_t(slot) << 16))
 
 #define VM_INTERRUPT() \
     { \
@@ -104,7 +106,7 @@ LUAU_FASTFLAG(LuauIntegerType)
         VM_DISPATCH_OP(LOP_CAPTURE), VM_DISPATCH_OP(LOP_SUBRK), VM_DISPATCH_OP(LOP_DIVRK), VM_DISPATCH_OP(LOP_FASTCALL1), \
         VM_DISPATCH_OP(LOP_FASTCALL2), VM_DISPATCH_OP(LOP_FASTCALL2K), VM_DISPATCH_OP(LOP_FORGPREP), VM_DISPATCH_OP(LOP_JUMPXEQKNIL), \
         VM_DISPATCH_OP(LOP_JUMPXEQKB), VM_DISPATCH_OP(LOP_JUMPXEQKN), VM_DISPATCH_OP(LOP_JUMPXEQKS), VM_DISPATCH_OP(LOP_IDIV), \
-        VM_DISPATCH_OP(LOP_IDIVK),
+        VM_DISPATCH_OP(LOP_IDIVK), VM_DISPATCH_OP(LOP_GETUDATAKS), VM_DISPATCH_OP(LOP_SETUDATAKS), VM_DISPATCH_OP(LOP_NAMECALLUDATA),
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VM_USE_CGOTO 1
@@ -192,6 +194,25 @@ LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
 inline bool luau_skipstep(uint8_t op)
 {
     return op == LOP_PREPVARARGS || op == LOP_BREAK;
+}
+
+static LUAU_FORCEINLINE void luau_setupcci(lua_State* L, int nresults, StkId fun)
+{
+    CallInfo* ci = incr_ci(L);
+
+    ci->func = fun;
+    ci->base = fun + 1;
+    ci->top = L->top + LUA_MINSTACK;
+    ci->savedpc = NULL;
+    ci->flags = 0;
+    ci->nresults = nresults;
+
+    L->base = fun + 1;
+
+    luaD_checkstackfornewci(L, LUA_MINSTACK);
+
+    LUAU_ASSERT(ci->top <= L->stack_last);
+    LUAU_ASSERT(ttisfunction(ci->func));
 }
 
 template<bool SingleStep>
@@ -3050,6 +3071,237 @@ reentry:
                 pc += int(ttisstring(ra) && gcvalue(ra) == gcvalue(kv)) != LUAU_INSN_AUX_NOT(aux) ? LUAU_INSN_D(insn) : 1;
                 LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
+            }
+
+            VM_CASE(LOP_GETUDATAKS)
+            {
+                Instruction insn = *pc++;
+                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId rb = VM_REG(LUAU_INSN_B(insn));
+                uint32_t aux = *pc++;
+                uint32_t kidx = LUAU_INSN_AUX_KV16(aux);
+                TValue* kv = VM_KV(kidx);
+
+                if (LUAU_LIKELY(ttisuserdata(rb)))
+                {
+                    int utag = uvalue(rb)->tag;
+                    lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[utag];
+                    lua_UserdataDirectAccess onudataindex = udatadirect.index;
+                    TValue* tm = &udatadirect.indextm;
+
+                    if (LUAU_LIKELY(onudataindex != nullptr && !ttisnil(tm)))
+                    {
+                        void* udata = uvalue(rb)->data;
+
+                        // note: it's safe to push arguments past top for complicated reasons (see top of the file)
+                        LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                        StkId top = L->top;
+                        setobj2s(L, top + 0, tm);
+                        setobj2s(L, top + 1, rb);
+                        setobj2s(L, top + 2, kv);
+                        L->top += 3;
+
+                        L->ci->savedpc = pc;
+
+                        ++L->nCcalls;
+
+                        if (L->nCcalls >= LUAI_MAXCCALLS)
+                            luaD_checkCstack(L);
+
+                        luau_setupcci(L, 1, top);
+
+                        uint16_t cachedslot = LUAU_INSN_AUX_SLOT(aux);
+                        onudataindex(L, udata, tsvalue(kv)->atom, &cachedslot, utag);
+
+                        // update cached slot
+                        if (cachedslot != LUAU_INSN_AUX_SLOT(aux))
+                            VM_PATCH_AUX_SLOT(pc - 1, kidx, cachedslot);
+
+                        // ci is our callinfo, cip is our parent
+                        CallInfo* ci = L->ci;
+                        CallInfo* cip = ci - 1;
+
+                        L->ci = cip;
+                        L->base = cip->base;
+                        --L->nCcalls;
+
+                        // stack may have been reallocated, so we need to refresh base ptr
+                        base = L->base;
+                        ra = VM_REG(LUAU_INSN_A(insn));
+
+                        // grab result while L->top is still pointed to the previous function frame
+                        setobj2s(L, ra, L->top - 1);
+
+                        // then update top
+                        L->top = cip->top;
+
+                        VM_NEXT();
+                    }
+                }
+
+                // Slow path - backpatch and dispatch to regular table access
+                VM_PATCH_OP(pc - 2, LOP_GETTABLEKS);
+                VM_PATCH_AUX_SLOT(pc - 1, kidx, 0);
+
+                pc -= 2;
+                VM_CONTINUE(LOP_GETTABLEKS);
+            }
+
+            VM_CASE(LOP_SETUDATAKS)
+            {
+                Instruction insn = *pc++;
+                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId rb = VM_REG(LUAU_INSN_B(insn));
+                uint32_t aux = *pc++;
+                uint32_t kidx = LUAU_INSN_AUX_KV16(aux);
+                TValue* kv = VM_KV(kidx);
+
+                if (LUAU_LIKELY(ttisuserdata(rb)))
+                {
+                    int utag = uvalue(rb)->tag;
+                    lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[utag];
+                    lua_UserdataDirectAccess onudatanewindex = udatadirect.newindex;
+                    TValue* tm = &udatadirect.newindextm;
+
+                    if (LUAU_LIKELY(onudatanewindex != nullptr && !ttisnil(tm)))
+                    {
+                        void* udata = uvalue(rb)->data;
+
+                        // note: it's safe to push arguments past top for complicated reasons (see top of the file)
+                        LUAU_ASSERT(L->top + 4 < L->stack + L->stacksize);
+                        StkId top = L->top;
+                        setobj2s(L, top + 0, tm);
+                        setobj2s(L, top + 1, rb);
+                        setobj2s(L, top + 2, kv);
+                        setobj2s(L, top + 3, ra);
+                        L->top += 4;
+
+                        L->ci->savedpc = pc;
+
+                        ++L->nCcalls;
+
+                        if (L->nCcalls >= LUAI_MAXCCALLS)
+                            luaD_checkCstack(L);
+
+                        luau_setupcci(L, 0, top);
+
+                        uint16_t cachedslot = LUAU_INSN_AUX_SLOT(aux);
+                        onudatanewindex(L, udata, tsvalue(kv)->atom, &cachedslot, utag);
+
+                        // update cached slot
+                        if (cachedslot != LUAU_INSN_AUX_SLOT(aux))
+                            VM_PATCH_AUX_SLOT(pc - 1, kidx, cachedslot);
+
+                        // ci is our callinfo, cip is our parent
+                        CallInfo* ci = L->ci;
+                        CallInfo* cip = ci - 1;
+
+                        L->ci = cip;
+                        L->base = cip->base;
+                        L->top = cip->top;
+                        --L->nCcalls;
+
+                        // stack may have been reallocated, so we need to refresh base ptr
+                        base = L->base;
+
+                        VM_NEXT();
+                    }
+                }
+
+                // Slow path - backpatch and dispatch to regular table access
+                VM_PATCH_OP(pc - 2, LOP_SETTABLEKS);
+                VM_PATCH_AUX_SLOT(pc - 1, kidx, 0);
+
+                pc -= 2;
+                VM_CONTINUE(LOP_SETTABLEKS);
+            }
+
+            VM_CASE(LOP_NAMECALLUDATA)
+            {
+                Instruction insn = *pc++;
+                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId rb = VM_REG(LUAU_INSN_B(insn));
+                uint32_t aux = *pc++;
+                uint32_t kidx = LUAU_INSN_AUX_KV16(aux);
+                TValue* kv = VM_KV(kidx);
+
+                if (LUAU_LIKELY(ttisuserdata(rb)))
+                {
+                    int utag = uvalue(rb)->tag;
+                    lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[utag];
+                    lua_UserdataDirectNamecall onudatanamecall = udatadirect.namecall;
+                    TValue* tm = &udatadirect.namecalltm;
+
+                    if (LUAU_LIKELY(onudatanamecall != nullptr && !ttisnil(tm)))
+                    {
+                        void* udata = uvalue(rb)->data;
+
+                        // note: order of copies allows rb to alias ra+1 or ra
+                        setobj2s(L, ra + 1, rb);
+                        setobj2s(L, ra, tm);
+
+                        LUAU_ASSERT(LUAU_INSN_OP(*pc) == LOP_CALL);
+                        insn = *pc++;
+
+                        StkId callRa = VM_REG(LUAU_INSN_A(insn));
+                        LUAU_ASSERT(callRa == ra);
+
+                        // first half of OP_CALL
+                        int nparams = LUAU_INSN_B(insn) - 1;
+                        int nresults = LUAU_INSN_C(insn) - 1;
+
+                        L->ci->savedpc = pc;
+                        L->namecall = tsvalue(kv);
+                        L->top = (nparams == LUA_MULTRET) ? L->top : ra + 1 + nparams;
+
+                        // note: namecalls do not increase C call number and allow yielding
+
+                        luau_setupcci(L, nresults, ra);
+
+                        LUAU_ASSERT(tsvalue(kv)->atom >= 0);
+
+                        uint16_t cachedslot = LUAU_INSN_AUX_SLOT(aux);
+                        int results = onudatanamecall(L, udata, tsvalue(kv)->atom, &cachedslot, utag);
+
+                        // update cached slot
+                        if (cachedslot != LUAU_INSN_AUX_SLOT(aux))
+                            VM_PATCH_AUX_SLOT(pc - 2, kidx, cachedslot);
+
+                        // yield
+                        if (results < 0)
+                            return;
+
+                        // ci is our callinfo, cip is our parent
+                        CallInfo* ci = L->ci;
+                        CallInfo* cip = ci - 1;
+
+                        StkId res = ci->func;
+                        StkId vali = L->top - results;
+                        StkId valend = L->top;
+
+                        int i;
+                        for (i = nresults; i != 0 && vali < valend; i--)
+                            setobj2s(L, res++, vali++);
+                        while (i-- > 0)
+                            setnilvalue(res++);
+
+                        L->ci = cip;
+                        L->base = cip->base;
+                        L->top = (nresults == LUA_MULTRET) ? res : cip->top;
+
+                        // stack may have been reallocated, so we need to refresh base ptr
+                        base = L->base;
+
+                        VM_NEXT();
+                    }
+                }
+
+                // Slow path - backpatch and dispatch to regular namecall
+                VM_PATCH_OP(pc - 2, LOP_NAMECALL);
+                VM_PATCH_AUX_SLOT(pc - 1, kidx, 0);
+
+                pc -= 2;
+                VM_CONTINUE(LOP_NAMECALL);
             }
 
 #if !VM_USE_CGOTO

@@ -49,6 +49,7 @@
 // Version 6: Adds FASTCALL3. Currently supported.
 // Version 7: Adds LBC_CONSTANT_TABLE_WITH_CONSTANTS for DUPTABLE with pre-filled constant values. Currently supported.
 // Version 8: Adds LBC_CONSTANT_INTEGER for 64-bit integer constants. Currently supported.
+// Version 9: Adds atom-based userdata field access acceleration. Currently supported.
 
 // # Bytecode type information history
 // Version 1: (from bytecode version 4) Type information for function signature. Currently supported.
@@ -421,6 +422,13 @@ enum LuauOpcode
     // C: constant table index (0..255)
     LOP_IDIVK,
 
+    // Atom-based userdata field access acceleration
+    // These are equivalent to their GETTABLEKS/SETTABLEKS/NAMECALL counterparts, except tailored towards userdata field accesses
+    // If the user has registered metamethods for a userdata tag, callbacks will be called by these instructions
+    LOP_GETUDATAKS,
+    LOP_SETUDATAKS,
+    LOP_NAMECALLUDATA,
+
     // Enum entry for number of opcodes, not a valid opcode by itself!
     LOP__COUNT
 };
@@ -457,12 +465,17 @@ enum LuauOpcode
 // Used in LOP_JUMPXEQK* instructions
 #define LUAU_INSN_AUX_NOT(aux) ((aux) >> 31)
 
+// Auxilary 16-bit constant index and 16-bit cachedslot
+// Used in LOP_GETUDATAKS, LOP_SETUDATAKS and LOP_NAMECALLUDATA
+#define LUAU_INSN_AUX_KV16(aux) ((aux) & 0xffffu)
+#define LUAU_INSN_AUX_SLOT(aux) ((aux) >> 16)
+
 // Bytecode tags, used internally for bytecode encoded as a string
 enum LuauBytecodeTag
 {
     // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
     LBC_VERSION_MIN = 3,
-    LBC_VERSION_MAX = 8,
+    LBC_VERSION_MAX = 9,
     LBC_VERSION_TARGET = 6,
     // Type encoding version
     LBC_TYPE_VERSION_MIN = 1,

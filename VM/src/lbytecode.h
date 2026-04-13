@@ -4,3 +4,5 @@
 
 // This is a forwarding header for Luau bytecode definition
 #include "Luau/Bytecode.h"
+
+#include "Luau/BytecodeUtils.h"

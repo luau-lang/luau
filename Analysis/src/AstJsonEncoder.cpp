@@ -314,6 +314,18 @@ struct AstJsonEncoder : public AstVisitor
         );
     }
 
+    void write(class AstExprConstantInteger* node)
+    {
+        writeNode(
+            node,
+            "AstExprConstantInteger",
+            [&]()
+            {
+                write("value", node->value);
+            }
+        );
+    }
+
     void write(class AstExprConstantString* node)
     {
         writeNode(

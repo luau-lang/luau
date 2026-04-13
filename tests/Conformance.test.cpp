@@ -23,6 +23,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <math.h>
 
@@ -45,6 +46,7 @@ LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewMathConstantsRuntime)
 LUAU_FASTFLAG(LuauCompileStringInterpWithZero)
+LUAU_FASTFLAG(LuauUdataDirectAccess)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -496,25 +498,31 @@ static int lua_vec2(lua_State* L)
     return 1;
 }
 
-static int lua_vec2_dot(lua_State* L)
+static int lua_vec2_dot(lua_State* L, Vec2* self)
 {
-    Vec2* a = lua_vec2_get(L, 1);
     Vec2* b = lua_vec2_get(L, 2);
 
-    lua_pushnumber(L, a->x * b->x + a->y * b->y);
+    lua_pushnumber(L, self->x * b->x + self->y * b->y);
     return 1;
 }
 
-static int lua_vec2_min(lua_State* L)
+static int lua_vec2_min(lua_State* L, Vec2* self)
 {
-    Vec2* a = lua_vec2_get(L, 1);
     Vec2* b = lua_vec2_get(L, 2);
 
     Vec2* data = lua_vec2_push(L);
 
-    data->x = a->x < b->x ? a->x : b->x;
-    data->y = a->y < b->y ? a->y : b->y;
+    data->x = self->x < b->x ? self->x : b->x;
+    data->y = self->y < b->y ? self->y : b->y;
 
+    return 1;
+}
+
+static int lua_vec2_clone(lua_State* L, Vec2* self)
+{
+    Vec2* r = lua_vec2_push(L);
+    r->x = self->x;
+    r->y = self->y;
     return 1;
 }
 
@@ -552,18 +560,45 @@ static int lua_vec2_index(lua_State* L)
         return 1;
     }
 
+    if (strcmp(name, "sizeof") == 0)
+    {
+        lua_pushnumber(L, sizeof(Vec2));
+        return 1;
+    }
+
     luaL_error(L, "%s is not a valid member of vector", name);
+}
+
+static int lua_vec2_newindex(lua_State* L)
+{
+    Vec2* v = lua_vec2_get(L, 1);
+    const char* name = luaL_checkstring(L, 2);
+    double value = luaL_checknumber(L, 3);
+
+    if (strcmp(name, "X") == 0)
+        v->x = float(value);
+    else if (strcmp(name, "Y") == 0)
+        v->y = float(value);
+    else
+        luaL_error(L, "%s is not a writable member of vec2", name);
+
+    return 0;
 }
 
 static int lua_vec2_namecall(lua_State* L)
 {
     if (const char* str = lua_namecallatom(L, nullptr))
     {
+        Vec2* self = lua_vec2_get(L, 1);
+
         if (strcmp(str, "Dot") == 0)
-            return lua_vec2_dot(L);
+            return lua_vec2_dot(L, self);
 
         if (strcmp(str, "Min") == 0)
-            return lua_vec2_min(L);
+            return lua_vec2_min(L, self);
+
+        if (strcmp(str, "Clone") == 0)
+            return lua_vec2_clone(L, self);
     }
 
     luaL_error(L, "%s is not a valid method of vector", luaL_checkstring(L, 1));
@@ -609,6 +644,13 @@ static int lua_vertex(lua_State* L)
     return 1;
 }
 
+static int lua_vertex_clone(lua_State* L, Vertex* self)
+{
+    Vertex* r = lua_vertex_push(L);
+    *r = *self;
+    return 1;
+}
+
 static int lua_vertex_index(lua_State* L)
 {
     Vertex* v = lua_vertex_get(L, 1);
@@ -634,7 +676,59 @@ static int lua_vertex_index(lua_State* L)
         return 1;
     }
 
+    if (strcmp(name, "sizeof") == 0)
+    {
+        lua_pushnumber(L, sizeof(Vertex));
+        return 1;
+    }
+
     luaL_error(L, "%s is not a valid member of vertex", name);
+}
+
+static int lua_vertex_newindex(lua_State* L)
+{
+    Vertex* v = lua_vertex_get(L, 1);
+    const char* name = luaL_checkstring(L, 2);
+
+    if (strcmp(name, "pos") == 0)
+    {
+        const float* pos = luaL_checkvector(L, 3);
+        v->pos[0] = pos[0];
+        v->pos[1] = pos[1];
+        v->pos[2] = pos[2];
+    }
+    else if (strcmp(name, "normal") == 0)
+    {
+        const float* normal = luaL_checkvector(L, 3);
+        v->normal[0] = normal[0];
+        v->normal[1] = normal[1];
+        v->normal[2] = normal[2];
+    }
+    else if (strcmp(name, "uv") == 0)
+    {
+        Vec2* uv = lua_vec2_get(L, 3);
+        v->uv[0] = uv->x;
+        v->uv[1] = uv->y;
+    }
+    else
+    {
+        luaL_error(L, "%s is not a writable member of vertex", name);
+    }
+
+    return 0;
+}
+
+static int lua_vertex_namecall(lua_State* L)
+{
+    if (const char* str = lua_namecallatom(L, nullptr))
+    {
+        Vertex* self = lua_vertex_get(L, 1);
+
+        if (strcmp(str, "Clone") == 0)
+            return lua_vertex_clone(L, self);
+    }
+
+    luaL_error(L, "%s is not a valid method of vertex", luaL_checkstring(L, 1));
 }
 
 void setupUserdataHelpers(lua_State* L)
@@ -646,6 +740,9 @@ void setupUserdataHelpers(lua_State* L)
 
     lua_pushcfunction(L, lua_vec2_index, nullptr);
     lua_setfield(L, -2, "__index");
+
+    lua_pushcfunction(L, lua_vec2_newindex, nullptr);
+    lua_setfield(L, -2, "__newindex");
 
     lua_pushcfunction(L, lua_vec2_namecall, nullptr);
     lua_setfield(L, -2, "__namecall");
@@ -760,6 +857,12 @@ void setupUserdataHelpers(lua_State* L)
     lua_pushcfunction(L, lua_vertex_index, nullptr);
     lua_setfield(L, -2, "__index");
 
+    lua_pushcfunction(L, lua_vertex_newindex, nullptr);
+    lua_setfield(L, -2, "__newindex");
+
+    lua_pushcfunction(L, lua_vertex_namecall, nullptr);
+    lua_setfield(L, -2, "__namecall");
+
     lua_setreadonly(L, -1, true);
 
     // ctor
@@ -767,6 +870,220 @@ void setupUserdataHelpers(lua_State* L)
     lua_setglobal(L, "vertex");
 
     lua_pop(L, 1);
+}
+
+enum class DirectSlot : uint16_t
+{
+    X = 1,
+    Y,
+    Magnitude,
+    Unit,
+    Dot,
+    Min,
+    Clone,
+    Pos,
+    Normal,
+    UV,
+    Sizeof,
+};
+
+const std::unordered_map<std::string, DirectSlot> nameToDirectSlot = {
+    {"X", DirectSlot::X},
+    {"Y", DirectSlot::Y},
+    {"Magnitude", DirectSlot::Magnitude},
+    {"Unit", DirectSlot::Unit},
+    {"Dot", DirectSlot::Dot},
+    {"Min", DirectSlot::Min},
+    {"Clone", DirectSlot::Clone},
+    {"pos", DirectSlot::Pos},
+    {"normal", DirectSlot::Normal},
+    {"uv", DirectSlot::UV},
+    {"sizeof", DirectSlot::Sizeof}
+};
+
+static std::unordered_map<std::string, int16_t> nameToAtom = {};
+static int16_t nextAtomId = 1;
+static std::unordered_map<int16_t, DirectSlot> atomToDirectSlot;
+
+static int16_t getOrCreateAtom(const std::string& name)
+{
+    if (auto it = nameToAtom.find(name); it != nameToAtom.end())
+        return it->second;
+
+    if (auto it = nameToDirectSlot.find(name); it != nameToDirectSlot.end())
+    {
+        nameToAtom[name] = nextAtomId;
+        atomToDirectSlot[nextAtomId] = it->second;
+
+        return nextAtomId++;
+    }
+
+    return -1;
+}
+
+static void updateDirectSlot(int atom, uint16_t* cachedslot)
+{
+    if (auto it = atomToDirectSlot.find(atom); it != atomToDirectSlot.end())
+        *cachedslot = uint16_t(it->second);
+}
+
+static void vec2DirectIndex(lua_State* L, void* data, int atom, uint16_t* cachedslot, int utag)
+{
+    Vec2* self = (Vec2*)data;
+
+    if (*cachedslot == 0)
+        updateDirectSlot(atom, cachedslot);
+
+    switch (DirectSlot(*cachedslot))
+    {
+    case DirectSlot::X:
+        lua_pushnumber(L, self->x);
+        break;
+    case DirectSlot::Y:
+        lua_pushnumber(L, self->y);
+        break;
+    case DirectSlot::Magnitude:
+        lua_pushnumber(L, sqrtf(self->x * self->x + self->y * self->y));
+        break;
+    case DirectSlot::Unit:
+    {
+        float inv = 1.0f / sqrtf(self->x * self->x + self->y * self->y);
+        Vec2* r = lua_vec2_push(L);
+        r->x = self->x * inv;
+        r->y = self->y * inv;
+        break;
+    }
+    case DirectSlot::Sizeof:
+        lua_pushnumber(L, sizeof(Vec2));
+        break;
+    default:
+        luaL_error(L, "%s is not a valid member of vec2", luaL_checkstring(L, 2));
+    }
+}
+
+static void vec2DirectNewindex(lua_State* L, void* data, int atom, uint16_t* cachedslot, int utag)
+{
+    Vec2* self = (Vec2*)data;
+
+    if (*cachedslot == 0)
+        updateDirectSlot(atom, cachedslot);
+
+    switch (DirectSlot(*cachedslot))
+    {
+    case DirectSlot::X:
+        self->x = float(luaL_checknumber(L, 3));
+        break;
+    case DirectSlot::Y:
+        self->y = float(luaL_checknumber(L, 3));
+        break;
+    default:
+        luaL_error(L, "%s is not a writable member of vec2", luaL_checkstring(L, 2));
+    }
+}
+
+static int vec2DirectNamecall(lua_State* L, void* data, int atom, uint16_t* cachedslot, int utag)
+{
+    Vec2* self = (Vec2*)data;
+
+    if (*cachedslot == 0)
+        updateDirectSlot(atom, cachedslot);
+
+    switch (DirectSlot(*cachedslot))
+    {
+    case DirectSlot::Dot:
+        return lua_vec2_dot(L, self);
+    case DirectSlot::Min:
+        return lua_vec2_min(L, self);
+    case DirectSlot::Clone:
+        return lua_vec2_clone(L, self);
+    default:
+        luaL_error(L, "%s is not a valid method of vec2", lua_namecallatom(L, nullptr));
+    }
+    return 0;
+}
+
+static void vertexDirectIndex(lua_State* L, void* data, int atom, uint16_t* cachedslot, int utag)
+{
+    Vertex* self = (Vertex*)data;
+
+    if (*cachedslot == 0)
+        updateDirectSlot(atom, cachedslot);
+
+    switch (DirectSlot(*cachedslot))
+    {
+    case DirectSlot::Pos:
+        lua_pushvector(L, self->pos[0], self->pos[1], self->pos[2]);
+        break;
+    case DirectSlot::Normal:
+        lua_pushvector(L, self->normal[0], self->normal[1], self->normal[2]);
+        break;
+    case DirectSlot::UV:
+    {
+        Vec2* uv = lua_vec2_push(L);
+        uv->x = self->uv[0];
+        uv->y = self->uv[1];
+        break;
+    }
+    case DirectSlot::Sizeof:
+        lua_pushnumber(L, sizeof(Vertex));
+        break;
+    default:
+        luaL_error(L, "%s is not a valid member of vertex", luaL_checkstring(L, 2));
+    }
+}
+
+static void vertexDirectNewindex(lua_State* L, void* data, int atom, uint16_t* cachedslot, int utag)
+{
+    Vertex* self = (Vertex*)data;
+
+    if (*cachedslot == 0)
+        updateDirectSlot(atom, cachedslot);
+
+    switch (DirectSlot(*cachedslot))
+    {
+    case DirectSlot::Pos:
+    {
+        const float* pos = luaL_checkvector(L, 3);
+        self->pos[0] = pos[0];
+        self->pos[1] = pos[1];
+        self->pos[2] = pos[2];
+        break;
+    }
+    case DirectSlot::Normal:
+    {
+        const float* normal = luaL_checkvector(L, 3);
+        self->normal[0] = normal[0];
+        self->normal[1] = normal[1];
+        self->normal[2] = normal[2];
+        break;
+    }
+    case DirectSlot::UV:
+    {
+        Vec2* uv = lua_vec2_get(L, 3);
+        self->uv[0] = uv->x;
+        self->uv[1] = uv->y;
+        break;
+    }
+    default:
+        luaL_error(L, "%s is not a writable member of vertex", luaL_checkstring(L, 2));
+    }
+}
+
+static int vertexDirectNamecall(lua_State* L, void* data, int atom, uint16_t* cachedslot, int utag)
+{
+    Vertex* self = (Vertex*)data;
+
+    if (*cachedslot == 0)
+        updateDirectSlot(atom, cachedslot);
+
+    switch (DirectSlot(*cachedslot))
+    {
+    case DirectSlot::Clone:
+        return lua_vertex_clone(L, self);
+    default:
+        luaL_error(L, "%s is not a valid method of vertex", lua_namecallatom(L, nullptr));
+    }
+    return 0;
 }
 
 static void setupNativeHelpers(lua_State* L)
@@ -804,12 +1121,12 @@ static void setupNativeHelpers(lua_State* L)
     lua_setglobal(L, "is_native_if_supported");
 }
 
-static std::vector<Luau::CodeGen::FunctionBytecodeSummary> analyzeFile(const char* source, const unsigned nestingLimit)
+static std::vector<Luau::CodeGen::FunctionBytecodeSummary> analyzeFile(const char* source, const unsigned nestingLimit, const unsigned optLevel)
 {
     Luau::BytecodeBuilder bcb;
 
     Luau::CompileOptions options;
-    options.optimizationLevel = optimizationLevel;
+    options.optimizationLevel = optLevel;
     options.debugLevel = 1;
     options.typeInfoLevel = 1;
 
@@ -3228,6 +3545,11 @@ TEST_CASE("Iter")
     runConformance("iter.luau");
 }
 
+TEST_CASE("IterFenv")
+{
+    runConformance("iter_fenv.luau");
+}
+
 const int kInt64Tag = 1;
 
 static int64_t getInt64(lua_State* L, int idx)
@@ -3662,6 +3984,44 @@ TEST_CASE("NativeUserdata")
     );
 }
 
+TEST_CASE("UserdataDirectAccess")
+{
+    ScopedFastFlag sff{FFlag::LuauUdataDirectAccess, true};
+
+    // Reset global state
+    nameToAtom.clear();
+    nextAtomId = 1;
+    atomToDirectSlot.clear();
+
+    runConformance(
+        "udata_direct.luau",
+        [](lua_State* L)
+        {
+            lua_callbacks(L)->useratom = [](lua_State* L, const char* s, size_t l) -> int16_t
+            {
+                return getOrCreateAtom(std::string(s, l));
+            };
+
+            setupVectorHelpers(L);
+            setupUserdataHelpers(L);
+
+            SUBCASE("DirectAccess")
+            {
+                int vec2Ok = lua_registeruserdatadirectaccess(L, kTagVec2, vec2DirectIndex, vec2DirectNewindex, vec2DirectNamecall);
+                REQUIRE(vec2Ok == 1);
+
+                int vertexOk = lua_registeruserdatadirectaccess(L, kTagVertex, vertexDirectIndex, vertexDirectNewindex, vertexDirectNamecall);
+                REQUIRE(vertexOk == 1);
+            }
+
+            SUBCASE("ValidateMetatable")
+            {
+                // Check that metatable behavior matches the direct access setup
+            }
+        }
+    );
+}
+
 [[nodiscard]] static std::string makeHugeFunctionSource()
 {
     std::string source;
@@ -3973,32 +4333,32 @@ local function second(x)
 end
 )";
 
-    std::vector<Luau::CodeGen::FunctionBytecodeSummary> summaries(analyzeFile(source, 0));
+    std::vector<Luau::CodeGen::FunctionBytecodeSummary> summaries(analyzeFile(source, 0, 1));
 
     CHECK_EQ(summaries[0].getName(), "inner");
     CHECK_EQ(summaries[0].getLine(), 6);
-    CHECK_EQ(summaries[0].getCounts(0), std::vector<unsigned>({0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+    CHECK_EQ(summaries[0].getCounts(0), std::vector<unsigned>({0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0,
+                                                               0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
 
     CHECK_EQ(summaries[1].getName(), "first");
     CHECK_EQ(summaries[1].getLine(), 2);
-    CHECK_EQ(summaries[1].getCounts(0), std::vector<unsigned>({0, 0, 1, 0, 2, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
-                                                               1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+    CHECK_EQ(summaries[1].getCounts(0), std::vector<unsigned>({0, 0, 1, 0, 2, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1,
+                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
 
 
     CHECK_EQ(summaries[2].getName(), "second");
     CHECK_EQ(summaries[2].getLine(), 15);
-    CHECK_EQ(summaries[2].getCounts(0), std::vector<unsigned>({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+    CHECK_EQ(summaries[2].getCounts(0), std::vector<unsigned>({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
 
     CHECK_EQ(summaries[3].getName(), "");
     CHECK_EQ(summaries[3].getLine(), 1);
-    CHECK_EQ(summaries[3].getCounts(0), std::vector<unsigned>({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+    CHECK_EQ(summaries[3].getCounts(0), std::vector<unsigned>({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                                               0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
 }
 
 TEST_CASE("NativeAttribute")

@@ -5,7 +5,7 @@
 #include "Luau/Common.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/Instantiation.h"
-#include "Luau/OverloadResolution.h"
+#include "Luau/OverloadResolver.h"
 #include "Luau/Scope.h"
 #include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
@@ -20,7 +20,7 @@
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsCaptureNestedInstances)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
 LUAU_FASTFLAGVARIABLE(LuauThreadUniferStateThroughTypeFunctionReduction)
@@ -171,20 +171,29 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
         return std::nullopt;
     }
 
-    if (!unifier.genericSubstitutions.empty() || !unifier.genericPackSubstitutions.empty())
+    if (FFlag::LuauOverloadGetsInstantiated2)
     {
-        Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-        std::optional<TypePackId> subst = instantiate2(
-            ctx->arena, std::move(unifier.genericSubstitutions), std::move(unifier.genericPackSubstitutions), NotNull{&subtyping}, ctx->scope, retPack
-        );
-        if (!subst)
-            return std::nullopt;
-        else
-            retPack = *subst;
-    }
 
-    if (FFlag::LuauOverloadGetsInstantiated)
-    {
+        if (!unifier.genericSubstitutions.empty() || !unifier.genericPackSubstitutions.empty())
+        {
+            Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
+            auto newRetTp = getApproximateReturnTypeForFunctionCall(*selected.overload).value_or(ctx->builtins->errorTypePack);
+
+            std::optional<TypePackId> subst = instantiate2(
+                ctx->arena,
+                std::move(unifier.genericSubstitutions),
+                std::move(unifier.genericPackSubstitutions),
+                NotNull{&subtyping},
+                ctx->scope,
+                newRetTp
+            );
+
+            if (!subst)
+                return std::nullopt;
+
+            retPack = *subst;
+        }
+
         // After we solve for the instantiated function type of this metamethod,
         // we may have new free types if the metamethod was generic. We capture
         // these so that they can be generalized later and we don't end up with
@@ -194,6 +203,26 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
 
         for (const auto& tp : unifier.newFreshTypePacks)
             trackInteriorFreeTypePack(ctx->scope, tp);
+    }
+    else
+    {
+
+        if (!unifier.genericSubstitutions.empty() || !unifier.genericPackSubstitutions.empty())
+        {
+            Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
+            std::optional<TypePackId> subst = instantiate2(
+                ctx->arena,
+                std::move(unifier.genericSubstitutions),
+                std::move(unifier.genericPackSubstitutions),
+                NotNull{&subtyping},
+                ctx->scope,
+                retPack
+            );
+            if (!subst)
+                return std::nullopt;
+            else
+                retPack = *subst;
+        }
     }
 
     return retPack;

@@ -12,7 +12,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 
@@ -2083,20 +2082,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CHECK_SAFE_ENV:
     {
-        if (FFlag::LuauCodegenBlockSafeEnv)
-        {
-            checkSafeEnv(OP_A(inst), next);
-        }
-        else
-        {
-            Label fresh; // used when guard aborts execution or jumps to a VM exit
-            RegisterA64 temp = regs.allocTemp(KindA64::x);
-            RegisterA64 tempw = castReg(KindA64::w, temp);
-            build.ldr(temp, mem(rClosure, offsetof(Closure, env)));
-            build.ldrb(tempw, mem(temp, offsetof(LuaTable, safeenv)));
-            build.cbz(tempw, getTargetLabel(OP_A(inst), fresh));
-            finalizeTargetLabel(OP_A(inst), fresh);
-        }
+        checkSafeEnv(OP_A(inst), next);
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:

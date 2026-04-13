@@ -3,6 +3,8 @@
 
 #include "Luau/IrUtils.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenFastcallInvokeRange)
+
 namespace Luau
 {
 namespace CodeGen
@@ -66,9 +68,17 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         invalidateRestoreVmRegs(vmRegOp(OP_B(inst)), function.intOp(OP_D(inst)));
         break;
     case IrCmd::INVOKE_FASTCALL:
-        // Multiple return sequences (count == -1) are defined by ADJUST_STACK_TO_REG
-        if (int count = function.intOp(OP_G(inst)); count != -1)
-            invalidateRestoreVmRegs(vmRegOp(OP_B(inst)), count);
+        if (FFlag::LuauCodegenFastcallInvokeRange)
+        {
+            // While ADJUST_STACK_TO_REG would semantically define the result range, we need to define it immediately
+            invalidateRestoreVmRegs(vmRegOp(OP_B(inst)), function.intOp(OP_G(inst)));
+        }
+        else
+        {
+            // Multiple return sequences (count == -1) are defined by ADJUST_STACK_TO_REG
+            if (int count = function.intOp(OP_G(inst)); count != -1)
+                invalidateRestoreVmRegs(vmRegOp(OP_B(inst)), count);
+        }
         break;
     case IrCmd::DO_ARITH:
     case IrCmd::DO_LEN:

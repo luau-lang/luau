@@ -12,6 +12,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauUdataDirectAccess);
+
 /*
 ** Main thread combines a thread state and the global state
 */
@@ -215,6 +217,18 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     {
         g->udatagc[i] = NULL;
         g->udatamt[i] = NULL;
+
+        if (FFlag::LuauUdataDirectAccess)
+        {
+            lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[i];
+
+            setnilvalue(&udatadirect.indextm);
+            setnilvalue(&udatadirect.newindextm);
+            setnilvalue(&udatadirect.namecalltm);
+            udatadirect.index = NULL;
+            udatadirect.newindex = NULL;
+            udatadirect.namecall = NULL;
+        }
     }
     for (i = 0; i < LUA_LUTAG_LIMIT; i++)
         g->lightuserdataname[i] = NULL;

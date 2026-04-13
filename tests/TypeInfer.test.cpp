@@ -41,6 +41,7 @@ LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
+LUAU_FASTFLAG(LuauInstantiationUsesPolarity)
 
 using namespace Luau;
 
@@ -2903,6 +2904,31 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_global_type_inference")
         end
     )"));
 
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_instantiate_iter_function")
+{
+    ScopedFastFlag _{FFlag::LuauInstantiationUsesPolarity, true};
+    // We do not care about the results of type checking this
+    // snippet, only that it does not trip an assertion.
+    //
+    // We use polarity to track how we generalize free types.
+    // For example, free types with positive polarity will
+    // default generalize to their lower bounds. We assert
+    // that the polarity is never "Unknown" (the default).
+    //
+    // This test exercises a case we were getting wrong: when
+    // iterating over a table with a generic __iter metamethod,
+    // we did not correctly instantiate the generics with free
+    // types of the corresponding polarity, and would trip the
+    // aforementioned assertion.
+    std::ignore = check(R"(
+        function iterfunc(l0)
+            return l0()
+        end
+        for _, _ in setmetatable({}, { __iter = iterfunc }) do
+        end
+    )");
 }
 
 TEST_SUITE_END();

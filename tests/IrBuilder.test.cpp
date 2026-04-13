@@ -17,10 +17,8 @@ LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenGcoDse2)
 LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
-LUAU_FASTFLAG(LuauCodegenDsoPairTrackFix)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenRemoveDuplicateDoubleIntValues)
-LUAU_FASTFLAG(LuauCodegenDsoTagOverlayFix)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
 
@@ -4662,8 +4660,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "HiddenPointerUse7")
 {
-    ScopedFastFlag luauCodegenDsoPairTrackFix{FFlag::LuauCodegenDsoPairTrackFix, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -4716,7 +4712,6 @@ bb_0:
 TEST_CASE_FIXTURE(IrBuilderFixture, "PartialVsFullStoresNoRemoval1")
 {
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
-    ScopedFastFlag luauCodegenDsoPairTrackFix{FFlag::LuauCodegenDsoPairTrackFix, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);
 
@@ -4744,7 +4739,6 @@ bb_0:
 TEST_CASE_FIXTURE(IrBuilderFixture, "PartialVsFullStoresNoRemoval2")
 {
     ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
-    ScopedFastFlag luauCodegenDsoPairTrackFix{FFlag::LuauCodegenDsoPairTrackFix, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);
 
@@ -5554,8 +5548,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "TagAndValueOverTvalue1")
 {
-    ScopedFastFlag luauCodegenDsoTagOverlayFix{FFlag::LuauCodegenDsoTagOverlayFix, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -5585,8 +5577,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "TagAndValueOverTvalue2")
 {
-    ScopedFastFlag luauCodegenDsoTagOverlayFix{FFlag::LuauCodegenDsoTagOverlayFix, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
