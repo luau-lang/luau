@@ -645,6 +645,8 @@ ic_private ssize_t sbuf_append_vprintf(stringbuf_t* sb, const char* fmt, va_list
   va_list args0;
   va_copy(args0, args);
   ssize_t needed = vsnprintf(sb->buf + sb->count, to_size_t(avail), fmt, args0);
+  // Bug Fix: Previously missing `va_end(args0)`, violating C standards where every `va_copy` must be paired with `va_end`.
+  va_end(args0);
   if (needed > avail) {
     sb->buf[sb->count] = 0;
     if (!sbuf_ensure_extra(sb, needed)) return sb->count;

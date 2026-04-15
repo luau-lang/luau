@@ -2455,10 +2455,13 @@ static void queueTypePack(std::vector<TypeId>& queue, DenseHashSet<TypePackId>& 
 void Unifier::tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool reversed, int subOffset)
 {
     const VariadicTypePack* superVariadic = log.getMutable<VariadicTypePack>(superTp);
-    const TypeId variadicTy = follow(superVariadic->ty);
 
     if (!superVariadic)
         ice("passed non-variadic pack to tryUnifyVariadics");
+
+    // Bug Fix: Previously `superVariadic->ty` was dereferenced before checking if `superVariadic` was null, leading to a null pointer dereference.
+    // The dereference has been moved after the check.
+    const TypeId variadicTy = follow(superVariadic->ty);
 
     if (const VariadicTypePack* subVariadic = log.get<VariadicTypePack>(subTp))
     {
