@@ -33,6 +33,9 @@ inline int getOpLength(LuauOpcode op)
     case LOP_JUMPXEQKB:
     case LOP_JUMPXEQKN:
     case LOP_JUMPXEQKS:
+    case LOP_GETUDATAKS:
+    case LOP_SETUDATAKS:
+    case LOP_NAMECALLUDATA:
         return 2;
 
     default:

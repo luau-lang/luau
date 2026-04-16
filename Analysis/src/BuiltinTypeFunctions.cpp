@@ -5,7 +5,7 @@
 #include "Luau/Common.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/Instantiation.h"
-#include "Luau/OverloadResolution.h"
+#include "Luau/OverloadResolver.h"
 #include "Luau/Scope.h"
 #include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
@@ -20,9 +20,10 @@
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsCaptureNestedInstances)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
+LUAU_FASTFLAGVARIABLE(LuauThreadUniferStateThroughTypeFunctionReduction)
 
 namespace Luau
 {
@@ -146,9 +147,8 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
     if (!selected.overload.has_value())
         return std::nullopt;
 
-    TypePackId retPack = FFlag::LuauTypeFunctionsAddFreeTypePackWithPositivePolarity
-        ? ctx->arena->freshTypePack(ctx->scope, Polarity::Positive)
-        : ctx->arena->freshTypePack(ctx->scope);
+    TypePackId retPack = FFlag::LuauTypeFunctionsAddFreeTypePackWithPositivePolarity ? ctx->arena->freshTypePack(ctx->scope, Polarity::Positive)
+                                                                                     : ctx->arena->freshTypePack(ctx->scope);
     TypeId prospectiveFunction = ctx->arena->addType(FunctionType{argsPack, retPack});
 
     // FIXME: It's too bad that we have to bust out the Unifier here.  We should
@@ -171,20 +171,29 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
         return std::nullopt;
     }
 
-    if (!unifier.genericSubstitutions.empty() || !unifier.genericPackSubstitutions.empty())
+    if (FFlag::LuauOverloadGetsInstantiated2)
     {
-        Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
-        std::optional<TypePackId> subst = instantiate2(
-            ctx->arena, std::move(unifier.genericSubstitutions), std::move(unifier.genericPackSubstitutions), NotNull{&subtyping}, ctx->scope, retPack
-        );
-        if (!subst)
-            return std::nullopt;
-        else
-            retPack = *subst;
-    }
 
-    if (FFlag::LuauOverloadGetsInstantiated)
-    {
+        if (!unifier.genericSubstitutions.empty() || !unifier.genericPackSubstitutions.empty())
+        {
+            Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
+            auto newRetTp = getApproximateReturnTypeForFunctionCall(*selected.overload).value_or(ctx->builtins->errorTypePack);
+
+            std::optional<TypePackId> subst = instantiate2(
+                ctx->arena,
+                std::move(unifier.genericSubstitutions),
+                std::move(unifier.genericPackSubstitutions),
+                NotNull{&subtyping},
+                ctx->scope,
+                newRetTp
+            );
+
+            if (!subst)
+                return std::nullopt;
+
+            retPack = *subst;
+        }
+
         // After we solve for the instantiated function type of this metamethod,
         // we may have new free types if the metamethod was generic. We capture
         // these so that they can be generalized later and we don't end up with
@@ -194,6 +203,26 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
 
         for (const auto& tp : unifier.newFreshTypePacks)
             trackInteriorFreeTypePack(ctx->scope, tp);
+    }
+    else
+    {
+
+        if (!unifier.genericSubstitutions.empty() || !unifier.genericPackSubstitutions.empty())
+        {
+            Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
+            std::optional<TypePackId> subst = instantiate2(
+                ctx->arena,
+                std::move(unifier.genericSubstitutions),
+                std::move(unifier.genericPackSubstitutions),
+                NotNull{&subtyping},
+                ctx->scope,
+                retPack
+            );
+            if (!subst)
+                return std::nullopt;
+            else
+                retPack = *subst;
+        }
     }
 
     return retPack;
@@ -1951,22 +1980,45 @@ bool searchPropsAndIndexer(
                 indexType = follow(tblIndexer->indexResultType);
         }
 
-        if (isSubtype(ty, indexType, ctx->scope, ctx->builtins, *ctx->ice, SolverMode::New))
+        if (FFlag::LuauThreadUniferStateThroughTypeFunctionReduction)
         {
-            TypeId idxResultTy = follow(tblIndexer->indexResultType);
-
-            // indexResultType is a union type -> we need to extend our reduction type
-            if (auto idxResUnionTy = get<UnionType>(idxResultTy))
+            if (isSubtype(ty, indexType, ctx->arena, ctx->builtins, ctx->scope, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice))
             {
-                for (TypeId option : idxResUnionTy->options)
-                {
-                    result.insert(follow(option));
-                }
-            }
-            else // indexResultType is a singular type or intersection type -> we can simply append
-                result.insert(idxResultTy);
+                TypeId idxResultTy = follow(tblIndexer->indexResultType);
 
-            return true;
+                // indexResultType is a union type -> we need to extend our reduction type
+                if (auto idxResUnionTy = get<UnionType>(idxResultTy))
+                {
+                    for (TypeId option : idxResUnionTy->options)
+                    {
+                        result.insert(follow(option));
+                    }
+                }
+                else // indexResultType is a singular type or intersection type -> we can simply append
+                    result.insert(idxResultTy);
+
+                return true;
+            }
+        }
+        else
+        {
+            if (isSubtype_DEPRECATED(ty, indexType, ctx->scope, ctx->builtins, *ctx->ice, SolverMode::New))
+            {
+                TypeId idxResultTy = follow(tblIndexer->indexResultType);
+
+                // indexResultType is a union type -> we need to extend our reduction type
+                if (auto idxResUnionTy = get<UnionType>(idxResultTy))
+                {
+                    for (TypeId option : idxResUnionTy->options)
+                    {
+                        result.insert(follow(option));
+                    }
+                }
+                else // indexResultType is a singular type or intersection type -> we can simply append
+                    result.insert(idxResultTy);
+
+                return true;
+            }
         }
     }
 

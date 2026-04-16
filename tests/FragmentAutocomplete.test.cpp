@@ -26,7 +26,7 @@ LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
@@ -4763,7 +4763,7 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_func
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_table_insert")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
     };
 
@@ -4789,13 +4789,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_ta
             CHECK(ac.result->acResults.entryMap.count("foobar") > 0);
         }
     );
-
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_properties")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
         {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
     };
@@ -4881,13 +4880,12 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_prop
             CHECK(ac.result->acResults.entryMap.count("barbaz") > 0);
         }
     );
-
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_narrow_fragment")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
         {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
     };
@@ -4950,7 +4948,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_narr
             CHECK(ac.result->acResults.entryMap.count("foobar") > 0);
         }
     );
-
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)

@@ -23,6 +23,7 @@
 #include "Luau/TimeTrace.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFunction.h"
+#include "Luau/TypeFunctionError.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
@@ -44,8 +45,10 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAGVARIABLE(LuauUnpackRespectsAnnotations)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAGVARIABLE(LuauForwardPolarityForFunctionTypes)
-LUAU_FASTFLAGVARIABLE(LuauKeepExplicitMapForGlobalTypes)
+LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
+LUAU_FASTFLAGVARIABLE(LuauKeepExplicitMapForGlobalTypes2)
 LUAU_FASTFLAGVARIABLE(LuauRefinementTypeVector)
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 namespace Luau
 {
@@ -828,8 +831,16 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
                 quantifiedTypeParams.push_back(genericTy);
             }
 
-            if (std::optional<std::string> error = typeFunctionRuntime->registerFunction(function))
-                reportError(function->location, GenericError{*error});
+            if (FFlag::LuauTypeFunctionStructuredErrors)
+            {
+                if (std::optional<TypeFunctionError> error = typeFunctionRuntime->registerFunction(function))
+                    reportError(function->location, BuiltInTypeFunctionError{*error});
+            }
+            else
+            {
+                if (std::optional<std::string> error = typeFunctionRuntime->registerFunction_DEPRECATED(function))
+                    reportError(function->location, GenericError{*error});
+            }
 
             UserDefinedFunctionData udtfData;
 
@@ -1608,13 +1619,12 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
         if (!existingFunctionTy)
             ice->ice("prepopulateGlobalScope did not populate a global name", globalName->location);
 
-        if (FFlag::LuauKeepExplicitMapForGlobalTypes)
+        if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
         {
-            if (auto bt = get<BlockedType>(*existingFunctionTy);
-                bt && uninitializedGlobals.contains(*existingFunctionTy))
+            if (auto bt = get<BlockedType>(*existingFunctionTy); bt && uninitializedGlobals.contains(globalName->name))
             {
                 LUAU_ASSERT(bt->getOwner() == nullptr);
-                uninitializedGlobals.erase(*existingFunctionTy);
+                uninitializedGlobals.erase(globalName->name);
                 emplaceType<BoundType>(asMutable(*existingFunctionTy), generalizedType);
             }
         }
@@ -2061,16 +2071,16 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
         }
     }
 
-    for (const AstDeclaredExternTypeProperty& prop : declaredExternType->props)
+    for (const AstDeclaredExternTypeProperty& externProp : declaredExternType->props)
     {
-        Name propName(prop.name.value);
-        TypeId propTy = resolveType(scope, prop.ty, /* inTypeArguments */ false, /* replaceErrorWithFresh */ false, /* initialPolarity */ Polarity::Mixed);
+        Name propName(externProp.name.value);
+        TypeId propTy = resolveType(scope, externProp.ty, /* inTypeArguments */ false, /* replaceErrorWithFresh */ false, /* initialPolarity */ Polarity::Mixed);
 
         bool assignToMetatable = isMetamethod(propName);
 
         // Function typeArguments always take 'self', but this isn't reflected in the
         // parsed annotation. Add it here.
-        if (prop.isMethod)
+        if (externProp.isMethod)
         {
             if (FunctionType* ftv = getMutable<FunctionType>(propTy))
             {
@@ -2082,9 +2092,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 FunctionDefinition defn;
 
                 defn.definitionModuleName = module->name;
-                defn.definitionLocation = prop.location;
+                defn.definitionLocation = externProp.location;
                 // No data is preserved for varargLocation
-                defn.originalNameLocation = prop.nameLocation;
+                defn.originalNameLocation = externProp.nameLocation;
 
                 ftv->definition = defn;
             }
@@ -2094,11 +2104,30 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
 
         if (props.count(propName) == 0)
         {
-            props[propName] = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
+            Property tableProp;
+
+            if (FFlag::LuauExternReadWriteAttributes)
+            {
+                if (externProp.access == AstTableAccess::Read)
+                    tableProp = Property::readonly(propTy);
+                else if (externProp.access == AstTableAccess::Write)
+                    tableProp = Property::writeonly(propTy);
+                else
+                    tableProp = Property::rw(propTy);
+
+                tableProp.location = externProp.location;
+            }
+            else
+            {
+                tableProp = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", externProp.location};
+            }
+
+            props[propName] = tableProp;
         }
         else
         {
             Luau::Property& prop = props[propName];
+            bool addedWriteTypeByOverload = false;
 
             if (auto readTy = prop.readTy)
             {
@@ -2120,14 +2149,30 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 }
                 else
                 {
-                    reportError(
-                        declaredExternType->location,
-                        GenericError{format("Cannot overload read type of non-function class member '%s'", propName.c_str())}
-                    );
+                    if (FFlag::LuauExternReadWriteAttributes)
+                    {
+                        if (externProp.access == AstTableAccess::Write && !prop.writeTy.has_value())
+                        {
+                            prop.writeTy = propTy;
+                            addedWriteTypeByOverload = true;
+                        }
+                        else
+                            reportError(
+                                declaredExternType->location,
+                                GenericError{format("Cannot overload read type of non-function extern type member '%s'", propName.c_str())}
+                            );
+                    }
+                    else
+                    {
+                        reportError(
+                            declaredExternType->location,
+                            GenericError{format("Cannot overload read type of non-function extern type member '%s'", propName.c_str())}
+                        );
+                    }
                 }
             }
 
-            if (auto writeTy = prop.writeTy)
+            if (auto writeTy = prop.writeTy; writeTy && !addedWriteTypeByOverload)
             {
                 // We special-case this logic to keep the intersection flat; otherwise we
                 // would create a ton of nested intersection typeArguments.
@@ -2147,10 +2192,23 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
                 }
                 else
                 {
-                    reportError(
-                        declaredExternType->location,
-                        GenericError{format("Cannot overload write type of non-function class member '%s'", propName.c_str())}
-                    );
+                    if (FFlag::LuauExternReadWriteAttributes)
+                    {
+                        if (externProp.access == AstTableAccess::Read && !prop.readTy.has_value())
+                            prop.readTy = propTy;
+                        else
+                            reportError(
+                                declaredExternType->location,
+                                GenericError{format("Cannot overload write type of non-function extern type member '%s'", propName.c_str())}
+                            );
+                    }
+                    else
+                    {
+                        reportError(
+                            declaredExternType->location,
+                            GenericError{format("Cannot overload write type of non-function extern type member '%s'", propName.c_str())}
+                        );
+                    }
                 }
             }
         }
@@ -2619,6 +2677,8 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
         result = check(scope, stringExpr, expectedType, forceSingleton);
     else if (expr->is<AstExprConstantNumber>())
         result = Inference{builtinTypes->numberType};
+    else if (expr->is<AstExprConstantInteger>())
+        result = Inference{builtinTypes->integerType};
     else if (auto boolExpr = expr->as<AstExprConstantBool>())
         result = check(scope, boolExpr, expectedType, forceSingleton);
     else if (expr->is<AstExprConstantNil>())
@@ -3206,6 +3266,8 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
             discriminantTy = builtinTypes->stringType;
         else if (typeguard->type == "number")
             discriminantTy = builtinTypes->numberType;
+        else if (typeguard->type == "integer")
+            discriminantTy = builtinTypes->integerType;
         else if (typeguard->type == "boolean")
             discriminantTy = builtinTypes->booleanType;
         else if (typeguard->type == "thread")
@@ -3357,12 +3419,13 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprGlobal* glob
         if (annotatedTy == follow(rhsType))
             return;
 
-        if (FFlag::LuauKeepExplicitMapForGlobalTypes)
+        if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
         {
             auto followedAnnotation = follow(*annotatedTy);
-            if (auto bt = get<BlockedType>(followedAnnotation); bt && uninitializedGlobals.contains(followedAnnotation))
+            if (auto bt = get<BlockedType>(followedAnnotation); bt && uninitializedGlobals.contains(global->name))
             {
                 LUAU_ASSERT(bt->getOwner() == nullptr);
+                uninitializedGlobals.erase(global->name);
                 emplaceType<BoundType>(asMutable(followedAnnotation), rhsType);
             }
         }
@@ -3723,19 +3786,10 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
 
     varargPack = follow(varargPack);
     returnType = follow(returnType);
-    if (FFlag::LuauDontIncludeVarargWithAnnotation)
-    {
-        if (!fn->varargAnnotation)
-            genericTypePacks.push_back(varargPack);
-        if (!fn->returnAnnotation)
-            genericTypePacks.push_back(returnType);
-    }
-    else
-    {
+    if (!fn->varargAnnotation)
         genericTypePacks.push_back(varargPack);
-        if (varargPack != returnType)
-            genericTypePacks.push_back(returnType);
-    }
+    if (!fn->returnAnnotation)
+        genericTypePacks.push_back(returnType);
 
     // If there is both an annotation and an expected type, the annotation wins.
     // Type checking will sort out any discrepancies later.
@@ -4425,7 +4479,8 @@ struct GlobalPrepopulator : AstVisitor
     const NotNull<Scope> globalScope;
     const NotNull<TypeArena> arena;
     const NotNull<const DataFlowGraph> dfg;
-    TypeIds globalStubTypes;
+
+    DenseHashSet<AstName> uninitializedGlobals{{}};
 
     GlobalPrepopulator(NotNull<Scope> globalScope, NotNull<TypeArena> arena, NotNull<const DataFlowGraph> dfg)
         : globalScope(globalScope)
@@ -4457,8 +4512,8 @@ struct GlobalPrepopulator : AstVisitor
                 if (globalScope->bindings.find(g->name) == globalScope->bindings.end())
                 {
                     TypeId bt = arena->addType(BlockedType{});
-                    if (FFlag::LuauKeepExplicitMapForGlobalTypes)
-                        globalStubTypes.insert(bt);
+                    if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
+                        uninitializedGlobals.insert(g->name);
                     globalScope->bindings[g->name] = Binding{bt, g->location};
                 }
             }
@@ -4472,8 +4527,8 @@ struct GlobalPrepopulator : AstVisitor
         if (AstExprGlobal* g = function->name->as<AstExprGlobal>())
         {
             TypeId bt = arena->addType(BlockedType{});
-            if (FFlag::LuauKeepExplicitMapForGlobalTypes)
-                globalStubTypes.insert(bt);
+            if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
+                uninitializedGlobals.insert(g->name);
             globalScope->bindings[g->name] = Binding{bt};
         }
 
@@ -4497,10 +4552,10 @@ void ConstraintGenerator::prepopulateGlobalScopeForFragmentTypecheck(const Scope
     GlobalPrepopulator tfgp{NotNull{typeFunctionRuntime->rootScope.get()}, arena, dfg};
     program->visit(&tfgp);
 
-    if (FFlag::LuauKeepExplicitMapForGlobalTypes)
+    if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
     {
-        for (TypeId ty : tfgp.globalStubTypes)
-            uninitializedGlobals.insert(ty);
+        for (auto name : tfgp.uninitializedGlobals)
+            uninitializedGlobals.insert(name);
     }
 }
 
@@ -4513,20 +4568,20 @@ void ConstraintGenerator::prepopulateGlobalScope(const ScopePtr& globalScope, As
 
     program->visit(&gp);
 
-    if (FFlag::LuauKeepExplicitMapForGlobalTypes)
+    if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
     {
-        for (TypeId ty : gp.globalStubTypes)
-            uninitializedGlobals.insert(ty);
+        for (auto name : gp.uninitializedGlobals)
+            uninitializedGlobals.insert(name);
     }
 
     // Handle type function globals as well, without preparing a module scope since they have a separate environment
     GlobalPrepopulator tfgp{NotNull{typeFunctionRuntime->rootScope.get()}, arena, dfg};
     program->visit(&tfgp);
 
-    if (FFlag::LuauKeepExplicitMapForGlobalTypes)
+    if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
     {
-        for (TypeId ty : tfgp.globalStubTypes)
-            uninitializedGlobals.insert(ty);
+        for (auto name : tfgp.uninitializedGlobals)
+            uninitializedGlobals.insert(name);
     }
 }
 

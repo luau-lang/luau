@@ -5,13 +5,18 @@
 #include "lstate.h"
 #include "ltable.h"
 #include "lfunc.h"
+#include "lobject.h"
 #include "lstring.h"
+
 #include "lgc.h"
 #include "lmem.h"
 #include "lbytecode.h"
 #include "lapi.h"
 
 #include <string.h>
+
+LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAGVARIABLE(LuauUdataDirectAccess)
 
 template<typename T>
 struct TempBuffer
@@ -136,6 +141,23 @@ static unsigned int readVarInt(const char* data, size_t size, size_t& offset)
     {
         byte = read<uint8_t>(data, size, offset);
         result |= (byte & 127) << shift;
+        shift += 7;
+    } while (byte & 128);
+
+    return result;
+}
+
+static uint64_t readVarInt64(const char* data, size_t size, size_t& offset)
+{
+    uint64_t result = 0;
+    unsigned int shift = 0;
+
+    uint8_t byte;
+
+    do
+    {
+        byte = read<uint8_t>(data, size, offset);
+        result |= ((uint64_t)(byte & 127)) << shift;
         shift += 7;
     } while (byte & 128);
 
@@ -553,8 +575,60 @@ static int loadsafe(
                 break;
             }
 
+            case LBC_CONSTANT_INTEGER:
+                if (FFlag::LuauIntegerType)
+                {
+                    bool isNegative = read<uint8_t>(data, size, offset);
+                    uint64_t magnitude = readVarInt64(data, size, offset);
+                    setlvalue(&p->k[j], isNegative ? (int64_t)(~magnitude + 1) : (int64_t)magnitude);
+                    break;
+                }
+                [[fallthrough]];
+
             default:
                 LUAU_ASSERT(!"Unexpected constant kind");
+            }
+        }
+
+        if (FFlag::LuauUdataDirectAccess)
+        {
+            for (Instruction* instruction = p->code; instruction < p->code + p->sizecode;)
+            {
+                int targetOp = -1;
+
+                switch (LUAU_INSN_OP(*instruction))
+                {
+                case LOP_GETTABLEKS:
+                    targetOp = LOP_GETUDATAKS;
+                    break;
+
+                case LOP_SETTABLEKS:
+                    targetOp = LOP_SETUDATAKS;
+                    break;
+
+                case LOP_NAMECALL:
+                    targetOp = LOP_NAMECALLUDATA;
+                    break;
+                }
+
+                if (targetOp != -1)
+                {
+                    LUAU_ASSERT(instruction[1] < uint32_t(sizek));
+
+                    // We take over the upper 16 bits of AUX - so no constants with big indices.
+                    if (instruction[1] < 0x10000)
+                    {
+                        TValue* k = &p->k[instruction[1]];
+                        TString* s = tsvalue(k);
+
+                        luaS_updateatom(L, s);
+
+                        if (s->atom >= 0)
+                            *instruction = (*instruction & 0xffffff00) | targetOp;
+                    }
+                }
+
+                instruction += Luau::getOpLength(LuauOpcode(LUAU_INSN_OP(*instruction)));
             }
         }
 

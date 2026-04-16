@@ -6,8 +6,11 @@
 
 #include <algorithm>
 #include <string.h>
+#include <climits>
 
 LUAU_FASTFLAG(LuauCompileDuptableConstantPack2)
+LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAGVARIABLE(LuauCompileUdataDirect)
 
 namespace Luau
 {
@@ -52,7 +55,7 @@ static void writeDouble(std::string& ss, double value)
     ss.append(reinterpret_cast<const char*>(&value), sizeof(value));
 }
 
-static void writeVarInt(std::string& ss, unsigned int value)
+static void writeVarInt(std::string& ss, uint64_t value)
 {
     do
     {
@@ -386,6 +389,18 @@ int32_t BytecodeBuilder::addConstantNumber(double value)
 
     ConstantKey k = {Constant::Type_Number};
     static_assert(sizeof(k.value) == sizeof(value), "Expecting double to be 64-bit");
+    memcpy(&k.value, &value, sizeof(value));
+
+    return addConstant(k, c);
+}
+
+int32_t BytecodeBuilder::addConstantInteger(int64_t value)
+{
+    Constant c = {Constant::Type_Integer};
+    c.valueInteger64 = value;
+
+    ConstantKey k = {Constant::Type_Integer};
+    static_assert(sizeof(k.value) == sizeof(value), "Expecting integer to be 64-bit");
     memcpy(&k.value, &value, sizeof(value));
 
     return addConstant(k, c);
@@ -817,6 +832,20 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
         case Constant::Type_Number:
             writeByte(ss, LBC_CONSTANT_NUMBER);
             writeDouble(ss, c.valueNumber);
+            break;
+
+        case Constant::Type_Integer:
+            writeByte(ss, LBC_CONSTANT_INTEGER);
+            if (c.valueInteger64 < 0)
+            {
+                writeByte(ss, 1);
+                writeVarInt(ss, ~(uint64_t)c.valueInteger64 + 1);
+            }
+            else
+            {
+                writeByte(ss, 0);
+                writeVarInt(ss, c.valueInteger64);
+            }
             break;
 
         case Constant::Type_Vector:
@@ -1289,6 +1318,13 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
+    if (FFlag::LuauCompileUdataDirect)
+        return 9;
+
+    // LBC_CONSTANT_INTEGER requires version 8
+    if (FFlag::LuauIntegerType)
+        return 8;
+
     // LBC_CONSTANT_TABLE_WITH_CONSTANTS requires version 7
     if (FFlag::LuauCompileDuptableConstantPack2)
         return 7;
@@ -1702,6 +1738,20 @@ void BytecodeBuilder::validateInstructions() const
             }
             break;
 
+        case LOP_GETUDATAKS:
+        case LOP_SETUDATAKS:
+            VREG(LUAU_INSN_A(insn));
+            VREG(LUAU_INSN_B(insn));
+            VCONST(LUAU_INSN_AUX_KV16(insns[i + 1]), String);
+            break;
+
+        case LOP_NAMECALLUDATA:
+            VREG(LUAU_INSN_A(insn));
+            VREG(LUAU_INSN_B(insn));
+            VCONST(LUAU_INSN_AUX_KV16(insns[i + 1]), String);
+            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALL);
+            break;
+
         default:
             LUAU_ASSERT(!"Unsupported opcode");
         }
@@ -1871,6 +1921,9 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
         break;
     case Constant::Type_Number:
         formatAppend(result, "%.17g", data.valueNumber);
+        break;
+    case Constant::Type_Integer:
+        formatAppend(result, "%lld", (long long)(int64_t)data.valueInteger64);
         break;
     case Constant::Type_Vector:
         // 3-vectors is the most common configuration, so truncate to three components if possible
@@ -2355,6 +2408,27 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         code++;
         break;
 
+    case LOP_GETUDATAKS:
+        formatAppend(result, "GETUDATAKS R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_AUX_KV16(*code));
+        dumpConstant(result, LUAU_INSN_AUX_KV16(*code));
+        result.append("]\n");
+        code++;
+        break;
+
+    case LOP_SETUDATAKS:
+        formatAppend(result, "SETUDATAKS R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_AUX_KV16(*code));
+        dumpConstant(result, LUAU_INSN_AUX_KV16(*code));
+        result.append("]\n");
+        code++;
+        break;
+
+    case LOP_NAMECALLUDATA:
+        formatAppend(result, "NAMECALLUDATA R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_AUX_KV16(*code));
+        dumpConstant(result, LUAU_INSN_AUX_KV16(*code));
+        result.append("]\n");
+        code++;
+        break;
+
     default:
         LUAU_ASSERT(!"Unsupported opcode");
     }
@@ -2371,6 +2445,8 @@ static const char* getBaseTypeString(uint8_t type)
         return "boolean";
     case LBC_TYPE_NUMBER:
         return "number";
+    case LBC_TYPE_INTEGER:
+        return "integer";
     case LBC_TYPE_STRING:
         return "string";
     case LBC_TYPE_TABLE:

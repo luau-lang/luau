@@ -31,8 +31,8 @@ LUAU_FASTFLAG(LuauGeneralizationMoreAwareOfBounds3)
 LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
-LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -925,10 +925,9 @@ TEST_CASE_FIXTURE(Fixture, "sealed_table_indexers_must_unify")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        std::string expected = 
-            "Expected this to be '{string}', but got '{number}'; \n"
-            "the result of indexing is `number` in the latter type and `string` in the former type, "
-            "and `number` is not exactly `string`";
+        std::string expected = "Expected this to be '{string}', but got '{number}'; \n"
+                               "the result of indexing is `number` in the latter type and `string` in the former type, "
+                               "and `number` is not exactly `string`";
         auto actual = toString(result.errors[0]);
         CHECK_EQ(expected, actual);
     }
@@ -1804,11 +1803,10 @@ TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_missing_props_dont_report_multi
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        std::string expected =
-            "Expected this to be\n\t"
-            "'{ x: number, y: number, z: number }'"
-            "\nbut got\n\t"
-            "'{ x: number }'";
+        std::string expected = "Expected this to be\n\t"
+                               "'{ x: number, y: number, z: number }'"
+                               "\nbut got\n\t"
+                               "'{ x: number }'";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -2395,7 +2393,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_186992_accidental_dropping_free_ty_bound
         print(table.concat(lines, "\n"))
     )"));
 
-    CHECK_EQ("{string}", toString(requireType("lines"), { true }));
+    CHECK_EQ("{string}", toString(requireType("lines"), {true}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop")
@@ -2582,7 +2580,7 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
             "Expected this to be 'B', but got 'A'; \n"
             "the result of indexing is `number` in the latter type and `string` in the former type, and `number` is not exactly `string`" ==
             toString(result.errors[0])
-            );
+        );
     }
     else
     {
@@ -3206,7 +3204,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_crash_when_setmetatable_does_not_produc
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
     CheckResult result = check("local x = setmetatable({})");
@@ -6105,7 +6103,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_insert_type_mismatch")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
     CheckResult result = check(R"(
@@ -6509,7 +6507,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_allow_laundering")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_inference_one_incorrect_member")
@@ -6666,10 +6663,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "oss_1986")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauOverloadGetsInstantiated, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type A<T> = { s: T, n: number? }
@@ -6684,10 +6678,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1986")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1947_partial")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauOverloadGetsInstantiated, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
 
     // This fixes _one_ case of the given OSS issue, but we don't do
     // bidirectional inference of lambdas afterward.
@@ -6701,10 +6692,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1947_partial")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1890")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauOverloadGetsInstantiated, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type ListConfig<T> = {

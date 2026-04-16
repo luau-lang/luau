@@ -821,6 +821,11 @@ struct ErrorConverter
         return e.message;
     }
 
+    std::string operator()(const BuiltInTypeFunctionError& e) const
+    {
+        return toString(e.error);
+    }
+
     std::string operator()(const ReservedIdentifier& e) const
     {
         return e.name + " cannot be used as an identifier for a type function or alias";
@@ -1362,6 +1367,11 @@ bool UserDefinedTypeFunctionError::operator==(const UserDefinedTypeFunctionError
     return message == rhs.message;
 }
 
+bool BuiltInTypeFunctionError::operator==(const BuiltInTypeFunctionError& rhs) const
+{
+    return error == rhs.error;
+}
+
 bool ReservedIdentifier::operator==(const ReservedIdentifier& rhs) const
 {
     return name == rhs.name;
@@ -1631,6 +1641,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     else if constexpr (std::is_same_v<T, UnexpectedTypePackInSubtyping>)
         e.tp = clone(e.tp);
     else if constexpr (std::is_same_v<T, UserDefinedTypeFunctionError>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, BuiltInTypeFunctionError>)
     {
     }
     else if constexpr (std::is_same_v<T, CannotAssignToNever>)

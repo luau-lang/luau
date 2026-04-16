@@ -35,6 +35,7 @@ typedef union
     void* p;
     double n;
     int b;
+    int64_t l;
     float v[2]; // v[0], v[1] live here; v[2] lives in TValue::extra
 } Value;
 
@@ -52,6 +53,7 @@ typedef struct lua_TValue
 // Macros to test type
 #define ttisnil(o) (ttype(o) == LUA_TNIL)
 #define ttisnumber(o) (ttype(o) == LUA_TNUMBER)
+#define ttisinteger(o) (ttype(o) == LUA_TINTEGER)
 #define ttisstring(o) (ttype(o) == LUA_TSTRING)
 #define ttistable(o) (ttype(o) == LUA_TTABLE)
 #define ttisfunction(o) (ttype(o) == LUA_TFUNCTION)
@@ -68,6 +70,7 @@ typedef struct lua_TValue
 #define gcvalue(o) check_exp(iscollectable(o), (o)->value.gc)
 #define pvalue(o) check_exp(ttislightuserdata(o), (o)->value.p)
 #define nvalue(o) check_exp(ttisnumber(o), (o)->value.n)
+#define lvalue(o) check_exp(ttisinteger(o), (o)->value.l)
 #define vvalue(o) check_exp(ttisvector(o), (o)->value.v)
 #define tsvalue(o) check_exp(ttisstring(o), &(o)->value.gc->ts)
 #define uvalue(o) check_exp(ttisuserdata(o), &(o)->value.gc->u)
@@ -100,6 +103,13 @@ typedef struct lua_TValue
         TValue* i_o = (obj); \
         i_o->value.n = (x); \
         i_o->tt = LUA_TNUMBER; \
+    }
+
+#define setlvalue(obj, x) \
+    { \
+        TValue* i_o = (obj); \
+        i_o->value.l = (x); \
+        i_o->tt = LUA_TINTEGER; \
     }
 
 #if LUA_VECTOR_SIZE == 4
@@ -486,6 +496,7 @@ LUAI_FUNC int luaO_log2(unsigned int x);
 LUAI_FUNC int luaO_rawequalObj(const TValue* t1, const TValue* t2);
 LUAI_FUNC int luaO_rawequalKey(const TKey* t1, const TValue* t2);
 LUAI_FUNC int luaO_str2d(const char* s, double* result);
+LUAI_FUNC int luaO_str2l(const char* s, int64_t* result, int base = 10);
 LUAI_FUNC const char* luaO_pushvfstring(lua_State* L, const char* fmt, va_list argp);
 LUAI_FUNC const char* luaO_pushfstring(lua_State* L, const char* fmt, ...);
 LUAI_FUNC const char* luaO_chunkid(char* buf, size_t buflen, const char* source, size_t srclen);

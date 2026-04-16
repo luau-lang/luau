@@ -42,6 +42,10 @@ public:
     void call(const OperandX64& func);
 
     RegisterX64 suggestNextArgumentRegister(SizeX64 size) const;
+    // Returns the register for argument position N, sized according to 'size', for the given ABI.
+    // N must be 0-3: on Windows, args 4+ are passed on the stack (not in registers).
+    template<size_t N>
+    static RegisterX64 suggestArgumentRegister(SizeX64 size, AssemblyBuilderX64& build);
 
     IrRegAllocX64& regs;
     AssemblyBuilderX64& build;

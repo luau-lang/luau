@@ -5,6 +5,8 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
+#include <optional>
+
 LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 
@@ -377,6 +379,21 @@ bool isEntryBlock(const IrBlock& block);
 
 // When an operand is an instruction, try to extract the tag which is contained inside that value
 std::optional<uint8_t> tryGetOperandTag(IrFunction& function, IrOp op);
+
+// Propagates register tags from predecessor blocks' exit states into the current block's entry state for live in registers
+// Calls getTag for each register slot to read current tag value (kUnknownTag if unknown)
+// Calls setTag to update the tag value (kUnknownTag if it cannot be determined)
+// Assigns the tag directly for the first predecessor
+// For subsequent predecessors, intersects and sets kUnknownTag when predecessors disagree
+void propagateTagsFromPredecessors(
+    const IrFunction& function,
+    const IrBlock& block,
+    std::function<uint8_t(size_t)> getTag,
+    std::function<void(size_t, uint8_t)> setTag
+);
+
+// If optional part is not ignored, types like 'number?' will fail to convert
+std::optional<uint8_t> tryGetLuauTagForBcType(uint8_t bcType, bool ignoreOptionalPart);
 
 } // namespace CodeGen
 } // namespace Luau

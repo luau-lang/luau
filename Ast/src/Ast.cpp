@@ -171,6 +171,18 @@ void AstExprConstantNumber::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
+AstExprConstantInteger::AstExprConstantInteger(const Location& location, int64_t value, ConstantNumberParseResult parseResult)
+    : AstExpr(ClassIndex(), location)
+    , value(value)
+    , parseResult(parseResult)
+{
+}
+
+void AstExprConstantInteger::visit(AstVisitor* visitor)
+{
+    visitor->visit(this);
+}
+
 AstExprConstantString::AstExprConstantString(const Location& location, const AstArray<char>& value, QuoteStyle quoteStyle)
     : AstExpr(ClassIndex(), location)
     , value(value)
@@ -698,11 +710,13 @@ AstStatLocal::AstStatLocal(
     const Location& location,
     const AstArray<AstLocal*>& vars,
     const AstArray<AstExpr*>& values,
-    const std::optional<Location>& equalsSignLocation
+    const std::optional<Location>& equalsSignLocation,
+    bool isConst
 )
     : AstStat(ClassIndex(), location)
     , vars(vars)
     , values(values)
+    , isConst(isConst)
     , equalsSignLocation(equalsSignLocation)
 {
 }
@@ -850,10 +864,11 @@ void AstStatFunction::visit(AstVisitor* visitor)
     }
 }
 
-AstStatLocalFunction::AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func)
+AstStatLocalFunction::AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func, bool isConst)
     : AstStat(ClassIndex(), location)
     , name(name)
     , func(func)
+    , isConst(isConst)
 {
 }
 

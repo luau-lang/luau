@@ -16,6 +16,19 @@ def create_quoted_escaped_c_str(s):
     """Given a string, this function quotes the string and escapes any special characters (e.g. '\n', '\t')"""
     return f'"{repr(s)[1:-1]}"'
 
+def safe_summary_provider(func):
+    """This decorator adds try/except around a function and returns the exception as a string
+       This is useful for summary providers to prevent python exceptions from being printed to the debug console.
+       It also makes it much easier to determine what variable generated the exception because the exception will
+       be shown in the debugger as the variable's summary.
+    """
+    def wrapper(valobj, internal_dict):
+        try:
+            return func(valobj, internal_dict)
+        except Exception as e:
+            return f"Summary Error: {e}"
+    return wrapper
+
 def templateParams(s):
     depth = 0
     start = s.find("<") + 1
@@ -52,7 +65,8 @@ def getType(target, typeName):
     return ty
 
 
-def luau_variant_summary(valobj, internal_dict, options):
+@safe_summary_provider
+def luau_variant_summary(valobj, internal_dict):
     return valobj.GetChildMemberWithName("type").GetSummary()[1:-1]
 
 
@@ -327,7 +341,7 @@ class DenseHashSetSyntheticChildrenProvider:
         return True
 
 
-def luau_symbol_summary(valobj, internal_dict, options):
+def luau_symbol_summary(valobj, internal_dict):
     local = valobj.GetChildMemberWithName("local")
     global_ = valobj.GetChildMemberWithName(
         "global").GetChildMemberWithName("value")
@@ -374,7 +388,7 @@ class AstArraySyntheticChildrenProvider:
         return True
 
 
-def luau_typepath_property_summary(valobj, internal_dict, options):
+def luau_typepath_property_summary(valobj, internal_dict):
     name = valobj.GetChildMemberWithName("name").GetSummary()
     result = "["
 
@@ -398,33 +412,44 @@ def luau_typepath_property_summary(valobj, internal_dict, options):
     result += "]"
     return result
 
+@safe_summary_provider
 def luau_tstring_summary(valobj, internal_dict):
     str_start = valobj.GetChildMemberWithName("data")
     str_len = valobj.GetChildMemberWithName("len").GetValueAsUnsigned(0)
     str_data = read_non_cstring_from_data(str_start.GetPointeeData(0, str_len))
     return create_quoted_escaped_c_str(str_data)
 
+type_map = None
+def get_type_map(target):
+    """Create a mapping from lua_Type enum values to their names by parsing the lua_Type enum from the debug info.
+       This allows us to avoid hardcoding the mapping in Python, which is brittle and requires maintenance whenever
+       the enum changes."""
+    global type_map
+    if not type_map:
+        try:
+            type_members = target.FindFirstType('lua_Type').GetEnumMembers()
+            members = [type_members.GetTypeEnumMemberAtIndex(i) for i in range(type_members.GetSize())]
+            max_value = max(member.GetValueAsUnsigned() for member in members)
+            type_map = [None] * (max_value + 1)
+            for member in members:
+                name = member.GetName()[4:] # Strip "LUA_" prefix
+                if name == 'T_COUNT':
+                    continue
+                value = member.GetValueAsUnsigned() 
+                type_map[value] = name
+        except Exception as e:
+            print("Error initializing type map:", e)
+            raise e
+    else:
+        return type_map
+
 def tvalue_get_type_name(valobj):
+    type_map = get_type_map(valobj.GetTarget())
     type_val = valobj.GetChildMemberWithName("tt").GetValueAsUnsigned(0)
-    type_map = [
-    'TNIL',
-    'TBOOLEAN',
-    'TLIGHTUSERDATA',
-    'TNUMBER',
-    'TVECTOR',
-    'TSTRING',
-    'TTABLE',
-    'TFUNCTION',
-    'TUSERDATA',
-    'TTHREAD',
-    'TBUFFER',
-    'TPROTO',
-    'TUPVAL',
-    'TDEADKEY',
-    ]
 
     return f"{type_map[type_val] if type_val < len(type_map) else '<invalid type>'}"
 
+@safe_summary_provider
 def luau_tvalue_summary(valobj, internal_dict):
     if valobj.GetType().IsPointerType():
         valobj = valobj.Dereference()
@@ -432,7 +457,9 @@ def luau_tvalue_summary(valobj, internal_dict):
 
     type_name = tvalue_get_type_name(valobj)
 
-    if type_name == 'TBOOLEAN':
+    if type_name == 'TNIL':
+        return "nil"
+    elif type_name == 'TBOOLEAN':
         bool_val = valobj.GetChildMemberWithName("value").GetChildMemberWithName("b").GetValueAsUnsigned(0)
         bool_str = ["false", "true"][bool_val]
         return f"{bool_str} ({type_name})"
@@ -451,6 +478,12 @@ def luau_tvalue_summary(valobj, internal_dict):
     elif type_name == 'TSTRING':
         ts = valobj.GetChildMemberWithName("value").GetChildMemberWithName("gc").GetChildMemberWithName("ts")
         return f"{ts.GetSummary()}"
+    elif type_name == 'TTABLE':
+        luatable = valobj.GetChildMemberWithName("value").GetChildMemberWithName("gc").GetChildMemberWithName("h")
+        return luatable.GetSummary()
+    elif type_name == 'TFUNCTION':
+        function = valobj.GetChildMemberWithName("value").GetChildMemberWithName("gc").GetChildMemberWithName("cl")
+        return function.GetSummary()
 
     return type_name
 
@@ -461,6 +494,7 @@ class TValueSyntheticChildrenProvider:
         valobj = valobj.GetNonSyntheticValue()
         
         self.valobj = valobj
+        self.children = []
 
     def num_children(self):
         return len(self.children)
@@ -478,6 +512,12 @@ class TValueSyntheticChildrenProvider:
         if type_name == 'TTABLE':
             luatable = self.valobj.GetChildMemberWithName("value").GetChildMemberWithName("gc").GetChildMemberWithName("h")
             self.children = [luatable.Clone("table")]
+        elif type_name == 'TFUNCTION':
+            function = self.valobj.GetChildMemberWithName("value").GetChildMemberWithName("gc").GetChildMemberWithName("cl")
+            self.children = [function.Clone("function")]
+        elif type_name == 'TUSERDATA':
+            userdata = self.valobj.GetChildMemberWithName("value").GetChildMemberWithName("gc").GetChildMemberWithName("u")
+            self.children = [userdata.Clone("userdata")]
         return False
     
 def luau_tkey_summary(valobj, internal_dict):
@@ -525,19 +565,22 @@ class LuauTableSyntheticChildrenProvider:
         return len(self.array_entries) + len(self.hash_entries)
 
     def has_children(self):
-        return True
+        return self.num_children() > 0
 
     def get_child_at_index(self, index):
         array_count = len(self.array_entries)
         if index < array_count:
             return self.array_entries[index]
-        else:
-            return self.hash_entries[index - array_count]
+        hash_index = index - array_count
+        if hash_index < len(self.hash_entries):
+            return self.hash_entries[hash_index]
+        return None
 
     def update(self):
         self.array_entries, self.hash_entries = luau_table_get_entries(self.valobj)
         return False
 
+@safe_summary_provider
 def luau_table_summary(valobj, internal_dict):
     valobj = valobj.GetNonSyntheticValue()
     array_entries, hash_entries = luau_table_get_entries(valobj)
@@ -553,7 +596,8 @@ def convert_ptr_size_to_array(name, ptr, num_elem):
             num_elem = num_elem.GetValueAsSigned()
         else:
             num_elem = num_elem.GetValueAsUnsigned()
-    return ptr.CreateValueFromAddress(name, int(ptr.GetValueAsAddress()), ptr.GetType().GetPointeeType().GetArrayType(num_elem))
+    array_type = ptr.GetType().GetPointeeType().GetArrayType(num_elem)
+    return ptr.CreateValueFromAddress(name, int(ptr.GetValueAsAddress()), array_type)
 
 def read_from_pointer_to_array(ptr, index):
     """ Reads a single element from a pointer to an array. This function is useful because lldb only allows reading
@@ -565,9 +609,25 @@ def read_from_pointer_to_array(ptr, index):
     array = convert_ptr_size_to_array('ar', ptr, index+1)
     return array.GetChildAtIndex(index)
 
+
+def ptr_sub_ptr(ptr_a, ptr_b):
+    """Returns ptr_a - ptr_b (taking into account the size of the type involved)"""
+    ptr_a_type = ptr_a.GetType()
+    assert(ptr_a_type.IsPointerType())
+    assert(ptr_a_type == ptr_b.GetType())
+    elem_size = ptr_a_type.GetPointeeType().GetByteSize()
+    return (int(ptr_a.GetValueAsAddress()) - int(ptr_b.GetValueAsAddress())) // elem_size
+
+def ptr_add(ptr, offset):
+    """Returns ptr + offset (taking into account the size of the type involved)"""
+    assert(ptr.GetType().IsPointerType() and offset >= 0)
+    as_array = convert_ptr_size_to_array('arr', ptr, offset+1)
+    return as_array.GetChildAtIndex(offset).AddressOf()
+
 def remove_outer_quotes(s):
     return s[1:-1]
 
+@safe_summary_provider
 def luau_callinfo_summary(valobj, internal_dict):
     func = valobj.GetChildMemberWithName("func").GetNonSyntheticValue()
     cl = func.GetChildMemberWithName("value").GetChildMemberWithName("gc").GetChildMemberWithName("cl")
@@ -592,6 +652,7 @@ def luau_callinfo_summary(valobj, internal_dict):
         debugname = c.GetChildMemberWithName("debugname")
         return f"=[C] function {remove_outer_quotes(debugname.GetSummary())} {f.GetSummary()}"
 
+@safe_summary_provider
 def luau_proto_summary(valobj, internal_dict):
     if valobj.GetType().IsPointerType():
         valobj = valobj.Dereference()
@@ -655,6 +716,93 @@ class ProtoSyntheticChildrenProvider:
         children.append(self.valobj.GetChildMemberWithName("source"))
         return False
 
+class LuaStateSyntheticChildrenProvider:
+    def __init__(self, valobj, internal_dict):
+        if valobj.GetType().IsPointerType():
+           valobj = valobj.Dereference()
+        valobj = valobj.GetNonSyntheticValue()
+        
+        self.valobj = valobj
+        self.children = []
+
+    def num_children(self):
+        return len(self.children)
+
+    def has_children(self):
+        return len(self.children) > 0
+
+    def get_child_at_index(self, index):
+        if index < len(self.children):
+            return self.children[index]
+        return None
+
+    def update(self):
+        children = []
+        self.children = children
+        valobj = self.valobj
+
+        ci = valobj.GetChildMemberWithName("ci")
+        base_ci = valobj.GetChildMemberWithName("base_ci")
+        num_call_frames = ptr_sub_ptr(ci, base_ci)
+        callstack = convert_ptr_size_to_array("[callstack]", ptr_add(base_ci, 1), num_call_frames)
+        children.append(callstack)
+
+        top = valobj.GetChildMemberWithName("top")
+        stack = valobj.GetChildMemberWithName("stack")
+        base = valobj.GetChildMemberWithName("base")
+
+        num_top_frames = ptr_sub_ptr(top, base)
+        top_frame_stack = convert_ptr_size_to_array("[top frame stack]", base, num_top_frames)
+        children.append(top_frame_stack)
+
+        num_frames = ptr_sub_ptr(top, stack)
+        stack = convert_ptr_size_to_array("[stack]", stack, num_frames)
+        children.append(stack)
+
+        globals = valobj.GetChildMemberWithName("gt").Clone("globals")
+        children.append(globals)
+
+        userdata = valobj.GetChildMemberWithName("userdata")
+        userdata_type = get_userdata_type(valobj.GetTarget())
+        if userdata_type:
+            userdata = userdata.Cast(userdata_type)
+            userdata = userdata.Clone(f'userdata ({userdata.GetType().GetName()}*)')
+
+        children.append(userdata)
+
+        return False
+
+_userdata_type_name = None
+def set_userdata_type_name(userdata_type_name):
+    """Allows the userdata type of lua_State to be specified.
+       This allows the type to be automatically cast to the correct type in the debugger
+       
+       The intent is for this method to be called from the lldb prompt:
+         script lldb_formatters.set_userdata_type_name("MyUserdataType")
+       """
+    print(f'{__name__}.py: Setting userdata type to "{userdata_type_name}"')
+    global _userdata_type_name
+    _userdata_type_name = userdata_type_name
+
+def get_userdata_type(target):
+    """Get's the SBType of the userdata type specified by set_userdata_type_name. If set_userdata_type_name hasn't been called,
+       or if the type can't be found, this returns None.
+    """
+    return target.FindFirstType(_userdata_type_name)
+
+@safe_summary_provider
+def luau_closure_summary(valobj, internal_dict):
+    if valobj.GetType().IsPointerType():
+        valobj = valobj.Dereference()
+    valobj = valobj.GetNonSyntheticValue()
+
+    isC = valobj.GetChildMemberWithName("isC").GetValueAsUnsigned(0) != 0
+    if isC:
+        f = valobj.GetChildMemberWithName("c").GetChildMemberWithName("f")
+        return f.GetSummary()
+    else:
+        p = valobj.GetChildMemberWithName("l").GetChildMemberWithName("p")
+        return p.GetSummary()
 
 # Note for future work:
 # LLDB is limited in terms of expansion. i.e. a child provider can expand to a set

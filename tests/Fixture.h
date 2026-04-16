@@ -223,6 +223,11 @@ struct BuiltinsFixture : Fixture
     Frontend& getFrontend() override;
 };
 
+struct IsSubtypeFixture : Fixture
+{
+    bool isSubtype(TypeId a, TypeId b);
+};
+
 std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleName, const std::vector<std::string_view>& segments);
 std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleName, const AstExpr& pathExpr);
 

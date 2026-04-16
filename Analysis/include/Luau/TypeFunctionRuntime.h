@@ -3,6 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/Scope.h"
+#include "Luau/TypeFunctionError.h"
 #include "Luau/TypeFunctionRuntimeBuilder.h"
 #include "Luau/Type.h"
 #include "Luau/Variant.h"
@@ -40,6 +41,7 @@ struct TypeFunctionPrimitiveType
         NilType,
         Boolean,
         Number,
+        Integer,
         String,
         Thread,
         Buffer,
@@ -288,8 +290,11 @@ struct TypeFunctionRuntime
     TypeFunctionRuntime(NotNull<InternalErrorReporter> ice, NotNull<TypeCheckLimits> limits);
     ~TypeFunctionRuntime();
 
-    // Return value is an error message if registration failed
-    std::optional<std::string> registerFunction(AstStatTypeFunction* function);
+    // Return value is an error message string if registration failed.
+    std::optional<std::string> registerFunction_DEPRECATED(AstStatTypeFunction* function);
+
+    // Return value is a structured error if registration failed.
+    std::optional<TypeFunctionError> registerFunction(AstStatTypeFunction* function);
 
     // For user-defined type functions, we store all generated types and packs for the duration of the typecheck
     TypedAllocator<TypeFunctionType> typeArena;
@@ -319,7 +324,8 @@ private:
     void prepareState();
 };
 
-std::optional<std::string> checkResultForError(lua_State* L, const char* typeFunctionName, int luaResult);
+std::optional<std::string> checkResultForError_DEPRECATED(lua_State* L, const char* typeFunctionName, int luaResult);
+std::optional<TypeFunctionError> checkResultForError(lua_State* L, const char* typeFunctionName, int luaResult);
 
 TypeFunctionRuntime* getTypeFunctionRuntime(lua_State* L);
 

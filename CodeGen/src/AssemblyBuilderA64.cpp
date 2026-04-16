@@ -7,8 +7,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauCodegenA64ClosureOffset)
-
 namespace Luau
 {
 namespace CodeGen
@@ -1294,8 +1292,7 @@ void AssemblyBuilderA64::placeA(const char* name, RegisterA64 dst, AddressA64 sr
         }
         else
         {
-            if (FFlag::LuauCodegenA64ClosureOffset)
-                overflowed = true;
+            overflowed = true;
 
             CODEGEN_ASSERT(!"Unable to encode large immediate offset");
         }

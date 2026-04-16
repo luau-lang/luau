@@ -545,7 +545,7 @@ end
             " * the 1st component of the union is `X`, which is not a subtype of `{ w: number }`\n\t"
             " * the 2nd component of the union is `Y`, which is not a subtype of `{ w: number }`\n\t"
             " * the 3rd component of the union is `Z`, which is not a subtype of `{ w: number }`"
-            );
+        );
     }
     else
     {
@@ -685,12 +685,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     // NOTE: union normalization will improve this message
 
-    const std::string expected =
-        "Expected this to be\n\t"
-        "'((number) -> string) | ((number) -> string)'"
-        "\nbut got\n\t"
-        "'(string) -> number'"
-        "; none of the union options are compatible";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'((number) -> string) | ((number) -> string)'"
+                                 "\nbut got\n\t"
+                                 "'(string) -> number'"
+                                 "; none of the union options are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -759,8 +758,7 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generics")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ(
-        toString(result.errors[0]),
-        "Expected this to be '((b) -> b) | ((b?) -> nil)', but got '(a) -> a?'; none of the union options are compatible"
+        toString(result.errors[0]), "Expected this to be '((b) -> b) | ((b?) -> nil)', but got '(a) -> a?'; none of the union options are compatible"
     );
 }
 
@@ -779,12 +777,11 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generic_typepacks")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected = 
-        "Expected this to be\n\t"
-        "'((number) -> number) | ((number?, a...) -> (number?, a...))'"
-        "\nbut got\n\t"
-        "'(number, a...) -> (number?, a...)'"
-        "; none of the union options are compatible";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'((number) -> number) | ((number?, a...) -> (number?, a...))'"
+                                 "\nbut got\n\t"
+                                 "'(number, a...) -> (number?, a...)'"
+                                 "; none of the union options are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -801,12 +798,11 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_arities")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected = 
-        "Expected this to be\n\t"
-        "'((number) -> nil) | ((number, string?) -> number)'"
-        "\nbut got\n\t"
-        "'(number) -> number?'"
-        "; none of the union options are compatible";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'((number) -> nil) | ((number, string?) -> number)'"
+                                 "\nbut got\n\t"
+                                 "'(number) -> number?'"
+                                 "; none of the union options are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -823,12 +819,11 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_arities")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected =
-        "Expected this to be\n\t"
-        "'(() -> (string, string)) | (() -> number)'"
-        "\nbut got\n\t"
-        "'() -> number | string'"
-        "; none of the union options are compatible";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'(() -> (string, string)) | (() -> number)'"
+                                 "\nbut got\n\t"
+                                 "'() -> number | string'"
+                                 "; none of the union options are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -845,12 +840,11 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_variadics")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected = 
-        "Expected this to be\n\t"
-        "'((...string?) -> (...number)) | ((...string?) -> nil)'"
-        "\nbut got\n\t"
-        "'(...nil) -> (...number?)'"
-        "; none of the union options are compatible";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'((...string?) -> (...number)) | ((...string?) -> nil)'"
+                                 "\nbut got\n\t"
+                                 "'(...nil) -> (...number?)'"
+                                 "; none of the union options are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -882,11 +876,10 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
     }
     else if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected =
-            "Expected this to be\n\t"
-            "'((...number?) -> ()) | ((number?) -> ())'"
-            "\nbut got\n\t"
-            "'(number) -> ()'";
+        const std::string expected = "Expected this to be\n\t"
+                                     "'((...number?) -> ()) | ((number?) -> ())'"
+                                     "\nbut got\n\t"
+                                     "'(number) -> ()'";
         CHECK(expected == toString(result.errors[0]));
     }
     else
@@ -912,12 +905,11 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_variadics
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected =
-        "Expected this to be\n\t"
-        "'(() -> (...number)) | (() -> number)'"
-        "\nbut got\n\t"
-        "'() -> (number?, ...number)'"
-        "; none of the union options are compatible";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'(() -> (...number)) | (() -> number)'"
+                                 "\nbut got\n\t"
+                                 "'() -> (number?, ...number)'"
+                                 "; none of the union options are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 

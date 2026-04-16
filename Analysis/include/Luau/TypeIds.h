@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/DenseHash.h"
+#include "Luau/OrderedSet.h"
 #include "Luau/TypeFwd.h"
 
 #include <vector>
@@ -73,5 +74,7 @@ public:
      */
     std::vector<TypeId> take();
 };
+
+using TypePackIds = OrderedSet<TypePackId>;
 
 } // namespace Luau

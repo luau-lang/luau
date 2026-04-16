@@ -31,10 +31,9 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileDuptableConstantPack2)
 LUAU_FASTFLAGVARIABLE(LuauCompileVectorReveseMul)
-LUAU_FASTFLAGVARIABLE(LuauCompileTableIndexTemp)
-LUAU_FASTFLAGVARIABLE(LuauCompileVectorConstLimit)
+LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpWithZero)
-
+LUAU_FASTFLAGVARIABLE(LuauCompileNoOptNext)
 LUAU_FASTFLAG(DebugLuauNoInline)
 
 namespace Luau
@@ -1310,7 +1309,7 @@ struct Compiler
     {
         const Constant* cv = constants.find(node);
 
-        return cv && cv->type != Constant::Type_Unknown;
+        return (cv != nullptr) && cv->type != Constant::Type_Unknown;
     }
 
     bool isConstantTrue(AstExpr* node)
@@ -1327,7 +1326,14 @@ struct Compiler
     {
         const Constant* cv = constants.find(node);
 
-        return cv && cv->type == Constant::Type_Vector;
+        return (cv != nullptr) && cv->type == Constant::Type_Vector;
+    }
+
+    bool isConstantInteger(AstExpr* node)
+    {
+        const Constant* cv = constants.find(node);
+
+        return cv && cv->type == Constant::Type_Integer;
     }
 
     Constant getConstant(AstExpr* node)
@@ -1353,8 +1359,8 @@ struct Compiler
                 std::swap(left, right);
         }
 
-        // disable fast path for vectors because supporting it would require a new opcode
-        if (operandIsConstant && isConstantVector(right))
+        // disable fast path for vectors and integers because supporting it would require a new opcode
+        if (operandIsConstant && (isConstantVector(right) || (FFlag::LuauIntegerType && isConstantInteger(right))))
             operandIsConstant = false;
 
         uint8_t rl = compileExprAuto(left, rs);
@@ -1464,6 +1470,10 @@ struct Compiler
 
         case Constant::Type_Number:
             cid = bytecode.addConstantNumber(c->valueNumber);
+            break;
+
+        case Constant::Type_Integer:
+            cid = bytecode.addConstantInteger(c->valueInteger64);
             break;
 
         case Constant::Type_Vector:
@@ -1701,6 +1711,18 @@ struct Compiler
     void compileExprUnary(AstExprUnary* expr, uint8_t target)
     {
         RegScope rs(this);
+
+        // Special case for integer constants, like -1000000000i
+        AstExprConstantInteger* cint = expr->expr->as<AstExprConstantInteger>();
+        if (FFlag::LuauIntegerType && (expr->op == AstExprUnary::Minus) && (cint != nullptr))
+        {
+            int32_t cid = bytecode.addConstantInteger((int64_t)(~(uint64_t)cint->value + 1));
+            if (cid < 0)
+                CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+            emitLoadK(target, cid);
+            return;
+        }
 
         uint8_t re = compileExprAuto(expr->expr, rs);
 
@@ -2331,17 +2353,14 @@ struct Compiler
 
         RegScope rs(this);
 
-        uint8_t reg = FFlag::LuauCompileTableIndexTemp ? target : compileExprAuto(expr->expr, rs);
+        uint8_t reg = target;
 
-        if (FFlag::LuauCompileTableIndexTemp)
-        {
-            if (int localReg = getExprLocalReg(expr->expr); localReg >= 0) // Locals can be indexed directly
-                reg = uint8_t(localReg);
-            else if (targetTemp) // If target is a temp register, we can clobber it which allows us to compute the result directly into it
-                compileExprTemp(expr->expr, target);
-            else
-                reg = compileExprAuto(expr->expr, rs);
-        }
+        if (int localReg = getExprLocalReg(expr->expr); localReg >= 0) // Locals can be indexed directly
+            reg = uint8_t(localReg);
+        else if (targetTemp) // If target is a temp register, we can clobber it which allows us to compute the result directly into it
+            compileExprTemp(expr->expr, target);
+        else
+            reg = compileExprAuto(expr->expr, rs);
 
         setDebugLine(expr->indexLocation);
 
@@ -2469,10 +2488,22 @@ struct Compiler
         }
         break;
 
+        case Constant::Type_Integer:
+        {
+            int64_t l = cv->valueInteger64;
+
+            int32_t cid = bytecode.addConstantInteger(l);
+            if (cid < 0)
+                CompileError::raise(node->location, "Exceeded constant limit; simplify the code to compile");
+
+            emitLoadK(target, cid);
+        }
+        break;
+
         case Constant::Type_Vector:
         {
             int32_t cid = bytecode.addConstantVector(cv->valueVector[0], cv->valueVector[1], cv->valueVector[2], cv->valueVector[3]);
-            if (FFlag::LuauCompileVectorConstLimit && cid < 0)
+            if (cid < 0)
                 CompileError::raise(node->location, "Exceeded constant limit; simplify the code to compile");
 
             emitLoadK(target, cid);
@@ -2530,6 +2561,14 @@ struct Compiler
 
             emitLoadK(target, cid);
         }
+        else if (AstExprConstantInteger* expr = node->as<AstExprConstantInteger>())
+        {
+            int32_t cid = bytecode.addConstantInteger(expr->value);
+            if (cid < 0)
+                CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+            emitLoadK(target, cid);
+        }
         else if (AstExprConstantString* expr = node->as<AstExprConstantString>())
         {
             int32_t cid = bytecode.addConstantString(sref(expr->value));
@@ -2573,10 +2612,7 @@ struct Compiler
         }
         else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
         {
-            if (FFlag::LuauCompileTableIndexTemp)
-                compileExprIndexName(expr, target, targetTemp);
-            else
-                compileExprIndexName(expr, target);
+            compileExprIndexName(expr, target, targetTemp);
         }
         else if (AstExprIndexExpr* expr = node->as<AstExprIndexExpr>())
         {
@@ -3498,7 +3534,7 @@ struct Compiler
                 else if (builtin.isGlobal("pairs")) // for .. in pairs(t)
                     skipOp = LOP_FORGPREP_NEXT;
             }
-            else if (stat->values.size == 2)
+            else if (stat->values.size == 2 && (!FFlag::LuauCompileNoOptNext || (!getfenvUsed && !setfenvUsed)))
             {
                 Builtin builtin = getBuiltin(stat->values.data[0], globals, variables);
 
@@ -4719,6 +4755,14 @@ void setCompileConstantNumber(CompileConstant* constant, double n)
 
     target->type = Compile::Constant::Type_Number;
     target->valueNumber = n;
+}
+
+void setCompileConstantInteger64(CompileConstant* constant, int64_t l)
+{
+    Compile::Constant* target = reinterpret_cast<Compile::Constant*>(constant);
+
+    target->type = Compile::Constant::Type_Integer;
+    target->valueInteger64 = l;
 }
 
 void setCompileConstantVector(CompileConstant* constant, float x, float y, float z, float w)

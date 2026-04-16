@@ -13,8 +13,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAGVARIABLE(LuauContainsAnyGenericDoesntTraverseIntoExtern)
-
 namespace Luau
 {
 
@@ -844,7 +842,7 @@ ContainsAnyGeneric::ContainsAnyGeneric()
 
 bool ContainsAnyGeneric::visit(TypeId ty, const ExternType&)
 {
-    return !FFlag::LuauContainsAnyGenericDoesntTraverseIntoExtern;
+    return false;
 }
 
 bool ContainsAnyGeneric::visit(TypeId ty)
@@ -930,6 +928,29 @@ bool isBlocked(TypeId ty)
         return tfit->state == TypeFunctionInstanceState::Unsolved;
 
     return is<BlockedType, PendingExpansionType>(ty);
+}
+
+std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty, DenseHashSet<TypeId>& seen)
+{
+    ty = follow(ty);
+    if (seen.contains(ty))
+        return std::nullopt;
+
+    seen.insert(ty);
+
+    if (auto ftv = get<FunctionType>(ty))
+        return { ftv->retTypes };
+
+    if (auto utv = get<UnionType>(ty); utv && begin(utv) != end(utv))
+        return getApproximateReturnTypeForFunctionCall(*begin(utv), seen);
+
+    return std::nullopt;
+}
+
+std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty)
+{
+    DenseHashSet<TypeId> seen{nullptr};
+    return getApproximateReturnTypeForFunctionCall(ty, seen);
 }
 
 

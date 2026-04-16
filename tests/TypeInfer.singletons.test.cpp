@@ -9,8 +9,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
-LUAU_FASTFLAG(LuauPushTypeUnifyConstantHandling)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 
 TEST_SUITE_BEGIN("TypeSingletons");
@@ -440,9 +439,6 @@ Table type 'a' not compatible with type 'Cat' because the former is missing fiel
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_bool")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauPushTypeUnifyConstantHandling, true},
-    };
     CheckResult result = check(R"(
 type Good = { success: true, result: string }
 type Bad = { success: false, error: string }
@@ -471,10 +467,8 @@ Table type 'a' not compatible with type 'Bad' because the former is missing fiel
 
 TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauPushTypeUnifyConstantHandling, true},
-    };
+    ScopedFastFlag _ {FFlag::DebugLuauForceOldSolver, false};
+
     CheckResult result = check(R"(
         type Ok<T> = {success: true, result: T}
         type Err<T> = {success: false, error: T}
@@ -819,9 +813,8 @@ TEST_CASE_FIXTURE(Fixture, "oss_2010_but_with_booleans")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauPushTypeUnifyConstantHandling, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
     CheckResult results = check(R"(
@@ -858,10 +851,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2010_but_with_booleans")
 
 TEST_CASE_FIXTURE(Fixture, "cli_184125")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauPushTypeUnifyConstantHandling, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type MyTypeA = {Value: true}

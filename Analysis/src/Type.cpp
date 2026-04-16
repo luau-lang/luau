@@ -190,6 +190,11 @@ bool isNumber(TypeId ty)
     return isPrim(ty, PrimitiveType::Number);
 }
 
+bool isInteger(TypeId ty)
+{
+    return isPrim(ty, PrimitiveType::Integer);
+}
+
 // Returns true when ty is a subtype of string
 bool isString(TypeId ty)
 {
@@ -841,6 +846,7 @@ BuiltinTypes::BuiltinTypes()
     , typeFunctions(std::make_unique<BuiltinTypeFunctions>())
     , nilType(arena->addType(Type{PrimitiveType{PrimitiveType::NilType}, /*persistent*/ true}))
     , numberType(arena->addType(Type{PrimitiveType{PrimitiveType::Number}, /*persistent*/ true}))
+    , integerType(arena->addType(Type{PrimitiveType{PrimitiveType::Integer}, /*persistent*/ true}))
     , stringType(arena->addType(Type{PrimitiveType{PrimitiveType::String}, /*persistent*/ true}))
     , booleanType(arena->addType(Type{PrimitiveType{PrimitiveType::Boolean}, /*persistent*/ true}))
     , threadType(arena->addType(Type{PrimitiveType{PrimitiveType::Thread}, /*persistent*/ true}))

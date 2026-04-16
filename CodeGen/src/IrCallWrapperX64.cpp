@@ -221,6 +221,28 @@ RegisterX64 IrCallWrapperX64::suggestNextArgumentRegister(SizeX64 size) const
     return regs.takeReg(target.base, kInvalidInstIdx);
 }
 
+template<size_t N>
+RegisterX64 IrCallWrapperX64::suggestArgumentRegister(SizeX64 size, AssemblyBuilderX64& build)
+{
+    static_assert(N <= 3, "Argument index must be 0-3 (Windows passes args 4+ on the stack)");
+
+    if (size == SizeX64::xmmword)
+        return kXmmOrder[N].base;
+
+    const std::array<OperandX64, 6>& gprOrder = build.abi == ABIX64::Windows ? kWindowsGprOrder : kSystemvGprOrder;
+
+    OperandX64 target = gprOrder[N];
+    CODEGEN_ASSERT(target.cat == CategoryX64::reg);
+
+    target.base.size = size;
+    return target.base;
+}
+
+template RegisterX64 IrCallWrapperX64::suggestArgumentRegister<0>(SizeX64 size, AssemblyBuilderX64& build);
+template RegisterX64 IrCallWrapperX64::suggestArgumentRegister<1>(SizeX64 size, AssemblyBuilderX64& build);
+template RegisterX64 IrCallWrapperX64::suggestArgumentRegister<2>(SizeX64 size, AssemblyBuilderX64& build);
+template RegisterX64 IrCallWrapperX64::suggestArgumentRegister<3>(SizeX64 size, AssemblyBuilderX64& build);
+
 OperandX64 IrCallWrapperX64::getNextArgumentTarget(SizeX64 size) const
 {
     if (size == SizeX64::xmmword)

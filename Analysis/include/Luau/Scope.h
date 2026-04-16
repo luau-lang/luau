@@ -111,11 +111,6 @@ struct Scope
     DenseHashMap<std::string, Location> invalidTypeAliases{{}};
     std::optional<Location> isInvalidTypeAlias(const std::string& name) const;
 
-    // Clip with LuauReworkInfiniteTypeFinder
-    // A set of type alias names that are invalid because they violate the recursion restrictions of type aliases.
-    DenseHashSet<std::string> invalidTypeAliasNames_DEPRECATED{""};
-    bool isInvalidTypeAliasName_DEPRECATED(const std::string& name) const;
-
     NotNull<Scope> findNarrowestScopeContaining(Location);
 };
 

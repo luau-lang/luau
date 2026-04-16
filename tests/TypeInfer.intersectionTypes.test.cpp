@@ -365,13 +365,12 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
     }
     else
     {
-        const std::string expected = 
-            "Expected this to be\n\t"
-            "'(string) -> string'"
-            "\nbut got\n\t"
-            "'(string, number) -> string'"
-            "\ncaused by:\n"
-            "  Argument count mismatch. Function expects 2 arguments, but only 1 is specified";
+        const std::string expected = "Expected this to be\n\t"
+                                     "'(string) -> string'"
+                                     "\nbut got\n\t"
+                                     "'(string, number) -> string'"
+                                     "\ncaused by:\n"
+                                     "  Argument count mismatch. Function expects 2 arguments, but only 1 is specified";
 
         CHECK_EQ(expected, toString(result.errors[0]));
         CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'X & Y'");
@@ -397,13 +396,12 @@ TEST_CASE_FIXTURE(Fixture, "table_write_sealed_indirect")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
-    const std::string expected =
-        "Expected this to be\n\t"
-        "'(string) -> string'"
-        "\nbut got\n\t"
-        "'(string, number) -> string'"
-        "\ncaused by:\n"
-        "  Argument count mismatch. Function expects 2 arguments, but only 1 is specified";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'(string) -> string'"
+                                 "\nbut got\n\t"
+                                 "'(string, number) -> string'"
+                                 "\ncaused by:\n"
+                                 "  Argument count mismatch. Function expects 2 arguments, but only 1 is specified";
     CHECK_EQ(expected, toString(result.errors[0]));
 
     CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'XY'");
@@ -436,12 +434,11 @@ local a: XYZ = 3
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected = 
-            "Expected this to be 'X & Y & Z', but got 'number'; \n"
-            "this is because \n\t"
-            " * the 1st component of the intersection is `X`, and `number` is not a subtype of `X`\n\t"
-            " * the 2nd component of the intersection is `Y`, and `number` is not a subtype of `Y`\n\t"
-            " * the 3rd component of the intersection is `Z`, and `number` is not a subtype of `Z`";
+        const std::string expected = "Expected this to be 'X & Y & Z', but got 'number'; \n"
+                                     "this is because \n\t"
+                                     " * the 1st component of the intersection is `X`, and `number` is not a subtype of `X`\n\t"
+                                     " * the 2nd component of the intersection is `Y`, and `number` is not a subtype of `Y`\n\t"
+                                     " * the 3rd component of the intersection is `Z`, and `number` is not a subtype of `Z`";
 
         CHECK_EQ(expected, toString(result.errors[0]));
     }
@@ -473,12 +470,11 @@ end
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected = 
-            "Expected this to be 'number', but got 'X & Y & Z'; \n"
-            "this is because \n\t"
-            " * the 1st component of the intersection is `X`, which is not a subtype of `number`\n\t"
-            " * the 2nd component of the intersection is `Y`, which is not a subtype of `number`\n\t"
-            " * the 3rd component of the intersection is `Z`, which is not a subtype of `number`";
+        const std::string expected = "Expected this to be 'number', but got 'X & Y & Z'; \n"
+                                     "this is because \n\t"
+                                     " * the 1st component of the intersection is `X`, which is not a subtype of `number`\n\t"
+                                     " * the 2nd component of the intersection is `Y`, which is not a subtype of `number`\n\t"
+                                     " * the 3rd component of the intersection is `Z`, which is not a subtype of `number`";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -526,11 +522,10 @@ TEST_CASE_FIXTURE(Fixture, "intersect_bool_and_false")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected = 
-            "Expected this to be 'true', but got 'boolean & false'; \n"
-            "this is because \n\t"
-            " * the 1st component of the intersection is `boolean`, which is not a subtype of `true`\n\t"
-            " * the 2nd component of the intersection is `false`, which is not a subtype of `true`";
+        const std::string expected = "Expected this to be 'true', but got 'boolean & false'; \n"
+                                     "this is because \n\t"
+                                     " * the 1st component of the intersection is `boolean`, which is not a subtype of `true`\n\t"
+                                     " * the 2nd component of the intersection is `false`, which is not a subtype of `true`";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -551,12 +546,11 @@ TEST_CASE_FIXTURE(Fixture, "intersect_false_and_bool_and_false")
     // TODO: odd stringification of `false & (boolean & false)`.)
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected = 
-            "Expected this to be 'true', but got 'boolean & false & false'; \n"
-            "this is because \n\t"
-            " * the 1st component of the intersection is `false`, which is not a subtype of `true`\n\t"
-            " * the 2nd component of the intersection is `boolean`, which is not a subtype of `true`\n\t"
-            " * the 3rd component of the intersection is `false`, which is not a subtype of `true`";
+        const std::string expected = "Expected this to be 'true', but got 'boolean & false & false'; \n"
+                                     "this is because \n\t"
+                                     " * the 1st component of the intersection is `false`, which is not a subtype of `true`\n\t"
+                                     " * the 2nd component of the intersection is `boolean`, which is not a subtype of `true`\n\t"
+                                     " * the 3rd component of the intersection is `false`, which is not a subtype of `true`";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -665,12 +659,11 @@ TEST_CASE_FIXTURE(Fixture, "union_saturate_overloaded_functions")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected = 
-        "Expected this to be\n\t"
-        "'(boolean | number) -> boolean | number'"
-        "\nbut got\n\t"
-        "'((number) -> number) & ((string) -> string)'"
-        "; none of the intersection parts are compatible";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'(boolean | number) -> boolean | number'"
+                                 "\nbut got\n\t"
+                                 "'((number) -> number) & ((string) -> string)'"
+                                 "; none of the intersection parts are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -687,13 +680,12 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected =
-            "Expected this to be '{ p: nil }', but got '{ p: number?, q: number?, r: number? } & { p: number?, q: string? }'"
-            "; \nthis is because \n\t"
-            " * in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and "
-            "accessing `p` results in `nil`, and `number` is not exactly `nil`\n\t"
-            " * in the 2nd component of the intersection, accessing `p` has the 1st component of the union as `number` and "
-            "accessing `p` results in `nil`, and `number` is not exactly `nil`";
+        const std::string expected = "Expected this to be '{ p: nil }', but got '{ p: number?, q: number?, r: number? } & { p: number?, q: string? }'"
+                                     "; \nthis is because \n\t"
+                                     " * in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and "
+                                     "accessing `p` results in `nil`, and `number` is not exactly `nil`\n\t"
+                                     " * in the 2nd component of the intersection, accessing `p` has the 1st component of the union as `number` and "
+                                     "accessing `p` results in `nil`, and `number` is not exactly `nil`";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -739,24 +731,23 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
     }
     else if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected =
-            "Expected this to be\n\t"
-            "'{ p: string?, q: number? }'"
-            "\nbut got\n\t"
-            "'{ p: number?, q: any } & { p: unknown, q: string? }'"
-            "; \nthis is because \n\t"
-            " * in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and "
-            "accessing `p` results in `string?`, and `number` is not exactly `string?`\n\t"
-            " * in the 1st component of the intersection, accessing `p` results in `number?` and accessing `p` has the 1st "
-            "component of the union as `string`, and `number?` is not exactly `string`\n\t"
-            " * in the 1st component of the intersection, accessing `q` results in `any` and accessing `q` results in "
-            "`number?`, and `any` is not exactly `number?`\n\t"
-            " * in the 2nd component of the intersection, accessing `p` results in `unknown` and accessing `p` results in "
-            "`string?`, and `unknown` is not exactly `string?`\n\t"
-            " * in the 2nd component of the intersection, accessing `q` has the 1st component of the union as `string` and "
-            "accessing `q` results in `number?`, and `string` is not exactly `number?`\n\t"
-            " * in the 2nd component of the intersection, accessing `q` results in `string?` and accessing `q` has the 1st "
-            "component of the union as `number`, and `string?` is not exactly `number`";
+        const std::string expected = "Expected this to be\n\t"
+                                     "'{ p: string?, q: number? }'"
+                                     "\nbut got\n\t"
+                                     "'{ p: number?, q: any } & { p: unknown, q: string? }'"
+                                     "; \nthis is because \n\t"
+                                     " * in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and "
+                                     "accessing `p` results in `string?`, and `number` is not exactly `string?`\n\t"
+                                     " * in the 1st component of the intersection, accessing `p` results in `number?` and accessing `p` has the 1st "
+                                     "component of the union as `string`, and `number?` is not exactly `string`\n\t"
+                                     " * in the 1st component of the intersection, accessing `q` results in `any` and accessing `q` results in "
+                                     "`number?`, and `any` is not exactly `number?`\n\t"
+                                     " * in the 2nd component of the intersection, accessing `p` results in `unknown` and accessing `p` results in "
+                                     "`string?`, and `unknown` is not exactly `string?`\n\t"
+                                     " * in the 2nd component of the intersection, accessing `q` has the 1st component of the union as `string` and "
+                                     "accessing `q` results in `number?`, and `string` is not exactly `number?`\n\t"
+                                     " * in the 2nd component of the intersection, accessing `q` results in `string?` and accessing `q` has the 1st "
+                                     "component of the union as `number`, and `string?` is not exactly `number`";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -1034,12 +1025,11 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_result")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected =
-        "Expected this to be\n\t"
-        "'(number?) -> number?'"
-        "\nbut got\n\t"
-        "'((nil) -> unknown) & ((number) -> number)'"
-        "; none of the intersection parts are compatible";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'(number?) -> number?'"
+                                 "\nbut got\n\t"
+                                 "'((nil) -> unknown) & ((number) -> number)'"
+                                 "; none of the intersection parts are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -1059,12 +1049,11 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_arguments")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected =
-        "Expected this to be\n\t"
-        "'(number?) -> nil'"
-        "\nbut got\n\t"
-        "'((number) -> number?) & ((unknown) -> string?)'"
-        "; none of the intersection parts are compatible";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'(number?) -> nil'"
+                                 "\nbut got\n\t"
+                                 "'((number) -> number?) & ((unknown) -> string?)'"
+                                 "; none of the intersection parts are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
@@ -1200,12 +1189,11 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_overlapping_results_and_
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected = 
-        "Expected this to be\n\t"
-        "'(number | string) -> (number, number?)'"
-        "\nbut got\n\t"
-        "'((number?) -> (...number)) & ((string?) -> number | string)'"
-        "; none of the intersection parts are compatible";
+    const std::string expected = "Expected this to be\n\t"
+                                 "'(number | string) -> (number, number?)'"
+                                 "\nbut got\n\t"
+                                 "'((number?) -> (...number)) & ((string?) -> number | string)'"
+                                 "; none of the intersection parts are compatible";
     CHECK(expected == toString(result.errors[0]));
 }
 

@@ -9,8 +9,7 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
-LUAU_FASTFLAGVARIABLE(LuauCodegenBit32SingleArg)
-LUAU_FASTFLAG(LuauCodegenIsNanAndDirectCompare)
+LUAU_FASTFLAGVARIABLE(LuauCodegenBufNoDefTag)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
@@ -420,7 +419,7 @@ static BuiltinImplResult translateBuiltinBit32MultiargOp(
     int pcpos
 )
 {
-    if (nparams < (FFlag::LuauCodegenBit32SingleArg ? 1 : 2) || nparams > kBit32BinaryOpUnrolledParams || nresults > 1)
+    if (nparams < 1 || nparams > kBit32BinaryOpUnrolledParams || nresults > 1)
         return {BuiltinImplType::None, -1};
 
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
@@ -434,30 +433,15 @@ static BuiltinImplResult translateBuiltinBit32MultiargOp(
     for (int i = 4; i <= nparams; ++i)
         builtinCheckDouble(build, build.vmReg(vmRegOp(args) + (i - 2)), pcpos);
 
-    IrOp res;
+    IrOp va = builtinLoadDouble(build, build.vmReg(arg));
+    IrOp res = build.inst(IrCmd::NUM_TO_UINT, va);
 
-    if (FFlag::LuauCodegenBit32SingleArg)
+    if (nparams >= 2)
     {
-        IrOp va = builtinLoadDouble(build, build.vmReg(arg));
-        res = build.inst(IrCmd::NUM_TO_UINT, va);
-
-        if (nparams >= 2)
-        {
-            IrOp vb = builtinLoadDouble(build, args);
-            IrOp arg = build.inst(IrCmd::NUM_TO_UINT, vb);
-
-            res = build.inst(cmd, res, arg);
-        }
-    }
-    else
-    {
-        IrOp va = builtinLoadDouble(build, build.vmReg(arg));
         IrOp vb = builtinLoadDouble(build, args);
+        IrOp arg = build.inst(IrCmd::NUM_TO_UINT, vb);
 
-        IrOp vaui = build.inst(IrCmd::NUM_TO_UINT, va);
-        IrOp vbui = build.inst(IrCmd::NUM_TO_UINT, vb);
-
-        res = build.inst(cmd, vaui, vbui);
+        res = build.inst(cmd, res, arg);
     }
 
     if (nparams >= 3)
@@ -947,7 +931,9 @@ static BuiltinImplResult translateBuiltinBufferRead(
     IrOp buf, intIndex;
     translateBufferArgsAndCheckBounds(build, nparams, arg, args, arg3, size, pcpos, buf, intIndex);
 
-    IrOp result = build.inst(readCmd, buf, intIndex);
+    IrOp result =
+        FFlag::LuauCodegenBufNoDefTag ? build.inst(readCmd, buf, intIndex, build.constTag(LUA_TBUFFER)) : build.inst(readCmd, buf, intIndex);
+
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), convCmd == IrCmd::NOP ? result : build.inst(convCmd, result));
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
@@ -975,7 +961,11 @@ static BuiltinImplResult translateBuiltinBufferWrite(
     translateBufferArgsAndCheckBounds(build, nparams, arg, args, arg3, size, pcpos, buf, intIndex);
 
     IrOp numValue = builtinLoadDouble(build, arg3);
-    build.inst(writeCmd, buf, intIndex, convCmd == IrCmd::NOP ? numValue : build.inst(convCmd, numValue));
+
+    if (FFlag::LuauCodegenBufNoDefTag)
+        build.inst(writeCmd, buf, intIndex, convCmd == IrCmd::NOP ? numValue : build.inst(convCmd, numValue), build.constTag(LUA_TBUFFER));
+    else
+        build.inst(writeCmd, buf, intIndex, convCmd == IrCmd::NOP ? numValue : build.inst(convCmd, numValue));
 
     return {BuiltinImplType::Full, 0};
 }
@@ -1419,10 +1409,7 @@ BuiltinImplResult translateBuiltin(
     case LBF_MATH_LERP:
         return translateBuiltinMathLerp(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
     case LBF_MATH_ISNAN:
-        if (FFlag::LuauCodegenIsNanAndDirectCompare)
-            return translateBuiltinMathIsNan(build, nparams, ra, arg, args, nresults, pcpos);
-        else
-            return {BuiltinImplType::None, -1};
+        return translateBuiltinMathIsNan(build, nparams, ra, arg, args, nresults, pcpos);
     default:
         return {BuiltinImplType::None, -1};
     }

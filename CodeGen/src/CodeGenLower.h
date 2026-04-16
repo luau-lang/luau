@@ -26,8 +26,6 @@ LUAU_FASTFLAG(DebugCodegenOptSize)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
-LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
-LUAU_FASTFLAG(LuauCodegenCounterSupport)
 
 namespace Luau
 {
@@ -154,8 +152,7 @@ inline bool lowerImpl(
             function.entryLocation = build.getLabelOffset(block.label);
         }
 
-        if (FFlag::LuauCodegenCounterSupport)
-            lowering.startBlock(block);
+        lowering.startBlock(block);
 
         IrBlock& nextBlock = getNextBlock(function, sortedBlocks, dummy, i);
 
@@ -165,7 +162,7 @@ inline bool lowerImpl(
             CODEGEN_ASSERT(function.getBlockIndex(nextBlock) == block.expectedNextBlock);
 
         // Block might establish a safe environment right at the start
-        if (FFlag::LuauCodegenBlockSafeEnv && (block.flags & kBlockFlagSafeEnvCheck) != 0)
+        if ((block.flags & kBlockFlagSafeEnvCheck) != 0)
         {
             if (options.includeIr)
             {
@@ -320,9 +317,7 @@ inline bool lowerFunction(
 )
 {
     ir.function.stats = stats;
-
-    if (FFlag::LuauCodegenCounterSupport)
-        ir.function.recordCounters = options.compilationOptions.recordCounters;
+    ir.function.recordCounters = options.compilationOptions.recordCounters;
 
     killUnusedBlocks(ir.function);
 

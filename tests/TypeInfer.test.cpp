@@ -32,13 +32,16 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarityFollow)
 LUAU_FASTFLAG(LuauFollowInExplicitInstantiation)
-LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes)
+LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes2)
 LUAU_FASTFLAG(LuauFollowGenericBeforeCheckingIfMapped)
 LUAU_FASTFLAG(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
+LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
+LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
+LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
+LUAU_FASTFLAG(LuauInstantiationUsesPolarity)
 
 using namespace Luau;
 
@@ -1163,22 +1166,22 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         const std::string expected =
-             "Expected this to be exactly 'Policies' from 'MainModule', but got 'Policies' from 'MainModule'"
-                  "\ncaused by:\n"
-                  "  Property 'getStoreFieldName' is not compatible.\n"
-                  "Expected this to be exactly\n\t"
-                  "'(Policies, FieldSpecifier) -> string'"
-                  "\nbut got\n\t"
-                  "'(Policies, FieldSpecifier & { from: number? }) -> ('a, b...)'"
-                  "\ncaused by:\n"
-                  "  Argument #2 type is not compatible.\n"
-                  "Expected this to be exactly\n\t"
-                  "'FieldSpecifier & { from: number? }'"
-                  "\nbut got\n\t"
-                  "'FieldSpecifier'"
-                  "\ncaused by:\n"
-                  "  Not all intersection parts are compatible.\n"
-                  "Table type 'FieldSpecifier' not compatible with type '{ from: number? }' because the former has extra field 'fieldName'";
+            "Expected this to be exactly 'Policies' from 'MainModule', but got 'Policies' from 'MainModule'"
+            "\ncaused by:\n"
+            "  Property 'getStoreFieldName' is not compatible.\n"
+            "Expected this to be exactly\n\t"
+            "'(Policies, FieldSpecifier) -> string'"
+            "\nbut got\n\t"
+            "'(Policies, FieldSpecifier & { from: number? }) -> ('a, b...)'"
+            "\ncaused by:\n"
+            "  Argument #2 type is not compatible.\n"
+            "Expected this to be exactly\n\t"
+            "'FieldSpecifier & { from: number? }'"
+            "\nbut got\n\t"
+            "'FieldSpecifier'"
+            "\ncaused by:\n"
+            "  Not all intersection parts are compatible.\n"
+            "Table type 'FieldSpecifier' not compatible with type '{ from: number? }' because the former has extra field 'fieldName'";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
@@ -2761,8 +2764,6 @@ TEST_CASE_FIXTURE(Fixture, "captured_globals_are_not_blocked")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_instantiation2")
 {
-    ScopedFastFlag _{FFlag::LuauInstantiationUsesGenericPolarityFollow, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         _ = if {l0._,} then if _ then _ elseif rawset({[_]=_,[{_._,}]=_,}) then _ else {_._,} elseif rawset(_) then (true),""
     )"));
@@ -2781,7 +2782,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_function_call")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_avoid_emplacing_blocked_types_you_dont_own")
 {
-    ScopedFastFlag _{FFlag::LuauKeepExplicitMapForGlobalTypes, true};
+    ScopedFastFlag _{FFlag::LuauKeepExplicitMapForGlobalTypes2, true};
 
     LUAU_REQUIRE_ERRORS(check(R"(
         if if _ then _ else nil then
@@ -2870,6 +2871,64 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_allow_failing_to_bind_generic")
 
         test()
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_bind_generic_sigsegv")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
+        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
+        {FFlag::LuauSubtypingReplaceBounds, true},
+    };
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        function test(arg1, arg2)
+            local fun = test()
+            local fun2 = fun(nil, test(test()))
+            fun2(test(test)())
+        end
+
+        local f = test()
+        f(nil, test())
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_global_type_inference")
+{
+    ScopedFastFlag _{FFlag::LuauKeepExplicitMapForGlobalTypes2, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        A = A
+        A = A
+        function A()
+        end
+    )"));
+
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_instantiate_iter_function")
+{
+    ScopedFastFlag _{FFlag::LuauInstantiationUsesPolarity, true};
+    // We do not care about the results of type checking this
+    // snippet, only that it does not trip an assertion.
+    //
+    // We use polarity to track how we generalize free types.
+    // For example, free types with positive polarity will
+    // default generalize to their lower bounds. We assert
+    // that the polarity is never "Unknown" (the default).
+    //
+    // This test exercises a case we were getting wrong: when
+    // iterating over a table with a generic __iter metamethod,
+    // we did not correctly instantiate the generics with free
+    // types of the corresponding polarity, and would trip the
+    // aforementioned assertion.
+    std::ignore = check(R"(
+        function iterfunc(l0)
+            return l0()
+        end
+        for _, _ in setmetatable({}, { __iter = iterfunc }) do
+        end
+    )");
 }
 
 TEST_SUITE_END();

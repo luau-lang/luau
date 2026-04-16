@@ -235,6 +235,8 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "UnexpectedTypePackInSubtyping {  tp = '" + toString(err.tp) + "' }";
     else if constexpr (std::is_same_v<T, UserDefinedTypeFunctionError>)
         stream << "UserDefinedTypeFunctionError { " << err.message << " }";
+    else if constexpr (std::is_same_v<T, BuiltInTypeFunctionError>)
+        stream << "BuiltInTypeFunctionError { " << toString(err.error) << " }";
     else if constexpr (std::is_same_v<T, ReservedIdentifier>)
         stream << "ReservedIdentifier { " << err.name << " }";
     else if constexpr (std::is_same_v<T, CannotAssignToNever>)

@@ -5,6 +5,7 @@
 #include "Luau/Location.h"
 #include "Luau/NotNull.h"
 #include "Luau/Type.h"
+#include "Luau/TypeFunctionError.h"
 #include "Luau/TypeIds.h"
 #include "Luau/Variant.h"
 
@@ -465,6 +466,13 @@ struct UserDefinedTypeFunctionError
     bool operator==(const UserDefinedTypeFunctionError& rhs) const;
 };
 
+struct BuiltInTypeFunctionError
+{
+    TypeFunctionError error;
+
+    bool operator==(const BuiltInTypeFunctionError& rhs) const;
+};
+
 struct ReservedIdentifier
 {
     std::string name;
@@ -645,6 +653,7 @@ using TypeErrorData = Variant<
     UnexpectedTypePackInSubtyping,
     ExplicitFunctionAnnotationRecommended,
     UserDefinedTypeFunctionError,
+    BuiltInTypeFunctionError,
     ReservedIdentifier,
     UnexpectedArrayLikeTableItem,
     CannotCheckDynamicStringFormatCalls,

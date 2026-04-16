@@ -5,8 +5,6 @@
 
 #include <new>
 
-LUAU_FASTFLAG(LuauCodegenCounterSupport)
-
 namespace Luau
 {
 namespace CodeGen
@@ -14,10 +12,7 @@ namespace CodeGen
 
 [[nodiscard]] static size_t computeNativeExecDataSize(uint32_t bytecodeInstructionCount, uint32_t extraDataCount) noexcept
 {
-    if (FFlag::LuauCodegenCounterSupport)
-        return sizeof(NativeProtoExecDataHeader) + (bytecodeInstructionCount * sizeof(uint32_t)) + (extraDataCount * sizeof(uint32_t));
-    else
-        return sizeof(NativeProtoExecDataHeader) + (bytecodeInstructionCount * sizeof(uint32_t));
+    return sizeof(NativeProtoExecDataHeader) + (bytecodeInstructionCount * sizeof(uint32_t)) + (extraDataCount * sizeof(uint32_t));
 }
 
 void NativeProtoExecDataDeleter::operator()(const uint32_t* instructionOffsets) const noexcept

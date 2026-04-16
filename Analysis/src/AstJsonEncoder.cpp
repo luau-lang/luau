@@ -9,7 +9,6 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauConst2)
-LUAU_FASTFLAG(DebugLuauNoInline)
 
 namespace Luau
 {
@@ -308,6 +307,18 @@ struct AstJsonEncoder : public AstVisitor
         writeNode(
             node,
             "AstExprConstantNumber",
+            [&]()
+            {
+                write("value", node->value);
+            }
+        );
+    }
+
+    void write(class AstExprConstantInteger* node)
+    {
+        writeNode(
+            node,
+            "AstExprConstantInteger",
             [&]()
             {
                 write("value", node->value);
@@ -1146,27 +1157,6 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(genericName);
             }
         );
-    }
-
-    void write(AstAttr::Type type)
-    {
-        switch (type)
-        {
-        case AstAttr::Type::Checked:
-            return writeString("checked");
-        case AstAttr::Type::Native:
-            return writeString("native");
-        case AstAttr::Type::Deprecated:
-            return writeString("deprecated");
-        case AstAttr::Type::DebugNoinline:
-            if (FFlag::DebugLuauNoInline)
-            {
-                return writeString("debugnoinline");
-            }
-            LUAU_FALLTHROUGH;
-        case AstAttr::Type::Unknown:
-            return writeString("unknown");
-        }
     }
 
     void write(class AstAttr* node)

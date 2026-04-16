@@ -414,4 +414,16 @@ bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics)
  */
 bool isBlocked(TypeId ty);
 
+
+/**
+ * **YOU SHOULD PROBABLY NOT USE THIS FUNCTION.**
+ *
+ * This function is a stop-gap while we rework function call inference and
+ * eager generalization.
+ *
+ * @return An approximate return type of `ty`, assuming `ty` is a function or
+ *         union of functions.
+ */
+std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty);
+
 } // namespace Luau

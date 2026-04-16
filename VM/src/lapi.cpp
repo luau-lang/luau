@@ -8,6 +8,7 @@
 #include "lfunc.h"
 #include "lgc.h"
 #include "ldo.h"
+#include "ltm.h"
 #include "ludata.h"
 #include "lvm.h"
 #include "lnumutils.h"
@@ -56,12 +57,6 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2024 Roblox Corporation $\n"
     { \
         api_check(L, p >= L->base && p <= L->ci->top); \
         L->top = p; \
-    }
-
-#define updateatom(L, ts) \
-    { \
-        if (ts->atom == ATOM_UNDEF) \
-            ts->atom = L->global->cb.useratom ? L->global->cb.useratom(L, ts->data, ts->len) : -1; \
     }
 
 static LuaTable* getcurrenv(lua_State* L)
@@ -442,6 +437,23 @@ int lua_toboolean(lua_State* L, int idx)
     return !l_isfalse(o);
 }
 
+int64_t lua_tointeger64(lua_State* L, int idx, int* isinteger)
+{
+    const TValue* o = index2addr(L, idx);
+    if (ttisinteger(o))
+    {
+        if (isinteger)
+            *isinteger = 1;
+        return lvalue(o);
+    }
+    else
+    {
+        if (isinteger)
+            *isinteger = 0;
+        return 0;
+    }
+}
+
 const char* lua_tolstring(lua_State* L, int idx, size_t* len)
 {
     StkId o = index2addr(L, idx);
@@ -470,7 +482,7 @@ const char* lua_tostringatom(lua_State* L, int idx, int* atom)
     TString* s = tsvalue(o);
     if (atom)
     {
-        updateatom(L, s);
+        luaS_updateatom(L, s);
         *atom = s->atom;
     }
     return getstr(s);
@@ -492,7 +504,7 @@ const char* lua_tolstringatom(lua_State* L, int idx, size_t* len, int* atom)
         *len = s->len;
     if (atom)
     {
-        updateatom(L, s);
+        luaS_updateatom(L, s);
         *atom = s->atom;
     }
 
@@ -506,7 +518,7 @@ const char* lua_namecallatom(lua_State* L, int* atom)
         return NULL;
     if (atom)
     {
-        updateatom(L, s);
+        luaS_updateatom(L, s);
         *atom = s->atom;
     }
     return getstr(s);
@@ -643,6 +655,12 @@ void lua_pushnumber(lua_State* L, double n)
 void lua_pushinteger(lua_State* L, int n)
 {
     setnvalue(L->top, cast_num(n));
+    api_incr_top(L);
+}
+
+void lua_pushinteger64(lua_State* L, int64_t n)
+{
+    setlvalue(L->top, n);
     api_incr_top(L);
 }
 
@@ -1580,6 +1598,46 @@ void lua_getuserdatametatable(lua_State* L, int tag)
     }
 
     api_incr_top(L);
+}
+
+int LUA_API lua_registeruserdatadirectaccess(
+    lua_State* L,
+    int tag,
+    lua_UserdataDirectAccess get,
+    lua_UserdataDirectAccess set,
+    lua_UserdataDirectNamecall namecall
+)
+{
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    luaC_threadbarrier(L);
+
+    if (LuaTable* h = L->global->udatamt[tag])
+    {
+        // only metamehtods that are present will be called directly
+        lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[tag];
+
+        if (const TValue* indextm = fasttm(L, h, TM_INDEX))
+        {
+            udatadirect.indextm = *indextm;
+            udatadirect.index = get;
+        }
+
+        if (const TValue* newindextm = fasttm(L, h, TM_NEWINDEX))
+        {
+            udatadirect.newindextm = *newindextm;
+            udatadirect.newindex = set;
+        }
+
+        if (const TValue* namecalltm = fasttm(L, h, TM_NAMECALL))
+        {
+            udatadirect.namecalltm = *namecalltm;
+            udatadirect.namecall = namecall;
+        }
+
+        return 1;
+    }
+
+    return 0;
 }
 
 void lua_setlightuserdataname(lua_State* L, int tag, const char* name)
