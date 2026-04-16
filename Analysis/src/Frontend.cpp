@@ -396,8 +396,7 @@ std::vector<RequireCycle> getRequireCycles(
 
         if (!cycle.empty())
         {
-            result.emplace_back(
-                RequireCycle{depLocation, std::move(cycle)}
+            result.emplace_back(RequireCycle{depLocation, std::move(cycle)}
             ); // note: if we didn't find a cycle, all nodes that we've seen don't depend [transitively] on start
             // so it's safe to *only* clear seen vector when we find a cycle
             // if we don't do it, we will not have correct reporting for some cycles

@@ -2231,10 +2231,6 @@ reentry:
 
                 LuaTable* h = hvalue(ra);
 
-                // TODO: we really don't need this anymore
-                if (!ttistable(ra))
-                    return; // temporary workaround to weaken a rather powerful exploitation primitive in case of a MITM attack on bytecode
-
                 int last = index + c - 1;
                 if (last > h->sizearray)
                 {

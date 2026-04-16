@@ -809,7 +809,7 @@ void ConstraintSolver::initFreeTypeTracking()
         {
             unsolvedConstraints.emplace_back(c);
             auto [types, _typePacks] = c->getMaybeMutatedTypes();
-            for (auto ty: types)
+            for (auto ty : types)
             {
                 auto [it, _] = typeToConstraintSet.try_emplace(ty, Set<const Constraint*>{nullptr});
                 // We don't care if this is fresh, we can blindly insert.
@@ -822,7 +822,6 @@ void ConstraintSolver::initFreeTypeTracking()
             {
                 block(dep, c);
             }
-
         }
     }
     else
@@ -1712,7 +1711,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
                 if (auto ft = get<FreeType>(ty))
                     hasBound |= !is<NeverType>(follow(ft->lowerBound)) || !is<UnknownType>(follow(ft->upperBound));
 
-            // If we have generics we can bind *and* 
+            // If we have generics we can bind *and*
             if (auto overloadAsFn = get<FunctionType>(overloadToUse); overloadAsFn && hasBound)
             {
                 CloneState cs{builtinTypes};
@@ -1747,8 +1746,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
             }
             else
             {
-                auto newRetTp = getApproximateReturnTypeForFunctionCall(overloadToUse)
-                    .value_or(builtinTypes->errorTypePack);
+                auto newRetTp = getApproximateReturnTypeForFunctionCall(overloadToUse).value_or(builtinTypes->errorTypePack);
 
                 std::optional<TypePackId> subst = instantiate2(
                     arena,
@@ -1798,7 +1796,6 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         InstantiationQueuer queuer{constraint->scope, constraint->location, this};
         queuer.traverse(overloadToUse);
         queuer.traverse(result);
-
     }
     else
     {
@@ -3700,7 +3697,6 @@ bool ConstraintSolver::unify(NotNull<const Constraint> constraint, TID subTy, TI
 
         return true;
     }
-
 }
 
 bool ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constraint> constraint)

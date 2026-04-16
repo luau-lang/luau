@@ -306,12 +306,10 @@ void DcrLogger::captureGenerationModule(const ModulePtr& module)
 void DcrLogger::captureGenerationError(const TypeError& error)
 {
     std::string stringifiedError = toString(error);
-    generationLog.errors.push_back(
-        ErrorSnapshot{
-            /* message */ std::move(stringifiedError),
-            /* location */ error.location,
-        }
-    );
+    generationLog.errors.push_back(ErrorSnapshot{
+        /* message */ std::move(stringifiedError),
+        /* location */ error.location,
+    });
 }
 
 void DcrLogger::pushBlock(NotNull<const Constraint> constraint, TypeId block)
@@ -444,12 +442,10 @@ void DcrLogger::captureFinalSolverState(const Scope* rootScope, const std::vecto
 void DcrLogger::captureTypeCheckError(const TypeError& error)
 {
     std::string stringifiedError = toString(error);
-    checkLog.errors.push_back(
-        ErrorSnapshot{
-            /* message */ std::move(stringifiedError),
-            /* location */ error.location,
-        }
-    );
+    checkLog.errors.push_back(ErrorSnapshot{
+        /* message */ std::move(stringifiedError),
+        /* location */ error.location,
+    });
 }
 
 std::vector<ConstraintBlock> DcrLogger::snapshotBlocks(NotNull<const Constraint> c)

@@ -364,10 +364,10 @@ static void autocompleteProps(
             if (result.count(name) == 0 && name != kParseNameError)
             {
                 Luau::TypeId type;
-                    if (auto ty = prop.readTy)
-                        type = follow(*ty);
-                    else
-                        continue;
+                if (auto ty = prop.readTy)
+                    type = follow(*ty);
+                else
+                    continue;
 
                 TypeCorrectKind typeCorrect = indexType == PropIndexType::Key
                                                   ? TypeCorrectKind::Correct

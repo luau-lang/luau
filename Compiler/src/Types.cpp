@@ -543,24 +543,22 @@ struct TypeMapVisitor : AstVisitor
             {
                 if (LuauBytecodeType ty = LuauBytecodeType(libraryMemberTypeCb(object->name.value, node->index.value)); ty != LBC_TYPE_ANY)
                 {
-                    // TODO: 'resolvedExprs' is more limited than 'exprTypes' which limits full inference of more complex types that a user
-                    // callback can return
                     switch (ty)
                     {
                     case LBC_TYPE_BOOLEAN:
-                        resolvedExprs[node] = &builtinTypes.booleanType;
+                        recordResolvedType(node, &builtinTypes.booleanType);
                         break;
                     case LBC_TYPE_NUMBER:
-                        resolvedExprs[node] = &builtinTypes.numberType;
+                        recordResolvedType(node, &builtinTypes.numberType);
                         break;
                     case LBC_TYPE_INTEGER:
-                        resolvedExprs[node] = &builtinTypes.integerType;
+                        recordResolvedType(node, &builtinTypes.integerType);
                         break;
                     case LBC_TYPE_STRING:
-                        resolvedExprs[node] = &builtinTypes.stringType;
+                        recordResolvedType(node, &builtinTypes.stringType);
                         break;
                     case LBC_TYPE_VECTOR:
-                        resolvedExprs[node] = &builtinTypes.vectorType;
+                        recordResolvedType(node, &builtinTypes.vectorType);
                         break;
                     default:
                         break;

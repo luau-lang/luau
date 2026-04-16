@@ -1263,11 +1263,9 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
             // 1. Both the `superTp` and `subTp` have the same number of types in the head
             // 2. `subTp` does not have a tail
             // 3. `superTp` has a free tail
-            result->andAlso(
-                SubtypingResult{true}
-                    .withBothComponent(TypePath::PackField::Tail)
-                    .withAssumedConstraint(PackSubtypeConstraint{builtinTypes->emptyTypePack, *superTail})
-            );
+            result->andAlso(SubtypingResult{true}
+                                .withBothComponent(TypePath::PackField::Tail)
+                                .withAssumedConstraint(PackSubtypeConstraint{builtinTypes->emptyTypePack, *superTail}));
         }
         else
             return SubtypingResult{false}
@@ -1943,7 +1941,6 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
                 result.orElse(isCovariantWith(env, subTy, &negatedTmp, scope));
             }
         }
-
     }
     else if (auto p = get2<PrimitiveType, PrimitiveType>(subTy, negatedTy))
     {

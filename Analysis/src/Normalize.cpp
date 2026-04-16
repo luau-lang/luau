@@ -3751,20 +3751,20 @@ bool isSubtype_DEPRECATED(
         NotNull{&ice}, NotNull{&limits}
     }; // TODO: maybe subtyping checks should not invoke user-defined type function runtime
 
-        Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, solverMode};
-        if (solverMode == SolverMode::New)
-        {
-            Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
+    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}, solverMode};
+    if (solverMode == SolverMode::New)
+    {
+        Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&ice}};
 
-            return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
-        }
-        else
-        {
-            Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+        return subtyping.isSubtype(subTy, superTy, scope).isSubtype;
+    }
+    else
+    {
+        Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
 
-            u.tryUnify(subTy, superTy);
-            return !u.failure;
-        }
+        u.tryUnify(subTy, superTy);
+        return !u.failure;
+    }
 }
 
 } // namespace Luau

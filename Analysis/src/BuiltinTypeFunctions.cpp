@@ -103,13 +103,11 @@ std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunctionApp(
         if (results.size() == 1)
             return {{results[0], Reduction::MaybeOk, {}, {}}};
 
-        TypeId resultTy = ctx->arena->addType(
-            TypeFunctionInstanceType{
-                NotNull{&ctx->builtins->typeFunctions->unionFunc},
-                std::move(results),
-                {},
-            }
-        );
+        TypeId resultTy = ctx->arena->addType(TypeFunctionInstanceType{
+            NotNull{&ctx->builtins->typeFunctions->unionFunc},
+            std::move(results),
+            {},
+        });
 
         if (FFlag::LuauTypeFunctionsCaptureNestedInstances)
         {
