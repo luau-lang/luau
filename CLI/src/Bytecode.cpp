@@ -282,7 +282,9 @@ int main(int argc, char** argv)
     size_t fileCount = files.size();
 
     std::vector<std::vector<FunctionBytecodeSummary>> scriptSummaries;
-    scriptSummaries.reserve(fileCount);
+    // Bug Fix: Used to be `reserve` which does not increase vector size and would cause out of bounds error when accessed via index.
+    // Changed to `resize` to allocate elements and set vector size correctly.
+    scriptSummaries.resize(fileCount);
 
     for (size_t i = 0; i < fileCount; ++i)
     {
