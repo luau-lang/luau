@@ -12,7 +12,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauUdataDirectAccess);
+LUAU_FASTFLAG(LuauUdataDirectAccess2)
 
 /*
 ** Main thread combines a thread state and the global state
@@ -218,7 +218,7 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
         g->udatagc[i] = NULL;
         g->udatamt[i] = NULL;
 
-        if (FFlag::LuauUdataDirectAccess)
+        if (FFlag::LuauUdataDirectAccess2)
         {
             lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[i];
 

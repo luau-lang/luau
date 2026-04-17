@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
+LUAU_FASTFLAG(LuauCodegenCallWrapImproved)
 
 namespace Luau
 {
@@ -1104,9 +1105,12 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         CODEGEN_ASSERT(OP_A(inst).kind == IrOpKind::VmReg && OP_B(inst).kind == IrOpKind::VmReg);
         IrCondition cond = conditionOp(OP_C(inst));
 
+        if (FFlag::LuauCodegenCallWrapImproved)
+            inst.regA64 = regs.allocReg(KindA64::w, index);
+
         Label skip, exit;
 
-        // For equality comparison, 'luaV_lessequal' expects tag to be equal before the call
+        // For equality comparison, 'luaV_equalval' expects tag to be equal before the call
         if (cond == IrCondition::Equal)
         {
             RegisterA64 tempa = regs.allocTemp(KindA64::w);
@@ -1116,11 +1120,18 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.ldr(tempb, tempAddr(OP_B(inst), offsetof(TValue, tt)));
             build.cmp(tempa, tempb);
 
-            // If the tags are not equal, skip 'luaV_lessequal' call and set result to 0
+            // If the tags are not equal, skip the call and set result to 0
             build.b(ConditionA64::NotEqual, skip);
         }
 
-        regs.spill(index);
+        if (FFlag::LuauCodegenCallWrapImproved)
+        {
+            // We have reserved the result register, so we can free it now so it is not recorded in the spill sequence
+            regs.freeReg(inst.regA64);
+        }
+
+        size_t spills = regs.spill(index);
+
         build.mov(x0, rState);
         build.add(x1, rBase, uint16_t(vmRegOp(OP_A(inst)) * sizeof(TValue)));
         build.add(x2, rBase, uint16_t(vmRegOp(OP_B(inst)) * sizeof(TValue)));
@@ -1136,9 +1147,23 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.blr(x3);
 
-        emitUpdateBase(build);
+        if (FFlag::LuauCodegenCallWrapImproved)
+        {
+            if (inst.regA64 != w0)
+                build.mov(inst.regA64, w0);
 
-        inst.regA64 = regs.takeReg(w0, index);
+            inst.regA64 = regs.takeReg(inst.regA64, index);
+
+            emitUpdateBase(build);
+
+            regs.restore(spills);
+        }
+        else
+        {
+            emitUpdateBase(build);
+
+            inst.regA64 = regs.takeReg(w0, index);
+        }
 
         if (cond == IrCondition::Equal)
         {
@@ -1149,7 +1174,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.setLabel(exit);
         }
 
-        // If case we made a call, skip high register bits clear, only consumer is JUMP_CMP_INT which doesn't read them
+        // In case we made a call, skip high register bits clear, only consumer is JUMP_CMP_INT which doesn't read them
         break;
     }
     case IrCmd::CMP_TAG:

@@ -351,6 +351,44 @@ end
 
 simple_integer_ops()
 
+local function buffer_integer_boundary_values()
+  local b = buffer.create(64)
+
+  -- zero
+  buffer.writeinteger(b, 0, 0i)
+  assert(buffer.readinteger(b, 0) == 0i)
+
+  -- max signed int64
+  buffer.writeinteger(b, 8, 0x7FFFFFFFFFFFFFFFi)
+  assert(buffer.readinteger(b, 8) == integer.maxsigned)
+
+  -- min signed int64
+  buffer.writeinteger(b, 16, integer.minsigned)
+  assert(buffer.readinteger(b, 16) == integer.minsigned)
+
+  -- -1 (all bits set)
+  buffer.writeinteger(b, 24, -1i)
+  assert(buffer.readinteger(b, 24) == -1i)
+  assert(buffer.readu8(b, 24) == 0xFF)
+  assert(buffer.readu8(b, 31) == 0xFF)
+
+  -- +1
+  buffer.writeinteger(b, 32, 1i)
+  assert(buffer.readinteger(b, 32) == 1i)
+
+  -- non-zero offset: verify 8-byte read/write at offset 40
+  buffer.writeinteger(b, 40, 0xDEADBEEFCAFEBABEi)
+  assert(buffer.readinteger(b, 40) == 0xDEADBEEFCAFEBABEi)
+
+  -- verify adjacent writes don't clobber each other
+  buffer.writeinteger(b, 0, 0x1111111111111111i)
+  buffer.writeinteger(b, 8, 0x2222222222222222i)
+  assert(buffer.readinteger(b, 0) == 0x1111111111111111i)
+  assert(buffer.readinteger(b, 8) == 0x2222222222222222i)
+end
+
+buffer_integer_boundary_values()
+
 -- constants
 
 assert(integer.minsigned == integer.lshift(1i, 63i))

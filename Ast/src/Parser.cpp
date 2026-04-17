@@ -23,6 +23,7 @@ LUAU_FASTFLAGVARIABLE(LuauIntegerType)
 LUAU_FASTFLAGVARIABLE(DesugaredArrayTypeReferenceIsEmpty)
 LUAU_FASTFLAGVARIABLE(LuauConst2)
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
+LUAU_FASTFLAGVARIABLE(LuauExternReadWriteAttributes)
 LUAU_FASTFLAGVARIABLE(LuauConstJustReportErrorForUnderfill)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -1661,6 +1662,30 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
             }
             else
             {
+                AstTableAccess access = AstTableAccess::ReadWrite;
+
+                if (FFlag::LuauExternReadWriteAttributes)
+                {
+                    if (lexer.current().type == Lexeme::Name && lexer.lookahead().type != ':')
+                    {
+                        if (AstName(lexer.current().name) == "read")
+                        {
+                            access = AstTableAccess::Read;
+                            lexer.next();
+                        }
+                        else if (AstName(lexer.current().name) == "write")
+                        {
+                            access = AstTableAccess::Write;
+                            lexer.next();
+                        }
+                        else
+                        {
+                            report(lexer.current().location, "Expected blank or 'read' or 'write' attribute, got '%s'", lexer.current().name);
+                            lexer.next();
+                        }
+                    }
+                }
+
                 Location propStart = lexer.current().location;
                 std::optional<Name> propName = parseNameOpt("property name");
 
@@ -1670,7 +1695,9 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
                 expectAndConsume(':', "property type annotation");
                 AstType* propType = parseType();
                 props.push_back(
-                    AstDeclaredExternTypeProperty{propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation())}
+                    AstDeclaredExternTypeProperty{
+                        propName->name, propName->location, propType, false, Location(propStart, lexer.previousLocation()), access
+                    }
                 );
             }
         }
