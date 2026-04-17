@@ -1811,7 +1811,6 @@ void TypeChecker2::visitCall(AstExprCall* call)
             reportError(CannotCallNonFunction{fnTy}, call->func->location);
         return;
     }
-
 }
 
 void TypeChecker2::visit(AstExprCall* call)
@@ -3203,7 +3202,14 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
         passes &= testPotentialLiteralIsSubtype(binExpr->right, expectedType);
         return passes;
     }
-    // FIXME: We probably should do a check for `and` here.
+    else if (auto binExpr = expr->as<AstExprBinary>(); binExpr && binExpr->op == AstExprBinary::And)
+    {
+        // `{ ... } and { ... }` case
+        auto relaxedExpectedLhs = module->internalTypes.addType(UnionType{{builtinTypes->falsyType, builtinTypes->anyType}});
+        bool passes = testPotentialLiteralIsSubtype(binExpr->left, relaxedExpectedLhs);
+        passes &= testPotentialLiteralIsSubtype(binExpr->right, expectedType);
+        return passes;
+    }
 
     auto exprTable = expr->as<AstExprTable>();
     auto exprTableType = get<TableType>(exprType);
@@ -3751,9 +3757,8 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         // Construct the intersection and test inhabitedness!
         if (auto property = lookupExternTypeProp(cls, prop))
         {
-            if (FFlag::LuauExternReadWriteAttributes
-                && ((context == ValueContext::LValue && !property->writeTy) || (context == ValueContext::RValue && !property->readTy))
-            )
+            if (FFlag::LuauExternReadWriteAttributes &&
+                ((context == ValueContext::LValue && !property->writeTy) || (context == ValueContext::RValue && !property->readTy)))
                 return {NormalizationResult::False, {}};
             else
                 return {NormalizationResult::True, context == ValueContext::LValue ? property->writeTy : property->readTy};

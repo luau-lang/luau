@@ -228,7 +228,6 @@ std::optional<TypeId> instantiate(
             if (auto gen = get<GenericTypePack>(follow(g)))
                 replacementPacks[g] = arena->freshTypePack(scope, gen->polarity);
         }
-
     }
     else
     {

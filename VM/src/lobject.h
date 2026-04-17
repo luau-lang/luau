@@ -481,7 +481,7 @@ typedef struct LuaTable
 /*
 ** `module' operation for hashing (size is always a power of 2)
 */
-#define lmod(s, size) (check_exp((size & (size - 1)) == 0, (cast_to(int, (s) & ((size)-1)))))
+#define lmod(s, size) (check_exp((size & (size - 1)) == 0, (cast_to(int, (s) & ((size) - 1)))))
 
 #define twoto(x) ((int)(1 << (x)))
 #define sizenode(t) (twoto((t)->lsizenode))
@@ -490,7 +490,7 @@ typedef struct LuaTable
 
 LUAI_DATA const TValue luaO_nilobject_;
 
-#define ceillog2(x) (luaO_log2((x)-1) + 1)
+#define ceillog2(x) (luaO_log2((x) - 1) + 1)
 
 LUAI_FUNC int luaO_log2(unsigned int x);
 LUAI_FUNC int luaO_rawequalObj(const TValue* t1, const TValue* t2);

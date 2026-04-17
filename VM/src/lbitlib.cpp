@@ -12,7 +12,7 @@
 #define trim(x) ((x) & ALLONES)
 
 // builds a number with 'n' ones (1 <= n <= NBITS)
-#define mask(n) (~((ALLONES << 1) << ((n)-1)))
+#define mask(n) (~((ALLONES << 1) << ((n) - 1)))
 
 typedef unsigned b_uint;
 

@@ -243,8 +243,7 @@ private:
             if (FFlag::LuauTypeFunctionStructuredErrors)
                 state->errors.emplace_back(Location{}, UnsupportedType{ty});
             else
-                state->errors_DEPRECATED.push_back(
-                    format("Argument of type %s is not currently serializable by type functions", toString(ty).c_str())
+                state->errors_DEPRECATED.push_back(format("Argument of type %s is not currently serializable by type functions", toString(ty).c_str())
                 );
         }
 
@@ -324,8 +323,7 @@ private:
             if (FFlag::LuauTypeFunctionStructuredErrors)
                 state->errors.emplace_back(Location{}, UnsupportedType{ty});
             else
-                state->errors_DEPRECATED.push_back(
-                    format("Argument of type %s is not currently serializable by type functions", toString(ty).c_str())
+                state->errors_DEPRECATED.push_back(format("Argument of type %s is not currently serializable by type functions", toString(ty).c_str())
                 );
         }
     }

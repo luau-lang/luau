@@ -25,10 +25,10 @@ void luaU_freeudata(lua_State* L, Udata* u, lua_Page* page)
     if (u->tag < LUA_UTAG_LIMIT)
     {
         lua_Destructor dtor = L->global->udatagc[u->tag];
-        // TODO: access to L here is highly unsafe since this is called during internal GC traversal
-        // certain operations such as lua_getthreaddata are okay, but by and large this risks crashes on improper use
+        // Note: access to L here is highly unsafe since this is called during internal GC traversal
+        // passing mainthread avoids issues if L is a dead thread being swept
         if (dtor)
-            dtor(L, u->data);
+            dtor(L->global->mainthread, u->data);
     }
     else if (u->tag == UTAG_IDTOR)
     {

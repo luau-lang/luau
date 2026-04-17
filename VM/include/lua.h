@@ -381,7 +381,7 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_tointeger(L, i) lua_tointegerx(L, i, NULL)
 #define lua_tounsigned(L, i) lua_tounsignedx(L, i, NULL)
 
-#define lua_pop(L, n) lua_settop(L, -(n)-1)
+#define lua_pop(L, n) lua_settop(L, -(n) - 1)
 
 #define lua_newtable(L) lua_createtable(L, 0, 0)
 #define lua_newuserdata(L, s) lua_newuserdatatagged(L, s, 0)
@@ -482,7 +482,7 @@ struct lua_Callbacks
     void (*interrupt)(lua_State* L, int gc);  // gets called at safepoints (loop back edges, call/ret, gc) if set
     void (*panic)(lua_State* L, int errcode); // gets called when an unprotected error is raised (if longjmp is used)
 
-    void (*userthread)(lua_State* LP, lua_State* L); // gets called when L is created (LP == parent) or destroyed (LP == NULL)
+    void (*userthread)(lua_State* LP, lua_State* L);            // gets called when L is created (LP == parent) or destroyed (LP == NULL)
     int16_t (*useratom)(lua_State* L, const char* s, size_t l); // gets called when a string is created to assign an atom id
 
     void (*debugbreak)(lua_State* L, lua_Debug* ar);     // gets called when BREAK instruction is encountered
