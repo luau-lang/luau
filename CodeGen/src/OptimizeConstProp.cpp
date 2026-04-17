@@ -27,9 +27,13 @@ LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSetBlockEntryState3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLengthBaseInst)
+LUAU_FASTFLAGVARIABLE(LuauCodegenUserdataAddressAlias)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateTagsAcrossChains2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDuplicateDoubleIntValues)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPreciseDupTableEffect)
+LUAU_FASTFLAGVARIABLE(LuauCodegenBufferWriteEffects)
+LUAU_FASTFLAGVARIABLE(LuauCodegenJumpCmpIntFoldFix)
+LUAU_FASTFLAGVARIABLE(LuauCodegenLinearSetupEntryState)
 
 namespace Luau
 {
@@ -1051,7 +1055,8 @@ struct ConstPropState
                 const IrInst& infoPtr = function.instOp(info.address);
 
                 // Pointers from separate allocations cannot be the same
-                if (currPtr.cmd == IrCmd::NEW_USERDATA && infoPtr.cmd == IrCmd::NEW_USERDATA)
+                if (currPtr.cmd == IrCmd::NEW_USERDATA && infoPtr.cmd == IrCmd::NEW_USERDATA &&
+                    (!FFlag::LuauCodegenUserdataAddressAlias || OP_A(storeInst) != info.address))
                 {
                     i++;
                     continue;
@@ -1417,17 +1422,13 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_BIT32_BYTESWAP:
     case LBF_BUFFER_READI8:
     case LBF_BUFFER_READU8:
-    case LBF_BUFFER_WRITEU8:
     case LBF_BUFFER_READI16:
     case LBF_BUFFER_READU16:
-    case LBF_BUFFER_WRITEU16:
     case LBF_BUFFER_READI32:
     case LBF_BUFFER_READU32:
-    case LBF_BUFFER_WRITEU32:
     case LBF_BUFFER_READF32:
-    case LBF_BUFFER_WRITEF32:
     case LBF_BUFFER_READF64:
-    case LBF_BUFFER_WRITEF64:
+    case LBF_BUFFER_READINTEGER:
     case LBF_VECTOR_MAGNITUDE:
     case LBF_VECTOR_NORMALIZE:
     case LBF_VECTOR_CROSS:
@@ -1481,6 +1482,15 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_INTEGER_CLAMP:
     case LBF_INTEGER_EXTRACT:
     case LBF_INTEGER_TONUMBER:
+        break;
+    case LBF_BUFFER_WRITEU8:
+    case LBF_BUFFER_WRITEU16:
+    case LBF_BUFFER_WRITEU32:
+    case LBF_BUFFER_WRITEF32:
+    case LBF_BUFFER_WRITEF64:
+    case LBF_BUFFER_WRITEINTEGER:
+        if (FFlag::LuauCodegenBufferWriteEffects)
+            state.invalidateHeapBufferData();
         break;
     case LBF_TABLE_INSERT:
         state.invalidateHeap();
@@ -1999,7 +2009,14 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         std::optional<int> valueA = function.asIntOp(OP_A(inst).kind == IrOpKind::Constant ? OP_A(inst) : state.tryGetValue(OP_A(inst)));
         std::optional<int> valueB = function.asIntOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst)));
 
-        if (valueA && valueB)
+        if (FFlag::LuauCodegenJumpCmpIntFoldFix && valueA && valueB)
+        {
+            if (compare(*valueA, *valueB, conditionOp(OP_C(inst))))
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
+            else
+                replace(function, block, index, {IrCmd::JUMP, {OP_E(inst)}});
+        }
+        else if (valueA && valueB)
         {
             if (compare(*valueA, *valueB, conditionOp(OP_C(inst))))
                 replace(function, block, index, {IrCmd::JUMP, {OP_C(inst)}});
@@ -3412,6 +3429,9 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
 
     // Initialize state with the knowledge of our current block
     state.clear();
+
+    if (FFlag::LuauCodegenSetBlockEntryState3 && FFlag::LuauCodegenLinearSetupEntryState)
+        setupBlockEntryState(build, function, startingBlock, state);
 
     constPropInBlock(build, startingBlock, state);
 

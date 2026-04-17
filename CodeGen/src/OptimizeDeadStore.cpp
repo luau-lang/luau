@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAGVARIABLE(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
+LUAU_FASTFLAGVARIABLE(LuauCodegenDseNilClearsValue)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
@@ -719,7 +720,12 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
             regInfo.tagInstIdx = index;
 
             if (state.tagValuePairEstablished(regInfo))
+            {
+                if (FFlag::LuauCodegenDseNilClearsValue && tag == LUA_TNIL)
+                    regInfo.valueInstIdx = kInvalidInstIdx;
+
                 regInfo.tvalueInstIdx = kInvalidInstIdx;
+            }
 
             regInfo.maybeGco = isGCO(tag);
             regInfo.knownTag = tag;

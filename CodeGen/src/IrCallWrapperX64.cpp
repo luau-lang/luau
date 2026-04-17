@@ -6,6 +6,8 @@
 
 #include "EmitCommonX64.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenCallWrapImproved)
+
 namespace Luau
 {
 namespace CodeGen
@@ -66,9 +68,21 @@ void IrCallWrapperX64::addArgument(SizeX64 targetSize, ScopedRegX64& scopedReg)
     addArgument(targetSize, scopedReg.release(), {});
 }
 
+void IrCallWrapperX64::setResultRegister(RegisterX64 reg, uint32_t instIdx)
+{
+    CODEGEN_ASSERT(reg != noreg);
+
+    resultReg = reg;
+    resultInstIdx = instIdx;
+}
+
 void IrCallWrapperX64::call(const OperandX64& func)
 {
     funcOp = func;
+
+    // Free the result register before handling arguments so that no live value is preserved from it
+    if (FFlag::LuauCodegenCallWrapImproved && resultReg != noreg)
+        regs.freeReg(resultReg);
 
     countRegisterUses();
 
@@ -206,6 +220,19 @@ void IrCallWrapperX64::call(const OperandX64& func)
     regs.assertAllFree();
 
     build.call(funcOp);
+
+    if (FFlag::LuauCodegenCallWrapImproved && resultReg != noreg)
+    {
+        // Result register was allocated before call was made, we freed it temporarily and taking it back
+        regs.takeReg(resultReg, resultInstIdx);
+
+        // Skip move to eax/rax/xmm0 result
+        if (resultReg.index != 0)
+        {
+            RegisterX64 returnReg = RegisterX64{resultReg.size, 0};
+            build.mov(resultReg, returnReg);
+        }
+    }
 }
 
 RegisterX64 IrCallWrapperX64::suggestNextArgumentRegister(SizeX64 size) const

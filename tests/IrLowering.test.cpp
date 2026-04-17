@@ -18,7 +18,9 @@
 
 LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
+LUAU_FASTFLAG(LuauCodegenConsistentHasResult)
 LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
+LUAU_FASTFLAG(LuauCodegenBufferWriteEffects)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
 LUAU_FASTFLAG(LuauCodegenGcoDse2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
@@ -27,6 +29,7 @@ LUAU_FASTFLAG(LuauCompileExtraTypes)
 LUAU_FASTFLAG(LuauCompileVectorReveseMul)
 LUAU_FASTFLAG(LuauCodegenLengthBaseInst)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
+LUAU_FASTFLAG(LuauCodegenDseNilClearsValue)
 
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
 {
@@ -509,6 +512,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorLerp")
 {
+    ScopedFastFlag luauCodegenConsistentHasResult{FFlag::LuauCodegenConsistentHasResult, true};
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vec3lerp(a: vector, b: vector, t: number)
@@ -533,8 +538,8 @@ bb_bytecode_1:
   %19 = FLOAT_TO_VEC %18
   %20 = FLOAT_TO_VEC 1
   %21 = SUB_VEC %16, %15
-  MULADD_VEC %21, %19, %15
-  SELECT_VEC %22, %16, %19, %20
+  %22 = MULADD_VEC %21, %19, %15
+  %23 = SELECT_VEC %22, %16, %19, %20
   %24 = TAG_VECTOR %23
   STORE_TVALUE R3, %24
   INTERRUPT 8u
@@ -5756,6 +5761,84 @@ bb_bytecode_1:
     );
 }
 
+TEST_CASE_FIXTURE(LoweringFixture, "BufferEffects")
+{
+    ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
+    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+    ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
+    ScopedFastFlag luauCodegenSetBlockEntryState{FFlag::LuauCodegenSetBlockEntryState3, true};
+    ScopedFastFlag luauCodegenBufferWriteEffects{FFlag::LuauCodegenBufferWriteEffects, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(buf: buffer)
+    buffer.writef64(buf, 0, 3.14)
+    local u1 = buffer.writeu8(buf, 4, 170)
+    local u2 = buffer.writeu8(buf, 5, 187)
+    local u3 = buffer.writeu8(buf, 0, 255)
+    return buffer.readf64(buf, 0), u1, u2, u3
+end
+)",
+                   false,
+                   1,
+                   2,
+                   true
+               ),
+        R"(
+; function foo($arg0) line 2
+bb_0:
+  CHECK_TAG R0, tbuffer, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  STORE_DOUBLE R3, 0
+  STORE_TAG R3, tnumber
+  STORE_DOUBLE R4, 3.1400000000000001
+  STORE_TAG R4, tnumber
+  %15 = LOAD_POINTER R0
+  CHECK_BUFFER_LEN %15, 0i, 0i, 8i, undef, exit(4)
+  BUFFER_WRITEF64 %15, 0i, 3.1400000000000001, tbuffer
+  STORE_DOUBLE R3, 4
+  STORE_DOUBLE R4, 170
+  SET_SAVEDPC 12u
+  %28 = INVOKE_FASTCALL 67u, R1, R0, R3, R4, 3i, 1i
+  CHECK_FASTCALL_RES %28, bb_fallback_4
+  JUMP bb_linear_11
+bb_linear_11:
+  STORE_DOUBLE R4, 5
+  STORE_TAG R4, tnumber
+  STORE_DOUBLE R5, 187
+  STORE_TAG R5, tnumber
+  SET_SAVEDPC 20u
+  %97 = INVOKE_FASTCALL 67u, R2, R0, R4, R5, 3i, 1i
+  CHECK_FASTCALL_RES %97, bb_fallback_6
+  STORE_DOUBLE R5, 0
+  STORE_TAG R5, tnumber
+  STORE_DOUBLE R6, 255
+  STORE_TAG R6, tnumber
+  SET_SAVEDPC 28u
+  %106 = INVOKE_FASTCALL 67u, R3, R0, R5, R6, 3i, 1i
+  CHECK_FASTCALL_RES %106, bb_fallback_8
+  CHECK_BUFFER_LEN %15, 0i, 0i, 8i, undef, exit(34)
+  %112 = BUFFER_READF64 %15, 0i, tbuffer
+  STORE_DOUBLE R4, %112
+  STORE_TAG R4, tnumber
+  %115 = LOAD_TVALUE R1
+  STORE_TVALUE R5, %115
+  %117 = LOAD_TVALUE R2
+  STORE_TVALUE R6, %117
+  %119 = LOAD_TVALUE R3
+  STORE_TVALUE R7, %119
+  INTERRUPT 42u
+  RETURN R4, 4i
+)"
+    );
+}
+
 TEST_CASE_FIXTURE(LoweringFixture, "Bit32NoDoubleTemporariesAdd")
 {
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
@@ -6453,6 +6536,58 @@ end
 )")
             .size() > 0
     );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest14")
+{
+    // Check that this compiles with no assertions
+    CHECK(
+        getCodegenAssembly(R"(
+local function f(...)
+    local _ = true
+    if tanh then
+        l242,_,_,_._ = _,tanh,_,_
+        _(...)
+        _ = {}
+    elseif _ then
+        l242,_,_,_._ = _,{_=_,_=_,},_
+        _(...)
+        _ = {}
+    elseif _ then
+    end
+end
+)")
+            .size() > 0
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest15")
+{
+    ScopedFastFlag luauCodegenDseNilClearsValue{FFlag::LuauCodegenDseNilClearsValue, true};
+
+    // Check that this compiles with no assertions
+    CHECK(
+        getCodegenAssembly(R"(
+repeat
+for _ in {next=_,},_ do
+end
+_ = _,_
+do end
+for l32 in _,{} do
+end
+until _()
+repeat
+for _ in next,{_=_,},l0(),_ do
+end
+_,n0 = l0[_],_,131072 ^ _
+for l32 in next,{} do
+end
+for l32 in next,{sort=_,} do
+end
+until l0()
+)")
+.size() > 0
+);
 }
 
 TEST_CASE_FIXTURE(LoweringFixture, "UpvalueAccessLoadStore1")

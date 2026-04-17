@@ -8,6 +8,8 @@
 
 #include "lstate.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenNewRegSplit)
+
 namespace Luau
 {
 namespace CodeGen
@@ -426,10 +428,20 @@ unsigned IrRegAllocX64::findSpillStackSlot(IrValueKind valueKind)
     }
     else
     {
+        unsigned numHalves = kValueDwordSize[int(valueKind)];
+        unsigned boundary = kSpillSlots * 2;
+
         // Find a free stack slot. Four consecutive slots might be required for 16 byte TValues, so '- 3' is used
         // For 8 and 16 byte types we search in steps of 2 to return slot indices aligned by 2
         for (unsigned i = 0; i < unsigned(usedSpillSlotHalfs.size() - 3); i += 2)
         {
+            // Prevent large value from allocating at stack/extra spill storage boundary
+            if (FFlag::LuauCodegenNewRegSplit && i < boundary && i + numHalves > boundary)
+            {
+                i = boundary - 2;
+                continue;
+            }
+
             if (usedSpillSlotHalfs.test(i) || usedSpillSlotHalfs.test(i + 1))
                 continue;
 
@@ -516,14 +528,14 @@ bool IrRegAllocX64::isExtraSpillSlot(unsigned slot) const
 {
     CODEGEN_ASSERT(slot != kNoStackSlot);
 
-    return slot >= kSpillSlots_NEW * 2;
+    return slot >= (FFlag::LuauCodegenNewRegSplit ? kSpillSlots : kSpillSlots_NEW) * 2;
 }
 
 int IrRegAllocX64::getExtraSpillAddressOffset(unsigned slot) const
 {
     CODEGEN_ASSERT(isExtraSpillSlot(slot));
 
-    return (slot - kSpillSlots_NEW * 2) * 4;
+    return (slot - (FFlag::LuauCodegenNewRegSplit ? kSpillSlots : kSpillSlots_NEW) * 2) * 4;
 }
 
 void IrRegAllocX64::assertFree(RegisterX64 reg) const

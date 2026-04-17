@@ -16,7 +16,7 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauIntegerType)
-LUAU_FASTFLAGVARIABLE(LuauUdataDirectAccess)
+LUAU_FASTFLAGVARIABLE(LuauUdataDirectAccess2)
 
 template<typename T>
 struct TempBuffer
@@ -590,7 +590,7 @@ static int loadsafe(
             }
         }
 
-        if (FFlag::LuauUdataDirectAccess)
+        if (FFlag::LuauUdataDirectAccess2)
         {
             for (Instruction* instruction = p->code; instruction < p->code + p->sizecode;)
             {

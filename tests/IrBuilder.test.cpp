@@ -20,7 +20,9 @@ LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenRemoveDuplicateDoubleIntValues)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
+LUAU_FASTFLAG(LuauCodegenUserdataAddressAlias)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
+LUAU_FASTFLAG(LuauCodegenJumpCmpIntFoldFix)
 
 using namespace Luau::CodeGen;
 
@@ -127,6 +129,7 @@ public:
     static const int tstring = 6;
     static const int ttable = 7;
     static const int tfunction = 8;
+    static const int tuserdata = 9;
     static const int tbuffer = 11;
 };
 
@@ -857,6 +860,126 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ControlFlowCmpNum")
     compareFold(build.constDouble(1), build.constDouble(2), IrCondition::NotGreaterEqual, true);
     compareFold(build.constDouble(2), build.constDouble(1), IrCondition::NotGreaterEqual, false);
     compareFold(build.constDouble(1), nan, IrCondition::NotGreaterEqual, true);
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "ControlFlowCmpInt")
+{
+    ScopedFastFlag luauCodegenPropagateTagsAcrossChains{FFlag::LuauCodegenPropagateTagsAcrossChains2, false};
+
+    auto compareFold = [this](IrOp lhs, IrOp rhs, IrCondition cond, bool result)
+    {
+        IrOp instOp;
+        IrInst instExpected;
+
+        withTwoBlocks(
+            [&](IrOp a, IrOp b)
+            {
+                instOp = build.inst(IrCmd::JUMP_CMP_INT, lhs, rhs, build.cond(cond), a, b);
+                instExpected = IrInst{IrCmd::JUMP, {result ? a : b}};
+            }
+        );
+
+        updateUseCounts(build.function);
+        constantFold();
+        checkEq(instOp, instExpected);
+    };
+
+    compareFold(build.constInt(1), build.constInt(1), IrCondition::Equal, true);
+    compareFold(build.constInt(1), build.constInt(2), IrCondition::Equal, false);
+
+    compareFold(build.constInt(1), build.constInt(1), IrCondition::NotEqual, false);
+    compareFold(build.constInt(1), build.constInt(2), IrCondition::NotEqual, true);
+
+    compareFold(build.constInt(1), build.constInt(1), IrCondition::Less, false);
+    compareFold(build.constInt(1), build.constInt(2), IrCondition::Less, true);
+    compareFold(build.constInt(2), build.constInt(1), IrCondition::Less, false);
+
+    compareFold(build.constInt(1), build.constInt(1), IrCondition::NotLess, true);
+    compareFold(build.constInt(1), build.constInt(2), IrCondition::NotLess, false);
+    compareFold(build.constInt(2), build.constInt(1), IrCondition::NotLess, true);
+
+    compareFold(build.constInt(1), build.constInt(1), IrCondition::LessEqual, true);
+    compareFold(build.constInt(1), build.constInt(2), IrCondition::LessEqual, true);
+    compareFold(build.constInt(2), build.constInt(1), IrCondition::LessEqual, false);
+
+    compareFold(build.constInt(1), build.constInt(1), IrCondition::NotLessEqual, false);
+    compareFold(build.constInt(1), build.constInt(2), IrCondition::NotLessEqual, false);
+    compareFold(build.constInt(2), build.constInt(1), IrCondition::NotLessEqual, true);
+
+    compareFold(build.constInt(1), build.constInt(1), IrCondition::Greater, false);
+    compareFold(build.constInt(1), build.constInt(2), IrCondition::Greater, false);
+    compareFold(build.constInt(2), build.constInt(1), IrCondition::Greater, true);
+
+    compareFold(build.constInt(1), build.constInt(1), IrCondition::NotGreater, true);
+    compareFold(build.constInt(1), build.constInt(2), IrCondition::NotGreater, true);
+    compareFold(build.constInt(2), build.constInt(1), IrCondition::NotGreater, false);
+
+    compareFold(build.constInt(1), build.constInt(1), IrCondition::GreaterEqual, true);
+    compareFold(build.constInt(1), build.constInt(2), IrCondition::GreaterEqual, false);
+    compareFold(build.constInt(2), build.constInt(1), IrCondition::GreaterEqual, true);
+
+    compareFold(build.constInt(1), build.constInt(1), IrCondition::NotGreaterEqual, false);
+    compareFold(build.constInt(1), build.constInt(2), IrCondition::NotGreaterEqual, true);
+    compareFold(build.constInt(2), build.constInt(1), IrCondition::NotGreaterEqual, false);
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "ControlFlowCmpFloat")
+{
+    auto compareFold = [this](IrOp lhs, IrOp rhs, IrCondition cond, bool result)
+    {
+        IrOp instOp;
+        IrInst instExpected;
+
+        withTwoBlocks(
+            [&](IrOp a, IrOp b)
+            {
+                IrOp nanVal = build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0));
+                instOp = build.inst(
+                    IrCmd::JUMP_CMP_FLOAT,
+                    lhs.kind == IrOpKind::None ? nanVal : lhs,
+                    rhs.kind == IrOpKind::None ? nanVal : rhs,
+                    build.cond(cond),
+                    a,
+                    b
+                );
+                instExpected = IrInst{IrCmd::JUMP, {result ? a : b}};
+            }
+        );
+
+        updateUseCounts(build.function);
+        constantFold();
+        checkEq(instOp, instExpected);
+    };
+
+    IrOp nan;
+
+    compareFold(build.constDouble(1), build.constDouble(1), IrCondition::Equal, true);
+    compareFold(build.constDouble(1), build.constDouble(2), IrCondition::Equal, false);
+    compareFold(nan, nan, IrCondition::Equal, false);
+
+    compareFold(build.constDouble(1), build.constDouble(1), IrCondition::NotEqual, false);
+    compareFold(build.constDouble(1), build.constDouble(2), IrCondition::NotEqual, true);
+    compareFold(nan, nan, IrCondition::NotEqual, true);
+
+    compareFold(build.constDouble(1), build.constDouble(1), IrCondition::Less, false);
+    compareFold(build.constDouble(1), build.constDouble(2), IrCondition::Less, true);
+    compareFold(build.constDouble(2), build.constDouble(1), IrCondition::Less, false);
+    compareFold(build.constDouble(1), nan, IrCondition::Less, false);
+
+    compareFold(build.constDouble(1), build.constDouble(1), IrCondition::LessEqual, true);
+    compareFold(build.constDouble(1), build.constDouble(2), IrCondition::LessEqual, true);
+    compareFold(build.constDouble(2), build.constDouble(1), IrCondition::LessEqual, false);
+    compareFold(build.constDouble(1), nan, IrCondition::LessEqual, false);
+
+    compareFold(build.constDouble(1), build.constDouble(1), IrCondition::Greater, false);
+    compareFold(build.constDouble(1), build.constDouble(2), IrCondition::Greater, false);
+    compareFold(build.constDouble(2), build.constDouble(1), IrCondition::Greater, true);
+    compareFold(build.constDouble(1), nan, IrCondition::Greater, false);
+
+    compareFold(build.constDouble(1), build.constDouble(1), IrCondition::GreaterEqual, true);
+    compareFold(build.constDouble(1), build.constDouble(2), IrCondition::GreaterEqual, false);
+    compareFold(build.constDouble(2), build.constDouble(1), IrCondition::GreaterEqual, true);
+    compareFold(build.constDouble(1), nan, IrCondition::GreaterEqual, false);
 }
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "SelectNumber")
@@ -5714,6 +5837,37 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ToDot")
     toDot(build.function, /* includeInst= */ true);
     toDotCfg(build.function);
     toDotDjGraph(build.function);
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "UserdataBufferStoreForwardingInvalidation")
+{
+    ScopedFastFlag luauCodegenUserdataAddressAlias{FFlag::LuauCodegenUserdataAddressAlias, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp ud = build.inst(IrCmd::NEW_USERDATA, build.constInt(16), build.constInt(1));
+
+    build.inst(IrCmd::BUFFER_WRITEI32, ud, build.constInt(4), build.constInt(42), build.constTag(tuserdata));
+    build.inst(IrCmd::BUFFER_WRITEI32, ud, build.constInt(4), build.constInt(99), build.constTag(tuserdata));
+
+    IrOp loaded = build.inst(IrCmd::BUFFER_READI32, ud, build.constInt(4), build.constTag(tuserdata));
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), loaded);
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   %0 = NEW_USERDATA 16i, 1i
+   BUFFER_WRITEI32 %0, 4i, 42i, tuserdata
+   BUFFER_WRITEI32 %0, 4i, 99i, tuserdata
+   STORE_INT R0, 99i
+   RETURN R0, 1u
+
+)");
 }
 
 TEST_SUITE_END();
