@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
+LUAU_FASTFLAG(LuauCodegenConsistentHasResult)
 
 namespace Luau
 {
@@ -23,6 +24,8 @@ bool isJumpD(LuauOpcode op);
 bool isSkipC(LuauOpcode op);
 bool isFastCall(LuauOpcode op);
 int getJumpTarget(uint32_t insn, uint32_t pc);
+IrValueKind getCmdValueKind(IrCmd cmd);
+IrValueKind getConstValueKind(const IrConst& constant);
 
 inline bool isBlockTerminator(IrCmd cmd)
 {
@@ -80,6 +83,10 @@ inline bool isNonTerminatingJump(IrCmd cmd)
 
 inline bool hasResult(IrCmd cmd)
 {
+    if (FFlag::LuauCodegenConsistentHasResult)
+        return getCmdValueKind(cmd) != IrValueKind::None;
+
+    // Remove with FFlagLuauCodegenConsistentHasResult
     switch (cmd)
     {
     case IrCmd::LOAD_TAG:
@@ -287,9 +294,6 @@ inline IrCondition getNegatedCondition(IrCondition cond)
         return IrCondition::Count;
     }
 }
-
-IrValueKind getCmdValueKind(IrCmd cmd);
-IrValueKind getConstValueKind(const IrConst& constant);
 
 template<typename F>
 void visitArguments(IrInst& inst, F&& func)

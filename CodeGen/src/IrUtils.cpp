@@ -18,6 +18,7 @@
 
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
+LUAU_FASTFLAGVARIABLE(LuauCodegenConsistentHasResult)
 
 namespace Luau
 {

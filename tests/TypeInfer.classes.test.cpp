@@ -15,7 +15,6 @@ using namespace Luau;
 using std::nullopt;
 
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
-LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
@@ -407,16 +406,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "table_class_unification_reports_sane_error
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
-        if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
-        {
-            REQUIRE_EQ("Key 'w' not found in external type 'Vector2'", toString(result.errors.at(0)));
-            REQUIRE_EQ("Key 'x' not found in external type 'Vector2'.  Did you mean 'X'?", toString(result.errors[1]));
-        }
-        else
-        {
-            REQUIRE_EQ("Key 'w' not found in class 'Vector2'", toString(result.errors.at(0)));
-            REQUIRE_EQ("Key 'x' not found in class 'Vector2'.  Did you mean 'X'?", toString(result.errors[1]));
-        }
+        REQUIRE_EQ("Key 'w' not found in external type 'Vector2'", toString(result.errors.at(0)));
+        REQUIRE_EQ("Key 'x' not found in external type 'Vector2'.  Did you mean 'X'?", toString(result.errors[1]));
     }
 }
 
@@ -436,8 +427,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "class_unification_type_mismatch_is_correct
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "optional_class_field_access_error")
 {
-    ScopedFastFlag sff = {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true};
-
     CheckResult result = check(R"(
 local b: Vector2? = nil
 local a = b.X + b.Z
@@ -759,8 +748,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 
     // Check that we string key are rejected if the indexer's key type is not compatible with string
     {
-        ScopedFastFlag sff = {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true};
-
         CheckResult result = check(R"(
             local x : IndexableNumericKeyClass
             x.key = 1
@@ -768,19 +755,12 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
         CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
     }
     {
-        ScopedFastFlag sff = {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true};
-
         CheckResult result = check(R"(
             local x : IndexableNumericKeyClass
             x["key"] = 1
         )");
         if (!FFlag::DebugLuauForceOldSolver)
-        {
-            if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
-                CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
-            else
-                CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
-        }
+            CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
         else
             CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'number', but got 'string'");
     }
@@ -794,8 +774,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
         CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'number', but got 'string'");
     }
     {
-        ScopedFastFlag sff = {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true};
-
         CheckResult result = check(R"(
             local x : IndexableNumericKeyClass
             local y = x.key
@@ -803,19 +781,12 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
         CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
     }
     {
-        ScopedFastFlag sff = {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true};
-
         CheckResult result = check(R"(
             local x : IndexableNumericKeyClass
             local y = x["key"]
         )");
         if (!FFlag::DebugLuauForceOldSolver)
-        {
-            if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
-                CHECK(toString(result.errors.at(0)) == "Key 'key' not found in external type 'IndexableNumericKeyClass'");
-            else
-                CHECK(toString(result.errors.at(0)) == "Key 'key' not found in class 'IndexableNumericKeyClass'");
-        }
+            CHECK(toString(result.errors.at(0)) == "Key 'key' not found in external type 'IndexableNumericKeyClass'");
         else
             CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'number', but got 'string'");
     }

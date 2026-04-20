@@ -22,7 +22,6 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAG(LuauIntegerType)
 
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
@@ -425,12 +424,7 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
     else if (get<TypeFunctionFunctionType>(ty))
         return "function";
     else if (get<TypeFunctionExternType>(ty))
-    {
-        if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
-            return "extern";
-        else
-            return "class";
-    }
+        return "extern";
     else if (get<TypeFunctionGenericType>(ty))
         return "generic";
 

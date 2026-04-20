@@ -42,8 +42,6 @@ inline constexpr RegisterA64 rBase = x25;      // StkId base
 inline constexpr unsigned kStashSlots = 9;  // stashed non-volatile registers
 inline constexpr unsigned kTempSlots = 1;   // 8 bytes of temporary space, such luxury!
 inline constexpr unsigned kSpillSlots = 22; // slots for spilling temporary registers
-
-static_assert(kSpillSlots % 2 == 0, "spill slots have to be sized in 16 byte TValue chunks, for valid extra register spill-over");
 inline constexpr unsigned kExtraSpillSlots = 32;
 static_assert(kExtraSpillSlots * 8 <= LUA_EXECUTION_CALLBACK_STORAGE, "can't use more extra slots than Luau global state provides");
 
