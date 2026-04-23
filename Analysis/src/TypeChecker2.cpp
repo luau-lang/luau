@@ -3751,9 +3751,8 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         // Construct the intersection and test inhabitedness!
         if (auto property = lookupExternTypeProp(cls, prop))
         {
-            if (FFlag::LuauExternReadWriteAttributes
-                && ((context == ValueContext::LValue && !property->writeTy) || (context == ValueContext::RValue && !property->readTy))
-            )
+            if (FFlag::LuauExternReadWriteAttributes &&
+                ((context == ValueContext::LValue && !property->writeTy) || (context == ValueContext::RValue && !property->readTy)))
                 return {NormalizationResult::False, {}};
             else
                 return {NormalizationResult::True, context == ValueContext::LValue ? property->writeTy : property->readTy};

@@ -632,9 +632,7 @@ end
 TEST_CASE_FIXTURE(Fixture, "vector_readonly")
 {
     ScopedFastFlag _[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        { FFlag::LuauExternReadWriteAttributes, true },
-        { FFlag::LuauLValueCompoundAssignmentVisitLhs, true }
+        {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExternReadWriteAttributes, true}, {FFlag::LuauLValueCompoundAssignmentVisitLhs, true}
     };
 
     loadDefinition(R"(
@@ -667,9 +665,7 @@ end
 TEST_CASE_FIXTURE(Fixture, "extern_writeonly_props")
 {
     ScopedFastFlag _[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        { FFlag::LuauExternReadWriteAttributes, true },
-        { FFlag::LuauLValueCompoundAssignmentVisitLhs, true }
+        {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExternReadWriteAttributes, true}, {FFlag::LuauLValueCompoundAssignmentVisitLhs, true}
     };
 
     loadDefinition(R"(
@@ -703,9 +699,7 @@ end
 TEST_CASE_FIXTURE(Fixture, "extern_read_write_dual_attribute")
 {
     ScopedFastFlag _[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        { FFlag::LuauExternReadWriteAttributes, true },
-        { FFlag::LuauLValueCompoundAssignmentVisitLhs, true }
+        {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExternReadWriteAttributes, true}, {FFlag::LuauLValueCompoundAssignmentVisitLhs, true}
     };
 
     loadDefinition(R"(

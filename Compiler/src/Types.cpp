@@ -736,6 +736,7 @@ struct TypeMapVisitor : AstVisitor
             case LBF_BUFFER_WRITEU32:
             case LBF_BUFFER_WRITEF32:
             case LBF_BUFFER_WRITEF64:
+            case LBF_BUFFER_WRITEINTEGER:
                 break;
             case LBF_MATH_ABS:
             case LBF_MATH_ACOS:
@@ -856,6 +857,7 @@ struct TypeMapVisitor : AstVisitor
             case LBF_INTEGER_CLAMP:
             case LBF_INTEGER_NEG:
             case LBF_INTEGER_CREATE:
+            case LBF_BUFFER_READINTEGER:
                 if (!FFlag::LuauIntegerFastcalls)
                     return true;
                 recordResolvedType(node, &builtinTypes.integerType);

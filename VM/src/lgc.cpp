@@ -14,7 +14,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauUdataDirectAccess)
+LUAU_FASTFLAG(LuauUdataDirectAccess2)
 
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
@@ -751,7 +751,7 @@ static void markroot(lua_State* L)
     markobject(g, g->mainthread->gt);
     markvalue(g, registry(L));
 
-    if (FFlag::LuauUdataDirectAccess)
+    if (FFlag::LuauUdataDirectAccess2)
     {
         for (int i = 0; i < LUA_UTAG_LIMIT; i++)
         {
