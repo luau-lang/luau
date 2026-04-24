@@ -129,6 +129,8 @@ void luaA_pushobject(lua_State* L, const TValue* o)
 
 int lua_checkstack(lua_State* L, int size)
 {
+    api_check(L, size >= 0);
+
     int res = 1;
     if (size > LUAI_MAXCSTACK || (L->top - L->base + size) > LUAI_MAXCSTACK)
         res = 0; // stack overflow
@@ -164,14 +166,19 @@ int lua_checkstack(lua_State* L, int size)
 
 void lua_rawcheckstack(lua_State* L, int size)
 {
+    api_check(L, size >= 0);
+
     luaD_checkstack(L, size);
     expandstacklimit(L, L->top + size);
 }
 
 void lua_xmove(lua_State* from, lua_State* to, int n)
 {
+    api_check(from, n >= 0);
+
     if (from == to)
         return;
+
     api_checknelems(from, n);
     api_check(from, from->global == to->global);
     api_check(from, to->ci->top - to->top >= n);
@@ -310,6 +317,8 @@ int lua_type(lua_State* L, int idx)
 
 const char* lua_typename(lua_State* L, int t)
 {
+    api_check(L, t >= LUA_TNONE && t < LUA_T_COUNT);
+
     return (t == LUA_TNONE) ? "no value" : luaT_typenames[t];
 }
 
@@ -686,6 +695,7 @@ void lua_pushvector(lua_State* L, float x, float y, float z)
 
 void lua_pushlstring(lua_State* L, const char* s, size_t len)
 {
+    api_check(L, s != nullptr);
     luaC_checkGC(L);
     luaC_threadbarrier(L);
     setsvalue(L, L->top, luaS_newlstr(L, s, len));
@@ -721,6 +731,8 @@ const char* lua_pushfstringL(lua_State* L, const char* fmt, ...)
 
 void lua_pushcclosurek(lua_State* L, lua_CFunction fn, const char* debugname, int nup, lua_Continuation cont)
 {
+    api_check(L, fn != nullptr);
+    api_check(L, nup >= 0);
     luaC_checkGC(L);
     luaC_threadbarrier(L);
     api_checknelems(L, nup);
@@ -763,6 +775,7 @@ int lua_pushthread(lua_State* L)
 
 int lua_gettable(lua_State* L, int idx)
 {
+    api_checknelems(L, 1);
     luaC_threadbarrier(L);
     StkId t = index2addr(L, idx);
     api_checkvalidindex(L, t);
@@ -825,6 +838,7 @@ int lua_rawgetptagged(lua_State* L, int idx, void* p, int tag)
 
 void lua_createtable(lua_State* L, int narray, int nrec)
 {
+    api_check(L, narray >= 0 && nrec >= 0);
     luaC_checkGC(L);
     luaC_threadbarrier(L);
     sethvalue(L, L->top, luaH_new(L, narray, nrec));
@@ -1054,11 +1068,13 @@ int lua_setfenv(lua_State* L, int idx)
 
 void lua_call(lua_State* L, int nargs, int nresults)
 {
-    StkId func;
+    api_check(L, nargs >= 0);
+    api_check(L, nresults >= LUA_MULTRET);
     api_checknelems(L, nargs + 1);
     api_check(L, L->status == 0);
     checkresults(L, nargs, nresults);
-    func = L->top - (nargs + 1);
+
+    StkId func = L->top - (nargs + 1);
 
     luaD_call(L, func, nresults);
 
@@ -1083,9 +1099,12 @@ static void f_call(lua_State* L, void* ud)
 
 int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc)
 {
+    api_check(L, nargs >= 0);
+    api_check(L, nresults >= LUA_MULTRET);
     api_checknelems(L, nargs + 1);
     api_check(L, L->status == 0);
     checkresults(L, nargs, nresults);
+
     ptrdiff_t func = 0;
     if (errfunc != 0)
     {
@@ -1128,6 +1147,7 @@ static void f_Ccall(lua_State* L, void* ud)
 int lua_cpcall(lua_State* L, lua_CFunction func, void* ud)
 {
     api_check(L, L->status == 0);
+    api_check(L, func != nullptr);
 
     struct CCallS c;
     c.func = func;
@@ -1143,6 +1163,9 @@ int lua_status(lua_State* L)
 
 int lua_costatus(lua_State* L, lua_State* co)
 {
+    api_check(L, co != nullptr);
+    api_check(L, L->global == co->global);
+
     if (co == L)
         return LUA_CORUN;
     if (co->status == LUA_YIELD)
@@ -1313,6 +1336,7 @@ l_noret lua_error(lua_State* L)
 
 int lua_next(lua_State* L, int idx)
 {
+    api_checknelems(L, 1);
     luaC_threadbarrier(L);
     StkId t = index2addr(L, idx);
     api_check(L, ttistable(t));
@@ -1374,6 +1398,7 @@ int lua_rawiter(lua_State* L, int idx, int iter)
 
 void lua_concat(lua_State* L, int n)
 {
+    api_check(L, n >= 0);
     api_checknelems(L, n);
     if (n >= 2)
     {
@@ -1424,6 +1449,7 @@ void* lua_newuserdatataggedwithmetatable(lua_State* L, size_t sz, int tag)
 
 void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*))
 {
+    api_check(L, dtor != nullptr);
     luaC_checkGC(L);
     luaC_threadbarrier(L);
     // make sure sz + sizeof(dtor) doesn't overflow; luaU_newdata will reject SIZE_MAX correctly
@@ -1576,6 +1602,7 @@ lua_Destructor lua_getuserdatadtor(lua_State* L, int tag)
 
 void lua_setuserdatametatable(lua_State* L, int tag)
 {
+    api_checknelems(L, 1);
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
     api_check(L, !L->global->udatamt[tag]); // reassignment not supported
     api_check(L, ttistable(L->top - 1));
@@ -1600,7 +1627,7 @@ void lua_getuserdatametatable(lua_State* L, int tag)
     api_incr_top(L);
 }
 
-int LUA_API lua_registeruserdatadirectaccess(
+int lua_registeruserdatadirectaccess(
     lua_State* L,
     int tag,
     lua_UserdataDirectAccess get,

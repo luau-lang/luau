@@ -110,6 +110,9 @@ public:
     void int3();
     void ud2();
 
+    void cqo();
+    void cdq();
+
     void bsr(RegisterX64 dst, OperandX64 src);
     void bsf(RegisterX64 dst, OperandX64 src);
     void bswap(RegisterX64 dst);

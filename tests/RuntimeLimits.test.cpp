@@ -26,7 +26,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauUseNativeStackGuard)
 LUAU_FASTINT(LuauGenericCounterMaxSteps)
-LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTINT(LuauSubtypingIterationLimit)
 LUAU_FASTINT(LuauStackGuardThreshold)
 LUAU_FASTINT(LuauNormalizerInitialFuel)
@@ -365,60 +364,6 @@ TEST_CASE_FIXTURE(Fixture, "limit_number_of_dynamically_created_constraints")
     }
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "limit_number_of_dynamically_created_constraints_2")
-{
-    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauUnifyWithSubtyping2, false}};
-
-    ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 50};
-
-    CheckResult result = check(R"(
-        local T = {}
-
-        export type T = typeof(setmetatable(
-            {},
-            {} :: typeof(T)
-        ))
-
-        function T.One(): T
-            return nil :: any
-        end
-
-        function T.Two(self: T) end
-
-        function T.Three(self: T, x)
-            self.Prop[x] = true
-        end
-
-        function T.Four(self: T, x)
-            print("", x)
-        end
-
-        function T.Five(self: T) end
-
-        function T.Six(self: T) end
-
-        function T.Seven(self: T) end
-
-        function T.Eight(self: T) end
-
-        function T.Nine(self: T) end
-
-        function T.Ten(self: T) end
-
-        function T.Eleven(self: T) end
-
-        function T.Twelve(self: T) end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    LUAU_REQUIRE_ERROR(result, UnknownProperty);
-
-    // A sanity check to ensure that this statistic is being recorded at all.
-    CHECK(frontend->stats.dynamicConstraintsCreated > 10);
-
-    CHECK(frontend->stats.dynamicConstraintsCreated < 40);
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * doctest::timeout(1.0))
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
@@ -554,37 +499,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
     CHECK_EQ("<a>({ read Do: { read Re: { read Mi: a } } }) -> ()", toString(requireType("get")));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterations_before_stopping_unifier" * doctest::timeout(4.0))
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        // Clip this entire test with this flag.
-        {FFlag::LuauUnifyWithSubtyping2, false},
-    };
-
-    ScopedFastInt sfi{FInt::LuauTypeInferIterationLimit, 100};
-
-    CheckResult result = check(R"(
-        local function l0<A...>()
-            for l0=_,_ do
-            end
-        end
-
-        _ = if _._ then function(l0)
-        end elseif _._G then if `` then {n0=_,} else "luauExprConstantSt" elseif _[_][l0] then function()
-        end elseif _.n0 then if _[_] then if _ then _ else "aeld" elseif false then 0 else "lead"
-        return _.n0
-    )");
-
-    LUAU_REQUIRE_ERROR(result, UnificationTooComplex);
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterations_before_stopping_subtyping" * doctest::timeout(4.0))
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUnifyWithSubtyping2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     ScopedFastInt sfi{FInt::LuauSubtypingIterationLimit, 100};
 

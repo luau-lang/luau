@@ -794,6 +794,14 @@ IrOp IrBuilder::constInt(int value)
     return constAny(constant, uint64_t(value));
 }
 
+IrOp IrBuilder::constInt64(int64_t value)
+{
+    IrConst constant;
+    constant.kind = IrConstKind::Int64;
+    constant.valueInt64 = value;
+    return constAny(constant, uint64_t(value));
+}
+
 IrOp IrBuilder::constUint(unsigned value)
 {
     IrConst constant;

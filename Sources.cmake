@@ -3,6 +3,7 @@ target_sources(Luau.Common PRIVATE
     Common/include/Luau/Common.h
     Common/include/Luau/Bytecode.h
     Common/include/Luau/BytecodeUtils.h
+    Common/include/Luau/BytecodeWire.h
     Common/include/Luau/DenseHash.h
     Common/include/Luau/ExperimentalFlags.h
     Common/include/Luau/HashUtil.h
@@ -13,6 +14,7 @@ target_sources(Luau.Common PRIVATE
     Common/include/Luau/Variant.h
     Common/include/Luau/VecDeque.h
 
+    Common/src/BytecodeWire.cpp
     Common/src/StringUtils.cpp
     Common/src/TimeTrace.cpp
 )
@@ -40,13 +42,20 @@ target_sources(Luau.Ast PRIVATE
     Ast/src/PrettyPrinter.cpp
 )
 
+# Luau.Bytecode Sources
+target_sources(Luau.Bytecode PRIVATE
+    Bytecode/include/Luau/BytecodeBuilder.h
+    Bytecode/include/Luau/BytecodeGraph.h
+
+    Bytecode/src/BytecodeBuilder.cpp
+    Bytecode/src/BytecodeGraph.cpp
+)
+
 # Luau.Compiler Sources
 target_sources(Luau.Compiler PRIVATE
-    Compiler/include/Luau/BytecodeBuilder.h
     Compiler/include/Luau/Compiler.h
     Compiler/include/luacode.h
 
-    Compiler/src/BytecodeBuilder.cpp
     Compiler/src/Compiler.cpp
     Compiler/src/Builtins.cpp
     Compiler/src/BuiltinFolding.cpp

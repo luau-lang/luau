@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsCaptureNestedInstances)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
 LUAU_FASTFLAGVARIABLE(LuauThreadUniferStateThroughTypeFunctionReduction)
+LUAU_FASTFLAGVARIABLE(LuauConcatDoesntAlwaysReturnString)
 
 namespace Luau
 {
@@ -698,10 +699,26 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
     else
         inferredArgs = {rhsTy, lhsTy};
 
-    if (!solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack(std::move(inferredArgs))))
-        return {std::nullopt, Reduction::Erroneous, {}, {}};
+    if (FFlag::LuauConcatDoesntAlwaysReturnString)
+    {
+        std::optional<TypePackId> retPack =
+            solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack(std::move(inferredArgs)));
+        if (!retPack)
+            return {std::nullopt, Reduction::Erroneous, {}, {}};
 
-    return {ctx->builtins->stringType, Reduction::MaybeOk, {}, {}};
+        TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *retPack, 1);
+        if (extracted.head.empty())
+            return {std::nullopt, Reduction::Erroneous, {}, {}};
+
+        return {extracted.head.front(), Reduction::MaybeOk, {}, {}};
+    }
+    else
+    {
+        if (!solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack(std::move(inferredArgs))))
+            return {std::nullopt, Reduction::Erroneous, {}, {}};
+
+        return {ctx->builtins->stringType, Reduction::MaybeOk, {}, {}};
+    }
 }
 
 namespace

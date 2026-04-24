@@ -12,7 +12,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauUdataDirectAccess2)
+LUAU_FASTFLAG(LuauUdataDirectAccess3)
 
 /*
 ** Main thread combines a thread state and the global state
@@ -135,6 +135,9 @@ void luaE_freethread(lua_State* L, lua_State* L1, lua_Page* page)
 
 void lua_resetthread(lua_State* L)
 {
+    api_check(L, !L->isactive);
+    api_check(L, L->status != LUA_OK || L->ci == L->base_ci);
+
     // close upvalues before clearing anything
     luaF_close(L, L->stack);
     // clear call frames
@@ -218,7 +221,7 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
         g->udatagc[i] = NULL;
         g->udatamt[i] = NULL;
 
-        if (FFlag::LuauUdataDirectAccess2)
+        if (FFlag::LuauUdataDirectAccess3)
         {
             lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[i];
 

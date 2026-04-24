@@ -43,13 +43,13 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
-LUAU_FASTFLAGVARIABLE(LuauUnifyWithSubtyping2)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 LUAU_FASTFLAG(LuauUnpackRespectsAnnotations)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAGVARIABLE(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAGVARIABLE(LuauFollowInExplicitInstantiation)
 LUAU_FASTFLAGVARIABLE(LuauUseConstraintSetsToTrackFreeTypes)
+LUAU_FASTFLAGVARIABLE(LuauFixPropReadsOnMetatableTypes)
 
 namespace Luau
 {
@@ -1712,7 +1712,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
                 if (auto ft = get<FreeType>(ty))
                     hasBound |= !is<NeverType>(follow(ft->lowerBound)) || !is<UnknownType>(follow(ft->upperBound));
 
-            // If we have generics we can bind *and* 
+            // If we have generics we can bind *and*
             if (auto overloadAsFn = get<FunctionType>(overloadToUse); overloadAsFn && hasBound)
             {
                 CloneState cs{builtinTypes};
@@ -3438,6 +3438,11 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
         if (inConditional)
             return {{}, builtinTypes->unknownType};
     }
+    else if (auto mt = get<MetatableType>(subjectType); FFlag::LuauFixPropReadsOnMetatableTypes && mt && context == ValueContext::LValue)
+    {
+        // TODO __newindex: CLI-199848
+        return lookupTableProp(constraint, mt->table, propName, context, inConditional, suppressSimplification, seen);
+    }
     else if (auto mt = get<MetatableType>(subjectType); mt && context == ValueContext::RValue)
     {
         auto result = lookupTableProp(constraint, mt->table, propName, context, inConditional, suppressSimplification, seen);
@@ -3624,83 +3629,40 @@ template<typename TID>
 bool ConstraintSolver::unify(NotNull<const Constraint> constraint, TID subTy, TID superTy)
 {
     static_assert(std::is_same_v<TID, TypeId> || std::is_same_v<TID, TypePackId>);
+    Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
+    SubtypingUnifier stu{arena, builtinTypes, NotNull{&iceReporter}};
+    SubtypingResult result;
+    if constexpr (std::is_same_v<TID, TypeId>)
+        result = subtyping.isSubtype(subTy, superTy, constraint->scope);
+    else if constexpr (std::is_same_v<TID, TypePackId>)
+        result = subtyping.isSubtype(subTy, superTy, constraint->scope, {});
 
-    if (FFlag::LuauUnifyWithSubtyping2)
+    auto unifierResult = stu.dispatchConstraints(constraint, std::move(result.assumedConstraints));
+
+    for (auto& cv : unifierResult.outstandingConstraints)
     {
-        Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
-        SubtypingUnifier stu{arena, builtinTypes, NotNull{&iceReporter}};
-        SubtypingResult result;
-        if constexpr (std::is_same_v<TID, TypeId>)
-            result = subtyping.isSubtype(subTy, superTy, constraint->scope);
-        else if constexpr (std::is_same_v<TID, TypePackId>)
-            result = subtyping.isSubtype(subTy, superTy, constraint->scope, {});
-
-        auto unifierResult = stu.dispatchConstraints(constraint, std::move(result.assumedConstraints));
-
-        for (auto& cv : unifierResult.outstandingConstraints)
-        {
-            auto newConstraint = pushConstraint(constraint->scope, constraint->location, std::move(cv));
-            inheritBlocks(constraint, newConstraint);
-        }
-
-        for (const auto& [ty, newUpperBounds] : unifierResult.upperBoundContributors)
-        {
-            auto& upperBounds = upperBoundContributors[ty];
-            upperBounds.insert(upperBounds.end(), newUpperBounds.begin(), newUpperBounds.end());
-        }
-
-        switch (unifierResult.unified)
-        {
-        case UnifyResult::OccursCheckFailed:
-            reportError(OccursCheckFailed{}, constraint->location);
-            return false;
-        case UnifyResult::TooComplex:
-            reportError(UnificationTooComplex{}, constraint->location);
-            return false;
-        case UnifyResult::Ok:
-        default:
-            return true;
-        }
+        auto newConstraint = pushConstraint(constraint->scope, constraint->location, std::move(cv));
+        inheritBlocks(constraint, newConstraint);
     }
-    else
+
+    for (const auto& [ty, newUpperBounds] : unifierResult.upperBoundContributors)
     {
-        Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}, &uninhabitedTypeFunctions};
+        auto& upperBounds = upperBoundContributors[ty];
+        upperBounds.insert(upperBounds.end(), newUpperBounds.begin(), newUpperBounds.end());
+    }
 
-        const UnifyResult unifyResult = u2.unify(subTy, superTy);
-
-        for (ConstraintV& c : u2.incompleteSubtypes)
-        {
-            NotNull<Constraint> addition = pushConstraint(constraint->scope, constraint->location, std::move(c));
-            inheritBlocks(constraint, addition);
-        }
-
-        if (UnifyResult::Ok == unifyResult)
-        {
-            for (const auto& [expanded, additions] : u2.expandedFreeTypes)
-            {
-                for (TypeId addition : additions)
-                    upperBoundContributors[expanded].emplace_back(constraint->location, addition);
-            }
-        }
-        else
-        {
-            switch (unifyResult)
-            {
-            case Luau::UnifyResult::Ok:
-                break;
-            case Luau::UnifyResult::OccursCheckFailed:
-                reportError(OccursCheckFailed{}, constraint->location);
-                break;
-            case Luau::UnifyResult::TooComplex:
-                reportError(UnificationTooComplex{}, constraint->location);
-                break;
-            }
-            return false;
-        }
-
+    switch (unifierResult.unified)
+    {
+    case UnifyResult::OccursCheckFailed:
+        reportError(OccursCheckFailed{}, constraint->location);
+        return false;
+    case UnifyResult::TooComplex:
+        reportError(UnificationTooComplex{}, constraint->location);
+        return false;
+    case UnifyResult::Ok:
+    default:
         return true;
     }
-
 }
 
 bool ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constraint> constraint)

@@ -33,7 +33,7 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDuplicateDoubleIntValues)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPreciseDupTableEffect)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufferWriteEffects)
 LUAU_FASTFLAGVARIABLE(LuauCodegenJumpCmpIntFoldFix)
-LUAU_FASTFLAGVARIABLE(LuauCodegenLinearSetupEntryState)
+LUAU_FASTFLAGVARIABLE(LuauCodegenLinearSetupEntryState3)
 
 namespace Luau
 {
@@ -473,6 +473,11 @@ struct ConstPropState
             {
                 if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_DOUBLE, vmReg))
                     return std::make_pair(IrCmd::LOAD_DOUBLE, *prevIdx);
+            }
+            else if (tag == LUA_TINTEGER)
+            {
+                if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_INT64, vmReg))
+                    return std::make_pair(IrCmd::LOAD_INT64, *prevIdx);
             }
             else if (tag == LUA_TVECTOR)
             {
@@ -1337,8 +1342,8 @@ struct ConstPropState
     std::vector<uint32_t> tryNumToIndexCache; // Fallback block argument might be different
 
     // Heap changes might affect table state
-    std::vector<NumberedInstruction> getSlotNodeCache;    // Additionally, pcpos argument might be different
-    std::vector<NodeSlotState> checkSlotMatchCache;       // Additionally, fallback block argument might be different
+    std::vector<NumberedInstruction> getSlotNodeCache; // Additionally, pcpos argument might be different
+    std::vector<NodeSlotState> checkSlotMatchCache;    // Additionally, fallback block argument might be different
 
     std::vector<uint32_t> getArrAddrCache;
     std::vector<uint32_t> checkArraySizeCache; // Additionally, fallback block argument might be different
@@ -1558,6 +1563,23 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         IrOp value = state.tryGetValue(OP_A(inst));
 
         if (function.asIntOp(value))
+        {
+            substitute(function, inst, value);
+        }
+        else if (OP_A(inst).kind == IrOpKind::VmReg)
+        {
+            if (state.substituteOrRecordValueLoadWithTValueData(build, inst))
+                break;
+
+            state.substituteOrRecordVmRegLoad(inst);
+        }
+        break;
+    }
+    case IrCmd::LOAD_INT64:
+    {
+        IrOp value = state.tryGetValue(OP_A(inst));
+
+        if (function.asInt64Op(value))
         {
             substitute(function, inst, value);
         }
@@ -1846,6 +1868,38 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
         }
         break;
+    case IrCmd::STORE_INT64:
+        // Unlike STORE_INT (32-bit), do NOT remove TRUNCATE_UINT here:
+        // a 64-bit store uses all bits, so truncation is meaningful.
+
+        if (OP_A(inst).kind == IrOpKind::VmReg)
+        {
+            if (OP_B(inst).kind == IrOpKind::Constant)
+            {
+                if (state.tryGetValue(OP_A(inst)) == OP_B(inst))
+                    kill(function, inst);
+                else
+                    state.saveValue(OP_A(inst), OP_B(inst));
+            }
+            else
+            {
+                if (FFlag::LuauCodegenRemoveDuplicateDoubleIntValues)
+                {
+                    if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_INT64, OP_A(inst)))
+                    {
+                        if (*prevIdx == OP_B(inst).index)
+                        {
+                            kill(function, inst);
+                            break;
+                        }
+                    }
+                }
+
+                state.invalidateValue(OP_A(inst));
+                state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_INT64);
+            }
+        }
+        break;
     case IrCmd::STORE_VECTOR:
         state.invalidateValue(OP_A(inst));
 
@@ -1924,6 +1978,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 canSplitTvalueStore = true;
             else if (tag == LUA_TNUMBER &&
                      (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Double)))
+                canSplitTvalueStore = true;
+            else if (tag == LUA_TINTEGER &&
+                     (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Int64)))
                 canSplitTvalueStore = true;
             else if (tag != 0xff && isGCO(tag) && value.kind == IrOpKind::Inst)
                 canSplitTvalueStore = true;
@@ -2125,6 +2182,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             {
                 if (function.constOp(value).kind == IrConstKind::Double)
                     tag = LUA_TNUMBER;
+                else if (function.constOp(value).kind == IrConstKind::Int64)
+                    tag = LUA_TINTEGER;
             }
         }
 
@@ -2352,7 +2411,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.useradataTagCache.push_back(index);
         break;
     }
+    case IrCmd::CHECK_CMP_NUM:
     case IrCmd::CHECK_CMP_INT:
+    case IrCmd::CHECK_CMP_INT64:
         break;
     case IrCmd::BUFFER_READI8:
         state.substituteOrRecordBufferLoad(block, index, inst, 1);
@@ -2521,6 +2582,16 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::GET_HASH_NODE_ADDR:
     case IrCmd::GET_CLOSURE_UPVAL_ADDR:
         break;
+    case IrCmd::ADD_INT64:
+    case IrCmd::SUB_INT64:
+    case IrCmd::MUL_INT64:
+    case IrCmd::DIV_INT64:
+    case IrCmd::IDIV_INT64:
+    case IrCmd::CHECK_DIV_INT64:
+    case IrCmd::UDIV_INT64:
+    case IrCmd::REM_INT64:
+    case IrCmd::UREM_INT64:
+    case IrCmd::MOD_INT64:
     case IrCmd::ADD_INT:
     case IrCmd::SUB_INT:
     case IrCmd::SEXTI8_INT:
@@ -2584,6 +2655,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::ABS_NUM:
     case IrCmd::SIGN_NUM:
     case IrCmd::SELECT_NUM:
+    case IrCmd::SELECT_INT64:
     case IrCmd::SELECT_VEC:
     case IrCmd::MULADD_VEC:
     case IrCmd::EXTRACT_VEC:
@@ -2654,6 +2726,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         break;
     case IrCmd::CMP_INT:
+    case IrCmd::CMP_INT64:
         break;
     case IrCmd::CMP_ANY:
         state.invalidateUserCall();
@@ -2760,6 +2833,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (int(state.useradataTagCache.size()) < FInt::LuauCodeGenReuseUdataTagLimit)
             state.useradataTagCache.push_back(index);
         break;
+    case IrCmd::INT64_TO_NUM:
     case IrCmd::INT_TO_NUM:
         state.substituteOrRecord(inst, index);
         break;
@@ -2809,6 +2883,36 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             else
                 substitute(function, inst, OP_A(src));
             break;
+        }
+
+        state.substituteOrRecord(inst, index);
+        break;
+    }
+    case IrCmd::NUM_TO_INT64:
+    {
+        IrInst* src = function.asInstOp(OP_A(inst));
+
+        if (src && src->cmd == IrCmd::INT64_TO_NUM)
+        {
+            substitute(function, inst, OP_A(src));
+            break;
+        }
+
+        if (FFlag::LuauCodegenBufferRangeMerge4 && src && src->cmd == IrCmd::ADD_NUM)
+        {
+            if (std::optional<double> arg = function.asDoubleOp(OP_B(src)); arg && *arg == 0.0)
+            {
+                replace(function, OP_A(inst), OP_A(src));
+                state.substituteOrRecord(inst, index);
+                break;
+            }
+
+            if (std::optional<double> arg = function.asDoubleOp(OP_A(src)); arg && *arg == 0.0)
+            {
+                replace(function, OP_A(inst), OP_B(src));
+                state.substituteOrRecord(inst, index);
+                break;
+            }
         }
 
         state.substituteOrRecord(inst, index);
@@ -3054,6 +3158,18 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::ADJUST_STACK_TO_REG: // Changes stack top, but not the values
     case IrCmd::ADJUST_STACK_TO_TOP: // Changes stack top, but not the values
     case IrCmd::CHECK_FASTCALL_RES:  // Changes stack top, but not the values
+    case IrCmd::BITAND_INT64:
+    case IrCmd::BITXOR_INT64:
+    case IrCmd::BITOR_INT64:
+    case IrCmd::BITNOT_INT64:
+    case IrCmd::BITLSHIFT_INT64:
+    case IrCmd::BITRSHIFT_INT64:
+    case IrCmd::BITARSHIFT_INT64:
+    case IrCmd::BITLROTATE_INT64:
+    case IrCmd::BITRROTATE_INT64:
+    case IrCmd::BITCOUNTLZ_INT64:
+    case IrCmd::BITCOUNTRZ_INT64:
+    case IrCmd::BYTESWAP_INT64:
     case IrCmd::BITAND_UINT:
     case IrCmd::BITXOR_UINT:
     case IrCmd::BITOR_UINT:
@@ -3403,7 +3519,8 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     CODEGEN_ASSERT(!visited[blockIdx]);
     visited[blockIdx] = true;
 
-    IrInst& termInst = function.instructions[startingBlock.finish];
+    uint32_t termInstIdx = startingBlock.finish;
+    IrInst& termInst = function.instructions[termInstIdx];
 
     // Block has to end with an unconditional jump
     if (termInst.cmd != IrCmd::JUMP)
@@ -3430,16 +3547,33 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     // Initialize state with the knowledge of our current block
     state.clear();
 
-    if (FFlag::LuauCodegenSetBlockEntryState3 && FFlag::LuauCodegenLinearSetupEntryState)
+    if (FFlag::LuauCodegenSetBlockEntryState3 && FFlag::LuauCodegenLinearSetupEntryState3)
         setupBlockEntryState(build, function, startingBlock, state);
 
     constPropInBlock(build, startingBlock, state);
 
-    // Verify that target hasn't changed
-    if (OP_A(function.instructions[startingBlock.finish]).index != targetBlockIdx)
+    if (FFlag::LuauCodegenLinearSetupEntryState3)
     {
-        CODEGEN_ASSERT(!"Running same optimization pass on the linear chain head block changed the jump target");
-        return;
+        // Verify that target hasn't changed
+        if (startingBlock.finish != termInstIdx || OP_A(function.instructions[termInstIdx]).index != targetBlockIdx)
+        {
+            // If the block changed, it means original constant propagation pass did not reach a fixed point
+            return;
+        }
+
+        // Check that the start of the linear block path is still held by multiple predecessors
+        // We will be replacing blocks later and if use count is 1 it will kill the chain before linearization is complete
+        if (function.blocks[targetBlockIdx].useCount == 1)
+            return;
+    }
+    else
+    {
+        // Verify that target hasn't changed
+        if (OP_A(function.instructions[startingBlock.finish]).index != targetBlockIdx)
+        {
+            CODEGEN_ASSERT(!"Running same optimization pass on the linear chain head block changed the jump target");
+            return;
+        }
     }
 
     // Note: using startingBlock after this line is unsafe as the reference may be reallocated by build.block() below

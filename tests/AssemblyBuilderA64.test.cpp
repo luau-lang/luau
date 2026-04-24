@@ -120,6 +120,22 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "BinaryExtended")
     SINGLE_COMPARE(sub(x0, x1, w2, 3), 0xCB224C20);
 }
 
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Ternary")
+{
+    SINGLE_COMPARE(msub(x0, x1, x2, x3), 0x9B028C20);
+    SINGLE_COMPARE(msub(w0, w1, w2, w3), 0x1B028C20);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "MulDiv")
+{
+    SINGLE_COMPARE(mul(x0, x1, x2), 0x9B027C20);
+    SINGLE_COMPARE(mul(w0, w1, w2), 0x1B027C20);
+    SINGLE_COMPARE(sdiv(x0, x1, x2), 0x9AC20C20);
+    SINGLE_COMPARE(sdiv(w0, w1, w2), 0x1AC20C20);
+    SINGLE_COMPARE(udiv(x0, x1, x2), 0x9AC20820);
+    SINGLE_COMPARE(udiv(w0, w1, w2), 0x1AC20820);
+}
+
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "BinaryImm")
 {
     // instructions

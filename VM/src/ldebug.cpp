@@ -84,6 +84,8 @@ const char* lua_getlocal(lua_State* L, int level, int n)
 
 const char* lua_setlocal(lua_State* L, int level, int n)
 {
+    api_check(L, L->top - L->base >= 1);
+
     if (unsigned(level) >= unsigned(L->ci - L->base_ci))
         return NULL;
 

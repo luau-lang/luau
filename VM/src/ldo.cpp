@@ -613,6 +613,7 @@ static int resume_error(lua_State* L, const char* msg, int narg)
 
 static int resume_start(lua_State* L, lua_State* from, int nargs)
 {
+    api_check(L, nargs >= 0);
     api_check(L, L->top - L->base >= nargs);
 
     if (L->status != LUA_YIELD && L->status != LUA_BREAK && (L->status != 0 || L->ci != L->base_ci))
@@ -701,6 +702,9 @@ int lua_resumeerror(lua_State* L, lua_State* from)
 
 int lua_yield(lua_State* L, int nresults)
 {
+    api_check(L, nresults >= 0);
+    api_check(L, nresults <= L->top - L->base);
+
     if (L->nCcalls > L->baseCcalls)
         luaG_runerror(L, "attempt to yield across metamethod/C-call boundary");
     L->base = L->top - nresults; // protect stack slots below

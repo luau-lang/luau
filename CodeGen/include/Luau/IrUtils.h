@@ -72,7 +72,10 @@ inline bool isNonTerminatingJump(IrCmd cmd)
     case IrCmd::CHECK_NODE_VALUE:
     case IrCmd::CHECK_BUFFER_LEN:
     case IrCmd::CHECK_USERDATA_TAG:
+    case IrCmd::CHECK_CMP_NUM:
     case IrCmd::CHECK_CMP_INT:
+    case IrCmd::CHECK_CMP_INT64:
+    case IrCmd::CHECK_DIV_INT64:
         return true;
     default:
         break;
@@ -93,6 +96,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::LOAD_POINTER:
     case IrCmd::LOAD_DOUBLE:
     case IrCmd::LOAD_INT:
+    case IrCmd::LOAD_INT64:
     case IrCmd::LOAD_FLOAT:
     case IrCmd::LOAD_TVALUE:
     case IrCmd::LOAD_ENV:
@@ -100,6 +104,16 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::GET_SLOT_NODE_ADDR:
     case IrCmd::GET_HASH_NODE_ADDR:
     case IrCmd::GET_CLOSURE_UPVAL_ADDR:
+    case IrCmd::ADD_INT64:
+    case IrCmd::SUB_INT64:
+    case IrCmd::MUL_INT64:
+    case IrCmd::DIV_INT64:
+    case IrCmd::IDIV_INT64:
+    case IrCmd::UDIV_INT64:
+    case IrCmd::REM_INT64:
+    case IrCmd::UREM_INT64:
+    case IrCmd::MOD_INT64:
+    case IrCmd::SELECT_INT64:
     case IrCmd::ADD_INT:
     case IrCmd::SUB_INT:
     case IrCmd::SEXTI8_INT:
@@ -149,6 +163,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:
     case IrCmd::CMP_INT:
+    case IrCmd::CMP_INT64:
     case IrCmd::CMP_TAG:
     case IrCmd::CMP_SPLIT_TVALUE:
     case IrCmd::TABLE_LEN:
@@ -160,9 +175,11 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::TRY_CALL_FASTGETTM:
     case IrCmd::NEW_USERDATA:
     case IrCmd::INT_TO_NUM:
+    case IrCmd::INT64_TO_NUM:
     case IrCmd::UINT_TO_NUM:
     case IrCmd::UINT_TO_FLOAT:
     case IrCmd::NUM_TO_INT:
+    case IrCmd::NUM_TO_INT64:
     case IrCmd::NUM_TO_UINT:
     case IrCmd::FLOAT_TO_NUM:
     case IrCmd::NUM_TO_FLOAT:
@@ -182,6 +199,18 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::BITRROTATE_UINT:
     case IrCmd::BITCOUNTLZ_UINT:
     case IrCmd::BITCOUNTRZ_UINT:
+    case IrCmd::BITAND_INT64:
+    case IrCmd::BITXOR_INT64:
+    case IrCmd::BITOR_INT64:
+    case IrCmd::BITNOT_INT64:
+    case IrCmd::BITLSHIFT_INT64:
+    case IrCmd::BITRSHIFT_INT64:
+    case IrCmd::BITARSHIFT_INT64:
+    case IrCmd::BITLROTATE_INT64:
+    case IrCmd::BITRROTATE_INT64:
+    case IrCmd::BITCOUNTLZ_INT64:
+    case IrCmd::BITCOUNTRZ_INT64:
+    case IrCmd::BYTESWAP_INT64:
     case IrCmd::INVOKE_LIBM:
     case IrCmd::GET_TYPE:
     case IrCmd::GET_TYPEOF:

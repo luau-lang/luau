@@ -17,7 +17,7 @@ namespace CodeGen
 namespace X64
 {
 
-static constexpr unsigned kValueDwordSize[] = {0, 0, 1, 1, 2, 1, 2, 4};
+static constexpr unsigned kValueDwordSize[] = {0, 0, 1, 1, 2, 2, 1, 2, 4};
 static_assert(sizeof(kValueDwordSize) / sizeof(kValueDwordSize[0]) == size_t(IrValueKind::Count), "all kinds have to be covered");
 
 static const RegisterX64 kGprAllocOrder[] = {rax, rdx, rcx, rbx, rsi, rdi, r8, r9, r10, r11};
@@ -223,7 +223,7 @@ void IrRegAllocX64::preserve(IrInst& inst)
                 build.vmovups(xmmword[emergencyTemp], inst.regX64);
             else if (spill.valueKind == IrValueKind::Double)
                 build.vmovsd(qword[emergencyTemp], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Pointer)
+            else if (spill.valueKind == IrValueKind::Pointer || spill.valueKind == IrValueKind::Int64)
                 build.mov(qword[emergencyTemp], inst.regX64);
             else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int)
                 build.mov(dword[emergencyTemp], inst.regX64);
@@ -240,7 +240,7 @@ void IrRegAllocX64::preserve(IrInst& inst)
                 build.vmovups(xmmword[sSpillArea + i * 4], inst.regX64);
             else if (spill.valueKind == IrValueKind::Double)
                 build.vmovsd(qword[sSpillArea + i * 4], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Pointer)
+            else if (spill.valueKind == IrValueKind::Pointer || spill.valueKind == IrValueKind::Int64)
                 build.mov(qword[sSpillArea + i * 4], inst.regX64);
             else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int)
                 build.mov(dword[sSpillArea + i * 4], inst.regX64);
@@ -320,7 +320,7 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
                     restoreAddr.memSize = reg.size;
                 }
 
-                if (spill.valueKind == IrValueKind::Double)
+                if (spill.valueKind == IrValueKind::Double || spill.valueKind == IrValueKind::Int64)
                     restoreAddr.memSize = SizeX64::qword;
                 else if (spill.valueKind == IrValueKind::Float)
                     restoreAddr.memSize = SizeX64::dword;
@@ -353,7 +353,8 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
                 else
                     CODEGEN_ASSERT(!"re-materialization not supported for this conversion command");
             }
-            else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int || spill.valueKind == IrValueKind::Pointer)
+            else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int || spill.valueKind == IrValueKind::Int64 ||
+                     spill.valueKind == IrValueKind::Pointer)
             {
                 build.mov(reg, restoreAddr);
             }
@@ -475,8 +476,8 @@ OperandX64 IrRegAllocX64::getRestoreAddress(const IrInst& inst, ValueRestoreLoca
     case IrValueKind::None:
     case IrValueKind::Float:
     case IrValueKind::Count:
-        CODEGEN_ASSERT(!"Invalid operand restore value kind");
-        break;
+    case IrValueKind::Int64:
+        return restoreLocation.op.kind == IrOpKind::VmReg ? luauRegValueInt64(vmRegOp(op)) : luauConstantValue(vmConstOp(op));
     case IrValueKind::Tag:
         return op.kind == IrOpKind::VmReg ? luauRegTag(vmRegOp(op)) : luauConstantTag(vmConstOp(op));
     case IrValueKind::Int:
