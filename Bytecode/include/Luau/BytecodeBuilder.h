@@ -138,6 +138,13 @@ public:
     std::string dumpSourceRemarks() const;
     std::string dumpTypeInfo() const;
 
+    std::string getFunctionData(uint32_t id)
+    {
+        return functions[id].data;
+    }
+
+    std::vector<std::string_view> getStringTable();
+
     void annotateInstruction(std::string& result, uint32_t fid, uint32_t instpos) const;
 
     static uint32_t getImportId(int32_t id0);

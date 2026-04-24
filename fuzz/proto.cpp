@@ -46,8 +46,6 @@ const bool kFuzzCodegenAssembly = getEnvParam("LUAU_FUZZ_CODEGEN_ASM", true);
 // Should we generate type annotations?
 const bool kFuzzTypes = getEnvParam("LUAU_FUZZ_GEN_TYPES", true);
 
-const Luau::CodeGen::AssemblyOptions::Target kFuzzCodegenTarget = Luau::CodeGen::AssemblyOptions::A64;
-
 std::vector<std::string> protoprint(const luau::ModuleSet& stat, bool types);
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
@@ -376,7 +374,9 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
         }
     }
 
-    std::string bytecode;
+    // we use separate strings and code paths for easier crash debugging using lines in backtrace
+    std::string bytecodeO1;
+    std::string bytecodeO2;
 
     // compile
     if (kFuzzCompiler)
@@ -392,9 +392,18 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 
                 try
                 {
+                    // check with default options
                     Luau::BytecodeBuilder bcb;
                     Luau::compileOrThrow(bcb, parseResult, parseNameTable, compileOptions);
-                    bytecode = bcb.getBytecode();
+                    bytecodeO1 = bcb.getBytecode();
+
+                    // check with all optimizations
+                    compileOptions.optimizationLevel = 2;
+                    compileOptions.typeInfoLevel = 1;
+
+                    Luau::BytecodeBuilder bcb2;
+                    Luau::compileOrThrow(bcb2, parseResult, parseNameTable, compileOptions);
+                    bytecodeO2 = bcb2.getBytecode();
                 }
                 catch (const Luau::CompileError&)
                 {
@@ -405,25 +414,38 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     }
 
     // run codegen on resulting bytecode (in separate state)
-    if (kFuzzCodegenAssembly && bytecode.size())
+    if (kFuzzCodegenAssembly)
     {
-        static lua_State* globalState = luaL_newstate();
-
-        if (luau_load(globalState, "=fuzz", bytecode.data(), bytecode.size(), 0) == 0)
+        auto loadAndCheckAssembly = [](const std::string& bytecode)
         {
-            Luau::CodeGen::AssemblyOptions options;
-            options.compilationOptions.flags = Luau::CodeGen::CodeGen_ColdFunctions;
-            options.outputBinary = true;
-            options.target = kFuzzCodegenTarget;
-            Luau::CodeGen::getAssembly(globalState, -1, options);
-        }
+            static lua_State* globalState = luaL_newstate();
 
-        lua_pop(globalState, 1);
-        lua_gc(globalState, LUA_GCCOLLECT, 0);
+            if (luau_load(globalState, "=fuzz", bytecode.data(), bytecode.size(), 0) == 0)
+            {
+                Luau::CodeGen::AssemblyOptions options;
+                options.compilationOptions.flags = Luau::CodeGen::CodeGen_ColdFunctions;
+                options.outputBinary = true;
+
+                options.target = Luau::CodeGen::AssemblyOptions::A64;
+                Luau::CodeGen::getAssembly(globalState, -1, options);
+
+                options.target = Luau::CodeGen::AssemblyOptions::X64_SystemV;
+                Luau::CodeGen::getAssembly(globalState, -1, options);
+            }
+
+            lua_pop(globalState, 1);
+            lua_gc(globalState, LUA_GCCOLLECT, 0);
+        };
+
+        if (!bytecodeO1.empty())
+            loadAndCheckAssembly(bytecodeO1);
+
+        if (!bytecodeO2.empty())
+            loadAndCheckAssembly(bytecodeO2);
     }
 
     // run resulting bytecode (from last successfully compiler module)
-    if ((kFuzzVM || kFuzzCodegenVM) && bytecode.size())
+    if (kFuzzVM || kFuzzCodegenVM)
     {
         static lua_State* globalState = createGlobalState();
 
@@ -449,10 +471,16 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
             LUAU_ASSERT(heapSize < 256 * 1024);
         };
 
-        if (kFuzzVM)
-            runCode(bytecode, false);
+        if (kFuzzVM && !bytecodeO1.empty())
+            runCode(bytecodeO1, false);
 
-        if (kFuzzCodegenVM && Luau::CodeGen::isSupported())
-            runCode(bytecode, true);
+        if (kFuzzCodegenVM && !bytecodeO1.empty() && Luau::CodeGen::isSupported())
+            runCode(bytecodeO1, true);
+
+        if (kFuzzVM && !bytecodeO2.empty())
+            runCode(bytecodeO2, false);
+
+        if (kFuzzCodegenVM && !bytecodeO2.empty() && Luau::CodeGen::isSupported())
+            runCode(bytecodeO2, true);
     }
 }

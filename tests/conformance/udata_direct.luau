@@ -151,4 +151,39 @@ assert(fuzzyeq(mag, math.sqrt(0.125 * 0.125 + 0.875 * 0.875)))
 local dotResult = vtx3.uv:Dot(vec2(1, 0))
 assert(dotResult == 0.125)
 
+-- check interactions on VM/NCG switch
+function guardedReadX(obj, _guard: number)
+    return obj.X
+end
+
+function guardedWriteX(obj, val, _guard: number)
+    obj.X = val
+end
+
+function guardedCallDot(a, b, _guard: number)
+    return a:Dot(b)
+end
+
+do
+    guardedReadX(vec2(3, 4), "vm")
+    guardedReadX(vec2(3, 4), "vm")
+    assert(guardedReadX(vec2(7, 8), 0) == 7)
+end
+
+do
+    local w = vec2(0, 0)
+    guardedWriteX(w, 42, "vm")
+    guardedWriteX(w, 99, "vm")
+
+    local v = vec2(10, 20)
+    guardedWriteX(v, 55, 0)
+    assert(v.X == 55)
+end
+
+do
+    guardedCallDot(vec2(1, 2), vec2(3, 4), "vm")
+    guardedCallDot(vec2(1, 2), vec2(3, 4), "vm")
+    assert(guardedCallDot(vec2(1, 2), vec2(3, 4), 0) == 11)
+end
+
 return 'OK'

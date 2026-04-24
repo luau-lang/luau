@@ -1,6 +1,8 @@
 -- This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 print("testing integers")
 
+local function noinline(x: integer): integer local s, r = pcall(function(y) return y end, x) return r end
+
 -- Integers have the 'integer' type
 assert(type(123i)=="integer")
 
@@ -26,15 +28,20 @@ assert(not rawequal(76i, 76))
 assert(typeof(integer.create(4711))=="integer")
 assert(integer.create(4711) == 4711i)
 assert(integer.create(-3) == -3i)
-assert(integer.create(2.5) == nil)
-assert(integer.create(1e30) == nil)
-assert(integer.create(0/0) == nil)
-assert(integer.create(math.huge) == nil)
-assert(integer.create(-math.huge) == nil)
-assert(integer.create(1.0000000005) == nil)
-assert(integer.create(0.9999999995) == nil)
 assert(integer.create(1e18) == 1000000000000000000i)
 assert(integer.create(-1e18) == -1000000000000000000i)
+
+-- isolate tests which take a VM exit in native code
+function testCreateVmExit()
+    assert(integer.create(2.5) == nil)
+    assert(integer.create(1e30) == nil)
+    assert(integer.create(0/0) == nil)
+    assert(integer.create(math.huge) == nil)
+    assert(integer.create(-math.huge) == nil)
+    assert(integer.create(1.0000000005) == nil)
+    assert(integer.create(0.9999999995) == nil)
+end
+testCreateVmExit()
 
 -- integer.fromstring
 assert(integer.fromstring("30") == 30i)
@@ -85,12 +92,18 @@ assert(integer.neg(x) == -3411i)
 assert(integer.neg(integer.minsigned) == integer.minsigned)
 assert(integer.neg(integer.maxsigned) == integer.add(integer.minsigned, 1i))
 
+assert(integer.neg(noinline(3411i)) == -3411i)
+assert(integer.neg(noinline(integer.minsigned)) == integer.minsigned)
+
 -- integer.add
 local x = integer.create(456)
 local y = integer.create(123)
 assert(integer.add(x, y) == 579i)
 assert(integer.add(integer.maxsigned, 1i) == integer.minsigned)
 assert(integer.add(integer.maxsigned, integer.maxsigned) == -2i)
+
+assert(integer.add(noinline(456i), 123i) == 579i)
+assert(integer.add(noinline(integer.maxsigned), 1i) == integer.minsigned)
 
 -- integer.sub
 local x = integer.create(999)
@@ -99,6 +112,9 @@ assert(integer.sub(x, y) == 222i)
 assert(integer.sub(integer.minsigned, 1i) == integer.maxsigned)
 assert(integer.sub(integer.minsigned, integer.maxsigned) == 1i)
 
+assert(integer.sub(noinline(999i), 777i) == 222i)
+assert(integer.sub(noinline(integer.minsigned), 1i) == integer.maxsigned)
+
 -- integer.mul
 local x = integer.create(7)
 local y = integer.create(9)
@@ -106,9 +122,16 @@ assert(integer.mul(x, y) == 63i)
 assert(integer.mul(integer.maxsigned, 2i) == -2i)
 assert(integer.mul(integer.minsigned, -1i) == integer.minsigned)
 
+assert(integer.mul(noinline(7i), 9i) == 63i)
+assert(integer.mul(noinline(integer.maxsigned), 2i) == -2i)
+
 -- integer.div (truncated division)
 assert(integer.div(32i, 8i) == 4i)
 assert(integer.div(-7i, 3i) == -2i)
+
+assert(integer.div(noinline(32i), 8i) == 4i)
+assert(integer.div(noinline(-7i), 3i) == -2i)
+
 local success,errmsg = pcall(function() integer.div(5i,0i) end)
 assert(not success)
 assert(string.find(errmsg,"division by zero"))
@@ -119,6 +142,10 @@ assert(string.find(errmsg,"integer overflow"))
 -- integer.idiv (floored signed division)
 assert(integer.idiv(32i, 7i) == 4i)
 assert(integer.idiv(-7i, 3i) == -3i)
+
+assert(integer.idiv(noinline(32i), 7i) == 4i)
+assert(integer.idiv(noinline(-7i), 3i) == -3i)
+
 local success,errmsg = pcall(function() integer.idiv(5i,0i) end)
 assert(not success)
 assert(string.find(errmsg,"division by zero"))
@@ -128,12 +155,18 @@ assert(string.find(errmsg,"integer overflow"))
 
 -- integer.udiv (unsigned division)
 assert(integer.udiv(32i, 7i) == 4i)
+
+assert(integer.udiv(noinline(32i), 7i) == 4i)
+
 local success,errmsg = pcall(function() integer.udiv(5i,0i) end)
 assert(not success)
 assert(string.find(errmsg,"division by zero"))
 
 -- integer.urem (unsigned remainder)
 assert(integer.urem(34i, 7i) == 6i)
+
+assert(integer.urem(noinline(34i), 7i) == 6i)
+
 local success,errmsg = pcall(function() integer.urem(5i,0i) end)
 assert(not success)
 assert(string.find(errmsg,"division by zero"))
@@ -143,6 +176,12 @@ assert(integer.mod(7i, 3i) == 1i)
 assert(integer.mod(-7i, 3i) == 2i)
 assert(integer.mod(7i, -3i) == -2i)
 assert(integer.mod(-7i, -3i) == -1i)
+
+assert(integer.mod(noinline(7i), 3i) == 1i)
+assert(integer.mod(noinline(-7i), 3i) == 2i)
+assert(integer.mod(noinline(7i), -3i) == -2i)
+assert(integer.mod(noinline(-7i), -3i) == -1i)
+
 local success,errmsg = pcall(function() integer.mod(5i,0i) end)
 assert(not success)
 assert(string.find(errmsg,"division by zero"))
@@ -151,6 +190,10 @@ assert(integer.mod(integer.minsigned,-1i) == 0i)
 -- integer.rem
 assert(integer.rem(35i, 8i) == 3i)
 assert(integer.rem(-7i, 3i) == -1i)
+
+assert(integer.rem(noinline(35i), 8i) == 3i)
+assert(integer.rem(noinline(-7i), 3i) == -1i)
+
 local success,errmsg = pcall(function() integer.rem(5i,0i) end)
 assert(not success)
 assert(string.find(errmsg,"division by zero"))
@@ -166,6 +209,11 @@ assert(integer.max(y, x) == 99i)
 assert(integer.min(17i, 12i, 48i, 13i, -2i) == -2i)
 assert(integer.max(17i, 12i, 48i, 13i, 94i) == 94i)
 
+assert(integer.min(noinline(99i), 5i) == 5i)
+assert(integer.max(noinline(99i), 5i) == 99i)
+assert(integer.min(noinline(17i), 12i, 48i, 13i, -2i) == -2i)
+assert(integer.max(noinline(17i), 12i, 48i, 13i, 94i) == 94i)
+
 -- integer.clamp
 local mi = integer.create(6)
 local mx = integer.create(18)
@@ -175,6 +223,11 @@ local a3 = integer.create(47)
 assert(integer.clamp(a1, mi, mx) == 6i)
 assert(integer.clamp(a2, mi, mx) == 11i)
 assert(integer.clamp(a3, mi, mx) == 18i)
+
+assert(integer.clamp(noinline(3i), 6i, 18i) == 6i)
+assert(integer.clamp(noinline(11i), 6i, 18i) == 11i)
+assert(integer.clamp(noinline(47i), 6i, 18i) == 18i)
+
 local success,errmsg = pcall(function() integer.clamp(10i, 20i, 5i) end)
 assert(not success)
 assert(string.find(errmsg, "max must be greater than or equal to min"))
@@ -198,6 +251,17 @@ assert(integer.bxor(42i) == 42i)
 assert(integer.btest(42i) == true)
 assert(integer.btest(0i) == false)
 
+assert(integer.band(noinline(14i), 7i) == 6i)
+assert(integer.bor(noinline(48i), 24i) == 56i)
+assert(integer.bnot(noinline(10000i)) == -10001i)
+assert(integer.bxor(noinline(7i), 10i) == 13i)
+assert(integer.band(noinline(65535i), 255i, 192i) == 192i)
+assert(integer.bor(noinline(1i), 2i, 4i, 8i, 13i) == 15i)
+assert(integer.bxor(noinline(255i), 252i, 1i, 12i) == 14i)
+assert(integer.btest(noinline(65535i), 255i, 192i))
+assert(integer.btest(noinline(42i)) == true)
+assert(integer.btest(noinline(0i)) == false)
+
 -- Comparisons
 assert(integer.lt(3i,4i))
 assert(not integer.lt(4i,4i))
@@ -220,6 +284,27 @@ assert(not integer.ugt(6i,-5i))
 assert(integer.uge(-3i,5i))
 assert(integer.uge(-3i,-3i))
 
+assert(integer.lt(noinline(3i), 4i))
+assert(not integer.lt(noinline(4i), 4i))
+assert(not integer.lt(noinline(5i), 4i))
+assert(integer.le(noinline(3i), 4i))
+assert(integer.le(noinline(4i), 4i))
+assert(not integer.le(noinline(5i), 4i))
+assert(integer.ult(noinline(5i), -3i))
+assert(not integer.ult(noinline(-5i), 6i))
+assert(integer.ule(noinline(5i), -3i))
+assert(integer.ule(noinline(-3i), -3i))
+assert(integer.gt(noinline(4i), 3i))
+assert(not integer.gt(noinline(4i), 4i))
+assert(not integer.gt(noinline(4i), 5i))
+assert(integer.ge(noinline(4i), 3i))
+assert(integer.ge(noinline(4i), 4i))
+assert(not integer.ge(noinline(4i), 5i))
+assert(integer.ugt(noinline(-3i), 5i))
+assert(not integer.ugt(noinline(6i), -5i))
+assert(integer.uge(noinline(-3i), 5i))
+assert(integer.uge(noinline(-3i), -3i))
+
 -- Shifts
 assert(integer.lshift(1i, 8i) == 256i)
 assert(integer.lshift(256i, -7i) == 2i)
@@ -238,6 +323,16 @@ assert(integer.arshift(-256i, -64i) == 0i)
 assert(integer.arshift(-1i, -3i) == -8i)
 assert(integer.arshift(integer.minsigned, -1i) == 0i)
 
+assert(integer.lshift(noinline(1i), 8i) == 256i)
+assert(integer.lshift(noinline(256i), -7i) == 2i)
+assert(integer.lshift(noinline(1i), 64i) == 0i)
+assert(integer.rshift(noinline(512i), 3i) == 64i)
+assert(integer.rshift(noinline(512i), -2i) == 2048i)
+assert(integer.rshift(noinline(256i), 64i) == 0i)
+assert(integer.arshift(noinline(512i), 3i) == 64i)
+assert(integer.arshift(noinline(-256i), 64i) == -1i)
+assert(integer.arshift(noinline(-1i), -3i) == -8i)
+
 -- Rotations
 assert(integer.lrotate(0x6003000000000000i, 4i) == 0x0030000000000006i)
 assert(integer.lrotate(0x1000200000000000i, 69i) == 0x0004000000000002i)
@@ -255,11 +350,31 @@ assert(integer.rrotate(1i, 64i) == 1i)
 assert(integer.rrotate(1i, -64i) == 1i)
 assert(integer.rrotate(1i, integer.minsigned) == 1i)
 
+assert(integer.lrotate(noinline(0x6003000000000000i), 4i) == 0x0030000000000006i)
+assert(integer.lrotate(noinline(0x1000200000000000i), 69i) == 0x0004000000000002i)
+assert(integer.lrotate(noinline(0x842842842842i), -1i) == 0x421421421421i)
+assert(integer.lrotate(noinline(1i), 0i) == 1i)
+assert(integer.lrotate(noinline(1i), 64i) == 1i)
+assert(integer.rrotate(noinline(0x8420i), 5i) == 0x421i)
+assert(integer.rrotate(noinline(0x10i), -3i) == 0x80i)
+assert(integer.rrotate(noinline(0x7FFFFFFFFFFFFFFFi), noinline(63i)) == -2i)
+assert(integer.rrotate(noinline(1i), 0i) == 1i)
+assert(integer.rrotate(noinline(1i), 64i) == 1i)
+
 -- extract
 assert(integer.extract(0xBADBEEFi, 0i, 16i) == 0xBEEFi)
 assert(integer.extract(0xBADBEEFi, 16i, 12i) == 0xBADi)
 assert(integer.extract(0xBADBEEFi, 3i) == 1i)
 assert(integer.extract(0xBADBEEFi, 4i) == 0i)
+assert(integer.extract(0xBADBEEFi, 0i, 64i) == 0xBADBEEFi)
+assert(integer.extract(0xFFFFFFFFFFFFFFFFi, 0i, 64i) == 0xFFFFFFFFFFFFFFFFi)
+
+assert(integer.extract(noinline(0xBADBEEFi), 0i, 16i) == 0xBEEFi)
+assert(integer.extract(noinline(0xBADBEEFi), 16i, 12i) == 0xBADi)
+assert(integer.extract(noinline(0xBADBEEFi), 3i) == 1i)
+assert(integer.extract(noinline(0xBADBEEFi), 4i) == 0i)
+assert(integer.extract(noinline(0xFFFFFFFFFFFFFFFFi), 0i, 64i) == 0xFFFFFFFFFFFFFFFFi)
+
 local success,errmsg = pcall(function() integer.extract(0xBADBEEFi, -1i) end)
 assert(not success)
 assert(string.find(errmsg, "field cannot be negative"))
@@ -269,8 +384,6 @@ assert(string.find(errmsg, "width must be positive"))
 local success,errmsg = pcall(function() integer.extract(0xBADBEEFi, 33i, 33i) end)
 assert(not success)
 assert(string.find(errmsg, "trying to access non%-existent bits"))
-assert(integer.extract(0xBADBEEFi, 0i, 64i) == 0xBADBEEFi)
-assert(integer.extract(0xFFFFFFFFFFFFFFFFi, 0i, 64i) == 0xFFFFFFFFFFFFFFFFi)
 local success,errmsg = pcall(function() integer.extract(1i, 64i, 1i) end)
 assert(not success)
 local success,errmsg = pcall(function() integer.extract(1i, integer.maxsigned, 1i) end)
@@ -280,6 +393,13 @@ assert(not success)
 assert(integer.replace(0xBADBEEFi, 0x500Di, 16i, 16i) == 0x500DBEEFi)
 assert(integer.replace(0xFFFFFFFFFFFFi, 0xEEEi, 28i, 12i) == 0xFFEEEFFFFFFFi)
 assert(integer.replace(0xFFFFFFFFFFFFi, 0i, 6i) == 0xFFFFFFFFFFBFi)
+assert(integer.replace(0xBADBEEFi, 0x123i, 0i, 64i) == 0x123i)
+
+assert(integer.replace(noinline(0xBADBEEFi), 0x500Di, 16i, 16i) == 0x500DBEEFi)
+assert(integer.replace(noinline(0xFFFFFFFFFFFFi), 0xEEEi, 28i, 12i) == 0xFFEEEFFFFFFFi)
+assert(integer.replace(noinline(0xFFFFFFFFFFFFi), 0i, 6i) == 0xFFFFFFFFFFBFi)
+assert(integer.replace(noinline(0xBADBEEFi), 0x123i, 0i, 64i) == 0x123i)
+
 local success,errmsg = pcall(function() integer.replace(1i, 2i, -3i) end)
 assert(not success)
 assert(string.find(errmsg, "field cannot be negative"))
@@ -289,7 +409,6 @@ assert(string.find(errmsg, "width must be positive"))
 local success,errmsg = pcall(function() integer.replace(1i, 2i, 40i, 50i) end)
 assert(not success)
 assert(string.find(errmsg, "trying to access non%-existent bits"))
-assert(integer.replace(0xBADBEEFi, 0x123i, 0i, 64i) == 0x123i)
 local success,errmsg = pcall(function() integer.replace(1i, 2i, 64i, 1i) end)
 assert(not success)
 local success,errmsg = pcall(function() integer.replace(1i, 2i, integer.maxsigned, 1i) end)
@@ -301,6 +420,11 @@ assert(integer.btest(12i, 4i))
 assert(integer.btest(0x100000000i, 0x100000000i))
 assert(integer.btest(0x8000000000000000i, 0x8000000000000000i))
 
+assert(not integer.btest(noinline(0xAAAAi), 0x5555i))
+assert(integer.btest(noinline(12i), 4i))
+assert(integer.btest(noinline(0x100000000i), 0x100000000i))
+assert(integer.btest(noinline(0x8000000000000000i), 0x8000000000000000i))
+
 -- countrz/countlz
 assert(integer.countrz(1i) == 0i)
 assert(integer.countrz(8i) == 3i)
@@ -311,9 +435,21 @@ assert(integer.countlz(8i) == 60i)
 assert(integer.countlz(0x200000i) == 42i)
 assert(integer.countlz(0i) == 64i)
 
+assert(integer.countrz(noinline(1i)) == 0i)
+assert(integer.countrz(noinline(8i)) == 3i)
+assert(integer.countrz(noinline(0x200000i)) == 21i)
+assert(integer.countrz(noinline(0i)) == 64i)
+assert(integer.countlz(noinline(1i)) == 63i)
+assert(integer.countlz(noinline(8i)) == 60i)
+assert(integer.countlz(noinline(0x200000i)) == 42i)
+assert(integer.countlz(noinline(0i)) == 64i)
+
 -- bswap
 assert(integer.bswap(0x1122334455667748i) == 0x4877665544332211i)
 assert(integer.bswap(0x0BADBEEFC001D00Di) == 0x0DD001C0EFBEAD0Bi)
+
+assert(integer.bswap(noinline(0x1122334455667748i)) == 0x4877665544332211i)
+assert(integer.bswap(noinline(0x0BADBEEFC001D00Di)) == 0x0DD001C0EFBEAD0Bi)
 
 -- table indexing and hashes
 local x = {}
@@ -424,5 +560,7 @@ local ok, err = pcall(function() return -intval end)
 assert(not ok)
 local ok2, err2 = pcall(function() return -(123i) end)
 assert(not ok2)
+
+assert(is_native_if_supported())
 
 return('OK')

@@ -21,8 +21,9 @@ message Expr {
 		ExprBinary binary = 15;
 		ExprIfElse ifelse = 16;
 		ExprInterpString interpstring = 17;
-        ExprConstantInteger integer = 18;
-    }
+		ExprConstantInteger integer = 18;
+		ExprBuiltinRef builtin_ref = 19;
+	}
 }
 
 message ExprPrefix {
@@ -33,6 +34,7 @@ message ExprPrefix {
 		ExprCall call = 4;
 		ExprIndexName index_name = 5;
 		ExprIndexExpr index_expr = 6;
+		ExprBuiltinRef builtin_ref = 7;
 	}
 }
 
@@ -84,7 +86,7 @@ message ExprConstantNumber {
 
 message ExprConstantInteger
 {
-    required int64 val = 1;
+	required int64 val = 1;
 }
 
 message ExprConstantString {
@@ -154,22 +156,22 @@ message ExprUnary {
 
 message ExprBinary {
 	enum Op {
-        Add = 0;
-        Sub = 1;
-        Mul = 2;
-        Div = 3;
-        FloorDiv = 4;
-        Mod = 5;
-        Pow = 6;
-        Concat = 7;
-        CompareNe = 8;
-        CompareEq = 9;
-        CompareLt = 10;
-        CompareLe = 11;
-        CompareGt = 12;
-        CompareGe = 13;
-        And = 14;
-        Or = 15;
+		Add = 0;
+		Sub = 1;
+		Mul = 2;
+		Div = 3;
+		FloorDiv = 4;
+		Mod = 5;
+		Pow = 6;
+		Concat = 7;
+		CompareNe = 8;
+		CompareEq = 9;
+		CompareLt = 10;
+		CompareLe = 11;
+		CompareGt = 12;
+		CompareGe = 13;
+		And = 14;
+		Or = 15;
 	}
 
 	required Op op = 1;
@@ -188,6 +190,23 @@ message ExprIfElse {
 
 message ExprInterpString {
 	repeated Expr parts = 1;
+}
+
+message ExprBuiltinRef {
+	enum Library {
+		Math = 0;
+		Bit32 = 1;
+		String = 2;
+		Table = 3;
+		Buffer = 4;
+		Coroutine = 5;
+		Os = 6;
+		Utf8 = 7;
+		Vector = 8;
+		Integer = 9;
+	}
+	required Library library = 1;
+	required int32 method = 2;
 }
 
 message LValue {
@@ -286,13 +305,13 @@ message StatAssign {
 
 message StatCompoundAssign {
 	enum Op {
-        Add = 0;
-        Sub = 1;
-        Mul = 2;
-        Div = 3;
-        Mod = 4;
-        Pow = 5;
-        Concat = 6;
+		Add = 0;
+		Sub = 1;
+		Mul = 2;
+		Div = 3;
+		Mod = 4;
+		Pow = 5;
+		Concat = 6;
 	};
 
 	required Op op = 1;
@@ -430,8 +449,8 @@ message ExprLiteral {
 		ExprConstantNumber number = 3;
 		ExprConstantString string = 4;
 		ExprLiteralTable table = 5;
-        ExprConstantInteger integer = 6;
-    }
+		ExprConstantInteger integer = 6;
+	}
 }
 
 message LiteralTableItem {

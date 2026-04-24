@@ -66,6 +66,10 @@ enum class IrCmd : uint8_t
     // A: Rn
     LOAD_INT,
 
+    // Load an int64 from TValue
+    // A: Rn
+    LOAD_INT64,
+
     // Load a float field from vector (use FLOAT_TO_NUM to convert to double)
     // A: Rn or Kn
     // B: int (offset from the start of TValue)
@@ -127,6 +131,11 @@ enum class IrCmd : uint8_t
     // B: int
     STORE_INT,
 
+    // Store an int64 into TValue
+    // A: Rn
+    // B: int64
+    STORE_INT64,
+
     // Store a vector into TValue
     // When optional 'E' tag is present, it is written out to the TValue as well
     // A: Rn
@@ -153,6 +162,41 @@ enum class IrCmd : uint8_t
     // A, B: int
     ADD_INT,
     SUB_INT,
+
+    // Add two int64s
+    // A, B: int64
+    ADD_INT64,
+    // Subtract two int64s
+    // A, B: int64
+    SUB_INT64,
+    // Multiply two int64s
+    // A, B: int64
+    MUL_INT64,
+    // Signed truncating division
+    // A, B: int64
+    DIV_INT64,
+    // Signed floored division
+    // A, B: int64
+    IDIV_INT64,
+    // Unsigned division
+    // A, B: int64
+    UDIV_INT64,
+    // Signed truncating remainder
+    // A, B: int64
+    REM_INT64,
+    // Unsigned remainder
+    // A, B: int64
+    UREM_INT64,
+    // Signed floored modulus
+    // A, B: int64
+    MOD_INT64,
+
+    // Guard against int64 RFC behavior
+    // If b is 0, throws a division by zero error.
+    // If a is -2^63 and b is -1, throws an overflow error.
+    // A, B: int64
+    // C: block/vmexit/undef
+    CHECK_DIV_INT64,
 
     // Sign extend an 8-bit value
     // A: int
@@ -253,6 +297,12 @@ enum class IrCmd : uint8_t
     // C, D: double (condition arguments)
     SELECT_NUM,
 
+    // Select B if C cond D, otherwise select A
+    // A, B: int64 (endpoints)
+    // C, D: int64 (condition arguments)
+    // E: condition
+    SELECT_INT64,
+
     // For each lane in the vector, select B if C == D, otherwise select A
     // A, B: TValue (endpoints)
     // C, D: TValue (condition arguments)
@@ -320,6 +370,11 @@ enum class IrCmd : uint8_t
     // A, B: int
     // C: condition
     CMP_INT,
+
+    // Perform a comparison of two int64 numbers. Result is an integer register containing 0 or 1
+    // A, B: int64
+    // C: condition
+    CMP_INT64,
 
     // Perform a comparison of two tags. Result is an integer register containing 0 or 1
     CMP_TAG,
@@ -439,6 +494,10 @@ enum class IrCmd : uint8_t
     // A: int
     INT_TO_NUM,
 
+    // Convert int64 into a double number
+    // A: int64
+    INT64_TO_NUM,
+
     // Convert unsigned integer into a double number
     // A: uint
     UINT_TO_NUM,
@@ -450,6 +509,10 @@ enum class IrCmd : uint8_t
     // Converts a double number to an integer. 'A' may be any representable integer in a double.
     // A: double
     NUM_TO_INT,
+
+    // Converts a double number to a 64 bit integer. 'A' may be any representable integer in a double.
+    // A: double
+    NUM_TO_INT64,
 
     // Converts a double number to an unsigned integer. For out-of-range values of 'A', the result is arch-specific.
     // A: double
@@ -635,12 +698,26 @@ enum class IrCmd : uint8_t
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_USERDATA_TAG,
 
+    // Guard against the result of number comparison being false
+    // A, B: number
+    // C: condition
+    // D: block/vmexit/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
+    CHECK_CMP_NUM,
+
     // Guard against the result of integer comparison being false
     // A, B: int
     // C: condition
     // D: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_CMP_INT,
+
+    // Guard against the result of int64 comparison being false
+    // A, B: int64
+    // C: condition
+    // D: block/vmexit/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
+    CHECK_CMP_INT64,
 
     // Special operations
 
@@ -808,6 +885,39 @@ enum class IrCmd : uint8_t
     // B: int (count, -1 to mark all registers after start)
     MARK_DEAD,
 
+    // Performs bitwise and/xor/or on two int64
+    // A, B: int64
+    BITAND_INT64,
+    BITXOR_INT64,
+    BITOR_INT64,
+
+    // Performs bitwise not on an int64
+    // A: int64
+    BITNOT_INT64,
+
+    // Performs bitwise shift on an int64
+    // A: int64 (source)
+    // B: int64 (shift amount; negative reverses direction, |amount| >= 64 returns 0 or sign-fill)
+    BITLSHIFT_INT64,
+    BITRSHIFT_INT64,
+    BITARSHIFT_INT64,
+
+    // Performs bitwise rotate on an int64
+    // A: int64 (source)
+    // B: int64 (rotate amount, mod 64)
+    BITLROTATE_INT64,
+    BITRROTATE_INT64,
+
+    // Returns the number of consecutive zero bits in A
+    // Result is Int64 (not Int) for consistency with other int64 operations, even though value is in [0, 64]
+    // A: int64
+    BITCOUNTLZ_INT64,
+    BITCOUNTRZ_INT64,
+
+    // Swap byte order in A
+    // A: int64
+    BYTESWAP_INT64,
+
     // Performs bitwise and/xor/or on two unsigned integers
     // A, B: int
     BITAND_UINT,
@@ -923,6 +1033,7 @@ enum class IrCmd : uint8_t
 enum class IrConstKind : uint8_t
 {
     Int,
+    Int64,
     Uint,
     Double,
     Tag,
@@ -936,6 +1047,7 @@ struct IrConst
     union
     {
         int valueInt;
+        int64_t valueInt64;
         unsigned valueUint;
         double valueDouble;
         uint8_t valueTag;
@@ -1034,6 +1146,7 @@ enum class IrValueKind : uint8_t
     None,
     Tag,
     Int,
+    Int64,
     Pointer,
     Float,
     Double,
@@ -1356,6 +1469,14 @@ struct IrFunction
         return value.valueInt;
     }
 
+    int64_t int64Op(IrOp op)
+    {
+        IrConst& value = constOp(op);
+
+        CODEGEN_ASSERT(value.kind == IrConstKind::Int64);
+        return value.valueInt64;
+    }
+
     std::optional<int> asIntOp(IrOp op)
     {
         if (op.kind != IrOpKind::Constant)
@@ -1367,6 +1488,19 @@ struct IrFunction
             return std::nullopt;
 
         return value.valueInt;
+    }
+
+    std::optional<int64_t> asInt64Op(IrOp op)
+    {
+        if (op.kind != IrOpKind::Constant)
+            return std::nullopt;
+
+        IrConst& value = constOp(op);
+
+        if (value.kind != IrConstKind::Int64)
+            return std::nullopt;
+
+        return value.valueInt64;
     }
 
     unsigned uintOp(IrOp op)

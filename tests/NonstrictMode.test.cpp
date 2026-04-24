@@ -15,6 +15,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
+LUAU_FASTFLAG(LuauNonStrictModeUseErrorSupressingTag)
 
 TEST_SUITE_BEGIN("NonstrictModeTests");
 
@@ -352,6 +354,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_standalone_constraint_solving_incomplete
     LUAU_REQUIRE_ERROR_COUNT(2, results);
     CHECK(get<CheckedFunctionCallError>(results.errors[0]));
     CHECK(get<ConstraintSolvingIncompleteError>(results.errors[1]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "allow_error_type_nonstrict")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauMorePreciseErrorSuppression, true},
+        {FFlag::LuauNonStrictModeUseErrorSupressingTag, true}
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(Mode::Nonstrict, R"(
+        local sublist: any
+        if sublist then
+            for _, entry in sublist do
+                local _ = string.upper(entry)
+            end
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_in_union_suppresses")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(Mode::Nonstrict, R"(
+        local sublist: any
+        if sublist then
+            local subitem = sublist.item
+            local _ = string.upper(subitem)
+        end
+    )"));
 }
 
 TEST_SUITE_END();

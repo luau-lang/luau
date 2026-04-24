@@ -159,6 +159,87 @@ void AssemblyBuilderA64::sub(RegisterA64 dst, RegisterA64 src1, uint16_t src2)
     placeI12("sub", dst, src1, src2, 0b10'10001);
 }
 
+// dst = UInt(src3) - (UInt(src1) * UInt(src2));
+void AssemblyBuilderA64::msub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, RegisterA64 src3)
+{
+    if (logText)
+    {
+        logAppend(" %-12s", "msub");
+        log(dst);
+        text.append(",");
+        log(src1);
+        text.append(",");
+        log(src2);
+        text.append(",");
+        log(src3);
+        text.append("\n");
+    }
+
+    CODEGEN_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x);
+    CODEGEN_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind && dst.kind == src3.kind);
+
+    uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // MSUB: sf 00 11011 000 Rm 1 Ra Rn Rd
+    place(dst.index | (src1.index << 5) | (src3.index << 10) | (1 << 15) | (src2.index << 16) | (0b0011011000u << 21) | sf);
+    commit();
+}
+
+void AssemblyBuilderA64::mul(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+{
+    if (logText)
+        log("mul", dst, src1, src2);
+
+    CODEGEN_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x);
+    CODEGEN_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind);
+
+    uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // MUL is an alias for MADD with Ra=XZR: sf 00 11011 000 Rm 0 11111 Rn Rd
+    place(dst.index | (src1.index << 5) | (0b11111 << 10) | (src2.index << 16) | (0b0011011000u << 21) | sf);
+    commit();
+}
+
+void AssemblyBuilderA64::sdiv(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+{
+    if (logText)
+        log("sdiv", dst, src1, src2);
+
+    CODEGEN_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x);
+    CODEGEN_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind);
+
+    uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // SDIV: sf 00 11010 110 Rm 000011 Rn Rd
+    place(dst.index | (src1.index << 5) | (0b000011 << 10) | (src2.index << 16) | (0b0011010110u << 21) | sf);
+    commit();
+}
+
+void AssemblyBuilderA64::udiv(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+{
+    if (logText)
+        log("udiv", dst, src1, src2);
+
+    CODEGEN_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x);
+    CODEGEN_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind);
+
+    uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // UDIV: sf 00 11010 110 Rm 000010 Rn Rd
+    place(dst.index | (src1.index << 5) | (0b000010 << 10) | (src2.index << 16) | (0b0011010110u << 21) | sf);
+    commit();
+}
+
+void AssemblyBuilderA64::rem(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+{
+    // dst must hold the quotient from a preceding sdiv/udiv.
+    // dst != src1 because mul clobbers dst before sub reads src1.
+    CODEGEN_ASSERT(dst.index != src1.index);
+
+    // dst = src1 - (dst * src2);
+    msub(dst, dst, src2, src1);
+}
+
 void AssemblyBuilderA64::neg(RegisterA64 dst, RegisterA64 src)
 {
     placeSR2("neg", dst, src, 0b10'01011);
@@ -176,6 +257,77 @@ void AssemblyBuilderA64::cmp(RegisterA64 src1, uint16_t src2)
     RegisterA64 dst = src1.kind == KindA64::x ? xzr : wzr;
 
     placeI12("cmp", dst, src1, src2, 0b11'10001);
+}
+
+// nzcv is the flag bit specifier, an immediate in the range 0 to 15, giving the alternative state for the 4-bit NZCV condition flags
+void AssemblyBuilderA64::ccmp(RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t nzcv)
+{
+    if (logText)
+    {
+        logAppend(" %-12s", "ccmp");
+        log(src1);
+        text.append(",");
+        log(src2);
+        logAppend(",#%d,%s\n", nzcv, textForCondition[int(cond)] + 2);
+    }
+
+    CODEGEN_ASSERT(src1.kind == KindA64::w || src1.kind == KindA64::x);
+    CODEGEN_ASSERT(src2.kind == src1.kind);
+
+    uint32_t sf = (src1.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // ccmp: sf 11 11010010 Rm cond 00 Rn 0 nzcv
+    place((nzcv & 0x0F) | (src1.index << 5) | (codeForCondition[int(cond)] << 12) | (src2.index << 16) | (0b1111010010u << 21) | sf);
+    commit();
+}
+
+void AssemblyBuilderA64::ccmn(RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t nzcv)
+{
+    if (logText)
+    {
+        logAppend(" %-12s", "ccmn");
+        log(src1);
+        text.append(",");
+        log(src2);
+        logAppend(",#%d,%s\n", nzcv, textForCondition[int(cond)] + 2);
+    }
+
+    CODEGEN_ASSERT(src1.kind == KindA64::w || src1.kind == KindA64::x);
+    CODEGEN_ASSERT(src2.kind == src1.kind);
+
+    uint32_t sf = (src1.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // ccmn: sf 01 11010010 Rm cond 00 Rn 0 nzcv
+    place((nzcv & 0x0F) | (src1.index << 5) | (codeForCondition[int(cond)] << 12) | (src2.index << 16) | (0b0111010010u << 21) | sf);
+    commit();
+}
+
+// ccmn imm
+void AssemblyBuilderA64::ccmn(RegisterA64 src1, uint8_t src2, ConditionA64 cond, uint8_t nzcv)
+{
+    if (logText)
+    {
+        logAppend(" %-12s", "ccmn");
+        log(src1);
+        logAppend(",#%d,#%d,%s\n", src2, nzcv, textForCondition[int(cond)] + 2);
+    }
+
+    CODEGEN_ASSERT(src1.kind == KindA64::w || src1.kind == KindA64::x);
+    CODEGEN_ASSERT(src2 <= 31);
+
+    uint32_t sf = (src1.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // ccmn: sf 01 11010010 imm5 cond 10 Rn 0 nzcv
+    place((nzcv & 0x0F) | (src1.index << 5) | (1 << 11) | (codeForCondition[int(cond)] << 12) | (src2 << 16) | (0b0111010010u << 21) | sf);
+    commit();
+}
+
+// cmn: adds a register value and an immediate value, updates condition flags, and discards the result
+void AssemblyBuilderA64::cmn(RegisterA64 src1, uint16_t src2)
+{
+    RegisterA64 dst = src1.kind == KindA64::x ? xzr : wzr;
+
+    placeI12("cmn", dst, src1, src2, 0b01'10001);
 }
 
 void AssemblyBuilderA64::csel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond)
