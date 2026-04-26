@@ -2074,7 +2074,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
     for (const AstDeclaredExternTypeProperty& externProp : declaredExternType->props)
     {
         Name propName(externProp.name.value);
-        TypeId propTy = resolveType(scope, externProp.ty, /* inTypeArguments */ false, /* replaceErrorWithFresh */ false, /* initialPolarity */ Polarity::Mixed);
+        TypeId propTy =
+            resolveType(scope, externProp.ty, /* inTypeArguments */ false, /* replaceErrorWithFresh */ false, /* initialPolarity */ Polarity::Mixed);
 
         bool assignToMetatable = isMetamethod(propName);
 

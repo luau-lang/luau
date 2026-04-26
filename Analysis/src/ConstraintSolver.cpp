@@ -15,7 +15,7 @@
 #include "Luau/IterativeTypeVisitor.h"
 #include "Luau/Location.h"
 #include "Luau/ModuleResolver.h"
-#include "Luau/OverloadResolution.h"
+#include "Luau/OverloadResolver.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/ScopedSeenSet.h"
 #include "Luau/Simplify.h"
@@ -43,13 +43,13 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
-LUAU_FASTFLAGVARIABLE(LuauUnifyWithSubtyping2)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 LUAU_FASTFLAG(LuauUnpackRespectsAnnotations)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAGVARIABLE(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAGVARIABLE(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAGVARIABLE(LuauFollowInExplicitInstantiation)
 LUAU_FASTFLAGVARIABLE(LuauUseConstraintSetsToTrackFreeTypes)
+LUAU_FASTFLAGVARIABLE(LuauFixPropReadsOnMetatableTypes)
 
 namespace Luau
 {
@@ -1668,26 +1668,24 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
             argsPack = arena->addTypePack(TypePack{{fn}, argsPack});
     }
 
-    if (!usedMagic)
+
+    if (FFlag::LuauOverloadGetsInstantiated2)
     {
-        emplace<FreeTypePack>(constraint, c.result, constraint->scope, Polarity::Positive);
-        trackInteriorFreeTypePack(constraint->scope, c.result);
-    }
+        TypePackId retTp = arena->freshTypePack(constraint->scope, Polarity::Positive);
+        trackInteriorFreeTypePack(constraint->scope, retTp);
 
-    TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, argsPack, c.result});
+        TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, argsPack, retTp});
 
-    Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}};
+        Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}};
 
-    // TODO: This should probably use ConstraintSolver::unify
-    const UnifyResult unifyResult = u2.unify(overloadToUse, inferredTy);
+        // TODO: This should probably use ConstraintSolver::unify
+        const UnifyResult unifyResult = u2.unify(overloadToUse, inferredTy);
 
-    for (TypeId freeTy : u2.newFreshTypes)
-        trackInteriorFreeType(constraint->scope, freeTy);
-    for (TypePackId freeTp : u2.newFreshTypePacks)
-        trackInteriorFreeTypePack(constraint->scope, freeTp);
+        for (TypeId freeTy : u2.newFreshTypes)
+            trackInteriorFreeType(constraint->scope, freeTy);
+        for (TypePackId freeTp : u2.newFreshTypePacks)
+            trackInteriorFreeTypePack(constraint->scope, freeTp);
 
-    if (FFlag::LuauOverloadGetsInstantiated)
-    {
         if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
         {
             Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
@@ -1714,77 +1712,62 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
                 if (auto ft = get<FreeType>(ty))
                     hasBound |= !is<NeverType>(follow(ft->lowerBound)) || !is<UnknownType>(follow(ft->upperBound));
 
-            if (auto overloadAsFn = get<FunctionType>(overloadToUse))
+            // If we have generics we can bind *and*
+            if (auto overloadAsFn = get<FunctionType>(overloadToUse); overloadAsFn && hasBound)
             {
-                if (hasBound)
-                {
-                    CloneState cs{builtinTypes};
-                    // We want to clone persistent types here, for example if we try to instantiate
-                    // `table.insert`
-                    auto clonedTy = shallowClone(overloadToUse, *arena, cs, true);
-                    auto clonedFn = getMutable<FunctionType>(clonedTy);
-                    LUAU_ASSERT(clonedFn);
-                    clonedFn->generics.clear();
-                    clonedFn->genericPacks.clear();
-                    // NOTE: This can be one call!
-                    if (auto inst = instantiate2(
-                            arena,
-                            // Intentional copy, could be by reference.
-                            std::move(u2.genericSubstitutions),
-                            // Intentional copy, could be by reference.
-                            std::move(u2.genericPackSubstitutions),
-                            NotNull{&subtyping},
-                            constraint->scope,
-                            clonedTy
-                        ))
-                    {
-                        auto instantiatedFn = get<FunctionType>(inst);
-                        LUAU_ASSERT(instantiatedFn);
-                        overloadToUse = *inst;
-                        result = follow(instantiatedFn->retTypes);
-                    }
-                    else
-                    {
-                        reportError(CodeTooComplex{}, constraint->location);
-                        result = builtinTypes->errorTypePack;
-                    }
-                }
-                else
-                {
-                    auto tp = instantiate2(
+                CloneState cs{builtinTypes};
+                // We want to clone persistent types here, for example if we try to instantiate
+                // `table.insert`
+                auto clonedTy = shallowClone(overloadToUse, *arena, cs, true);
+                auto clonedFn = getMutable<FunctionType>(clonedTy);
+                LUAU_ASSERT(clonedFn);
+                clonedFn->generics.clear();
+                clonedFn->genericPacks.clear();
+                if (auto inst = instantiate2(
                         arena,
+                        // Intentional copy, could be by reference.
                         std::move(u2.genericSubstitutions),
+                        // Intentional copy, could be by reference.
                         std::move(u2.genericPackSubstitutions),
                         NotNull{&subtyping},
                         constraint->scope,
-                        overloadAsFn->retTypes
-                    );
-                    if (tp)
-                        result = *tp;
-                    else
-                    {
-                        reportError(CodeTooComplex{}, constraint->location);
-                        result = builtinTypes->errorTypePack;
-                    }
+                        clonedTy
+                    ))
+                {
+                    auto instantiatedFn = get<FunctionType>(inst);
+                    LUAU_ASSERT(instantiatedFn);
+                    overloadToUse = *inst;
+                    retTp = follow(instantiatedFn->retTypes);
                 }
-            }
-            else
-            {
-                std::optional<TypePackId> subst = instantiate2(
-                    arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions), NotNull{&subtyping}, constraint->scope, result
-                );
-                if (!subst)
+                else
                 {
                     reportError(CodeTooComplex{}, constraint->location);
                     result = builtinTypes->errorTypePack;
                 }
+            }
+            else
+            {
+                auto newRetTp = getApproximateReturnTypeForFunctionCall(overloadToUse)
+                    .value_or(builtinTypes->errorTypePack);
+
+                std::optional<TypePackId> subst = instantiate2(
+                    arena,
+                    std::move(u2.genericSubstitutions),
+                    std::move(u2.genericPackSubstitutions),
+                    NotNull{&subtyping},
+                    constraint->scope,
+                    newRetTp
+                );
+
+                if (subst)
+                    retTp = *subst;
                 else
-                    result = *subst;
+                    reportError(CodeTooComplex{}, constraint->location);
             }
         }
 
-        if (c.result != result && !usedMagic)
-            emplaceTypePack<BoundTypePack>(asMutable(c.result), result);
+        if (!usedMagic)
+            bind(constraint, c.result, retTp);
 
         for (const auto& [expanded, additions] : u2.expandedFreeTypes)
         {
@@ -1811,9 +1794,32 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
             reportError(OccursCheckFailed{}, constraint->location);
             break;
         }
+
+        InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+        queuer.traverse(overloadToUse);
+        queuer.traverse(result);
+
     }
     else
     {
+        if (!usedMagic)
+        {
+            emplace<FreeTypePack>(constraint, c.result, constraint->scope, Polarity::Positive);
+            trackInteriorFreeTypePack(constraint->scope, c.result);
+        }
+
+        TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, argsPack, c.result});
+
+        Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}};
+
+        // TODO: This should probably use ConstraintSolver::unify
+        const UnifyResult unifyResult = u2.unify(overloadToUse, inferredTy);
+
+        for (TypeId freeTy : u2.newFreshTypes)
+            trackInteriorFreeType(constraint->scope, freeTy);
+        for (TypePackId freeTp : u2.newFreshTypePacks)
+            trackInteriorFreeTypePack(constraint->scope, freeTp);
+
         if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
         {
             Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
@@ -1854,15 +1860,16 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
                 break;
             }
         }
+
+        InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+        queuer.traverse(overloadToUse);
+        queuer.traverse(inferredTy);
+
+        // This can potentially contain free types if the return type of
+        // `inferredTy` is never unified elsewhere.
+        trackInteriorFreeType(constraint->scope, inferredTy);
     }
 
-    InstantiationQueuer queuer{constraint->scope, constraint->location, this};
-    queuer.traverse(overloadToUse);
-    queuer.traverse(inferredTy);
-
-    // This can potentially contain free types if the return type of
-    // `inferredTy` is never unified elsewhere.
-    trackInteriorFreeType(constraint->scope, inferredTy);
 
     unblock(c.result, constraint->location);
 
@@ -3431,6 +3438,11 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
         if (inConditional)
             return {{}, builtinTypes->unknownType};
     }
+    else if (auto mt = get<MetatableType>(subjectType); FFlag::LuauFixPropReadsOnMetatableTypes && mt && context == ValueContext::LValue)
+    {
+        // TODO __newindex: CLI-199848
+        return lookupTableProp(constraint, mt->table, propName, context, inConditional, suppressSimplification, seen);
+    }
     else if (auto mt = get<MetatableType>(subjectType); mt && context == ValueContext::RValue)
     {
         auto result = lookupTableProp(constraint, mt->table, propName, context, inConditional, suppressSimplification, seen);
@@ -3617,83 +3629,40 @@ template<typename TID>
 bool ConstraintSolver::unify(NotNull<const Constraint> constraint, TID subTy, TID superTy)
 {
     static_assert(std::is_same_v<TID, TypeId> || std::is_same_v<TID, TypePackId>);
+    Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
+    SubtypingUnifier stu{arena, builtinTypes, NotNull{&iceReporter}};
+    SubtypingResult result;
+    if constexpr (std::is_same_v<TID, TypeId>)
+        result = subtyping.isSubtype(subTy, superTy, constraint->scope);
+    else if constexpr (std::is_same_v<TID, TypePackId>)
+        result = subtyping.isSubtype(subTy, superTy, constraint->scope, {});
 
-    if (FFlag::LuauUnifyWithSubtyping2)
+    auto unifierResult = stu.dispatchConstraints(constraint, std::move(result.assumedConstraints));
+
+    for (auto& cv : unifierResult.outstandingConstraints)
     {
-        Subtyping subtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
-        SubtypingUnifier stu{arena, builtinTypes, NotNull{&iceReporter}};
-        SubtypingResult result;
-        if constexpr (std::is_same_v<TID, TypeId>)
-            result = subtyping.isSubtype(subTy, superTy, constraint->scope);
-        else if constexpr (std::is_same_v<TID, TypePackId>)
-            result = subtyping.isSubtype(subTy, superTy, constraint->scope, {});
-
-        auto unifierResult = stu.dispatchConstraints(constraint, std::move(result.assumedConstraints));
-
-        for (auto& cv : unifierResult.outstandingConstraints)
-        {
-            auto newConstraint = pushConstraint(constraint->scope, constraint->location, std::move(cv));
-            inheritBlocks(constraint, newConstraint);
-        }
-
-        for (const auto& [ty, newUpperBounds] : unifierResult.upperBoundContributors)
-        {
-            auto& upperBounds = upperBoundContributors[ty];
-            upperBounds.insert(upperBounds.end(), newUpperBounds.begin(), newUpperBounds.end());
-        }
-
-        switch (unifierResult.unified)
-        {
-        case UnifyResult::OccursCheckFailed:
-            reportError(OccursCheckFailed{}, constraint->location);
-            return false;
-        case UnifyResult::TooComplex:
-            reportError(UnificationTooComplex{}, constraint->location);
-            return false;
-        case UnifyResult::Ok:
-        default:
-            return true;
-        }
+        auto newConstraint = pushConstraint(constraint->scope, constraint->location, std::move(cv));
+        inheritBlocks(constraint, newConstraint);
     }
-    else
+
+    for (const auto& [ty, newUpperBounds] : unifierResult.upperBoundContributors)
     {
-        Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}, &uninhabitedTypeFunctions};
+        auto& upperBounds = upperBoundContributors[ty];
+        upperBounds.insert(upperBounds.end(), newUpperBounds.begin(), newUpperBounds.end());
+    }
 
-        const UnifyResult unifyResult = u2.unify(subTy, superTy);
-
-        for (ConstraintV& c : u2.incompleteSubtypes)
-        {
-            NotNull<Constraint> addition = pushConstraint(constraint->scope, constraint->location, std::move(c));
-            inheritBlocks(constraint, addition);
-        }
-
-        if (UnifyResult::Ok == unifyResult)
-        {
-            for (const auto& [expanded, additions] : u2.expandedFreeTypes)
-            {
-                for (TypeId addition : additions)
-                    upperBoundContributors[expanded].emplace_back(constraint->location, addition);
-            }
-        }
-        else
-        {
-            switch (unifyResult)
-            {
-            case Luau::UnifyResult::Ok:
-                break;
-            case Luau::UnifyResult::OccursCheckFailed:
-                reportError(OccursCheckFailed{}, constraint->location);
-                break;
-            case Luau::UnifyResult::TooComplex:
-                reportError(UnificationTooComplex{}, constraint->location);
-                break;
-            }
-            return false;
-        }
-
+    switch (unifierResult.unified)
+    {
+    case UnifyResult::OccursCheckFailed:
+        reportError(OccursCheckFailed{}, constraint->location);
+        return false;
+    case UnifyResult::TooComplex:
+        reportError(UnificationTooComplex{}, constraint->location);
+        return false;
+    case UnifyResult::Ok:
+    default:
         return true;
     }
-
 }
 
 bool ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constraint> constraint)
@@ -4049,7 +4018,7 @@ void ConstraintSolver::shiftReferences(TypeId source, TypeId target)
         if (auto sourcerefs = typeToConstraintSet.find(source); sourcerefs != typeToConstraintSet.end())
         {
             auto [targetrefs, _] = typeToConstraintSet.try_emplace(target, Set<const Constraint*>{nullptr});
-            
+
             // This is a little sketchy as we are iterating over a hash set.
             // It _should_ be fine as we aren't depending on the order here,
             // this is all just moving values into different hash sets.

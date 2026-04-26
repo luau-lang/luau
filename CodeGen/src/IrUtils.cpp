@@ -1,10 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrUtils.h"
 
+#include "Luau/CodeGenCommon.h"
 #include "Luau/CodeGenOptions.h"
 #include "Luau/IrBuilder.h"
 
 #include "BitUtils.h"
+#include "Luau/IrData.h"
 #include "NativeState.h"
 
 #include "lua.h"
@@ -17,8 +19,8 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
-LUAU_FASTFLAGVARIABLE(LuauCodegenTruncatedSubsts)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
+LUAU_FASTFLAGVARIABLE(LuauCodegenConsistentHasResult)
 
 namespace Luau
 {
@@ -54,6 +56,9 @@ int getOpLength(LuauOpcode op)
     case LOP_JUMPXEQKB:
     case LOP_JUMPXEQKN:
     case LOP_JUMPXEQKS:
+    case LOP_GETUDATAKS:
+    case LOP_SETUDATAKS:
+    case LOP_NAMECALLUDATA:
         return 2;
 
     default:
@@ -165,10 +170,36 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:
+    case IrCmd::STORE_INT64:
     case IrCmd::STORE_VECTOR:
     case IrCmd::STORE_TVALUE:
     case IrCmd::STORE_SPLIT_TVALUE:
+    case IrCmd::CHECK_DIV_INT64:
         return IrValueKind::None;
+    case IrCmd::LOAD_INT64:
+    case IrCmd::ADD_INT64:
+    case IrCmd::SUB_INT64:
+    case IrCmd::MUL_INT64:
+    case IrCmd::DIV_INT64:
+    case IrCmd::IDIV_INT64:
+    case IrCmd::UDIV_INT64:
+    case IrCmd::REM_INT64:
+    case IrCmd::UREM_INT64:
+    case IrCmd::MOD_INT64:
+    case IrCmd::SELECT_INT64:
+    case IrCmd::BITAND_INT64:
+    case IrCmd::BITXOR_INT64:
+    case IrCmd::BITOR_INT64:
+    case IrCmd::BITNOT_INT64:
+    case IrCmd::BITLSHIFT_INT64:
+    case IrCmd::BITRSHIFT_INT64:
+    case IrCmd::BITARSHIFT_INT64:
+    case IrCmd::BITLROTATE_INT64:
+    case IrCmd::BITRROTATE_INT64:
+    case IrCmd::BITCOUNTLZ_INT64:
+    case IrCmd::BITCOUNTRZ_INT64:
+    case IrCmd::BYTESWAP_INT64:
+        return IrValueKind::Int64;
     case IrCmd::ADD_INT:
     case IrCmd::SUB_INT:
     case IrCmd::SEXTI8_INT:
@@ -226,6 +257,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:
     case IrCmd::CMP_INT:
+    case IrCmd::CMP_INT64:
     case IrCmd::CMP_TAG:
     case IrCmd::CMP_SPLIT_TVALUE:
         return IrValueKind::Int;
@@ -254,6 +286,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::TRY_CALL_FASTGETTM:
     case IrCmd::NEW_USERDATA:
         return IrValueKind::Pointer;
+    case IrCmd::INT64_TO_NUM:
     case IrCmd::INT_TO_NUM:
     case IrCmd::UINT_TO_NUM:
         return IrValueKind::Double;
@@ -262,6 +295,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::NUM_TO_INT:
     case IrCmd::NUM_TO_UINT:
         return IrValueKind::Int;
+    case IrCmd::NUM_TO_INT64:
+        return IrValueKind::Int64;
     case IrCmd::FLOAT_TO_NUM:
         return IrValueKind::Double;
     case IrCmd::NUM_TO_FLOAT:
@@ -300,7 +335,9 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::CHECK_NODE_VALUE:
     case IrCmd::CHECK_BUFFER_LEN:
     case IrCmd::CHECK_USERDATA_TAG:
+    case IrCmd::CHECK_CMP_NUM:
     case IrCmd::CHECK_CMP_INT:
+    case IrCmd::CHECK_CMP_INT64:
     case IrCmd::INTERRUPT:
     case IrCmd::CHECK_GC:
     case IrCmd::BARRIER_OBJ:
@@ -381,6 +418,8 @@ IrValueKind getConstValueKind(const IrConst& constant)
     {
     case IrConstKind::Int:
         return IrValueKind::Int;
+    case IrConstKind::Int64:
+        return IrValueKind::Int64;
     case IrConstKind::Uint:
         return IrValueKind::Int;
     case IrConstKind::Double:
@@ -711,10 +750,47 @@ bool compare(int a, int b, IrCondition cond)
     return false;
 }
 
+bool compare(int64_t a, int64_t b, IrCondition cond)
+{
+    switch (cond)
+    {
+    case IrCondition::Equal:
+        return a == b;
+    case IrCondition::NotEqual:
+        return a != b;
+    case IrCondition::Less:
+        return a < b;
+    case IrCondition::NotLess:
+        return !(a < b);
+    case IrCondition::LessEqual:
+        return a <= b;
+    case IrCondition::NotLessEqual:
+        return !(a <= b);
+    case IrCondition::Greater:
+        return a > b;
+    case IrCondition::NotGreater:
+        return !(a > b);
+    case IrCondition::GreaterEqual:
+        return a >= b;
+    case IrCondition::NotGreaterEqual:
+        return !(a >= b);
+    case IrCondition::UnsignedLess:
+        return uint64_t(a) < uint64_t(b);
+    case IrCondition::UnsignedLessEqual:
+        return uint64_t(a) <= uint64_t(b);
+    case IrCondition::UnsignedGreater:
+        return uint64_t(a) > uint64_t(b);
+    case IrCondition::UnsignedGreaterEqual:
+        return uint64_t(a) >= uint64_t(b);
+    default:
+        CODEGEN_ASSERT(!"Unsupported condition");
+    }
+
+    return false;
+}
+
 static void substituteWithTruncatedUint(IrFunction& function, IrBlock& block, IrInst& inst, IrOp op)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenTruncatedSubsts);
-
     if (IrInst* srcOfSrc = function.asInstOp(op); srcOfSrc && producesDirtyHighRegisterBits(srcOfSrc->cmd))
         replace(function, block, function.getInstIndex(inst), IrInst{IrCmd::TRUNCATE_UINT, {op}});
     else
@@ -951,6 +1027,15 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 substitute(function, inst, build.constInt(0));
         }
         break;
+    case IrCmd::CMP_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            if (compare(function.int64Op(OP_A(inst)), function.int64Op(OP_B(inst)), conditionOp(OP_C(inst))))
+                substitute(function, inst, build.constInt(1));
+            else
+                substitute(function, inst, build.constInt(0));
+        }
+        break;
     case IrCmd::CMP_TAG:
         if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
@@ -986,6 +1071,8 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                     sameValue = compare(function.intOp(OP_C(inst)), function.intOp(OP_D(inst)), IrCondition::Equal);
                 else if (function.tagOp(OP_B(inst)) == LUA_TNUMBER)
                     sameValue = compare(function.doubleOp(OP_C(inst)), function.doubleOp(OP_D(inst)), IrCondition::Equal);
+                else if (function.tagOp(OP_B(inst)) == LUA_TINTEGER)
+                    sameValue = compare(function.int64Op(OP_C(inst)), function.int64Op(OP_D(inst)), IrCondition::Equal);
                 else
                     CODEGEN_ASSERT(!"unsupported type");
 
@@ -1013,6 +1100,8 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                     differentValue = compare(function.intOp(OP_C(inst)), function.intOp(OP_D(inst)), IrCondition::NotEqual);
                 else if (function.tagOp(OP_B(inst)) == LUA_TNUMBER)
                     differentValue = compare(function.doubleOp(OP_C(inst)), function.doubleOp(OP_D(inst)), IrCondition::NotEqual);
+                else if (function.tagOp(OP_B(inst)) == LUA_TINTEGER)
+                    differentValue = compare(function.int64Op(OP_C(inst)), function.int64Op(OP_D(inst)), IrCondition::NotEqual);
                 else
                     CODEGEN_ASSERT(!"unsupported type");
 
@@ -1087,6 +1176,10 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         if (OP_A(inst).kind == IrOpKind::Constant)
             substitute(function, inst, build.constDouble(double(function.intOp(OP_A(inst)))));
         break;
+    case IrCmd::INT64_TO_NUM:
+        if (OP_A(inst).kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(double(function.int64Op(OP_A(inst)))));
+        break;
     case IrCmd::UINT_TO_NUM:
         if (OP_A(inst).kind == IrOpKind::Constant)
             substitute(function, inst, build.constDouble(double(unsigned(function.intOp(OP_A(inst))))));
@@ -1113,6 +1206,16 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             // To avoid undefined behavior of casting a value not representable in the target type, check the range (matches luai_num2unsigned)
             if (value >= -kDoubleMaxExactInteger && value <= kDoubleMaxExactInteger)
                 substitute(function, inst, build.constInt(unsigned((long long)function.doubleOp(OP_A(inst)))));
+        }
+        break;
+    case IrCmd::NUM_TO_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant)
+        {
+            double value = function.doubleOp(OP_A(inst));
+
+            // To avoid undefined behavior of casting a value not representable in the target type, check the range
+            if (value >= double(INT64_MIN) && value < double(INT64_MAX))
+                substitute(function, inst, build.constInt64(int64_t(value)));
         }
         break;
     case IrCmd::FLOAT_TO_NUM:
@@ -1162,6 +1265,15 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             }
         }
         break;
+    case IrCmd::CHECK_CMP_NUM:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            if (compare(function.doubleOp(OP_A(inst)), function.doubleOp(OP_B(inst)), conditionOp(OP_C(inst))))
+                kill(function, inst);
+            else
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
+        }
+        break;
     case IrCmd::CHECK_CMP_INT:
         if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
@@ -1169,6 +1281,277 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 kill(function, inst);
             else
                 replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}}); // Shows a conflict in assumptions on this path
+        }
+        break;
+    case IrCmd::ADD_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int64_t lhs = function.int64Op(OP_A(inst));
+            int64_t rhs = function.int64Op(OP_B(inst));
+            substitute(function, inst, build.constInt64(int64_t(uint64_t(lhs) + uint64_t(rhs))));
+        }
+        break;
+    case IrCmd::SUB_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int64_t lhs = function.int64Op(OP_A(inst));
+            int64_t rhs = function.int64Op(OP_B(inst));
+            substitute(function, inst, build.constInt64(int64_t(uint64_t(lhs) - uint64_t(rhs))));
+        }
+        break;
+    case IrCmd::MUL_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int64_t lhs = function.int64Op(OP_A(inst));
+            int64_t rhs = function.int64Op(OP_B(inst));
+            substitute(function, inst, build.constInt64(int64_t(uint64_t(lhs) * uint64_t(rhs))));
+        }
+        break;
+    case IrCmd::DIV_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int64_t lhs = function.int64Op(OP_A(inst));
+            int64_t rhs = function.int64Op(OP_B(inst));
+            if (rhs != 0 && !(lhs == INT64_MIN && rhs == -1))
+                substitute(function, inst, build.constInt64(lhs / rhs));
+        }
+        break;
+    case IrCmd::IDIV_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int64_t lhs = function.int64Op(OP_A(inst));
+            int64_t rhs = function.int64Op(OP_B(inst));
+            if (rhs != 0 && !(lhs == INT64_MIN && rhs == -1))
+            {
+                int64_t q = lhs / rhs;
+                // Floored division: adjust if signs differ and there's a remainder
+                if ((lhs ^ rhs) < 0 && q * rhs != lhs)
+                    q -= 1;
+                substitute(function, inst, build.constInt64(q));
+            }
+        }
+        break;
+    case IrCmd::UDIV_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            uint64_t lhs = uint64_t(function.int64Op(OP_A(inst)));
+            uint64_t rhs = uint64_t(function.int64Op(OP_B(inst)));
+            if (rhs != 0)
+                substitute(function, inst, build.constInt64(int64_t(lhs / rhs)));
+        }
+        break;
+    case IrCmd::REM_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int64_t lhs = function.int64Op(OP_A(inst));
+            int64_t rhs = function.int64Op(OP_B(inst));
+            if (rhs != 0 && !(lhs == INT64_MIN && rhs == -1))
+                substitute(function, inst, build.constInt64(lhs % rhs));
+        }
+        break;
+    case IrCmd::UREM_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            uint64_t lhs = uint64_t(function.int64Op(OP_A(inst)));
+            uint64_t rhs = uint64_t(function.int64Op(OP_B(inst)));
+            if (rhs != 0)
+                substitute(function, inst, build.constInt64(int64_t(lhs % rhs)));
+        }
+        break;
+    case IrCmd::MOD_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int64_t lhs = function.int64Op(OP_A(inst));
+            int64_t rhs = function.int64Op(OP_B(inst));
+            if (rhs != 0 && !(lhs == INT64_MIN && rhs == -1))
+            {
+                int64_t rem = lhs % rhs;
+                // Floored modulus: adjust if remainder != 0 and signs differ
+                if (rem != 0 && (rem ^ rhs) < 0)
+                    rem += rhs;
+                substitute(function, inst, build.constInt64(rem));
+            }
+        }
+        break;
+    case IrCmd::CHECK_DIV_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int64_t lhs = function.int64Op(OP_A(inst));
+            int64_t rhs = function.int64Op(OP_B(inst));
+            if (rhs != 0 && !(lhs == INT64_MIN && rhs == -1))
+                kill(function, inst); // guard is satisfied, eliminate it
+            else
+                replace(function, block, index, {IrCmd::JUMP, {OP_C(inst)}});
+        }
+        break;
+    case IrCmd::CHECK_CMP_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            if (compare(function.int64Op(OP_A(inst)), function.int64Op(OP_B(inst)), conditionOp(OP_C(inst))))
+                kill(function, inst);
+            else
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
+        }
+        break;
+    case IrCmd::BITAND_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int64_t op1 = function.int64Op(OP_A(inst));
+            int64_t op2 = function.int64Op(OP_B(inst));
+            substitute(function, inst, build.constInt64(op1 & op2));
+        }
+        else
+        {
+            if (OP_A(inst).kind == IrOpKind::Constant && function.int64Op(OP_A(inst)) == 0) // (0 & b) -> 0
+            {
+                substitute(function, inst, build.constInt64(0));
+            }
+            else if (OP_A(inst).kind == IrOpKind::Constant && function.int64Op(OP_A(inst)) == -1) // (-1 & b) -> b
+            {
+                substitute(function, inst, OP_B(inst));
+            }
+            else if (OP_B(inst).kind == IrOpKind::Constant && function.int64Op(OP_B(inst)) == 0) // (a & 0) -> 0
+            {
+                substitute(function, inst, build.constInt64(0));
+            }
+            else if (OP_B(inst).kind == IrOpKind::Constant && function.int64Op(OP_B(inst)) == -1) // (a & -1) -> a
+            {
+                substitute(function, inst, OP_A(inst));
+            }
+        }
+        break;
+    case IrCmd::BITXOR_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int64_t op1 = function.int64Op(OP_A(inst));
+            int64_t op2 = function.int64Op(OP_B(inst));
+            substitute(function, inst, build.constInt64(op1 ^ op2));
+        }
+        else
+        {
+            if (OP_A(inst).kind == IrOpKind::Constant && function.int64Op(OP_A(inst)) == 0) // (0 ^ b) -> b
+            {
+                substitute(function, inst, OP_B(inst));
+            }
+            else if (OP_B(inst).kind == IrOpKind::Constant && function.int64Op(OP_B(inst)) == 0) // (a ^ 0) -> a
+            {
+                substitute(function, inst, OP_A(inst));
+            }
+        }
+        break;
+    case IrCmd::BITOR_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int64_t op1 = function.int64Op(OP_A(inst));
+            int64_t op2 = function.int64Op(OP_B(inst));
+            substitute(function, inst, build.constInt64(op1 | op2));
+        }
+        else
+        {
+            if (OP_A(inst).kind == IrOpKind::Constant && function.int64Op(OP_A(inst)) == 0) // (0 | b) -> b
+            {
+                substitute(function, inst, OP_B(inst));
+            }
+            else if (OP_A(inst).kind == IrOpKind::Constant && function.int64Op(OP_A(inst)) == -1) // (-1 | b) -> -1
+            {
+                substitute(function, inst, build.constInt64(-1));
+            }
+            else if (OP_B(inst).kind == IrOpKind::Constant && function.int64Op(OP_B(inst)) == 0) // (a | 0) -> a
+            {
+                substitute(function, inst, OP_A(inst));
+            }
+            else if (OP_B(inst).kind == IrOpKind::Constant && function.int64Op(OP_B(inst)) == -1) // (a | -1) -> -1
+            {
+                substitute(function, inst, build.constInt64(-1));
+            }
+        }
+        break;
+    case IrCmd::BITNOT_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant)
+        {
+            int64_t op1 = function.int64Op(OP_A(inst));
+            substitute(function, inst, build.constInt64(~op1));
+        }
+        break;
+    case IrCmd::BITLSHIFT_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            uint64_t n = uint64_t(function.int64Op(OP_A(inst)));
+            int64_t i = function.int64Op(OP_B(inst));
+            int64_t result;
+            if (i >= -63 && i <= 63)
+                result = int64_t((i < 0) ? (n >> (-i)) : (n << i));
+            else
+                result = 0;
+            substitute(function, inst, build.constInt64(result));
+        }
+        break;
+    case IrCmd::BITRSHIFT_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            uint64_t n = uint64_t(function.int64Op(OP_A(inst)));
+            int64_t i = function.int64Op(OP_B(inst));
+            int64_t result;
+            if (i >= -63 && i <= 63)
+                result = int64_t((i < 0) ? (n << (-i)) : (n >> i));
+            else
+                result = 0;
+            substitute(function, inst, build.constInt64(result));
+        }
+        break;
+    case IrCmd::BITARSHIFT_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int64_t n = function.int64Op(OP_A(inst));
+            int64_t i = function.int64Op(OP_B(inst));
+            int64_t result;
+            if (i >= -63 && i <= 63)
+                result =
+                    (i < 0) ? int64_t(uint64_t(n) << (-i)) : (n >> i); // signed right shift is implementation-defined in C++17, well-defined in C++20
+            else if (i < -63)
+                result = 0;
+            else
+                result = (n < 0) ? int64_t(-1) : int64_t(0);
+            substitute(function, inst, build.constInt64(result));
+        }
+        break;
+    case IrCmd::BITLROTATE_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            uint64_t n = uint64_t(function.int64Op(OP_A(inst)));
+            unsigned s = unsigned(uint64_t(function.int64Op(OP_B(inst))) % 64);
+            substitute(function, inst, build.constInt64(int64_t(s != 0 ? (n << s) | (n >> (64 - s)) : n)));
+        }
+        break;
+    case IrCmd::BITRROTATE_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            uint64_t n = uint64_t(function.int64Op(OP_A(inst)));
+            unsigned s = unsigned(uint64_t(function.int64Op(OP_B(inst))) % 64);
+            substitute(function, inst, build.constInt64(int64_t(s != 0 ? (n >> s) | (n << (64 - s)) : n)));
+        }
+        break;
+    case IrCmd::BITCOUNTLZ_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant)
+        {
+            uint64_t n = uint64_t(function.int64Op(OP_A(inst)));
+            substitute(function, inst, build.constInt64(countlz(n)));
+        }
+        break;
+    case IrCmd::BITCOUNTRZ_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant)
+        {
+            uint64_t n = uint64_t(function.int64Op(OP_A(inst)));
+            substitute(function, inst, build.constInt64(countrz(n)));
+        }
+        break;
+    case IrCmd::BYTESWAP_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant)
+        {
+            uint64_t a = uint64_t(function.int64Op(OP_A(inst)));
+            uint64_t result = byteswap(a);
+
+            substitute(function, inst, build.constInt64(int64_t(result)));
         }
         break;
     case IrCmd::BITAND_UINT:
@@ -1181,27 +1564,13 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         else
         {
             if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == 0) // (0 & b) -> 0
-            {
                 substitute(function, inst, build.constInt(0));
-            }
             else if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == -1) // (-1 & b) -> b
-            {
-                if (FFlag::LuauCodegenTruncatedSubsts)
-                    substituteWithTruncatedUint(function, block, inst, OP_B(inst));
-                else
-                    substitute(function, inst, OP_B(inst));
-            }
+                substituteWithTruncatedUint(function, block, inst, OP_B(inst));
             else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0) // (a & 0) -> 0
-            {
                 substitute(function, inst, build.constInt(0));
-            }
             else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == -1) // (a & -1) -> a
-            {
-                if (FFlag::LuauCodegenTruncatedSubsts)
-                    substituteWithTruncatedUint(function, block, inst, OP_A(inst));
-                else
-                    substitute(function, inst, OP_A(inst));
-            }
+                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
         }
         break;
     case IrCmd::BITXOR_UINT:
@@ -1214,27 +1583,13 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         else
         {
             if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == 0) // (0 ^ b) -> b
-            {
-                if (FFlag::LuauCodegenTruncatedSubsts)
-                    substituteWithTruncatedUint(function, block, inst, OP_B(inst));
-                else
-                    substitute(function, inst, OP_B(inst));
-            }
+                substituteWithTruncatedUint(function, block, inst, OP_B(inst));
             else if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == -1) // (-1 ^ b) -> ~b
-            {
                 replace(function, block, index, {IrCmd::BITNOT_UINT, {OP_B(inst)}});
-            }
             else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0) // (a ^ 0) -> a
-            {
-                if (FFlag::LuauCodegenTruncatedSubsts)
-                    substituteWithTruncatedUint(function, block, inst, OP_A(inst));
-                else
-                    substitute(function, inst, OP_A(inst));
-            }
+                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
             else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == -1) // (a ^ -1) -> ~a
-            {
                 replace(function, block, index, {IrCmd::BITNOT_UINT, {OP_A(inst)}});
-            }
         }
         break;
     case IrCmd::BITOR_UINT:
@@ -1247,27 +1602,13 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         else
         {
             if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == 0) // (0 | b) -> b
-            {
-                if (FFlag::LuauCodegenTruncatedSubsts)
-                    substituteWithTruncatedUint(function, block, inst, OP_B(inst));
-                else
-                    substitute(function, inst, OP_B(inst));
-            }
+                substituteWithTruncatedUint(function, block, inst, OP_B(inst));
             else if (OP_A(inst).kind == IrOpKind::Constant && function.intOp(OP_A(inst)) == -1) // (-1 | b) -> -1
-            {
                 substitute(function, inst, build.constInt(-1));
-            }
             else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0) // (a | 0) -> a
-            {
-                if (FFlag::LuauCodegenTruncatedSubsts)
-                    substituteWithTruncatedUint(function, block, inst, OP_A(inst));
-                else
-                    substitute(function, inst, OP_A(inst));
-            }
+                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
             else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == -1) // (a | -1) -> -1
-            {
                 substitute(function, inst, build.constInt(-1));
-            }
         }
         break;
     case IrCmd::BITNOT_UINT:
@@ -1284,10 +1625,7 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         }
         else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
         {
-            if (FFlag::LuauCodegenTruncatedSubsts)
-                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
-            else
-                substitute(function, inst, OP_A(inst));
+            substituteWithTruncatedUint(function, block, inst, OP_A(inst));
         }
         break;
     case IrCmd::BITRSHIFT_UINT:
@@ -1300,10 +1638,7 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         }
         else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
         {
-            if (FFlag::LuauCodegenTruncatedSubsts)
-                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
-            else
-                substitute(function, inst, OP_A(inst));
+            substituteWithTruncatedUint(function, block, inst, OP_A(inst));
         }
         break;
     case IrCmd::BITARSHIFT_UINT:
@@ -1318,37 +1653,20 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         }
         else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
         {
-            if (FFlag::LuauCodegenTruncatedSubsts)
-                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
-            else
-                substitute(function, inst, OP_A(inst));
+            substituteWithTruncatedUint(function, block, inst, OP_A(inst));
         }
         break;
     case IrCmd::BITLROTATE_UINT:
         if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
-        {
             substitute(function, inst, build.constInt(lrotate(unsigned(function.intOp(OP_A(inst))), function.intOp(OP_B(inst)))));
-        }
         else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
-        {
-            if (FFlag::LuauCodegenTruncatedSubsts)
-                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
-            else
-                substitute(function, inst, OP_A(inst));
-        }
+            substituteWithTruncatedUint(function, block, inst, OP_A(inst));
         break;
     case IrCmd::BITRROTATE_UINT:
         if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
-        {
             substitute(function, inst, build.constInt(rrotate(unsigned(function.intOp(OP_A(inst))), function.intOp(OP_B(inst)))));
-        }
         else if (OP_B(inst).kind == IrOpKind::Constant && function.intOp(OP_B(inst)) == 0)
-        {
-            if (FFlag::LuauCodegenTruncatedSubsts)
-                substituteWithTruncatedUint(function, block, inst, OP_A(inst));
-            else
-                substitute(function, inst, OP_A(inst));
-        }
+            substituteWithTruncatedUint(function, block, inst, OP_A(inst));
         break;
     case IrCmd::BITCOUNTLZ_UINT:
         if (OP_A(inst).kind == IrOpKind::Constant)

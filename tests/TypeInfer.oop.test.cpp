@@ -16,6 +16,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixPropReadsOnMetatableTypes)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -781,6 +782,52 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
     REQUIRE(err);
     CHECK_EQ("{ read foo: string }", toString(err->wantedType, {/* exhaustive */ true}));
     CHECK_EQ("{ @metatable { __index: { bar: boolean, foo: string } }, { foo: number } }", toString(err->givenType, {/* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assign_to_prop_of_intersection_of_metatables")
+{
+    ScopedFastFlag sff{FFlag::LuauFixPropReadsOnMetatableTypes, true};
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local Base = {}
+        Base.__index = Base
+
+        type BaseStructure = { BaseString: string }
+
+        export type Base = setmetatable<BaseStructure, typeof(Base)>
+
+        function Base.new() : Base
+            return nil :: any
+        end
+
+        local Sub = {}
+        Sub.__index = Sub
+
+        type SubStructure = { SubString: string }
+
+        type Sub = setmetatable<SubStructure, typeof(Sub)> & Base
+
+        function Sub.new() : Sub
+            local self: Sub = setmetatable(Base.new(), Sub) :: any
+
+            self.SubString = 5 -- Line 24
+            self.BaseString = 5 -- Line 25
+
+            return self
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK_MESSAGE(nullptr != get<TypeMismatch>(result.errors[0]), "Expected TypeMismatch but got " << result.errors[0]);
+    CHECK(24 == result.errors[0].location.begin.line);
+
+    CHECK_MESSAGE(nullptr != get<TypeMismatch>(result.errors[1]), "Expected TypeMismatch but got " << result.errors[1]);
+    CHECK(25 == result.errors[1].location.begin.line);
 }
 
 TEST_SUITE_END();

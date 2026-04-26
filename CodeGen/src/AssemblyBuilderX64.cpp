@@ -532,6 +532,25 @@ void AssemblyBuilderX64::ud2()
     place(0x0b);
 }
 
+void AssemblyBuilderX64::cqo()
+{
+    if (logText)
+        log("cqo");
+
+    place(0x48); // REX.W
+    place(0x99);
+    commit();
+}
+
+void AssemblyBuilderX64::cdq()
+{
+    if (logText)
+        log("cdq");
+
+    place(0x99);
+    commit();
+}
+
 void AssemblyBuilderX64::bsr(RegisterX64 dst, OperandX64 src)
 {
     if (logText)

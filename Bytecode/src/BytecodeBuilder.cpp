@@ -10,6 +10,7 @@
 
 LUAU_FASTFLAG(LuauCompileDuptableConstantPack2)
 LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAGVARIABLE(LuauCompileUdataDirect)
 
 namespace Luau
 {
@@ -61,81 +62,6 @@ static void writeVarInt(std::string& ss, uint64_t value)
         writeByte(ss, (value & 127) | ((value > 127) << 7));
         value >>= 7;
     } while (value);
-}
-
-inline bool isJumpD(LuauOpcode op)
-{
-    switch (op)
-    {
-    case LOP_JUMP:
-    case LOP_JUMPIF:
-    case LOP_JUMPIFNOT:
-    case LOP_JUMPIFEQ:
-    case LOP_JUMPIFLE:
-    case LOP_JUMPIFLT:
-    case LOP_JUMPIFNOTEQ:
-    case LOP_JUMPIFNOTLE:
-    case LOP_JUMPIFNOTLT:
-    case LOP_FORNPREP:
-    case LOP_FORNLOOP:
-    case LOP_FORGPREP:
-    case LOP_FORGLOOP:
-    case LOP_FORGPREP_INEXT:
-    case LOP_FORGPREP_NEXT:
-    case LOP_JUMPBACK:
-    case LOP_JUMPXEQKNIL:
-    case LOP_JUMPXEQKB:
-    case LOP_JUMPXEQKN:
-    case LOP_JUMPXEQKS:
-        return true;
-
-    default:
-        return false;
-    }
-}
-
-inline bool isSkipC(LuauOpcode op)
-{
-    switch (op)
-    {
-    case LOP_LOADB:
-        return true;
-
-    default:
-        return false;
-    }
-}
-
-inline bool isFastCall(LuauOpcode op)
-{
-    switch (op)
-    {
-    case LOP_FASTCALL:
-    case LOP_FASTCALL1:
-    case LOP_FASTCALL2:
-    case LOP_FASTCALL2K:
-    case LOP_FASTCALL3:
-        return true;
-
-    default:
-        return false;
-    }
-}
-
-static int getJumpTarget(uint32_t insn, uint32_t pc)
-{
-    LuauOpcode op = LuauOpcode(LUAU_INSN_OP(insn));
-
-    if (isJumpD(op))
-        return int(pc + LUAU_INSN_D(insn) + 1);
-    else if (isFastCall(op))
-        return int(pc + LUAU_INSN_C(insn) + 2);
-    else if (isSkipC(op) && LUAU_INSN_C(insn))
-        return int(pc + LUAU_INSN_C(insn) + 1);
-    else if (op == LOP_JUMPX)
-        return int(pc + LUAU_INSN_E(insn) + 1);
-    else
-        return -1;
 }
 
 bool BytecodeBuilder::StringRef::operator==(const StringRef& other) const
@@ -1317,7 +1243,10 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
-    // LBC_CONSTANT_TABLE_WITH_CONSTANTS requires version 7
+    if (FFlag::LuauCompileUdataDirect)
+        return 9;
+
+    // LBC_CONSTANT_INTEGER requires version 8
     if (FFlag::LuauIntegerType)
         return 8;
 
@@ -1732,6 +1661,20 @@ void BytecodeBuilder::validateInstructions() const
             default:
                 LUAU_ASSERT(!"Unsupported capture type");
             }
+            break;
+
+        case LOP_GETUDATAKS:
+        case LOP_SETUDATAKS:
+            VREG(LUAU_INSN_A(insn));
+            VREG(LUAU_INSN_B(insn));
+            VCONST(LUAU_INSN_AUX_KV16(insns[i + 1]), String);
+            break;
+
+        case LOP_NAMECALLUDATA:
+            VREG(LUAU_INSN_A(insn));
+            VREG(LUAU_INSN_B(insn));
+            VCONST(LUAU_INSN_AUX_KV16(insns[i + 1]), String);
+            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALL);
             break;
 
         default:
@@ -2390,6 +2333,27 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         code++;
         break;
 
+    case LOP_GETUDATAKS:
+        formatAppend(result, "GETUDATAKS R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_AUX_KV16(*code));
+        dumpConstant(result, LUAU_INSN_AUX_KV16(*code));
+        result.append("]\n");
+        code++;
+        break;
+
+    case LOP_SETUDATAKS:
+        formatAppend(result, "SETUDATAKS R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_AUX_KV16(*code));
+        dumpConstant(result, LUAU_INSN_AUX_KV16(*code));
+        result.append("]\n");
+        code++;
+        break;
+
+    case LOP_NAMECALLUDATA:
+        formatAppend(result, "NAMECALLUDATA R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_AUX_KV16(*code));
+        dumpConstant(result, LUAU_INSN_AUX_KV16(*code));
+        result.append("]\n");
+        code++;
+        break;
+
     default:
         LUAU_ASSERT(!"Unsupported opcode");
     }
@@ -2406,6 +2370,8 @@ static const char* getBaseTypeString(uint8_t type)
         return "boolean";
     case LBC_TYPE_NUMBER:
         return "number";
+    case LBC_TYPE_INTEGER:
+        return "integer";
     case LBC_TYPE_STRING:
         return "string";
     case LBC_TYPE_TABLE:
@@ -2726,6 +2692,18 @@ std::string BytecodeBuilder::dumpTypeInfo() const
     }
 
     return result;
+}
+
+std::vector<std::string_view> BytecodeBuilder::getStringTable()
+{
+    std::vector<std::string_view> strings;
+    strings.resize(stringTable.size());
+    for (auto& p : stringTable)
+    {
+        LUAU_ASSERT(p.second > 0 && p.second <= strings.size());
+        strings[p.second - 1] = std::string_view(p.first.data, p.first.length);
+    }
+    return strings;
 }
 
 void BytecodeBuilder::annotateInstruction(std::string& result, uint32_t fid, uint32_t instpos) const

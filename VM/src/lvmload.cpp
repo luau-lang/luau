@@ -5,7 +5,9 @@
 #include "lstate.h"
 #include "ltable.h"
 #include "lfunc.h"
+#include "lobject.h"
 #include "lstring.h"
+
 #include "lgc.h"
 #include "lmem.h"
 #include "lbytecode.h"
@@ -14,6 +16,7 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAGVARIABLE(LuauUdataDirectAccess3)
 
 template<typename T>
 struct TempBuffer
@@ -584,6 +587,48 @@ static int loadsafe(
 
             default:
                 LUAU_ASSERT(!"Unexpected constant kind");
+            }
+        }
+
+        if (FFlag::LuauUdataDirectAccess3)
+        {
+            for (Instruction* instruction = p->code; instruction < p->code + p->sizecode;)
+            {
+                int targetOp = -1;
+
+                switch (LUAU_INSN_OP(*instruction))
+                {
+                case LOP_GETTABLEKS:
+                    targetOp = LOP_GETUDATAKS;
+                    break;
+
+                case LOP_SETTABLEKS:
+                    targetOp = LOP_SETUDATAKS;
+                    break;
+
+                case LOP_NAMECALL:
+                    targetOp = LOP_NAMECALLUDATA;
+                    break;
+                }
+
+                if (targetOp != -1)
+                {
+                    LUAU_ASSERT(instruction[1] < uint32_t(sizek));
+
+                    // We take over the upper 16 bits of AUX - so no constants with big indices.
+                    if (instruction[1] < 0x10000)
+                    {
+                        TValue* k = &p->k[instruction[1]];
+                        TString* s = tsvalue(k);
+
+                        luaS_updateatom(L, s);
+
+                        if (s->atom >= 0)
+                            *instruction = (*instruction & 0xffffff00) | targetOp;
+                    }
+                }
+
+                instruction += Luau::getOpLength(LuauOpcode(LUAU_INSN_OP(*instruction)));
             }
         }
 

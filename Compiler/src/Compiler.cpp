@@ -34,6 +34,7 @@ LUAU_FASTFLAGVARIABLE(LuauCompileVectorReveseMul)
 LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpWithZero)
 LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpTargetTop)
+LUAU_FASTFLAGVARIABLE(LuauCompileNoOptNext)
 LUAU_FASTFLAG(DebugLuauNoInline)
 
 namespace Luau
@@ -2566,6 +2567,14 @@ struct Compiler
 
             emitLoadK(target, cid);
         }
+        else if (AstExprConstantInteger* expr = node->as<AstExprConstantInteger>())
+        {
+            int32_t cid = bytecode.addConstantInteger(expr->value);
+            if (cid < 0)
+                CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+            emitLoadK(target, cid);
+        }
         else if (AstExprConstantString* expr = node->as<AstExprConstantString>())
         {
             int32_t cid = bytecode.addConstantString(sref(expr->value));
@@ -3531,7 +3540,7 @@ struct Compiler
                 else if (builtin.isGlobal("pairs")) // for .. in pairs(t)
                     skipOp = LOP_FORGPREP_NEXT;
             }
-            else if (stat->values.size == 2)
+            else if (stat->values.size == 2 && (!FFlag::LuauCompileNoOptNext || (!getfenvUsed && !setfenvUsed)))
             {
                 Builtin builtin = getBuiltin(stat->values.data[0], globals, variables);
 

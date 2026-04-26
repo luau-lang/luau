@@ -162,6 +162,16 @@ struct lua_ExecutionCallbacks
     ); // called to get the execution counter data and count {uint32_t, uint32_t, uint64_t}
 };
 
+struct lua_UdataDirectAccessData
+{
+    TValue indextm;
+    TValue newindextm;
+    TValue namecalltm;
+    lua_UserdataDirectAccess index;
+    lua_UserdataDirectAccess newindex;
+    lua_UserdataDirectNamecall namecall;
+};
+
 /*
 ** `global state', shared by all threads of this state
 */
@@ -214,6 +224,9 @@ typedef struct global_State
     lua_ExecutionCallbacks ecb;
 
     alignas(16) uint8_t ecbdata[LUA_EXECUTION_CALLBACK_STORAGE];
+
+    // Set of userdata __index/__newindex/__namecall metamethods for a direct access
+    lua_UdataDirectAccessData udatadirect[LUA_UTAG_LIMIT];
 
     size_t memcatbytes[LUA_MEMORY_CATEGORIES]; // total amount of memory used by each memory category
 

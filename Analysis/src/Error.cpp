@@ -18,8 +18,6 @@
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
-LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
-
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
     std::optional<size_t> maximumCount,
@@ -195,12 +193,7 @@ struct ErrorConverter
         if (get<TableType>(t))
             return "Key '" + e.key + "' not found in table '" + Luau::toString(t) + "'";
         else if (get<ExternType>(t))
-        {
-            if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
-                return "Key '" + e.key + "' not found in external type '" + Luau::toString(t) + "'";
-            else
-                return "Key '" + e.key + "' not found in class '" + Luau::toString(t) + "'";
-        }
+            return "Key '" + e.key + "' not found in external type '" + Luau::toString(t) + "'";
         else
             return "Type '" + Luau::toString(e.table) + "' does not have key '" + e.key + "'";
     }
@@ -372,12 +365,7 @@ struct ErrorConverter
 
         TypeId t = follow(e.table);
         if (get<ExternType>(t))
-        {
-            if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
-                s += "external type";
-            else
-                s += "class";
-        }
+            s += "external type";
         else
             s += "table";
 

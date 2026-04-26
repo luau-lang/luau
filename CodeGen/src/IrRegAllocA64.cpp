@@ -11,6 +11,7 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
+LUAU_FASTFLAG(LuauCodegenNewRegSplit)
 
 namespace Luau
 {
@@ -26,17 +27,45 @@ static int allocSpill(uint64_t& free, KindA64 kind)
 {
     CODEGEN_ASSERT(kStackSize <= 256); // to support larger stack frames, we need to ensure qN is allocated at 16b boundary to fit in ldr/str encoding
 
-    // qN registers use two consecutive slots
-    int slot = countrz(kind == KindA64::q ? free & (free >> 1) : free);
-    if (slot == 64)
-        return -1;
+    if (FFlag::LuauCodegenNewRegSplit)
+    {
+        uint64_t search = free;
 
-    uint64_t mask = (kind == KindA64::q ? 3ull : 1ull) << (unsigned long long)slot;
+        // qN registers use two consecutive slots
+        if (kind == KindA64::q)
+        {
+            // Make sure bit N is set only if bit N+1 is also set
+            search = free & (free >> 1);
 
-    CODEGEN_ASSERT((free & mask) == mask);
-    free &= ~mask;
+            // Prevent qN from allocating at stack/extra spill storage boundary (by reserving last stack slot)
+            search &= ~(1ull << (kSpillSlots - 1));
+        }
 
-    return slot;
+        int slot = countrz(search);
+        if (slot == 64)
+            return -1;
+
+        uint64_t mask = (kind == KindA64::q ? 3ull : 1ull) << (unsigned long long)slot;
+
+        CODEGEN_ASSERT((free & mask) == mask);
+        free &= ~mask;
+
+        return slot;
+    }
+    else
+    {
+        // qN registers use two consecutive slots
+        int slot = countrz(kind == KindA64::q ? free & (free >> 1) : free);
+        if (slot == 64)
+            return -1;
+
+        uint64_t mask = (kind == KindA64::q ? 3ull : 1ull) << (unsigned long long)slot;
+
+        CODEGEN_ASSERT((free & mask) == mask);
+        free &= ~mask;
+
+        return slot;
+    }
 }
 
 static void freeSpill(uint64_t& free, KindA64 kind, uint8_t slot)
@@ -62,6 +91,8 @@ static int getReloadOffset(IrValueKind kind)
         return offsetof(TValue, tt);
     case IrValueKind::Int:
         return offsetof(TValue, value);
+    case IrValueKind::Int64:
+        return offsetof(TValue, value.l);
     case IrValueKind::Pointer:
         return offsetof(TValue, value.gc);
     case IrValueKind::Double:

@@ -13,7 +13,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAG(LuauUdtfReserveStack)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
@@ -2810,7 +2809,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "externs_are_extern")
 {
-    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true}};
+    ScopedFastFlag _ = {FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare extern type Bar with

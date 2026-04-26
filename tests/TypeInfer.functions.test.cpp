@@ -22,13 +22,12 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
-LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAG(LuauForwardPolarityForFunctionTypes)
@@ -738,7 +737,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_2")
 TEST_CASE_FIXTURE(Fixture, "higher_order_function_3")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReplacerRespectsReboundGenerics, true}, {FFlag::LuauOverloadGetsInstantiated, true}
+        {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReplacerRespectsReboundGenerics, true}, {FFlag::LuauOverloadGetsInstantiated2, true}
     };
 
     CheckResult result = check(R"(
@@ -1448,7 +1447,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
     CheckResult result = check(R"(
@@ -2401,7 +2400,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
     CheckResult result = check(R"(
@@ -2913,8 +2912,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_ast_stat_fun")
 
 TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
 {
-    ScopedFastFlag _{FFlag::LuauUnifyWithSubtyping2, true};
-
     CheckResult result = check(R"(
         function foo(player)
             local success,result = player:thing()
@@ -3942,7 +3939,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_187542_recursive_call_in_loop")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUnifyWithSubtyping2, true},
         {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
@@ -4087,7 +4083,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lute_tasklib_createtask")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
         {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
     };
@@ -4133,6 +4129,73 @@ TEST_CASE_FIXTURE(Fixture, "global_emplacing_steals_type_from_elsewhere")
     CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("() -> ()", toString(requireType("b")));
     CHECK_EQ("number", toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "are_we_in_the_new_solver")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
+    };
+
+    CheckResult result = check(R"(
+        -- This file should fail the old solver
+        function add(a, b)
+            return a + b
+        end
+        local vec2 = {}
+        function vec2.new(x, y)
+            return setmetatable({ x = x or 0, y = y or 0 }, {
+                __add = function(v1, v2)
+                    return { x = v1.x + v2.x, y = v1.y + v2.y }
+                end,
+            })
+        end
+        local a = add(1, 1)
+        local b = add(vec2.new(0, 0), vec2.new(1, 1))
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("a")));
+    CHECK_EQ("{ x: number, y: number }", toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_generics_keyof")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function makeOtherThing(template)
+            return {
+                Stuff = template
+            }
+        end
+
+        local function makeThing(tbl)
+            local returnThis = { Input = makeOtherThing(tbl) }
+
+            function returnThis.Test(key: keyof<typeof(returnThis.Input.Stuff)>) end
+
+            return returnThis
+        end
+
+        local thing = makeThing({a=1})
+        thing.Test("a")
+
+        local otherthing = makeThing({b = 42, c = 13})
+        otherthing.Test("b")
+        otherthing.Test("c")
+    )"));
+
+    CHECK_EQ("{ Input: { Stuff: { a: number } }, Test: (\"a\") -> () }", toString(requireType("thing")));
+    CHECK_EQ("{ Input: { Stuff: { b: number, c: number } }, Test: (\"b\" | \"c\") -> () }", toString(requireType("otherthing")));
 }
 
 TEST_SUITE_END();

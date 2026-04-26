@@ -15,6 +15,7 @@
 #include <utility>
 
 LUAU_DYNAMIC_FASTFLAGVARIABLE(AddReturnExectargetCheck, false)
+LUAU_FASTFLAG(LuauCodegenSuggestArgumentRegisterX64)
 
 namespace Luau
 {
@@ -376,8 +377,18 @@ void emitInterrupt(AssemblyBuilderX64& build)
 
     // note: rbx is non-volatile so it will be saved across interrupt call automatically
 
-    RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
-    RegisterX64 rArg2 = (build.abi == ABIX64::Windows) ? rdx : rsi;
+    RegisterX64 rArg1{};
+    RegisterX64 rArg2{};
+    if (FFlag::LuauCodegenSuggestArgumentRegisterX64)
+    {
+        rArg1 = IrCallWrapperX64::suggestArgumentRegister<0>(SizeX64::qword, build);
+        rArg2 = IrCallWrapperX64::suggestArgumentRegister<1>(SizeX64::qword, build);
+    }
+    else
+    {
+        rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
+        rArg2 = (build.abi == ABIX64::Windows) ? rdx : rsi;
+    }
 
     Label skip;
 
