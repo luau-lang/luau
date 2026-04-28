@@ -1500,6 +1500,12 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_TABLE_INSERT:
         state.invalidateHeap();
         return; // table.insert does not modify result registers.
+    case LBF_TABLE_CLEAR:
+        state.invalidateHeap();
+        return; // table.clear does not modify result registers.
+    case LBF_TABLE_CREATE:
+        state.invalidateHeap();
+        break;
     case LBF_RAWSET:
         state.invalidateHeap();
         break;
@@ -1976,11 +1982,15 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (tag == LUA_TBOOLEAN &&
                 (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Int)))
                 canSplitTvalueStore = true;
-            else if (tag == LUA_TNUMBER &&
-                     (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Double)))
+            else if (
+                tag == LUA_TNUMBER &&
+                (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Double))
+            )
                 canSplitTvalueStore = true;
-            else if (tag == LUA_TINTEGER &&
-                     (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Int64)))
+            else if (
+                tag == LUA_TINTEGER &&
+                (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Int64))
+            )
                 canSplitTvalueStore = true;
             else if (tag != 0xff && isGCO(tag) && value.kind == IrOpKind::Inst)
                 canSplitTvalueStore = true;
