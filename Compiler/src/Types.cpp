@@ -767,6 +767,8 @@ struct TypeMapVisitor : AstVisitor
             case LBF_RAWGET:
             case LBF_TABLE_INSERT:
             case LBF_TABLE_UNPACK:
+            case LBF_TABLE_CREATE:
+            case LBF_TABLE_CLEAR:
             case LBF_SELECT_VARARG:
             case LBF_GETMETATABLE:
             case LBF_SETMETATABLE:

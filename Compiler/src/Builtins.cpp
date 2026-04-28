@@ -225,6 +225,10 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_TABLE_INSERT;
         if (builtin.method == "unpack")
             return LBF_TABLE_UNPACK;
+        if (builtin.method == "create")
+            return LBF_TABLE_CREATE;
+        if (builtin.method == "clear")
+            return LBF_TABLE_CLEAR;
     }
 
     if (builtin.object == "buffer")
@@ -603,6 +607,12 @@ BuiltinInfo getBuiltinInfo(int bfid)
 
     case LBF_TABLE_UNPACK:
         return {-1, -1}; // 1, 2 or 3 parameters
+
+    case LBF_TABLE_CREATE:
+        return {-1, 1}; // 1 or 2 parameters
+
+    case LBF_TABLE_CLEAR:
+        return {1, 0};
 
     case LBF_VECTOR:
         return {-1, 1}; // 3 or 4 parameters in some configurations
