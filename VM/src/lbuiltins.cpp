@@ -2563,6 +2563,52 @@ static bool luau_hassse41()
 }
 #endif
 
+static int luauF_tablecreate(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    {
+        double n = nvalue(arg0);
+        int size;
+        luai_num2int(size, n);
+
+        if (size >= 0 && size <= 1000000)
+        {
+            if (luaC_needsGC(L))
+                return -1;
+
+            LuaTable* t = luaH_new(L, size, 0);
+
+            if (nparams >= 2)
+            {
+                TValue* v = args;
+                for (int i = 0; i < size; ++i)
+                    setobj2t(L, &t->array[i], v);
+            }
+
+            sethvalue(L, res, t);
+            return 1;
+        }
+    }
+
+    return -1;
+}
+
+static int luauF_tableclear(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 0 && ttistable(arg0))
+    {
+        LuaTable* t = hvalue(arg0);
+
+        if (t->readonly)
+            return -1;
+
+        luaH_clear(t);
+        return 0;
+    }
+
+    return -1;
+}
+
 const luau_FastFunction luauF_table[256] = {
     NULL,
     luauF_assert,
@@ -2738,6 +2784,9 @@ const luau_FastFunction luauF_table[256] = {
 
     luauF_bufferreadlong,
     luauF_bufferwritelong,
+
+    luauF_tablecreate,
+    luauF_tableclear,
 
 // When adding builtins, add them above this line; what follows is 64 "dummy" entries with luauF_missing fallback.
 // This is important so that older versions of the runtime that don't support newer builtins automatically fall back via luauF_missing.
