@@ -36,6 +36,7 @@ LUAU_FASTFLAG(LuauCompileNewMathConstantsFolded)
 LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauCompileTypeAliases)
+LUAU_FASTFLAG(LuauCompileTableBuiltinsCreateClear)
 
 using namespace Luau;
 
@@ -10790,6 +10791,56 @@ GETIMPORT R4 3 [math.random]
 CALL R4 0 -1
 CALL R1 -1 1
 RETURN R1 1
+)"
+    );
+}
+
+TEST_CASE("TableFastcall")
+{
+    ScopedFastFlag luauTableBuiltins{FFlag::LuauCompileTableBuiltinsCreateClear, true};
+
+    // table.create with 1 arg
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+return table.create(42)
+)"),
+        R"(
+LOADN R1 42
+FASTCALL1 133 R1 L0
+GETIMPORT R0 2 [table.create]
+CALL R0 1 -1
+L0: RETURN R0 -1
+)"
+    );
+
+    // table.create with 2 args
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+return table.create(10, 0)
+)"),
+        R"(
+LOADN R1 10
+FASTCALL2K 133 R1 K0 L0 [0]
+LOADK R2 K0 [0]
+GETIMPORT R0 3 [table.create]
+CALL R0 2 -1
+L0: RETURN R0 -1
+)"
+    );
+
+    // table.clear with 1 arg
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local t = {}
+table.clear(t)
+)"),
+        R"(
+NEWTABLE R0 0 0
+FASTCALL1 134 R0 L0
+MOVE R2 R0
+GETIMPORT R1 2 [table.clear]
+CALL R1 1 0
+L0: RETURN R0 0
 )"
     );
 }

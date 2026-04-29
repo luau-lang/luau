@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauIntegerFastcalls)
 LUAU_FASTFLAGVARIABLE(LuauIntegerBufferFastcalls)
+LUAU_FASTFLAGVARIABLE(LuauCompileTableBuiltinsCreateClear)
 
 namespace Luau
 {
@@ -225,9 +226,9 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_TABLE_INSERT;
         if (builtin.method == "unpack")
             return LBF_TABLE_UNPACK;
-        if (builtin.method == "create")
+        if (FFlag::LuauCompileTableBuiltinsCreateClear && builtin.method == "create")
             return LBF_TABLE_CREATE;
-        if (builtin.method == "clear")
+        if (FFlag::LuauCompileTableBuiltinsCreateClear && builtin.method == "clear")
             return LBF_TABLE_CLEAR;
     }
 
