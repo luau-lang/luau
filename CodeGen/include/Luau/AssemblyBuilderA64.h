@@ -43,6 +43,12 @@ public:
     void sub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift = 0);
     void sub(RegisterA64 dst, RegisterA64 src1, uint16_t src2);
     void neg(RegisterA64 dst, RegisterA64 src);
+    void mul(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
+    void msub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, RegisterA64 src3);
+    void sdiv(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
+    void udiv(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
+    // predicate: dst is the result of an sdiv/udiv (quotient); src1 is the dividend, src2 is the divisor; dst != src1
+    void rem(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
 
     // Prevent implicit conversions from happening
     template<typename T>
@@ -57,6 +63,11 @@ public:
 
     template<typename T>
     void cmp(RegisterA64 src1, T src2) = delete; // Prevent implicit conversions from happening
+
+    void ccmp(RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t nzcv);
+    void ccmn(RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t nzcv);
+    void ccmn(RegisterA64 src1, uint8_t src2, ConditionA64 cond, uint8_t nzcv);
+    void cmn(RegisterA64 src1, uint16_t src2);
 
     void csel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond);
     void cset(RegisterA64 dst, ConditionA64 cond);

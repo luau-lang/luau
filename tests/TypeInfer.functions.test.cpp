@@ -22,7 +22,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
-LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
@@ -2913,8 +2912,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_ast_stat_fun")
 
 TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
 {
-    ScopedFastFlag _{FFlag::LuauUnifyWithSubtyping2, true};
-
     CheckResult result = check(R"(
         function foo(player)
             local success,result = player:thing()
@@ -3942,7 +3939,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_187542_recursive_call_in_loop")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUnifyWithSubtyping2, true},
         {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };

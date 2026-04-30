@@ -41,6 +41,7 @@ struct IrBuilder
     IrOp undef();
 
     IrOp constInt(int value);
+    IrOp constInt64(int64_t value);
     IrOp constUint(unsigned value);
     IrOp constImport(unsigned value);
     IrOp constDouble(double value);

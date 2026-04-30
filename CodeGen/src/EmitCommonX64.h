@@ -124,6 +124,11 @@ inline OperandX64 luauRegValueInt(int ri)
     return dword[rBase + ri * sizeof(TValue) + offsetof(TValue, value)];
 }
 
+inline OperandX64 luauRegValueInt64(int ri)
+{
+    return qword[rBase + ri * sizeof(TValue) + offsetof(TValue, value.l)];
+}
+
 inline OperandX64 luauRegValueVector(int ri, int index)
 {
     return dword[rBase + ri * sizeof(TValue) + offsetof(TValue, value) + (sizeof(float) * index)];

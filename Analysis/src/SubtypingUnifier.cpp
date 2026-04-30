@@ -8,8 +8,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
-
 namespace Luau
 {
 

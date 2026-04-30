@@ -108,6 +108,8 @@ const char* getCmdName(IrCmd cmd)
         return "LOAD_DOUBLE";
     case IrCmd::LOAD_INT:
         return "LOAD_INT";
+    case IrCmd::LOAD_INT64:
+        return "LOAD_INT64";
     case IrCmd::LOAD_FLOAT:
         return "LOAD_FLOAT";
     case IrCmd::LOAD_TVALUE:
@@ -132,6 +134,8 @@ const char* getCmdName(IrCmd cmd)
         return "STORE_DOUBLE";
     case IrCmd::STORE_INT:
         return "STORE_INT";
+    case IrCmd::STORE_INT64:
+        return "STORE_INT64";
     case IrCmd::STORE_VECTOR:
         return "STORE_VECTOR";
     case IrCmd::STORE_TVALUE:
@@ -142,6 +146,26 @@ const char* getCmdName(IrCmd cmd)
         return "ADD_INT";
     case IrCmd::SUB_INT:
         return "SUB_INT";
+    case IrCmd::ADD_INT64:
+        return "ADD_INT64";
+    case IrCmd::SUB_INT64:
+        return "SUB_INT64";
+    case IrCmd::MUL_INT64:
+        return "MUL_INT64";
+    case IrCmd::DIV_INT64:
+        return "DIV_INT64";
+    case IrCmd::IDIV_INT64:
+        return "IDIV_INT64";
+    case IrCmd::CHECK_DIV_INT64:
+        return "CHECK_DIV_INT64";
+    case IrCmd::UDIV_INT64:
+        return "UDIV_INT64";
+    case IrCmd::REM_INT64:
+        return "REM_INT64";
+    case IrCmd::UREM_INT64:
+        return "UREM_INT64";
+    case IrCmd::MOD_INT64:
+        return "MOD_INT64";
     case IrCmd::SEXTI8_INT:
         return "SEXTI8_INT";
     case IrCmd::SEXTI16_INT:
@@ -202,6 +226,8 @@ const char* getCmdName(IrCmd cmd)
         return "SIGN_FLOAT";
     case IrCmd::SELECT_NUM:
         return "SELECT_NUM";
+    case IrCmd::SELECT_INT64:
+        return "SELECT_INT64";
     case IrCmd::MULADD_NUM:
         return "MULADD_NUM";
     case IrCmd::SELECT_VEC:
@@ -242,6 +268,8 @@ const char* getCmdName(IrCmd cmd)
         return "CMP_ANY";
     case IrCmd::CMP_INT:
         return "CMP_INT";
+    case IrCmd::CMP_INT64:
+        return "CMP_INT64";
     case IrCmd::CMP_TAG:
         return "CMP_TAG";
     case IrCmd::CMP_SPLIT_TVALUE:
@@ -282,6 +310,8 @@ const char* getCmdName(IrCmd cmd)
         return "TRY_CALL_FASTGETTM";
     case IrCmd::NEW_USERDATA:
         return "NEW_USERDATA";
+    case IrCmd::INT64_TO_NUM:
+        return "INT64_TO_NUM";
     case IrCmd::INT_TO_NUM:
         return "INT_TO_NUM";
     case IrCmd::UINT_TO_NUM:
@@ -290,6 +320,8 @@ const char* getCmdName(IrCmd cmd)
         return "UINT_TO_FLOAT";
     case IrCmd::NUM_TO_INT:
         return "NUM_TO_INT";
+    case IrCmd::NUM_TO_INT64:
+        return "NUM_TO_INT64";
     case IrCmd::NUM_TO_UINT:
         return "NUM_TO_UINT";
     case IrCmd::FLOAT_TO_NUM:
@@ -350,8 +382,12 @@ const char* getCmdName(IrCmd cmd)
         return "CHECK_BUFFER_LEN";
     case IrCmd::CHECK_USERDATA_TAG:
         return "CHECK_USERDATA_TAG";
+    case IrCmd::CHECK_CMP_NUM:
+        return "CHECK_CMP_NUM";
     case IrCmd::CHECK_CMP_INT:
         return "CHECK_CMP_INT";
+    case IrCmd::CHECK_CMP_INT64:
+        return "CHECK_CMP_INT64";
     case IrCmd::INTERRUPT:
         return "INTERRUPT";
     case IrCmd::CHECK_GC:
@@ -408,6 +444,30 @@ const char* getCmdName(IrCmd cmd)
         return "MARK_USED";
     case IrCmd::MARK_DEAD:
         return "MARK_DEAD";
+    case IrCmd::BITAND_INT64:
+        return "BITAND_INT64";
+    case IrCmd::BITXOR_INT64:
+        return "BITXOR_INT64";
+    case IrCmd::BITOR_INT64:
+        return "BITOR_INT64";
+    case IrCmd::BITNOT_INT64:
+        return "BITNOT_INT64";
+    case IrCmd::BITLSHIFT_INT64:
+        return "BITLSHIFT_INT64";
+    case IrCmd::BITRSHIFT_INT64:
+        return "BITRSHIFT_INT64";
+    case IrCmd::BITARSHIFT_INT64:
+        return "BITARSHIFT_INT64";
+    case IrCmd::BITLROTATE_INT64:
+        return "BITLROTATE_INT64";
+    case IrCmd::BITRROTATE_INT64:
+        return "BITRROTATE_INT64";
+    case IrCmd::BITCOUNTLZ_INT64:
+        return "BITCOUNTLZ_INT64";
+    case IrCmd::BITCOUNTRZ_INT64:
+        return "BITCOUNTRZ_INT64";
+    case IrCmd::BYTESWAP_INT64:
+        return "BYTESWAP_INT64";
     case IrCmd::BITAND_UINT:
         return "BITAND_UINT";
     case IrCmd::BITXOR_UINT:
@@ -617,6 +677,9 @@ void toString(std::string& result, Proto* proto, IrConst constant)
     {
     case IrConstKind::Int:
         append(result, "%di", constant.valueInt);
+        break;
+    case IrConstKind::Int64:
+        append(result, "%lldi", (long long)constant.valueInt64);
         break;
     case IrConstKind::Uint:
         append(result, "%uu", constant.valueUint);

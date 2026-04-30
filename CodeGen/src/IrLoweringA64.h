@@ -53,6 +53,7 @@ struct IrLoweringA64
     RegisterA64 tempDouble(IrOp op);
     RegisterA64 tempFloat(IrOp op);
     RegisterA64 tempInt(IrOp op);
+    RegisterA64 tempInt64(IrOp op);
     RegisterA64 tempUint(IrOp op);
     AddressA64 tempAddr(IrOp op, int offset, RegisterA64 tempStorage = noreg); // Existing temporary register can be provided
     AddressA64 tempAddrBuffer(IrOp bufferOp, IrOp indexOp, uint8_t tag);
@@ -64,6 +65,7 @@ struct IrLoweringA64
     IrConst constOp(IrOp op) const;
     uint8_t tagOp(IrOp op) const;
     int intOp(IrOp op) const;
+    int64_t int64Op(IrOp op) const;
     unsigned uintOp(IrOp op) const;
     unsigned importOp(IrOp op) const;
     double doubleOp(IrOp op) const;

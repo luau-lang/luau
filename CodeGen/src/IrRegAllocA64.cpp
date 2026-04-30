@@ -91,6 +91,8 @@ static int getReloadOffset(IrValueKind kind)
         return offsetof(TValue, tt);
     case IrValueKind::Int:
         return offsetof(TValue, value);
+    case IrValueKind::Int64:
+        return offsetof(TValue, value.l);
     case IrValueKind::Pointer:
         return offsetof(TValue, value.gc);
     case IrValueKind::Double:
