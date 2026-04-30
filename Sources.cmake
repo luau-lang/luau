@@ -15,6 +15,7 @@ target_sources(Luau.Common PRIVATE
     Common/include/Luau/VecDeque.h
 
     Common/src/BytecodeWire.cpp
+    Common/src/SharedFlags.cpp
     Common/src/StringUtils.cpp
     Common/src/TimeTrace.cpp
 )
