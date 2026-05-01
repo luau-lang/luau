@@ -221,6 +221,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::BUFFER_READI16:
     case IrCmd::BUFFER_READU16:
     case IrCmd::BUFFER_READI32:
+    case IrCmd::BUFFER_READI64:
     case IrCmd::BUFFER_READF32:
     case IrCmd::BUFFER_READF64:
     case IrCmd::GET_UPVALUE:

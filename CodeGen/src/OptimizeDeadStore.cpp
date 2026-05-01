@@ -1148,6 +1148,7 @@ static void markDeadStoresInBlockChain(
                 case IrCmd::BUFFER_WRITEI8:
                 case IrCmd::BUFFER_WRITEI16:
                 case IrCmd::BUFFER_WRITEI32:
+                case IrCmd::BUFFER_WRITEI64:
                 case IrCmd::BUFFER_WRITEF32:
                 case IrCmd::BUFFER_WRITEF64:
                     state.remainingUses[OP_A(inst).index]--;
@@ -1177,6 +1178,7 @@ static void markDeadStoresInBlockChain(
                     case IrCmd::BUFFER_WRITEI8:
                     case IrCmd::BUFFER_WRITEI16:
                     case IrCmd::BUFFER_WRITEI32:
+                    case IrCmd::BUFFER_WRITEI64:
                     case IrCmd::BUFFER_WRITEF32:
                     case IrCmd::BUFFER_WRITEF64:
                         if (state.remainingUses[OP_A(inst).index] == 0)

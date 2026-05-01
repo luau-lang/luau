@@ -953,5 +953,32 @@ std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty)
     return getApproximateReturnTypeForFunctionCall(ty, seen);
 }
 
+OccursCheckResult occursCheck(TypePackId needle, TypePackId haystack)
+{
+    needle = follow(needle);
+    haystack = follow(haystack);
+
+    LUAU_ASSERT((is<FreeTypePack, BlockedTypePack>(needle)));
+
+    if (is<ErrorTypePack>(needle))
+        return OccursCheckResult::Pass;
+
+    while (!get<ErrorTypePack>(haystack))
+    {
+        if (needle == haystack)
+            return OccursCheckResult::Fail;
+
+        if (auto a = get<TypePack>(haystack); a && a->tail)
+        {
+            haystack = follow(*a->tail);
+            continue;
+        }
+
+        break;
+    }
+
+    return OccursCheckResult::Pass;
+}
+
 
 } // namespace Luau

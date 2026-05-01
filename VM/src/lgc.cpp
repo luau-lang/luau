@@ -14,7 +14,8 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauUdataDirectAccess3)
+LUAU_FASTFLAG(LuauUdataDirectAccess4)
+LUAU_FASTFLAG(LuauDirectFieldGet)
 
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
@@ -751,9 +752,9 @@ static void markroot(lua_State* L)
     markobject(g, g->mainthread->gt);
     markvalue(g, registry(L));
 
-    if (FFlag::LuauUdataDirectAccess3)
+    if (FFlag::LuauUdataDirectAccess4)
     {
-        for (int i = 0; i < LUA_UTAG_LIMIT; i++)
+        for (int i = 0; i < UTAG_INTERNAL_LIMIT; i++)
         {
             lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[i];
 
@@ -761,6 +762,13 @@ static void markroot(lua_State* L)
             markvalue(g, &udatadirect.newindextm);
             markvalue(g, &udatadirect.namecalltm);
         }
+    }
+
+    if (FFlag::LuauDirectFieldGet)
+    {
+        for (int i = 0; i < UTAG_INTERNAL_LIMIT; i++)
+            if (g->udatadirectfields[i])
+                markobject(g, g->udatadirectfields[i]);
     }
 
     markmt(g);

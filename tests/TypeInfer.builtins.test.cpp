@@ -11,20 +11,16 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauPcallCallbackCanReturnZeroValues)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauSilenceDynamicFormatStringErrors)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
-LUAU_FASTFLAG(LuauNewMathConstantsAnalysis)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "math_things_are_defined")
 {
-    ScopedFastFlag newMathConstants{FFlag::LuauNewMathConstantsAnalysis, true};
-
     CheckResult result = check(R"(
         local a00 = math.frexp
         local a01 = math.ldexp
@@ -683,8 +679,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_returns_at_least_two_value_but_functio
     // We have no plans to fix this in the old solver.
     if (FFlag::DebugLuauForceOldSolver)
         return;
-
-    ScopedFastFlag sff{FFlag::LuauPcallCallbackCanReturnZeroValues, true};
 
     CheckResult result = check(R"(
         local function f(): () end

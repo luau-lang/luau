@@ -24,8 +24,8 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
-LUAU_FASTFLAGVARIABLE(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+LUAU_FASTFLAG(LuauOccursCheckForAllBindings)
 
 namespace Luau
 {
@@ -143,7 +143,7 @@ UnifyResult Unifier2::unify(TypeId subTy, TypeId superTy)
 UnifyResult Unifier2::unify(TypePackId subTp, TypePackId superTp)
 {
     iterationCount = 0;
-    return FFlag::LuauUnifier2HandleMismatchedPacks2 ? unify_(subTp, superTp) : unify_DEPRECATED(subTp, superTp);
+    return unify_(subTp, superTp);
 }
 
 UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
@@ -246,19 +246,15 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
     {
         // If `never` is the subtype, then we can propagate that inward.
 
-        UnifyResult argResult = FFlag::LuauUnifier2HandleMismatchedPacks2 ? unify_(superFn->argTypes, builtinTypes->neverTypePack)
-                                                                          : unify_DEPRECATED(superFn->argTypes, builtinTypes->neverTypePack);
-        UnifyResult retResult = FFlag::LuauUnifier2HandleMismatchedPacks2 ? unify_(builtinTypes->neverTypePack, superFn->retTypes)
-                                                                          : unify_DEPRECATED(builtinTypes->neverTypePack, superFn->retTypes);
+        UnifyResult argResult = unify_(superFn->argTypes, builtinTypes->neverTypePack);
+        UnifyResult retResult = unify_(builtinTypes->neverTypePack, superFn->retTypes);
         return argResult & retResult;
     }
     else if (subFn && superNever)
     {
         // If `never` is the supertype, then we can propagate that inward.
-        UnifyResult argResult = FFlag::LuauUnifier2HandleMismatchedPacks2 ? unify_(builtinTypes->neverTypePack, subFn->argTypes)
-                                                                          : unify_DEPRECATED(builtinTypes->neverTypePack, subFn->argTypes);
-        UnifyResult retResult = FFlag::LuauUnifier2HandleMismatchedPacks2 ? unify_(subFn->retTypes, builtinTypes->neverTypePack)
-                                                                          : unify_DEPRECATED(subFn->retTypes, builtinTypes->neverTypePack);
+        UnifyResult argResult = unify_(builtinTypes->neverTypePack, subFn->argTypes);
+        UnifyResult retResult = unify_(subFn->retTypes, builtinTypes->neverTypePack);
         return argResult & retResult;
     }
 
@@ -430,18 +426,8 @@ UnifyResult Unifier2::unify_(TypeId subTy, const FunctionType* superFn)
         }
     }
 
-    UnifyResult argResult;
-    UnifyResult retResult;
-    if (FFlag::LuauUnifier2HandleMismatchedPacks2)
-    {
-        argResult = unify_(superFn->argTypes, subFn->argTypes);
-        retResult = unify_(subFn->retTypes, superFn->retTypes);
-    }
-    else
-    {
-        argResult = unify_DEPRECATED(superFn->argTypes, subFn->argTypes);
-        retResult = unify_DEPRECATED(subFn->retTypes, superFn->retTypes);
-    }
+    UnifyResult argResult = unify_(superFn->argTypes, subFn->argTypes);
+    UnifyResult retResult = unify_(subFn->retTypes, superFn->retTypes);
     return argResult & retResult;
 }
 
@@ -550,9 +536,7 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
     while (subTypePackParamsIter != subTable->instantiatedTypePackParams.end() &&
            superTypePackParamsIter != superTable->instantiatedTypePackParams.end())
     {
-        result &= FFlag::LuauUnifier2HandleMismatchedPacks2 ? unify_(*subTypePackParamsIter, *superTypePackParamsIter)
-                                                            : unify_DEPRECATED(*subTypePackParamsIter, *superTypePackParamsIter);
-
+        result &= unify_(*subTypePackParamsIter, *superTypePackParamsIter);
         subTypePackParamsIter++;
         superTypePackParamsIter++;
     }
@@ -605,37 +589,16 @@ UnifyResult Unifier2::unify_(const MetatableType* subMetatable, const MetatableT
 UnifyResult Unifier2::unify_(const AnyType* subAny, const FunctionType* superFn)
 {
     // If `any` is the subtype, then we can propagate that inward.
-    UnifyResult argResult;
-    UnifyResult retResult;
-    if (FFlag::LuauUnifier2HandleMismatchedPacks2)
-    {
-        argResult = unify_(superFn->argTypes, builtinTypes->anyTypePack);
-        retResult = unify_(builtinTypes->anyTypePack, superFn->retTypes);
-    }
-    else
-    {
-        argResult = unify_DEPRECATED(superFn->argTypes, builtinTypes->anyTypePack);
-        retResult = unify_DEPRECATED(builtinTypes->anyTypePack, superFn->retTypes);
-    }
-
+    UnifyResult argResult = unify_(superFn->argTypes, builtinTypes->anyTypePack);
+    UnifyResult retResult = unify_(builtinTypes->anyTypePack, superFn->retTypes);
     return argResult & retResult;
 }
 
 UnifyResult Unifier2::unify_(const FunctionType* subFn, const AnyType* superAny)
 {
     // If `any` is the supertype, then we can propagate that inward.
-    UnifyResult argResult;
-    UnifyResult retResult;
-    if (FFlag::LuauUnifier2HandleMismatchedPacks2)
-    {
-        argResult = unify_(builtinTypes->anyTypePack, subFn->argTypes);
-        retResult = unify_(subFn->retTypes, builtinTypes->anyTypePack);
-    }
-    else
-    {
-        argResult = unify_DEPRECATED(builtinTypes->anyTypePack, subFn->argTypes);
-        retResult = unify_DEPRECATED(subFn->retTypes, builtinTypes->anyTypePack);
-    }
+    UnifyResult argResult = unify_(builtinTypes->anyTypePack, subFn->argTypes);
+    UnifyResult retResult = unify_(subFn->retTypes, builtinTypes->anyTypePack);
     return argResult & retResult;
 }
 
@@ -699,7 +662,6 @@ UnifyResult Unifier2::unify_(const AnyType*, const MetatableType* superMetatable
 
 UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
 {
-    LUAU_ASSERT(FFlag::LuauUnifier2HandleMismatchedPacks2);
     if (FInt::LuauTypeInferIterationLimit > 0 && iterationCount >= FInt::LuauTypeInferIterationLimit)
         return UnifyResult::TooComplex;
 
@@ -733,11 +695,22 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
         if (FFlag::LuauOverloadGetsInstantiated2)
             boundTo = instantiateWithBoundTypes(boundTo);
 
-        DenseHashSet<TypePackId> seen{nullptr};
-        if (OccursCheckResult::Fail == occursCheck(seen, target, boundTo))
+        if (FFlag::LuauOccursCheckForAllBindings)
         {
-            emplaceTypePack<BoundTypePack>(asMutable(target), builtinTypes->errorTypePack);
-            return UnifyResult::OccursCheckFailed;
+            if (::Luau::occursCheck(target, boundTo) == OccursCheckResult::Fail)
+            {
+                emplaceTypePack<BoundTypePack>(asMutable(target), builtinTypes->errorTypePack);
+                return UnifyResult::OccursCheckFailed;
+            }
+        }
+        else
+        {
+            DenseHashSet<TypePackId> seen{nullptr};
+            if (OccursCheckResult::Fail == occursCheck_DEPRECATED(seen, target, boundTo))
+            {
+                emplaceTypePack<BoundTypePack>(asMutable(target), builtinTypes->errorTypePack);
+                return UnifyResult::OccursCheckFailed;
+            }
         }
 
         emplaceTypePack<BoundTypePack>(asMutable(target), boundTo);
@@ -828,119 +801,6 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
     return UnifyResult::Ok;
 }
 
-// FIXME?  This should probably return an ErrorVec or an optional<TypeError>
-// rather than a boolean to signal an occurs check failure.
-UnifyResult Unifier2::unify_DEPRECATED(TypePackId subTp, TypePackId superTp)
-{
-    LUAU_ASSERT(!FFlag::LuauUnifier2HandleMismatchedPacks2);
-    if (FInt::LuauTypeInferIterationLimit > 0 && iterationCount >= FInt::LuauTypeInferIterationLimit)
-        return UnifyResult::TooComplex;
-
-    ++iterationCount;
-
-    // NOTE: It's a little odd that we are doing something non-exceptional for
-    // the core of unification but not for occurs check, which may throw an
-    // exception. It would be nice if, in the future, this were unified.
-    std::optional<NonExceptionalRecursionLimiter> nerl;
-    if (FFlag::LuauLimitUnificationRecursion)
-    {
-        nerl.emplace(&recursionCount);
-        if (!nerl->isOk(recursionLimit))
-            return UnifyResult::TooComplex;
-    }
-
-    subTp = follow(subTp);
-    superTp = follow(superTp);
-
-    if (auto subGen = genericPackSubstitutions.find(subTp))
-        return unify_DEPRECATED(*subGen, superTp);
-
-    if (auto superGen = genericPackSubstitutions.find(superTp))
-        return unify_DEPRECATED(subTp, *superGen);
-
-    if (seenTypePackPairings.contains({subTp, superTp}))
-        return UnifyResult::Ok;
-    seenTypePackPairings.insert({subTp, superTp});
-
-    if (subTp == superTp)
-        return UnifyResult::Ok;
-
-    if (isIrresolvable(subTp) || isIrresolvable(superTp))
-    {
-        if (uninhabitedTypeFunctions && (uninhabitedTypeFunctions->contains(subTp) || uninhabitedTypeFunctions->contains(superTp)))
-            return UnifyResult::Ok;
-
-        incompleteSubtypes.emplace_back(PackSubtypeConstraint{subTp, superTp});
-        return UnifyResult::Ok;
-    }
-
-    const FreeTypePack* subFree = get<FreeTypePack>(subTp);
-    const FreeTypePack* superFree = get<FreeTypePack>(superTp);
-
-    if (subFree)
-    {
-        DenseHashSet<TypePackId> seen{nullptr};
-        if (OccursCheckResult::Fail == occursCheck(seen, subTp, superTp))
-        {
-            emplaceTypePack<BoundTypePack>(asMutable(subTp), builtinTypes->errorTypePack);
-            return UnifyResult::OccursCheckFailed;
-        }
-
-        emplaceTypePack<BoundTypePack>(asMutable(subTp), superTp);
-        return UnifyResult::Ok;
-    }
-
-    if (superFree)
-    {
-        DenseHashSet<TypePackId> seen{nullptr};
-        if (OccursCheckResult::Fail == occursCheck(seen, superTp, subTp))
-        {
-            emplaceTypePack<BoundTypePack>(asMutable(superTp), builtinTypes->errorTypePack);
-            return UnifyResult::OccursCheckFailed;
-        }
-
-        emplaceTypePack<BoundTypePack>(asMutable(superTp), subTp);
-        return UnifyResult::Ok;
-    }
-
-    size_t maxLength = std::max(flatten(subTp).first.size(), flatten(superTp).first.size());
-
-    auto [subTypes, subTail] = extendTypePack(*arena, builtinTypes, subTp, maxLength);
-    auto [superTypes, superTail] = extendTypePack(*arena, builtinTypes, superTp, maxLength);
-
-    // right-pad the subpack with nils if `superPack` is larger since that's what a function call does
-    if (subTypes.size() < maxLength)
-        subTypes.resize(maxLength, builtinTypes->nilType);
-
-    if (subTypes.size() < maxLength || superTypes.size() < maxLength)
-        return UnifyResult::Ok;
-
-    for (size_t i = 0; i < maxLength; ++i)
-        unify_(subTypes[i], superTypes[i]);
-    if (subTail && superTail)
-    {
-        TypePackId followedSubTail = follow(*subTail);
-        TypePackId followedSuperTail = follow(*superTail);
-
-        if (get<FreeTypePack>(followedSubTail) || get<FreeTypePack>(followedSuperTail))
-            return unify_DEPRECATED(followedSubTail, followedSuperTail);
-    }
-    else if (subTail)
-    {
-        TypePackId followedSubTail = follow(*subTail);
-        if (get<FreeTypePack>(followedSubTail))
-            emplaceTypePack<BoundTypePack>(asMutable(followedSubTail), builtinTypes->emptyTypePack);
-    }
-    else if (superTail)
-    {
-        TypePackId followedSuperTail = follow(*superTail);
-        if (get<FreeTypePack>(followedSuperTail))
-            emplaceTypePack<BoundTypePack>(asMutable(followedSuperTail), builtinTypes->emptyTypePack);
-    }
-
-    return UnifyResult::Ok;
-}
-
 TypeId Unifier2::mkUnion(TypeId left, TypeId right)
 {
     left = follow(left);
@@ -1005,7 +865,7 @@ OccursCheckResult Unifier2::occursCheck(DenseHashSet<TypeId>& seen, TypeId needl
     return occurrence;
 }
 
-OccursCheckResult Unifier2::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack)
+OccursCheckResult Unifier2::occursCheck_DEPRECATED(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack)
 {
     needle = follow(needle);
     haystack = follow(haystack);

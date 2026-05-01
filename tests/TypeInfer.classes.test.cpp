@@ -14,7 +14,6 @@
 using namespace Luau;
 using std::nullopt;
 
-LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
@@ -674,7 +673,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             local y = x[true]
         )");
 
-        if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+        if (!FFlag::DebugLuauForceOldSolver)
         {
             // clang-format off
             const std::string expected =
@@ -685,10 +684,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             ;
             // clang-format on
             CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
-        }
-        else if (!FFlag::DebugLuauForceOldSolver)
-        {
-            CHECK("Expected this to be 'number | string', but got 'boolean'" == toString(result.errors.at(0)));
         }
         else
             CHECK_EQ(
@@ -701,7 +696,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             x[true] = 42
         )");
 
-        if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+        if (!FFlag::DebugLuauForceOldSolver)
         {
             // clang-format off
             const std::string expected =
@@ -712,10 +707,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             ;
             // clang-format on
             CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
-        }
-        else if (!FFlag::DebugLuauForceOldSolver)
-        {
-            CHECK("Expected this to be 'number | string', but got 'boolean'" == toString(result.errors.at(0)));
         }
         else
             CHECK_EQ(

@@ -483,6 +483,8 @@ local function simple_integer_ops()
 
   assert(buffer.readinteger(b, 0) == 0x123456789ABCDEF0i)
   assert(buffer.readinteger(b, 8) == 0x1233211233211233i)
+
+  assert(is_native_if_supported())
 end
 
 simple_integer_ops()
@@ -521,9 +523,96 @@ local function buffer_integer_boundary_values()
   buffer.writeinteger(b, 8, 0x2222222222222222i)
   assert(buffer.readinteger(b, 0) == 0x1111111111111111i)
   assert(buffer.readinteger(b, 8) == 0x2222222222222222i)
+
+  assert(is_native_if_supported())
 end
 
 buffer_integer_boundary_values()
+
+-- stress tests for CHECK_BUFFER_LEN with constant offsets at exact boundaries
+-- these exercise the native codegen constant-offset lowering path and range merging
+
+local function buffer_integer_exact_boundary()
+  -- exact-fit single access: offset + 8 == buffer.len
+  local b8 = buffer.create(8)
+  buffer.writeinteger(b8, 0, 0xAABBCCDDEEFF0011i)
+  assert(buffer.readinteger(b8, 0) == 0xAABBCCDDEEFF0011i)
+
+  -- exact-fit at end of buffer: 8 + 8 == 16
+  local b16 = buffer.create(16)
+  buffer.writeinteger(b16, 0, 0x1111111111111111i)
+  buffer.writeinteger(b16, 8, 0x2222222222222222i)
+  assert(buffer.readinteger(b16, 0) == 0x1111111111111111i)
+  assert(buffer.readinteger(b16, 8) == 0x2222222222222222i)
+
+  -- three adjacent writes filling buffer exactly: 0, 8, 16 in 24-byte buffer
+  -- triggers range merging across all three constant offsets
+  local b24 = buffer.create(24)
+  buffer.writeinteger(b24, 0, 0xAAAAAAAAAAAAAAAAi)
+  buffer.writeinteger(b24, 8, 0xBBBBBBBBBBBBBBBBi)
+  buffer.writeinteger(b24, 16, 0xCCCCCCCCCCCCCCCCi)
+  assert(buffer.readinteger(b24, 0) == 0xAAAAAAAAAAAAAAAAi)
+  assert(buffer.readinteger(b24, 8) == 0xBBBBBBBBBBBBBBBBi)
+  assert(buffer.readinteger(b24, 16) == 0xCCCCCCCCCCCCCCCCi)
+
+  -- interleaved offsets to provoke negative minOffset in range merging
+  -- write at 16 first, then read at 0, then write at 24
+  local b32 = buffer.create(32)
+  buffer.writeinteger(b32, 16, 0x3333333333333333i)
+  buffer.writeinteger(b32, 0, 0x4444444444444444i)
+  buffer.writeinteger(b32, 24, 0x5555555555555555i)
+  buffer.writeinteger(b32, 8, 0x6666666666666666i)
+  assert(buffer.readinteger(b32, 0) == 0x4444444444444444i)
+  assert(buffer.readinteger(b32, 8) == 0x6666666666666666i)
+  assert(buffer.readinteger(b32, 16) == 0x3333333333333333i)
+  assert(buffer.readinteger(b32, 24) == 0x5555555555555555i)
+
+  -- five adjacent writes filling 40-byte buffer exactly
+  local b40 = buffer.create(40)
+  buffer.writeinteger(b40, 0, 1i)
+  buffer.writeinteger(b40, 8, 2i)
+  buffer.writeinteger(b40, 16, 3i)
+  buffer.writeinteger(b40, 24, 4i)
+  buffer.writeinteger(b40, 32, 5i)
+  assert(buffer.readinteger(b40, 0) == 1i)
+  assert(buffer.readinteger(b40, 8) == 2i)
+  assert(buffer.readinteger(b40, 16) == 3i)
+  assert(buffer.readinteger(b40, 24) == 4i)
+  assert(buffer.readinteger(b40, 32) == 5i)
+
+  assert(is_native_if_supported())
+end
+
+buffer_integer_exact_boundary()
+
+local function buffer_integer_variable_offset(start: number)
+  local b = buffer.create(64)
+
+  buffer.writeinteger(b, start, 0x0123456789ABCDEFi)
+  buffer.writeinteger(b, start + 8, 0xFEDCBA9876543210i)
+  buffer.writeinteger(b, start + 16, -1i)
+
+  assert(buffer.readinteger(b, start) == 0x0123456789ABCDEFi)
+  assert(buffer.readinteger(b, start + 8) == 0xFEDCBA9876543210i)
+  assert(buffer.readinteger(b, start + 16) == -1i)
+
+  -- buffer load-store propagation
+  local a = buffer.readinteger(b, start)
+  local c = buffer.readinteger(b, start)
+  assert(a == c)
+
+  assert(buffer.readu8(b, start) == 0xEF)
+  assert(buffer.readu8(b, start + 7) == 0x01)
+  assert(buffer.readu8(b, start + 8) == 0x10)
+  assert(buffer.readu8(b, start + 15) == 0xFE)
+
+  assert(is_native_if_supported())
+end
+
+buffer_integer_variable_offset(0)
+buffer_integer_variable_offset(8)
+buffer_integer_variable_offset(16)
+buffer_integer_variable_offset(24)
 
 -- constants
 

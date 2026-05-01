@@ -1028,6 +1028,17 @@ enum class IrCmd : uint8_t
     // B: int (offset)
     // C: double (value)
     BUFFER_WRITEF64,
+
+    // Read int64 value from buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    BUFFER_READI64,
+
+    // Write i64/u64 value to buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    // C: int64 (value)
+    BUFFER_WRITEI64
 };
 
 enum class IrConstKind : uint8_t
@@ -1411,8 +1422,11 @@ struct IrFunction
 
     bool recordCounters = false; // Taken from CompilationOptions for easy access
 
+    uint64_t jitRngState = 0; // PCG32 state for NOP padding; seeded per-function in lowerFunction
+
     // Stores register tags that are known after constant propagating through a block, indexed by that block's index
     std::vector<std::vector<uint8_t>> blockExitTags; // blockIdx → tag array
+
 
     IrBlock& blockOp(IrOp op)
     {

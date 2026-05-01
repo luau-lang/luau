@@ -21,12 +21,9 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
-LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
-LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
-LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
@@ -2398,7 +2395,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
         {FFlag::LuauOverloadGetsInstantiated2, true},
     };
@@ -3617,7 +3613,6 @@ TEST_CASE_FIXTURE(Fixture, "function_argument_error_suppression")
 {
     ScopedFastFlag sff[]{
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauMorePreciseErrorSuppression, true},
     };
 
     CheckResult result = check(R"(
@@ -3693,8 +3688,6 @@ TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_allow_internal_generics")
 
 TEST_CASE_FIXTURE(Fixture, "oss_2143")
 {
-    ScopedFastFlag _{FFlag::LuauUnifier2HandleMismatchedPacks2, true};
-
     CheckResult result = check(R"(
         local function call<A..., R...>(c: (A...) -> R..., ...: A...): R...
             return c(...)
@@ -3721,8 +3714,6 @@ TEST_CASE_FIXTURE(Fixture, "oss_2143")
 
 TEST_CASE_FIXTURE(Fixture, "apply_example_from_oss")
 {
-    ScopedFastFlag _{FFlag::LuauUnifier2HandleMismatchedPacks2, true};
-
     CheckResult result = check(R"(
         type something = { Something: number }
         type example = { Example: number }
@@ -3744,8 +3735,6 @@ TEST_CASE_FIXTURE(Fixture, "apply_example_from_oss")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2109")
 {
-    ScopedFastFlag _{FFlag::LuauUnifier2HandleMismatchedPacks2, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function Retry<T..., K...>(
             MaxRetries: number,
@@ -3778,8 +3767,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2109")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_example")
 {
-    ScopedFastFlag _{FFlag::LuauUnifier2HandleMismatchedPacks2, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function makestr(n: number): string
             return tostring(n)
@@ -3981,10 +3968,7 @@ TEST_CASE_FIXTURE(Fixture, "global_function_redefinition")
 
 TEST_CASE_FIXTURE(Fixture, "oss_2061_modify_visited_generic_ice")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauSubtypingReplaceBounds, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult results = check(R"(
 type actions<T=unknown, A...=...unknown> = { [string]: (state: T, A...) -> (T) }
@@ -4012,7 +3996,6 @@ TEST_CASE_FIXTURE(Fixture, "unify_type_pack_stack_overflow")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
     };
 
     CheckResult results = check(R"(
@@ -4085,8 +4068,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lute_tasklib_createtask")
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauOverloadGetsInstantiated2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
     };
+
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function createtask(f, ...)
             local data = {}
@@ -4135,7 +4118,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "are_we_in_the_new_solver")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
         {FFlag::LuauOverloadGetsInstantiated2, true},
     };
@@ -4166,7 +4148,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_generics_keyof")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
         {FFlag::LuauOverloadGetsInstantiated2, true},
     };
