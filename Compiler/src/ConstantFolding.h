@@ -21,6 +21,7 @@ struct Constant
         Type_Integer,
         Type_Vector,
         Type_String,
+        Type_Table,
     };
 
     Type type = Type_Unknown;
@@ -32,6 +33,7 @@ struct Constant
         double valueNumber;
         int64_t valueInteger64;
         float valueVector[4];
+        size_t valueTable;                 // index pointing to constant table entry with table's constant properties
         const char* valueString = nullptr; // length stored in stringLength
     };
 

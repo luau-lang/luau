@@ -20,8 +20,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
-LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
-LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 
@@ -1535,7 +1533,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauThreadUniferStateThroughTypeFunctionReduction, true},
-        {FFlag::LuauSubtypingReplaceBounds, true},
     };
 
     CHECK_THROWS_AS(
@@ -1564,7 +1561,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_calling_pcall")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
         {FFlag::LuauOverloadGetsInstantiated2, true},
     };

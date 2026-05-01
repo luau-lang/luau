@@ -4,6 +4,7 @@
 
 #include "lobject.h"
 #include "ltm.h"
+#include "ludata.h"
 
 // registry
 #define registry(L) (&L->global->registry)
@@ -226,7 +227,7 @@ typedef struct global_State
     alignas(16) uint8_t ecbdata[LUA_EXECUTION_CALLBACK_STORAGE];
 
     // Set of userdata __index/__newindex/__namecall metamethods for a direct access
-    lua_UdataDirectAccessData udatadirect[LUA_UTAG_LIMIT];
+    lua_UdataDirectAccessData udatadirect[UTAG_INTERNAL_LIMIT];
 
     size_t memcatbytes[LUA_MEMORY_CATEGORIES]; // total amount of memory used by each memory category
 
@@ -234,6 +235,9 @@ typedef struct global_State
     LuaTable* udatamt[LUA_UTAG_LIMIT]; // metatables for tagged userdata
 
     TString* lightuserdataname[LUA_LUTAG_LIMIT]; // names for tagged lightuserdata
+
+    // per-tag direct field dispatch tables; NULL until first field is registered for that tag
+    struct LuaTable* udatadirectfields[UTAG_INTERNAL_LIMIT];
 
     GCStats gcstats;
 

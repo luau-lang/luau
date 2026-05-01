@@ -17,7 +17,6 @@
 #include <initializer_list>
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 
 using namespace Luau;
 
@@ -1815,8 +1814,6 @@ end
 
 TEST_CASE_FIXTURE(SubtypeFixture, "table_test_is_suppressing_if_all_mismatches_are_suppressing")
 {
-    ScopedFastFlag sff{FFlag::LuauMorePreciseErrorSuppression, true};
-
     TypeId tableOne = parseType("{foo: any, bar: any}");
     TypeId tableTwo = parseType("{foo: number, bar: string}");
 
@@ -1828,8 +1825,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "table_test_is_suppressing_if_all_mismatches_a
 
 TEST_CASE_FIXTURE(SubtypeFixture, "table_test_is_non_suppressing_if_any_mismatches_are_non_suppressing")
 {
-    ScopedFastFlag sff{FFlag::LuauMorePreciseErrorSuppression, true};
-
     TypeId tableOne = parseType("{foo: any, bar: string, baz: any}");
     TypeId tableTwo = parseType("{foo: number, bar: number, baz: boolaen}");
 

@@ -15,6 +15,7 @@
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAG(LuauCodegenCallWrapImproved)
+LUAU_FASTFLAGVARIABLE(LuauCodegenFixBufferLenCheck)
 
 
 namespace Luau
@@ -2573,23 +2574,25 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             else if (OP_B(inst).kind == IrOpKind::Constant)
             {
                 int offset = intOp(OP_B(inst));
+                int endOffset = FFlag::LuauCodegenFixBufferLenCheck ? maxOffset : accessSize;
+                ConditionA64 failCond = FFlag::LuauCodegenFixBufferLenCheck ? ConditionA64::UnsignedLess : ConditionA64::UnsignedLessEqual;
 
                 // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
-                if (offset < 0 || unsigned(offset) + unsigned(accessSize) >= unsigned(INT_MAX))
+                if (offset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
                 {
                     build.b(target);
                 }
-                else if (offset + accessSize <= int(AssemblyBuilderA64::kMaxImmediate))
+                else if (offset + endOffset <= int(AssemblyBuilderA64::kMaxImmediate))
                 {
-                    build.cmp(temp, uint16_t(offset + accessSize));
-                    build.b(ConditionA64::UnsignedLessEqual, target);
+                    build.cmp(temp, uint16_t(offset + endOffset));
+                    build.b(failCond, target);
                 }
                 else
                 {
                     RegisterA64 temp2 = regs.allocTemp(KindA64::w);
-                    build.mov(temp2, offset + accessSize);
+                    build.mov(temp2, offset + endOffset);
                     build.cmp(temp, temp2);
-                    build.b(ConditionA64::UnsignedLessEqual, target);
+                    build.b(failCond, target);
                 }
             }
             else
@@ -2631,6 +2634,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             else if (OP_B(inst).kind == IrOpKind::Constant)
             {
                 int offset = intOp(OP_B(inst));
+                ConditionA64 failCond = FFlag::LuauCodegenFixBufferLenCheck ? ConditionA64::UnsignedLess : ConditionA64::UnsignedLessEqual;
 
                 // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
                 if (offset < 0 || unsigned(offset) + unsigned(accessSize) >= unsigned(INT_MAX))
@@ -2640,14 +2644,14 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
                 else if (offset + accessSize <= int(AssemblyBuilderA64::kMaxImmediate))
                 {
                     build.cmp(temp, uint16_t(offset + accessSize));
-                    build.b(ConditionA64::UnsignedLessEqual, target);
+                    build.b(failCond, target);
                 }
                 else
                 {
                     RegisterA64 temp2 = regs.allocTemp(KindA64::w);
                     build.mov(temp2, offset + accessSize);
                     build.cmp(temp, temp2);
-                    build.b(ConditionA64::UnsignedLessEqual, target);
+                    build.b(failCond, target);
                 }
             }
             else
@@ -3673,6 +3677,24 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::BUFFER_WRITEF64:
     {
         RegisterA64 temp = tempDouble(OP_C(inst));
+        AddressA64 addr = tempAddrBuffer(OP_A(inst), OP_B(inst), !FFlag::LuauCodegenBufNoDefTag && !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)));
+
+        build.str(temp, addr);
+        break;
+    }
+
+    case IrCmd::BUFFER_READI64:
+    {
+        inst.regA64 = regs.allocReg(KindA64::x, index);
+        AddressA64 addr = tempAddrBuffer(OP_A(inst), OP_B(inst), !FFlag::LuauCodegenBufNoDefTag && !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)));
+
+        build.ldr(inst.regA64, addr);
+        break;
+    }
+
+    case IrCmd::BUFFER_WRITEI64:
+    {
+        RegisterA64 temp = tempInt64(OP_C(inst));
         AddressA64 addr = tempAddrBuffer(OP_A(inst), OP_B(inst), !FFlag::LuauCodegenBufNoDefTag && !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)));
 
         build.str(temp, addr);

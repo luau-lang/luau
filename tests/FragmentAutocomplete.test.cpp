@@ -27,7 +27,6 @@ LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
-LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -4796,7 +4795,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_prop
     ScopedFastFlag sffs[] = {
         {FFlag::LuauOverloadGetsInstantiated2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
     };
 
     std::string src = R"(
@@ -4887,7 +4885,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_narr
     ScopedFastFlag sffs[] = {
         {FFlag::LuauOverloadGetsInstantiated2, true},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
     };
 
     std::string src = R"(

@@ -991,6 +991,13 @@ struct ConstPropState
                             return;
                         }
                         break;
+                    case IrCmd::BUFFER_READI64:
+                        if (info.loadCmd == IrCmd::BUFFER_READI64)
+                        {
+                            substitute(function, loadInst, info.value);
+                            return;
+                        }
+                        break;
                     default:
                         CODEGEN_ASSERT(!"unknown load instruction");
                     }
@@ -1976,11 +1983,15 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (tag == LUA_TBOOLEAN &&
                 (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Int)))
                 canSplitTvalueStore = true;
-            else if (tag == LUA_TNUMBER &&
-                     (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Double)))
+            else if (
+                tag == LUA_TNUMBER &&
+                (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Double))
+            )
                 canSplitTvalueStore = true;
-            else if (tag == LUA_TINTEGER &&
-                     (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Int64)))
+            else if (
+                tag == LUA_TINTEGER &&
+                (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Int64))
+            )
                 canSplitTvalueStore = true;
             else if (tag != 0xff && isGCO(tag) && value.kind == IrOpKind::Inst)
                 canSplitTvalueStore = true;
@@ -2476,6 +2487,12 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         break;
     case IrCmd::BUFFER_WRITEF64:
         state.forwardBufferStoreToLoad(inst, IrCmd::BUFFER_READF64, 8);
+        break;
+    case IrCmd::BUFFER_READI64:
+        state.substituteOrRecordBufferLoad(block, index, inst, 8);
+        break;
+    case IrCmd::BUFFER_WRITEI64:
+        state.forwardBufferStoreToLoad(inst, IrCmd::BUFFER_READI64, 8);
         break;
     case IrCmd::CHECK_GC:
         // It is enough to perform a GC check once in a block

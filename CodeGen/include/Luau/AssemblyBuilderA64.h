@@ -203,6 +203,8 @@ public:
 
     void udf();
 
+    void nop(uint32_t bytes = 4);
+
     // Run final checks
     bool finalize();
 

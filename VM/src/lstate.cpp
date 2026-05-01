@@ -9,10 +9,11 @@
 #include "lgc.h"
 #include "ldo.h"
 #include "ldebug.h"
+#include "ludata.h"
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauUdataDirectAccess3)
+LUAU_FASTFLAG(LuauDirectFieldGet)
 
 /*
 ** Main thread combines a thread state and the global state
@@ -206,35 +207,47 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     g->gcgoal = LUAI_GCGOAL;
     g->gcstepmul = LUAI_GCSTEPMUL;
     g->gcstepsize = LUAI_GCSTEPSIZE << 10;
+
     for (i = 0; i < LUA_SIZECLASSES; i++)
     {
         g->freepages[i] = NULL;
         g->freegcopages[i] = NULL;
     }
+
     g->allpages = NULL;
     g->allgcopages = NULL;
     g->sweepgcopage = NULL;
+
     for (i = 0; i < LUA_T_COUNT; i++)
         g->mt[i] = NULL;
+
     for (i = 0; i < LUA_UTAG_LIMIT; i++)
     {
         g->udatagc[i] = NULL;
         g->udatamt[i] = NULL;
-
-        if (FFlag::LuauUdataDirectAccess3)
-        {
-            lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[i];
-
-            setnilvalue(&udatadirect.indextm);
-            setnilvalue(&udatadirect.newindextm);
-            setnilvalue(&udatadirect.namecalltm);
-            udatadirect.index = NULL;
-            udatadirect.newindex = NULL;
-            udatadirect.namecall = NULL;
-        }
     }
+
+    for (i = 0; i < UTAG_INTERNAL_LIMIT; i++)
+    {
+        lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[i];
+
+        setnilvalue(&udatadirect.indextm);
+        setnilvalue(&udatadirect.newindextm);
+        setnilvalue(&udatadirect.namecalltm);
+        udatadirect.index = NULL;
+        udatadirect.newindex = NULL;
+        udatadirect.namecall = NULL;
+    }
+
     for (i = 0; i < LUA_LUTAG_LIMIT; i++)
         g->lightuserdataname[i] = NULL;
+
+    if (FFlag::LuauDirectFieldGet)
+    {
+        for (i = 0; i < UTAG_INTERNAL_LIMIT; i++)
+            g->udatadirectfields[i] = NULL;
+    }
+
     for (i = 0; i < LUA_MEMORY_CATEGORIES; i++)
         g->memcatbytes[i] = 0;
 

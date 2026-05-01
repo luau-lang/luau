@@ -43,13 +43,13 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
-LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
-LUAU_FASTFLAG(LuauUnpackRespectsAnnotations)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAGVARIABLE(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAGVARIABLE(LuauFollowInExplicitInstantiation)
 LUAU_FASTFLAGVARIABLE(LuauUseConstraintSetsToTrackFreeTypes)
 LUAU_FASTFLAGVARIABLE(LuauFixPropReadsOnMetatableTypes)
+LUAU_FASTFLAGVARIABLE(LuauIterativeInstantiationQueuer)
+LUAU_FASTFLAGVARIABLE(LuauOccursCheckForAllBindings)
 
 namespace Luau
 {
@@ -299,14 +299,46 @@ size_t HashInstantiationSignature::operator()(const InstantiationSignature& sign
     return hash;
 }
 
-struct InstantiationQueuer : TypeOnceVisitor
+struct InstantiationQueuer_DEPRECATED : TypeOnceVisitor
+{
+    ConstraintSolver* solver;
+    NotNull<Scope> scope;
+    Location location;
+
+    explicit InstantiationQueuer_DEPRECATED(NotNull<Scope> scope, const Location& location, ConstraintSolver* solver)
+        : TypeOnceVisitor("InstantiationQueuer", /* skipBoundTypes */ true)
+        , solver(solver)
+        , scope(scope)
+        , location(location)
+    {
+    }
+
+    bool visit(TypeId ty, const PendingExpansionType& petv) override
+    {
+        solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
+        return false;
+    }
+
+    bool visit(TypeId ty, const TypeFunctionInstanceType&) override
+    {
+        solver->pushConstraint(scope, location, ReduceConstraint{ty});
+        return true;
+    }
+
+    bool visit(TypeId ty, const ExternType& etv) override
+    {
+        return false;
+    }
+};
+
+struct InstantiationQueuer : IterativeTypeVisitor
 {
     ConstraintSolver* solver;
     NotNull<Scope> scope;
     Location location;
 
     explicit InstantiationQueuer(NotNull<Scope> scope, const Location& location, ConstraintSolver* solver)
-        : TypeOnceVisitor("InstantiationQueuer", /* skipBoundTypes */ true)
+        : IterativeTypeVisitor("InstantiationQueuer", /* skipBoundTypes */ true)
         , solver(solver)
         , scope(scope)
         , location(location)
@@ -885,15 +917,31 @@ void ConstraintSolver::bind(NotNull<const Constraint> constraint, TypeId ty, Typ
     LUAU_ASSERT(canMutate(ty, constraint));
 
     boundTo = follow(boundTo);
-    if (get<BlockedType>(ty) && ty == boundTo)
+
+    if (FFlag::LuauOccursCheckForAllBindings)
     {
-        emplace<FreeType>(
-            constraint, ty, constraint->scope, builtinTypes->neverType, builtinTypes->unknownType, Polarity::Mixed
-        ); // FIXME?  Is this the right polarity?
-
-        trackInteriorFreeType(constraint->scope, ty);
-
-        return;
+        // This follow shouldn't be needed, but if for some reason we end up
+        // with a bound type, we want to also follow it when doing this
+        // occurence check.
+        if (follow(ty) == boundTo)
+        {
+            auto freshTy = freshType(arena, builtinTypes, constraint->scope, Polarity::Mixed);
+            emplaceType<BoundType>(asMutable(ty), freshTy);
+            trackInteriorFreeType(constraint->scope, freshTy);
+            unblock(ty, constraint->location);
+            return;
+        }
+    }
+    else
+    {
+        if (get<BlockedType>(ty) && ty == boundTo)
+        {
+            emplace<FreeType>(
+                constraint, ty, constraint->scope, builtinTypes->neverType, builtinTypes->unknownType, Polarity::Mixed
+            ); // FIXME?  Is this the right polarity?
+            trackInteriorFreeType(constraint->scope, ty);
+            return;
+        }
     }
 
     shiftReferences(ty, boundTo);
@@ -909,7 +957,16 @@ void ConstraintSolver::bind(NotNull<const Constraint> constraint, TypePackId tp,
     boundTo = follow(boundTo);
     LUAU_ASSERT(tp != boundTo);
 
-    emplaceTypePack<BoundTypePack>(asMutable(tp), boundTo);
+    if (FFlag::LuauOccursCheckForAllBindings && occursCheck(tp, boundTo) == OccursCheckResult::Fail)
+    {
+        reportError(InternalError{"Attempted to create a type pack cycle"}, constraint->location);
+        emplaceTypePack<BoundTypePack>(asMutable(tp), builtinTypes->errorTypePack);
+    }
+    else
+    {
+        emplaceTypePack<BoundTypePack>(asMutable(tp), boundTo);
+    }
+
     unblock(tp, constraint->location);
 }
 
@@ -1075,8 +1132,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
             else if (get<TableType>(ty))
                 sealTable(constraint->scope, ty);
 
-            if (FFlag::LuauRelateHandlesCoincidentTables)
-                unblock(ty, constraint->location);
+            unblock(ty, constraint->location);
         }
     }
 
@@ -1439,8 +1495,16 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     // The application is not recursive, so we need to queue up application of
     // any child type function instantiations within the result in order for it
     // to be complete.
-    InstantiationQueuer queuer{constraint->scope, constraint->location, this};
-    queuer.traverse(target);
+    if (FFlag::LuauIterativeInstantiationQueuer)
+    {
+        InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+        queuer.run(target);
+    }
+    else
+    {
+        InstantiationQueuer_DEPRECATED queuer{constraint->scope, constraint->location, this};
+        queuer.traverse(target);
+    }
 
     if (target->persistent || target->owningArena != arena)
     {
@@ -1795,9 +1859,18 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
             break;
         }
 
-        InstantiationQueuer queuer{constraint->scope, constraint->location, this};
-        queuer.traverse(overloadToUse);
-        queuer.traverse(result);
+        if (FFlag::LuauIterativeInstantiationQueuer)
+        {
+            InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+            queuer.run(overloadToUse);
+            queuer.run(result);
+        }
+        else
+        {
+            InstantiationQueuer_DEPRECATED queuer{constraint->scope, constraint->location, this};
+            queuer.traverse(overloadToUse);
+            queuer.traverse(result);
+        }
 
     }
     else
@@ -1861,9 +1934,18 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
             }
         }
 
-        InstantiationQueuer queuer{constraint->scope, constraint->location, this};
-        queuer.traverse(overloadToUse);
-        queuer.traverse(inferredTy);
+        if (FFlag::LuauIterativeInstantiationQueuer)
+        {
+            InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+            queuer.run(overloadToUse);
+            queuer.run(inferredTy);
+        }
+        else
+        {
+            InstantiationQueuer_DEPRECATED queuer{constraint->scope, constraint->location, this};
+            queuer.traverse(overloadToUse);
+            queuer.traverse(inferredTy);
+        }
 
         // This can potentially contain free types if the return type of
         // `inferredTy` is never unified elsewhere.
@@ -2648,16 +2730,9 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
         TypeId srcTy = follow(srcPack.head[i]);
         TypeId resultTy = follow(*resultIter);
 
-        if (!FFlag::LuauUnpackRespectsAnnotations)
-        {
-            LUAU_ASSERT(get<BlockedType>(resultTy));
-            LUAU_ASSERT(canMutate(resultTy, constraint));
-        }
-
         if (get<BlockedType>(resultTy))
         {
-            if (FFlag::LuauUnpackRespectsAnnotations)
-                LUAU_ASSERT(canMutate(resultTy, constraint));
+            LUAU_ASSERT(canMutate(resultTy, constraint));
             if (follow(srcTy) == resultTy)
             {
                 // It is sometimes the case that we find that a blocked type
@@ -2846,7 +2921,7 @@ struct FindAllUnionMembers : TypeOnceVisitor
 
     bool visit(TypeId ty, const TableType& tbl) override
     {
-        if (FFlag::LuauRelateHandlesCoincidentTables && tbl.state != TableState::Sealed)
+        if (tbl.state != TableState::Sealed)
             blockedTys.insert(ty);
         else
             recordedTys.insert(ty);

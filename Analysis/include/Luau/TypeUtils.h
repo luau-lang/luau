@@ -84,6 +84,16 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
 
 bool occursCheck(TypeId needle, TypeId haystack);
 
+// NOTE: This uses a custom enum as it is replacing several bespoke
+// implementations of the same logic.
+enum class OccursCheckResult
+{
+    Pass,
+    Fail
+};
+
+OccursCheckResult occursCheck(TypePackId needle, TypePackId haystack);
+
 // Returns the minimum and maximum number of types the argument list can accept.
 std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, TypePackId tp, bool includeHiddenVariadics = false);
 

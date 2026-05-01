@@ -7,7 +7,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
-LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
@@ -101,7 +100,7 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
         f<<number | boolean>>(1, "a")
         )");
 
-        if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+        if (!FFlag::DebugLuauForceOldSolver)
         {
             LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -115,11 +114,6 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
             // clang-format on
 
             CHECK_LONG_STRINGS_EQ(expected, toString(result.errors.at(0)));
-        }
-        else if (!FFlag::DebugLuauForceOldSolver)
-        {
-            LUAU_REQUIRE_ERROR_COUNT(1, result);
-            REQUIRE_EQ(toString(result.errors[0]), "Expected this to be 'boolean | number', but got 'string'");
         }
         else
         {

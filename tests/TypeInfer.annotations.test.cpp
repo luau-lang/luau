@@ -9,7 +9,6 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauUnpackRespectsAnnotations)
 
 using namespace Luau;
 
@@ -952,8 +951,6 @@ TEST_CASE_FIXTURE(Fixture, "unifier3_supertail_covariant_with_sub")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "respect_partially_annotated_type_packs_1")
 {
-    ScopedFastFlag _{FFlag::LuauUnpackRespectsAnnotations, true};
-
     CheckResult results = check(R"(
         local function f(): (number, string)
             return 42, "huh"
@@ -973,8 +970,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "respect_partially_annotated_type_packs_1")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "respect_partially_annotated_type_packs_2")
 {
-    ScopedFastFlag _{FFlag::LuauUnpackRespectsAnnotations, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function f(): (number, boolean, string)
             return 42, true, "huh"
@@ -988,10 +983,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "respect_partially_annotated_type_packs_2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "react_use_state_partial_annotation")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUnpackRespectsAnnotations, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type BasicStateAction<S> = ((S) -> S) | S

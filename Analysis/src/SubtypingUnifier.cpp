@@ -8,6 +8,8 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
+LUAU_FASTFLAG(LuauOccursCheckForAllBindings)
+
 namespace Luau
 {
 
@@ -49,7 +51,7 @@ SubtypingUnifier::Result SubtypingUnifier::dispatchConstraints(
     return {unifierRes, std::move(outstandingConstraints), std::move(upperBounds)};
 }
 
-OccursCheckResult SubtypingUnifier::occursCheck(TypePackId needle, TypePackId haystack) const
+OccursCheckResult SubtypingUnifier::occursCheck_DEPRECATED(TypePackId needle, TypePackId haystack) const
 {
     needle = follow(needle);
     haystack = follow(haystack);
@@ -126,10 +128,22 @@ std::pair<UnifyResult, bool> SubtypingUnifier::dispatchOneConstraint(
         // them to be _exactly_ `()` as per the table type).
         if (is<FreeTypePack>(subTp))
         {
-            if (OccursCheckResult::Fail == occursCheck(subTp, superTp))
+            if (FFlag::LuauOccursCheckForAllBindings)
             {
-                emplaceTypePack<BoundTypePack>(asMutable(subTp), builtinTypes->errorTypePack);
-                return {UnifyResult::OccursCheckFailed, true};
+                if (OccursCheckResult::Fail == ::Luau::occursCheck(subTp, superTp))
+                {
+                    emplaceTypePack<BoundTypePack>(asMutable(subTp), builtinTypes->errorTypePack);
+                    return {UnifyResult::OccursCheckFailed, true};
+                }
+            }
+            else
+            {
+
+                if (OccursCheckResult::Fail == occursCheck_DEPRECATED(subTp, superTp))
+                {
+                    emplaceTypePack<BoundTypePack>(asMutable(subTp), builtinTypes->errorTypePack);
+                    return {UnifyResult::OccursCheckFailed, true};
+                }
             }
             emplaceTypePack<BoundTypePack>(asMutable(subTp), superTp);
             return {UnifyResult::Ok, true};
@@ -137,10 +151,22 @@ std::pair<UnifyResult, bool> SubtypingUnifier::dispatchOneConstraint(
 
         if (is<FreeTypePack>(superTp))
         {
-            if (OccursCheckResult::Fail == occursCheck(superTp, subTp))
+            if (FFlag::LuauOccursCheckForAllBindings)
             {
-                emplaceTypePack<BoundTypePack>(asMutable(superTp), builtinTypes->errorTypePack);
-                return {UnifyResult::OccursCheckFailed, true};
+                if (OccursCheckResult::Fail == ::Luau::occursCheck(superTp, subTp))
+                {
+                    emplaceTypePack<BoundTypePack>(asMutable(superTp), builtinTypes->errorTypePack);
+                    return {UnifyResult::OccursCheckFailed, true};
+                }
+            }
+            else
+            {
+
+                if (OccursCheckResult::Fail == occursCheck_DEPRECATED(superTp, subTp))
+                {
+                    emplaceTypePack<BoundTypePack>(asMutable(superTp), builtinTypes->errorTypePack);
+                    return {UnifyResult::OccursCheckFailed, true};
+                }
             }
 
             emplaceTypePack<BoundTypePack>(asMutable(superTp), subTp);

@@ -114,11 +114,6 @@ struct TypeFunctionReductionResult
     std::optional<std::string> error;
     /// Messages printed out from user-defined type functions
     std::vector<std::string> messages;
-    // Clip this with LuauTypeFunctionsCaptureNestedInstances
-    /// Some type function reduction rules may _create_ type functions (e.g.
-    /// the numeric type functions can "distribute" over an inner union). If
-    /// any type functions were created this way, we must add them here.
-    std::vector<Ty> freshTypes_DEPRECATED;
 };
 
 template<typename T>

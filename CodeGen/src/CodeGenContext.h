@@ -115,5 +115,10 @@ private:
     SharedCodeAllocator sharedAllocator;
 };
 
+// JIT layout randomization helpers
+
+uint64_t jitRngSeed(uintptr_t ptr);
+uint32_t jitRngRandom(uint64_t& state);
+
 } // namespace CodeGen
 } // namespace Luau

@@ -1437,9 +1437,15 @@ void patchJump(BytecodeBuilder& bcb, BcFunction& func, JumpInfo& jump)
     BcBlock& target = func.blockOp(jump.targetBlock);
     LUAU_ASSERT(target.startpc != kBlockNoStartPc);
     if (isJumpD(jump.op))
-        LUAU_ASSERT(bcb.patchJumpD(jump.instructionPC, target.startpc));
+    {
+        [[maybe_unused]] bool patched = bcb.patchJumpD(jump.instructionPC, target.startpc);
+        LUAU_ASSERT(patched);
+    }
     else if (isSkipC(jump.op))
-        LUAU_ASSERT(bcb.patchSkipC(jump.instructionPC, target.startpc));
+    {
+        [[maybe_unused]] bool patched = bcb.patchSkipC(jump.instructionPC, target.startpc);
+        LUAU_ASSERT(patched);
+    }
 }
 
 void emitInstruction(BytecodeBuilder& bcb, Jumps& jumps, BcFunction& func, BcOp insnOp)
