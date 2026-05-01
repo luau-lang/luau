@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileFoldStringLimit)
 LUAU_FASTFLAG(LuauCompileNewMathConstantsFolded)
+LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauCompileTypeAliases)
 
@@ -1517,14 +1518,14 @@ TEST_CASE("InterpStringWithNoExpressions")
 
 TEST_CASE("InterpStringZeroCost")
 {
+    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
+
     CHECK_EQ(
-        "\n" + compileFunction0(R"(local _ = `hello, {42}!`)"),
-        R"(
-LOADK R1 K0 ['hello, %*!']
-LOADN R3 42
-NAMECALL R1 R1 K1 ['format']
-CALL R1 2 1
-MOVE R0 R1
+        "\n" + compileFunction0(R"(local _ = `hello, {42}!`)"), R"(
+LOADK R0 K0 ['hello, %*!']
+LOADN R2 42
+NAMECALL R0 R0 K1 ['format']
+CALL R0 2 1
 RETURN R0 0
 )"
     );
@@ -1558,8 +1559,10 @@ RETURN R0 0
 
 TEST_CASE("InterpStringRegisterLimit")
 {
+    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
+
     CHECK_THROWS_AS(compileFunction0(("local a = `" + rep("{1}", 254) + "`").c_str()), std::exception);
-    CHECK_THROWS_AS(compileFunction0(("local a = `" + rep("{1}", 253) + "`").c_str()), std::exception);
+    CHECK_NOTHROW(compileFunction0(("local a = `" + rep("{1}", 253) + "`").c_str())); // This check can be removed once the fflag is removed
 }
 
 TEST_CASE("InterpStringConstFold")
@@ -1580,14 +1583,15 @@ RETURN R0 1
 )"
     );
 
+    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
+
     CHECK_EQ(
         "\n" + compileFunction0(R"(local not_string = 42; local world = "world"; return `hello, {world} {not_string}!`)"),
         R"(
-LOADK R1 K0 ['hello, world %*!']
-LOADN R3 42
-NAMECALL R1 R1 K1 ['format']
-CALL R1 2 1
-MOVE R0 R1
+LOADK R0 K0 ['hello, world %*!']
+LOADN R2 42
+NAMECALL R0 R0 K1 ['format']
+CALL R0 2 1
 RETURN R0 1
 )"
     );
@@ -1595,11 +1599,10 @@ RETURN R0 1
     CHECK_EQ(
         "\n" + compileFunction0(R"(local not_string = 42; local str = "%s%s%s"; return `hello, {str} {not_string}!`)"),
         R"(
-LOADK R1 K0 ['hello, %%s%%s%%s %*!']
-LOADN R3 42
-NAMECALL R1 R1 K1 ['format']
-CALL R1 2 1
-MOVE R0 R1
+LOADK R0 K0 ['hello, %%s%%s%%s %*!']
+LOADN R2 42
+NAMECALL R0 R0 K1 ['format']
+CALL R0 2 1
 RETURN R0 1
 )"
     );
@@ -10538,6 +10541,8 @@ RETURN R1 1
 )"
     );
 
+    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
+
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -10552,11 +10557,11 @@ return a5
                    2
                ),
         R"(
-LOADK R1 K0 ['01234567890123456789012345678901'...]
-NAMECALL R1 R1 K1 ['format']
-CALL R1 1 1
-MOVE R0 R1
-LOADK R2 K2 ['%*%*%*%*%*%*%*%*%*%*']
+LOADK R0 K0 ['01234567890123456789012345678901'...]
+NAMECALL R0 R0 K1 ['format']
+CALL R0 1 1
+LOADK R1 K2 ['%*%*%*%*%*%*%*%*%*%*']
+MOVE R3 R0
 MOVE R4 R0
 MOVE R5 R0
 MOVE R6 R0
@@ -10566,10 +10571,8 @@ MOVE R9 R0
 MOVE R10 R0
 MOVE R11 R0
 MOVE R12 R0
-MOVE R13 R0
-NAMECALL R2 R2 K1 ['format']
-CALL R2 11 1
-MOVE R1 R2
+NAMECALL R1 R1 K1 ['format']
+CALL R1 11 1
 RETURN R1 1
 )"
     );
