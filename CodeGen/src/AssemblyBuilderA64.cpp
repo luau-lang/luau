@@ -1234,6 +1234,13 @@ void AssemblyBuilderA64::udf()
     place0("udf", 0);
 }
 
+void AssemblyBuilderA64::nop(uint32_t bytes)
+{
+    uint32_t count = bytes / 4;
+    for (uint32_t i = 0; i < count; ++i)
+        place0("nop", 0b11010101000000110010000000011111u);
+}
+
 bool AssemblyBuilderA64::finalize()
 {
     code.resize(codePos - code.data());

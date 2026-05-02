@@ -21,7 +21,6 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsCaptureNestedInstances)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
 LUAU_FASTFLAGVARIABLE(LuauThreadUniferStateThroughTypeFunctionReduction)
 LUAU_FASTFLAGVARIABLE(LuauConcatDoesntAlwaysReturnString)
@@ -112,18 +111,8 @@ std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunctionApp(
             }
         );
 
-        if (FFlag::LuauTypeFunctionsCaptureNestedInstances)
-        {
-            ctx->freshInstances.emplace_back(resultTy);
-            return {{resultTy, Reduction::MaybeOk}};
-        }
-        else
-        {
-            if (ctx->solver)
-                ctx->pushConstraint(ReduceConstraint{resultTy});
-
-            return {{resultTy, Reduction::MaybeOk, {}, {}, {}, {}, {resultTy}}};
-        }
+        ctx->freshInstances.emplace_back(resultTy);
+        return {{resultTy, Reduction::MaybeOk}};
     }
 
     return std::nullopt;

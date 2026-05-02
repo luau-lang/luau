@@ -25,8 +25,6 @@ LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
 LUAU_FASTFLAG(LuauCodegenGcoDse2)
 LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenRemoveDuplicateDoubleIntValues)
-LUAU_FASTFLAG(LuauCompileExtraTypes)
-LUAU_FASTFLAG(LuauCompileVectorReveseMul)
 LUAU_FASTFLAG(LuauCodegenLengthBaseInst)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
 LUAU_FASTFLAG(LuauCodegenDseNilClearsValue)
@@ -35,6 +33,7 @@ LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauCodegenInteger2)
 LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(LuauCodegenIntegerFastcall2k)
+LUAU_FASTFLAG(LuauCodegenIntegerArg3Fix)
 
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
 {
@@ -473,8 +472,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VectorMulDivMixed")
 {
-    ScopedFastFlag luauCompileVectorReveseMul{FFlag::LuauCompileVectorReveseMul, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector, b: vector, c: vector, d: vector)
@@ -3439,8 +3436,6 @@ end
 
 TEST_CASE_FIXTURE(LoweringFixture, "ResolvableFunctionReturns")
 {
-    ScopedFastFlag luauCompileExtraTypes{FFlag::LuauCompileExtraTypes, true};
-
     CHECK_EQ(
         "\n" + getCodegenHeader(R"(
 type Vertex = { p: vector, uv: vector, n: vector, t: vector, b: vector, h: number }
@@ -7478,7 +7473,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "LibmIsPure")
 {
     ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
-    ScopedFastFlag luauCompileExtraTypes{FFlag::LuauCompileExtraTypes, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -7577,8 +7571,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "VecOpReuse2")
 {
-    ScopedFastFlag luauCompileVectorReveseMul{FFlag::LuauCompileVectorReveseMul, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -7885,10 +7877,7 @@ TEST_CASE_FIXTURE(LoweringFixture, "IntegerMultiargValidate")
 local function f(a, b)
     return integer.bxor(a, b, a)
 end
-)",
-                   true,
-                   1,
-                   2
+)"
                ),
         R"(
 ; function f($arg0, $arg1) line 2
@@ -7903,6 +7892,77 @@ bb_bytecode_0:
   STORE_INT64 R2, %11
   STORE_TAG R2, tinteger
   INTERRUPT 8u
+  RETURN R2, 1i
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "IntegerMultiargValidate2")
+{
+    ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
+    ScopedFastFlag luauCodegenInteger2{FFlag::LuauCodegenInteger2, true};
+    ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType, true};
+    ScopedFastFlag luauCodegenIntegerArg3Fix{FFlag::LuauCodegenIntegerArg3Fix, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function f(a, b)
+    return integer.clamp(a, b, a)
+end
+)"
+               ),
+        R"(
+; function f($arg0, $arg1) line 2
+bb_bytecode_0:
+  implicit CHECK_SAFE_ENV exit(0)
+  CHECK_TAG R0, tinteger, exit(2)
+  CHECK_TAG R1, tinteger, exit(2)
+  %7 = LOAD_INT64 R0
+  %8 = LOAD_INT64 R1
+  CHECK_CMP_INT64 %8, %7, le, exit(2)
+  %11 = SELECT_INT64 %7, %8, %7, %8, lt
+  %12 = SELECT_INT64 %11, %7, %11, %7, gt
+  STORE_INT64 R2, %12
+  STORE_TAG R2, tinteger
+  INTERRUPT 8u
+  RETURN R2, 1i
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "IntegerMultiargValidate3")
+{
+    ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
+    ScopedFastFlag luauCodegenInteger2{FFlag::LuauCodegenInteger2, true};
+    ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType, true};
+    ScopedFastFlag luauCodegenIntegerArg3Fix{FFlag::LuauCodegenIntegerArg3Fix, true};
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function f(a, b)
+    return integer.mul(integer.min(a, b, a), integer.max(a, b, a))
+end
+)"
+               ),
+        R"(
+; function f($arg0, $arg1) line 2
+bb_bytecode_0:
+  implicit CHECK_SAFE_ENV exit(0)
+  CHECK_TAG R0, tinteger, exit(2)
+  CHECK_TAG R1, tinteger, exit(2)
+  %7 = LOAD_INT64 R0
+  %8 = LOAD_INT64 R1
+  %9 = SELECT_INT64 %7, %8, %8, %7, le
+  %11 = SELECT_INT64 %7, %9, %9, %7, le
+  %24 = SELECT_INT64 %7, %8, %8, %7, gt
+  %26 = SELECT_INT64 %7, %24, %24, %7, gt
+  %37 = MUL_INT64 %11, %26
+  STORE_INT64 R2, %37
+  STORE_TAG R2, tinteger
+  INTERRUPT 21u
   RETURN R2, 1i
 )"
     );

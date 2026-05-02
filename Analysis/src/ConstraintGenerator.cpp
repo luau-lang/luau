@@ -40,9 +40,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
-LUAU_FASTFLAGVARIABLE(LuauDontIncludeVarargWithAnnotation)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
-LUAU_FASTFLAGVARIABLE(LuauUnpackRespectsAnnotations)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAGVARIABLE(LuauForwardPolarityForFunctionTypes)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
@@ -1168,7 +1166,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
         if (statLocal->vars.data[i]->annotation)
         {
             localDomain->insert(annotatedTypes[i]);
-            if (FFlag::LuauUnpackRespectsAnnotations && i >= head.size() && tail)
+            if (i >= head.size() && tail)
                 deferredTypes.emplace_back(annotatedTypes[i]);
         }
         else
@@ -1181,8 +1179,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
             {
                 deferredTypes.push_back(arena->addType(BlockedType{}));
                 localDomain->insert(deferredTypes.back());
-                if (FFlag::LuauUnpackRespectsAnnotations)
-                    freshBlockedTypes.insert(getMutable<BlockedType>(deferredTypes.back()));
+                freshBlockedTypes.insert(getMutable<BlockedType>(deferredTypes.back()));
             }
             else
             {
@@ -1212,19 +1209,11 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
             }
         );
 
-        if (FFlag::LuauUnpackRespectsAnnotations)
-        {
-            // This is a separate set from `deferredTypes` to
-            // distinguish between blocked types we just minted
-            // and blocked types that correspond to annotations.
-            for (BlockedType* bt : freshBlockedTypes)
-                bt->setOwner(uc);
-        }
-        else
-        {
-            for (TypeId t : deferredTypes)
-                getMutable<BlockedType>(t)->setOwner(uc);
-        }
+        // This is a separate set from `deferredTypes` to
+        // distinguish between blocked types we just minted
+        // and blocked types that correspond to annotations.
+        for (BlockedType* bt : freshBlockedTypes)
+            bt->setOwner(uc);
     }
 
     if (statLocal->vars.size == 1 && statLocal->values.size == 1 && firstValueType && scope.get() == rootScope && !hasAnnotation)

@@ -397,11 +397,14 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::BUFFER_READU16:
     case IrCmd::BUFFER_READI32:
         return IrValueKind::Int;
+    case IrCmd::BUFFER_READI64:
+        return IrValueKind::Int64;
     case IrCmd::BUFFER_WRITEI8:
     case IrCmd::BUFFER_WRITEI16:
     case IrCmd::BUFFER_WRITEI32:
     case IrCmd::BUFFER_WRITEF32:
     case IrCmd::BUFFER_WRITEF64:
+    case IrCmd::BUFFER_WRITEI64:
         return IrValueKind::None;
     case IrCmd::BUFFER_READF32:
         return IrValueKind::Float;

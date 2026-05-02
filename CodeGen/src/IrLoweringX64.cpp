@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAG(LuauCodegenCallWrapImproved)
 LUAU_FASTFLAG(LuauCodegenNewRegSplit)
+LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
 
 namespace Luau
 {
@@ -2533,11 +2534,13 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             {
                 int offset = intOp(OP_B(inst));
 
+                int endOffset = FFlag::LuauCodegenFixBufferLenCheck ? maxOffset : accessSize;
+
                 // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
-                if (offset < 0 || unsigned(offset) + unsigned(accessSize) >= unsigned(INT_MAX))
+                if (offset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
                     jumpOrAbortOnUndef(OP_F(inst), next);
                 else
-                    build.cmp(dword[regOp(OP_A(inst)) + offsetof(Buffer, len)], offset + accessSize);
+                    build.cmp(dword[regOp(OP_A(inst)) + offsetof(Buffer, len)], offset + endOffset);
 
                 jumpOrAbortOnUndef(ConditionX64::Below, OP_F(inst), next);
             }
@@ -3309,6 +3312,38 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
                 build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], regOp(OP_C(inst)));
             else
                 build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], regOp(OP_C(inst)));
+        }
+        else
+        {
+            CODEGEN_ASSERT(!"Unsupported instruction form");
+        }
+        break;
+    case IrCmd::BUFFER_READI64:
+        inst.regX64 = regs.allocReg(SizeX64::qword, index);
+
+        if (FFlag::LuauCodegenBufNoDefTag)
+            build.mov(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
+        else
+            build.mov(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        break;
+
+    case IrCmd::BUFFER_WRITEI64:
+        if (OP_C(inst).kind == IrOpKind::Constant)
+        {
+            ScopedRegX64 tmp{regs, SizeX64::qword};
+            build.mov(tmp.reg, build.i64(int64Op(OP_C(inst))));
+
+            if (FFlag::LuauCodegenBufNoDefTag)
+                build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], tmp.reg);
+            else
+                build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], tmp.reg);
+        }
+        else if (OP_C(inst).kind == IrOpKind::Inst)
+        {
+            if (FFlag::LuauCodegenBufNoDefTag)
+                build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], regOp(OP_C(inst)));
+            else
+                build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], regOp(OP_C(inst)));
         }
         else
         {

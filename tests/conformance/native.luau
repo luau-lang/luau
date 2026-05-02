@@ -542,6 +542,83 @@ end
 
 bufferboundsmerge1(buffer.create(12), 0)
 
+-- stress tests for CHECK_BUFFER_LEN constant-offset path at exact buffer boundaries
+-- all offsets are constant literals so they hit the constant-offset lowering (not the dynamic path)
+local function bufferbounds_const_boundary()
+  -- 1-byte ops at exact boundary
+  local b1 = buffer.create(1)
+  buffer.writei8(b1, 0, 42)
+  assert(buffer.readi8(b1, 0) == 42)
+  buffer.writeu8(b1, 0, 200)
+  assert(buffer.readu8(b1, 0) == 200)
+
+  -- 2-byte ops at exact boundary
+  local b2 = buffer.create(2)
+  buffer.writei16(b2, 0, 1000)
+  assert(buffer.readi16(b2, 0) == 1000)
+  buffer.writeu16(b2, 0, 60000)
+  assert(buffer.readu16(b2, 0) == 60000)
+
+  -- 4-byte ops at exact boundary: offset 0 in 4-byte buffer
+  local b4 = buffer.create(4)
+  buffer.writei32(b4, 0, 100000)
+  assert(buffer.readi32(b4, 0) == 100000)
+  buffer.writeu32(b4, 0, 3000000000)
+  assert(buffer.readu32(b4, 0) == 3000000000)
+  buffer.writef32(b4, 0, 3.14)
+  assert(math.abs(buffer.readf32(b4, 0) - 3.14) < 0.001)
+
+  -- 4-byte ops at end of 8-byte buffer: offset 4 + size 4 == 8
+  local b8a = buffer.create(8)
+  buffer.writei32(b8a, 4, -999)
+  assert(buffer.readi32(b8a, 4) == -999)
+  buffer.writef32(b8a, 4, 2.718)
+  assert(math.abs(buffer.readf32(b8a, 4) - 2.718) < 0.001)
+
+  -- 8-byte ops at exact boundary: offset 0 in 8-byte buffer
+  local b8b = buffer.create(8)
+  buffer.writef64(b8b, 0, 1.23456789012345)
+  assert(buffer.readf64(b8b, 0) == 1.23456789012345)
+
+  -- 8-byte ops at end of 16-byte buffer: offset 8 + size 8 == 16
+  local b16 = buffer.create(16)
+  buffer.writef64(b16, 0, 1.0)
+  buffer.writef64(b16, 8, 2.0)
+  assert(buffer.readf64(b16, 0) == 1.0)
+  assert(buffer.readf64(b16, 8) == 2.0)
+
+  -- mixed sizes each at exact boundary of their own buffer
+  local b1x = buffer.create(1)
+  buffer.writei8(b1x, 0, 77)        -- offset 0 + 1 == 1
+  assert(buffer.readi8(b1x, 0) == 77)
+
+  local b9 = buffer.create(9)
+  buffer.writei8(b9, 8, 55)         -- offset 8 + 1 == 9
+  assert(buffer.readi8(b9, 8) == 55)
+
+  local b15 = buffer.create(15)
+  buffer.writef64(b15, 7, 9.99)     -- offset 7 + 8 == 15
+  assert(buffer.readf64(b15, 7) == 9.99)
+  buffer.writei32(b15, 11, 567890)  -- offset 11 + 4 == 15
+  assert(buffer.readi32(b15, 11) == 567890)
+  buffer.writei16(b15, 13, 1234)    -- offset 13 + 2 == 15
+  assert(buffer.readi16(b15, 13) == 1234)
+
+  -- range merging stress: multiple constant-offset accesses filling buffer exactly
+  -- write at offsets 8, 0, 4 (out of order) in a 12-byte buffer to provoke negative minOffset
+  local b12 = buffer.create(12)
+  buffer.writei32(b12, 8, 30)
+  buffer.writei32(b12, 0, 10)
+  buffer.writei32(b12, 4, 20)
+  assert(buffer.readi32(b12, 0) == 10)
+  assert(buffer.readi32(b12, 4) == 20)
+  assert(buffer.readi32(b12, 8) == 30)
+
+  assert(is_native())
+end
+
+bufferbounds_const_boundary()
+
 function deadStoreChecks1()
   local a = 1.0
   local b = 0.0

@@ -128,6 +128,10 @@ struct CompilationOptions
     const char* const* userdataTypes = nullptr;
 
     bool recordCounters = false;
+
+    // When true, random NOP sleds are inserted between blocks to
+    // make intra-function gadget offsets unpredictable.
+    bool nopPadding = false;
 };
 
 using AnnotatorFn = void (*)(void* context, std::string& result, int fid, int instpos);

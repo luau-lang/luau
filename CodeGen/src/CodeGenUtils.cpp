@@ -19,6 +19,7 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauNativeCodeTargetCheck)
+LUAU_FASTFLAG(LuauDirectFieldGet)
 
 // All external function calls that can cause stack realloc or Lua calls have to be wrapped in VM_PROTECT
 // This makes sure that we save the pc (in case the Lua call needs to generate a backtrace) before the call,
@@ -421,6 +422,36 @@ const Instruction* executeGETTABLEKS(lua_State* L, const Instruction* pc, StkId 
     }
     else
     {
+        // fast-path: registered direct field handler
+        if (FFlag::LuauDirectFieldGet && ttisuserdata(rb))
+        {
+            LuaTable* dispatch = L->global->udatadirectfields[uvalue(rb)->tag];
+            if (dispatch)
+            {
+                int slot = LUAU_INSN_C(insn) & dispatch->nodemask8;
+                LuaNode* n = &dispatch->node[slot];
+
+                if (LUAU_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n))))
+                {
+                    lua_UserdataDirectFieldGet fn = reinterpret_cast<lua_UserdataDirectFieldGet>(pvalue(gval(n)));
+                    fn(uvalue(rb)->data, ra);
+                    return pc;
+                }
+
+                const TValue* fptr = luaH_getstr(dispatch, tsvalue(kv));
+                if (!ttisnil(fptr))
+                {
+                    // cache slot for future lookups
+                    VM_PATCH_C(pc - 2, gval2slot(dispatch, fptr));
+                    lua_UserdataDirectFieldGet fn = reinterpret_cast<lua_UserdataDirectFieldGet>(pvalue(fptr));
+                    fn(uvalue(rb)->data, ra);
+                    return pc;
+                }
+            }
+
+            // fall through to slow path
+        }
+
         // fast-path: user data with C __index TM
         const TValue* fn = 0;
         if (ttisuserdata(rb) && (fn = fasttm(L, uvalue(rb)->metatable, TM_INDEX)) && ttisfunction(fn) && clvalue(fn)->isC)

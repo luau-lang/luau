@@ -53,9 +53,9 @@ LUAU_FASTFLAG(LuauStacklessPcall)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauNewMathConstantsRuntime)
-LUAU_FASTFLAG(LuauCompileStringInterpWithZero)
-LUAU_FASTFLAG(LuauUdataDirectAccess3)
+LUAU_FASTFLAG(LuauUdataDirectAccess4)
+LUAU_FASTFLAG(LuauCodegenBufferInteger)
+LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -1192,17 +1192,25 @@ TEST_CASE("Basic")
 
 TEST_CASE("Buffers")
 {
-    runConformance("buffers.luau");
+    runConformance(
+        "buffers.luau",
+        [](lua_State* L)
+        {
+            setupNativeHelpers(L);
+        }
+    );
 }
 
 TEST_CASE("Math")
 {
-    ScopedFastFlag newMathConstants{FFlag::LuauNewMathConstantsRuntime, true};
     runConformance("math.luau");
 }
 
 TEST_CASE("Integers")
 {
+    ScopedFastFlag ncgBufferInteger{FFlag::LuauCodegenBufferInteger, true};
+    ScopedFastFlag luauCodegenFixBufferLenCheck{FFlag::LuauCodegenFixBufferLenCheck, true};
+
     if (FFlag::LuauIntegerType && FFlag::LuauIntegerLibrary)
     {
         runConformance(
@@ -1213,18 +1221,17 @@ TEST_CASE("Integers")
             }
         );
 
-	if (codegen && luau_codegen_supported())
-	{
-        runConformance(
-            "integers_regspill.luau",
+        if (codegen && luau_codegen_supported())
+        {
+            runConformance(
+                "integers_regspill.luau",
 
-            [](lua_State* L)
-            {
-                setupNativeHelpers(L);
-            }
-        );
-
-	}
+                [](lua_State* L)
+                {
+                    setupNativeHelpers(L);
+                }
+            );
+        }
     }
 }
 
@@ -1287,8 +1294,6 @@ TEST_CASE("Strings")
 
 TEST_CASE("StringInterp")
 {
-    ScopedFastFlag luauCompileStringInterpWithZero{FFlag::LuauCompileStringInterpWithZero, true};
-
     runConformance("stringinterp.luau");
 }
 
@@ -3855,6 +3860,8 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
+    ScopedFastFlag luauCodegenFixBufferLenCheck{FFlag::LuauCodegenFixBufferLenCheck, true};
+
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
@@ -4038,7 +4045,7 @@ TEST_CASE("NativeUserdata")
 
 TEST_CASE("UserdataDirectAccess")
 {
-    ScopedFastFlag sff{FFlag::LuauUdataDirectAccess3, true};
+    ScopedFastFlag sff{FFlag::LuauUdataDirectAccess4, true};
 
     // Reset global state
     nameToAtom.clear();
@@ -4462,6 +4469,117 @@ TEST_CASE("NativeAttribute")
 
     // We should be able to compile at least one of our functions
     CHECK_EQ(nativeStats.functionsCompiled, 2);
+}
+
+// Without nopPadding, two compilations of the same source must
+// produce identical native code (output is fully deterministic).
+// This test will be extended to all flags that control codegen randomization.
+TEST_CASE("CodegenNopPaddingDeterministicOff")
+{
+    if (!codegen || !luau_codegen_supported())
+        return;
+
+    const char* source = R"(
+        local function add(a, b) return a + b end
+        return add(1, 2)
+    )";
+
+    auto compile = [&]() -> size_t
+    {
+        StateRef globalState(luaL_newstate(), lua_close);
+        lua_State* L = globalState.get();
+        luau_codegen_create(L);
+
+        size_t bytecodeSize = 0;
+        char* bytecode = luau_compile(source, strlen(source), nullptr, &bytecodeSize);
+        int result = luau_load(L, "=test", bytecode, bytecodeSize, 0);
+        free(bytecode);
+        REQUIRE(result == 0);
+
+        Luau::CodeGen::CompilationStats stats = {};
+        Luau::CodeGen::compile(L, -1, Luau::CodeGen::CompilationOptions{}, &stats);
+        return stats.nativeCodeSizeBytes;
+    };
+
+    CHECK(compile() == compile());
+}
+
+// With LuauCodegenNopPadding enabled, the native code size must be >= the size
+// produced without it (NOP sleds only ever add bytes, never remove them).
+TEST_CASE("CodegenRandomizeCodeSizeNonDecreasing")
+{
+    if (!codegen || !luau_codegen_supported())
+        return;
+
+    // Multiple branches give the NOP padding more opportunities to fire.
+    const char* source = R"(
+        local function classify(x)
+            if x > 0 then
+                return "positive"
+            elseif x < 0 then
+                return "negative"
+            else
+                return "zero"
+            end
+        end
+        return classify(1)
+    )";
+
+    auto compile = [&](bool nopPadding) -> size_t
+    {
+        StateRef globalState(luaL_newstate(), lua_close);
+        lua_State* L = globalState.get();
+        luau_codegen_create(L);
+
+        size_t bytecodeSize = 0;
+        char* bytecode = luau_compile(source, strlen(source), nullptr, &bytecodeSize);
+        int result = luau_load(L, "=test", bytecode, bytecodeSize, 0);
+        free(bytecode);
+        REQUIRE(result == 0);
+
+        Luau::CodeGen::CompilationOptions options{};
+        options.nopPadding = nopPadding;
+        Luau::CodeGen::CompilationStats stats = {};
+        Luau::CodeGen::compile(L, -1, options, &stats);
+        return stats.nativeCodeSizeBytes;
+    };
+
+    CHECK(compile(true) >= compile(false));
+}
+
+// Code compiled with LuauCodegenNopPadding must still execute correctly.
+// This test will be extended to all flags that control codegen randomization.
+TEST_CASE("CodegenRandomizeFunctionalCorrectness")
+{
+    if (!codegen || !luau_codegen_supported())
+        return;
+
+    const char* source = R"(
+        local function add(a, b) return a + b end
+        return add(10, 32)
+    )";
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+    luau_codegen_create(L);
+    luaL_openlibs(L);
+    luaL_sandbox(L);
+    luaL_sandboxthread(L);
+
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source, strlen(source), nullptr, &bytecodeSize);
+    int loadResult = luau_load(L, "=test", bytecode, bytecodeSize, 0);
+    free(bytecode);
+    REQUIRE(loadResult == 0);
+
+    Luau::CodeGen::CompilationOptions nopOptions{};
+    nopOptions.nopPadding = true;
+    Luau::CodeGen::compile(L, -1, nopOptions);
+
+    int callResult = lua_pcall(L, 0, 1, 0);
+    REQUIRE_MESSAGE(callResult == 0, lua_tostring(L, -1));
+
+    CHECK(lua_tonumber(L, -1) == 42.0);
 }
 
 TEST_SUITE_END();

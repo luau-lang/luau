@@ -43,6 +43,7 @@
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenOptSize)
 LUAU_FASTFLAGVARIABLE(DebugCodegenSkipNumbering)
+LUAU_FASTFLAGVARIABLE(LuauCodegenNopPadding)
 
 // Per-module IR instruction count limit
 LUAU_FASTINTVARIABLE(CodegenHeuristicsInstructionLimit, 1'048'576) // 1 M

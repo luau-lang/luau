@@ -22,6 +22,27 @@ namespace Luau
 namespace CodeGen
 {
 
+// PCG32 PRNG helpers for JIT layout randomization.
+// Uses the same algorithm and constants as the Lua VM (lmathlib.cpp) for consistency.
+uint64_t jitRngSeed(uintptr_t ptr)
+{
+    uint64_t state = 0;
+    state = state * 6364136223846793005ULL + (105 | 1);
+    state += uint64_t(ptr);
+    state = state * 6364136223846793005ULL + (105 | 1);
+    return state;
+}
+
+uint32_t jitRngRandom(uint64_t& state)
+{
+    uint64_t oldstate = state;
+    state = oldstate * 6364136223846793005ULL + (105 | 1);
+    uint32_t xorshifted = uint32_t(((oldstate >> 18u) ^ oldstate) >> 27u);
+    uint32_t rot = uint32_t(oldstate >> 59u);
+    return (xorshifted >> rot) | (xorshifted << ((-int32_t(rot)) & 31));
+}
+
+
 static const Instruction kCodeEntryInsn = LOP_NATIVECALL;
 
 // From CodeGen.cpp

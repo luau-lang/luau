@@ -15,7 +15,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauNonStrictModeUseErrorSupressingTag)
 
 TEST_SUITE_BEGIN("NonstrictModeTests");
@@ -359,7 +358,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_standalone_constraint_solving_incomplete
 TEST_CASE_FIXTURE(BuiltinsFixture, "allow_error_type_nonstrict")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauMorePreciseErrorSuppression, true},
         {FFlag::LuauNonStrictModeUseErrorSupressingTag, true}
     };
 

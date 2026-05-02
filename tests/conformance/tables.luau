@@ -834,4 +834,143 @@ do
   assert(t.a == 3)
 end
 
+-- constant folding of table properties must respect aliasing: a mutation through
+-- one local must be visible when the same table is read through any other local.
+do
+	-- mutate via alias, read via original
+	local t = { a = 32 }
+	local copy = t
+	copy.a = 1
+	assert(t.a == 1)
+end
+
+do
+	-- mutate via original, read via alias
+	local t = { a = 32 }
+	local copy = t
+	t.a = 1
+	assert(copy.a == 1)
+end
+
+do
+	-- multiple aliases all observe the mutation
+	local t = { a = 1 }
+	local a1 = t
+	local a2 = t
+	a2.a = 99
+	assert(t.a == 99)
+	assert(a1.a == 99)
+end
+
+do
+	-- tables passed by closure also observe the mutation
+	local t = { a = 32 }
+	function f()
+		return t
+	end
+	local copy = f()
+	copy.a = 1
+	assert(t.a == 1)
+end
+
+do
+	local t = {x = 0}
+	while t.x < 10 do
+		t.x = t.x + 1
+	end
+	assert(t.x == 10)
+end
+
+do
+  local t1 = { a = 1 }
+  local t2 = { b = 2 }
+  assert(not (t1 == t2))
+  assert(t1 ~= t2)
+end
+
+do
+	local t = { a = 1 }
+	local x = t or false
+	t.a = 99
+	assert(x.a == 99)
+end
+
+do
+  local function incnext(t, key)
+    local k, v = next(t, key)
+    if k ~= nil then t[k] = v + 1 end
+    return k, v
+  end
+  local t = { a = 1 }
+  for k, v in incnext, t do end
+  assert(t.a == 2)
+end
+
+do
+  local function mutate(x) x.a = 99 end
+  local t = { a = 1 }
+  mutate((t))
+  assert(t.a == 99)
+end
+
+do
+  local function mutate(x) x.a = 99 end
+  local t = { a = 1 }
+  mutate(t :: any)
+  assert(t.a == 99)
+end
+
+do
+  local t = { x = 1 }
+  local a = (t)
+  a.x = 99
+  assert(t.x == 99)
+end
+
+do
+  local t = {x = 1}
+  local u = {y = t}
+  u.y.x = 99
+  assert(t.x == 99)
+end
+
+do
+  local function foo(u) u.y.x = 99 end
+  local t = {x = 1}
+  local u = {y = t}
+  foo(u)
+  assert(t.x == 99)
+end
+
+do 
+  local mt = { __add = function(t, _) t.x = 99 end }
+  local t = { x = 1 }
+  setmetatable(t, mt)
+  local _ = t + 1
+  assert(t.x == 99)
+end
+
+do
+  local t = {x = 1}
+  (if true then t else t)['x'] = 99
+  assert(t.x == 99);
+  (if false then t else t)['x'] = 1000
+  assert(t.x == 1000)
+end
+
+do
+  local function mutate(x) x.a = 99 end
+  local t = { a = 1 }
+  mutate(t and t)
+  assert(t.a == 99)
+end
+
+do
+  local function mutate(x) x.a = 99 end
+  local t = { a = 1 }
+  local x = t or false
+  mutate(x)
+  assert(t.a == 99)
+end
+
 return "OK"

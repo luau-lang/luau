@@ -351,6 +351,30 @@ LUA_API int lua_registeruserdatadirectaccess(
     lua_UserdataDirectNamecall namecall
 );
 
+/*
+** Direct field API
+**
+** lua_registeruserdatadirectfieldget registers a per-field, per-userdata-type
+** handler that is invoked directly without allocating a Luau call frame.
+**
+** tag:   userdata tag (0..LUA_UTAG_LIMIT-1)
+** field: field name string (will be interned and pinned)
+** fn:    handler — receives raw userdata data pointer and result TValue slot
+*/
+typedef void (*lua_UserdataDirectFieldGet)(void* ud, void* result);
+LUA_API void lua_registeruserdatadirectfieldget(lua_State* L, int tag, const char* field, lua_UserdataDirectFieldGet fn);
+
+// Helpers for writing result values from a direct field handler.
+LUA_API void lua_userdatadirectfield_setnumber(void* result, double n);
+#if LUA_VECTOR_SIZE == 4
+LUA_API void lua_userdatadirectfield_setvector(void* result, float x, float y, float z, float w);
+#else
+LUA_API void lua_userdatadirectfield_setvector(void* result, float x, float y, float z);
+#endif
+LUA_API void lua_userdatadirectfield_setboolean(void* result, int b);
+LUA_API void lua_userdatadirectfield_setinteger64(void* result, int64_t n);
+LUA_API void lua_userdatadirectfield_setnil(void* result);
+
 LUA_API void lua_setlightuserdataname(lua_State* L, int tag, const char* name);
 LUA_API const char* lua_getlightuserdataname(lua_State* L, int tag);
 
