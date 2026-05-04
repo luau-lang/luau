@@ -12,6 +12,7 @@
 #include "Luau/OptimizeDeadStore.h"
 #include "Luau/OptimizeFinalX64.h"
 
+#include "CodeGenContext.h"
 #include "EmitCommon.h"
 #include "IrLoweringA64.h"
 #include "IrLoweringX64.h"
@@ -26,7 +27,6 @@ LUAU_FASTFLAG(DebugCodegenOptSize)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
-LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 
 namespace Luau
 {
@@ -163,7 +163,7 @@ inline bool lowerImpl(
             CODEGEN_ASSERT(function.getBlockIndex(nextBlock) == block.expectedNextBlock);
 
         // Block might establish a safe environment right at the start
-        if (FFlag::LuauCodegenBlockSafeEnv && (block.flags & kBlockFlagSafeEnvCheck) != 0)
+        if ((block.flags & kBlockFlagSafeEnvCheck) != 0)
         {
             if (options.includeIr)
             {
@@ -248,6 +248,27 @@ inline bool lowerImpl(
 
         lowering.finishBlock(block, nextBlock);
 
+        if (function.jitRngState)
+        {
+            // Insert a random-length NOP sled after each block to make intra-function
+            // gadget offsets unpredictable. 0–7 bytes; A64 rounds down to a multiple of 4.
+            IrInst& termInst = function.instructions[block.finish];
+
+            bool blockFallsThrough = anyArgumentMatch(termInst, [&](IrOp op)
+            {
+                return op.kind == IrOpKind::Block && function.blockOp(op).start == nextBlock.start;
+            });
+
+            // Single-predecessor fallthrough should skip padding altogether
+            if (!(blockFallsThrough && termInst.cmd == IrCmd::JUMP && nextBlock.useCount == 1))
+            {
+                uint32_t maxNopBytes = blockFallsThrough ? 4 : 8;
+                uint32_t nopBytes = jitRngRandom(function.jitRngState) % maxNopBytes;
+                if (nopBytes > 0)
+                    build.nop(nopBytes);
+            }
+        }
+
         if (options.includeIr && options.includeIrPrefix == IncludeIrPrefix::Yes)
             build.logAppend("#\n");
 
@@ -319,6 +340,9 @@ inline bool lowerFunction(
 {
     ir.function.stats = stats;
     ir.function.recordCounters = options.compilationOptions.recordCounters;
+
+    if (options.compilationOptions.nopPadding)
+        ir.function.jitRngState = jitRngSeed(uintptr_t(proto));
 
     killUnusedBlocks(ir.function);
 

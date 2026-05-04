@@ -8,7 +8,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("UnionTypes");
@@ -569,7 +568,7 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         // clang-format off
         const std::string expected =
@@ -581,8 +580,6 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
         // clang-format on
         CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
     }
-    else if (!FFlag::DebugLuauForceOldSolver)
-        CHECK(toString(result.errors[0]) == "Expected this to be 'X | Y | Z', but got '{ w: number }'");
     else
         CHECK_EQ(toString(result.errors[0]), R"(Expected this to be 'X | Y | Z', but got 'a'; none of the union options are compatible)");
 }
@@ -858,7 +855,7 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
      )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         // clang-format off
         const std::string expected =
@@ -873,14 +870,6 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
         // clang-format on
 
         CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
-    }
-    else if (!FFlag::DebugLuauForceOldSolver)
-    {
-        const std::string expected = "Expected this to be\n\t"
-                                     "'((...number?) -> ()) | ((number?) -> ())'"
-                                     "\nbut got\n\t"
-                                     "'(number) -> ()'";
-        CHECK(expected == toString(result.errors[0]));
     }
     else
     {

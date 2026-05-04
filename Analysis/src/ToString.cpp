@@ -18,8 +18,6 @@
 #include <algorithm>
 #include <string>
 
-LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
-
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauIntegerType)
 
@@ -719,12 +717,9 @@ struct TypeStringifier
         if (ttv.boundTo)
             return stringify(*ttv.boundTo);
 
-        bool showName = !state.exhaustive;
-        if (FFlag::LuauEnableDenseTableAlias)
-        {
-            // if hide table alias expansions are enabled and there is a name found for the table, use it
-            showName = !state.exhaustive || state.opts.hideTableAliasExpansions;
-        }
+        // if hide table alias expansions are enabled and there is a name found for the table, use it
+        bool showName = !state.exhaustive || state.opts.hideTableAliasExpansions;
+
         if (showName)
         {
             if (ttv.name)

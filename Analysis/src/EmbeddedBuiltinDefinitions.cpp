@@ -1,8 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
-LUAU_FASTFLAGVARIABLE(LuauTypeCheckerUdtfRenameClassToExtern)
-LUAU_FASTFLAGVARIABLE(LuauNewMathConstantsAnalysis)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerVectorReadOnly)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType)
@@ -127,62 +125,6 @@ declare math: {
     phi: number,
     sqrt2: number,
     tau: number,
-
-    randomseed: @checked (seed: number) -> (),
-    random: @checked (number?, number?) -> number,
-
-    sign: @checked (n: number) -> number,
-    clamp: @checked (n: number, min: number, max: number) -> number,
-    noise: @checked (x: number, y: number?, z: number?) -> number,
-    round: @checked (n: number) -> number,
-    map: @checked (x: number, inmin: number, inmax: number, outmin: number, outmax: number) -> number,
-    lerp: @checked (a: number, b: number, t: number) -> number,
-
-    isnan: @checked (x: number) -> boolean,
-    isinf: @checked (x: number) -> boolean,
-    isfinite: @checked (x: number) -> boolean,
-}
-
-)BUILTIN_SRC";
-
-// Remove with FFlag::LuauNewMathConstantsAnalysis
-static constexpr const char* kBuiltinDefinitionMathSrc_DEPRECATED = R"BUILTIN_SRC(
-
-declare math: {
-    frexp: @checked (n: number) -> (number, number),
-    ldexp: @checked (s: number, e: number) -> number,
-    fmod: @checked (x: number, y: number) -> number,
-    modf: @checked (n: number) -> (number, number),
-    pow: @checked (x: number, y: number) -> number,
-    exp: @checked (n: number) -> number,
-
-    ceil: @checked (n: number) -> number,
-    floor: @checked (n: number) -> number,
-    abs: @checked (n: number) -> number,
-    sqrt: @checked (n: number) -> number,
-
-    log: @checked (n: number, base: number?) -> number,
-    log10: @checked (n: number) -> number,
-
-    rad: @checked (n: number) -> number,
-    deg: @checked (n: number) -> number,
-
-    sin: @checked (n: number) -> number,
-    cos: @checked (n: number) -> number,
-    tan: @checked (n: number) -> number,
-    sinh: @checked (n: number) -> number,
-    cosh: @checked (n: number) -> number,
-    tanh: @checked (n: number) -> number,
-    atan: @checked (n: number) -> number,
-    acos: @checked (n: number) -> number,
-    asin: @checked (n: number) -> number,
-    atan2: @checked (y: number, x: number) -> number,
-
-    min: @checked (number, ...number) -> number,
-    max: @checked (number, ...number) -> number,
-
-    pi: number,
-    huge: number,
 
     randomseed: @checked (seed: number) -> (),
     random: @checked (number?, number?) -> number,
@@ -480,10 +422,7 @@ std::string getBuiltinDefinitionSource()
     std::string result = kBuiltinDefinitionBaseSrc;
 
     result += kBuiltinDefinitionBit32Src;
-    if (FFlag::LuauNewMathConstantsAnalysis)
-        result += kBuiltinDefinitionMathSrc;
-    else
-        result += kBuiltinDefinitionMathSrc_DEPRECATED;
+    result += kBuiltinDefinitionMathSrc;
     result += kBuiltinDefinitionOsSrc;
     result += kBuiltinDefinitionCoroutineSrc;
     result += kBuiltinDefinitionTableSrc;
@@ -618,112 +557,6 @@ export type type = {
 
 )BUILTIN_SRC";
 
-static constexpr const char* kBuiltinDefinitionTypeMethodSrc_DEPRECATED = R"BUILTIN_SRC(
-
-export type type = {
-    tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "integer" | "string" | "buffer" | "thread" |
-         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "class" | "generic",
-
-    is: (self: type, arg: string) -> boolean,
-
-    -- for singleton type
-    value: (self: type) -> (string | boolean | nil),
-
-    -- for negation type
-    inner: (self: type) -> type,
-
-    -- for union and intersection types
-    components: (self: type) -> {type},
-
-    -- for table type
-    setproperty: (self: type, key: type, value: type?) -> (),
-    setreadproperty: (self: type, key: type, value: type?) -> (),
-    setwriteproperty: (self: type, key: type, value: type?) -> (),
-    readproperty: (self: type, key: type) -> type?,
-    writeproperty: (self: type, key: type) -> type?,
-    properties: (self: type) -> { [type]: { read: type?, write: type? } },
-    setindexer: (self: type, index: type, result: type) -> (),
-    setreadindexer: (self: type, index: type, result: type) -> (),
-    setwriteindexer: (self: type, index: type, result: type) -> (),
-    indexer: (self: type) -> { index: type, readresult: type, writeresult: type }?,
-    readindexer: (self: type) -> { index: type, result: type }?,
-    writeindexer: (self: type) -> { index: type, result: type }?,
-    setmetatable: (self: type, arg: type) -> (),
-    metatable: (self: type) -> type?,
-
-    -- for function type
-    setparameters: (self: type, head: {type}?, tail: type?) -> (),
-    parameters: (self: type) -> { head: {type}?, tail: type? },
-    setreturns: (self: type, head: {type}?, tail: type? ) -> (),
-    returns: (self: type) -> { head: {type}?, tail: type? },
-    setgenerics: (self: type, {type}?) -> (),
-    generics: (self: type) -> {type},
-
-    -- for class type
-    -- 'properties', 'metatable', 'indexer', 'readindexer' and 'writeindexer' are shared with table type
-    readparent: (self: type) -> type?,
-    writeparent: (self: type) -> type?,
-
-    -- for generic type
-    name: (self: type) -> string?,
-    ispack: (self: type) -> boolean,
-}
-
-)BUILTIN_SRC";
-
-static constexpr const char* kBuiltinDefinitionTypeMethodSrc_DEPRECATED_NOINTEGER = R"BUILTIN_SRC(
-
-export type type = {
-    tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
-         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "class" | "generic",
-
-    is: (self: type, arg: string) -> boolean,
-
-    -- for singleton type
-    value: (self: type) -> (string | boolean | nil),
-
-    -- for negation type
-    inner: (self: type) -> type,
-
-    -- for union and intersection types
-    components: (self: type) -> {type},
-
-    -- for table type
-    setproperty: (self: type, key: type, value: type?) -> (),
-    setreadproperty: (self: type, key: type, value: type?) -> (),
-    setwriteproperty: (self: type, key: type, value: type?) -> (),
-    readproperty: (self: type, key: type) -> type?,
-    writeproperty: (self: type, key: type) -> type?,
-    properties: (self: type) -> { [type]: { read: type?, write: type? } },
-    setindexer: (self: type, index: type, result: type) -> (),
-    setreadindexer: (self: type, index: type, result: type) -> (),
-    setwriteindexer: (self: type, index: type, result: type) -> (),
-    indexer: (self: type) -> { index: type, readresult: type, writeresult: type }?,
-    readindexer: (self: type) -> { index: type, result: type }?,
-    writeindexer: (self: type) -> { index: type, result: type }?,
-    setmetatable: (self: type, arg: type) -> (),
-    metatable: (self: type) -> type?,
-
-    -- for function type
-    setparameters: (self: type, head: {type}?, tail: type?) -> (),
-    parameters: (self: type) -> { head: {type}?, tail: type? },
-    setreturns: (self: type, head: {type}?, tail: type? ) -> (),
-    returns: (self: type) -> { head: {type}?, tail: type? },
-    setgenerics: (self: type, {type}?) -> (),
-    generics: (self: type) -> {type},
-
-    -- for class type
-    -- 'properties', 'metatable', 'indexer', 'readindexer' and 'writeindexer' are shared with table type
-    readparent: (self: type) -> type?,
-    writeparent: (self: type) -> type?,
-
-    -- for generic type
-    name: (self: type) -> string?,
-    ispack: (self: type) -> boolean,
-}
-
-)BUILTIN_SRC";
-
 static constexpr const char* kBuiltinDefinitionTypesLibSrc = R"BUILTIN_SRC(
 
 declare types: {
@@ -777,20 +610,10 @@ std::string getTypeFunctionDefinitionSource()
 {
     std::string result;
 
-    if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
-    {
-        if (FFlag::LuauIntegerType)
-            result += kBuiltinDefinitionTypeMethodSrc;
-        else
-            result += kBuiltinDefinitionTypeMethodSrc_NOINTEGER;
-    }
+    if (FFlag::LuauIntegerType)
+        result += kBuiltinDefinitionTypeMethodSrc;
     else
-    {
-        if (FFlag::LuauIntegerType)
-            result += kBuiltinDefinitionTypeMethodSrc_DEPRECATED;
-        else
-            result += kBuiltinDefinitionTypeMethodSrc_DEPRECATED_NOINTEGER;
-    }
+        result += kBuiltinDefinitionTypeMethodSrc_NOINTEGER;
 
     if (FFlag::LuauIntegerType)
         result += kBuiltinDefinitionTypesLibSrc;

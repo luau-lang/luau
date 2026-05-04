@@ -930,5 +930,55 @@ bool isBlocked(TypeId ty)
     return is<BlockedType, PendingExpansionType>(ty);
 }
 
+std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty, DenseHashSet<TypeId>& seen)
+{
+    ty = follow(ty);
+    if (seen.contains(ty))
+        return std::nullopt;
+
+    seen.insert(ty);
+
+    if (auto ftv = get<FunctionType>(ty))
+        return { ftv->retTypes };
+
+    if (auto utv = get<UnionType>(ty); utv && begin(utv) != end(utv))
+        return getApproximateReturnTypeForFunctionCall(*begin(utv), seen);
+
+    return std::nullopt;
+}
+
+std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty)
+{
+    DenseHashSet<TypeId> seen{nullptr};
+    return getApproximateReturnTypeForFunctionCall(ty, seen);
+}
+
+OccursCheckResult occursCheck(TypePackId needle, TypePackId haystack)
+{
+    needle = follow(needle);
+    haystack = follow(haystack);
+
+    LUAU_ASSERT((is<FreeTypePack, BlockedTypePack>(needle)));
+
+    if (is<ErrorTypePack>(needle))
+        return OccursCheckResult::Pass;
+
+    while (!get<ErrorTypePack>(haystack))
+    {
+        if (needle == haystack)
+            return OccursCheckResult::Fail;
+
+        if (auto a = get<TypePack>(haystack); a && a->tail)
+        {
+            haystack = follow(*a->tail);
+            continue;
+        }
+
+        break;
+    }
+
+    return OccursCheckResult::Pass;
+}
+
 
 } // namespace Luau

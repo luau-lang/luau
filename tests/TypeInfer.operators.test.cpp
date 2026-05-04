@@ -19,6 +19,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauConcatDoesntAlwaysReturnString)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -1669,6 +1670,40 @@ end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "overload_concat")
+{
+    ScopedFastFlag sff{FFlag::LuauConcatDoesntAlwaysReturnString, true};
+
+    CheckResult result = check(R"(
+        type classData = {
+            b:buffer;
+            len:number;
+        }
+        local metatable = {
+            __concat = function(self:class,str:string):class
+                buffer.writestring(self.b,self.len,str)
+                self.len+=#str
+                return self
+            end;
+        }
+
+        export type class = typeof(setmetatable({}::classData, metatable))
+
+        --returns a long string
+        local new = function():class
+            return setmetatable({
+                b = buffer.create(100_000::number);
+                len = 0;
+            }::classData,metatable)::class
+        end
+        local class = new()
+
+        class ..= "Hello"
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -26,7 +26,6 @@ LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
 LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
@@ -36,11 +35,9 @@ LUAU_FASTFLAG(LuauFollowInExplicitInstantiation)
 LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes2)
 LUAU_FASTFLAG(LuauFollowGenericBeforeCheckingIfMapped)
 LUAU_FASTFLAG(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
-LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
-LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
-LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
+LUAU_FASTFLAG(LuauInstantiationUsesPolarity)
 
 using namespace Luau;
 
@@ -1225,23 +1222,12 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
     validateErrors(result.errors);
     REQUIRE_MESSAGE(!result.errors.empty(), getErrors(result));
 
-    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         REQUIRE(3 == result.errors.size());
         CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
         CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
         CHECK(Location{{3, 22}, {3, 41}} == result.errors[2].location);
-
-        for (const TypeError& e : result.errors)
-            CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(e));
-    }
-    else if (!FFlag::DebugLuauForceOldSolver)
-    {
-        REQUIRE(4 == result.errors.size());
-        CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
-        CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
-        CHECK(Location{{3, 45}, {3, 46}} == result.errors[2].location);
-        CHECK(Location{{3, 22}, {3, 41}} == result.errors[3].location);
 
         for (const TypeError& e : result.errors)
             CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(e));
@@ -2856,12 +2842,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_checking_generic_ma
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_allow_failing_to_bind_generic")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
-        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
-    };
+    ScopedFastFlag _{FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true};
 
-    LUAU_REQUIRE_ERRORS(check(R"(  
+    LUAU_REQUIRE_ERRORS(check(R"(
         function test(arg1, arg2)
             local fun1 = test(test)
             local fun2 = test(test())
@@ -2874,11 +2857,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_allow_failing_to_bind_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_bind_generic_sigsegv")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
-        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
-        {FFlag::LuauSubtypingReplaceBounds, true},
-    };
+    ScopedFastFlag _{FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true};
 
     LUAU_REQUIRE_ERRORS(check(R"(
         function test(arg1, arg2)
@@ -2903,6 +2882,31 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_global_type_inference")
         end
     )"));
 
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_instantiate_iter_function")
+{
+    ScopedFastFlag _{FFlag::LuauInstantiationUsesPolarity, true};
+    // We do not care about the results of type checking this
+    // snippet, only that it does not trip an assertion.
+    //
+    // We use polarity to track how we generalize free types.
+    // For example, free types with positive polarity will
+    // default generalize to their lower bounds. We assert
+    // that the polarity is never "Unknown" (the default).
+    //
+    // This test exercises a case we were getting wrong: when
+    // iterating over a table with a generic __iter metamethod,
+    // we did not correctly instantiate the generics with free
+    // types of the corresponding polarity, and would trip the
+    // aforementioned assertion.
+    std::ignore = check(R"(
+        function iterfunc(l0)
+            return l0()
+        end
+        for _, _ in setmetatable({}, { __iter = iterfunc }) do
+        end
+    )");
 }
 
 TEST_SUITE_END();

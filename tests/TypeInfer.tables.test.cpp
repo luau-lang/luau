@@ -29,10 +29,9 @@ LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
 LUAU_FASTFLAG(LuauComparisonToNilsIsAlwaysOk2)
 LUAU_FASTFLAG(LuauGeneralizationMoreAwareOfBounds3)
 LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
-LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
-LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+LUAU_FASTFLAG(LuauSubtypingTablesHasBetterErrorSuppression)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -3204,7 +3203,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_crash_when_setmetatable_does_not_produc
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
     CheckResult result = check("local x = setmetatable({})");
@@ -4987,10 +4986,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "length_of_array_is_number")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_with_a_metatable_table_path")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type self = {} & {}
@@ -6103,7 +6099,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_insert_type_mismatch")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
     CheckResult result = check(R"(
@@ -6663,7 +6659,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "oss_1986")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type A<T> = { s: T, n: number? }
@@ -6678,7 +6674,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1986")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1947_partial")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
 
     // This fixes _one_ case of the given OSS issue, but we don't do
     // bidirectional inference of lambdas afterward.
@@ -6692,7 +6688,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1947_partial")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1890")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type ListConfig<T> = {
@@ -6743,5 +6739,108 @@ TEST_CASE_FIXTURE(Fixture, "compound_assignment_writes_lhs")
     REQUIRE(get<PropertyAccessViolation>(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(Fixture, "error_supression_of_union_of_tables_should_work")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSubtypingTablesHasBetterErrorSuppression, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type Foo<T> = { kind: "foo", foo: T }
+        type Bar<T> = { kind: "bar", bar: T }
+        type FooBar<T> = Foo<T> | Bar<T>
+
+        local function f(x: Foo<number>): FooBar<any>
+            return x
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "no_error_suppression_for_single_bad_type_mismatch")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSubtypingTablesHasBetterErrorSuppression, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(t: { a: string, b: number }): { a: any, b: boolean }
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("{ a: string, b: number }", toString(err->givenType));
+    CHECK_EQ("{ a: any, b: boolean }", toString(err->wantedType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_suppression_on_all_table_properties")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSubtypingTablesHasBetterErrorSuppression, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(t: { a: string, b: number }): { a: any, b: any }
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "one_correct_one_suppressed_table_property")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSubtypingTablesHasBetterErrorSuppression, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(t: { a: string, b: number }): { a: any, b: number }
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_suppression_for_read_write")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauSubtypingTablesHasBetterErrorSuppression, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(t: { [string]: string }): { read foo: any, write foo: number }
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("{ [string]: string }", toString(err->givenType));
+    CHECK_EQ("{ read foo: any, write foo: number }", toString(err->wantedType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_read_any_counts_as_read_nil")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauSubtypingTablesHasBetterErrorSuppression, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(t: {}): { read foo: any }
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
 
 TEST_SUITE_END();

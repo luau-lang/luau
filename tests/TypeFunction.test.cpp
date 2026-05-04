@@ -16,7 +16,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
-LUAU_FASTFLAG(LuauTypeFunctionsCaptureNestedInstances)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -2060,8 +2059,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2144_type_instantiation_on_type_function
 
 TEST_CASE_FIXTURE(TFFixture, "reduce_cyclic_add")
 {
-    ScopedFastFlag _{FFlag::LuauTypeFunctionsCaptureNestedInstances, true};
-
     TypeId root = arena->addType(BlockedType{});
     TypeId addtfit = arena->addType(
         TypeFunctionInstanceType{

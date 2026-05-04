@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/CodeGenOptions.h"
 #include "lua.h"
 #include "lualib.h"
 
@@ -320,6 +321,7 @@ static bool compileFile(
         Luau::BytecodeBuilder bcb;
 
         Luau::CodeGen::AssemblyOptions options;
+        options.compilationOptions.flags = Luau::CodeGen::CodeGen_ColdFunctions;
         options.target = assemblyTarget;
         options.outputBinary = format == CompileFormat::CodegenNull;
 
@@ -348,8 +350,10 @@ static bool compileFile(
             bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Remarks);
             bcb.setDumpSource(*source);
         }
-        else if (format == CompileFormat::Codegen || format == CompileFormat::CodegenAsm || format == CompileFormat::CodegenIr ||
-                 format == CompileFormat::CodegenVerbose)
+        else if (
+            format == CompileFormat::Codegen || format == CompileFormat::CodegenAsm || format == CompileFormat::CodegenIr ||
+            format == CompileFormat::CodegenVerbose
+        )
         {
             bcb.setDumpFlags(
                 Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |

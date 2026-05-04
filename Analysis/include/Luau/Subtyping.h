@@ -304,6 +304,15 @@ private:
         bool forceCovariantTest,
         NotNull<Scope> scope
     );
+
+    SubtypingResult isCovariantWith_DEPRECATED(
+        SubtypingEnvironment& env,
+        const TableType* subTable,
+        const TableType* superTable,
+        bool forceCovariantTest,
+        NotNull<Scope> scope
+    );
+
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const MetatableType* superMt, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const TableType* superTable, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(

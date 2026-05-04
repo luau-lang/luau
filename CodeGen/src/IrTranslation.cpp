@@ -12,9 +12,10 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
+LUAU_FASTFLAG(LuauCodegenInteger2)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
+LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerFastcall2k)
 
 namespace Luau
 {
@@ -106,6 +107,11 @@ static void translateInstLoadConstant(IrBuilder& build, int ra, int k)
     {
         build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(protok.value.b));
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
+    }
+    else if (FFlag::LuauCodegenInteger2 && protok.tt == LUA_TINTEGER)
+    {
+        build.inst(IrCmd::STORE_INT64, build.vmReg(ra), build.constInt64(protok.value.l));
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TINTEGER));
     }
     else if (protok.tt == LUA_TNUMBER)
     {
@@ -244,6 +250,49 @@ void translateInstJumpIfEqShortcut(IrBuilder& build, const Instruction* pc, int 
             IrCmd::CMP_SPLIT_TVALUE,
             build.constTag(LUA_TNUMBER),
             build.constTag(LUA_TNUMBER),
+            va,
+            vb,
+            build.cond(not_ ? IrCondition::NotEqual : IrCondition::Equal)
+        );
+
+        build.inst(IrCmd::STORE_INT, build.vmReg(rr), result);
+        build.inst(IrCmd::STORE_TAG, build.vmReg(rr), build.constTag(LUA_TBOOLEAN));
+        build.inst(IrCmd::JUMP, next);
+
+        // If we don't need a fallback, we are done
+        if (fallback.kind == IrOpKind::None)
+            return;
+
+        // Otherwise, start the fallback block
+        // Note that if the number fast-path is not taken at all code that would have been in the fallback is actually the main path
+        build.beginBlock(fallback);
+    }
+    else if (FFlag::LuauCodegenInteger2 && isExpectedOrUnknownBytecodeType(bcTypes.a, LBC_TYPE_INTEGER) &&
+             isExpectedOrUnknownBytecodeType(bcTypes.b, LBC_TYPE_INTEGER))
+    {
+        IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
+        build.inst(
+            IrCmd::CHECK_TAG,
+            ta,
+            build.constTag(LUA_TINTEGER),
+            bcTypes.a == LBC_TYPE_INTEGER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
+        );
+
+        IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
+        build.inst(
+            IrCmd::CHECK_TAG,
+            tb,
+            build.constTag(LUA_TINTEGER),
+            bcTypes.b == LBC_TYPE_INTEGER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
+        );
+
+        IrOp va = build.inst(IrCmd::LOAD_INT64, build.vmReg(ra));
+        IrOp vb = build.inst(IrCmd::LOAD_INT64, build.vmReg(rb));
+
+        IrOp result = build.inst(
+            IrCmd::CMP_SPLIT_TVALUE,
+            build.constTag(LUA_TINTEGER),
+            build.constTag(LUA_TINTEGER),
             va,
             vb,
             build.cond(not_ ? IrCondition::NotEqual : IrCondition::Equal)
@@ -991,6 +1040,8 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
         if (protok.tt == LUA_TNUMBER)
             builtinArgs = build.constDouble(protok.value.n);
+        else if (FFlag::LuauCodegenInteger2 && FFlag::LuauCodegenIntegerFastcall2k && protok.tt == LUA_TINTEGER)
+            builtinArgs = build.constInt64(protok.value.l);
     }
 
     IrOp builtinArg3 = customParams ? customArg3 : build.vmReg(ra + 3);
@@ -998,10 +1049,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
     IrOp fallback = build.fallbackBlock(pcpos);
 
     // In unsafe environment, instead of retrying fastcall at 'pcpos' we side-exit directly to fallback sequence
-    if (FFlag::LuauCodegenBlockSafeEnv)
-        build.checkSafeEnv(pcpos + getOpLength(opcode));
-    else
-        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos + getOpLength(opcode)));
+    build.checkSafeEnv(pcpos + getOpLength(opcode));
 
     BuiltinImplResult br = translateBuiltin(
         build, LuauBuiltinFunction(bfid), ra, arg, builtinArgs, builtinArg3, nparams, nresults, fallback, pcpos + getOpLength(opcode)
@@ -1200,10 +1248,7 @@ void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpo
     IrOp fallback = build.fallbackBlock(pcpos);
 
     // fast-path: pairs/next
-    if (FFlag::LuauCodegenBlockSafeEnv)
-        build.checkSafeEnv(pcpos);
-    else
-        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+    build.checkSafeEnv(pcpos);
 
     IrOp tagB = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 1));
     build.inst(IrCmd::CHECK_TAG, tagB, build.constTag(LUA_TTABLE), fallback);
@@ -1232,10 +1277,7 @@ void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcp
     IrOp finish = build.block(IrBlockKind::Internal);
 
     // fast-path: ipairs/inext
-    if (FFlag::LuauCodegenBlockSafeEnv)
-        build.checkSafeEnv(pcpos);
-    else
-        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+    build.checkSafeEnv(pcpos);
 
     IrOp tagB = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 1));
     build.inst(IrCmd::CHECK_TAG, tagB, build.constTag(LUA_TTABLE), fallback);
@@ -1496,10 +1538,7 @@ void translateInstGetImport(IrBuilder& build, const Instruction* pc, int pcpos)
     int k = LUAU_INSN_D(*pc);
     uint32_t aux = pc[1];
 
-    if (FFlag::LuauCodegenBlockSafeEnv)
-        build.checkSafeEnv(pcpos);
-    else
-        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+    build.checkSafeEnv(pcpos);
 
     build.inst(IrCmd::GET_CACHED_IMPORT, build.vmReg(ra), build.vmConst(k), build.constImport(aux), build.constUint(pcpos + 1));
 }
@@ -1508,7 +1547,9 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
-    uint32_t aux = pc[1];
+
+    // TODO: we keep the table access lowering for speculative userdata access instructions until a later date
+    uint32_t aux = LUAU_INSN_OP(*pc) == LOP_GETUDATAKS ? LUAU_INSN_AUX_KV16(pc[1]) : pc[1];
 
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
@@ -1600,7 +1641,9 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
-    uint32_t aux = pc[1];
+
+    // TODO: we keep the table access lowering for speculative userdata access instructions until a later date
+    uint32_t aux = LUAU_INSN_OP(*pc) == LOP_SETUDATAKS ? LUAU_INSN_AUX_KV16(pc[1]) : pc[1];
 
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
@@ -1724,7 +1767,9 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
-    uint32_t aux = pc[1];
+
+    // TODO: we keep the table access lowering for speculative userdata access instructions until a later date
+    uint32_t aux = LUAU_INSN_OP(*pc) == LOP_NAMECALLUDATA ? LUAU_INSN_AUX_KV16(pc[1]) : pc[1];
 
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 

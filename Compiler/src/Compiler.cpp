@@ -30,9 +30,9 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileDuptableConstantPack2)
-LUAU_FASTFLAGVARIABLE(LuauCompileVectorReveseMul)
 LUAU_FASTFLAG(LuauIntegerType)
-LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpWithZero)
+LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpTargetTop)
+LUAU_FASTFLAGVARIABLE(LuauCompileNoOptNext)
 LUAU_FASTFLAG(DebugLuauNoInline)
 
 namespace Luau
@@ -1786,31 +1786,10 @@ struct Compiler
                 else if (options.optimizationLevel >= 2 && (expr->op == AstExprBinary::Add || expr->op == AstExprBinary::Mul))
                 {
                     // Optimization: replace k*r with r*k when r is known to be a number (otherwise metamethods may be called)
-                    if (FFlag::LuauCompileVectorReveseMul)
+                    if (LuauBytecodeType* ty = exprTypes.find(expr))
                     {
-                        if (LuauBytecodeType* ty = exprTypes.find(expr))
-                        {
-                            // Note: for vectors, it only makes sense to do for a multiplication as number+vector is an error
-                            if (*ty == LBC_TYPE_NUMBER ||
-                                (FFlag::LuauCompileVectorReveseMul && *ty == LBC_TYPE_VECTOR && expr->op == AstExprBinary::Mul))
-                            {
-                                int32_t lc = getConstantNumber(expr->left);
-
-                                if (lc >= 0 && lc <= 255)
-                                {
-                                    uint8_t rr = compileExprAuto(expr->right, rs);
-
-                                    bytecode.emitABC(getBinaryOpArith(expr->op, /* k= */ true), target, rr, uint8_t(lc));
-
-                                    hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (LuauBytecodeType* ty = exprTypes.find(expr); ty && *ty == LBC_TYPE_NUMBER)
+                        // Note: for vectors, it only makes sense to do for a multiplication as number+vector is an error
+                        if (*ty == LBC_TYPE_NUMBER || (*ty == LBC_TYPE_VECTOR && expr->op == AstExprBinary::Mul))
                         {
                             int32_t lc = getConstantNumber(expr->left);
 
@@ -1992,15 +1971,11 @@ struct Compiler
         {
             formatStringIndex = bytecode.addConstantString({"", 0});
         }
-        else if (FFlag::LuauCompileStringInterpWithZero)
+        else
         {
             AstName interned = names.getOrAdd(formatString.c_str(), formatString.size());
             AstArray<const char> formatStringArray{interned.value, formatString.size()};
             formatStringIndex = bytecode.addConstantString(sref(formatStringArray));
-        }
-        else
-        {
-            formatStringIndex = bytecode.addConstantString(sref(names.getOrAdd(formatString.c_str(), formatString.size())));
         }
 
         if (formatStringIndex < 0)
@@ -2008,7 +1983,11 @@ struct Compiler
 
         RegScope rs(this);
 
-        uint8_t baseReg = allocReg(expr, unsigned(2 + expr->expressions.size - skippedSubExpr));
+        unsigned int regCount = unsigned(2 + expr->expressions.size - skippedSubExpr);
+
+        // Optimization: have the format call place the result directly into the target to avoid an extra MOVE
+        bool targetTop = FFlag::LuauCompileStringInterpTargetTop && targetTemp && target == regTop - 1;
+        uint8_t baseReg = targetTop ? allocReg(expr, regCount - 1) - 1 : allocReg(expr, regCount);
 
         emitLoadK(baseReg, formatStringIndex);
 
@@ -2032,7 +2011,8 @@ struct Compiler
         bytecode.emitABC(LOP_NAMECALL, baseReg, baseReg, uint8_t(BytecodeBuilder::getStringHash(formatMethod)));
         bytecode.emitAux(formatMethodIndex);
         bytecode.emitABC(LOP_CALL, baseReg, uint8_t(expr->expressions.size + 2 - skippedSubExpr), 2);
-        bytecode.emitABC(LOP_MOVE, target, baseReg, 0);
+        if (target != baseReg)
+            bytecode.emitABC(LOP_MOVE, target, baseReg, 0);
     }
 
     static uint8_t encodeHashSize(unsigned int hashSize)
@@ -2555,6 +2535,14 @@ struct Compiler
         else if (AstExprConstantNumber* expr = node->as<AstExprConstantNumber>())
         {
             int32_t cid = bytecode.addConstantNumber(expr->value);
+            if (cid < 0)
+                CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+            emitLoadK(target, cid);
+        }
+        else if (AstExprConstantInteger* expr = node->as<AstExprConstantInteger>())
+        {
+            int32_t cid = bytecode.addConstantInteger(expr->value);
             if (cid < 0)
                 CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
 
@@ -3525,7 +3513,7 @@ struct Compiler
                 else if (builtin.isGlobal("pairs")) // for .. in pairs(t)
                     skipOp = LOP_FORGPREP_NEXT;
             }
-            else if (stat->values.size == 2)
+            else if (stat->values.size == 2 && (!FFlag::LuauCompileNoOptNext || (!getfenvUsed && !setfenvUsed)))
             {
                 Builtin builtin = getBuiltin(stat->values.data[0], globals, variables);
 

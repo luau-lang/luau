@@ -16,9 +16,8 @@ LUAU_FASTINT(LuauNormalizeIntersectionLimit)
 LUAU_FASTINT(LuauNormalizeUnionLimit)
 LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 
 using namespace Luau;
 
@@ -1277,8 +1276,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_flatten_type_pack_cycle")
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
     LUAU_REQUIRE_ERRORS(check(R"(

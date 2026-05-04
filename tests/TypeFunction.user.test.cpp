@@ -13,8 +13,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
-LUAU_FASTFLAG(LuauUdtfReserveStack)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2810,7 +2808,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "externs_are_extern")
 {
-    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true}};
+    ScopedFastFlag _ = {FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare extern type Bar with
@@ -2901,7 +2899,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss2164_table_subtyping_bug")
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_many_arguments")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag fix{FFlag::LuauUdtfReserveStack, true};
 
     CheckResult result = check(R"(
 type function many(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, aa, ab, ac, ad, ae, af, ag, ah, ai, aj, ak)

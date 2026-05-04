@@ -8,8 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 
 TEST_SUITE_BEGIN("TypeSingletons");
@@ -217,7 +216,7 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         // clang-format off
         const std::string expected =
@@ -231,8 +230,6 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
 
         CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
     }
-    else if (!FFlag::DebugLuauForceOldSolver)
-        CHECK("Expected this to be '\"bar\" | \"baz\" | \"foo\"', but got '\"bang\"'" == toString(result.errors[0]));
     else
         CHECK_EQ(
             "Expected this to be '\"bar\" | \"baz\" | \"foo\"', but got '\"bang\"'; none of the union options are compatible",
@@ -814,7 +811,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2010_but_with_booleans")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
     CheckResult results = check(R"(

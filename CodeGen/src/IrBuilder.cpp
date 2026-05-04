@@ -12,7 +12,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
 
 namespace Luau
@@ -189,18 +188,11 @@ void IrBuilder::buildFunctionIr(Proto* proto)
         // Begin new block at this instruction if it was in the bytecode or requested during translation
         if (instIndexToBlock[i] != kNoAssociatedBlockIndex)
         {
-            if (FFlag::LuauCodegenBlockSafeEnv)
-            {
-                IrOp block = blockAtInst(i);
+            IrOp block = blockAtInst(i);
 
-                beginBlock(block);
+            beginBlock(block);
 
-                function.blockOp(block).startpc = uint32_t(i);
-            }
-            else
-            {
-                beginBlock(blockAtInst(i));
-            }
+            function.blockOp(block).startpc = uint32_t(i);
         }
 
         // Numeric for loops require additional processing to maintain loop stack
@@ -363,9 +355,11 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstSetTable(*this, pc, i);
         break;
     case LOP_GETTABLEKS:
+    case LOP_GETUDATAKS:
         translateInstGetTableKS(*this, pc, i);
         break;
     case LOP_SETTABLEKS:
+    case LOP_SETUDATAKS:
         translateInstSetTableKS(*this, pc, i);
         break;
     case LOP_GETTABLEN:
@@ -638,6 +632,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstCapture(*this, pc, i);
         break;
     case LOP_NAMECALL:
+    case LOP_NAMECALLUDATA:
         if (translateInstNamecall(*this, pc, i))
             cmdSkipTarget = i + 3;
         break;
@@ -799,6 +794,14 @@ IrOp IrBuilder::constInt(int value)
     return constAny(constant, uint64_t(value));
 }
 
+IrOp IrBuilder::constInt64(int64_t value)
+{
+    IrConst constant;
+    constant.kind = IrConstKind::Int64;
+    constant.valueInt64 = value;
+    return constAny(constant, uint64_t(value));
+}
+
 IrOp IrBuilder::constUint(unsigned value)
 {
     IrConst constant;
@@ -909,7 +912,7 @@ IrOp IrBuilder::inst(IrCmd cmd, std::initializer_list<IrOp> ops)
         inTerminatedBlock = true;
     }
 
-    if (FFlag::LuauCodegenBlockSafeEnv && canInvalidateSafeEnv(cmd))
+    if (canInvalidateSafeEnv(cmd))
     {
         // Mark that block has instruction with this flag
         function.blocks[activeBlockIdx].flags |= kBlockFlagSafeEnvClear;
@@ -931,7 +934,7 @@ IrOp IrBuilder::inst(IrCmd cmd, const IrOps& ops)
         inTerminatedBlock = true;
     }
 
-    if (FFlag::LuauCodegenBlockSafeEnv && canInvalidateSafeEnv(cmd))
+    if (canInvalidateSafeEnv(cmd))
     {
         // Mark that block has instruction with this flag
         function.blocks[activeBlockIdx].flags |= kBlockFlagSafeEnvClear;

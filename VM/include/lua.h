@@ -336,6 +336,45 @@ LUA_API lua_Destructor lua_getuserdatadtor(lua_State* L, int tag);
 LUA_API void lua_setuserdatametatable(lua_State* L, int tag);
 LUA_API void lua_getuserdatametatable(lua_State* L, int tag);
 
+// NOTE: experimental API and is subject to breaking changes
+// registration of callbacks for direct userdata __index, __newindex and __namecall access with string keys assigned with an atom
+// cachedslot is initially 0 and can be set to a custom value to help with data lookup inside the userdata
+// IMPORTANT: cachedslot values are shared between all userdata, callbacks function of one userdata tag has to correctly handle values set by another
+typedef void (*lua_UserdataDirectAccess)(lua_State* L, void* data, int atom, uint16_t* cachedslot, int utag);
+typedef int (*lua_UserdataDirectNamecall)(lua_State* L, void* data, int atom, uint16_t* cachedslot, int utag);
+
+LUA_API int lua_registeruserdatadirectaccess(
+    lua_State* L,
+    int tag,
+    lua_UserdataDirectAccess get,
+    lua_UserdataDirectAccess set,
+    lua_UserdataDirectNamecall namecall
+);
+
+/*
+** Direct field API
+**
+** lua_registeruserdatadirectfieldget registers a per-field, per-userdata-type
+** handler that is invoked directly without allocating a Luau call frame.
+**
+** tag:   userdata tag (0..LUA_UTAG_LIMIT-1)
+** field: field name string (will be interned and pinned)
+** fn:    handler — receives raw userdata data pointer and result TValue slot
+*/
+typedef void (*lua_UserdataDirectFieldGet)(void* ud, void* result);
+LUA_API void lua_registeruserdatadirectfieldget(lua_State* L, int tag, const char* field, lua_UserdataDirectFieldGet fn);
+
+// Helpers for writing result values from a direct field handler.
+LUA_API void lua_userdatadirectfield_setnumber(void* result, double n);
+#if LUA_VECTOR_SIZE == 4
+LUA_API void lua_userdatadirectfield_setvector(void* result, float x, float y, float z, float w);
+#else
+LUA_API void lua_userdatadirectfield_setvector(void* result, float x, float y, float z);
+#endif
+LUA_API void lua_userdatadirectfield_setboolean(void* result, int b);
+LUA_API void lua_userdatadirectfield_setinteger64(void* result, int64_t n);
+LUA_API void lua_userdatadirectfield_setnil(void* result);
+
 LUA_API void lua_setlightuserdataname(lua_State* L, int tag, const char* name);
 LUA_API const char* lua_getlightuserdataname(lua_State* L, int tag);
 

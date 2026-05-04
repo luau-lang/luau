@@ -20,8 +20,8 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
-LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
-LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
+LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
+LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -1533,8 +1533,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauThreadUniferStateThroughTypeFunctionReduction, true},
-        {FFlag::LuauUnifyWithSubtyping2, true},
-        {FFlag::LuauSubtypingReplaceBounds, true},
     };
 
     CHECK_THROWS_AS(
@@ -1558,5 +1556,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
         InternalCompilerError
     );
 }
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_calling_pcall")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
+    };
+
+    // This should have a type checking error, at least, but previously caused
+    // an internal compiler exception.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        pcall(pcall)
+    )"));
+}
+
 
 TEST_SUITE_END();

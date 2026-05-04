@@ -22,11 +22,9 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
 LUAU_FASTFLAG(LuauIntegerType)
 
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
-LUAU_FASTFLAGVARIABLE(LuauUdtfReserveStack)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 
 namespace Luau
@@ -333,8 +331,7 @@ TypeFunctionTypePackVar* allocateTypeFunctionTypePack(lua_State* L, TypeFunction
 
 void pushType(lua_State* L, TypeFunctionTypeId type)
 {
-    if (FFlag::LuauUdtfReserveStack)
-        luaL_checkstack(L, 2, "allocating type");
+    luaL_checkstack(L, 2, "allocating type");
 
     TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
     *ptr = type;
@@ -347,8 +344,7 @@ void pushType(lua_State* L, TypeFunctionTypeId type)
 // Pushes a new type userdata onto the stack
 void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type, bool frozen)
 {
-    if (FFlag::LuauUdtfReserveStack)
-        luaL_checkstack(L, 2, "allocating type");
+    luaL_checkstack(L, 2, "allocating type");
 
     // allocate a new type userdata
     TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
@@ -425,12 +421,7 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
     else if (get<TypeFunctionFunctionType>(ty))
         return "function";
     else if (get<TypeFunctionExternType>(ty))
-    {
-        if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
-            return "extern";
-        else
-            return "class";
-    }
+        return "extern";
     else if (get<TypeFunctionGenericType>(ty))
         return "generic";
 

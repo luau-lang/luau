@@ -400,13 +400,22 @@ int main(int argc, char** argv)
         codegen = true;
     }
 
-    int level = -1;
-    if (doctest::parseIntOption(argc, argv, "-O", doctest::option_int, level))
+    doctest::String optlevel;
+    if (doctest::parseOption(argc, argv, "-O", &optlevel))
     {
-        if (level < 0 || level > 2)
+        try
+        {
+            int level = std::stoi(optlevel.c_str());
+
+            if (level < 0 || level > 2)
+                fprintf(stderr, "Optimization level must be between 0 and 2 inclusive\n");
+            else
+                optimizationLevel = level;
+        }
+        catch (...)
+        {
             fprintf(stderr, "Optimization level must be between 0 and 2 inclusive\n");
-        else
-            optimizationLevel = level;
+        }
     }
 
     int rseed = -1;

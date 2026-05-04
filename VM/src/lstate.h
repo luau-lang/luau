@@ -4,6 +4,7 @@
 
 #include "lobject.h"
 #include "ltm.h"
+#include "ludata.h"
 
 // registry
 #define registry(L) (&L->global->registry)
@@ -162,6 +163,16 @@ struct lua_ExecutionCallbacks
     ); // called to get the execution counter data and count {uint32_t, uint32_t, uint64_t}
 };
 
+struct lua_UdataDirectAccessData
+{
+    TValue indextm;
+    TValue newindextm;
+    TValue namecalltm;
+    lua_UserdataDirectAccess index;
+    lua_UserdataDirectAccess newindex;
+    lua_UserdataDirectNamecall namecall;
+};
+
 /*
 ** `global state', shared by all threads of this state
 */
@@ -215,12 +226,18 @@ typedef struct global_State
 
     alignas(16) uint8_t ecbdata[LUA_EXECUTION_CALLBACK_STORAGE];
 
+    // Set of userdata __index/__newindex/__namecall metamethods for a direct access
+    lua_UdataDirectAccessData udatadirect[UTAG_INTERNAL_LIMIT];
+
     size_t memcatbytes[LUA_MEMORY_CATEGORIES]; // total amount of memory used by each memory category
 
     void (*udatagc[LUA_UTAG_LIMIT])(lua_State*, void*); // for each userdata tag, a gc callback to be called immediately before freeing memory
     LuaTable* udatamt[LUA_UTAG_LIMIT]; // metatables for tagged userdata
 
     TString* lightuserdataname[LUA_LUTAG_LIMIT]; // names for tagged lightuserdata
+
+    // per-tag direct field dispatch tables; NULL until first field is registered for that tag
+    struct LuaTable* udatadirectfields[UTAG_INTERNAL_LIMIT];
 
     GCStats gcstats;
 

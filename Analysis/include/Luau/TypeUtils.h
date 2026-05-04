@@ -84,6 +84,16 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
 
 bool occursCheck(TypeId needle, TypeId haystack);
 
+// NOTE: This uses a custom enum as it is replacing several bespoke
+// implementations of the same logic.
+enum class OccursCheckResult
+{
+    Pass,
+    Fail
+};
+
+OccursCheckResult occursCheck(TypePackId needle, TypePackId haystack);
+
 // Returns the minimum and maximum number of types the argument list can accept.
 std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, TypePackId tp, bool includeHiddenVariadics = false);
 
@@ -413,5 +423,17 @@ bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics)
  *         type function.
  */
 bool isBlocked(TypeId ty);
+
+
+/**
+ * **YOU SHOULD PROBABLY NOT USE THIS FUNCTION.**
+ *
+ * This function is a stop-gap while we rework function call inference and
+ * eager generalization.
+ *
+ * @return An approximate return type of `ty`, assuming `ty` is a function or
+ *         union of functions.
+ */
+std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty);
 
 } // namespace Luau
