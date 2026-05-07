@@ -42,6 +42,7 @@ LUAU_FASTFLAGVARIABLE(LuauComparisonToNilsIsAlwaysOk2)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
+LUAU_FASTFLAGVARIABLE(LuauTypePathPrimitiveMismatchSimplifyError)
 
 namespace Luau
 {
@@ -3011,12 +3012,24 @@ void TypeChecker2::visit(AstTypePackGeneric* tp)
     reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
 }
 
+static bool areTypesPrimitivelyDifferent(const TypeId* subTy, const TypeId* superTy)
+{
+    if (auto subPty = get<PrimitiveType>(*subTy))
+    {
+        if (auto superPty = get<PrimitiveType>(*superTy))
+            return subPty->type != superPty->type;
+    }
+
+    return (*subTy)->ty.index() != (*superTy)->ty.index();
+}
+
 template<typename TID>
 Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location location, const SubtypingResult& r)
 {
     if (r.reasoning.empty())
         return {};
 
+    bool wereSomeReasoningsOmitted = false;
     std::vector<std::string> reasons;
     bool suppressed = true;
     for (const SubtypingReasoning& reasoning : r.reasoning)
@@ -3047,6 +3060,20 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
         {
             reportError(InternalError{"Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack."}, location);
             return {};
+        }
+
+        if (FFlag::LuauTypePathPrimitiveMismatchSimplifyError && (!reasoning.subPath.empty() || !reasoning.superPath.empty()) && reasons.size() > 0)
+        {
+            if (areTypesPrimitivelyDifferent(subLeafTy, superLeafTy))
+            {
+                if (!wereSomeReasoningsOmitted)
+                {
+                    reasons.push_back("some primitive type mismatch reasoning(s) omitted");
+                    wereSomeReasoningsOmitted = true;
+                }
+
+                continue;
+            }
         }
 
         std::string relation = "a subtype of";
