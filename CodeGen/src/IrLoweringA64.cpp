@@ -12,7 +12,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAG(LuauCodegenCallWrapImproved)
 LUAU_FASTFLAGVARIABLE(LuauCodegenFixBufferLenCheck)
@@ -2497,169 +2496,107 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CHECK_BUFFER_LEN:
     {
-        if (FFlag::LuauCodegenBufferRangeMerge4)
+        int minOffset = intOp(OP_C(inst));
+        int maxOffset = intOp(OP_D(inst));
+        CODEGEN_ASSERT(minOffset < maxOffset);
+        CODEGEN_ASSERT(minOffset >= -int(AssemblyBuilderA64::kMaxImmediate) && minOffset <= int(AssemblyBuilderA64::kMaxImmediate));
+
+        int accessSize = maxOffset - minOffset;
+        CODEGEN_ASSERT(accessSize > 0 && accessSize <= int(AssemblyBuilderA64::kMaxImmediate));
+
+        Label fresh; // used when guard aborts execution or jumps to a VM exit
+        Label& target = getTargetLabel(OP_F(inst), fresh);
+
+        // Check if we are acting not only as a guard for the size, but as a guard that offset represents an exact integer
+        if (OP_E(inst).kind != IrOpKind::Undef)
         {
-            int minOffset = intOp(OP_C(inst));
-            int maxOffset = intOp(OP_D(inst));
-            CODEGEN_ASSERT(minOffset < maxOffset);
-            CODEGEN_ASSERT(minOffset >= -int(AssemblyBuilderA64::kMaxImmediate) && minOffset <= int(AssemblyBuilderA64::kMaxImmediate));
+            CODEGEN_ASSERT(getCmdValueKind(function.instOp(OP_B(inst)).cmd) == IrValueKind::Int);
+            CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
 
-            int accessSize = maxOffset - minOffset;
-            CODEGEN_ASSERT(accessSize > 0 && accessSize <= int(AssemblyBuilderA64::kMaxImmediate));
-
-            Label fresh; // used when guard aborts execution or jumps to a VM exit
-            Label& target = getTargetLabel(OP_F(inst), fresh);
-
-            // Check if we are acting not only as a guard for the size, but as a guard that offset represents an exact integer
-            if (OP_E(inst).kind != IrOpKind::Undef)
+            if ((build.features & Feature_JSCVT) != 0)
             {
-                CODEGEN_ASSERT(getCmdValueKind(function.instOp(OP_B(inst)).cmd) == IrValueKind::Int);
-                CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
+                RegisterA64 temp = regs.allocTemp(KindA64::w);
 
-                if ((build.features & Feature_JSCVT) != 0)
-                {
-                    RegisterA64 temp = regs.allocTemp(KindA64::w);
-
-                    build.fjcvtzs(temp, regOp(OP_E(inst))); // fjcvtzs sets PSTATE.Z (equal) iff conversion is exact
-                    build.b(ConditionA64::NotEqual, target);
-                }
-                else
-                {
-                    RegisterA64 temp = regs.allocTemp(KindA64::d);
-
-                    build.scvtf(temp, regOp(OP_B(inst)));
-                    build.fcmp(regOp(OP_E(inst)), temp);
-                    build.b(ConditionA64::NotEqual, target);
-                }
-            }
-
-            RegisterA64 temp = regs.allocTemp(KindA64::w);
-            build.ldr(temp, mem(regOp(OP_A(inst)), offsetof(Buffer, len)));
-
-            if (OP_B(inst).kind == IrOpKind::Inst)
-            {
-                CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
-
-                if (accessSize == 1 && minOffset == 0)
-                {
-                    // fails if offset >= len
-                    build.cmp(temp, regOp(OP_B(inst)));
-                    build.b(ConditionA64::UnsignedLessEqual, target);
-                }
-                else if (minOffset >= 0 && maxOffset <= int(AssemblyBuilderA64::kMaxImmediate))
-                {
-                    // fails if offset + size > len; we compute it as len - offset < size
-                    RegisterA64 tempx = castReg(KindA64::x, temp);
-                    build.sub(tempx, tempx, regOp(OP_B(inst))); // implicit uxtw
-                    build.cmp(tempx, uint16_t(maxOffset));
-                    build.b(ConditionA64::Less, target); // note: this is a signed 64-bit comparison so that out of bounds offset fails
-                }
-                else
-                {
-                    RegisterA64 tempx = castReg(KindA64::x, temp);
-                    RegisterA64 temp2 = regs.allocTemp(KindA64::x);
-
-                    // Get the base offset in 32 bits
-                    if (minOffset >= 0)
-                        build.add(castReg(KindA64::w, temp2), regOp(OP_B(inst)), uint16_t(minOffset));
-                    else
-                        build.sub(castReg(KindA64::w, temp2), regOp(OP_B(inst)), uint16_t(-minOffset));
-
-                    // fail if uint64_t(uint32_t(offset + minOffset)) + accessSize > length
-                    build.add(temp2, temp2, uint16_t(accessSize));
-                    build.cmp(temp2, tempx);
-                    build.b(ConditionA64::UnsignedGreater, target);
-                }
-            }
-            else if (OP_B(inst).kind == IrOpKind::Constant)
-            {
-                int offset = intOp(OP_B(inst));
-                int endOffset = FFlag::LuauCodegenFixBufferLenCheck ? maxOffset : accessSize;
-                ConditionA64 failCond = FFlag::LuauCodegenFixBufferLenCheck ? ConditionA64::UnsignedLess : ConditionA64::UnsignedLessEqual;
-
-                // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
-                if (offset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
-                {
-                    build.b(target);
-                }
-                else if (offset + endOffset <= int(AssemblyBuilderA64::kMaxImmediate))
-                {
-                    build.cmp(temp, uint16_t(offset + endOffset));
-                    build.b(failCond, target);
-                }
-                else
-                {
-                    RegisterA64 temp2 = regs.allocTemp(KindA64::w);
-                    build.mov(temp2, offset + endOffset);
-                    build.cmp(temp, temp2);
-                    build.b(failCond, target);
-                }
+                build.fjcvtzs(temp, regOp(OP_E(inst))); // fjcvtzs sets PSTATE.Z (equal) iff conversion is exact
+                build.b(ConditionA64::NotEqual, target);
             }
             else
             {
-                CODEGEN_ASSERT(!"Unsupported instruction form");
+                RegisterA64 temp = regs.allocTemp(KindA64::d);
+
+                build.scvtf(temp, regOp(OP_B(inst)));
+                build.fcmp(regOp(OP_E(inst)), temp);
+                build.b(ConditionA64::NotEqual, target);
             }
-            finalizeTargetLabel(OP_F(inst), fresh);
+        }
+
+        RegisterA64 temp = regs.allocTemp(KindA64::w);
+        build.ldr(temp, mem(regOp(OP_A(inst)), offsetof(Buffer, len)));
+
+        if (OP_B(inst).kind == IrOpKind::Inst)
+        {
+            CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
+
+            if (accessSize == 1 && minOffset == 0)
+            {
+                // fails if offset >= len
+                build.cmp(temp, regOp(OP_B(inst)));
+                build.b(ConditionA64::UnsignedLessEqual, target);
+            }
+            else if (minOffset >= 0 && maxOffset <= int(AssemblyBuilderA64::kMaxImmediate))
+            {
+                // fails if offset + size > len; we compute it as len - offset < size
+                RegisterA64 tempx = castReg(KindA64::x, temp);
+                build.sub(tempx, tempx, regOp(OP_B(inst))); // implicit uxtw
+                build.cmp(tempx, uint16_t(maxOffset));
+                build.b(ConditionA64::Less, target); // note: this is a signed 64-bit comparison so that out of bounds offset fails
+            }
+            else
+            {
+                RegisterA64 tempx = castReg(KindA64::x, temp);
+                RegisterA64 temp2 = regs.allocTemp(KindA64::x);
+
+                // Get the base offset in 32 bits
+                if (minOffset >= 0)
+                    build.add(castReg(KindA64::w, temp2), regOp(OP_B(inst)), uint16_t(minOffset));
+                else
+                    build.sub(castReg(KindA64::w, temp2), regOp(OP_B(inst)), uint16_t(-minOffset));
+
+                // fail if uint64_t(uint32_t(offset + minOffset)) + accessSize > length
+                build.add(temp2, temp2, uint16_t(accessSize));
+                build.cmp(temp2, tempx);
+                build.b(ConditionA64::UnsignedGreater, target);
+            }
+        }
+        else if (OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int offset = intOp(OP_B(inst));
+            int endOffset = FFlag::LuauCodegenFixBufferLenCheck ? maxOffset : accessSize;
+            ConditionA64 failCond = FFlag::LuauCodegenFixBufferLenCheck ? ConditionA64::UnsignedLess : ConditionA64::UnsignedLessEqual;
+
+            // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
+            if (offset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
+            {
+                build.b(target);
+            }
+            else if (offset + endOffset <= int(AssemblyBuilderA64::kMaxImmediate))
+            {
+                build.cmp(temp, uint16_t(offset + endOffset));
+                build.b(failCond, target);
+            }
+            else
+            {
+                RegisterA64 temp2 = regs.allocTemp(KindA64::w);
+                build.mov(temp2, offset + endOffset);
+                build.cmp(temp, temp2);
+                build.b(failCond, target);
+            }
         }
         else
         {
-            int accessSize = intOp(OP_C(inst));
-            CODEGEN_ASSERT(accessSize > 0 && accessSize <= int(AssemblyBuilderA64::kMaxImmediate));
-
-            Label fresh; // used when guard aborts execution or jumps to a VM exit
-            Label& target = getTargetLabel(OP_D(inst), fresh);
-
-            RegisterA64 temp = regs.allocTemp(KindA64::w);
-            build.ldr(temp, mem(regOp(OP_A(inst)), offsetof(Buffer, len)));
-
-            if (OP_B(inst).kind == IrOpKind::Inst)
-            {
-                CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
-
-                if (accessSize == 1)
-                {
-                    // fails if offset >= len
-                    build.cmp(temp, regOp(OP_B(inst)));
-                    build.b(ConditionA64::UnsignedLessEqual, target);
-                }
-                else
-                {
-                    // fails if offset + size > len; we compute it as len - offset < size
-                    RegisterA64 tempx = castReg(KindA64::x, temp);
-                    build.sub(tempx, tempx, regOp(OP_B(inst))); // implicit uxtw
-                    build.cmp(tempx, uint16_t(accessSize));
-                    build.b(ConditionA64::Less, target); // note: this is a signed 64-bit comparison so that out of bounds offset fails
-                }
-            }
-            else if (OP_B(inst).kind == IrOpKind::Constant)
-            {
-                int offset = intOp(OP_B(inst));
-                ConditionA64 failCond = FFlag::LuauCodegenFixBufferLenCheck ? ConditionA64::UnsignedLess : ConditionA64::UnsignedLessEqual;
-
-                // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
-                if (offset < 0 || unsigned(offset) + unsigned(accessSize) >= unsigned(INT_MAX))
-                {
-                    build.b(target);
-                }
-                else if (offset + accessSize <= int(AssemblyBuilderA64::kMaxImmediate))
-                {
-                    build.cmp(temp, uint16_t(offset + accessSize));
-                    build.b(failCond, target);
-                }
-                else
-                {
-                    RegisterA64 temp2 = regs.allocTemp(KindA64::w);
-                    build.mov(temp2, offset + accessSize);
-                    build.cmp(temp, temp2);
-                    build.b(failCond, target);
-                }
-            }
-            else
-            {
-                CODEGEN_ASSERT(!"Unsupported instruction form");
-            }
-            finalizeTargetLabel(OP_D(inst), fresh);
+            CODEGEN_ASSERT(!"Unsupported instruction form");
         }
+        finalizeTargetLabel(OP_F(inst), fresh);
         break;
     }
     case IrCmd::CHECK_USERDATA_TAG:

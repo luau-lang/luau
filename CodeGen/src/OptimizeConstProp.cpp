@@ -25,8 +25,6 @@ LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSetBlockEntryState3)
-LUAU_FASTFLAGVARIABLE(LuauCodegenBufferRangeMerge4)
-LUAU_FASTFLAGVARIABLE(LuauCodegenLengthBaseInst)
 LUAU_FASTFLAGVARIABLE(LuauCodegenUserdataAddressAlias)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateTagsAcrossChains2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDuplicateDoubleIntValues)
@@ -839,7 +837,7 @@ struct ConstPropState
 
             // If they both are based on the same register (not a constant) with different constant offsets, merge checks
             if (offsetBaseCurr.op == offsetBasePrev.op && offsetBaseCurr.scale == offsetBasePrev.scale &&
-                (!FFlag::LuauCodegenLengthBaseInst || offsetBaseCurr.op.kind != IrOpKind::Constant))
+                offsetBaseCurr.op.kind != IrOpKind::Constant)
             {
                 // Difference between base offsets
                 int extraOffset = offsetBaseCurr.offset - offsetBasePrev.offset;
@@ -2280,113 +2278,58 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     {
         std::optional<int> bufferOffset = function.asIntOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst)));
 
-        if (FFlag::LuauCodegenBufferRangeMerge4)
+        int minOffset = function.intOp(OP_C(inst));
+        int maxOffset = function.intOp(OP_D(inst));
+
+        CODEGEN_ASSERT(minOffset < maxOffset);
+        int accessSize = maxOffset - minOffset;
+        CODEGEN_ASSERT(accessSize > 0);
+
+        if (bufferOffset)
         {
-            int minOffset = function.intOp(OP_C(inst));
-            int maxOffset = function.intOp(OP_D(inst));
-
-            CODEGEN_ASSERT(minOffset < maxOffset);
-            int accessSize = maxOffset - minOffset;
-            CODEGEN_ASSERT(accessSize > 0);
-
-            if (bufferOffset)
+            // Negative offsets and offsets overflowing signed integer will jump to fallback, no need to keep the check
+            if (*bufferOffset < 0 || unsigned(*bufferOffset) + unsigned(accessSize) >= unsigned(INT_MAX))
             {
-                // Negative offsets and offsets overflowing signed integer will jump to fallback, no need to keep the check
-                if (*bufferOffset < 0 || unsigned(*bufferOffset) + unsigned(accessSize) >= unsigned(INT_MAX))
-                {
-                    replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}});
-                    break;
-                }
-            }
-
-            for (uint32_t prevIdx : state.checkBufferLenCache)
-            {
-                IrInst& prev = function.instructions[prevIdx];
-
-                // Exactly the same access removes the instruction
-                if (OP_A(prev) == OP_A(inst) && OP_B(prev) == OP_B(inst) && OP_C(prev) == OP_C(inst) && OP_D(prev) == OP_D(inst))
-                {
-                    if (FFlag::DebugLuauAbortingChecks)
-                        replace(function, OP_F(inst), build.undef());
-                    else
-                        kill(function, inst);
-                    return; // Break out from both the loop and the switch
-                }
-
-                // Constant offset access at different locations might be merged
-                if (OP_A(prev) == OP_A(inst) && OP_B(inst).kind == IrOpKind::Constant && OP_B(prev).kind == IrOpKind::Constant)
-                {
-                    int currBound = function.intOp(OP_B(inst));
-                    int prevBound = function.intOp(OP_B(prev));
-
-                    // Negative and overflowing constant offsets should already be replaced with unconditional jumps to a fallback
-                    CODEGEN_ASSERT(currBound >= 0);
-                    CODEGEN_ASSERT(prevBound >= 0);
-
-                    // Rebase current check to the same base offset
-                    int extraOffset = currBound - prevBound;
-
-                    if (state.tryMergeAndKillBufferLengthCheck(build, block, inst, prev, extraOffset))
-                        return; // Break out from both the loop and the switch
-
-                    continue;
-                }
-
-                if (state.tryMergeBufferRangeCheck(build, block, inst, prev))
-                    return; // Break out from both the loop and the switch
+                replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}});
+                break;
             }
         }
-        else
+
+        for (uint32_t prevIdx : state.checkBufferLenCache)
         {
-            int accessSize = function.intOp(OP_C(inst));
-            CODEGEN_ASSERT(accessSize > 0);
+            IrInst& prev = function.instructions[prevIdx];
 
-            if (bufferOffset)
+            // Exactly the same access removes the instruction
+            if (OP_A(prev) == OP_A(inst) && OP_B(prev) == OP_B(inst) && OP_C(prev) == OP_C(inst) && OP_D(prev) == OP_D(inst))
             {
-                // Negative offsets and offsets overflowing signed integer will jump to fallback, no need to keep the check
-                if (*bufferOffset < 0 || unsigned(*bufferOffset) + unsigned(accessSize) >= unsigned(INT_MAX))
-                {
-                    replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
-                    break;
-                }
+                if (FFlag::DebugLuauAbortingChecks)
+                    replace(function, OP_F(inst), build.undef());
+                else
+                    kill(function, inst);
+                return; // Break out from both the loop and the switch
             }
 
-            for (uint32_t prevIdx : state.checkBufferLenCache)
+            // Constant offset access at different locations might be merged
+            if (OP_A(prev) == OP_A(inst) && OP_B(inst).kind == IrOpKind::Constant && OP_B(prev).kind == IrOpKind::Constant)
             {
-                IrInst& prev = function.instructions[prevIdx];
+                int currBound = function.intOp(OP_B(inst));
+                int prevBound = function.intOp(OP_B(prev));
 
-                if (OP_A(prev) != OP_A(inst) || OP_C(prev) != OP_C(inst))
-                    continue;
+                // Negative and overflowing constant offsets should already be replaced with unconditional jumps to a fallback
+                CODEGEN_ASSERT(currBound >= 0);
+                CODEGEN_ASSERT(prevBound >= 0);
 
-                if (OP_B(prev) == OP_B(inst))
-                {
-                    if (FFlag::DebugLuauAbortingChecks)
-                        replace(function, OP_D(inst), build.undef());
-                    else
-                        kill(function, inst);
+                // Rebase current check to the same base offset
+                int extraOffset = currBound - prevBound;
+
+                if (state.tryMergeAndKillBufferLengthCheck(build, block, inst, prev, extraOffset))
                     return; // Break out from both the loop and the switch
-                }
-                else if (OP_B(inst).kind == IrOpKind::Constant && OP_B(prev).kind == IrOpKind::Constant)
-                {
-                    // If arguments are different constants, we can check if a larger bound was already tested or if the previous bound can be raised
-                    int currBound = function.intOp(OP_B(inst));
-                    int prevBound = function.intOp(OP_B(prev));
 
-                    // Negative and overflowing constant offsets should already be replaced with unconditional jumps to a fallback
-                    CODEGEN_ASSERT(currBound >= 0);
-                    CODEGEN_ASSERT(prevBound >= 0);
-
-                    if (unsigned(currBound) >= unsigned(prevBound))
-                        replace(function, OP_B(prev), OP_B(inst));
-
-                    if (FFlag::DebugLuauAbortingChecks)
-                        replace(function, OP_D(inst), build.undef());
-                    else
-                        kill(function, inst);
-
-                    return; // Break out from both the loop and the switch
-                }
+                continue;
             }
+
+            if (state.tryMergeBufferRangeCheck(build, block, inst, prev))
+                return; // Break out from both the loop and the switch
         }
 
         if (int(state.checkBufferLenCache.size()) < FInt::LuauCodeGenReuseSlotLimit)
@@ -2875,7 +2818,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             break;
         }
 
-        if (FFlag::LuauCodegenBufferRangeMerge4 && src && src->cmd == IrCmd::ADD_NUM)
+        if (src && src->cmd == IrCmd::ADD_NUM)
         {
             if (std::optional<double> arg = function.asDoubleOp(OP_B(src)); arg && *arg == 0.0)
             {
@@ -2915,7 +2858,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             break;
         }
 
-        if (FFlag::LuauCodegenBufferRangeMerge4 && src && src->cmd == IrCmd::ADD_NUM)
+        if (src && src->cmd == IrCmd::ADD_NUM)
         {
             if (std::optional<double> arg = function.asDoubleOp(OP_B(src)); arg && *arg == 0.0)
             {

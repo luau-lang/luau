@@ -9,7 +9,8 @@
 #include "Utils.h"
 
 #include <limits.h>
-LUAU_FASTFLAG(LuauCompilePropagateTableProps)
+
+LUAU_FASTFLAG(LuauCompilePropagateTableProps2)
 
 namespace Luau
 {
@@ -114,7 +115,7 @@ struct CostVisitor : AstVisitor
 
     Cost model(AstExpr* node)
     {
-        if (FFlag::LuauCompilePropagateTableProps)
+        if (FFlag::LuauCompilePropagateTableProps2)
         {
             if (const Constant* c = constants.find(node); c && c->type != Constant::Type_Unknown)
                 return Cost(0, Cost::kLiteral);

@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+LUAU_FASTFLAG(LuauAutocompleteStringSingletonIntersection)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -4756,6 +4757,60 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_func
             CHECK(frag.result->acResults.entryMap.count("\"Val1\"") == 1);
             CHECK(frag.result->acResults.entryMap.count("\"Val2\"") == 1);
         }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_singleton_intersection_param")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauAutocompleteStringSingletonIntersection, true},
+        {FFlag::LuauAutocompleteFunctionCallArgTails2, true},
+    };
+
+    std::string source = R"(
+        local function C(_: "Example"&"Example") end
+    )";
+
+    std::string dest = R"(
+        local function C(_: "Example"&"Example") end
+        C(@1
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("\"Example\"") == 1);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_singleton_intersection_variable_annotation")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteStringSingletonIntersection, true};
+
+    std::string source = R"(
+        local _: "foo"&"foo"
+    )";
+
+    std::string dest = R"(
+        local _: "foo"&"foo" = "@1"
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("foo") == 1);
+            CHECK_EQ(frag.result->acResults.context, AutocompleteContext::String);
+        },
+        Position{1, 33}
     );
 }
 

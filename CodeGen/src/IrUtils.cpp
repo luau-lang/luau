@@ -18,7 +18,6 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenConsistentHasResult)
 
@@ -1680,23 +1679,20 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             substitute(function, inst, build.constInt(countrz(unsigned(function.intOp(OP_A(inst))))));
         break;
     case IrCmd::CHECK_BUFFER_LEN:
-        if (FFlag::LuauCodegenBufferRangeMerge4)
+        if (OP_B(inst).kind == IrOpKind::Constant && OP_E(inst).kind == IrOpKind::Constant)
         {
-            if (OP_B(inst).kind == IrOpKind::Constant && OP_E(inst).kind == IrOpKind::Constant)
-            {
-                // If base offset and base offset source double value are both constants, we can get rid of that check or fallback
-                if (double(function.intOp(OP_B(inst))) == function.doubleOp(OP_E(inst)))
-                    replace(function, OP_E(inst), build.undef()); // This disables equality check at runtime
-                else
-                    replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}}); // Shows a conflict in assumptions on this path
-            }
-            else if (OP_B(inst).kind == IrOpKind::Inst && OP_E(inst).kind == IrOpKind::Constant)
-            {
-                // If only the base offset source double value is a constant, it means we couldn't constant-fold NUM_TO_INT
-                CODEGEN_ASSERT(function.instOp(OP_B(inst)).cmd == IrCmd::NUM_TO_INT && OP_A(function.instOp(OP_B(inst))) == OP_E(inst));
-
+            // If base offset and base offset source double value are both constants, we can get rid of that check or fallback
+            if (double(function.intOp(OP_B(inst))) == function.doubleOp(OP_E(inst)))
+                replace(function, OP_E(inst), build.undef()); // This disables equality check at runtime
+            else
                 replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}}); // Shows a conflict in assumptions on this path
-            }
+        }
+        else if (OP_B(inst).kind == IrOpKind::Inst && OP_E(inst).kind == IrOpKind::Constant)
+        {
+            // If only the base offset source double value is a constant, it means we couldn't constant-fold NUM_TO_INT
+            CODEGEN_ASSERT(function.instOp(OP_B(inst)).cmd == IrCmd::NUM_TO_INT && OP_A(function.instOp(OP_B(inst))) == OP_E(inst));
+
+            replace(function, block, index, {IrCmd::JUMP, {OP_F(inst)}}); // Shows a conflict in assumptions on this path
         }
         break;
     default:

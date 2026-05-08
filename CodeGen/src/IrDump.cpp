@@ -9,7 +9,6 @@
 
 #include <stdarg.h>
 
-LUAU_FASTFLAG(LuauIntegerType)
 namespace Luau
 {
 namespace CodeGen
@@ -85,9 +84,7 @@ static const char* getTagName(uint8_t tag)
     case LUA_TDEADKEY:
         return "tdeadkey";
     case LUA_TINTEGER:
-        if (FFlag::LuauIntegerType)
-            return "tinteger";
-        [[fallthrough]];
+        return "tinteger";
     default:
         CODEGEN_ASSERT(!"Unknown type tag");
         LUAU_UNREACHABLE();

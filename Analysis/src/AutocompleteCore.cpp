@@ -28,9 +28,14 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionCallArgTails2)
 LUAU_FASTFLAGVARIABLE(LuauACOnMTTWriteOnlyPropNoCrash)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringSingletonIntersection)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteConst)
 
-static constexpr std::array<std::string_view, 12> kStatementStartingKeywords =
+static constexpr std::array<std::string_view, 12> kStatementStartingKeywords_DEPRECATED =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
+
+static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
+    {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
 
 static constexpr std::array<std::string_view, 6> kHotComments = {"nolint", "nocheck", "nonstrict", "strict", "optimize", "native"};
 
@@ -364,10 +369,10 @@ static void autocompleteProps(
             if (result.count(name) == 0 && name != kParseNameError)
             {
                 Luau::TypeId type;
-                    if (auto ty = prop.readTy)
-                        type = follow(*ty);
-                    else
-                        continue;
+                if (auto ty = prop.readTy)
+                    type = follow(*ty);
+                else
+                    continue;
 
                 TypeCorrectKind typeCorrect = indexType == PropIndexType::Key
                                                   ? TypeCorrectKind::Correct
@@ -666,6 +671,11 @@ static void autocompleteStringSingleton(TypeId ty, bool addQuotes, AstNode* node
                 );
             }
         }
+    }
+    else if (auto ity = get<IntersectionType>(ty); FFlag::LuauAutocompleteStringSingletonIntersection && ity)
+    {
+        for (auto el : ity->parts)
+            autocompleteStringSingleton(el, addQuotes, node, position, result);
     }
 };
 
@@ -1359,10 +1369,21 @@ static AutocompleteEntryMap autocompleteStatement(
     }
 
     bool shouldIncludeBreakAndContinue = isValidBreakContinueContext(ancestry, position);
-    for (const std::string_view kw : kStatementStartingKeywords)
+    if (FFlag::LuauAutocompleteConst)
     {
-        if ((kw != "break" && kw != "continue") || shouldIncludeBreakAndContinue)
-            result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        for (const std::string_view kw : kStatementStartingKeywords)
+        {
+            if ((kw != "break" && kw != "continue") || shouldIncludeBreakAndContinue)
+                result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        }
+    }
+    else
+    {
+        for (const std::string_view kw : kStatementStartingKeywords_DEPRECATED)
+        {
+            if ((kw != "break" && kw != "continue") || shouldIncludeBreakAndContinue)
+                result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        }
     }
 
     for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it)
@@ -2042,9 +2063,11 @@ AutocompleteResult autocomplete_(
             return {autocompleteStatement(*module, ancestry, scopeAtPosition, position), ancestry, AutocompleteContext::Statement};
     }
 
-    else if (AstStatWhile* statWhile = extractStat<AstStatWhile>(ancestry);
-             (statWhile && (!statWhile->hasDo || statWhile->doLocation.containsClosed(position)) && statWhile->condition &&
-              !statWhile->condition->location.containsClosed(position)))
+    else if (
+        AstStatWhile* statWhile = extractStat<AstStatWhile>(ancestry);
+        (statWhile && (!statWhile->hasDo || statWhile->doLocation.containsClosed(position)) && statWhile->condition &&
+         !statWhile->condition->location.containsClosed(position))
+    )
     {
         return autocompleteWhileLoopKeywords(ancestry);
     }
@@ -2063,9 +2086,10 @@ AutocompleteResult autocomplete_(
         else if (!statIf->thenLocation || statIf->thenLocation->containsClosed(position))
             return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     }
-    else if (AstStatIf* statIf = extractStat<AstStatIf>(ancestry); statIf &&
-                                                                   (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)) &&
-                                                                   (statIf->condition && !statIf->condition->location.containsClosed(position)))
+    else if (
+        AstStatIf* statIf = extractStat<AstStatIf>(ancestry); statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)) &&
+                                                              (statIf->condition && !statIf->condition->location.containsClosed(position))
+    )
     {
         AutocompleteEntryMap ret;
         ret["then"] = {AutocompleteEntryKind::Keyword};
@@ -2077,8 +2101,10 @@ AutocompleteResult autocomplete_(
         return autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position);
     else if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat)
         return {autocompleteStatement(*module, ancestry, scopeAtPosition, position), ancestry, AutocompleteContext::Statement};
-    else if (AstExprTable* exprTable = parent->as<AstExprTable>();
-             exprTable && (node->is<AstExprGlobal>() || node->is<AstExprConstantString>() || node->is<AstExprInterpString>()))
+    else if (
+        AstExprTable* exprTable = parent->as<AstExprTable>();
+        exprTable && (node->is<AstExprGlobal>() || node->is<AstExprConstantString>() || node->is<AstExprInterpString>())
+    )
     {
         for (const auto& [kind, key, value] : exprTable->items)
         {
