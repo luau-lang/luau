@@ -9,6 +9,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterUnionHandling)
 
 namespace Luau
 {
@@ -257,11 +258,22 @@ void ExpectedTypeVisitor::applyExpectedType(TypeId expectedType, const AstExpr* 
             {
                 if (auto exprType = astTypes->find(expr))
                 {
-                    std::vector<TypeId> parts{begin(utv), end(utv)};
-                    if (auto tt = extractMatchingTableType(parts, *exprType, builtinTypes))
+                    if (FFlag::LuauBidirectionalInferenceBetterUnionHandling)
                     {
-                        applyExpectedType(*tt, expr);
-                        return;
+                        if (auto tt = extractMatchingTableType(utv, *exprType, builtinTypes))
+                        {
+                            applyExpectedType(*tt, expr);
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        std::vector<TypeId> parts{begin(utv), end(utv)};
+                        if (auto tt = extractMatchingTableType_DEPRECATED(parts, *exprType, builtinTypes))
+                        {
+                            applyExpectedType(*tt, expr);
+                            return;
+                        }
                     }
                 }
             }
