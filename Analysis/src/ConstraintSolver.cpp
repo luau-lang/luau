@@ -4,6 +4,7 @@
 #include "Luau/Anyification.h"
 #include "Luau/ApplyTypeFunction.h"
 #include "Luau/AstUtils.h"
+#include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/DcrLogger.h"
@@ -44,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
+LUAU_FASTFLAGVARIABLE(LuauRefineNilFromTableIndexerResultType)
 LUAU_FASTFLAGVARIABLE(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAGVARIABLE(LuauFollowInExplicitInstantiation)
 LUAU_FASTFLAGVARIABLE(LuauUseConstraintSetsToTrackFreeTypes)
@@ -3284,7 +3286,21 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
 
         if (iteratorTable->indexer)
         {
-            std::vector<TypeId> expectedVariables{iteratorTable->indexer->indexType, iteratorTable->indexer->indexResultType};
+            std::vector<TypeId> expectedVariables;
+            if (FFlag::LuauRefineNilFromTableIndexerResultType)
+            {
+                // Add an intersection ReduceConstraint for the indexer result type to denote it can't be nil
+                const TypeId intersectionWithNotNil = arena->addTypeFunction(builtinTypes->typeFunctions->intersectFunc, {iteratorTable->indexer->indexResultType, builtinTypes->notNilType});
+
+                pushConstraint(constraint->scope, constraint->location, ReduceConstraint{intersectionWithNotNil});
+
+                expectedVariables = {iteratorTable->indexer->indexType, intersectionWithNotNil};
+            }
+            else
+            {
+                expectedVariables = {iteratorTable->indexer->indexType, iteratorTable->indexer->indexResultType};
+            }
+
             while (c.variables.size() >= expectedVariables.size())
                 expectedVariables.push_back(builtinTypes->errorType);
 

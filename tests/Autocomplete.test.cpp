@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
 LUAU_FASTFLAG(LuauACOnMTTWriteOnlyPropNoCrash)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+LUAU_FASTFLAG(LuauAutocompleteStringSingletonIntersection)
 
 using namespace Luau;
 
@@ -5041,6 +5042,121 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_union_a
     auto ac = autocomplete('1');
     CHECK_EQ(ac.entryMap.count("\"Val1\""), 1);
     CHECK_EQ(ac.entryMap.count("\"Val2\""), 1);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_intersection_arg")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteStringSingletonIntersection, true};
+
+    check(R"(
+        local function foo(_: "Val1"&"Val1") end
+        foo(@1)
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("\"Val1\""), 1);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_intersection_variable")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteStringSingletonIntersection, true};
+
+    check(R"(
+        local _: "cat"&"cat" = "@1"
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("cat"));
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_intersection_multiple")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteStringSingletonIntersection, true};
+
+    check(R"(
+        local function C(_: "Example"&"Example") end
+        C("@1")
+        C(@2)
+        local x: "Example"&"Example" = "@3"
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("Example"));
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.count("\"Example\""));
+    CHECK_EQ(ac.context, AutocompleteContext::Expression);
+
+    ac = autocomplete('3');
+    CHECK(ac.entryMap.count("Example"));
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons_in_intersection")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauAutocompleteStringSingletonIntersection, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    check(R"(
+        local _: "foo"&"baz" = "@1"
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("foo"));
+    CHECK(ac.entryMap.count("baz"));
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_disjoint_intersection_arg")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauAutocompleteStringSingletonIntersection, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    check(R"(
+        local function f(_: "foo"&"baz") end
+        f("@1")
+        f(@2)
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("foo"));
+    CHECK(ac.entryMap.count("baz"));
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.count("\"foo\""));
+    CHECK(ac.entryMap.count("\"baz\""));
+    CHECK_EQ(ac.context, AutocompleteContext::Expression);
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_string_singleton_keyof_intersection")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauAutocompleteStringSingletonIntersection, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+    };
+
+    check(R"(
+        local foo = {
+            Element1 = "Value1",
+            Element2 = "Value2",
+        }
+        local function bar<T>(key: keyof<typeof(foo)>&T) end
+        bar("@1")
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("Element1") > 0);
+    CHECK(ac.entryMap.count("Element2") > 0);
+    CHECK_EQ(ac.context, AutocompleteContext::String);
 }
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_metatable_fill_writeonly_prop_no_crash")

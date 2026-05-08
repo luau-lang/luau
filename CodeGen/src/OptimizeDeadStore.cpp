@@ -10,7 +10,6 @@
 #include "lobject.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenGcoDse2)
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAGVARIABLE(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
@@ -953,10 +952,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         state.checkLiveIns(OP_B(inst));
         break;
     case IrCmd::CHECK_BUFFER_LEN:
-        if (FFlag::LuauCodegenBufferRangeMerge4)
-            state.checkLiveIns(OP_F(inst));
-        else
-            state.checkLiveIns(OP_D(inst));
+        state.checkLiveIns(OP_F(inst));
         break;
     case IrCmd::CHECK_USERDATA_TAG:
         state.checkLiveIns(OP_C(inst));

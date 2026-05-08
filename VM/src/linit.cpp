@@ -5,7 +5,6 @@
 
 #include <stdlib.h>
 
-LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 
 static const luaL_Reg lualibs[] = {
@@ -42,7 +41,7 @@ static const luaL_Reg lualibs_NOINTEGER[] = {
 void luaL_openlibs(lua_State* L)
 {
     const luaL_Reg* lib;
-    if (FFlag::LuauIntegerType && FFlag::LuauIntegerLibrary)
+    if (FFlag::LuauIntegerLibrary)
         lib = lualibs;
     else
         lib = lualibs_NOINTEGER;
