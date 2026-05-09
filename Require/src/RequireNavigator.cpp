@@ -13,7 +13,7 @@
 #include <optional>
 #include <utility>
 
-LUAU_FASTFLAGVARIABLE(LuauRequireAliasOverrideOrderFix)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauRequireAliasOverrideOrderFix, false)
 LUAU_FASTFLAGVARIABLE(LuauRequireResolveAliasNullCheck)
 
 namespace Luau::Require
@@ -75,7 +75,7 @@ Error Navigator::navigateImpl(std::string_view path)
             }
         );
 
-        if (FFlag::LuauRequireAliasOverrideOrderFix)
+        if (DFFlag::LuauRequireAliasOverrideOrderFix)
         {
             if (Error error = resetToRequirer())
                 return error;
@@ -93,7 +93,7 @@ Error Navigator::navigateImpl(std::string_view path)
             return std::nullopt;
         }
 
-        if (!FFlag::LuauRequireAliasOverrideOrderFix)
+        if (!DFFlag::LuauRequireAliasOverrideOrderFix)
         {
             if (Error error = resetToRequirer())
                 return error;
@@ -278,11 +278,11 @@ Error Navigator::navigateToAndPopulateConfig(const std::string& desiredAlias, Co
                     std::optional<std::string> aliasPath = navigationContext.getAlias(desiredAlias);
                     if (!aliasPath)
                         return "could not resolve alias \"" + desiredAlias + "\"";
-                    config.setAlias(desiredAlias, *aliasPath, /* configLocation = */ "unused");
+                    config.setAlias(desiredAlias, *aliasPath);
                 }
                 else
                 {
-                    config.setAlias(desiredAlias, *navigationContext.getAlias(desiredAlias), /* configLocation = */ "unused");
+                    config.setAlias(desiredAlias, *navigationContext.getAlias(desiredAlias));
                 }
                 break;
             }
@@ -293,7 +293,6 @@ Error Navigator::navigateToAndPopulateConfig(const std::string& desiredAlias, Co
 
             Luau::ConfigOptions opts;
             Luau::ConfigOptions::AliasOptions aliasOpts;
-            aliasOpts.configLocation = "unused";
             aliasOpts.overwriteAliases = false;
             opts.aliasOptions = std::move(aliasOpts);
 

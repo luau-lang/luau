@@ -9,7 +9,7 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauIntegerType)
-LUAU_FASTFLAGVARIABLE(LuauCompilePropagateTableProps)
+LUAU_FASTFLAGVARIABLE(LuauCompilePropagateTableProps2)
 
 namespace Luau
 {
@@ -41,7 +41,7 @@ static bool constantsEqual(const Constant& la, const Constant& ra)
         return ra.type == Constant::Type_String && la.stringLength == ra.stringLength && memcmp(la.valueString, ra.valueString, la.stringLength) == 0;
 
     case Constant::Type_Table:
-        if (FFlag::LuauCompilePropagateTableProps)
+        if (FFlag::LuauCompilePropagateTableProps2)
             return ra.type == Constant::Type_Table && la.valueTable == ra.valueTable;
         else
         {
@@ -460,7 +460,7 @@ struct TableMutationTracker : AstVisitor
         : constantTables(constantTables)
         , variables(variables)
     {
-        LUAU_ASSERT(FFlag::LuauCompilePropagateTableProps);
+        LUAU_ASSERT(FFlag::LuauCompilePropagateTableProps2);
     }
 
     bool isNonTableConstant(const AstExpr* node)
@@ -897,8 +897,8 @@ struct ConstantVisitor : AstVisitor
                 {
                     Constant ac = analyze(expr->args.data[i]);
 
-                    if (FFlag::LuauCompilePropagateTableProps ? ac.type == Constant::Type_Unknown || ac.type == Constant::Type_Table
-                                                              : ac.type == Constant::Type_Unknown)
+                    if (FFlag::LuauCompilePropagateTableProps2 ? ac.type == Constant::Type_Unknown || ac.type == Constant::Type_Table
+                                                               : ac.type == Constant::Type_Unknown)
                         canFold = false;
                     else
                         builtinArgs.push_back(ac);
@@ -921,7 +921,7 @@ struct ConstantVisitor : AstVisitor
         else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
         {
             Constant value = analyze(expr->expr);
-            if (FFlag::LuauCompilePropagateTableProps && value.type == Constant::Type_Table)
+            if (FFlag::LuauCompilePropagateTableProps2 && value.type == Constant::Type_Table)
             {
                 LUAU_ASSERT(value.valueTable < constantTables.size());
                 if (value.valueTable < constantTables.size())
@@ -970,10 +970,10 @@ struct ConstantVisitor : AstVisitor
             Constant indexVal = analyze(expr->index);
             Constant tableVal = analyze(expr->expr);
 
-            if (FFlag::LuauCompilePropagateTableProps && tableVal.type == Constant::Type_Table && indexVal.type == Constant::Type_String)
+            if (FFlag::LuauCompilePropagateTableProps2 && tableVal.type == Constant::Type_Table && indexVal.type == Constant::Type_String)
             {
                 LUAU_ASSERT(tableVal.valueTable < constantTables.size());
-                if (tableVal.valueTable < constantTables.size())
+                if (tableVal.valueTable < constantTables.size() && indexVal.stringLength != 0)
                 {
                     const DenseHashMap<AstName, Constant>& props = constantTables[tableVal.valueTable];
                     AstName indexName = stringTable.getOrAdd(indexVal.valueString, indexVal.stringLength);
@@ -989,7 +989,7 @@ struct ConstantVisitor : AstVisitor
         }
         else if (AstExprTable* expr = node->as<AstExprTable>())
         {
-            if (FFlag::LuauCompilePropagateTableProps)
+            if (FFlag::LuauCompilePropagateTableProps2)
             {
                 // If expr is a constant table, update result to be a table constant, and insert it into constantTables
                 DenseHashMap<AstName, Constant> props{AstName()};
@@ -1003,9 +1003,10 @@ struct ConstantVisitor : AstVisitor
                     {
                         Constant keyVal = analyze(item.key);
 
-                        if (keyVal.type == Constant::Type_String && valueVal.type != Constant::Type_Unknown && valueVal.type != Constant::Type_Table)
+                        if (keyVal.type == Constant::Type_String && valueVal.type != Constant::Type_Unknown &&
+                            valueVal.type != Constant::Type_Table && keyVal.stringLength != 0)
                         {
-                            AstName constKey = AstName(keyVal.valueString);
+                            AstName constKey = stringTable.getOrAdd(keyVal.valueString, keyVal.stringLength);
 
                             props[std::move(constKey)] = std::move(valueVal);
                         }
@@ -1093,7 +1094,7 @@ struct ConstantVisitor : AstVisitor
     {
         if (value.type != Constant::Type_Unknown)
             map[key] = value;
-        else if (wasEmpty && !FFlag::LuauCompilePropagateTableProps)
+        else if (wasEmpty && !FFlag::LuauCompilePropagateTableProps2)
             ;
         else if (Constant* old = map.find(key))
             old->type = Constant::Type_Unknown;
@@ -1107,8 +1108,8 @@ struct ConstantVisitor : AstVisitor
 
         if (!v->written)
         {
-            v->constant = FFlag::LuauCompilePropagateTableProps ? value.type != Constant::Type_Unknown && value.type != Constant::Type_Table
-                                                                : value.type != Constant::Type_Unknown;
+            v->constant = FFlag::LuauCompilePropagateTableProps2 ? value.type != Constant::Type_Unknown && value.type != Constant::Type_Table
+                                                                 : value.type != Constant::Type_Unknown;
             recordConstant(locals, local, value);
         }
     }
@@ -1130,7 +1131,7 @@ struct ConstantVisitor : AstVisitor
             AstExpr* rhs = node->values.data[i];
             Constant arg = analyze(rhs);
 
-            if (FFlag::LuauCompilePropagateTableProps && arg.type == Constant::Type_Table)
+            if (FFlag::LuauCompilePropagateTableProps2 && arg.type == Constant::Type_Table)
             {
                 AstLocal* local = node->vars.data[i];
 
@@ -1186,7 +1187,7 @@ void foldConstants(
 {
     DenseHashMap<AstLocal*, TableConstantKind> constantTables{nullptr};
 
-    if (FFlag::LuauCompilePropagateTableProps)
+    if (FFlag::LuauCompilePropagateTableProps2)
     {
         TableMutationTracker mutationTracker{constantTables, variables};
         root->visit(&mutationTracker);
@@ -1195,7 +1196,7 @@ void foldConstants(
     ConstantVisitor visitor{constants, variables, locals, builtins, foldLibraryK, libraryMemberConstantCb, stringTable, constantTables};
     root->visit(&visitor);
 
-    if (FFlag::LuauCompilePropagateTableProps)
+    if (FFlag::LuauCompilePropagateTableProps2)
     {
         // Set any table constants to have constant type unknown, since we don't support emitting them as constants
         for (auto& [_, constant] : constants)
