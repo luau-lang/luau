@@ -30,7 +30,7 @@ LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauCompileTypeAliases)
-LUAU_FASTFLAG(LuauCompilePropagateTableProps)
+LUAU_FASTFLAG(LuauCompilePropagateTableProps2)
 
 using namespace Luau;
 
@@ -1516,7 +1516,8 @@ TEST_CASE("InterpStringZeroCost")
     ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
 
     CHECK_EQ(
-        "\n" + compileFunction0(R"(local _ = `hello, {42}!`)"), R"(
+        "\n" + compileFunction0(R"(local _ = `hello, {42}!`)"),
+        R"(
 LOADK R0 K0 ['hello, %*!']
 LOADN R2 42
 NAMECALL R0 R0 K1 ['format']
@@ -1562,6 +1563,8 @@ TEST_CASE("InterpStringRegisterLimit")
 
 TEST_CASE("InterpStringConstFold")
 {
+    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
+
     CHECK_EQ(
         "\n" + compileFunction0(R"(local empty = ""; return `{empty}`)"),
         R"(
@@ -1577,8 +1580,6 @@ LOADK R0 K0 ['hello, world!']
 RETURN R0 1
 )"
     );
-
-    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(local not_string = 42; local world = "world"; return `hello, {world} {not_string}!`)"),
@@ -5076,7 +5077,7 @@ TEST_CASE("TableConstantStringIndex")
 {
     ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
 
-    ScopedFastFlag sff{FFlag::LuauCompilePropagateTableProps, true};
+    ScopedFastFlag sff{FFlag::LuauCompilePropagateTableProps2, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -10473,6 +10474,8 @@ L1: RETURN R0 0
 
 TEST_CASE("ConstStringFolding")
 {
+    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
+
     CHECK_EQ(
         "\n" + compileFunction(R"(return "" .. "")", 0, 2),
         R"(
@@ -10544,8 +10547,6 @@ CONCAT R1 R2 R11
 RETURN R1 1
 )"
     );
-
-    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -10800,7 +10801,7 @@ RETURN R1 1
 
 TEST_CASE("FoldConstTableProps")
 {
-    ScopedFastFlag sff{FFlag::LuauCompilePropagateTableProps, true};
+    ScopedFastFlag sff{FFlag::LuauCompilePropagateTableProps2, true};
     ScopedFastFlag sff1{FFlag::LuauCompileDuptableConstantPack2, true};
 
     CHECK_EQ(
@@ -10998,6 +10999,55 @@ LOADN R3 1
 CALL R2 1 0
 LOADN R2 1
 RETURN R2 1
+)"
+    );
+
+    // Empty key name is used
+    CHECK_EQ(
+        "\n" + compileFunction0(
+                   R"(
+local t = {[""] = 1}
+return t[""]
+)"
+               ),
+        R"(
+NEWTABLE R0 1 0
+LOADN R1 1
+SETTABLEKS R1 R0 K0 ['']
+GETTABLEKS R1 R0 K0 ['']
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local t = {a = 1, ["a"] = 2}
+return t.a
+)"),
+        R"(
+NEWTABLE R0 2 0
+LOADN R1 1
+SETTABLEKS R1 R0 K0 ['a']
+LOADN R1 2
+SETTABLEKS R1 R0 K0 ['a']
+GETTABLEKS R1 R0 K0 ['a']
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local t = {["a"] = 5, ["a\0"] = 2}
+return t.a - t["a\0"]
+)"),
+        R"(
+NEWTABLE R0 2 0
+LOADN R1 5
+SETTABLEKS R1 R0 K0 ['a']
+LOADN R1 2
+SETTABLEKS R1 R0 K1 ['a\x00']
+LOADN R1 3
+RETURN R1 1
 )"
     );
 }

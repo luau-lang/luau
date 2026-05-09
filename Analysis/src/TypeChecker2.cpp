@@ -42,6 +42,7 @@ LUAU_FASTFLAGVARIABLE(LuauComparisonToNilsIsAlwaysOk2)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
+LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
 
 namespace Luau
 {
@@ -3205,10 +3206,18 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     {
         if (auto utv = get<UnionType>(expectedType))
         {
-            std::vector<TypeId> parts{begin(utv), end(utv)};
-            std::optional<TypeId> tt = extractMatchingTableType(parts, exprType, builtinTypes);
-            if (tt)
-                return testPotentialLiteralIsSubtype(expr, *tt);
+            if (FFlag::LuauBidirectionalInferenceBetterUnionHandling)
+            {
+                if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes))
+                    return testLiteralOrAstTypeIsSubtype(expr, *tt);
+            }
+            else
+            {
+                std::vector<TypeId> parts{begin(utv), end(utv)};
+                std::optional<TypeId> tt = extractMatchingTableType_DEPRECATED(parts, exprType, builtinTypes);
+                if (tt)
+                    return testPotentialLiteralIsSubtype(expr, *tt);
+            }
         }
 
         if (auto itv = get<IntersectionType>(expectedType))

@@ -9,7 +9,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerArg3Fix)
 LUAU_FASTFLAG(LuauCodegenInteger2)
@@ -906,10 +905,7 @@ static void translateBufferArgsAndCheckBounds(
     IrOp numIndex = builtinLoadDouble(build, args);
     intIndex = build.inst(IrCmd::NUM_TO_INT, numIndex);
 
-    if (FFlag::LuauCodegenBufferRangeMerge4)
-        build.inst(IrCmd::CHECK_BUFFER_LEN, buf, intIndex, build.constInt(0), build.constInt(size), build.undef(), build.vmExit(pcpos));
-    else
-        build.inst(IrCmd::CHECK_BUFFER_LEN, buf, intIndex, build.constInt(size), build.vmExit(pcpos));
+    build.inst(IrCmd::CHECK_BUFFER_LEN, buf, intIndex, build.constInt(0), build.constInt(size), build.undef(), build.vmExit(pcpos));
 }
 
 static BuiltinImplResult translateBuiltinBufferRead(
