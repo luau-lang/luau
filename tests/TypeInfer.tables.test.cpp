@@ -32,6 +32,7 @@ LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauSubtypingTablesHasBetterErrorSuppression)
+LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -6841,6 +6842,155 @@ TEST_CASE_FIXTURE(Fixture, "table_read_any_counts_as_read_nil")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "tables_routing_bidirectional_inference")
+{
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        export type ReceivedRequest = {
+            method: string,
+            path: string,
+            body: string,
+            query: { [string]: string },
+            headers: { [string]: string },
+            params: { [string]: string },
+        }
+
+        export type ServerResponse = string | {
+            status: number?,
+            body: string?,
+            headers: { [string]: string }?,
+        }
+
+        export type RouteHandler = Handler | ServerResponse
+
+        export type MethodRoutes = {
+            GET: RouteHandler?,
+            POST: RouteHandler?,
+            PUT: RouteHandler?,
+            DELETE: RouteHandler?,
+            PATCH: RouteHandler?,
+            HEAD: RouteHandler?,
+            OPTIONS: RouteHandler?,
+        }
+
+        export type RouteEntry = RouteHandler | MethodRoutes
+
+        export type Routes = { [string]: RouteEntry }
+
+        export type Server = {
+            hostname: string,
+            port: number,
+            close: () -> (),
+            upgrade: (self: Server, req: ReceivedRequest) -> boolean,
+        }
+
+        export type Handler = (request: ReceivedRequest, server: Server) -> ServerResponse?
+
+        local routes: Routes? = {
+            ["/health"] = "ok",
+            ["/json"] = {
+                status = 200,
+                headers = { ["Content-Type"] = "application/json" },
+                body = '{"ok":true}',
+            },
+            ["/hello"] = function(req)
+                local _ = req
+                return { status = 200, body = "hello" }
+            end,
+        }
+
+    )"));
+
+    // This check ensures bidirectional inference is kicking in for the
+    // function at the "/hello" route.
+    CHECK_EQ("ReceivedRequest", toString(requireTypeAtPosition({49, 28})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_union_non_singleton_discrimination")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type NumericRecord = { value: number, label: string }
+        type StringRecord = { value: string, flag: boolean }
+        type Record = NumericRecord | StringRecord
+
+        local r1: Record = { value = 42, label = "hello" }
+        local r2: Record = { value = "hmmm", flag = true }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_union_mixed_table_and_non_table")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Response = string | { status: number, body: string }
+
+        local r: Response = { status = 200, body = "ok" }
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_union_via_type_function")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type function Optional(t)
+            return types.unionof(t, types.singleton(nil))
+        end
+
+        type Config = {
+            host: string,
+            port: number,
+            verbose: boolean?,
+        }
+
+        local cfg: Optional<Config> = {
+            host = "localhost",
+            port = 8080,
+            verbose = true,
+        }
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_union_function_vs_primitive_property_discrimination")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type FnRecord = { handler: (number) -> string, label: string? }
+        type StrRecord = { handler: string, label: string? }
+        type Record = FnRecord | StrRecord
+
+        local r: Record = {
+            handler = function(input)
+                return tostring(input)
+            end,
+            label = "test"
+        }
+    )"));
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({7, 34})));
 }
 
 TEST_SUITE_END();

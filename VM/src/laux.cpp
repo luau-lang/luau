@@ -12,7 +12,6 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauStacklessPcall)
-LUAU_FASTFLAG(LuauIntegerType)
 
 // convert a stack index to positive
 #define abs_index(L, i) ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
@@ -573,15 +572,13 @@ void luaL_addvalueany(luaL_Strbuf* B, int idx)
         break;
     }
     case LUA_TINTEGER:
-        if (FFlag::LuauIntegerType)
-        {
-            int64_t n = lua_tointeger64(L, idx, nullptr);
-            char s[LUAI_MAXINT2STR];
-            char* e = luai_int2str(s, n);
-            luaL_addlstring(B, s, e - s);
-            break;
-        }
-        [[fallthrough]];
+    {
+        int64_t n = lua_tointeger64(L, idx, nullptr);
+        char s[LUAI_MAXINT2STR];
+        char* e = luai_int2str(s, n);
+        luaL_addlstring(B, s, e - s);
+        break;
+    }
     default:
     {
         size_t len;
@@ -674,15 +671,13 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
         lua_pushvalue(L, idx);
         break;
     case LUA_TINTEGER:
-        if (FFlag::LuauIntegerType)
-        {
-            int64_t l = lua_tointeger64(L, idx, nullptr);
-            char s[LUAI_MAXINT2STR];
-            char* e = luai_int2str(s, l);
-            lua_pushlstring(L, s, e - s);
-            break;
-        }
-        [[fallthrough]];
+    {
+        int64_t l = lua_tointeger64(L, idx, nullptr);
+        char s[LUAI_MAXINT2STR];
+        char* e = luai_int2str(s, l);
+        lua_pushlstring(L, s, e - s);
+        break;
+    }
     default:
     {
         const void* ptr = lua_topointer(L, idx);

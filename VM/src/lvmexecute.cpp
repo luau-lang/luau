@@ -18,8 +18,6 @@
 
 LUAU_FASTFLAGVARIABLE(LuauDirectFieldGet)
 
-LUAU_FASTFLAG(LuauIntegerType)
-
 // Disable c99-designator to avoid the warning in computed goto dispatch table
 #ifdef __clang__
 #if __has_warning("-Wc99-designator")
@@ -1235,13 +1233,9 @@ reentry:
                         break;
 
                     case LUA_TINTEGER:
-                        if (FFlag::LuauIntegerType)
-                        {
-                            pc += lvalue(ra) == lvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                            LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
-                            VM_NEXT();
-                        }
-                        [[fallthrough]];
+                        pc += lvalue(ra) == lvalue(rb) ? LUAU_INSN_D(insn) : 1;
+                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        VM_NEXT();
 
                     default:
                         LUAU_ASSERT(!"Unknown value type");
@@ -1359,13 +1353,9 @@ reentry:
                         break;
 
                     case LUA_TINTEGER:
-                        if (FFlag::LuauIntegerType)
-                        {
-                            pc += lvalue(ra) != lvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                            LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
-                            VM_NEXT();
-                        }
-                        [[fallthrough]];
+                        pc += lvalue(ra) != lvalue(rb) ? LUAU_INSN_D(insn) : 1;
+                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        VM_NEXT();
 
                     default:
                         LUAU_ASSERT(!"Unknown value type");

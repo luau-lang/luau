@@ -30,6 +30,8 @@ LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAG(LuauForwardPolarityForFunctionTypes)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes2)
+LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4178,5 +4180,131 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_generics_keyof")
     CHECK_EQ("{ Input: { Stuff: { a: number } }, Test: (\"a\") -> () }", toString(requireType("thing")));
     CHECK_EQ("{ Input: { Stuff: { b: number, c: number } }, Test: (\"b\" | \"c\") -> () }", toString(requireType("otherthing")));
 }
+
+TEST_CASE_FIXTURE(Fixture, "bidi_inference_functions_complete_ex")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+        {FFlag::LuauExplicitTypeInstantiationSupport, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type Player = {}
+
+        export type RemoteEventWrapper<T...> = {
+            connect:( self: RemoteEventWrapper<T...>, callback: ((T...) -> ()) | ((player: Player, T...) -> ()) ) -> () -> (),
+        }
+
+        local function useRemoteEvent<T...>(remoteEventName: string, isUnreliable: boolean?): RemoteEventWrapper<T...>
+            return nil :: any
+        end
+
+        type Payload = {
+            name: string,
+            time: number,
+            data: { [string]: any },
+        }
+
+        local payload = useRemoteEvent<<(Payload)>>("initial-payload")
+
+        -- We expect bidirectional inference to kick in here and ensure that
+        -- player and payload have non-unknown types.
+        payload:connect(function(player, payload)
+            local _ = player
+            local _ = payload
+        end)
+
+        return useRemoteEvent
+    )"));
+
+    CHECK_EQ("Player", toString(requireTypeAtPosition({23, 23})));
+    CHECK_EQ("Payload", toString(requireTypeAtPosition({24, 23})));
+}
+
+// FIXME: CLI-201899: These examples could be more concise.
+
+TEST_CASE_FIXTURE(Fixture, "bidi_inference_union_of_functions_1")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(_: ((string) -> ()) | ((number, number) -> ()))
+        end
+
+        f(function (one, two)
+            local _ = one
+            local _ = two
+        end)
+    )"));
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({5, 23})));
+    CHECK_EQ("number", toString(requireTypeAtPosition({6, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidi_inference_union_of_functions_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(_: ((string) -> ()) | ((number, number) -> ()))
+        end
+
+        f(function (one)
+            local _ = one
+        end)
+    )"));
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidi_inference_union_of_functions_3")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    // Weird edge case: pick the "first" option.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(_: ((string) -> ()) | ((number) -> ()))
+        end
+
+        f(function (one)
+            local _ = one
+        end)
+    )"));
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 23})));
+}
+
+
+TEST_CASE_FIXTURE(Fixture, "bidi_inference_union_of_functions_4")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    // Works with `nil`.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(_: ((string) -> ())?)
+        end
+
+        f(function (one)
+            local _ = one
+        end)
+    )"));
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 23})));
+}
+
 
 TEST_SUITE_END();
