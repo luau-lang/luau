@@ -281,6 +281,13 @@ static int loadsafe(
     int env
 )
 {
+#define LUAU_LOAD_MALFORMED(message) \
+    do \
+    { \
+        lua_pushfstring(L, "%s: malformed bytecode (%s)", chunkname, message); \
+        return 1; \
+    } while (0)
+
     size_t offset = 0;
 
     uint8_t version = read<uint8_t>(data, size, offset);
@@ -516,6 +523,8 @@ static int loadsafe(
                 for (int i = 0; i < keys; ++i)
                 {
                     int key = readVarInt(data, size, offset);
+                    if (unsigned(key) >= unsigned(sizek))
+                        LUAU_LOAD_MALFORMED("table constant key index out of bounds");
                     TValue* val = luaH_set(L, h, &p->k[key]);
                     setnvalue(val, 0.0);
                 }
@@ -535,10 +544,14 @@ static int loadsafe(
                 for (uint32_t i = 0; i < keys; ++i)
                 {
                     int32_t key = readVarInt(data, size, offset);
+                    if (unsigned(key) >= unsigned(sizek))
+                        LUAU_LOAD_MALFORMED("table constant key index out of bounds");
                     TValue* val = luaH_set(L, h, &p->k[key]);
                     int32_t constantIdx = read<int32_t>(data, size, offset);
                     if (constantIdx >= 0)
                     {
+                        if (unsigned(constantIdx) >= unsigned(sizek))
+                            LUAU_LOAD_MALFORMED("table constant value index out of bounds");
                         TValue* constant = &p->k[constantIdx];
                         if (ttisnil(constant))
                         {
@@ -568,6 +581,8 @@ static int loadsafe(
             case LBC_CONSTANT_CLOSURE:
             {
                 uint32_t fid = readVarInt(data, size, offset);
+                if (fid >= protoCount)
+                    LUAU_LOAD_MALFORMED("closure proto index out of bounds");
                 Closure* cl = luaF_newLclosure(L, protos[fid]->nups, envt, protos[fid]);
                 cl->preload = (cl->nupvalues > 0);
                 setclvalue(L, &p->k[j], cl);
@@ -636,6 +651,8 @@ static int loadsafe(
         for (int j = 0; j < p->sizep; ++j)
         {
             uint32_t fid = readVarInt(data, size, offset);
+            if (fid >= protoCount)
+                LUAU_LOAD_MALFORMED("child proto index out of bounds");
             p->p[j] = protos[fid];
         }
 
@@ -689,7 +706,8 @@ static int loadsafe(
             }
 
             const int sizeupvalues = readVarInt(data, size, offset);
-            LUAU_ASSERT(sizeupvalues == p->nups);
+            if (sizeupvalues != p->nups)
+                LUAU_LOAD_MALFORMED("upvalue debug info count mismatch");
 
             p->upvalues = luaM_newarray(L, sizeupvalues, TString*, p->memcat);
             p->sizeupvalues = sizeupvalues;
@@ -705,6 +723,8 @@ static int loadsafe(
 
     // "main" proto is pushed to Lua stack
     uint32_t mainid = readVarInt(data, size, offset);
+    if (mainid >= protoCount)
+        LUAU_LOAD_MALFORMED("main proto index out of bounds");
     Proto* main = protos[mainid];
 
     luaC_threadbarrier(L);
@@ -712,6 +732,8 @@ static int loadsafe(
     Closure* cl = luaF_newLclosure(L, 0, envt, main);
     setclvalue(L, L->top, cl);
     incr_top(L);
+
+#undef LUAU_LOAD_MALFORMED
 
     return 0;
 }
