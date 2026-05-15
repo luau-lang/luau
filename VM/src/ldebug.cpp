@@ -295,6 +295,14 @@ l_noret luaG_indexerror(lua_State* L, const TValue* p1, const TValue* p2)
         luaG_runerror(L, "attempt to index %s with %s", t1, t2);
 }
 
+l_noret luaG_missingmembererror(lua_State* L, const TValue* p1, const TValue* p2)
+{
+    if (!ttisstring(p2))
+        luaG_runerrorL(L, "cannot index %s with a %s", luaT_objtypename(L, p1), luaT_objtypename(L, p2));
+    else
+        luaG_runerrorL(L, "this %s does not have a key named '%s'", luaT_objtypename(L, p1), getstr(tsvalue(p2)));
+}
+
 l_noret luaG_methoderror(lua_State* L, const TValue* p1, const TString* p2)
 {
     const char* t1 = luaT_objtypename(L, p1);

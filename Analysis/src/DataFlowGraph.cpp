@@ -8,7 +8,6 @@
 #include "Luau/Error.h"
 #include "Luau/TimeTrace.h"
 
-#include <memory>
 #include <optional>
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
@@ -16,6 +15,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAGVARIABLE(LuauVisitCallTypeArgsInDfg)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
@@ -434,6 +434,11 @@ ControlFlow DataFlowGraphBuilder::visit(AstStat* s)
         return visit(d);
     else if (auto d = s->as<AstStatDeclareExternType>())
         return visit(d);
+    else if (auto d = s->as<AstStatClass>())
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+        return visit(d);
+    }
     else if (auto error = s->as<AstStatError>())
         return visit(error);
     else
@@ -851,6 +856,37 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatDeclareExternType* d)
 
     for (AstDeclaredExternTypeProperty prop : d->props)
         visitType(prop.ty);
+
+    return ControlFlow::None;
+}
+
+ControlFlow DataFlowGraphBuilder::visit(AstStatClass* d)
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    DefId def = defArena->freshCell(d->name, d->name->location);
+
+    graph.localDefs[d->name] = def;
+    currentScope()->bindings[d->name] = def;
+    captures[d->name].allVersions.push_back(def);
+
+    for (const auto& member : d->members)
+    {
+        Luau::visit(
+            overloaded{
+                [&](const AstClassProperty& prop)
+                {
+                    if (prop.ty)
+                        visitType(prop.ty);
+                },
+                [&](const AstClassMethod& method)
+                {
+                    visitExpr(method.function);
+                }
+            },
+            member
+        );
+    }
+
 
     return ControlFlow::None;
 }

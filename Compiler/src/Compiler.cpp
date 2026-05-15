@@ -1,9 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Compiler.h"
 
-#include "Luau/Parser.h"
+#include "Luau/Ast.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Common.h"
+#include "Luau/Parser.h"
 #include "Luau/InsertionOrderedMap.h"
 #include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
@@ -34,6 +35,9 @@ LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAGVARIABLE(LuauCompileNoOptNext)
 LUAU_FASTFLAG(DebugLuauNoInline)
+LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauCompilePropagateTableProps2)
+LUAU_FASTFLAG(LuauCompileFoldOptimize)
 
 namespace Luau
 {
@@ -140,6 +144,12 @@ struct Compiler
         upvals.reserve(16);
     }
 
+    void checkConstant(int32_t constant, const Location& location)
+    {
+        if (constant < 0)
+            CompileError::raise(location, "Exceeded constant limit; simplify the code to compile");
+    }
+
     int getLocalReg(AstLocal* local)
     {
         Local* l = locals.find(local);
@@ -241,6 +251,7 @@ struct Compiler
         AstStatBlock* stat = func->body;
 
         bool terminatesEarly = false;
+        currentFunction = func;
 
         for (size_t i = 0; i < stat->body.size; ++i)
         {
@@ -313,6 +324,10 @@ struct Compiler
         if (func->hasNativeAttribute())
             protoflags |= LPF_NATIVE_FUNCTION;
 
+        bool isInlinable = !func->vararg && !getfenvUsed && !setfenvUsed;
+        if (FFlag::LuauEmitCallFeedback && isInlinable && upvals.empty())
+            protoflags |= LPF_INLINABLE;
+
         bytecode.endFunction(uint8_t(stackSize), uint8_t(upvals.size()), protoflags);
 
         Function& f = functions[func];
@@ -348,6 +363,7 @@ struct Compiler
         argCount = 0;
 
         hasLoops = false;
+        currentFunction = nullptr;
 
         return fid;
     }
@@ -701,8 +717,26 @@ struct Compiler
                 locstants[var] = *cv;
         }
 
-        // fold constant values updated above into expressions in the function body
-        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
+        // fold constant values updated above into expressions in the function body, recording changes for undo
+        if (FFlag::LuauCompilePropagateTableProps2 && FFlag::LuauCompileFoldOptimize)
+        {
+            exprChanges.clear();
+            localChanges.clear();
+        }
+
+        foldConstants(
+            constants,
+            variables,
+            locstants,
+            builtinsFold,
+            builtinsFoldLibraryK,
+            options.libraryMemberConstantCb,
+            func->body,
+            names,
+            tableConstants,
+            &exprChanges,
+            &localChanges
+        );
 
         // model the cost of the function evaluated with current constants
         uint64_t cost = modelCost(func->body, func->args.data, func->args.size, builtins, constants);
@@ -714,7 +748,25 @@ struct Compiler
                 var->type = Constant::Type_Unknown;
         }
 
-        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
+        if (FFlag::LuauCompilePropagateTableProps2 && FFlag::LuauCompileFoldOptimize)
+        {
+            Compile::undoChanges(constants, exprChanges);
+            Compile::undoChanges(locstants, localChanges);
+        }
+        else
+        {
+            foldConstants(
+                constants,
+                variables,
+                locstants,
+                builtinsFold,
+                builtinsFoldLibraryK,
+                options.libraryMemberConstantCb,
+                func->body,
+                names,
+                tableConstants
+            );
+        }
 
         return cost;
     }
@@ -847,8 +899,26 @@ struct Compiler
             inlineBuiltins.clear();
         }
 
-        // fold constant values updated above into expressions in the function body
-        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
+        // fold constant values updated above into expressions in the function body, recording changes for undo
+        if (FFlag::LuauCompilePropagateTableProps2 && FFlag::LuauCompileFoldOptimize)
+        {
+            exprChanges.clear();
+            localChanges.clear();
+        }
+
+        foldConstants(
+            constants,
+            variables,
+            locstants,
+            builtinsFold,
+            builtinsFoldLibraryK,
+            options.libraryMemberConstantCb,
+            func->body,
+            names,
+            tableConstants,
+            &exprChanges,
+            &localChanges
+        );
 
         bool terminatesEarly = false;
 
@@ -908,7 +978,25 @@ struct Compiler
             inlineBuiltinsBackup.clear();
         }
 
-        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, func->body, names);
+        if (FFlag::LuauCompilePropagateTableProps2 && FFlag::LuauCompileFoldOptimize)
+        {
+            Compile::undoChanges(constants, exprChanges);
+            Compile::undoChanges(locstants, localChanges);
+        }
+        else
+        {
+            foldConstants(
+                constants,
+                variables,
+                locstants,
+                builtinsFold,
+                builtinsFoldLibraryK,
+                options.libraryMemberConstantCb,
+                func->body,
+                names,
+                tableConstants
+            );
+        }
     }
 
     void compileExprCall(AstExprCall* expr, uint8_t target, uint8_t targetCount, bool targetTop = false, bool multRet = false)
@@ -1108,7 +1196,19 @@ struct Compiler
                 CompileError::raise(expr->func->location, "Exceeded jump distance limit; simplify the code to compile");
         }
 
-        bytecode.emitABC(LOP_CALL, regs, multCall ? 0 : uint8_t(expr->self + expr->args.size + 1), multRet ? 0 : uint8_t(targetCount + 1));
+        // Without deoptimization we cannot break VARARG sequences.
+        // So VARARG producer or consumer cannot be inlined, because it creates a diamond(with slow path).
+        bool canInline = currentFunction->functionDepth != 0 && !multCall && !multRet;
+        if (FFlag::LuauEmitCallFeedback && bfid < 0 && canInline)
+        {
+            uint32_t fbSlot = bytecode.addFbSlot(LuauFeedbackType::LFT_CALLTARGET);
+            bytecode.emitABC(LOP_CALLFB, regs, multCall ? 0 : uint8_t(expr->self + expr->args.size + 1), multRet ? 0 : uint8_t(targetCount + 1));
+            bytecode.emitAux(fbSlot);
+        }
+        else
+        {
+            bytecode.emitABC(LOP_CALL, regs, multCall ? 0 : uint8_t(expr->self + expr->args.size + 1), multRet ? 0 : uint8_t(targetCount + 1));
+        }
 
         // if we didn't output results directly to target, we need to move them
         if (!targetTop)
@@ -1228,6 +1328,87 @@ struct Compiler
         {
             bytecode.emitABC(LOP_CAPTURE, uint8_t(c.type), c.data, 0);
         }
+    }
+
+    void compileClassDeclaration(AstStatClass* decl)
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+        // We allocate one register to store the class object.
+        auto dest = allocReg(decl, 1u);
+
+        // CLI-194693: We probably need to add something here to prevent:
+        //
+        //  class Foobar
+        //      public foobar
+        //      function foobar() end
+        //  end
+        //
+        // ... properties and methods need to share a namespace.
+
+        pushLocal(decl->name, dest, kDefaultAllocPc);
+
+        RegScope _(this);
+
+        bytecode.emitAD(LOP_LOADKX, dest, 0);
+
+        // We want to load the class constant up front, but in order to load
+        // the class constant we need to build it first. To avoid a second
+        // pass, we start by emitting the LOADKX bytecode and a dummy
+        // constant (0xDEADBEEF), which we will patch later once we
+        // have added the class constant to the constant table.
+        size_t auxOffset = bytecode.emitLabel();
+        bytecode.emitAux(0xDEADBEEF);
+
+        BytecodeBuilder::ClassShape shape;
+        shape.className = bytecode.addConstantString(sref(decl->name->name));
+        checkConstant(shape.className, decl->name->location);
+
+        // We use this as temporary storage while we make all of the closures
+        // associated with this particular class. Another option would be to
+        // refactor class construction to be more like a function call and take
+        // N registers.
+        auto temp = allocReg(decl, 1u);
+
+        for (const auto& member : decl->members)
+        {
+
+            Luau::visit(
+                overloaded{
+                    [&](const AstClassProperty& prop)
+                    {
+                        // Properties we only need to store the name, for now.
+                        int propNameCid = bytecode.addConstantString(sref(prop.name));
+                        checkConstant(propNameCid, prop.nameLocation);
+                        shape.propertyNames.emplace_back(propNameCid);
+                    },
+                    [&](const AstClassMethod& method)
+                    {
+                        // For a method:
+                        //
+                        //  function foobar(a, b, c)
+                        //  end
+                        //
+                        // ... in a class declaration, we compile it as if it were
+                        // a free floating function, but instead of assigning it to
+                        // a local or a global, we use `NEWCLASSMEMBER` to add it to
+                        // our class definition.
+                        compileExprFunction(method.function, temp);
+                        int methodNameCid = bytecode.addConstantString(sref(method.functionName));
+                        checkConstant(methodNameCid, method.function->location);
+                        shape.methodNames.emplace_back(methodNameCid);
+                        bytecode.emitABC(LOP_NEWCLASSMEMBER, dest, 0, temp);
+                        bytecode.emitAux(methodNameCid);
+                    }
+                },
+                member
+            );
+        }
+
+        // Finally, we create the class constant and patch the AUX slot
+        // from before.
+        int32_t classConst = bytecode.addClassShape(std::move(shape));
+        checkConstant(classConst, decl->location);
+        bytecode.patchAux(auxOffset, classConst);
     }
 
     LuauOpcode getUnaryOp(AstExprUnary::Op op)
@@ -3368,13 +3549,38 @@ struct Compiler
 
         loops.push_back({oldLocals, oldLocals, nullptr});
 
+        // record changes on the first iteration to capture the pre-loop state
+        if (FFlag::LuauCompilePropagateTableProps2 && FFlag::LuauCompileFoldOptimize)
+        {
+            exprChanges.clear();
+            localChanges.clear();
+        }
+
         for (int iv = 0; iv < tripCount; ++iv)
         {
             // we need to re-fold constants in the loop body with the new value; this reuses computed constant values elsewhere in the tree
             locstants[var].type = Constant::Type_Number;
             locstants[var].valueNumber = from + iv * step;
 
-            foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, stat, names);
+            if (FFlag::LuauCompilePropagateTableProps2 && FFlag::LuauCompileFoldOptimize && iv == 0)
+                foldConstants(
+                    constants,
+                    variables,
+                    locstants,
+                    builtinsFold,
+                    builtinsFoldLibraryK,
+                    options.libraryMemberConstantCb,
+                    stat,
+                    names,
+                    tableConstants,
+                    &exprChanges,
+                    &localChanges
+                );
+            else
+                foldConstants(
+                    constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, stat, names, tableConstants
+                );
+
 
             size_t iterJumps = loopJumps.size();
 
@@ -3402,7 +3608,17 @@ struct Compiler
         // clean up fold state in case we need to recompile - normally we compile the loop body once, but due to inlining we may need to do it again
         locstants[var].type = Constant::Type_Unknown;
 
-        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, stat, names);
+        if (FFlag::LuauCompilePropagateTableProps2 && FFlag::LuauCompileFoldOptimize)
+        {
+            Compile::undoChanges(constants, exprChanges);
+            Compile::undoChanges(locstants, localChanges);
+        }
+        else
+        {
+            foldConstants(
+                constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, stat, names, tableConstants
+            );
+        }
     }
 
     void compileStatFor(AstStatFor* stat)
@@ -3992,6 +4208,10 @@ struct Compiler
         {
             // do nothing
         }
+        else if (FFlag::DebugLuauUserDefinedClasses && node->is<AstStatClass>())
+        {
+            compileClassDeclaration(node->as<AstStatClass>());
+        }
         else
         {
             LUAU_ASSERT(!"Unknown statement type");
@@ -4263,6 +4483,7 @@ struct Compiler
                 hasTypes |= arg->annotation != nullptr;
 
             // this makes sure all functions that are used when compiling this one have been already added to the vector
+            LUAU_ASSERT(functions.end() == std::find(functions.begin(), functions.end(), node));
             functions.push_back(node);
 
             if (!hasNativeFunction && node->hasNativeAttribute())
@@ -4477,6 +4698,7 @@ struct Compiler
     DenseHashMap<AstLocal*, Variable> variables;
     DenseHashMap<AstExpr*, Constant> constants;
     DenseHashMap<AstLocal*, Constant> locstants;
+    DenseHashMap<AstLocal*, TableConstantKind> tableConstants{nullptr};
     DenseHashMap<AstExprTable*, TableShape> tableShapes;
     DenseHashMap<AstExprCall*, int> builtins;
     DenseHashMap<AstName, uint8_t> userdataTypes;
@@ -4486,6 +4708,9 @@ struct Compiler
 
     DenseHashMap<AstExprCall*, int> inlineBuiltins{nullptr};
     DenseHashMap<AstExprCall*, int> inlineBuiltinsBackup{nullptr};
+
+    Compile::ExprConstantChangeLog exprChanges;
+    Compile::LocalConstantChangeLog localChanges;
 
     BuiltinAstTypes builtinTypes;
     AstNameTable& names;
@@ -4498,6 +4723,7 @@ struct Compiler
     unsigned int stackSize = 0;
     size_t argCount = 0;
     bool hasLoops = false;
+    AstExprFunction* currentFunction = nullptr;
 
     bool getfenvUsed = false;
     bool setfenvUsed = false;
@@ -4591,6 +4817,10 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, A
         // this pass tracks which calls are builtins and can be compiled more efficiently
         analyzeBuiltins(compiler.builtins, compiler.globals, compiler.variables, options, root, names);
 
+        // this pass determines which locals hold constant tables that are never mutated
+        if (FFlag::LuauCompilePropagateTableProps2 && FFlag::LuauCompileFoldOptimize)
+            buildTableConstantMap(compiler.tableConstants, compiler.variables, root);
+
         // this pass analyzes constantness of expressions
         foldConstants(
             compiler.constants,
@@ -4600,7 +4830,8 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, A
             compiler.builtinsFoldLibraryK,
             options.libraryMemberConstantCb,
             root,
-            names
+            names,
+            compiler.tableConstants
         );
 
         // this pass analyzes table assignments to estimate table shapes for initially empty tables

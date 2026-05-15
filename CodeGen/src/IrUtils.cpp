@@ -20,6 +20,7 @@
 
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenConsistentHasResult)
+LUAU_FASTFLAG(LuauCodegenVmExitSync)
 
 namespace Luau
 {
@@ -58,6 +59,8 @@ int getOpLength(LuauOpcode op)
     case LOP_GETUDATAKS:
     case LOP_SETUDATAKS:
     case LOP_NAMECALLUDATA:
+    case LOP_NEWCLASSMEMBER:
+    case LOP_CALLFB:
         return 2;
 
     default:
@@ -1757,6 +1760,17 @@ void killUnusedBlocks(IrFunction& function)
     }
 }
 
+static int getBlockKindPriority(IrBlockKind kind)
+{
+    if (kind == IrBlockKind::Fallback)
+        return 1;
+
+    if (kind == IrBlockKind::ExitSync)
+        return 2;
+
+    return 0;
+}
+
 std::vector<uint32_t> getSortedBlockOrder(IrFunction& function)
 {
     std::vector<uint32_t> sortedBlocks;
@@ -1772,9 +1786,18 @@ std::vector<uint32_t> getSortedBlockOrder(IrFunction& function)
             const IrBlock& a = function.blocks[idxA];
             const IrBlock& b = function.blocks[idxB];
 
-            // Place fallback blocks at the end
-            if ((a.kind == IrBlockKind::Fallback) != (b.kind == IrBlockKind::Fallback))
-                return (a.kind == IrBlockKind::Fallback) < (b.kind == IrBlockKind::Fallback);
+            if (FFlag::LuauCodegenVmExitSync)
+            {
+                // Place fallback blocks at the end followed by exit sync blocks
+                if (getBlockKindPriority(a.kind) != getBlockKindPriority(b.kind))
+                    return getBlockKindPriority(a.kind) < getBlockKindPriority(b.kind);
+            }
+            else
+            {
+                // Place fallback blocks at the end
+                if ((a.kind == IrBlockKind::Fallback) != (b.kind == IrBlockKind::Fallback))
+                    return (a.kind == IrBlockKind::Fallback) < (b.kind == IrBlockKind::Fallback);
+            }
 
             // Try to order by instruction order
             if (a.sortkey != b.sortkey)
