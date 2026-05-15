@@ -64,6 +64,12 @@ struct Checkpoint
     size_t offset = 0;
 };
 
+struct ClassDeclRecord
+{
+    AstStatClass* dataDecl = nullptr;
+    TypeId ty = nullptr;
+};
+
 struct ConstraintGenerator
 {
     // A list of all the scopes in the module. This vector holds ownership of the
@@ -136,6 +142,8 @@ struct ConstraintGenerator
     DenseHashMap<TypeId, TypeIds> localTypes{nullptr};
 
     DenseHashMap<AstExpr*, Inference> inferredExprCache{nullptr};
+
+    DenseHashMap<AstLocal*, ClassDeclRecord> classDeclRecords{nullptr};
 
     DcrLogger* logger;
 
@@ -268,6 +276,7 @@ private:
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
     LUAU_NOINLINE void checkAliases(const ScopePtr& scope, AstStatBlock* block);
+    void prototypeClassDecls(const ScopePtr& scope, AstStatBlock* block);
 
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
 
@@ -289,6 +298,7 @@ private:
     ControlFlow visit(const ScopePtr& scope, AstStatDeclareGlobal* declareGlobal);
     ControlFlow visit(const ScopePtr& scope, AstStatDeclareExternType* declareExternType);
     ControlFlow visit(const ScopePtr& scope, AstStatDeclareFunction* declareFunction);
+    ControlFlow visit(const ScopePtr& scope, AstStatClass* statClass);
     ControlFlow visit(const ScopePtr& scope, AstStatError* error);
 
     InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes = {});
@@ -377,6 +387,7 @@ private:
 
     FunctionSignature checkFunctionSignature(
         const ScopePtr& parent,
+        ClassDeclRecord* enclosingClass,
         AstExprFunction* fn,
         std::optional<TypeId> expectedType = {},
         std::optional<Location> originalName = {}

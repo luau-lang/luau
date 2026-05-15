@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
+#include "lclass.h"
 #include "lvm.h"
 
 #include "lstate.h"
@@ -16,6 +17,7 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauUdataDirectAccess4)
+LUAU_FASTFLAG(LuauCallFeedback)
 
 template<typename T>
 struct TempBuffer
@@ -371,6 +373,7 @@ static int loadsafe(
         Proto* p = luaF_newproto(L);
         p->source = source;
         p->bytecodeid = int(i);
+        p->funid = L->global->lastprotoid == 0 ? 0 : L->global->lastprotoid++;
 
         p->maxstacksize = read<uint8_t>(data, size, offset);
         p->numparams = read<uint8_t>(data, size, offset);
@@ -574,6 +577,34 @@ static int loadsafe(
                 break;
             }
 
+            case LBC_CONSTANT_CLASS_SHAPE:
+            {
+                uint32_t cnid = readVarInt(data, size, offset);
+                TValue* classname = &p->k[cnid];
+                LUAU_ASSERT(ttisstring(classname));
+                uint32_t numProperties = readVarInt(data, size, offset);
+                uint32_t numMethods = readVarInt(data, size, offset);
+                uint32_t numMembers = numMethods + numProperties;
+                TString** offsetToMember = luaM_newarray(L, numMembers, TString*, L->activememcat);
+                LuaTable* membersToOffset = luaH_new(L, 0, numMembers);
+
+                for (uint32_t idx = 0; idx < numMembers; idx++)
+                {
+                    uint32_t mid = readVarInt(data, size, offset);
+                    TValue* memberName = &p->k[mid];
+                    LUAU_ASSERT(ttisstring(memberName));
+                    offsetToMember[idx] = tsvalue(memberName);
+                    TValue* val = luaH_setstr(L, membersToOffset, tsvalue(memberName));
+                    setnvalue(val, idx);
+                }
+
+                membersToOffset->readonly = true;
+
+                LuaClassObject* lco = luaR_newclassobject(L, tsvalue(classname), membersToOffset, offsetToMember, numProperties, numMethods);
+                setcobjvalue(L, &p->k[j], lco);
+                break;
+            }
+
             case LBC_CONSTANT_INTEGER:
             {
                 bool isNegative = read<uint8_t>(data, size, offset);
@@ -697,6 +728,27 @@ static int loadsafe(
             for (int j = 0; j < p->sizeupvalues; ++j)
             {
                 p->upvalues[j] = readString(strings, data, size, offset);
+            }
+        }
+
+        if (version >= 11)
+        {
+            LUAU_ASSERT(FFlag::LuauCallFeedback);
+            p->feedbackvecsize = readVarInt(data, size, offset);
+
+            if (p->feedbackvecsize > 0)
+            {
+                p->feedbackvec = luaM_newarray(L, p->feedbackvecsize, FeedbackVectorSlot, p->memcat);
+            }
+            for (uint32_t j = 0; j < p->feedbackvecsize; j++)
+            {
+                uint8_t slottype = read<uint8_t>(data, size, offset);
+                LUAU_ASSERT(slottype == LFT_CALLTARGET);
+                FeedbackVectorSlot& slot = p->feedbackvec[j];
+                slot.kind = static_cast<FeedbackVectorSlotKind>(slottype);
+                slot.call_target.pc = readVarInt(data, size, offset);
+                slot.call_target.proto = 0;
+                slot.call_target.hits = 0;
             }
         }
 

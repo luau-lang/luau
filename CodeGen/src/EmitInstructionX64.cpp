@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCodeGenCallWrapperEmitInst)
 LUAU_FASTFLAG(LuauCodegenSuggestArgumentRegisterX64)
+LUAU_FASTFLAG(LuauClosureUsageCounter)
 
 namespace Luau
 {
@@ -232,7 +233,9 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, i
         build.mov(res, qword[res + offsetof(CallInfo, func)]);
     }
     else if (actualResults != 1)
+    {
         build.lea(res, addr[rBase - sizeof(TValue)]); // invariant: ci->func + 1 == ci->base for non-variadic frames
+    }
 
     if (actualResults == 0)
     {

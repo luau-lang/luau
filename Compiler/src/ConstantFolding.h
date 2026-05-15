@@ -5,6 +5,8 @@
 
 #include "ValueTracking.h"
 
+#include <vector>
+
 namespace Luau
 {
 namespace Compile
@@ -50,6 +52,35 @@ struct Constant
     }
 };
 
+enum TableConstantKind
+{
+    ConstantTable,
+    ConstantOther,
+    NotConstant
+};
+
+void buildTableConstantMap(DenseHashMap<AstLocal*, TableConstantKind>& result, const DenseHashMap<AstLocal*, Variable>& variables, AstNode* root);
+
+struct ExprConstantChange
+{
+    AstExpr* key = nullptr;
+    Constant oldValue;
+    bool wasAbsent = false;
+};
+
+struct LocalConstantChange
+{
+    AstLocal* key = nullptr;
+    Constant oldValue;
+    bool wasAbsent = false;
+};
+
+using ExprConstantChangeLog = std::vector<ExprConstantChange>;
+using LocalConstantChangeLog = std::vector<LocalConstantChange>;
+
+void undoChanges(DenseHashMap<AstExpr*, Constant>& constants, const ExprConstantChangeLog& changes);
+void undoChanges(DenseHashMap<AstLocal*, Constant>& locals, const LocalConstantChangeLog& changes);
+
 void foldConstants(
     DenseHashMap<AstExpr*, Constant>& constants,
     DenseHashMap<AstLocal*, Variable>& variables,
@@ -58,7 +89,10 @@ void foldConstants(
     bool foldLibraryK,
     LibraryMemberConstantCallback libraryMemberConstantCb,
     AstNode* root,
-    AstNameTable& stringTable
+    AstNameTable& stringTable,
+    const DenseHashMap<AstLocal*, TableConstantKind>& tableConstants,
+    ExprConstantChangeLog* exprChangeLog = nullptr,
+    LocalConstantChangeLog* localChangeLog = nullptr
 );
 
 } // namespace Compile

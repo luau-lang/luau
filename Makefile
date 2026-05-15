@@ -173,7 +173,7 @@ $(CODEGEN_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -ICodeGen/include -IVM
 $(VM_OBJECTS): CXXFLAGS+=-std=c++11 -ICommon/include -IVM/include
 $(REQUIRE_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IVM/include -IAst/include -IConfig/include -IRequire/include
 $(ISOCLINE_OBJECTS): CXXFLAGS+=-Wno-unused-function -Iextern/isocline/include
-$(TESTS_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IBytecode/include -ICompiler/include -IConfig/include -IAnalysis/include -ICodeGen/include -IVM/include -IRequire/include -ICLI/include -Iextern -DDOCTEST_CONFIG_DOUBLE_STRINGIFY -DLUAU_CONFORMANCE_SOURCE_DIR=$(LUAU_CONFORMANCE_SOURCE_DIR)
+$(TESTS_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IBytecode/include -ICompiler/include -IConfig/include -IAnalysis/include -ICodeGen/include -IVM/include -IVM/src -IRequire/include -ICLI/include -Iextern -DDOCTEST_CONFIG_DOUBLE_STRINGIFY -DLUAU_CONFORMANCE_SOURCE_DIR=$(LUAU_CONFORMANCE_SOURCE_DIR)
 $(REPL_CLI_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IBytecode/include -ICompiler/include -IVM/include -ICodeGen/include -IRequire/include -Iextern -Iextern/isocline/include -ICLI/include
 $(ANALYZE_CLI_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IAnalysis/include -IConfig/include -IRequire/include -IVM/include -Iextern -ICLI/include
 $(COMPILE_CLI_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IBytecode/include -ICompiler/include -IVM/include -ICodeGen/include -ICLI/include
@@ -220,9 +220,9 @@ coverage: $(TESTS_TARGET) $(COMPILE_CLI_TARGET)
 	mv default.profraw codegen.profraw
 	$(TESTS_TARGET) -ts=Conformance --codegen --fflags=true
 	mv default.profraw codegen-flags.profraw
-	$(COMPILE_CLI_TARGET) --codegennull --target=a64 tests/conformance
+	$(COMPILE_CLI_TARGET) --codegennull --target=a64 --fflags=DebugLuauUserDefinedClasses=true tests/conformance
 	mv default.profraw codegen-a64.profraw
-	$(COMPILE_CLI_TARGET) --codegennull --target=x64 tests/conformance
+	$(COMPILE_CLI_TARGET) --codegennull --target=x64 --fflags=DebugLuauUserDefinedClasses=true tests/conformance
 	mv default.profraw codegen-x64.profraw
 	llvm-profdata merge *.profraw -o default.profdata
 	rm *.profraw
@@ -256,8 +256,8 @@ luau-compile: $(COMPILE_CLI_TARGET)
 luau-bytecode: $(BYTECODE_CLI_TARGET)
 	ln -fs $^ $@
 
-luau-tests: $(TESTS_TARGET)
-	ln -fs $^ $@
+luau-tests: $(TESTS_TARGET) $(TEST_LINK_VM_TARGET) $(TEST_LINK_CODEGEN_TARGET)
+	ln -fs $(TESTS_TARGET) $@
 
 # executable targets
 $(TESTS_TARGET): $(TESTS_OBJECTS) $(ANALYSIS_TARGET) $(EQSAT_TARGET) $(COMPILER_TARGET) $(BYTECODE_TARGET) $(AST_TARGET) $(CODEGEN_TARGET) $(VM_TARGET) $(REQUIRE_TARGET) $(CONFIG_TARGET) $(ISOCLINE_TARGET) $(COMMON_TARGET)
@@ -269,11 +269,14 @@ $(BYTECODE_CLI_TARGET): $(BYTECODE_CLI_OBJECTS) $(COMPILER_TARGET) $(BYTECODE_TA
 $(TESTS_TARGET) $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET) $(COMPILE_CLI_TARGET) $(BYTECODE_CLI_TARGET):
 	$(CXX) $^ $(LDFLAGS) -o $@
 
+WHOLE_ARCHIVE_START=$(if $(filter Darwin,$(shell uname -s)),,-Wl,--whole-archive)
+WHOLE_ARCHIVE_END=$(if $(filter Darwin,$(shell uname -s)),,-Wl,--no-whole-archive)
+
 $(TEST_LINK_VM_TARGET): $(TEST_LINK_VM_OBJECTS) $(VM_TARGET) $(COMMON_TARGET)
-	$(CXX) $< $(LDFLAGS) -Wl,--whole-archive $(VM_TARGET) $(COMMON_TARGET) -Wl,--no-whole-archive -o $@
+	$(CXX) $< $(LDFLAGS) $(WHOLE_ARCHIVE_START) $(VM_TARGET) $(COMMON_TARGET) $(WHOLE_ARCHIVE_END) -o $@
 
 $(TEST_LINK_CODEGEN_TARGET): $(TEST_LINK_CODEGEN_OBJECTS) $(CODEGEN_TARGET) $(VM_TARGET) $(COMMON_TARGET)
-	$(CXX) $< $(LDFLAGS) -Wl,--whole-archive $(CODEGEN_TARGET) $(VM_TARGET) $(COMMON_TARGET) -Wl,--no-whole-archive -o $@
+	$(CXX) $< $(LDFLAGS) $(WHOLE_ARCHIVE_START) $(CODEGEN_TARGET) $(VM_TARGET) $(COMMON_TARGET) $(WHOLE_ARCHIVE_END) -o $@
 
 # executable targets for fuzzing
 fuzz-%: $(BUILD)/fuzz/%.cpp.o $(ANALYSIS_TARGET) $(EQSAT_TARGET) $(COMPILER_TARGET) $(BYTECODE_TARGET) $(AST_TARGET) $(CONFIG_TARGET) $(CODEGEN_TARGET) $(VM_TARGET) $(COMMON_TARGET)

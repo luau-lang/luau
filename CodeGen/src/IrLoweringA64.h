@@ -38,10 +38,10 @@ struct IrLoweringA64
     bool isFallthroughBlock(const IrBlock& target, const IrBlock& next);
     void jumpOrFallthrough(IrBlock& target, const IrBlock& next);
 
-    Label& getTargetLabel(IrOp op, Label& fresh);
-    void finalizeTargetLabel(IrOp op, Label& fresh);
+    Label& getTargetLabel(IrOp op, uint32_t index, Label& fresh);
+    void finalizeTargetLabel(IrOp op, uint32_t index, Label& fresh);
 
-    void checkSafeEnv(IrOp target, const IrBlock& next);
+    void checkSafeEnv(IrOp target, uint32_t index, const IrBlock& next);
 
     void allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcpos);
     void incrementCounterAt(size_t offset);
@@ -99,6 +99,9 @@ struct IrLoweringA64
     std::vector<InterruptHandler> interruptHandlers;
     std::vector<ExitHandler> exitHandlers;
     DenseHashMap<uint32_t, uint32_t> exitHandlerMap;
+
+    uint32_t exitSyncAllocToken = 0;
+    uint32_t exitSyncInstIdx = kInvalidInstIdx;
 
     bool error = false;
 };

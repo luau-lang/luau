@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -1573,5 +1574,38 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_calling_pcall")
     )"));
 }
 
+
+// LuauPropagateFreeTypesIntoUnionAndIntersectionBounds: when a union super type has multiple free-type members,
+// propagateToFreeMembers adds subTy as a lower bound to ALL of them. This is an over-approximation:
+// `freeA <: T | U` only requires one of T or U to contain freeA, not both.
+//
+// Here, `true` (a FreeType for singleton inference) is passed to `x: T | U`. The fix propagates
+// `boolean` to both T and U, so T ends up with a lower bound of `boolean | number` even though
+// `1` alone should fully determine T. The ideal inferred type for `a` would be `number`.
+//
+// The over-constraining is sound (wider types, not false errors) and benign for the common case
+// (`T | nil` has only one free member).
+TEST_CASE_FIXTURE(BuiltinsFixture, "union_super_with_multiple_free_members_over_constrains_lower_bounds")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauOverloadGetsInstantiated2, true},
+        {FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f<T, U>(x: T | U, y: T): T
+            return y
+        end
+        local a = f(true, 1)
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    // Should ideally be "number" — T is fully determined by y=1, but the `true` argument
+    // to x: T|U propagates boolean to T as well, so we get the over-approximated type.
+    CHECK("boolean | number" == toString(requireType("a")));
+}
 
 TEST_SUITE_END();

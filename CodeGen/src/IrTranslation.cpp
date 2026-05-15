@@ -1780,7 +1780,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
         if (build.hostHooks.vectorNamecall)
         {
             Instruction call = pc[2];
-            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALLFB || LUAU_INSN_OP(call) == LOP_CALL);
 
             int callra = LUAU_INSN_A(call);
             int nparams = LUAU_INSN_B(call) - 1;
@@ -1804,7 +1804,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
         if (build.hostHooks.userdataNamecall)
         {
             Instruction call = pc[2];
-            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALLFB || LUAU_INSN_OP(call) ==  LOP_CALL);
 
             int callra = LUAU_INSN_A(call);
             int nparams = LUAU_INSN_B(call) - 1;
