@@ -220,9 +220,9 @@ coverage: $(TESTS_TARGET) $(COMPILE_CLI_TARGET)
 	mv default.profraw codegen.profraw
 	$(TESTS_TARGET) -ts=Conformance --codegen --fflags=true
 	mv default.profraw codegen-flags.profraw
-	$(COMPILE_CLI_TARGET) --codegennull --target=a64 tests/conformance
+	$(COMPILE_CLI_TARGET) --codegennull --target=a64 --fflags=DebugLuauUserDefinedClasses=true tests/conformance
 	mv default.profraw codegen-a64.profraw
-	$(COMPILE_CLI_TARGET) --codegennull --target=x64 tests/conformance
+	$(COMPILE_CLI_TARGET) --codegennull --target=x64 --fflags=DebugLuauUserDefinedClasses=true tests/conformance
 	mv default.profraw codegen-x64.profraw
 	llvm-profdata merge *.profraw -o default.profdata
 	rm *.profraw
