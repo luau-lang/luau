@@ -22,7 +22,10 @@ void updateUseCounts(IrFunction& function);
 
 void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& sortedBlocks);
 
-uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t startInstIdx);
+// Update lastUse for all Inst operands consumed by instructions in a single block
+void updateLastUseLocationsInBlock(IrFunction& function, uint32_t blockIdx);
+
+uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t startInstIdx, bool& inVmExitSync);
 
 // Returns how many values are coming into the block (live in) and how many are coming out of the block (live out)
 std::pair<uint32_t, uint32_t> getLiveInOutValueCount(IrFunction& function, IrBlock& start, bool visitChain);

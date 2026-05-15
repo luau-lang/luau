@@ -14,6 +14,8 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDseNilClearsValue)
+LUAU_FASTFLAG(LuauCodegenVmExitSync)
+LUAU_FASTFLAGVARIABLE(LuauCodegenVmExitSyncFix)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
@@ -21,6 +23,54 @@ namespace Luau
 {
 namespace CodeGen
 {
+
+// Result-producing instructions that pass !hasSideEffects but are still unsafe to sink into ExitSync blocks
+static bool isUnsafeToSink(IrCmd cmd)
+{
+    switch (cmd)
+    {
+    // VM register reads: STORE_TAG/STORE_DOUBLE/STORE_TVALUE/etc. to the same VM register
+    case IrCmd::LOAD_TAG:
+    case IrCmd::LOAD_POINTER:
+    case IrCmd::LOAD_DOUBLE:
+    case IrCmd::LOAD_INT:
+    case IrCmd::LOAD_INT64:
+    case IrCmd::LOAD_FLOAT:
+    case IrCmd::LOAD_TVALUE:
+
+    // Buffer reads: BUFFER_WRITE* to the same buffer at the same offset
+    case IrCmd::BUFFER_READI8:
+    case IrCmd::BUFFER_READU8:
+    case IrCmd::BUFFER_READI16:
+    case IrCmd::BUFFER_READU16:
+    case IrCmd::BUFFER_READI32:
+    case IrCmd::BUFFER_READI64:
+    case IrCmd::BUFFER_READF32:
+    case IrCmd::BUFFER_READF64:
+
+    // Upvalue read: SET_UPVALUE to the same upvalue slot
+    case IrCmd::GET_UPVALUE:
+
+    // Reads table array metadata: TABLE_SETNUM can grow the array and change the length
+    case IrCmd::TABLE_LEN:
+
+    // Reads VM register: STORE_TAG/STORE_TVALUE/etc. to the same VM register
+    case IrCmd::GET_TYPEOF:
+
+    // Mutates table array part, invalidating reads
+    case IrCmd::TABLE_SETNUM:
+
+    // Can execute user metamethods via luaV_equalval/luaV_lessthan/luaV_lessequal
+    case IrCmd::CMP_ANY:
+
+    // Branch operand targets a fallback block: can't appear in an exit sync sequence
+    case IrCmd::TRY_NUM_TO_INDEX:
+    case IrCmd::TRY_CALL_FASTGETTM:
+        return true;
+    default:
+        return false;
+    }
+}
 
 // Luau value structure reminder:
 // [              TValue             ]
@@ -170,14 +220,180 @@ struct RemoveDeadStoreState
         regInfo.maybeGco = false;
     }
 
+    // Marks pending stores as non-propagating to prevent moving their uses into VM exit blocks
+    // Moving a store into a VM exit extends the live range of the store operands
+    // We must ensure that this lifetime extension does not cross instructions which invalidate physical locations
+    // This is similar to value propagation barriers in OptimizeConstProp.cpp
+    void invalidateValuePropagation(StoreRegInfo& regInfo)
+    {
+        auto hasInstArg = [](IrInst& inst)
+        {
+            return anyArgumentMatch(
+                inst,
+                [](IrOp op)
+                {
+                    return op.kind == IrOpKind::Inst;
+                }
+            );
+        };
+
+        if (regInfo.tagInstIdx != kInvalidInstIdx && hasInstArg(function.instructions[regInfo.tagInstIdx]))
+            nonPropagatingStore.insert(regInfo.tagInstIdx);
+
+        if (regInfo.valueInstIdx != kInvalidInstIdx && hasInstArg(function.instructions[regInfo.valueInstIdx]))
+            nonPropagatingStore.insert(regInfo.valueInstIdx);
+
+        if (regInfo.tvalueInstIdx != kInvalidInstIdx && hasInstArg(function.instructions[regInfo.tvalueInstIdx]))
+            nonPropagatingStore.insert(regInfo.tvalueInstIdx);
+    }
+
+    void invalidateValuePropagation()
+    {
+        for (int i = 0; i <= maxReg; i++)
+            invalidateValuePropagation(info[i]);
+    }
+
+    // VmExit information contains data that needs a sync if the stores are removed as unused
+    // If the store was not removed as dead, we don't need to sync it in the exit
+    void pruneVmExitInfo()
+    {
+        for (uint32_t instIdx : recordedVmExitSyncs)
+        {
+            VmExitSyncInfo& syncInfo = function.vmExitInfo[instIdx];
+
+            for (size_t i = 0; i < syncInfo.regStores.size();)
+            {
+                auto& el = syncInfo.regStores[i];
+
+                for (size_t j = 0; j < el.stores.size();)
+                {
+                    if (function.instructions[el.stores[j].instIdx].cmd != IrCmd::NOP)
+                    {
+                        visitArguments(
+                            function.instructions[el.stores[j].instIdx],
+                            [&](IrOp op)
+                            {
+                                removeUse(function, op);
+                            }
+                        );
+
+                        el.stores[j] = el.stores.back();
+                        el.stores.pop_back();
+                    }
+                    else
+                    {
+                        j++;
+                    }
+                }
+
+                if (el.stores.empty())
+                {
+                    syncInfo.regStores[i] = syncInfo.regStores.back();
+                    syncInfo.regStores.pop_back();
+                }
+                else
+                {
+                    i++;
+                }
+            }
+        }
+    }
+
     // When checking control flow, such as exit to fallback blocks:
     // For VM exits, we keep all stores except marked dead because we don't have information on what registers are live at the start of the VM assist
     // For regular blocks, we check which registers are expected to be live at entry (if we have CFG information available)
-    void checkLiveIns(IrOp op)
+    void checkLiveIns(IrOp op, uint32_t instIdx, bool recordVmExitSync)
     {
         if (op.kind == IrOpKind::VmExit)
         {
-            if (FFlag::LuauCodegenMarkDeadRegisters2)
+            if (FFlag::LuauCodegenVmExitSync && recordVmExitSync && vmExitOp(op) != kVmExitEntryGuardPc)
+            {
+                VmExitSyncInfo& syncInfo = function.vmExitInfo[instIdx];
+                CODEGEN_ASSERT(syncInfo.regStores.empty());
+
+                syncInfo.vmExit = op;
+
+                recordedVmExitSyncs.push_back(instIdx);
+
+                // Reverse order so that we capture lexically close VM registers first
+                // In case the limit is hit, shortest live ranges will be included
+                for (int i = maxReg; i >= 0; i--)
+                {
+                    StoreRegInfo& regInfo = info[i];
+
+                    // If value cannot be propagated into the exit, store must remain as used by the exit
+                    if ((regInfo.tagInstIdx != kInvalidInstIdx && nonPropagatingStore.contains(regInfo.tagInstIdx)) ||
+                        (regInfo.valueInstIdx != kInvalidInstIdx && nonPropagatingStore.contains(regInfo.valueInstIdx)) ||
+                        (regInfo.tvalueInstIdx != kInvalidInstIdx && nonPropagatingStore.contains(regInfo.tvalueInstIdx)))
+                    {
+                        useReg(i);
+                        continue;
+                    }
+
+                    if (FFlag::LuauCodegenMarkDeadRegisters2 && regInfo.ignoreAtExit && !regInfo.maybeGco)
+                        continue;
+
+                    if (syncInfo.regStores.size() >= 16)
+                    {
+                        useReg(i);
+                        continue;
+                    }
+
+                    bool hasPartialOverlap = (regInfo.tagInstIdx != kInvalidInstIdx || regInfo.valueInstIdx != kInvalidInstIdx) &&
+                                             regInfo.tvalueInstIdx != kInvalidInstIdx;
+
+                    if (hasPartialOverlap)
+                    {
+                        useReg(i);
+                        continue;
+                    }
+
+                    VmExitStoreInfo storeInfo;
+
+                    storeInfo.reg = uint8_t(i);
+
+                    auto recordStore = [&](uint32_t instIdx)
+                    {
+                        IrInst& store = function.instructions[instIdx];
+                        storeInfo.stores.push_back({instIdx, store});
+                        visitArguments(
+                            store,
+                            [&](IrOp op)
+                            {
+                                addUse(function, op);
+                            }
+                        );
+                    };
+
+                    if (regInfo.tagInstIdx != kInvalidInstIdx)
+                    {
+                        CODEGEN_ASSERT(regInfo.tvalueInstIdx == kInvalidInstIdx);
+                        recordStore(regInfo.tagInstIdx);
+                    }
+
+                    if (regInfo.valueInstIdx != kInvalidInstIdx)
+                    {
+                        CODEGEN_ASSERT(regInfo.tvalueInstIdx == kInvalidInstIdx);
+                        recordStore(regInfo.valueInstIdx);
+                    }
+
+                    if (regInfo.tvalueInstIdx != kInvalidInstIdx)
+                    {
+                        IrInst& store = function.instructions[regInfo.tvalueInstIdx];
+                        CODEGEN_ASSERT(regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx);
+                        CODEGEN_ASSERT(
+                            store.cmd == IrCmd::STORE_SPLIT_TVALUE || store.cmd == IrCmd::STORE_TVALUE || store.cmd == IrCmd::STORE_VECTOR ||
+                            (store.cmd == IrCmd::STORE_TAG && function.tagOp(OP_B(store)) == LUA_TNIL)
+                        );
+
+                        recordStore(regInfo.tvalueInstIdx);
+                    }
+
+                    if (!storeInfo.stores.empty())
+                        syncInfo.regStores.push_back(storeInfo);
+                }
+            }
+            else if (FFlag::LuauCodegenMarkDeadRegisters2)
             {
                 for (int i = 0; i <= maxReg; i++)
                 {
@@ -382,6 +598,13 @@ struct RemoveDeadStoreState
                         regInfo.tvalueInstIdx = ~0u;
                     }
 
+                    if (FFlag::LuauCodegenVmExitSync)
+                    {
+                        // If the GCO values remain, they can no longer be propagated further as that will create a new use
+                        // And we ensured there will be no more uses with 'hasRemainingUses' above
+                        invalidateValuePropagation(regInfo);
+                    }
+
                     // Indirect register read by GC doesn't clear the known tag
                     regInfo.maybeGco = false;
                 }
@@ -410,6 +633,9 @@ struct RemoveDeadStoreState
 
     // Have there been any object allocations which might remain unused
     bool hasAllocations = false;
+
+    DenseHashSet<uint32_t> nonPropagatingStore{kInvalidInstIdx};
+    std::vector<uint32_t> recordedVmExitSyncs;
 };
 
 static bool tryReplaceTagWithFullStore(
@@ -903,7 +1129,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
         // Guard checks can jump to a block which might be using some or all the values we stored
     case IrCmd::CHECK_TAG:
-        state.checkLiveIns(OP_C(inst));
+        state.checkLiveIns(OP_C(inst), index, true);
 
         // Tag guard establishes the tag value of the register in the current block
         if (IrInst* load = function.asInstOp(OP_A(inst)); load && load->cmd == IrCmd::LOAD_TAG && OP_A(load).kind == IrOpKind::VmReg)
@@ -916,51 +1142,53 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         }
         break;
     case IrCmd::TRY_NUM_TO_INDEX:
-        state.checkLiveIns(OP_B(inst));
+        state.checkLiveIns(OP_B(inst), index, true);
         break;
     case IrCmd::TRY_CALL_FASTGETTM:
-        state.checkLiveIns(OP_C(inst));
+        state.checkLiveIns(OP_C(inst), index, true);
         break;
     case IrCmd::CHECK_FASTCALL_RES:
-        state.checkLiveIns(OP_B(inst));
+        state.checkLiveIns(OP_B(inst), index, true);
         break;
     case IrCmd::CHECK_TRUTHY:
-        state.checkLiveIns(OP_C(inst));
+        // This instruction has two jumps to the exit in the lowering and that prevents exit sync record from being generated
+        state.checkLiveIns(OP_C(inst), index, false);
         break;
     case IrCmd::CHECK_READONLY:
-        state.checkLiveIns(OP_B(inst));
+        state.checkLiveIns(OP_B(inst), index, true);
         break;
     case IrCmd::CHECK_NO_METATABLE:
-        state.checkLiveIns(OP_B(inst));
+        state.checkLiveIns(OP_B(inst), index, true);
         break;
     case IrCmd::CHECK_SAFE_ENV:
-        state.checkLiveIns(OP_A(inst));
+        state.checkLiveIns(OP_A(inst), index, true);
         break;
     case IrCmd::CHECK_ARRAY_SIZE:
-        state.checkLiveIns(OP_C(inst));
+        state.checkLiveIns(OP_C(inst), index, true);
         break;
     case IrCmd::CHECK_DIV_INT64:
-        state.checkLiveIns(OP_C(inst));
+        // This instruction has two jumps to the exit in the lowering and that prevents exit sync record from being generated
+        state.checkLiveIns(OP_C(inst), index, false);
         break;
     case IrCmd::CHECK_SLOT_MATCH:
-        state.checkLiveIns(OP_C(inst));
+        state.checkLiveIns(OP_C(inst), index, true);
         break;
     case IrCmd::CHECK_NODE_NO_NEXT:
-        state.checkLiveIns(OP_B(inst));
+        state.checkLiveIns(OP_B(inst), index, true);
         break;
     case IrCmd::CHECK_NODE_VALUE:
-        state.checkLiveIns(OP_B(inst));
+        state.checkLiveIns(OP_B(inst), index, true);
         break;
     case IrCmd::CHECK_BUFFER_LEN:
-        state.checkLiveIns(OP_F(inst));
+        state.checkLiveIns(OP_F(inst), index, true);
         break;
     case IrCmd::CHECK_USERDATA_TAG:
-        state.checkLiveIns(OP_C(inst));
+        state.checkLiveIns(OP_C(inst), index, true);
         break;
     case IrCmd::CHECK_CMP_NUM:
     case IrCmd::CHECK_CMP_INT:
     case IrCmd::CHECK_CMP_INT64:
-        state.checkLiveIns(OP_D(inst));
+        state.checkLiveIns(OP_D(inst), index, true);
         break;
 
     case IrCmd::JUMP_IF_TRUTHY:
@@ -1035,6 +1263,40 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         visitVmRegDefsUses(state, function, inst);
         break;
     }
+
+    if (FFlag::LuauCodegenVmExitSync)
+    {
+        // Pending stores with SSA operands must not be deferred to ExitSync blocks past instructions that can invalidate operand physical location
+        switch (inst.cmd)
+        {
+            // These instructions can perform an indirect Luau function call through metamethods
+            // Creating new native execution frames can invalidate shared extended spill area
+        case IrCmd::CMP_ANY:
+        case IrCmd::DO_ARITH:
+        case IrCmd::DO_LEN:
+        case IrCmd::GET_TABLE:
+        case IrCmd::SET_TABLE:
+        case IrCmd::CONCAT:
+        case IrCmd::GET_CACHED_IMPORT:
+        case IrCmd::FORGLOOP_FALLBACK:
+        case IrCmd::FALLBACK_GETGLOBAL:
+        case IrCmd::FALLBACK_SETGLOBAL:
+        case IrCmd::FALLBACK_GETTABLEKS:
+        case IrCmd::FALLBACK_SETTABLEKS:
+        case IrCmd::FALLBACK_NAMECALL:
+        case IrCmd::FALLBACK_DUPCLOSURE:
+        case IrCmd::FALLBACK_FORGPREP:
+            // CALL directly executes a Luau function on the same native stack frame
+        case IrCmd::CALL:
+            // These instructions use lowering that is not aware of register allocator and demand no active values to exist
+        case IrCmd::SETLIST:
+        case IrCmd::FORGLOOP:
+            state.invalidateValuePropagation();
+            break;
+        default:
+            break;
+        }
+    }
 }
 
 static void markDeadStoresInBlock(IrBuilder& build, IrBlock& block, RemoveDeadStoreState& state)
@@ -1077,6 +1339,7 @@ static void markDeadStoresInBlockChain(
     std::vector<uint8_t>& visited,
     std::vector<uint32_t>& remainingUses,
     std::vector<uint32_t>& blockIdxChain,
+    std::vector<uint32_t>& allRecordedVmExitSyncs,
     IrBlock* block
 )
 {
@@ -1117,10 +1380,23 @@ static void markDeadStoresInBlockChain(
             uint32_t targetIdx = function.getBlockIndex(target);
 
             if (target.useCount == 1 && !visited[targetIdx] && target.kind != IrBlockKind::Fallback)
+            {
+                // If this block isn't glued to the target in the lowering order, we cannot capture any remaining stores from it in ExitSync blocks
+                if (FFlag::LuauCodegenVmExitSyncFix && block->expectedNextBlock != targetIdx)
+                    state.invalidateValuePropagation();
+
                 nextBlock = &target;
+            }
         }
 
         block = nextBlock;
+    }
+
+    if (FFlag::LuauCodegenVmExitSync)
+    {
+        state.pruneVmExitInfo();
+
+        allRecordedVmExitSyncs.insert(allRecordedVmExitSyncs.end(), state.recordedVmExitSyncs.begin(), state.recordedVmExitSyncs.end());
     }
 
     // If there are allocating instructions, check if they have 'read' uses after DSE
@@ -1194,6 +1470,158 @@ static void markDeadStoresInBlockChain(
     }
 }
 
+static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& recordedVmExitSyncs)
+{
+    IrFunction& function = build.function;
+
+    for (uint32_t vmExitSyncLocation : recordedVmExitSyncs)
+    {
+        VmExitSyncInfo& syncInfo = function.vmExitInfo[vmExitSyncLocation];
+
+        if (syncInfo.regStores.empty())
+            continue;
+
+        // We will be collecting instructions we want to move into the VM exit in reverse order
+        SmallVector<IrInst, 8> storeInstructions;
+        SmallVector<uint32_t, 8> argInstructions;
+
+        std::vector<std::pair<IrOp, uint32_t>> inputs;
+
+        auto visitor = [&](IrOp op)
+        {
+            if (op.kind == IrOpKind::Inst)
+            {
+                if (auto it = std::find_if(
+                        inputs.begin(),
+                        inputs.end(),
+                        [&](auto&& el)
+                        {
+                            return el.first == op;
+                        }
+                    );
+                    it != inputs.end())
+                    it->second++;
+                else
+                    inputs.emplace_back(op, 1u);
+            }
+        };
+
+        // Start with the store instruction we got
+        for (auto& regStore : syncInfo.regStores)
+        {
+            for (auto& record : regStore.stores)
+            {
+                storeInstructions.push_back(record.backup);
+                visitArguments(record.backup, visitor);
+            }
+        }
+
+        // For each input we got, see if we are the only user of it and if we are (and it has no side effects), schedule a move inside
+        for (size_t i = 0; i < inputs.size();)
+        {
+            IrInst& inst = function.instOp(inputs[i].first);
+
+            if (inst.useCount == inputs[i].second && !hasSideEffects(inst.cmd) && !isUnsafeToSink(inst.cmd))
+            {
+                uint32_t instIdx = function.getInstIndex(inst);
+                argInstructions.push_back(instIdx);
+
+                inputs.erase(inputs.begin() + i); // Delete this input
+
+                visitArguments(function.instructions[instIdx], visitor);
+            }
+            else
+            {
+                i++;
+            }
+        }
+
+        for (auto input : inputs)
+            syncInfo.argOps.push_back(input.first);
+
+        // We now should have an extracted instruction chain with no side effects in reverse order
+        syncInfo.block = build.block(IrBlockKind::ExitSync);
+        function.blockToVmExitMap[syncInfo.block.index] = vmExitSyncLocation;
+        build.beginBlock(syncInfo.block);
+
+        DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
+
+        auto redirect = [&instRedir, &inputs](IrOp& op)
+        {
+            if (op.kind == IrOpKind::Inst)
+            {
+                if (const uint32_t* newIndex = instRedir.find(op.index))
+                    op.index = *newIndex;
+                else if (std::find_if(
+                             inputs.begin(),
+                             inputs.end(),
+                             [op](auto& el)
+                             {
+                                 return el.first == op;
+                             }
+                         ) == inputs.end())
+                    CODEGEN_ASSERT(!"Values can only be used if they are defined in the same block or be an input");
+            }
+        };
+
+        for (int i = int(argInstructions.size()) - 1; i >= 0; i--)
+        {
+            uint32_t instIdx = argInstructions[i];
+
+            CODEGEN_ASSERT(instIdx < function.instructions.size());
+            IrInst clone = function.instructions[instIdx];
+
+            for (auto& op : clone.ops)
+                redirect(op);
+
+            for (auto& op : clone.ops)
+                addUse(function, op);
+
+            // Instructions that referenced the original will have to be adjusted to use the clone
+            instRedir[instIdx] = uint32_t(function.instructions.size());
+
+            // Reconstruct the fresh clone
+            build.inst(clone.cmd, clone.ops);
+        }
+
+        for (IrInst& storeInstruction : storeInstructions)
+        {
+            IrInst clone = storeInstruction;
+
+            for (auto& op : clone.ops)
+                redirect(op);
+
+            for (auto& op : clone.ops)
+                addUse(function, op);
+
+            // Reconstruct the fresh clone
+            build.inst(clone.cmd, clone.ops);
+
+            visitArguments(
+                storeInstruction,
+                [&](IrOp op)
+                {
+                    removeUse(function, op);
+                }
+            );
+        }
+
+        build.inst(IrCmd::JUMP, syncInfo.vmExit);
+
+        // Replace guard VM exit with an exit sync block
+        IrInst& guardInst = function.instructions[vmExitSyncLocation];
+
+        for (auto& op : guardInst.ops)
+        {
+            if (op.kind == IrOpKind::VmExit && op == syncInfo.vmExit)
+            {
+                replace(function, op, syncInfo.block);
+                break;
+            }
+        }
+    }
+}
+
 void markDeadStoresInBlockChains(IrBuilder& build)
 {
     IrFunction& function = build.function;
@@ -1201,6 +1629,7 @@ void markDeadStoresInBlockChains(IrBuilder& build)
     std::vector<uint8_t> visited(function.blocks.size(), false);
     std::vector<uint32_t> remainingUses(function.instructions.size(), 0u);
     std::vector<uint32_t> blockIdxChain;
+    std::vector<uint32_t> recordedVmExitSyncs;
 
     for (IrBlock& block : function.blocks)
     {
@@ -1210,8 +1639,11 @@ void markDeadStoresInBlockChains(IrBuilder& build)
         if (visited[function.getBlockIndex(block)])
             continue;
 
-        markDeadStoresInBlockChain(build, visited, remainingUses, blockIdxChain, &block);
+        markDeadStoresInBlockChain(build, visited, remainingUses, blockIdxChain, recordedVmExitSyncs, &block);
     }
+
+    if (FFlag::LuauCodegenVmExitSync)
+        generateVmExitBlocks(build, recordedVmExitSyncs);
 }
 
 } // namespace CodeGen

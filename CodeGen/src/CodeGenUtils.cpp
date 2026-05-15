@@ -20,6 +20,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauNativeCodeTargetCheck)
 LUAU_FASTFLAG(LuauDirectFieldGet)
+LUAU_FASTFLAG(LuauClosureUsageCounter)
 
 // All external function calls that can cause stack realloc or Lua calls have to be wrapped in VM_PROTECT
 // This makes sure that we save the pc (in case the Lua call needs to generate a backtrace) before the call,
@@ -187,6 +188,8 @@ Closure* callProlog(lua_State* L, TValue* ra, StkId argtop, int nresults)
     ci->savedpc = NULL;
     ci->flags = 0;
     ci->nresults = nresults;
+    if (FFlag::LuauClosureUsageCounter)
+        ccl->usage++;
 
     L->base = ci->base;
     L->top = argtop;
@@ -204,6 +207,12 @@ void callEpilogC(lua_State* L, int nresults, int n)
     // ci is our callinfo, cip is our parent
     CallInfo* ci = L->ci;
     CallInfo* cip = ci - 1;
+
+    if (FFlag::LuauClosureUsageCounter)
+    {
+        LUAU_ASSERT(clvalue(ci->func)->usage > 0);
+        clvalue(ci->func)->usage--;
+    }
 
     // copy return values into parent stack (but only up to nresults!), fill the rest with nil
     // note: in MULTRET context nresults starts as -1 so i != 0 condition never activates intentionally
@@ -258,6 +267,9 @@ Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
 
     Closure* ccl = clvalue(ra);
 
+    if (FFlag::LuauClosureUsageCounter)
+        ccl->usage++;
+
     CallInfo* ci = incr_ci(L);
     ci->func = ra;
     ci->base = ra + 1;
@@ -307,6 +319,12 @@ Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
         // ci is our callinfo, cip is our parent
         CallInfo* ci = L->ci;
         CallInfo* cip = ci - 1;
+
+        if (FFlag::LuauClosureUsageCounter)
+        {
+            LUAU_ASSERT(ccl->usage > 0);
+            ccl->usage--;
+        }
 
         // copy return values into parent stack (but only up to nresults!), fill the rest with nil
         // note: in MULTRET context nresults starts as -1 so i != 0 condition never activates intentionally
@@ -671,7 +689,7 @@ const Instruction* executeNAMECALL(lua_State* L, const Instruction* pc, StkId ba
     }
 
     // intentional fallthrough to CALL
-    LUAU_ASSERT(LUAU_INSN_OP(*pc) == LOP_CALL);
+    LUAU_ASSERT(LUAU_INSN_OP(*pc) == LOP_CALL || LUAU_INSN_OP(*pc) == LOP_CALLFB);
     return pc;
 }
 

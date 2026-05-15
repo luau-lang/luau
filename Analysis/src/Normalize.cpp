@@ -19,6 +19,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 LUAU_FASTFLAG(LuauIntegerType)
 
@@ -2869,14 +2870,40 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
 
     if (httv->indexer && tttv->indexer)
     {
-        // TODO: What should intersection of indexes be?
-        TypeId index = unionType(httv->indexer->indexType, tttv->indexer->indexType);
-        TypeId indexResult = intersectionType(httv->indexer->indexResultType, tttv->indexer->indexResultType);
-        if (!result.get())
-            result = std::make_unique<TableType>(TableType{state, level, scope});
-        result->indexer = {index, indexResult};
-        hereSubThere &= (httv->indexer->indexType == index) && (httv->indexer->indexResultType == indexResult);
-        thereSubHere &= (tttv->indexer->indexType == index) && (tttv->indexer->indexResultType == indexResult);
+        if (FFlag::LuauReadOnlyIndexers)
+        {
+            TypeId index = unionType(httv->indexer->indexType, tttv->indexer->indexType);
+            TableIndexer idx{index, {}};
+
+            if (httv->indexer->isReadOnly && tttv->indexer->isReadOnly)
+            {
+                // Both read-only: covariant -> intersect values, keep read-only.
+                idx.indexResultType = intersectionType(httv->indexer->indexResultType, tttv->indexer->indexResultType);
+                idx.isReadOnly = true;
+            }
+            else
+                idx.indexResultType = intersectionType(httv->indexer->indexResultType, tttv->indexer->indexResultType);
+
+            bool hereModeMatch = httv->indexer->isReadOnly == idx.isReadOnly;
+            bool thereModeMatch = tttv->indexer->isReadOnly == idx.isReadOnly;
+            hereSubThere &= hereModeMatch && (httv->indexer->indexType == index) && (httv->indexer->indexResultType == idx.indexResultType);
+            thereSubHere &= thereModeMatch && (tttv->indexer->indexType == index) && (tttv->indexer->indexResultType == idx.indexResultType);
+
+            if (!result.get())
+                result = std::make_unique<TableType>(TableType{state, level, scope});
+            result->indexer = idx;
+        }
+        else
+        {
+            // TODO: What should intersection of indexes be?
+            TypeId index = unionType(httv->indexer->indexType, tttv->indexer->indexType);
+            TypeId indexResult = intersectionType(httv->indexer->indexResultType, tttv->indexer->indexResultType);
+            if (!result.get())
+                result = std::make_unique<TableType>(TableType{state, level, scope});
+            result->indexer = {index, indexResult};
+            hereSubThere &= (httv->indexer->indexType == index) && (httv->indexer->indexResultType == indexResult);
+            thereSubHere &= (tttv->indexer->indexType == index) && (tttv->indexer->indexResultType == indexResult);
+        }
     }
     else if (httv->indexer)
     {

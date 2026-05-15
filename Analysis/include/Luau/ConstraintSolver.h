@@ -347,16 +347,6 @@ public:
      */
     void inheritBlocks(NotNull<const Constraint> source, NotNull<const Constraint> addition);
 
-    // Traverse the type.  If any pending types are found, block the constraint
-    // on them.
-    //
-    // Returns false if a type blocks the constraint.
-    //
-    // FIXME: This use of a boolean for the return result is an appalling
-    // interface.
-    bool blockOnPendingTypes(TypeId target, NotNull<const Constraint> constraint);
-    bool blockOnPendingTypes(TypePackId targetPack, NotNull<const Constraint> constraint);
-
     void unblock(NotNull<const Constraint> progressed);
     void unblock(TypeId ty, Location location);
     void unblock(TypePackId progressed, Location location);

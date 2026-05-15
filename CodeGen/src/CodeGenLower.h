@@ -101,7 +101,7 @@ inline bool lowerImpl(
 
     bool outputEnabled = options.includeAssembly || options.includeIr;
 
-    IrToStringContext ctx{build.text, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{build.text, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     // We use this to skip outlined fallback blocks from IR/asm text output
     size_t textSize = build.text.length();
@@ -125,10 +125,10 @@ inline bool lowerImpl(
 
         CODEGEN_ASSERT(block.start != ~0u);
         CODEGEN_ASSERT(block.finish != ~0u);
-        CODEGEN_ASSERT(!seenFallback || block.kind == IrBlockKind::Fallback);
+        CODEGEN_ASSERT(!seenFallback || block.kind == IrBlockKind::Fallback || block.kind == IrBlockKind::ExitSync);
 
-        // If we want to skip fallback code IR/asm, we'll record when those blocks start once we see them
-        if (block.kind == IrBlockKind::Fallback && !seenFallback)
+        // If we want to skip fallback/exit code IR/asm, we'll record when those blocks start once we see them
+        if ((block.kind == IrBlockKind::Fallback || block.kind == IrBlockKind::ExitSync) && !seenFallback)
         {
             textSize = build.text.length();
             codeSize = build.getCodeSize();
@@ -174,7 +174,7 @@ inline bool lowerImpl(
             }
 
             CODEGEN_ASSERT(block.startpc != kBlockNoStartPc);
-            lowering.checkSafeEnv(IrOp{IrOpKind::VmExit, block.startpc}, nextBlock);
+            lowering.checkSafeEnv(IrOp{IrOpKind::VmExit, block.startpc}, kInvalidInstIdx, nextBlock);
         }
 
         for (uint32_t index = block.start; index <= block.finish; index++)

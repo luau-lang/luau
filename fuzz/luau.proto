@@ -23,6 +23,7 @@ message Expr {
 		ExprInterpString interpstring = 17;
 		ExprConstantInteger integer = 18;
 		ExprBuiltinRef builtin_ref = 19;
+		ExprClassInst classinst = 20;
 	}
 }
 
@@ -35,6 +36,7 @@ message ExprPrefix {
 		ExprIndexName index_name = 5;
 		ExprIndexExpr index_expr = 6;
 		ExprBuiltinRef builtin_ref = 7;
+		ExprClassInst classinst = 8;
 	}
 }
 
@@ -104,10 +106,25 @@ message ExprGlobal {
 message ExprVarargs {
 }
 
-message ExprCall {
+message ParenCall {
 	required ExprPrefix func = 1;
 	required bool self = 2;
 	repeated Expr args = 3;
+}
+
+message ParenlessCall {
+	required ExprPrefix func = 1;
+	oneof arg_oneof {
+		ExprConstantString string = 2;
+		ExprTable table = 3;
+	}
+}
+
+message ExprCall {
+	oneof call_oneof {
+		ParenCall paren = 1;
+		ParenlessCall parenless = 2;
+	}
 }
 
 message ExprIndexName {
@@ -209,6 +226,12 @@ message ExprBuiltinRef {
 	required int32 method = 2;
 }
 
+message ExprClassInst {
+	required int32 index = 1;
+	required Expr firstArg = 2;
+	repeated Expr otherArgs = 3;
+}
+
 message LValue {
 	oneof lvalue_oneof {
 		ExprLocal local = 1;
@@ -238,6 +261,7 @@ message Stat {
 		StatTypeAlias type_alias = 16;
 		StatRequireIntoLocalHelper require_into_local = 17;
 		StatTypeFunction type_function = 18;
+		StatClass class = 19;
 	}
 }
 
@@ -342,6 +366,36 @@ message StatTypeFunction {
 	required bool export = 1;
 	required RegularTypeName name = 2;
 	required ExprFunction func = 3;
+}
+
+enum Modifier {
+	PUBLIC = 0;
+}
+
+message ClassProp {
+	required Name name = 1;
+	optional Type type = 2;
+}
+
+message ClassMetamethodName {
+	required int32 index = 1;
+}
+
+message ClassMethod {
+	optional Modifier access = 1;
+	oneof name_oneof {
+			Name name = 2;
+			ClassMetamethodName metamethod = 3;
+	}
+	required ExprFunction func = 4;
+}
+
+message StatClass {
+	required Local name = 1;
+	repeated ClassProp props = 2;
+	repeated ClassMethod methods = 3;
+	required Local local = 5;
+	required ExprClassInst inst = 4;
 }
 
 message StatRequireIntoLocalHelper {

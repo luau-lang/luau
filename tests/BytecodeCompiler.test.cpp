@@ -7,9 +7,6 @@
 
 #include <optional>
 
-#include "lua.h"
-#include "lualib.h"
-
 #include "Fixture.h"
 
 #include "doctest.h"
@@ -17,8 +14,21 @@
 using namespace Luau;
 using namespace Luau::Bytecode;
 
+LUAU_FASTFLAG(LuauEmitCallFeedback)
+
 namespace
 {
+
+std::string extractCode(std::string bytecode)
+{
+    size_t offset = 5;
+    const char* data = bytecode.data();
+    int32_t typeInfoSize = readVarInt(data, offset);
+    offset += typeInfoSize;
+
+    int32_t codesize = readVarInt(data, offset);
+    return bytecode.substr(offset, codesize * sizeof(Instruction));
+}
 
 struct BytecodeCompilerFixture
 {
@@ -91,6 +101,22 @@ struct BytecodeCompilerFixture
             result.push_back(str);
         }
         return result;
+    }
+
+    void checkRoundtrip(std::string_view snippet)
+    {
+        for (int optLevel = 0; optLevel <= 2; optLevel++)
+        {
+            auto bytecode = getFunctionBytecode(snippet, optLevel);
+            REQUIRE(bytecode);
+            std::vector<std::string_view> table;
+            for (std::string& s : bytecode->second)
+                table.push_back(s);
+            std::optional<BcFunction> func = Bytecode::fromFunctionBytecode(bytecode->first, table);
+            std::string orig = extractCode(bytecode->first);
+            std::string dumped = extractCode(Bytecode::toFunctionBytecode(*func));
+            REQUIRE_EQ(orig, dumped);
+        }
     }
 
     std::vector<std::string> strings;
@@ -316,6 +342,8 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "repeat_until_loop")
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "for_loop_and_backward_input")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     auto fn = buildBytecode(R"(
         function fn()
             local var = 3
@@ -340,7 +368,7 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "for_loop_and_backward_input")
         // Block 3 (loopCond)
         GETGLOBAL R4 K4 ['print']
         MOVE R5 R3
-        CALL R4 1 0
+        CALLFB R4 1 0
         // Block 4 (loopEpllog)
         L1: LOADK R4 K1 [1]
         SUB R0 R0 R4
@@ -391,7 +419,7 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "for_loop_and_backward_input")
         REQUIRE(isPhiOf(*fn, subVar.ops[0], varInitOp, subVarOp));
         REQUIRE_EQ(subVar.ops[1], *loopEpllog.ops.begin());
     }
-    REQUIRE(checkOps(*fn, loopCond.ops, {LOP_GETGLOBAL, LOP_MOVE, LOP_CALL}));
+    REQUIRE(checkOps(*fn, loopCond.ops, {LOP_GETGLOBAL, LOP_MOVE, LOP_CALLFB}));
     REQUIRE(checkOps(*fn, loopEpllog.ops, {LOP_LOADK, LOP_SUB, LOP_FORNLOOP}));
     REQUIRE(checkOps(*fn, ret.ops, {LOP_RETURN}));
 }
@@ -485,6 +513,8 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "nested_loops")
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_fixed")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     auto fn = buildBytecode(R"(
         local function x()
             local a, b = f()
@@ -494,7 +524,7 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_fixed")
 
     /*
         GETGLOBAL R0 K0 ['f']
-        CALL R0 0 2
+        CALLFB R0 0 2
         MOVE R2 R1
         MOVE R3 R0
         RETURN R2 2
@@ -504,7 +534,7 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_fixed")
     BcBlock& entry = fn->blockOp(fn->entryBlock);
 
     // Instructions
-    REQUIRE(checkOps(*fn, entry.ops, {LOP_GETGLOBAL, LOP_CALL, LOP_MOVE, LOP_MOVE, LOP_RETURN}));
+    REQUIRE(checkOps(*fn, entry.ops, {LOP_GETGLOBAL, LOP_CALLFB, LOP_MOVE, LOP_MOVE, LOP_RETURN}));
     {
         BcOp callOp = getOp(entry, 1);
         BcOp move1op = getOp(entry, 2);
@@ -534,6 +564,8 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_fixed")
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_variadic")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     auto fn = buildBytecode(R"(
         local function fn(n)
             if n > 0 then
@@ -557,7 +589,7 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_variadic")
         L0: GETUPVAL R1 0
         LOADK R3 K1 [1]
         SUB R2 R0 R3
-        CALL R1 1 2
+        CALLFB R1 1 2
         ADD R3 R1 R2
         GETUPVAL R4 0
         MOVE R5 R0
@@ -578,7 +610,7 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_variadic")
     // Instructions
     REQUIRE(checkOps(*fn, entry.ops, {LOP_LOADK, LOP_JUMPIFNOTLT}));
     REQUIRE(checkOps(*fn, ifTrue.ops, {LOP_LOADK, LOP_LOADK, LOP_RETURN}));
-    REQUIRE(checkOps(*fn, ifFalse.ops, {LOP_GETUPVAL, LOP_LOADK, LOP_SUB, LOP_CALL, LOP_ADD, LOP_GETUPVAL, LOP_MOVE, LOP_CALL, LOP_RETURN}));
+    REQUIRE(checkOps(*fn, ifFalse.ops, {LOP_GETUPVAL, LOP_LOADK, LOP_SUB, LOP_CALLFB, LOP_ADD, LOP_GETUPVAL, LOP_MOVE, LOP_CALL, LOP_RETURN}));
     {
         BcInst& ret = fn->instOp(getOp(ifFalse, 8));
         REQUIRE_EQ(ret.ops.size(), 3);
@@ -733,17 +765,6 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "tables_strings_and_fastcall")
     }
 }
 
-std::string extractCode(std::string bytecode)
-{
-    size_t offset = 5;
-    const char* data = bytecode.data();
-    int32_t typeInfoSize = readVarInt(data, offset);
-    offset += typeInfoSize;
-
-    int32_t codesize = readVarInt(data, offset);
-    return bytecode.substr(offset, codesize * sizeof(Instruction));
-}
-
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "bytecode_roundtrip")
 {
     std::string snippets[] = {
@@ -820,19 +841,57 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "bytecode_roundtrip")
         end
     )",
     };
-    for (int optLevel = 0; optLevel <= 2; optLevel++)
-        for (auto& snippet : snippets)
-        {
-            auto bytecode = getFunctionBytecode(snippet, optLevel);
-            REQUIRE(bytecode);
-            std::vector<std::string_view> table;
-            for (std::string& s : bytecode->second)
-                table.push_back(s);
-            std::optional<BcFunction> func = Bytecode::fromFunctionBytecode(bytecode->first, table);
-            std::string orig = extractCode(bytecode->first);
-            std::string dumped = extractCode(Bytecode::toFunctionBytecode(*func));
-            REQUIRE_EQ(orig, dumped);
-        }
+
+    for (auto& snippet : snippets)
+        checkRoundtrip(snippet);
+}
+
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "classes_bytecode_roundtrips")
+{
+
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    checkRoundtrip(R"(
+        class Point
+            public x
+            public y
+
+            function magnitude(self)
+                return math.sqrt(self.x * self.x + self.y * self.y)
+            end
+
+            function __mul(self, other)
+                return Point { x = self.x * other.x, y = self.y * other.y }
+            end
+
+            function __add(self, other)
+                return Point { x = self.x + other.x, y = self.y + other.y }
+            end
+
+            function __eq(self, other)
+                return self.x == other.x and self.y == other.y
+            end
+
+            function zero()
+                return Point { x = 0, y = 0 }
+            end
+
+            function asserttriple(self)
+                local mag = self:magnitude()
+                assert(mag == math.ceil(mag), "Not a pythagorean triple!")
+            end
+
+            function __tostring(self)
+                return `Point(x={self.x}, y={self.y})`
+            end
+
+        end
+
+        print(Point)
+
+        return { Point = Point }
+    )");
+
 }
 
 TEST_SUITE_END();

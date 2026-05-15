@@ -136,6 +136,28 @@ static void validateproto(global_State* g, Proto* f)
             validateobjref(g, obj2gco(f), obj2gco(f->locvars[i].varname));
 }
 
+static void validateclassobject(global_State* g, LuaClassObject* lco)
+{
+    GCObject* obj = obj2gco(lco);
+    validateobjref(g, obj, obj2gco(lco->name));
+    validateobjref(g, obj, obj2gco(lco->memberstooffset));
+    for (int i = 0; i < lco->numberofallmembers; i++)
+    {
+        validateobjref(g, obj, obj2gco(lco->offsettomember[i]));
+        if (i >= lco->numberofinstancemembers)
+            validateref(g, obj, &lco->staticmembers[i - lco->numberofinstancemembers]);
+    }
+    validateobjref(g, obj, obj2gco(lco->metatable));
+}
+
+static void validateclassinstance(global_State* g, LuaClassInstance* inst)
+{
+    GCObject* obj = obj2gco(inst);
+    validateobjref(g, obj, obj2gco(inst->classobject));
+    for (int i = 0; i < inst->numberofmembers; i++)
+        validateref(g, obj, &inst->members[i]);
+}
+
 static void validateobj(global_State* g, GCObject* o)
 {
     // dead objects can only occur during sweep
@@ -178,6 +200,14 @@ static void validateobj(global_State* g, GCObject* o)
         validateref(g, o, gco2uv(o)->v);
         break;
 
+    case LUA_TCLASSOBJ:
+        validateclassobject(g, gco2cobj(o));
+        break;
+
+    case LUA_TCLASSINST:
+        validateclassinstance(g, gco2cinst(o));
+        break;
+
     default:
         LUAU_ASSERT(!"unexpected object type");
     }
@@ -202,6 +232,12 @@ static void validategraylist(global_State* g, GCObject* o)
             break;
         case LUA_TTHREAD:
             o = gco2th(o)->gclist;
+            break;
+        case LUA_TCLASSOBJ:
+            o = gco2cobj(o)->gclist;
+            break;
+        case LUA_TCLASSINST:
+            o = gco2cinst(o)->gclist;
             break;
         case LUA_TPROTO:
             o = gco2p(o)->gclist;
@@ -532,6 +568,37 @@ static void dumpupval(FILE* f, UpVal* uv)
     fprintf(f, "}");
 }
 
+static void dumpclassobj(FILE* f, LuaClassObject* lco)
+{
+    fprintf(f, R"({"type":"classobject","cat":%d,"size":%d)", lco->memcat, int(sizeof(LuaClassObject)));
+    fprintf(f, R"(,"name":)");
+    dumpstringdata(f, lco->name->data, lco->name->len);
+    fprintf(f, R"(,"membernames":[)");
+    for (int i = 0; i < lco->numberofallmembers; i++)
+    {
+        if (i != 0)
+            fputc(',', f);
+        dumpref(f, (GCObject*)lco->offsettomember[i]);
+    }
+    fprintf(f, R"(],"staticmembers":[)");
+    dumprefs(f, lco->staticmembers, lco->numberofallmembers - lco->numberofinstancemembers);
+    fprintf(f, R"(],"metatable":)");
+    dumpref(f, obj2gco(lco->metatable));
+    fprintf(f, R"(,"memberstooffset":)");
+    dumpref(f, obj2gco(lco->memberstooffset));
+    fprintf(f, "}");
+}
+
+static void dumpclassinst(FILE* f, LuaClassInstance* inst)
+{
+    fprintf(f, R"({"type":"classinstance","cat":%d,"size":%d)", inst->memcat, int(sizeof(LuaClassInstance)));
+    fprintf(f, R"(,"classobj":)");
+    dumpref(f, obj2gco(inst->classobject));
+    fprintf(f, R"(,"members":[)");
+    dumprefs(f, inst->members, inst->numberofmembers);
+    fprintf(f, "]}");
+}
+
 static void dumpobj(FILE* f, GCObject* o)
 {
     switch (o->gch.tt)
@@ -553,6 +620,12 @@ static void dumpobj(FILE* f, GCObject* o)
 
     case LUA_TBUFFER:
         return dumpbuffer(f, gco2buf(o));
+
+    case LUA_TCLASSOBJ:
+        return dumpclassobj(f, gco2cobj(o));
+
+    case LUA_TCLASSINST:
+        return dumpclassinst(f, gco2cinst(o));
 
     case LUA_TPROTO:
         return dumpproto(f, gco2p(o));
@@ -857,6 +930,50 @@ static void enumupval(EnumContext* ctx, UpVal* uv)
         enumedge(ctx, obj2gco(uv), gcvalue(uv->v), "value");
 }
 
+static void enumclassobject(EnumContext* ctx, LuaClassObject* lco)
+{
+    char buf[LUA_IDSIZE];
+    GCObject* obj = obj2gco(lco);
+    snprintf(buf, sizeof(buf), "class object %s", getstr(lco->name));
+    enumnode(ctx, obj, sizeof(LuaClassObject), buf);
+    enumedge(ctx, obj, obj2gco(lco->name), "classname");
+    enumedge(ctx, obj, obj2gco(lco->memberstooffset), "classoffsets");
+    int numberofstaticmembers = lco->numberofallmembers - lco->numberofinstancemembers;
+    for (int i = 0; i < numberofstaticmembers; i++)
+    {
+        // It's a bit strange that if we have a non-collectable static member,
+        // we'll just not note it as an edge.
+        if (!iscollectable(&lco->staticmembers[i]))
+            continue;
+
+        char membername[32];
+        snprintf(membername, sizeof(membername), "%s", getstr(lco->offsettomember[i + lco->numberofinstancemembers]));
+        enumedge(ctx, obj, gcvalue(&lco->staticmembers[i]), membername);
+    }
+    for (int i = 0; i < lco->numberofallmembers; i++)
+        enumedge(ctx, obj, obj2gco(lco->offsettomember[i]), "membername");
+    enumedge(ctx, obj, obj2gco(lco->metatable), "metatable");
+}
+
+static void enumclassinstance(EnumContext* ctx, LuaClassInstance* inst)
+{
+    char buf[LUA_IDSIZE];
+    GCObject* obj = obj2gco(inst);
+    snprintf(buf, sizeof(buf), "class instance %s", getstr(inst->classobject->name));
+    enumnode(ctx, obj, sizeof(LuaClassInstance), buf);
+    for (int i = 0; i < inst->classobject->numberofinstancemembers; i++)
+    {
+        // It's a bit strange that if we have a non-collectable static member,
+        // we'll just not note it as an edge.
+        if (!iscollectable(&inst->members[i]))
+            continue;
+
+        char membername[32];
+        snprintf(membername, sizeof(membername), "%s", getstr(inst->classobject->offsettomember[i]));
+        enumedge(ctx, obj, gcvalue(&inst->members[i]), membername);
+    }
+}
+
 static void enumobj(EnumContext* ctx, GCObject* o)
 {
     switch (o->gch.tt)
@@ -878,6 +995,12 @@ static void enumobj(EnumContext* ctx, GCObject* o)
 
     case LUA_TBUFFER:
         return enumbuffer(ctx, gco2buf(o));
+
+    case LUA_TCLASSOBJ:
+        return enumclassobject(ctx, gco2cobj(o));
+
+    case LUA_TCLASSINST:
+        return enumclassinstance(ctx, gco2cinst(o));
 
     case LUA_TPROTO:
         return enumproto(ctx, gco2p(o));

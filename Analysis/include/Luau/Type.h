@@ -414,14 +414,16 @@ enum class TableState
 
 struct TableIndexer
 {
-    TableIndexer(TypeId indexType, TypeId indexResultType)
+    TableIndexer(TypeId indexType, TypeId indexResultType, bool isReadOnly = false)
         : indexType(indexType)
         , indexResultType(indexResultType)
+        , isReadOnly(isReadOnly)
     {
     }
 
     TypeId indexType;
     TypeId indexResultType;
+    bool isReadOnly = false;
 };
 
 struct Property

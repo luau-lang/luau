@@ -14,6 +14,7 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauDirectFieldGet)
+LUAU_FASTFLAG(LuauClosureUsageCounter)
 
 /*
 ** Main thread combines a thread state and the global state
@@ -130,8 +131,18 @@ void luaE_freethread(lua_State* L, lua_State* L1, lua_Page* page)
     global_State* g = L->global;
     if (g->cb.userthread)
         g->cb.userthread(NULL, L1);
+
     freestack(L, L1);
     luaM_freegco(L, L1, sizeof(lua_State), L1->memcat, page);
+}
+
+void cleanupcistack(lua_State* L)
+{
+    for (CallInfo* lastci = L->ci; lastci != L->base_ci; lastci--)
+    {
+        LUAU_ASSERT(clvalue(lastci->func)->usage > 0);
+        clvalue(lastci->func)->usage--;
+    }
 }
 
 void lua_resetthread(lua_State* L)
@@ -141,6 +152,9 @@ void lua_resetthread(lua_State* L)
 
     // close upvalues before clearing anything
     luaF_close(L, L->stack);
+    if (FFlag::LuauClosureUsageCounter)
+        cleanupcistack(L);
+
     // clear call frames
     CallInfo* ci = L->base_ci;
     ci->func = L->stack;
@@ -260,6 +274,7 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     memset(g->ecbdata, 0, LUA_EXECUTION_CALLBACK_STORAGE * sizeof(g->ecbdata[0]));
 
     g->gcstats = GCStats();
+    g->lastprotoid = 1;
 
 #ifdef LUAI_GCMETRICS
     g->gcmetrics = GCMetrics();

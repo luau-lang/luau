@@ -11,6 +11,7 @@
 #include "lmem.h"
 #include "ludata.h"
 #include "lbuffer.h"
+#include "lclass.h"
 
 #include <string.h>
 
@@ -290,6 +291,18 @@ static void reallymarkobject(global_State* g, GCObject* o)
         g->gray = o;
         break;
     }
+    case LUA_TCLASSOBJ:
+    {
+        gco2cobj(o)->gclist = g->gray;
+        g->gray = o;
+        break;
+    }
+    case LUA_TCLASSINST:
+    {
+        gco2cinst(o)->gclist = g->gray;
+        g->gray = o;
+        break;
+    }
     default:
         LUAU_ASSERT(0);
     }
@@ -416,6 +429,24 @@ static void traversestack(global_State* g, lua_State* l)
     }
 }
 
+static void traverseclassobject(global_State* g, LuaClassObject* classobject)
+{
+    markobject(g, classobject->name);
+    markobject(g, classobject->memberstooffset);
+    for (int i = 0; i < classobject->numberofallmembers; i++)
+        markobject(g, classobject->offsettomember[i]);
+    for (int i = 0; i < classobject->numberofallmembers - classobject->numberofinstancemembers; i++)
+        markvalue(g, &classobject->staticmembers[i]);
+    markobject(g, classobject->metatable);
+}
+
+static void traverseclassinstance(global_State* g, LuaClassInstance* classinst)
+{
+    markobject(g, classinst->classobject);
+    for (int i = 0; i < classinst->numberofmembers; i++)
+        markvalue(g, &classinst->members[i]);
+}
+
 static void clearstack(lua_State* l)
 {
     StkId stack_end = l->stack + l->stacksize;
@@ -527,6 +558,28 @@ static size_t propagatemark(global_State* g)
 
         return sizeof(Proto) + sizeof(Instruction) * p->sizecode + sizeof(Proto*) * p->sizep + sizeof(TValue) * p->sizek + p->sizelineinfo +
                sizeof(LocVar) * p->sizelocvars + sizeof(TString*) * p->sizeupvalues + p->sizetypeinfo;
+    }
+    case LUA_TCLASSOBJ:
+    {
+        LuaClassObject* classobject = gco2cobj(o);
+        g->gray = classobject->gclist;
+        traverseclassobject(g, classobject);
+        // We've traversed the "object" itself ...
+        return sizeof(LuaClassObject) +
+            // ... plus the method closures, each a `TValue` wide ...
+            ((classobject->numberofallmembers - classobject->numberofinstancemembers) * sizeof(TValue)) +
+            // ... plus a string pointer for each method or property, each a pointer wide.
+            (classobject->numberofallmembers * sizeof(TString*));
+    }
+    case LUA_TCLASSINST:
+    {
+        LuaClassInstance* classinst = gco2cinst(o);
+        g->gray = classinst->gclist;
+        traverseclassinstance(g, classinst);
+        // We've traversed the instance ...
+        return sizeof(LuaClassInstance) + 
+            // ... plus all of the instance fields.
+            classinst->numberofmembers * sizeof(TValue);
     }
     default:
         LUAU_ASSERT(0);
@@ -667,6 +720,12 @@ static void freeobj(lua_State* L, GCObject* o, lua_Page* page)
         break;
     case LUA_TBUFFER:
         luaB_freebuffer(L, gco2buf(o), page);
+        break;
+    case LUA_TCLASSOBJ:
+        luaR_freeclassobject(L, gco2cobj(o), page);
+        break;
+    case LUA_TCLASSINST:
+        luaR_freeclassinstance(L, gco2cinst(o), page);
         break;
     default:
         LUAU_ASSERT(0);
