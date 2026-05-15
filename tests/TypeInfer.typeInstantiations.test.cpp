@@ -8,6 +8,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
+LUAU_FASTFLAG(LuauVisitCallTypeArgsInDfg)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
 
@@ -579,6 +580,50 @@ TEST_CASE_FIXTURE(Fixture, "replacing_generic_with_generic")
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("string", toString(requireType("baz")));
     CHECK_EQ("number", toString(requireType("quxx")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "typeof_in_method_call_type_args_no_crash")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExplicitTypeInstantiationSupport, true},
+        {FFlag::LuauVisitCallTypeArgsInDfg, true},
+    };
+
+    CheckResult result = check(R"(
+        local t = {}
+        function t:f<T, U>() end
+
+        local x = 5
+        globl = 42
+
+        t:f<<typeof(x), string>>()
+        t:f<<number, typeof(x)>>()
+        t:f<<typeof(globl), unknown>>()
+        t:f<<typeof(t.f), unknown>>()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    // We assign to an unknown global.
+    CHECK(get<UnknownSymbol>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "typeof_local_in_type_pack_no_crash")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExplicitTypeInstantiationSupport, true},
+        {FFlag::LuauVisitCallTypeArgsInDfg, true},
+    };
+
+    CheckResult result = check(R"(
+        local t = {}
+        function t:f<T...>() end
+
+        local x = 5
+
+        t:f<<(string, typeof(x))>>()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

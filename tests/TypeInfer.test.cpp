@@ -31,6 +31,8 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarityFollow)
+LUAU_FASTFLAG(LuauRefineNilFromTableIndexerResultType)
 LUAU_FASTFLAG(LuauFollowInExplicitInstantiation)
 LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes2)
 LUAU_FASTFLAG(LuauFollowGenericBeforeCheckingIfMapped)
@@ -417,7 +419,9 @@ TEST_CASE_FIXTURE(Fixture, "check_block_recursion_limit")
 #elif defined(_DEBUG) || defined(_NOOPT)
     int limit = 350;
 #else
-    int limit = 600;
+    // NOTE: This was lowered from 600 after some extra stack space added by
+    // a new scratch field in the parser (`scratchClassDeclarations`).
+    int limit = 595;
 #endif
 
     ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
@@ -2752,6 +2756,69 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_instantiation2")
     LUAU_REQUIRE_ERRORS(check(R"(
         _ = if {l0._,} then if _ then _ elseif rawset({[_]=_,[{_._,}]=_,}) then _ else {_._,} elseif rawset(_) then (true),""
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_table_with_optional_indexer_values")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        type Bar = {x: number}
+        type Foo = {[string]: Bar?}
+
+        function printAllClassNames(foo: Foo)
+            for _, value in foo do
+                print(value.x)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_local_table_with_optional_indexer_values")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        type TypeA = {Value: any}
+
+        local list = {} :: {[string]: TypeA?}
+
+        for index, a in list do
+            a.Value = 1
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+// https://github.com/luau-lang/luau/issues/2236
+TEST_CASE_FIXTURE(BuiltinsFixture, "2236_iterate_over_table_with_values_as_optional_types")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local t: { number? } = {}
+
+        for _, v in t do
+            local x: number = v
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_function_call")

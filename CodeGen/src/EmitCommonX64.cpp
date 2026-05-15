@@ -16,6 +16,7 @@
 
 LUAU_DYNAMIC_FASTFLAGVARIABLE(AddReturnExectargetCheck, false)
 LUAU_FASTFLAG(LuauCodegenSuggestArgumentRegisterX64)
+LUAU_FASTFLAG(LuauClosureUsageCounter)
 
 namespace Luau
 {
@@ -492,6 +493,12 @@ void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers)
     build.setLabel(skipFixedRetTop);
 
     build.mov(qword[rState + offsetof(lua_State, top)], res); // L->top = res
+
+    if (FFlag::LuauClosureUsageCounter)
+    {
+        build.mov(rax, sClosure);
+        build.dec(qword[rax + offsetof(Closure, usage)]);
+    }
 
     // Unlikely, but this might be the last return from VM
     build.test(byte[ci + offsetof(CallInfo, flags)], LUA_CALLINFO_RETURN);

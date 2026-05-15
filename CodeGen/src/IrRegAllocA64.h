@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/DenseHash.h"
 #include "Luau/IrData.h"
 #include "Luau/RegisterA64.h"
 
@@ -19,6 +20,19 @@ namespace A64
 {
 
 class AssemblyBuilderA64;
+
+constexpr int8_t kNoSpillSlot = -1;
+
+struct ExitSyncArgA64
+{
+    uint32_t instIdx;
+    RegisterA64 reg = noreg;
+    int8_t slot = kNoSpillSlot;
+    RegisterA64 originalReg = noreg;
+    ValueRestoreLocation restoreLocation;
+};
+
+using ExitSyncArgsA64 = SmallVector<ExitSyncArgA64, 2>;
 
 struct IrRegAllocA64
 {
@@ -40,8 +54,12 @@ struct IrRegAllocA64
     void freeLastUseReg(IrInst& target, uint32_t index);
     void freeLastUseRegs(const IrInst& inst, uint32_t index);
 
+    void recordAndFreeLastUse(uint32_t blockIdx, IrInst& target, uint32_t originInstIdx);
+
     void freeTemp(RegisterA64 reg);
     void freeTempRegs();
+
+    void setupExitSyncEntry(uint32_t blockIdx);
 
     // Spills all live registers that outlive current instruction; all allocated registers are assumed to be undefined
     size_t spill(uint32_t index, std::initializer_list<RegisterA64> live = {});
@@ -87,6 +105,11 @@ struct IrRegAllocA64
 
     Set& getSet(KindA64 kind);
 
+    uint32_t getAllocToken() const
+    {
+        return allocActionCount;
+    }
+
     AssemblyBuilderA64& build;
     IrFunction& function;
     LoweringStats* stats = nullptr;
@@ -99,6 +122,10 @@ struct IrRegAllocA64
 
     // which 8-byte slots are free
     uint64_t freeSpillSlots = 0;
+
+    DenseHashMap<uint32_t, ExitSyncArgsA64> exitSyncArgs{~0u};
+
+    uint32_t allocActionCount = 0;
 
     bool error = false;
 };

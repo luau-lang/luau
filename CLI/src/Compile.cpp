@@ -51,6 +51,9 @@ struct GlobalOptions
     const char* vectorLib = nullptr;
     const char* vectorCtor = nullptr;
     const char* vectorType = nullptr;
+
+    bool onlyParse = false;
+    bool parseCst = false;
 } globalOptions;
 
 static Luau::CompileOptions copts()
@@ -350,10 +353,8 @@ static bool compileFile(
             bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Remarks);
             bcb.setDumpSource(*source);
         }
-        else if (
-            format == CompileFormat::Codegen || format == CompileFormat::CodegenAsm || format == CompileFormat::CodegenIr ||
-            format == CompileFormat::CodegenVerbose
-        )
+        else if (format == CompileFormat::Codegen || format == CompileFormat::CodegenAsm || format == CompileFormat::CodegenIr ||
+                 format == CompileFormat::CodegenVerbose)
         {
             bcb.setDumpFlags(
                 Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |
@@ -366,13 +367,18 @@ static bool compileFile(
 
         Luau::Allocator allocator;
         Luau::AstNameTable names(allocator);
-        Luau::ParseResult result = Luau::Parser::parse(source->c_str(), source->size(), names, allocator);
+        Luau::ParseOptions parseOptions;
+        parseOptions.storeCstData = globalOptions.parseCst;
+        Luau::ParseResult result = Luau::Parser::parse(source->c_str(), source->size(), names, allocator, parseOptions);
 
         if (!result.errors.empty())
             throw Luau::ParseErrors(result.errors);
 
         stats.lines += result.lines;
         stats.parseTime += recordDeltaTime(currts);
+
+        if (globalOptions.onlyParse)
+            return true;
 
         Luau::compileOrThrow(bcb, result, names, copts());
         stats.bytecode += bcb.getBytecode().size();
@@ -439,6 +445,8 @@ static void displayHelp(const char* argv0)
     printf("  --vector-lib=<name>: name of the library providing vector type operations.\n");
     printf("  --vector-ctor=<name>: name of the function constructing a vector value.\n");
     printf("  --vector-type=<name>: name of the vector type.\n");
+    printf("  --only-parse: Only parse the input.\n");
+    printf("  --parse-cst: Whether parser should parse CST in addition to AST.\n");
     printf("  --fflags=<flags>: comma-separated list of fast flags to enable/disable (--fflags=true,false,LuauFlag1=true,LuauFlag2=false).\n");
 }
 
@@ -593,6 +601,14 @@ int main(int argc, char** argv)
         else if (strncmp(argv[i], "--vector-type=", 14) == 0)
         {
             globalOptions.vectorType = argv[i] + 14;
+        }
+        else if (strncmp(argv[i], "--parse-cst", 11) == 0)
+        {
+            globalOptions.parseCst = true;
+        }
+        else if (strncmp(argv[i], "--only-parse", 12) == 0)
+        {
+            globalOptions.onlyParse = true;
         }
         else if (argv[i][0] == '-' && argv[i][1] == '-' && getCompileFormat(argv[i] + 2))
         {

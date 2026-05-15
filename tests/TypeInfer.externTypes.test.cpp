@@ -1247,7 +1247,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_2")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_CHECK_NO_ERRORS(result);
 
     CHECK_EQ("Instance & { brushes: Instance }", toString(requireTypeAtPosition({2, 18})));
 }

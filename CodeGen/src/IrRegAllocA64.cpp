@@ -12,6 +12,7 @@
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
 LUAU_FASTFLAG(LuauCodegenNewRegSplit)
+LUAU_FASTFLAG(LuauCodegenVmExitSync)
 
 namespace Luau
 {
@@ -151,6 +152,9 @@ IrRegAllocA64::IrRegAllocA64(
 
 RegisterA64 IrRegAllocA64::allocReg(KindA64 kind, uint32_t index)
 {
+    if (FFlag::LuauCodegenVmExitSync)
+        allocActionCount++;
+
     Set& set = getSet(kind);
 
     if (set.free == 0)
@@ -181,6 +185,9 @@ RegisterA64 IrRegAllocA64::allocReg(KindA64 kind, uint32_t index)
 
 RegisterA64 IrRegAllocA64::allocTemp(KindA64 kind)
 {
+    if (FFlag::LuauCodegenVmExitSync)
+        allocActionCount++;
+
     Set& set = getSet(kind);
 
     if (set.free == 0)
@@ -288,6 +295,60 @@ void IrRegAllocA64::freeLastUseRegs(const IrInst& inst, uint32_t index)
         checkOp(op);
 }
 
+void IrRegAllocA64::recordAndFreeLastUse(uint32_t blockIdx, IrInst& target, uint32_t originInstIdx)
+{
+    ExitSyncArgA64 arg;
+    arg.instIdx = function.getInstIndex(target);
+
+    if (target.spilled || target.needsReload)
+    {
+        for (size_t i = 0; i < spills.size(); i++)
+        {
+            if (spills[i].inst == arg.instIdx)
+            {
+                const Spill& s = spills[i];
+
+                arg.originalReg = s.origin;
+                arg.slot = s.slot;
+
+                // Capture restore location state at the current instruction
+                if (arg.slot == kNoSpillSlot)
+                    arg.restoreLocation = function.findRestoreLocation(target, /*limitToCurrentBlock*/ false);
+
+                // If this was the last use, free register by not restoring it fully and remove the spill record
+                if (target.lastUse == originInstIdx && !target.reusedReg)
+                {
+                    if (arg.slot >= 0)
+                        freeSpill(freeSpillSlots, s.origin.kind, s.slot);
+
+                    CODEGEN_ASSERT(target.regA64 == noreg);
+                    target.spilled = false;
+                    target.needsReload = false;
+
+                    spills[i] = spills.back();
+                    spills.pop_back();
+                }
+
+                break;
+            }
+        }
+    }
+    else
+    {
+        CODEGEN_ASSERT(target.regA64 != noreg);
+        arg.reg = target.regA64;
+        arg.originalReg = target.regA64;
+
+        if (target.lastUse == originInstIdx && !target.reusedReg)
+        {
+            freeReg(target.regA64);
+            target.regA64 = noreg;
+        }
+    }
+
+    exitSyncArgs[blockIdx].push_back(arg);
+}
+
 void IrRegAllocA64::freeTemp(RegisterA64 reg)
 {
     Set& set = getSet(reg.kind);
@@ -309,6 +370,55 @@ void IrRegAllocA64::freeTempRegs()
     CODEGEN_ASSERT((simd.free & simd.temp) == 0);
     simd.free |= simd.temp;
     simd.temp = 0;
+}
+
+void IrRegAllocA64::setupExitSyncEntry(uint32_t blockIdx)
+{
+    updateLastUseLocationsInBlock(function, blockIdx);
+
+    const ExitSyncArgsA64* args = exitSyncArgs.find(blockIdx);
+
+    if (!args)
+        return;
+
+    for (const ExitSyncArgA64& arg : *args)
+    {
+        IrInst& inst = function.instructions[arg.instIdx];
+
+        inst.reusedReg = false;
+        inst.needsReload = false;
+        inst.spilled = false;
+
+        if (arg.reg != noreg)
+        {
+            inst.regA64 = arg.reg;
+
+            takeReg(arg.reg, arg.instIdx);
+        }
+        else if (arg.slot >= 0)
+        {
+            inst.regA64 = noreg;
+            inst.spilled = true;
+
+            spills.push_back({arg.instIdx, arg.originalReg, arg.slot});
+
+            // Mark the spill slot as occupied so restore() can free it
+            uint64_t mask = (arg.originalReg.kind == KindA64::q ? 3ull : 1ull) << (unsigned long long)arg.slot;
+            CODEGEN_ASSERT((freeSpillSlots & mask) == mask);
+            freeSpillSlots &= ~mask;
+        }
+        else
+        {
+            inst.regA64 = noreg;
+            inst.needsReload = true;
+
+            // Re-record the restore location captured at snapshot time
+            // Later instructions in the source block may have invalidated it in IrValueLocationTracking
+            function.recordRestoreLocation(arg.instIdx, arg.restoreLocation);
+
+            spills.push_back({arg.instIdx, arg.originalReg, arg.slot});
+        }
+    }
 }
 
 size_t IrRegAllocA64::spill(uint32_t index, std::initializer_list<RegisterA64> live)
@@ -582,10 +692,11 @@ uint32_t IrRegAllocA64::findInstructionWithFurthestNextUse(Set& set) const
         if (regInstUser == kInvalidInstIdx || regInstUser == currInstIdx)
             continue;
 
-        uint32_t nextUse = getNextInstUse(function, regInstUser, currInstIdx);
+        bool inVmExitSync = false;
+        uint32_t nextUse = getNextInstUse(function, regInstUser, currInstIdx, inVmExitSync);
 
         // Cannot spill value that is about to be used in the current instruction
-        if (nextUse == currInstIdx)
+        if (nextUse == currInstIdx && (!FFlag::LuauCodegenVmExitSync || !inVmExitSync))
             continue;
 
         if (furthestUseTarget == kInvalidInstIdx || nextUse > furthestUseLocation)

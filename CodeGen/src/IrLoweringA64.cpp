@@ -12,11 +12,10 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
 LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAG(LuauCodegenCallWrapImproved)
 LUAU_FASTFLAGVARIABLE(LuauCodegenFixBufferLenCheck)
-
+LUAU_FASTFLAG(LuauCodegenVmExitSync)
 
 namespace Luau
 {
@@ -700,7 +699,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::CHECK_DIV_INT64:
     {
         Label fresh; // used when guard aborts execution or jumps to a VM exit
-        Label& fail = getTargetLabel(OP_C(inst), fresh);
+        Label& fail = getTargetLabel(OP_C(inst), index, fresh);
 
         // guard against divide by zero
         RegisterA64 regB = tempInt64(OP_B(inst));
@@ -720,7 +719,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.ccmn(regB, 1, getConditionInt64(IrCondition::Equal), 1);
         build.b(getConditionInt64(IrCondition::Equal), fail);
 
-        finalizeTargetLabel(OP_C(inst), fresh);
+        finalizeTargetLabel(OP_C(inst), index, fresh);
         break;
     }
     case IrCmd::UDIV_INT64:
@@ -1585,8 +1584,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         if (OP_A(inst).kind == IrOpKind::Undef || OP_A(inst).kind == IrOpKind::VmExit)
         {
             Label fresh;
-            build.b(getTargetLabel(OP_A(inst), fresh));
-            finalizeTargetLabel(OP_A(inst), fresh);
+            build.b(getTargetLabel(OP_A(inst), index, fresh));
+            finalizeTargetLabel(OP_A(inst), index, fresh);
         }
         else
         {
@@ -2325,7 +2324,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::CHECK_TAG:
     {
         Label fresh; // used when guard aborts execution or jumps to a VM exit
-        Label& fail = getTargetLabel(OP_C(inst), fresh);
+        Label& fail = getTargetLabel(OP_C(inst), index, fresh);
 
         if (tagOp(OP_B(inst)) == 0)
         {
@@ -2337,7 +2336,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.b(ConditionA64::NotEqual, fail);
         }
 
-        finalizeTargetLabel(OP_C(inst), fresh);
+        finalizeTargetLabel(OP_C(inst), index, fresh);
         break;
     }
     case IrCmd::CHECK_TRUTHY:
@@ -2346,7 +2345,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         CODEGEN_ASSERT(OP_A(inst).kind != IrOpKind::Constant || tagOp(OP_A(inst)) == LUA_TBOOLEAN);
 
         Label fresh; // used when guard aborts execution or jumps to a VM exit
-        Label& target = getTargetLabel(OP_C(inst), fresh);
+        Label& target = getTargetLabel(OP_C(inst), index, fresh);
 
         Label skip;
 
@@ -2375,7 +2374,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         if (OP_A(inst).kind != IrOpKind::Constant)
             build.setLabel(skip);
 
-        finalizeTargetLabel(OP_C(inst), fresh);
+        finalizeTargetLabel(OP_C(inst), index, fresh);
         break;
     }
     case IrCmd::CHECK_READONLY:
@@ -2383,8 +2382,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         Label fresh; // used when guard aborts execution or jumps to a VM exit
         RegisterA64 temp = regs.allocTemp(KindA64::w);
         build.ldrb(temp, mem(regOp(OP_A(inst)), offsetof(LuaTable, readonly)));
-        build.cbnz(temp, getTargetLabel(OP_B(inst), fresh));
-        finalizeTargetLabel(OP_B(inst), fresh);
+        build.cbnz(temp, getTargetLabel(OP_B(inst), index, fresh));
+        finalizeTargetLabel(OP_B(inst), index, fresh);
         break;
     }
     case IrCmd::CHECK_NO_METATABLE:
@@ -2392,19 +2391,19 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         Label fresh; // used when guard aborts execution or jumps to a VM exit
         RegisterA64 temp = regs.allocTemp(KindA64::x);
         build.ldr(temp, mem(regOp(OP_A(inst)), offsetof(LuaTable, metatable)));
-        build.cbnz(temp, getTargetLabel(OP_B(inst), fresh));
-        finalizeTargetLabel(OP_B(inst), fresh);
+        build.cbnz(temp, getTargetLabel(OP_B(inst), index, fresh));
+        finalizeTargetLabel(OP_B(inst), index, fresh);
         break;
     }
     case IrCmd::CHECK_SAFE_ENV:
     {
-        checkSafeEnv(OP_A(inst), next);
+        checkSafeEnv(OP_A(inst), index, next);
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:
     {
         Label fresh; // used when guard aborts execution or jumps to a VM exit
-        Label& fail = getTargetLabel(OP_C(inst), fresh);
+        Label& fail = getTargetLabel(OP_C(inst), index, fresh);
 
         RegisterA64 temp = regs.allocTemp(KindA64::w);
         build.ldr(temp, mem(regOp(OP_A(inst)), offsetof(LuaTable, sizearray)));
@@ -2436,7 +2435,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         else
             CODEGEN_ASSERT(!"Unsupported instruction form");
 
-        finalizeTargetLabel(OP_C(inst), fresh);
+        finalizeTargetLabel(OP_C(inst), index, fresh);
         break;
     }
     case IrCmd::JUMP_SLOT_MATCH:
@@ -2480,8 +2479,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.ldr(temp, mem(regOp(OP_A(inst)), offsetof(LuaNode, key) + kOffsetOfTKeyTagNext));
         build.lsr(temp, temp, kTKeyTagBits);
-        build.cbnz(temp, getTargetLabel(OP_B(inst), fresh));
-        finalizeTargetLabel(OP_B(inst), fresh);
+        build.cbnz(temp, getTargetLabel(OP_B(inst), index, fresh));
+        finalizeTargetLabel(OP_B(inst), index, fresh);
         break;
     }
     case IrCmd::CHECK_NODE_VALUE:
@@ -2491,175 +2490,128 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.ldr(temp, mem(regOp(OP_A(inst)), offsetof(LuaNode, val.tt)));
         CODEGEN_ASSERT(LUA_TNIL == 0);
-        build.cbz(temp, getTargetLabel(OP_B(inst), fresh));
-        finalizeTargetLabel(OP_B(inst), fresh);
+        build.cbz(temp, getTargetLabel(OP_B(inst), index, fresh));
+        finalizeTargetLabel(OP_B(inst), index, fresh);
         break;
     }
     case IrCmd::CHECK_BUFFER_LEN:
     {
-        if (FFlag::LuauCodegenBufferRangeMerge4)
+        int minOffset = intOp(OP_C(inst));
+        int maxOffset = intOp(OP_D(inst));
+        CODEGEN_ASSERT(minOffset < maxOffset);
+        CODEGEN_ASSERT(minOffset >= -int(AssemblyBuilderA64::kMaxImmediate) && minOffset <= int(AssemblyBuilderA64::kMaxImmediate));
+
+        int accessSize = maxOffset - minOffset;
+        CODEGEN_ASSERT(accessSize > 0 && accessSize <= int(AssemblyBuilderA64::kMaxImmediate));
+
+        // For jumps to exit sync blocks to work, we need the same register allocation state at each potential taken branch
+        RegisterA64 regA = FFlag::LuauCodegenVmExitSync && OP_A(inst).kind == IrOpKind::Inst ? regOp(OP_A(inst)) : noreg;
+        RegisterA64 regB = FFlag::LuauCodegenVmExitSync && OP_B(inst).kind == IrOpKind::Inst ? regOp(OP_B(inst)) : noreg;
+        RegisterA64 regE = FFlag::LuauCodegenVmExitSync && OP_E(inst).kind != IrOpKind::Undef ? regOp(OP_E(inst)) : noreg;
+        RegisterA64 tempW1 = FFlag::LuauCodegenVmExitSync ? regs.allocTemp(KindA64::w) : noreg;
+        RegisterA64 tempW2 = FFlag::LuauCodegenVmExitSync ? regs.allocTemp(KindA64::w) : noreg;
+        RegisterA64 tempD = FFlag::LuauCodegenVmExitSync ? regs.allocTemp(KindA64::d) : noreg;
+
+        // Validate that we don't allocate anything else in this multi-branch instruction lowering
+        if (FFlag::LuauCodegenVmExitSync)
         {
-            int minOffset = intOp(OP_C(inst));
-            int maxOffset = intOp(OP_D(inst));
-            CODEGEN_ASSERT(minOffset < maxOffset);
-            CODEGEN_ASSERT(minOffset >= -int(AssemblyBuilderA64::kMaxImmediate) && minOffset <= int(AssemblyBuilderA64::kMaxImmediate));
+            exitSyncInstIdx = index;
+            exitSyncAllocToken = regs.getAllocToken();
+        }
 
-            int accessSize = maxOffset - minOffset;
-            CODEGEN_ASSERT(accessSize > 0 && accessSize <= int(AssemblyBuilderA64::kMaxImmediate));
+        Label fresh; // used when guard aborts execution or jumps to a VM exit
+        Label& target = getTargetLabel(OP_F(inst), index, fresh);
 
-            Label fresh; // used when guard aborts execution or jumps to a VM exit
-            Label& target = getTargetLabel(OP_F(inst), fresh);
+        // Check if we are acting not only as a guard for the size, but as a guard that offset represents an exact integer
+        if (OP_E(inst).kind != IrOpKind::Undef)
+        {
+            CODEGEN_ASSERT(getCmdValueKind(function.instOp(OP_B(inst)).cmd) == IrValueKind::Int);
+            CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
 
-            // Check if we are acting not only as a guard for the size, but as a guard that offset represents an exact integer
-            if (OP_E(inst).kind != IrOpKind::Undef)
+            if ((build.features & Feature_JSCVT) != 0)
             {
-                CODEGEN_ASSERT(getCmdValueKind(function.instOp(OP_B(inst)).cmd) == IrValueKind::Int);
-                CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
+                RegisterA64 temp = FFlag::LuauCodegenVmExitSync ? tempW1 : regs.allocTemp(KindA64::w);
 
-                if ((build.features & Feature_JSCVT) != 0)
-                {
-                    RegisterA64 temp = regs.allocTemp(KindA64::w);
-
-                    build.fjcvtzs(temp, regOp(OP_E(inst))); // fjcvtzs sets PSTATE.Z (equal) iff conversion is exact
-                    build.b(ConditionA64::NotEqual, target);
-                }
-                else
-                {
-                    RegisterA64 temp = regs.allocTemp(KindA64::d);
-
-                    build.scvtf(temp, regOp(OP_B(inst)));
-                    build.fcmp(regOp(OP_E(inst)), temp);
-                    build.b(ConditionA64::NotEqual, target);
-                }
-            }
-
-            RegisterA64 temp = regs.allocTemp(KindA64::w);
-            build.ldr(temp, mem(regOp(OP_A(inst)), offsetof(Buffer, len)));
-
-            if (OP_B(inst).kind == IrOpKind::Inst)
-            {
-                CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
-
-                if (accessSize == 1 && minOffset == 0)
-                {
-                    // fails if offset >= len
-                    build.cmp(temp, regOp(OP_B(inst)));
-                    build.b(ConditionA64::UnsignedLessEqual, target);
-                }
-                else if (minOffset >= 0 && maxOffset <= int(AssemblyBuilderA64::kMaxImmediate))
-                {
-                    // fails if offset + size > len; we compute it as len - offset < size
-                    RegisterA64 tempx = castReg(KindA64::x, temp);
-                    build.sub(tempx, tempx, regOp(OP_B(inst))); // implicit uxtw
-                    build.cmp(tempx, uint16_t(maxOffset));
-                    build.b(ConditionA64::Less, target); // note: this is a signed 64-bit comparison so that out of bounds offset fails
-                }
-                else
-                {
-                    RegisterA64 tempx = castReg(KindA64::x, temp);
-                    RegisterA64 temp2 = regs.allocTemp(KindA64::x);
-
-                    // Get the base offset in 32 bits
-                    if (minOffset >= 0)
-                        build.add(castReg(KindA64::w, temp2), regOp(OP_B(inst)), uint16_t(minOffset));
-                    else
-                        build.sub(castReg(KindA64::w, temp2), regOp(OP_B(inst)), uint16_t(-minOffset));
-
-                    // fail if uint64_t(uint32_t(offset + minOffset)) + accessSize > length
-                    build.add(temp2, temp2, uint16_t(accessSize));
-                    build.cmp(temp2, tempx);
-                    build.b(ConditionA64::UnsignedGreater, target);
-                }
-            }
-            else if (OP_B(inst).kind == IrOpKind::Constant)
-            {
-                int offset = intOp(OP_B(inst));
-                int endOffset = FFlag::LuauCodegenFixBufferLenCheck ? maxOffset : accessSize;
-                ConditionA64 failCond = FFlag::LuauCodegenFixBufferLenCheck ? ConditionA64::UnsignedLess : ConditionA64::UnsignedLessEqual;
-
-                // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
-                if (offset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
-                {
-                    build.b(target);
-                }
-                else if (offset + endOffset <= int(AssemblyBuilderA64::kMaxImmediate))
-                {
-                    build.cmp(temp, uint16_t(offset + endOffset));
-                    build.b(failCond, target);
-                }
-                else
-                {
-                    RegisterA64 temp2 = regs.allocTemp(KindA64::w);
-                    build.mov(temp2, offset + endOffset);
-                    build.cmp(temp, temp2);
-                    build.b(failCond, target);
-                }
+                build.fjcvtzs(temp, FFlag::LuauCodegenVmExitSync ? regE : regOp(OP_E(inst))); // fjcvtzs sets PSTATE.Z (equal) iff conversion is exact
+                build.b(ConditionA64::NotEqual, target);
             }
             else
             {
-                CODEGEN_ASSERT(!"Unsupported instruction form");
+                RegisterA64 temp = FFlag::LuauCodegenVmExitSync ? tempD : regs.allocTemp(KindA64::d);
+
+                build.scvtf(temp, FFlag::LuauCodegenVmExitSync ? regB : regOp(OP_B(inst)));
+                build.fcmp(FFlag::LuauCodegenVmExitSync ? regE : regOp(OP_E(inst)), temp);
+                build.b(ConditionA64::NotEqual, target);
             }
-            finalizeTargetLabel(OP_F(inst), fresh);
+        }
+
+        RegisterA64 temp = FFlag::LuauCodegenVmExitSync ? tempW1 : regs.allocTemp(KindA64::w);
+        build.ldr(temp, mem(FFlag::LuauCodegenVmExitSync ? regA : regOp(OP_A(inst)), offsetof(Buffer, len)));
+
+        if (OP_B(inst).kind == IrOpKind::Inst)
+        {
+            CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
+
+            if (accessSize == 1 && minOffset == 0)
+            {
+                // fails if offset >= len
+                build.cmp(temp, FFlag::LuauCodegenVmExitSync ? regB : regOp(OP_B(inst)));
+                build.b(ConditionA64::UnsignedLessEqual, target);
+            }
+            else if (minOffset >= 0 && maxOffset <= int(AssemblyBuilderA64::kMaxImmediate))
+            {
+                // fails if offset + size > len; we compute it as len - offset < size
+                RegisterA64 tempx = castReg(KindA64::x, temp);
+                build.sub(tempx, tempx, FFlag::LuauCodegenVmExitSync ? regB : regOp(OP_B(inst))); // implicit uxtw
+                build.cmp(tempx, uint16_t(maxOffset));
+                build.b(ConditionA64::Less, target); // note: this is a signed 64-bit comparison so that out of bounds offset fails
+            }
+            else
+            {
+                RegisterA64 tempx = castReg(KindA64::x, temp);
+                RegisterA64 temp2 = FFlag::LuauCodegenVmExitSync ? castReg(KindA64::x, tempW2) : regs.allocTemp(KindA64::x);
+
+                // Get the base offset in 32 bits
+                if (minOffset >= 0)
+                    build.add(castReg(KindA64::w, temp2), FFlag::LuauCodegenVmExitSync ? regB : regOp(OP_B(inst)), uint16_t(minOffset));
+                else
+                    build.sub(castReg(KindA64::w, temp2), FFlag::LuauCodegenVmExitSync ? regB : regOp(OP_B(inst)), uint16_t(-minOffset));
+
+                // fail if uint64_t(uint32_t(offset + minOffset)) + accessSize > length
+                build.add(temp2, temp2, uint16_t(accessSize));
+                build.cmp(temp2, tempx);
+                build.b(ConditionA64::UnsignedGreater, target);
+            }
+        }
+        else if (OP_B(inst).kind == IrOpKind::Constant)
+        {
+            int offset = intOp(OP_B(inst));
+            int endOffset = FFlag::LuauCodegenFixBufferLenCheck ? maxOffset : accessSize;
+            ConditionA64 failCond = FFlag::LuauCodegenFixBufferLenCheck ? ConditionA64::UnsignedLess : ConditionA64::UnsignedLessEqual;
+
+            // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
+            if (offset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
+            {
+                build.b(target);
+            }
+            else if (offset + endOffset <= int(AssemblyBuilderA64::kMaxImmediate))
+            {
+                build.cmp(temp, uint16_t(offset + endOffset));
+                build.b(failCond, target);
+            }
+            else
+            {
+                RegisterA64 temp2 = FFlag::LuauCodegenVmExitSync ? tempW2 : regs.allocTemp(KindA64::w);
+                build.mov(temp2, offset + endOffset);
+                build.cmp(temp, temp2);
+                build.b(failCond, target);
+            }
         }
         else
         {
-            int accessSize = intOp(OP_C(inst));
-            CODEGEN_ASSERT(accessSize > 0 && accessSize <= int(AssemblyBuilderA64::kMaxImmediate));
-
-            Label fresh; // used when guard aborts execution or jumps to a VM exit
-            Label& target = getTargetLabel(OP_D(inst), fresh);
-
-            RegisterA64 temp = regs.allocTemp(KindA64::w);
-            build.ldr(temp, mem(regOp(OP_A(inst)), offsetof(Buffer, len)));
-
-            if (OP_B(inst).kind == IrOpKind::Inst)
-            {
-                CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
-
-                if (accessSize == 1)
-                {
-                    // fails if offset >= len
-                    build.cmp(temp, regOp(OP_B(inst)));
-                    build.b(ConditionA64::UnsignedLessEqual, target);
-                }
-                else
-                {
-                    // fails if offset + size > len; we compute it as len - offset < size
-                    RegisterA64 tempx = castReg(KindA64::x, temp);
-                    build.sub(tempx, tempx, regOp(OP_B(inst))); // implicit uxtw
-                    build.cmp(tempx, uint16_t(accessSize));
-                    build.b(ConditionA64::Less, target); // note: this is a signed 64-bit comparison so that out of bounds offset fails
-                }
-            }
-            else if (OP_B(inst).kind == IrOpKind::Constant)
-            {
-                int offset = intOp(OP_B(inst));
-                ConditionA64 failCond = FFlag::LuauCodegenFixBufferLenCheck ? ConditionA64::UnsignedLess : ConditionA64::UnsignedLessEqual;
-
-                // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
-                if (offset < 0 || unsigned(offset) + unsigned(accessSize) >= unsigned(INT_MAX))
-                {
-                    build.b(target);
-                }
-                else if (offset + accessSize <= int(AssemblyBuilderA64::kMaxImmediate))
-                {
-                    build.cmp(temp, uint16_t(offset + accessSize));
-                    build.b(failCond, target);
-                }
-                else
-                {
-                    RegisterA64 temp2 = regs.allocTemp(KindA64::w);
-                    build.mov(temp2, offset + accessSize);
-                    build.cmp(temp, temp2);
-                    build.b(failCond, target);
-                }
-            }
-            else
-            {
-                CODEGEN_ASSERT(!"Unsupported instruction form");
-            }
-            finalizeTargetLabel(OP_D(inst), fresh);
+            CODEGEN_ASSERT(!"Unsupported instruction form");
         }
+        finalizeTargetLabel(OP_F(inst), index, fresh);
         break;
     }
     case IrCmd::CHECK_USERDATA_TAG:
@@ -2667,26 +2619,26 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         CODEGEN_ASSERT(unsigned(intOp(OP_B(inst))) <= AssemblyBuilderA64::kMaxImmediate);
 
         Label fresh; // used when guard aborts execution or jumps to a VM exit
-        Label& fail = getTargetLabel(OP_C(inst), fresh);
+        Label& fail = getTargetLabel(OP_C(inst), index, fresh);
         RegisterA64 temp = regs.allocTemp(KindA64::w);
         build.ldrb(temp, mem(regOp(OP_A(inst)), offsetof(Udata, tag)));
         build.cmp(temp, uint16_t(intOp(OP_B(inst))));
         build.b(ConditionA64::NotEqual, fail);
-        finalizeTargetLabel(OP_C(inst), fresh);
+        finalizeTargetLabel(OP_C(inst), index, fresh);
         break;
     }
     case IrCmd::CHECK_CMP_NUM:
     {
         IrCondition cond = conditionOp(OP_C(inst));
         Label fresh; // used when guard aborts execution or jumps to a VM exit
-        Label& fail = getTargetLabel(OP_D(inst), fresh);
+        Label& fail = getTargetLabel(OP_D(inst), index, fresh);
 
         RegisterA64 tempA = tempDouble(OP_A(inst));
 
         build.fcmp(tempA, tempDouble(OP_B(inst)));
         build.b(getConditionFP(getNegatedCondition(cond)), fail);
 
-        finalizeTargetLabel(OP_D(inst), fresh);
+        finalizeTargetLabel(OP_D(inst), index, fresh);
         break;
     }
     case IrCmd::CHECK_CMP_INT:
@@ -2694,7 +2646,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         IrCondition cond = conditionOp(OP_C(inst));
 
         Label fresh; // used when guard aborts execution or jumps to a VM exit
-        Label& fail = getTargetLabel(OP_D(inst), fresh);
+        Label& fail = getTargetLabel(OP_D(inst), index, fresh);
 
         if (cond == IrCondition::Equal && intOp(OP_B(inst)) == 0)
         {
@@ -2715,7 +2667,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
             build.b(getConditionInt(getNegatedCondition(cond)), fail);
         }
-        finalizeTargetLabel(OP_D(inst), fresh);
+        finalizeTargetLabel(OP_D(inst), index, fresh);
         break;
     }
     case IrCmd::CHECK_CMP_INT64:
@@ -2723,7 +2675,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         IrCondition cond = conditionOp(OP_C(inst));
 
         Label fresh; // used when guard aborts execution or jumps to a VM exit
-        Label& fail = getTargetLabel(OP_D(inst), fresh);
+        Label& fail = getTargetLabel(OP_D(inst), index, fresh);
 
         if (cond == IrCondition::Equal && OP_B(inst).kind == IrOpKind::Constant && int64Op(OP_B(inst)) == 0)
         {
@@ -2744,7 +2696,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
             build.b(getConditionInt64(getNegatedCondition(cond)), fail);
         }
-        finalizeTargetLabel(OP_D(inst), fresh);
+        finalizeTargetLabel(OP_D(inst), index, fresh);
         break;
     }
     case IrCmd::INTERRUPT:
@@ -3718,6 +3670,9 @@ void IrLoweringA64::startBlock(const IrBlock& curr)
         allocAndIncrementCounterAt(
             curr.kind == IrBlockKind::Fallback ? CodeGenCounter::FallbackBlockExecuted : CodeGenCounter::RegularBlockExecuted, curr.startpc
         );
+
+    if (FFlag::LuauCodegenVmExitSync && curr.kind == IrBlockKind::ExitSync)
+        regs.setupExitSyncEntry(function.getBlockIndex(curr));
 }
 
 void IrLoweringA64::finishBlock(const IrBlock& curr, const IrBlock& next)
@@ -3800,7 +3755,7 @@ void IrLoweringA64::jumpOrFallthrough(IrBlock& target, const IrBlock& next)
         build.b(target.label);
 }
 
-Label& IrLoweringA64::getTargetLabel(IrOp op, Label& fresh)
+Label& IrLoweringA64::getTargetLabel(IrOp op, uint32_t index, Label& fresh)
 {
     if (op.kind == IrOpKind::Undef)
         return fresh;
@@ -3816,11 +3771,24 @@ Label& IrLoweringA64::getTargetLabel(IrOp op, Label& fresh)
     return labelOp(op);
 }
 
-void IrLoweringA64::finalizeTargetLabel(IrOp op, Label& fresh)
+void IrLoweringA64::finalizeTargetLabel(IrOp op, uint32_t index, Label& fresh)
 {
     if (op.kind == IrOpKind::Undef)
     {
         emitAbort(build, fresh);
+    }
+    else if (FFlag::LuauCodegenVmExitSync && op.kind == IrOpKind::Block && blockOp(op).kind == IrBlockKind::ExitSync)
+    {
+        // Multi-branch instructions must capture exitSyncAllocToken before the first branch to verify all sync exit branches have same state
+        if (exitSyncInstIdx == index)
+            CODEGEN_ASSERT(exitSyncAllocToken == regs.getAllocToken());
+
+        // Snapshot current register/spill locations of values the exit sync block needs, and release registers at last use
+        VmExitSyncInfo* syncInfo = function.vmExitInfo.find(index);
+        CODEGEN_ASSERT(syncInfo);
+
+        for (auto argOp : syncInfo->argOps)
+            regs.recordAndFreeLastUse(op.index, function.instOp(argOp), index);
     }
     else if (op.kind == IrOpKind::VmExit && fresh.id != 0)
     {
@@ -3829,15 +3797,15 @@ void IrLoweringA64::finalizeTargetLabel(IrOp op, Label& fresh)
     }
 }
 
-void IrLoweringA64::checkSafeEnv(IrOp target, const IrBlock& next)
+void IrLoweringA64::checkSafeEnv(IrOp target, uint32_t index, const IrBlock& next)
 {
     Label fresh; // used when guard aborts execution or jumps to a VM exit
     RegisterA64 temp = regs.allocTemp(KindA64::x);
     RegisterA64 tempw = castReg(KindA64::w, temp);
     build.ldr(temp, mem(rClosure, offsetof(Closure, env)));
     build.ldrb(tempw, mem(temp, offsetof(LuaTable, safeenv)));
-    build.cbz(tempw, getTargetLabel(target, fresh));
-    finalizeTargetLabel(target, fresh);
+    build.cbz(tempw, getTargetLabel(target, index, fresh));
+    finalizeTargetLabel(target, index, fresh);
 }
 
 void IrLoweringA64::allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcpos)

@@ -1,7 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Common.h"
 #include "Luau/Location.h"
+#include "Luau/Variant.h"
 
 #include <iterator>
 #include <optional>
@@ -10,6 +12,8 @@
 
 #include <string.h>
 #include <stdint.h>
+
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
@@ -1085,6 +1089,42 @@ struct AstDeclaredExternTypeProperty
     AstTableAccess access = AstTableAccess::ReadWrite;
 };
 
+struct AstClassProperty
+{
+    Location qualifierLocation;
+    AstName name;
+    Location nameLocation;
+    std::optional<Location> typeColonLocation = std::nullopt;
+    AstType* ty = nullptr;
+};
+
+struct AstClassMethod
+{
+    Location keywordLocation;
+    AstName functionName;
+    Location nameLocation;
+    AstExprFunction* function;
+};
+
+using AstClassMember = Variant<AstClassProperty, AstClassMethod>;
+
+class AstStatClass : public AstStat
+{
+public:
+    LUAU_RTTI(AstStatClass)
+
+    AstLocal* name;
+    AstArray<AstClassMember> members;
+
+    AstStatClass(
+        const Location& location,
+        AstLocal* name,
+        AstArray<AstClassMember> members
+    );
+
+    void visit(AstVisitor* visitor) override;
+};
+
 struct AstTableIndexer
 {
     AstType* indexType;
@@ -1578,6 +1618,11 @@ public:
     }
     virtual bool visit(class AstStatDeclareGlobal* node)
     {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatClass* node)
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
         return visit(static_cast<AstStat*>(node));
     }
     virtual bool visit(class AstStatDeclareExternType* node)

@@ -11,6 +11,8 @@
 LUAU_FASTFLAG(LuauCompileDuptableConstantPack2)
 LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAGVARIABLE(LuauCompileUdataDirect)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauEmitCallFeedback)
 
 namespace Luau
 {
@@ -225,6 +227,7 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uin
     constants.clear();
     protos.clear();
     jumps.clear();
+    fbSlots.clear();
     tableShapes.clear();
 
     debugLocals.clear();
@@ -403,6 +406,13 @@ int32_t BytecodeBuilder::addConstantClosure(uint32_t fid)
     return addConstant(k, c);
 }
 
+uint32_t BytecodeBuilder::addFbSlot(LuauFeedbackType t)
+{
+    LUAU_ASSERT(t == LuauFeedbackType::LFT_CALLTARGET);
+    fbSlots.push_back(getInstructionCount());
+    return fbSlots.size() - 1;
+}
+
 int16_t BytecodeBuilder::addChildFunction(uint32_t fid)
 {
     if (int16_t* cache = protoMap.find(fid))
@@ -417,6 +427,24 @@ int16_t BytecodeBuilder::addChildFunction(uint32_t fid)
     protos.push_back(fid);
 
     return int16_t(id);
+}
+
+int32_t BytecodeBuilder::addClassShape(ClassShape shape)
+{
+    uint32_t id = uint32_t(constants.size());
+
+    if (id >= kMaxConstantCount)
+        return -1;
+
+    Constant c = {Constant::Type_ClassShape};
+
+    c.valueClassShape = uint32_t(classShapes.size());
+
+    classShapes.emplace_back(std::move(shape));
+
+    constants.push_back(c);
+
+    return int32_t(id);
 }
 
 void BytecodeBuilder::emitABC(LuauOpcode op, uint8_t a, uint8_t b, uint8_t c)
@@ -514,6 +542,12 @@ bool BytecodeBuilder::patchSkipC(size_t jumpLabel, size_t targetLabel)
 
     insns[jumpLabel] |= offset << 24;
     return true;
+}
+
+void BytecodeBuilder::patchAux(size_t targetAux, int32_t newValue)
+{
+    LUAU_ASSERT(targetAux < insns.size());
+    insns[targetAux] = newValue;
 }
 
 void BytecodeBuilder::setFunctionTypeInfo(std::string value)
@@ -819,6 +853,12 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
             writeVarInt(ss, c.valueClosure);
             break;
 
+        case Constant::Type_ClassShape:
+            writeByte(ss,LBC_CONSTANT_CLASS_SHAPE);
+            writeClassShape(ss, classShapes[c.valueClassShape]);
+            break;
+
+
         default:
             LUAU_ASSERT(!"Unsupported constant type");
         }
@@ -881,6 +921,28 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
     {
         writeByte(ss, 0);
     }
+
+    if (FFlag::LuauEmitCallFeedback)
+    {
+        // Feedback Slots
+        writeVarInt(ss, fbSlots.size());
+        for (uint32_t pc : fbSlots)
+        {
+            writeByte(ss, LFT_CALLTARGET);
+            writeVarInt(ss, pc);
+        }
+    }
+}
+
+void BytecodeBuilder::writeClassShape(std::string& ss, const ClassShape& cs) const
+{
+    writeVarInt(ss, cs.className);
+    writeVarInt(ss, cs.propertyNames.size());
+    writeVarInt(ss, cs.methodNames.size());
+    for (const auto propName: cs.propertyNames)
+        writeVarInt(ss, propName);
+    for (const auto methodName: cs.methodNames)
+        writeVarInt(ss, methodName);
 }
 
 void BytecodeBuilder::writeLineInfo(std::string& ss) const
@@ -1243,6 +1305,12 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
+    if (FFlag::LuauEmitCallFeedback)
+        return 11;
+
+    if (FFlag::DebugLuauUserDefinedClasses)
+        return 10;
+
     if (FFlag::LuauCompileUdataDirect)
         return 9;
 
@@ -1399,10 +1467,11 @@ void BytecodeBuilder::validateInstructions() const
             VREG(LUAU_INSN_A(insn));
             VREG(LUAU_INSN_B(insn));
             VCONST(insns[i + 1], String);
-            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALL);
+            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALLFB || LUAU_INSN_OP(insns[i + 2]) == LOP_CALL);
             break;
 
         case LOP_CALL:
+        case LOP_CALLFB:
         {
             int nparams = LUAU_INSN_B(insn) - 1;
             int nresults = LUAU_INSN_C(insn) - 1;
@@ -1662,6 +1731,13 @@ void BytecodeBuilder::validateInstructions() const
                 LUAU_ASSERT(!"Unsupported capture type");
             }
             break;
+        
+        case LOP_NEWCLASSMEMBER:
+            VREG(LUAU_INSN_A(insn));
+            LUAU_ASSERT(LUAU_INSN_B(insn) == 0);
+            VREG(LUAU_INSN_C(insn));
+            VCONST(insns[i + 1], String);
+            break;
 
         case LOP_GETUDATAKS:
         case LOP_SETUDATAKS:
@@ -1743,8 +1819,9 @@ void BytecodeBuilder::validateVariadic() const
             LUAU_ASSERT(!insntargets[i]);
         }
 
-        if (op == LOP_CALL)
+        if (op == LOP_CALL || op == LOP_CALLFB)
         {
+            LUAU_ASSERT(FFlag::LuauEmitCallFeedback || op != LOP_CALLFB);
             // note: calls may end one variadic sequence and start a new one
 
             if (LUAU_INSN_B(insn) == 0)
@@ -1931,6 +2008,17 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
             formatAppend(result, "'%s'", func.dumpname.c_str());
         break;
     }
+    case Constant::Type_ClassShape:
+    {
+        const ClassShape& cs = classShapes[data.valueClassShape];
+        const Constant& className = constants[cs.className];
+        LUAU_ASSERT(className.type == Constant::Type_String && className.valueString <= debugStrings.size());
+        const StringRef& str = debugStrings[className.valueString - 1];
+        // This should always be printable, in fact this should always be a
+        // valid Luau identifier!
+        LUAU_ASSERT(printableStringConstant(str.data, str.length));
+        formatAppend(result, "class %.*s (props: %zu, methods: %zu)", int(str.length), str.data, cs.propertyNames.size(), cs.methodNames.size());
+    }
     }
 }
 
@@ -2041,6 +2129,11 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
 
     case LOP_CALL:
         formatAppend(result, "CALL R%d %d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn) - 1, LUAU_INSN_C(insn) - 1);
+        break;
+
+    case LOP_CALLFB:
+        formatAppend(result, "CALLFB R%d %d %d [%d]\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn) - 1, LUAU_INSN_C(insn) - 1, static_cast<int>(*code));
+        code++;
         break;
 
     case LOP_RETURN:
@@ -2350,6 +2443,13 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
     case LOP_NAMECALLUDATA:
         formatAppend(result, "NAMECALLUDATA R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_AUX_KV16(*code));
         dumpConstant(result, LUAU_INSN_AUX_KV16(*code));
+        result.append("]\n");
+        code++;
+        break;
+
+    case LOP_NEWCLASSMEMBER:
+        formatAppend(result, "NEWCLASSMEMBER R%d R%d [", LUAU_INSN_A(insn), LUAU_INSN_C(insn));
+        dumpConstant(result, *code);
         result.append("]\n");
         code++;
         break;
