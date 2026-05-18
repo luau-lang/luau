@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "luau.pb.h"
 
+#include <optional>
+
 static const std::string kNames[] = {
     "_G",
     "_VERSION",
@@ -246,6 +248,25 @@ static const std::string kBuiltinTypes[] = {
     "lt",  "le",  "eq",  "keyof", "rawkeyof", "index", "rawget", "setmetatable", "getmetatable",
 };
 
+static const std::string kValidClassMetamethods[] = {
+    "__call",
+    "__concat",
+    "__unm",
+    "__add",
+    "__sub",
+    "__mul",
+    "__div",
+    "__idiv",
+    "__mod",
+    "__pow",
+    "__tostring",
+    "__eq",
+    "__lt",
+    "__le",
+    "__len",
+    "__iter"
+};
+
 struct BuiltinLibrary
 {
     const char* name;
@@ -294,9 +315,17 @@ struct ProtoToLuau
         bool vararg = false;
     };
 
-    std::string source;
+    struct Class
+    {
+        const luau::Local* name;
+        std::vector<const luau::Name*> props;
+    };
+
+    std::string source = "class _ end\n";
     std::vector<Function> functions;
+    std::vector<Class> classes;
     bool types = false;
+    int blockDepth = -1;
 
     ProtoToLuau()
     {
@@ -509,7 +538,7 @@ struct ProtoToLuau
             source += "_";
     }
 
-    void print(const luau::ExprCall& expr)
+    void print(const luau::ParenCall& expr)
     {
         if (expr.func().has_index_name())
             print(expr.func().index_name(), expr.self());
@@ -523,6 +552,26 @@ struct ProtoToLuau
             print(expr.args(i));
         }
         source += ')';
+    }
+
+    void print(const luau::ParenlessCall& expr)
+    {
+        print(expr.func());
+        source += ' ';
+        if (expr.has_string())
+            print(expr.string());
+        else if (expr.has_table())
+            print(expr.table());
+        else
+            source += "{ }";
+    }
+
+    void print(const luau::ExprCall& expr)
+    {
+        if (expr.has_paren())
+            print(expr.paren());
+        else
+            print(expr.parenless());
     }
 
     void print(const luau::ExprIndexName& expr, bool self = false)
@@ -717,6 +766,38 @@ struct ProtoToLuau
         source += "`";
     }
 
+    void print(const luau::ExprClassInst& expr, std::optional<size_t> classIndex = std::nullopt)
+    {
+        if (classes.size() == 0)
+            source += "_ { }";
+
+        size_t index = classIndex.value_or(size_t(expr.index()) % classes.size());
+        const Class& cls = classes[index];
+
+        print(*cls.name);
+
+        source += " { ";
+
+        const int generatedArgsSize = 1 + expr.otherargs_size();
+        for (int i = 0; i < int(cls.props.size()); ++i)
+        {
+            if (i != 0)
+                source += ", ";
+
+            ident(*cls.props[i]);
+
+            source += " = ";
+
+            int generatedArgIndex = i % generatedArgsSize;
+            if (generatedArgIndex == 0)
+                print(expr.firstarg());
+            else
+                print(expr.otherargs(generatedArgIndex - 1));
+        }
+
+        source += " }";
+    }
+
     void print(const luau::ExprBuiltinRef& expr)
     {
         size_t libIndex = size_t(expr.library()) % std::size(kBuiltinLibraries);
@@ -780,12 +861,15 @@ struct ProtoToLuau
             print(stat.require_into_local());
         else if (stat.has_type_function())
             print(stat.type_function());
+        else if (stat.has_class_())
+            print(stat.class_());
         else
             source += "do end\n";
     }
 
     void print(const luau::StatBlock& stat)
     {
+        blockDepth++;
         for (int i = 0; i < stat.body_size(); ++i)
         {
             if (stat.body(i).has_block())
@@ -794,6 +878,8 @@ struct ProtoToLuau
                 print(stat.body(i));
                 source += "end\n";
             }
+            else if (stat.body(i).has_class_() && blockDepth != 0)
+                continue; // Class declarations are only allowed at the top level
             else
             {
                 print(stat.body(i));
@@ -803,6 +889,7 @@ struct ProtoToLuau
                     break;
             }
         }
+        blockDepth--;
     }
 
     void print(const luau::StatIf& stat)
@@ -1082,6 +1169,74 @@ struct ProtoToLuau
         source += "type function ";
         ident(stat.name());
         function(stat.func());
+        source += '\n';
+    }
+
+    void print(const luau::ClassProp& prop)
+    {
+        source += "public ";
+        ident(prop.name());
+
+        if (prop.has_type())
+        {
+            source += ':';
+            print(prop.type());
+        }
+    }
+
+    void print(const luau::ClassMetamethodName& metamethod)
+    {
+        size_t index = size_t(metamethod.index()) % std::size(kValidClassMetamethods);
+        source += kValidClassMetamethods[index];
+    }
+
+    void print(const luau::ClassMethod& method)
+    {
+        if (method.has_access())
+        {
+            // TODO: once we add more modifiers, add a helper to print access
+            if (method.access() == luau::Modifier::PUBLIC)
+                source += "public ";
+        }
+        source += "function ";
+
+        if (method.has_name())
+            ident(method.name());
+        else if (method.has_metamethod())
+            print(method.metamethod());
+
+        function(method.func());
+    }
+
+    void print(const luau::StatClass& stat)
+    {
+        source += "class ";
+        print(stat.name());
+        source += '\n';
+
+        std::vector<const luau::Name*> propNames;
+
+        for (size_t i = 0; i < stat.props_size(); ++i)
+        {
+            const luau::ClassProp& prop = stat.props(i);
+            propNames.emplace_back(&prop.name());
+            print(prop);
+            source += '\n';
+        }
+
+        for (size_t i = 0; i < stat.methods_size(); ++i)
+        {
+            print(stat.methods(i));
+            source += '\n';
+        }
+
+        source += "end\n";
+
+        classes.emplace_back(Class{&stat.name(), std::move(propNames)});
+
+        print(stat.local());
+        source += " = ";
+        print(stat.inst(), classes.size() - 1);
         source += '\n';
     }
 

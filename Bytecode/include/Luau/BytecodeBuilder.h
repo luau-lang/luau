@@ -48,6 +48,13 @@ public:
         bool operator==(const TableShape& other) const;
     };
 
+    struct ClassShape
+    {
+        int32_t className;
+        std::vector<int32_t> propertyNames;
+        std::vector<int32_t> methodNames;
+    };
+
     BytecodeBuilder(BytecodeEncoder* encoder = 0);
 
     uint32_t beginFunction(uint8_t numparams, bool isvararg = false);
@@ -65,7 +72,10 @@ public:
     int32_t addConstantTable(const TableShape& shape);
     int32_t addConstantClosure(uint32_t fid);
 
+    uint32_t addFbSlot(LuauFeedbackType t);
+
     int16_t addChildFunction(uint32_t fid);
+    int32_t addClassShape(ClassShape shape);
 
     void emitABC(LuauOpcode op, uint8_t a, uint8_t b, uint8_t c);
     void emitAD(LuauOpcode op, uint8_t a, int16_t d);
@@ -78,6 +88,8 @@ public:
 
     [[nodiscard]] bool patchJumpD(size_t jumpLabel, size_t targetLabel);
     [[nodiscard]] bool patchSkipC(size_t jumpLabel, size_t targetLabel);
+
+    void patchAux(size_t targetAux, int32_t newValue);
 
     void foldJumps();
     void expandJumps();
@@ -174,6 +186,7 @@ private:
             Type_Import,
             Type_Table,
             Type_Closure,
+            Type_ClassShape,
         };
 
         Type type;
@@ -187,6 +200,7 @@ private:
             uint32_t valueImport;     // 10-10-10-2 encoded import id
             uint32_t valueTable;      // index into tableShapes[]
             uint32_t valueClosure;    // index of function in global list
+            uint32_t valueClassShape; // index into classShapes[]
         };
     };
 
@@ -289,6 +303,9 @@ private:
     std::vector<Jump> jumps;
 
     std::vector<TableShape> tableShapes;
+    std::vector<ClassShape> classShapes;
+
+    std::vector<uint32_t> fbSlots;
 
     bool hasLongJumps = false;
 
@@ -334,6 +351,7 @@ private:
     void writeFunction(std::string& ss, uint32_t id, uint8_t flags);
     void writeLineInfo(std::string& ss) const;
     void writeStringTable(std::string& ss) const;
+    void writeClassShape(std::string& ss, const ClassShape& cs) const;
 
     int32_t addConstant(const ConstantKey& key, const Constant& value);
     unsigned int addStringTableEntry(StringRef value);

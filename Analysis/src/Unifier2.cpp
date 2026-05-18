@@ -26,6 +26,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauOccursCheckForAllBindings)
+LUAU_FASTFLAGVARIABLE(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 
 namespace Luau
 {
@@ -349,6 +350,42 @@ UnifyResult Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
 
     if (get<FunctionType>(upperBound))
         return unify_(subFree->upperBound, superTy);
+
+    // When superTy is a union or intersection, propagate subTy as a lower bound into any
+    // free-type members. Without this, `freeA <: 'T | nil` (or `freeA <: 'T & C`) never
+    // constrains 'T, because the FreeType path intercepts before structural dispatch.
+    // Members may be GenericTypes that map to FreeTypes via genericSubstitutions.
+    if (FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
+    {
+        auto propagateToFreeMembers = [&](auto memberRange)
+        {
+            for (TypeId member : memberRange)
+            {
+                TypeId m = follow(member);
+                if (auto subst = genericSubstitutions.find(m))
+                    m = follow(*subst);
+                if (FreeType* memberFree = getMutable<FreeType>(m))
+                {
+                    if (FFlag::LuauOverloadGetsInstantiated2)
+                        memberFree->lowerBound = mkUnion(memberFree->lowerBound, instantiateWithBoundTypes(subTy));
+                    else
+                        memberFree->lowerBound = mkUnion(memberFree->lowerBound, subTy);
+                }
+            }
+        };
+
+        if (const UnionType* superUnion = get<UnionType>(superTy))
+        {
+            propagateToFreeMembers(superUnion->options);
+            return doDefault();
+        }
+
+        if (const IntersectionType* superIntersection = get<IntersectionType>(superTy))
+        {
+            propagateToFreeMembers(superIntersection->parts);
+            return doDefault();
+        }
+    }
 
     const FunctionType* superFunction = get<FunctionType>(superTy);
     if (!superFunction)

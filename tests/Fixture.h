@@ -154,6 +154,7 @@ struct Fixture
     std::optional<TypeId> lookupType(const std::string& name);
     std::optional<TypeId> lookupImportedType(const std::string& moduleAlias, const std::string& name);
     TypeId requireTypeAlias(const std::string& name);
+    TypeId requireExportedType(const std::string& name);
     TypeId requireExportedType(const ModuleName& moduleName, const std::string& name);
 
     TypeId parseType(std::string_view src);

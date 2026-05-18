@@ -9,6 +9,7 @@
 #include "lstate.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenNewRegSplit)
+LUAU_FASTFLAG(LuauCodegenVmExitSync)
 
 namespace Luau
 {
@@ -36,6 +37,9 @@ IrRegAllocX64::IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function, Lo
 
 RegisterX64 IrRegAllocX64::allocReg(SizeX64 size, uint32_t instIdx)
 {
+    if (FFlag::LuauCodegenVmExitSync)
+        allocActionCount++;
+
     if (size == SizeX64::xmmword)
     {
         for (size_t i = 0; i < usableXmmRegCount; ++i)
@@ -190,6 +194,130 @@ void IrRegAllocX64::freeLastUseRegs(const IrInst& inst, uint32_t instIdx)
 bool IrRegAllocX64::isLastUseReg(const IrInst& target, uint32_t instIdx) const
 {
     return target.lastUse == instIdx && !target.reusedReg;
+}
+
+void IrRegAllocX64::recordAndFreeLastUse(uint32_t blockIdx, IrInst& target, uint32_t originInstIdx)
+{
+    ExitSyncArgX64 arg;
+    arg.instIdx = function.getInstIndex(target);
+
+    if (target.spilled || target.needsReload)
+    {
+        for (size_t i = 0; i < spills.size(); i++)
+        {
+            if (spills[i].instIdx == arg.instIdx)
+            {
+                const IrSpillX64& spill = spills[i];
+
+                arg.originalReg = spill.originalLoc;
+                arg.stackSlot = spill.stackSlot;
+
+                // Capture restore location state at the current instruction
+                if (arg.stackSlot == kNoStackSlot)
+                    arg.restoreLocation = function.findRestoreLocation(target, /*limitToCurrentBlock*/ false);
+
+                // If this was the last use, free register by not restoring it fully and remove the spill record
+                if (isLastUseReg(target, originInstIdx))
+                {
+                    if (arg.stackSlot != kNoStackSlot)
+                    {
+                        unsigned end = arg.stackSlot + kValueDwordSize[int(spill.valueKind)];
+
+                        for (unsigned pos = arg.stackSlot; pos < end; pos++)
+                            usedSpillSlotHalfs.set(pos, false);
+                    }
+
+                    CODEGEN_ASSERT(target.regX64 == noreg);
+                    target.spilled = false;
+                    target.needsReload = false;
+
+                    spills[i] = spills.back();
+                    spills.pop_back();
+                }
+
+                break;
+            }
+        }
+    }
+    else
+    {
+        CODEGEN_ASSERT(target.regX64 != noreg);
+        arg.reg = target.regX64;
+        arg.originalReg = target.regX64;
+
+        if (isLastUseReg(target, originInstIdx))
+        {
+            freeReg(target.regX64);
+            target.regX64 = noreg;
+        }
+    }
+
+    exitSyncArgs[blockIdx].push_back(arg);
+}
+
+void IrRegAllocX64::setupExitSyncEntry(uint32_t blockIdx)
+{
+    updateLastUseLocationsInBlock(function, blockIdx);
+
+    const ExitSyncArgsX64* args = exitSyncArgs.find(blockIdx);
+
+    if (!args)
+        return;
+
+    for (const ExitSyncArgX64& arg : *args)
+    {
+        IrInst& inst = function.instructions[arg.instIdx];
+
+        inst.reusedReg = false;
+        inst.needsReload = false;
+        inst.spilled = false;
+
+        if (arg.reg != noreg)
+        {
+            inst.regX64 = arg.reg;
+
+            takeReg(arg.reg, arg.instIdx);
+        }
+        else if (arg.stackSlot != kNoStackSlot)
+        {
+            inst.regX64 = noreg;
+            inst.spilled = true;
+
+            IrSpillX64 spill;
+            spill.instIdx = arg.instIdx;
+            spill.valueKind = getCmdValueKind(inst.cmd);
+            spill.stackSlot = arg.stackSlot;
+            spill.originalLoc = arg.originalReg;
+
+            spills.push_back(spill);
+
+            // Mark the spill slot as occupied so restore can free it
+            unsigned end = spill.stackSlot + kValueDwordSize[int(spill.valueKind)];
+            for (unsigned pos = spill.stackSlot; pos < end; pos++)
+            {
+                CODEGEN_ASSERT(!usedSpillSlotHalfs.test(pos));
+                usedSpillSlotHalfs.set(pos);
+            }
+        }
+        else
+        {
+            // Value has a restore address (rematerializable)
+            inst.regX64 = noreg;
+            inst.needsReload = true;
+
+            // Re-record the restore location captured at snapshot time
+            // Later instructions in the source block may have invalidated it in IrValueLocationTracking
+            function.recordRestoreLocation(arg.instIdx, arg.restoreLocation);
+
+            IrSpillX64 spill;
+            spill.instIdx = arg.instIdx;
+            spill.valueKind = getCmdValueKind(inst.cmd);
+            spill.stackSlot = kNoStackSlot;
+            spill.originalLoc = arg.originalReg;
+
+            spills.push_back(spill);
+        }
+    }
 }
 
 void IrRegAllocX64::preserve(IrInst& inst)
@@ -509,10 +637,11 @@ uint32_t IrRegAllocX64::findInstructionWithFurthestNextUse(const std::array<uint
         if (regInstUser == kInvalidInstIdx || regInstUser == currInstIdx)
             continue;
 
-        uint32_t nextUse = getNextInstUse(function, regInstUser, currInstIdx);
+        bool inVmExitSync = false;
+        uint32_t nextUse = getNextInstUse(function, regInstUser, currInstIdx, inVmExitSync);
 
         // Cannot spill value that is about to be used in the current instruction
-        if (nextUse == currInstIdx)
+        if (nextUse == currInstIdx && (!FFlag::LuauCodegenVmExitSync || !inVmExitSync))
             continue;
 
         if (furthestUseTarget == kInvalidInstIdx || nextUse > furthestUseLocation)

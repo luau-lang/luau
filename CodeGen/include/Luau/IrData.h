@@ -1313,6 +1313,7 @@ enum class IrBlockKind : uint8_t
     Fallback,
     Internal,
     Linearized,
+    ExitSync,
     Dead,
 };
 
@@ -1390,6 +1391,27 @@ struct ValueRestoreLocation
     IrCmd conversionCmd; // Type conversion instruction that was used to store the value at the restore location
 };
 
+struct VmExitStoreRecord
+{
+    uint32_t instIdx = kInvalidInstIdx;
+    IrInst backup;
+};
+
+struct VmExitStoreInfo
+{
+    uint8_t reg = 0;
+    SmallVector<VmExitStoreRecord, 2> stores;
+};
+
+struct VmExitSyncInfo
+{
+    std::vector<VmExitStoreInfo> regStores;
+
+    IrOp block;
+    IrOp vmExit;
+    SmallVector<IrOp, 2> argOps;
+};
+
 struct IrFunction
 {
     std::vector<IrBlock> blocks;
@@ -1409,6 +1431,9 @@ struct IrFunction
     // For each instruction, an operand that can be used to recompute the value
     std::vector<ValueRestoreLocation> valueRestoreOps;
     std::vector<uint32_t> validRestoreOpBlocks;
+
+    DenseHashMap<uint32_t, VmExitSyncInfo> vmExitInfo{kInvalidInstIdx};
+    DenseHashMap<uint32_t, uint32_t> blockToVmExitMap{~0u};
 
     BytecodeTypeInfo bcOriginalTypeInfo; // Bytecode type information as loaded
     BytecodeTypeInfo bcTypeInfo;         // Bytecode type information with additional inferences

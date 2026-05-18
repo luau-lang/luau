@@ -1404,6 +1404,7 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
                     knownNextCallResult = LuauBytecodeType(hostHooks.userdataNamecallBytecodeType(bcType.a, field, str->len));
                 break;
             }
+            case LOP_CALLFB:
             case LOP_CALL:
             {
                 int ra = LUAU_INSN_A(*pc);
@@ -1529,6 +1530,7 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
             case LOP_PREPVARARGS:
             case LOP_GETVARARGS:
             case LOP_FORGPREP:
+            case LOP_NEWCLASSMEMBER:
                 break;
             default:
                 CODEGEN_ASSERT(!"Unknown instruction");

@@ -11,6 +11,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1512,6 +1513,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "narrow_intersection_nevers")
     )"));
 
     CHECK_EQ("Player & { read Character: ~(false?) }", toString(requireTypeAtPosition({3, 23})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_intersection_bounds")
+{
+    /*
+     * When unifying 'a <: T & C in a context where T is substituted for 't, we must constrain the lower bound of 't by 'a.
+     */
+    ScopedFastFlag sff{FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds, true};
+
+    CheckResult result = check(R"(
+        local function f<T>(a: T & string): T
+            return a
+        end
+
+        local b = f("hello")
+        local c = f(("world" :: string))
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    CHECK("string" == toString(requireType("b")));
+    CHECK("string" == toString(requireType("c")));
 }
 
 TEST_SUITE_END();
