@@ -446,7 +446,6 @@ def get_type_map(target):
 def tvalue_get_type_name(valobj):
     type_map = get_type_map(valobj.GetTarget())
     type_val = valobj.GetChildMemberWithName("tt").GetValueAsUnsigned(0)
-
     return f"{type_map[type_val] if type_val < len(type_map) else '<invalid type>'}"
 
 @safe_summary_provider

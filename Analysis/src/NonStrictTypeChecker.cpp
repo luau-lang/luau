@@ -24,6 +24,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauNonStrictTypeCheckerRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(LuauAddRecursionCounterToNonStrictTypeChecker)
 LUAU_FASTFLAGVARIABLE(LuauNonStrictModeUseErrorSupressingTag)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
@@ -302,6 +303,12 @@ struct NonStrictTypeChecker
             return visit(s);
         else if (auto s = stat->as<AstStatDeclareExternType>())
             return visit(s);
+        else if (stat->is<AstStatClass>())
+        {
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+            // TODO: CLI-199130
+            return NonStrictContext{};
+        }
         else if (auto s = stat->as<AstStatError>())
             return visit(s);
         else

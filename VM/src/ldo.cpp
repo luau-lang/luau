@@ -18,6 +18,7 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauStacklessPcall)
+LUAU_FASTFLAG(LuauClosureUsageCounter)
 
 // keep max stack allocation request under 1GB
 #define MAX_STACK_SIZE (int(1024 / sizeof(TValue)) * 1024 * 1024)
@@ -746,6 +747,18 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
     if (status != 0)
     {
         int errstatus = status;
+
+        if (FFlag::LuauClosureUsageCounter)
+        {
+            CallInfo* lastci = L->ci;
+            CallInfo* savedci = restoreci(L, old_ci);
+            while (lastci != savedci)
+            {
+                LUAU_ASSERT(clvalue(lastci->func)->usage > 0);
+                clvalue(lastci->func)->usage--;
+                lastci--;
+            }
+        }
 
         // call user-defined error function (used in xpcall)
         if (ef)

@@ -292,7 +292,7 @@ if(LUAU_BUILD_TESTS)
 
     target_compile_options(Luau.Conformance PRIVATE ${LUAU_OPTIONS})
     target_compile_definitions(Luau.Conformance PRIVATE DOCTEST_CONFIG_DOUBLE_STRINGIFY)
-    target_include_directories(Luau.Conformance PRIVATE extern)
+    target_include_directories(Luau.Conformance PRIVATE extern VM/src)
     target_link_libraries(Luau.Conformance PRIVATE Luau.Analysis Luau.Bytecode Luau.Compiler Luau.CodeGen Luau.VM)
     if(CMAKE_SYSTEM_NAME MATCHES "Android|iOS")
         set(LUAU_CONFORMANCE_SOURCE_DIR "Client/Luau/tests/conformance")

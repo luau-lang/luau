@@ -56,6 +56,8 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 
 const double kTypecheckTimeoutSec = 4.0;
 
@@ -278,6 +280,8 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 
     FFlag::DebugLuauFreezeArena.value = true;
     FFlag::DebugLuauAbortingChecks.value = true;
+    FFlag::DebugLuauUserDefinedClasses.value = true;
+    FFlag::DebugLuauUserDefinedClassesRuntime.value = true;
 
     std::vector<std::string> sources = protoprint(message, kFuzzTypes);
 
@@ -468,7 +472,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 
             // we'd expect full GC to reclaim all memory allocated by the script
             lua_gc(globalState, LUA_GCCOLLECT, 0);
-            LUAU_ASSERT(heapSize < 256 * 1024);
+            LUAU_ASSERT(heapSize < 320 * 1024);
         };
 
         if (kFuzzVM && !bytecodeO1.empty())

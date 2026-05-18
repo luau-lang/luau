@@ -161,6 +161,7 @@ struct lua_ExecutionCallbacks
         Proto* proto,
         size_t* count
     ); // called to get the execution counter data and count {uint32_t, uint32_t, uint64_t}
+    Proto* (*inlinefunction)(lua_State* L, Closure* caller, Closure* target, uint32_t pc); // called when inlining threshold is reached
 };
 
 struct lua_UdataDirectAccessData
@@ -240,6 +241,7 @@ typedef struct global_State
     struct LuaTable* udatadirectfields[UTAG_INTERNAL_LIMIT];
 
     GCStats gcstats;
+    uint32_t lastprotoid;
 
 #ifdef LUAI_GCMETRICS
     GCMetrics gcmetrics;
@@ -303,6 +305,8 @@ union GCObject
     struct UpVal uv;
     struct lua_State th; // thread
     struct LuauBuffer buf;
+    struct LuaClassObject classobj;
+    struct LuaClassInstance classinst;
 };
 
 // macros to convert a GCObject into a specific value
@@ -314,6 +318,8 @@ union GCObject
 #define gco2uv(o) check_exp((o)->gch.tt == LUA_TUPVAL, &((o)->uv))
 #define gco2th(o) check_exp((o)->gch.tt == LUA_TTHREAD, &((o)->th))
 #define gco2buf(o) check_exp((o)->gch.tt == LUA_TBUFFER, &((o)->buf))
+#define gco2cobj(o) check_exp((o)->gch.tt == LUA_TCLASSOBJ, &((o)->classobj))
+#define gco2cinst(o) check_exp((o)->gch.tt == LUA_TCLASSINST, &((o)->classinst))
 
 // macro to convert any Lua object into a GCObject
 #define obj2gco(v) check_exp(iscollectable(v), cast_to(GCObject*, (v) + 0))

@@ -21,7 +21,6 @@ LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
-LUAU_FASTFLAG(LuauACOnMTTWriteOnlyPropNoCrash)
 LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauAutocompleteStringSingletonIntersection)
@@ -5017,6 +5016,30 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_indexer_with_singleton_keys")
     CHECK_EQ(ac.entryMap.count("Val3"), 1);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "we_know_the_fields_of_a_class_instance")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+    };
+
+    check(R"(
+        class Point2d
+            public x: number
+            public y: number
+        end
+
+        local p = Point2d { x=3, y=4 }
+
+        local q = p.@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(1 == ac.entryMap.count("x"));
+    CHECK(1 == ac.entryMap.count("y"));
+    CHECK(0 == ac.entryMap.count("z"));
+}
+
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_arg")
 {
     ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails2, true};
@@ -5164,7 +5187,6 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_metatable_fill_writeonly_prop
     // Due to how memory is allocated and cleaned up on the stack in noopt builds, this will not crash on certain platforms.
     // This can crash in optimized builds, but the test is mostly here to exercise that the branch in question gets hit
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauACOnMTTWriteOnlyPropNoCrash, true},
         {FFlag::DebugLuauForceOldSolver, false},
     };
     check(R"(
@@ -5276,6 +5298,46 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "cli_197197_autocomplete_generic_keyof")
     CHECK(ac.entryMap.count("RemoveTag") > 0);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "ac_static_method_autocomplete")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+    };
 
+    check(R"(
+        class Bar
+            public value: number
+            function new()
+                return Bar { value = 0 }
+            end
+        end
+
+        Bar.@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("new") > 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "class_autocomplete_classname_inside_method")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+    };
+
+    check(R"(
+        class Bar
+            public value: number
+            function new()
+                return B@1
+            end
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("Bar"));
+}
 
 TEST_SUITE_END();

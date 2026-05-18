@@ -26,6 +26,7 @@ LUAU_FASTFLAG(LuauIntegerType)
 
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
 
 namespace Luau
 {
@@ -2748,6 +2749,8 @@ private:
 
         f2->argTypes = shallowClone(f1->argTypes);
         f2->retTypes = shallowClone(f1->retTypes);
+        if (FFlag::LuauTypeFunctionSerializeArgNames)
+            f2->argNames = f1->argNames;
     }
 
     void cloneChildren(TypeFunctionExternType* c1, TypeFunctionExternType* c2)

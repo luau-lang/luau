@@ -11,6 +11,8 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(LuauCompilePropagateTableProps2)
+LUAU_FASTFLAGVARIABLE(LuauCompileFastcall3CostModel)
+LUAU_FASTFLAG(LuauCompileFoldOptimize)
 
 namespace Luau
 {
@@ -115,7 +117,7 @@ struct CostVisitor : AstVisitor
 
     Cost model(AstExpr* node)
     {
-        if (FFlag::LuauCompilePropagateTableProps2)
+        if (FFlag::LuauCompilePropagateTableProps2 && !FFlag::LuauCompileFoldOptimize)
         {
             if (const Constant* c = constants.find(node); c && c->type != Constant::Type_Unknown)
                 return Cost(0, Cost::kLiteral);
@@ -152,7 +154,7 @@ struct CostVisitor : AstVisitor
             // thus we use a cheaper baseline, don't account for function, and assume constant/local copy is free
             const int* bfid = builtins.find(expr);
             bool builtin = bfid != nullptr && *bfid != LBF_NONE;
-            bool builtinShort = builtin && expr->args.size <= 2; // FASTCALL1/2
+            bool builtinShort = builtin && expr->args.size <= (FFlag::LuauCompileFastcall3CostModel ? 3u : 2u); // FASTCALL1/2/3
 
             Cost cost = builtin ? 2 : 3;
 
