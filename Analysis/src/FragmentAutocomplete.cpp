@@ -31,6 +31,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
@@ -454,6 +455,44 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
                             {
                                 localStack.push_back(var);
                                 localMap[var->name] = var;
+                            }
+                        }
+                    }
+                    else if (auto classDecl = stat->as<AstStatClass>())
+                    {
+                        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+                        // We need to include the class name as part of the
+                        // locals so that within the fragment the class name
+                        // is defined.
+                        localStack.push_back(classDecl->name);
+                        localMap[classDecl->name->name] = classDecl->name;
+                        if (classDecl->location.containsClosed(cursorPos))
+                        {
+                            AstExprFunction* currentMethod = nullptr;
+                            for (const auto& decl : classDecl->members)
+                            {
+                                // CLI-199277: This looks a little weird, like we might end up
+                                // autocompleting class method arguments in a position like:
+                                //
+                                //  class Foobar
+                                //      function bazbing(alpha, beta, gamma)
+                                //      end
+                                //      | -- accidentally include args of bazbing here.
+                                //  end
+                                //
+                                if (auto method = decl.get_if<AstClassMethod>())
+                                {
+                                    if (method->function->body->location.begin < cursorPos)
+                                        currentMethod = method->function;
+                                }
+                            }
+                            if (currentMethod)
+                            {
+                                for (AstLocal* v : currentMethod->args)
+                                {
+                                    localStack.push_back(v);
+                                    localMap[v->name] = v;
+                                }
                             }
                         }
                     }

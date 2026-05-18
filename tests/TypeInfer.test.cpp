@@ -419,7 +419,9 @@ TEST_CASE_FIXTURE(Fixture, "check_block_recursion_limit")
 #elif defined(_DEBUG) || defined(_NOOPT)
     int limit = 350;
 #else
-    int limit = 600;
+    // NOTE: This was lowered from 600 after some extra stack space added by
+    // a new scratch field in the parser (`scratchClassDeclarations`).
+    int limit = 595;
 #endif
 
     ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};

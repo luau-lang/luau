@@ -31,6 +31,8 @@ LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauCompileTypeAliases)
 LUAU_FASTFLAG(LuauCompilePropagateTableProps2)
+LUAU_FASTFLAG(LuauCompileFastcall3CostModel)
+LUAU_FASTFLAG(LuauEmitCallFeedback)
 
 using namespace Luau;
 
@@ -285,6 +287,8 @@ RETURN R1 1
 
 TEST_CASE("BasicFunctionCall")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::compileOrThrow(bcb, "local function foo(a, b) return b end function test() return foo(2) end");
@@ -411,6 +415,8 @@ L1: RETURN R1 -1
 
 TEST_CASE("FakeImportCall")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     const char* source = "math = {} function math.max() return 0 end function test() return math.max(1, 2) end";
 
     CHECK_EQ("\n" + compileFunction(source, 1), R"(
@@ -589,6 +595,8 @@ RETURN R0 0
 
 TEST_CASE("ForBytecodeBuiltin")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     // we generally recognize builtins like pairs/ipairs and emit special opcodes
     CHECK_EQ("\n" + compileFunction0("for k,v in ipairs({}) do end"), R"(
 GETIMPORT R0 1 [ipairs]
@@ -614,7 +622,7 @@ RETURN R0 0
     CHECK_EQ("\n" + compileFunction0("local ip = ipairs function foo() for k,v in ip({}) do end end"), R"(
 GETUPVAL R0 0
 NEWTABLE R1 0 0
-CALL R0 1 3
+CALLFB R0 1 3 [0]
 FORGPREP_INEXT R0 L0
 L0: FORGLOOP R0 L0 2 [inext]
 RETURN R0 0
@@ -1090,6 +1098,8 @@ RETURN R0 1
 
 TEST_CASE("CaptureSelf")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::compileOrThrow(bcb, R"(
@@ -1110,7 +1120,7 @@ return MaterialsListClass
 NEWCLOSURE R3 P0
 CAPTURE VAL R0
 MOVE R4 R3
-CALL R4 0 0
+CALLFB R4 0 0 [0]
 RETURN R0 0
 )");
 
@@ -2282,6 +2292,8 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueUntil")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     // it's valid to use locals defined inside the loop in until expression if they're defined before continue
     CHECK_EQ("\n" + compileFunction0("repeat local r = math.random() if r > 0.5 then continue end r = r + 0.3 until r < 0.5"), R"(
 L0: GETIMPORT R0 2 [math.random]
@@ -2392,7 +2404,7 @@ until (function() return rr end)() < 0.5
                ),
         R"(
 L0: GETIMPORT R0 2 [math.random]
-CALL R0 0 1
+CALLFB R0 0 1 [0]
 LOADK R1 K3 [0.5]
 JUMPIFLT R1 R0 L1
 ADDK R0 R0 K4 [0.29999999999999999]
@@ -2414,14 +2426,14 @@ L2: RETURN R0 0
                ),
         R"(
 L0: GETIMPORT R0 2 [math.random]
-CALL R0 0 1
+CALLFB R0 0 1 [0]
 LOADK R1 K3 [0.5]
 JUMPIFLT R1 R0 L1
 ADDK R0 R0 K4 [0.29999999999999999]
 L1: NEWCLOSURE R1 P0
 CAPTURE UPVAL U0
 CAPTURE REF R0
-CALL R1 0 1
+CALLFB R1 0 1 [1]
 JUMPIF R1 L2
 CLOSEUPVALS R0
 JUMPBACK L0
@@ -2813,6 +2825,8 @@ RETURN R1 1
 
 TEST_CASE("JumpFold")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     // jump-to-return folding to return
     CHECK_EQ("\n" + compileFunction0("return a and 1 or 0"), R"(
 GETIMPORT R1 1 [a]
@@ -2884,7 +2898,7 @@ SUB R12 R13 R14
 DIV R14 R2 R7
 MUL R15 R6 R6
 SUB R13 R14 R15
-CALL R10 3 1
+CALLFB R10 3 1 [0]
 MULK R9 R10 K2 [0.5]
 ADDK R8 R9 K2 [0.5]
 RETURN R8 1
@@ -3077,6 +3091,8 @@ L1: RETURN R3 -1
 
 TEST_CASE("UpvaluesLoopsBytecode")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -3102,7 +3118,7 @@ L0: MOVE R3 R2
 GETIMPORT R4 1 [foo]
 NEWCLOSURE R5 P0
 CAPTURE REF R3
-CALL R4 1 0
+CALLFB R4 1 0 [0]
 GETIMPORT R4 3 [bar]
 JUMPIFNOT R4 L1
 CLOSEUPVALS R3
@@ -3133,12 +3149,12 @@ end
         R"(
 GETIMPORT R0 1 [ipairs]
 GETIMPORT R1 3 [data]
-CALL R0 1 3
+CALLFB R0 1 3 [0]
 FORGPREP_INEXT R0 L2
 L0: GETIMPORT R5 5 [foo]
 NEWCLOSURE R6 P0
 CAPTURE REF R3
-CALL R5 1 0
+CALLFB R5 1 0 [1]
 GETIMPORT R5 7 [bar]
 JUMPIFNOT R5 L1
 CLOSEUPVALS R3
@@ -3178,7 +3194,7 @@ MOVE R1 R0
 GETIMPORT R2 1 [foo]
 NEWCLOSURE R3 P0
 CAPTURE REF R1
-CALL R2 1 0
+CALLFB R2 1 0 [0]
 ADDK R0 R0 K2 [1]
 GETIMPORT R2 4 [bar]
 JUMPIFNOT R2 L1
@@ -3217,7 +3233,7 @@ MOVE R1 R0
 GETIMPORT R2 1 [foo]
 NEWCLOSURE R3 P0
 CAPTURE REF R1
-CALL R2 1 0
+CALLFB R2 1 0 [0]
 ADDK R0 R0 K2 [1]
 GETIMPORT R2 4 [bar]
 JUMPIFNOT R2 L1
@@ -3637,6 +3653,8 @@ RETURN R1 1
 
 TEST_CASE("DebugLocals")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     const char* source = R"(
 function foo(e, f)
     local a = 1
@@ -3671,15 +3689,15 @@ end
     Luau::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
-local 0: reg 5, start pc 5 line 5, end pc 8 line 5
-local 1: reg 6, start pc 14 line 8, end pc 18 line 8
-local 2: reg 7, start pc 14 line 8, end pc 18 line 8
-local 3: reg 3, start pc 22 line 12, end pc 25 line 12
-local 4: reg 3, start pc 27 line 16, end pc 31 line 16
-local 5: reg 0, start pc 0 line 3, end pc 35 line 21
-local 6: reg 1, start pc 0 line 3, end pc 35 line 21
-local 7: reg 2, start pc 1 line 4, end pc 35 line 21
-local 8: reg 3, start pc 35 line 21, end pc 35 line 21
+local 0: reg 5, start pc 5 line 5, end pc 9 line 5
+local 1: reg 6, start pc 16 line 8, end pc 21 line 8
+local 2: reg 7, start pc 16 line 8, end pc 21 line 8
+local 3: reg 3, start pc 25 line 12, end pc 29 line 12
+local 4: reg 3, start pc 31 line 16, end pc 36 line 16
+local 5: reg 0, start pc 0 line 3, end pc 40 line 21
+local 6: reg 1, start pc 0 line 3, end pc 40 line 21
+local 7: reg 2, start pc 1 line 4, end pc 40 line 21
+local 8: reg 3, start pc 40 line 21, end pc 40 line 21
 3: LOADN R2 1
 4: LOADN R5 1
 4: LOADN R3 3
@@ -3687,24 +3705,24 @@ local 8: reg 3, start pc 35 line 21, end pc 35 line 21
 4: FORNPREP R3 L1
 5: L0: GETIMPORT R6 1 [print]
 5: MOVE R7 R5
-5: CALL R6 1 0
+5: CALLFB R6 1 0 [0]
 4: FORNLOOP R3 L0
 7: L1: GETIMPORT R3 3 [pairs]
-7: CALL R3 0 3
+7: CALLFB R3 0 3 [1]
 7: FORGPREP_NEXT R3 L3
 8: L2: GETIMPORT R8 1 [print]
 8: MOVE R9 R6
 8: MOVE R10 R7
-8: CALL R8 2 0
+8: CALLFB R8 2 0 [2]
 7: L3: FORGLOOP R3 L2 2
 11: LOADN R3 2
 12: GETIMPORT R4 1 [print]
 12: LOADN R5 2
-12: CALL R4 1 0
+12: CALLFB R4 1 0 [3]
 15: LOADN R3 2
 16: GETIMPORT R4 1 [print]
 16: GETIMPORT R5 5 [b]
-16: CALL R4 1 0
+16: CALLFB R4 1 0 [4]
 18: NEWCLOSURE R3 P0
 18: CAPTURE VAL R3
 18: CAPTURE VAL R2
@@ -3806,6 +3824,8 @@ RETURN R0 0
 
 TEST_CASE("DebugTypes")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     const char* source = R"(
 local up: number = 2
 
@@ -3845,8 +3865,8 @@ R0: vector [argument]
 R1: mat3 [argument]
 R2: userdata [argument]
 U0: number
-R6: number from 1 to 9
-R3: vector from 0 to 30
+R6: number from 1 to 10
+R3: vector from 0 to 34
 MUL R3 R0 R0
 LOADN R6 1
 LOADN R4 3
@@ -3854,17 +3874,17 @@ LOADN R5 1
 FORNPREP R4 L1
 L0: GETIMPORT R7 1 [print]
 MOVE R8 R6
-CALL R7 1 0
+CALLFB R7 1 0 [0]
 FORNLOOP R4 L0
 L1: GETIMPORT R4 1 [print]
 MUL R5 R0 R1
-CALL R4 1 0
+CALLFB R4 1 0 [1]
 GETIMPORT R4 1 [print]
 MOVE R5 R2
-CALL R4 1 0
+CALLFB R4 1 0 [2]
 GETIMPORT R4 1 [print]
 MOVE R5 R3
-CALL R4 1 0
+CALLFB R4 1 0 [3]
 GETUPVAL R4 0
 GETIMPORT R5 3 [a]
 ADD R4 R4 R5
@@ -4038,6 +4058,50 @@ end
 local a = test(x)
 -- remark: inlining failed: too expensive (cost 73, profit 1.08x)
 local b = test(2)
+)"
+    );
+
+    ScopedFastFlag luauCompileFastcall3CostModel{FFlag::LuauCompileFastcall3CostModel, true};
+
+    CHECK_EQ(
+        compileWithRemarks(R"(
+local b = buffer.create(128)
+local x, y, z, w, u, v = ...
+
+local function writeMany(buf, offset, x, y, z, w, u, v)
+    buffer.writef32(buf, offset, x)
+    buffer.writef32(buf, offset + 4, y)
+    buffer.writef32(buf, offset + 8, z)
+    buffer.writef32(buf, offset + 12, w)
+    buffer.writef32(buf, offset + 16, u)
+    buffer.writef32(buf, offset + 20, v)
+end
+
+writeMany(b, 0, x, y, z, w, u, v)
+return b
+)"),
+        R"(
+local b = buffer.create(128)
+local x, y, z, w, u, v = ...
+
+local function writeMany(buf, offset, x, y, z, w, u, v)
+    -- remark: builtin buffer.writef32/3
+    buffer.writef32(buf, offset, x)
+    -- remark: builtin buffer.writef32/3
+    buffer.writef32(buf, offset + 4, y)
+    -- remark: builtin buffer.writef32/3
+    buffer.writef32(buf, offset + 8, z)
+    -- remark: builtin buffer.writef32/3
+    buffer.writef32(buf, offset + 12, w)
+    -- remark: builtin buffer.writef32/3
+    buffer.writef32(buf, offset + 16, u)
+    -- remark: builtin buffer.writef32/3
+    buffer.writef32(buf, offset + 20, v)
+end
+
+-- remark: inlining succeeded (cost 12, profit 1.66x, depth 0)
+writeMany(b, 0, x, y, z, w, u, v)
+return b
 )"
     );
 }
@@ -4907,6 +4971,8 @@ TEST_CASE("CompileBytecode")
 
 TEST_CASE("NestedNamecall")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     CHECK_EQ(
         "\n" + compileFunction0(R"(
 local obj = ...
@@ -6445,6 +6511,7 @@ TEST_CASE("LoopUnrollCostBuiltins")
         {FInt::LuauCompileLoopUnrollThreshold, 25},
         {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
     };
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
     // this loop uses builtins and is close to the cost budget so it's important that we model builtins as cheaper than regular calls
     CHECK_EQ(
@@ -6531,9 +6598,9 @@ GETGLOBAL R7 K1 ['bit32']
 GETTABLEKS R7 R7 K3 ['rshift']
 MOVE R8 R1
 MULK R9 R4 K4 [8]
-CALL R7 2 1
+CALLFB R7 2 1 [0]
 LOADN R8 255
-CALL R6 2 1
+CALLFB R6 2 1 [1]
 SETTABLE R6 R0 R5
 FORNLOOP R2 L0
 L1: RETURN R0 0
@@ -6730,6 +6797,7 @@ RETURN R1 1
 
 TEST_CASE("InlineProhibitedRecursion")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     // we can't inline recursive invocations of functions in the functions
     // this is actually profitable in certain cases, but it complicates the compiler as it means a local has multiple registers/values
 
@@ -6753,7 +6821,7 @@ LOADN R1 1
 RETURN R1 1
 L0: GETUPVAL R2 0
 SUBK R3 R0 K0 [1]
-CALL R2 1 1
+CALLFB R2 1 1 [0]
 MUL R1 R2 R0
 RETURN R1 1
 )"
@@ -6791,7 +6859,7 @@ LOADN R1 1
 RETURN R1 1
 L3: GETUPVAL R2 0
 SUBK R3 R0 K2 [1]
-CALL R2 1 1
+CALLFB R2 1 1 [0]
 MUL R1 R2 R0
 RETURN R1 1
 )"
@@ -8013,6 +8081,8 @@ RETURN R1 1
 
 TEST_CASE("InlineNonConstInitializers")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -8158,13 +8228,13 @@ GETUPVAL R4 0
 MOVE R5 R4
 MOVE R6 R0
 MOVE R7 R1
-CALL R5 2 1
+CALLFB R5 2 1 [0]
 MOVE R3 R5
 JUMPIFNOT R3 L0
 MOVE R5 R4
 MOVE R6 R1
 MOVE R7 R2
-CALL R5 2 1
+CALLFB R5 2 1 [1]
 MOVE R3 R5
 L0: RETURN R3 1
 )"
@@ -8550,6 +8620,8 @@ RETURN R1 2
 
 TEST_CASE("InlineOnlyRemoveTerminatingJump")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -8587,7 +8659,7 @@ end
 GETIMPORT R0 1 [script]
 LOADK R2 K2 ['InitialElevation']
 NAMECALL R0 R0 K3 ['FindFirstChild']
-CALL R0 2 1
+CALLFB R0 2 1 [0]
 JUMPIFNOT R0 L0
 GETUPVAL R1 0
 GETTABLEKS R2 R0 K4 ['Value']
@@ -8597,7 +8669,7 @@ JUMP L0
 L0: GETIMPORT R0 1 [script]
 LOADK R2 K5 ['InitialDistance']
 NAMECALL R0 R0 K3 ['FindFirstChild']
-CALL R0 2 1
+CALLFB R0 2 1 [1]
 JUMPIFNOT R0 L1
 GETUPVAL R1 0
 GETTABLEKS R2 R0 K4 ['Value']
@@ -8606,7 +8678,7 @@ JUMP L1
 JUMP L1
 L1: GETIMPORT R0 7 [print]
 LOADK R1 K8 ['done']
-CALL R0 1 0
+CALLFB R0 1 0 [2]
 RETURN R0 0
 )"
     );
@@ -10474,6 +10546,7 @@ L1: RETURN R0 0
 
 TEST_CASE("ConstStringFolding")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
 
     CHECK_EQ(
@@ -10645,6 +10718,105 @@ LOADK R10 K7 ['456']
 RETURN R0 11
 )"
     );
+}
+
+TEST_CASE("ClassDeclBasic")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class Point
+            public x: number
+            public y: number
+        end
+        print(Point)
+    )";
+    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+LOADKX R0 K3 [class Point (props: 2, methods: 0)]
+GETGLOBAL R1 K4 ['print']
+MOVE R2 R0
+CALL R1 1 0
+RETURN R0 0
+)" == res0);
+}
+
+TEST_CASE("ClassDeclWithMethod")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class Point
+            public x: number
+            public y: number
+            function magnitude(self)
+                return self.x * self.x + self.y * self.y
+            end
+        end
+        print(Point)
+    )";
+    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+GETTABLEKS R3 R0 K0 ['x']
+GETTABLEKS R4 R0 K0 ['x']
+MUL R2 R3 R4
+GETTABLEKS R4 R0 K1 ['y']
+GETTABLEKS R5 R0 K1 ['y']
+MUL R3 R4 R5
+ADD R1 R2 R3
+RETURN R1 1
+)" == res0);
+    auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
+    CHECK(R"(
+LOADKX R0 K4 [class Point (props: 2, methods: 1)]
+NEWCLOSURE R1 P0
+NEWCLASSMEMBER R0 R1 ['magnitude']
+GETGLOBAL R1 K5 ['print']
+MOVE R2 R0
+CALL R1 1 0
+RETURN R0 0
+)" == res1);
+}
+
+TEST_CASE("ClassDeclWithAmbiguousGlobal")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCompileStringInterpTargetTop, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauEmitCallFeedback, true},
+    };
+
+    std::string source = R"(
+        class Point
+            public x: number
+            public y: number
+            function print(self)
+                print(`Point(x = {self.x}, y = {self.y})`)
+            end
+        end
+        return { Point = Point }
+    )";
+    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+GETGLOBAL R1 K0 ['print']
+LOADK R2 K1 ['Point(x = %*, y = %*)']
+GETTABLEKS R4 R0 K2 ['x']
+GETTABLEKS R5 R0 K3 ['y']
+NAMECALL R2 R2 K4 ['format']
+CALL R2 3 1
+CALLFB R1 1 0 [0]
+RETURN R0 0
+)" == res0);
+    auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
+    CHECK(R"(
+LOADKX R0 K4 [class Point (props: 2, methods: 1)]
+NEWCLOSURE R1 P0
+NEWCLASSMEMBER R0 R1 ['print']
+DUPTABLE R1 5
+LOADK R2 K0 ['Point']
+SETTABLE R0 R1 R2
+RETURN R1 1
+)" == res1);
 }
 
 TEST_CASE("IntegerType")

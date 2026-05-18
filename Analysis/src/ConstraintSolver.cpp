@@ -52,6 +52,8 @@ LUAU_FASTFLAGVARIABLE(LuauUseConstraintSetsToTrackFreeTypes)
 LUAU_FASTFLAGVARIABLE(LuauFixPropReadsOnMetatableTypes)
 LUAU_FASTFLAGVARIABLE(LuauIterativeInstantiationQueuer)
 LUAU_FASTFLAGVARIABLE(LuauOccursCheckForAllBindings)
+LUAU_FASTFLAGVARIABLE(LuauAlsoInstantiateInferredArguments)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
@@ -1869,12 +1871,16 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         {
             InstantiationQueuer queuer{constraint->scope, constraint->location, this};
             queuer.run(overloadToUse);
+            if (FFlag::LuauAlsoInstantiateInferredArguments)
+                queuer.run(argsPack);
             queuer.run(result);
         }
         else
         {
             InstantiationQueuer_DEPRECATED queuer{constraint->scope, constraint->location, this};
             queuer.traverse(overloadToUse);
+            if (FFlag::LuauAlsoInstantiateInferredArguments)
+                queuer.traverse(argsPack);
             queuer.traverse(result);
         }
 
@@ -3584,6 +3590,19 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     {
         if (auto p = lookupExternTypeProp(ct, propName))
             return {{}, context == ValueContext::RValue ? p->readTy : p->writeTy};
+
+        if (FFlag::DebugLuauUserDefinedClasses)
+        {
+            if (ct->metatable)
+            {
+                if (const TableType* tt = get<TableType>(*ct->metatable))
+                {
+                    if (auto prop = tt->props.find("__index"); prop != tt->props.end() && prop->second.readTy.has_value())
+                        return lookupTableProp(constraint, *prop->second.readTy, propName, context);
+                }
+            }
+        }
+
         if (ct->indexer)
         {
             return {{}, ct->indexer->indexResultType, /* isIndex = */ true};
@@ -3833,47 +3852,6 @@ void ConstraintSolver::inheritBlocks(NotNull<const Constraint> source, NotNull<c
             block(addition, NotNull{blockedConstraint});
         }
     }
-}
-
-struct Blocker : TypeOnceVisitor
-{
-    NotNull<ConstraintSolver> solver;
-    NotNull<const Constraint> constraint;
-
-    bool blocked = false;
-
-    explicit Blocker(NotNull<ConstraintSolver> solver, NotNull<const Constraint> constraint)
-        : TypeOnceVisitor("Blocker", /* skipBoundTypes */ true)
-        , solver(solver)
-        , constraint(constraint)
-    {
-    }
-
-    bool visit(TypeId ty, const PendingExpansionType&) override
-    {
-        blocked = true;
-        solver->block(ty, constraint);
-        return false;
-    }
-
-    bool visit(TypeId ty, const ExternType&) override
-    {
-        return false;
-    }
-};
-
-bool ConstraintSolver::blockOnPendingTypes(TypeId target, NotNull<const Constraint> constraint)
-{
-    Blocker blocker{NotNull{this}, constraint};
-    blocker.traverse(target);
-    return !blocker.blocked;
-}
-
-bool ConstraintSolver::blockOnPendingTypes(TypePackId targetPack, NotNull<const Constraint> constraint)
-{
-    Blocker blocker{NotNull{this}, constraint};
-    blocker.traverse(targetPack);
-    return !blocker.blocked;
 }
 
 void ConstraintSolver::unblock_(BlockedConstraintId progressed)

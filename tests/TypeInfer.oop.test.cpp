@@ -6,7 +6,6 @@
 #include "Luau/Error.h"
 #include "Luau/Frontend.h"
 #include "Luau/Type.h"
-#include "Luau/VisitType.h"
 
 #include "Fixture.h"
 
@@ -16,6 +15,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(LuauFixPropReadsOnMetatableTypes)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
@@ -828,6 +828,280 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assign_to_prop_of_intersection_of_metatables
 
     CHECK_MESSAGE(nullptr != get<TypeMismatch>(result.errors[1]), "Expected TypeMismatch but got " << result.errors[1]);
     CHECK(25 == result.errors[1].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(Fixture, "classes_arent_in_old_solver")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, true},
+    };
+
+    CheckResult result = check(R"( class Point end )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<GenericError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("class keyword is illegal here", err->message);
+}
+
+TEST_CASE_FIXTURE(Fixture, "empty_class")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"( class Point end )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_decl")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+        end
+
+        local p = Point { x = 2, y = 3 }
+
+        local x = p.x
+        local y = p.y
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    TypeId t = requireExportedType("Point");
+    CHECK("Point" == toString(t));
+
+    const ExternType* point = get<ExternType>(t);
+    REQUIRE(point);
+
+    CHECK("Point" == toString(requireType("p")));
+    CHECK("number" == toString(requireType("x")));
+    CHECK("number" == toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "point_class")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+
+            function length(self)
+                return 100
+            end
+
+            function new()
+                return Point { x = 0, y = 0 }
+            end
+        end
+
+        local p = Point { x = 2, y = 3 }
+        local len = p:length()
+
+        local p2 = Point.new()
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    TypeId p = requireType("p");
+    const ExternType* et = get<ExternType>(p);
+    REQUIRE(et);
+
+    CHECK("Point" == toString(requireType("p")));
+    CHECK("Point" == toString(requireType("p2")));
+    CHECK("number" == toString(requireType("len")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "self_argument_has_self_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        class I
+            function m(self)
+                return self
+            end
+        end
+
+        local i = I{}
+        local i2 = i:m()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("I" == toString(requireType("i2")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_duplicate_class_definition")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        class l0
+        end
+        class l0
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<DuplicateTypeDefinition>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "repeat_props")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(
+        R"(
+class l0
+    public foo
+    public foo
+end
+)"
+    );
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("Duplicate class member 'foo'", err->message);
+}
+
+TEST_CASE_FIXTURE(Fixture, "repeat_class_methods")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(
+        R"(
+class l0
+    function foo()
+    end
+    function foo()
+    end
+end
+)"
+    );
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("Duplicate class member 'foo'", err->message);
+}
+
+TEST_CASE_FIXTURE(Fixture, "repeat_nameless_class_methods")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(
+        R"(
+class l0
+    function  ()
+    end
+    function ()
+    end
+end
+)"
+    );
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    auto err1 = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err1);
+    CHECK_EQ("Expected identifier when parsing method name, got '('", err1->message);
+    auto err2 = get<SyntaxError>(result.errors[1]);
+    REQUIRE(err2);
+    CHECK_EQ("Expected identifier when parsing method name, got '('", err2->message);
+    auto err3 = get<SyntaxError>(result.errors[2]);
+    REQUIRE(err3);
+    CHECK_EQ(R"(Duplicate class member '%error-id%')", err3->message);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_self_referential_class_definition")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        class l0
+            public _:typeof(l0)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    TypeId l0 = requireType("l0");
+    CHECK(is<MetatableType>(l0));
+}
+
+TEST_CASE_FIXTURE(Fixture, "instantiate_duplicate_class")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(
+        R"(
+class l0
+end
+class l0
+end
+_ = l0 {  }
+)"
+    );
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<DuplicateTypeDefinition>(result.errors[0]));
+    CHECK(get<UnknownSymbol>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "prop_with_typeof_reassigned_class")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauConst2, true},
+    };
+
+    // This should not assert or crash
+    CheckResult result = check(
+        R"(
+class Animal end
+Animal = nil
+class l0
+public _:typeof(Animal)
+end
+)"
+    );
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("Assigned expression must be a variable or a field", err->message);
 }
 
 TEST_SUITE_END();

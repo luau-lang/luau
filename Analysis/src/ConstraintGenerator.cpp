@@ -47,6 +47,8 @@ LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauKeepExplicitMapForGlobalTypes2)
 LUAU_FASTFLAGVARIABLE(LuauRefinementTypeVector)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
+LUAU_FASTFLAGVARIABLE(LuauReadOnlyIndexers)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
@@ -263,6 +265,9 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
     prepopulateGlobalScope(scope, block);
 
     Checkpoint start = checkpoint(this);
+
+    if (FFlag::DebugLuauUserDefinedClasses)
+        prototypeClassDecls(scope, block);
 
     ControlFlow cf = visitBlockWithoutChildScope(scope, block);
     if (cf == ControlFlow::None)
@@ -1006,6 +1011,124 @@ void ConstraintGenerator::checkAliases(const ScopePtr& scope, AstStatBlock* bloc
     }
 }
 
+void ConstraintGenerator::prototypeClassDecls(const ScopePtr& scope, AstStatBlock* block)
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    DenseHashMap<Name, Location> decls{{}};
+
+    for (AstStat* stat : block->body)
+    {
+        if (AstStatClass* classDecl = stat->as<AstStatClass>())
+        {
+            Name declName = classDecl->name->name.value;
+            DefId theDef = dfg->getDef(classDecl->name);
+
+            if (auto* duplicateDeclLocation = decls.find(declName))
+            {
+                reportError(classDecl->location, DuplicateTypeDefinition{classDecl->name->name.value, *duplicateDeclLocation});
+                scope->bindings[classDecl->name] = Binding{builtinTypes->errorType, classDecl->location};
+                scope->lvalueTypes[theDef] = builtinTypes->errorType;
+                continue;
+            }
+
+            decls[declName] = classDecl->location;
+
+            // We need to create the type for the class declaration before we check methods and props because of recursive references
+            TypeId theTy = arena->addType(BlockedType{});
+            scope->bindings[classDecl->name] = Binding{theTy, classDecl->name->location};
+            scope->lvalueTypes[theDef] = theTy;
+
+            TableType::Props staticProps;
+
+            // We'll use ExternType for now
+            ExternType::Props props;
+
+            for (const auto& member : classDecl->members)
+            {
+                Luau::visit(
+                    overloaded{
+                        [&](const AstClassProperty& classProp)
+                        {
+                            if (props.count(classProp.name.value) > 0)
+                                return; // Don't instantiate types for duplicate properties.
+
+                            // TODO read-only props. (write-only?  Certainly mixed read-write)
+                            TypeId propTy = classProp.ty ? resolveType(scope, classProp.ty, false)
+                                                         : builtinTypes->anyType; // Maybe record type annotations should be required?
+                            auto& p = props[classProp.name.value];
+                            p = Property::rw(propTy);
+                            p.location = classProp.nameLocation;
+                        },
+                        [&](const AstClassMethod& method)
+                        {
+                            if (props.count(method.functionName.value) > 0)
+                                return; // Don't instantiate types for duplicate properties.
+
+                            auto prop = Property::readonly(arena->addType(BlockedType{}));
+                            prop.location = method.nameLocation;
+                            if (method.function->args.size < 1 || method.function->args.data[0]->name != "self")
+                                staticProps[method.functionName.value] = prop;
+
+                            props[method.functionName.value] = prop;
+                        }
+                    },
+                    member
+                );
+            }
+
+
+            // Type of an _instance_ of a class.
+            TypeId classInstanceTy = arena->addType(
+                ExternType{declName, std::move(props), std::nullopt, std::nullopt, Tags{}, nullptr, module->name, classDecl->location}
+            );
+
+            // Type of the class constructor.
+            TypeId ctorArgTy = arena->addType(TableType{TableType::Props{}, std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed});
+            TableType* ctorArgTable = getMutable<TableType>(ctorArgTy);
+            LUAU_ASSERT(ctorArgTable);
+            for (const auto& member : classDecl->members)
+            {
+                if (auto prop = member.get_if<AstClassProperty>())
+                {
+                    TypeId propTy = prop->ty ? resolveType(scope, prop->ty, false) : builtinTypes->anyType; // FIXME?
+                    ctorArgTable->props[prop->name.value] = Property::rw(propTy);
+                }
+            }
+
+            TypeId ctorTy =
+                arena->addType(FunctionType{arena->addTypePack({builtinTypes->unknownType, ctorArgTy}), arena->addTypePack({classInstanceTy})});
+
+            TypeId metatableTy = arena->addType(
+                TableType{TableType::Props{{"__call", Property::readonly(ctorTy)}}, std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed}
+            );
+
+            // The type of the class object.
+            // FIXME: We probably should use extern types here rather than
+            // table types with metatables, to ensure the class hierarchies
+            // all make sense.
+            TypeId tableTy = arena->addType(TableType{staticProps, std::nullopt, TypeLevel{}, scope.get(), TableState::Unsealed});
+
+            getMutable<TableType>(tableTy)->definitionModuleName = module->name;
+            getMutable<TableType>(tableTy)->props["__index"] = Property::readonly(tableTy);
+
+            TypeId theFinalTy = arena->addType(MetatableType{tableTy, metatableTy});
+
+            LUAU_ASSERT(!is<BoundType>(theTy));
+            [[maybe_unused]] const BlockedType* bt = get<BlockedType>(theTy);
+            LUAU_ASSERT(bt);
+            LUAU_ASSERT(bt->getOwner() == nullptr);
+
+            emplaceType<BoundType>(asMutable(theTy), theFinalTy);
+
+            getMutable<ExternType>(classInstanceTy)->metatable = tableTy;
+
+            scope->exportedTypeBindings[classDecl->name->name.value] = TypeFun{{}, {}, classInstanceTy, classDecl->location};
+
+            classDeclRecords[classDecl->name] = ClassDeclRecord{classDecl, classInstanceTy};
+        }
+    }
+}
+
 ControlFlow ConstraintGenerator::visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block)
 {
     RecursionCounter counter{&recursionCount};
@@ -1087,6 +1210,11 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStat* stat)
         return visit(scope, s);
     else if (auto s = stat->as<AstStatDeclareExternType>())
         return visit(scope, s);
+    else if (auto s = stat->as<AstStatClass>())
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+        return visit(scope, s);
+    }
     else if (auto s = stat->as<AstStatError>())
         return visit(scope, s);
     else
@@ -1450,7 +1578,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
     functionType = arena->addType(BlockedType{});
     scope->bindings[function->name] = Binding{functionType, function->name->location};
 
-    FunctionSignature sig = checkFunctionSignature(scope, function->func, /* expectedType */ std::nullopt, function->name->location);
+    FunctionSignature sig = checkFunctionSignature(scope, nullptr, function->func, /* expectedType */ std::nullopt, function->name->location);
     sig.bodyScope->bindings[function->name] = Binding{sig.signature, function->name->location};
 
     DefId def = dfg->getDef(function->name);
@@ -1501,7 +1629,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
     // With or without self
 
     Checkpoint start = checkpoint(this);
-    FunctionSignature sig = checkFunctionSignature(scope, function->func, /* expectedType */ std::nullopt, function->name->location);
+    FunctionSignature sig = checkFunctionSignature(scope, nullptr, function->func, /* expectedType */ std::nullopt, function->name->location);
 
     DefId def = dfg->getDef(function->name);
 
@@ -1892,7 +2020,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunctio
     ScopePtr environmentScope = *scopeIt;
 
     Checkpoint startCheckpoint = checkpoint(this);
-    FunctionSignature sig = checkFunctionSignature(environmentScope, function->body, /* expectedType */ std::nullopt);
+    FunctionSignature sig = checkFunctionSignature(environmentScope, nullptr, function->body, /* expectedType */ std::nullopt);
 
     // Place this function as a child of the non-type function scope
     scope->children.emplace_back(sig.signatureScope.get());
@@ -2280,6 +2408,73 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareFunc
     DefId def = dfg->getDef(global);
     rootScope->lvalueTypes[def] = fnType;
     updateRValueRefinements(rootScope, def, fnType);
+
+    return ControlFlow::None;
+}
+
+ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* statClass)
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+    ClassDeclRecord* classDeclRecord = classDeclRecords.find(statClass->name);
+    // TODO CLI-199124: This is unpopulated in fragment autocomplete.
+    if (classDeclRecord == nullptr)
+        return ControlFlow::None;
+
+    DenseHashSet<AstName> methodNames{AstName{""}};
+
+    for (const auto& member : statClass->members)
+    {
+        if (auto method = member.get_if<AstClassMethod>())
+        {
+            // Duplicate method names are reported elsewhere
+            if (methodNames.contains(method->functionName))
+                continue;
+
+            const ExternType* class_ = get<ExternType>(classDeclRecord->ty);
+            LUAU_ASSERT(class_);
+
+            const Property functionProp = class_->props.at(method->functionName.value);
+            LUAU_ASSERT(functionProp.isReadOnly());
+            TypeId functionType = *functionProp.readTy;
+
+            FunctionSignature sig = checkFunctionSignature(scope, classDeclRecord, method->function, /* expectedType */ std::nullopt, method->function->location);
+
+            Checkpoint start = checkpoint(this);
+            checkFunctionBody(sig.bodyScope, method->function);
+            Checkpoint end = checkpoint(this);
+
+            NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
+            std::unique_ptr<Constraint> c =
+                std::make_unique<Constraint>(constraintScope, method->function->location, GeneralizationConstraint{functionType, sig.signature});
+
+            propagateDeprecatedAttributeToConstraint(c->c, method->function);
+
+            Constraint* previous = nullptr;
+            forEachConstraint(
+                start,
+                end,
+                this,
+                [&c, &previous](const ConstraintPtr& constraint)
+                {
+                    c->dependencies.emplace_back(constraint.get());
+                    if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+                    {
+                        if (previous)
+                        {
+                            constraint->dependencies.emplace_back(previous);
+                        }
+
+                        previous = constraint.get();
+                    }
+                }
+            );
+
+            getMutable<BlockedType>(functionType)->setOwner(addConstraint(scope, std::move(c)));
+
+            methodNames.insert(method->functionName);
+        }
+    }
 
     return ControlFlow::None;
 }
@@ -2922,7 +3117,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprFunction* fun
     InConditionalContext inContext(&typeContext, TypeContext::Default);
 
     Checkpoint startCheckpoint = checkpoint(this);
-    FunctionSignature sig = checkFunctionSignature(scope, func, expectedType);
+    FunctionSignature sig = checkFunctionSignature(scope, nullptr, func, expectedType);
 
     interiorFreeTypes.emplace_back();
     checkFunctionBody(sig.bodyScope, func);
@@ -3610,11 +3805,13 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
 
 ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignature(
     const ScopePtr& parent,
+    ClassDeclRecord* enclosingClass,
     AstExprFunction* fn,
     std::optional<TypeId> expectedType,
     std::optional<Location> originalName
 )
 {
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses || enclosingClass == nullptr);
     ScopePtr signatureScope = nullptr;
     ScopePtr bodyScope = nullptr;
     TypePackId returnType = nullptr;
@@ -3687,20 +3884,60 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
         genericTypePacks = expectedFunction->genericPacks;
     }
 
-    if (fn->self)
-    {
-        TypeId selfType = freshType(signatureScope, Polarity::Negative);
-        argTypes.push_back(selfType);
-        argNames.emplace_back(FunctionArgument{fn->self->name.value, fn->self->location});
-        signatureScope->bindings[fn->self] = Binding{selfType, fn->self->location};
 
-        DefId def = dfg->getDef(fn->self);
-        signatureScope->lvalueTypes[def] = selfType;
-        updateRValueRefinements(signatureScope, def, selfType);
+    bool hasExplicitSelf;
+    bool hasSelf;
+
+    if (FFlag::DebugLuauUserDefinedClasses)
+    {
+        hasExplicitSelf = enclosingClass != nullptr && fn->args.size > 0 && fn->args.data[0]->name == "self";
+        hasSelf = hasExplicitSelf || fn->self != nullptr;
+
+        if (hasSelf)
+        {
+            TypeId selfType = nullptr;
+            if (enclosingClass != nullptr)
+                selfType = enclosingClass->ty;
+            else
+                selfType = freshType(signatureScope, Polarity::Negative);
+
+            AstLocal* selfLocal = fn->self ? fn->self : hasExplicitSelf ? fn->args.data[0] : nullptr;
+            LUAU_ASSERT(selfLocal);
+
+            argTypes.push_back(selfType);
+            argNames.emplace_back(FunctionArgument{selfLocal->name.value, selfLocal->location});
+
+            signatureScope->bindings[selfLocal] = Binding{selfType, selfLocal->location};
+
+            DefId def = dfg->getDef(selfLocal);
+            signatureScope->lvalueTypes[def] = selfType;
+            updateRValueRefinements(signatureScope, def, selfType);
+        }
     }
+    else
+    {
+        if (fn->self)
+        {
+            TypeId selfType = freshType(signatureScope, Polarity::Negative);
+            argTypes.push_back(selfType);
+            argNames.emplace_back(FunctionArgument{fn->self->name.value, fn->self->location});
+            signatureScope->bindings[fn->self] = Binding{selfType, fn->self->location};
+
+            DefId def = dfg->getDef(fn->self);
+            signatureScope->lvalueTypes[def] = selfType;
+            updateRValueRefinements(signatureScope, def, selfType);
+        }
+    }
+
 
     for (size_t i = 0; i < fn->args.size; ++i)
     {
+        if (FFlag::DebugLuauUserDefinedClasses)
+        {
+            if (hasExplicitSelf && i == 0)
+                continue;
+        }
+
         AstLocal* local = fn->args.data[i];
 
         TypeId argTy = nullptr;
@@ -3804,7 +4041,7 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
     actualFunction.generics = std::move(genericTypes);
     actualFunction.genericPacks = std::move(genericTypePacks);
     actualFunction.argNames = std::move(argNames);
-    actualFunction.hasSelf = fn->self != nullptr;
+    actualFunction.hasSelf = FFlag::DebugLuauUserDefinedClasses ? hasSelf : fn->self != nullptr;
 
     FunctionDefinition defn;
     defn.definitionModuleName = module->name;
@@ -4001,7 +4238,19 @@ TypeId ConstraintGenerator::resolveTableType(const ScopePtr& scope, AstType* ty,
     if (AstTableIndexer* astIndexer = tab->indexer)
     {
         if (astIndexer->access == AstTableAccess::Read)
-            reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
+        {
+            if (!FFlag::LuauReadOnlyIndexers)
+                reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
+            else
+            {
+                polarity = p;
+                indexer = TableIndexer{
+                    resolveType_(scope, astIndexer->indexType, inTypeArguments),
+                    resolveType_(scope, astIndexer->resultType, inTypeArguments),
+                    /*isReadOnly*/ true
+                };
+            }
+        }
         else if (astIndexer->access == AstTableAccess::Write)
             reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
         else if (astIndexer->access == AstTableAccess::ReadWrite)

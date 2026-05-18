@@ -32,6 +32,7 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
@@ -395,6 +396,11 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStat& program)
         // we don't think the type errors will be useful most of the time.
         currentModule->errors.resize(oldSize);
 
+        return ControlFlow::None;
+    }
+    else if (FFlag::DebugLuauUserDefinedClasses && program.is<AstStatClass>())
+    {
+        reportError(program.as<AstStatClass>()->name->location, GenericError{"class keyword is illegal here"});
         return ControlFlow::None;
     }
     else

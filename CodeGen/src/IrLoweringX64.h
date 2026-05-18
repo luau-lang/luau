@@ -39,15 +39,16 @@ struct IrLoweringX64
     bool isFallthroughBlock(const IrBlock& target, const IrBlock& next);
     void jumpOrFallthrough(IrBlock& target, const IrBlock& next);
 
-    Label& getTargetLabel(IrOp op, Label& fresh);
-    void finalizeTargetLabel(IrOp op, Label& fresh);
+    Label& getTargetLabel(IrOp op, uint32_t index, Label& fresh);
+    void finalizeTargetLabel(IrOp op, uint32_t index, Label& fresh);
 
-    void jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, const IrBlock& next);
-    void jumpOrAbortOnUndef(IrOp target, const IrBlock& next);
+    void jumpOrAbortOnUndefNoFinalize(ConditionX64 cond, IrOp target, uint32_t index, const IrBlock& next, Label& fresh);
+    void jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, uint32_t index, const IrBlock& next);
+    void jumpOrAbortOnUndef(IrOp target, uint32_t index, const IrBlock& next);
 
     void storeFloat(OperandX64 dst, IrOp src);
     void storeDoubleAsFloat(OperandX64 dst, IrOp src);
-    void checkSafeEnv(IrOp target, const IrBlock& next);
+    void checkSafeEnv(IrOp target, uint32_t index, const IrBlock& next);
 
     void allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcpos);
     void incrementCounterAt(size_t offset);
@@ -105,6 +106,9 @@ struct IrLoweringX64
 
     OperandX64 vectorAndMask = noreg;
     OperandX64 vectorOrMask = noreg;
+
+    uint32_t exitSyncAllocToken = 0;
+    uint32_t exitSyncInstIdx = kInvalidInstIdx;
 };
 
 } // namespace X64

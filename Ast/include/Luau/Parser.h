@@ -146,7 +146,7 @@ private:
     AstExpr* parseFunctionName(bool& hasself, AstName& debugname);
 
     // function funcname funcbody
-    LUAU_FORCEINLINE AstStat* parseFunctionStat(const AstArray<AstAttr*>& attributes = {nullptr, 0});
+    LUAU_FORCEINLINE AstStatFunction* parseFunctionStat(const AstArray<AstAttr*>& attributes = {nullptr, 0});
 
     std::optional<AstAttr::Type> validateAttribute(
         Location loc,
@@ -177,6 +177,8 @@ private:
 
     // type Name `=' Type
     AstStat* parseTypeAlias(const Location& start, bool exported, Position typeKeywordPosition);
+
+    AstStatClass* parseClassStat(const Location& start);
 
     // type function Name ... end
     AstStat* parseTypeFunction(const Location& start, bool exported, Position typeKeywordPosition);
@@ -534,6 +536,7 @@ private:
     std::vector<AstType*> scratchType;
     std::vector<AstTypeOrPack> scratchTypeOrPack;
     std::vector<AstDeclaredExternTypeProperty> scratchDeclaredClassProps;
+    std::vector<AstClassMember> scratchClassDeclarations;
     std::vector<AstExprTable::Item> scratchItem;
     std::vector<CstExprTable::Item> scratchCstItem;
     std::vector<AstArgumentName> scratchArgName;

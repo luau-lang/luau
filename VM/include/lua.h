@@ -84,14 +84,21 @@ enum lua_Type
     LUA_TUSERDATA,
     LUA_TTHREAD,
     LUA_TBUFFER,
+    LUA_TCLASSOBJ,
+    LUA_TCLASSINST,
 
     // values below this line are used in GCObject tags but may never show up in TValue type tags
-    LUA_TPROTO,
-    LUA_TUPVAL,
+
+    // LUA_TDEADKEY is used in TKey to identify Luau table entries that have the value set to nil,
+    // so that we can remove the strong reference to the key.
     LUA_TDEADKEY,
 
+    // These values should never show up in TValue tag types.
+    LUA_TPROTO,
+    LUA_TUPVAL,
+
     // the count of TValue type tags
-    LUA_T_COUNT = LUA_TPROTO
+    LUA_T_COUNT = LUA_TDEADKEY
 };
 // clang-format on
 
@@ -423,6 +430,8 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_isbuffer(L, n) (lua_type(L, (n)) == LUA_TBUFFER)
 #define lua_isnone(L, n) (lua_type(L, (n)) == LUA_TNONE)
 #define lua_isnoneornil(L, n) (lua_type(L, (n)) <= LUA_TNIL)
+#define lua_isclassobject(L, n) (lua_type(L, (n)) == LUA_TCLASSOBJ)
+#define lua_isclassinstance(L, n) (lua_type(L, (n)) == LUA_TCLASSINST)
 
 #define lua_pushliteral(L, s) lua_pushlstring(L, "" s, (sizeof(s) / sizeof(char)) - 1)
 #define lua_pushcfunction(L, fn, debugname) lua_pushcclosurek(L, fn, debugname, 0, NULL)

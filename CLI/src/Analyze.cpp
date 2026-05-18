@@ -140,6 +140,7 @@ static void displayHelp(const char* argv0)
     printf("  --formatter=plain: report analysis errors in Luacheck-compatible format\n");
     printf("  --formatter=gnu: report analysis errors in GNU-compatible format\n");
     printf("  --mode=strict: default to strict mode when typechecking\n");
+    printf("  --solver={new|old}: selects which typechecker to use (defaults to the new solver)");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
 }
 
@@ -407,6 +408,7 @@ int main(int argc, char** argv)
     bool annotate = false;
     int threadCount = 0;
     std::string basePath = "";
+    Luau::SolverMode solverMode = Luau::SolverMode::New;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -429,6 +431,8 @@ int main(int argc, char** argv)
             threadCount = int(strtol(argv[i] + 2, nullptr, 10));
         else if (strncmp(argv[i], "--logbase=", 10) == 0)
             basePath = std::string{argv[i] + 10};
+        else if (strcmp(argv[i], "--solver=old") == 0)
+            solverMode = Luau::SolverMode::Old;
     }
 
 #if !defined(LUAU_ENABLE_TIME_TRACE)
@@ -445,7 +449,8 @@ int main(int argc, char** argv)
 
     CliFileResolver fileResolver;
     CliConfigResolver configResolver(mode);
-    Luau::Frontend frontend(&fileResolver, &configResolver, frontendOptions);
+
+    Luau::Frontend frontend(solverMode, &fileResolver, &configResolver, frontendOptions);
 
     if (FFlag::DebugLuauLogSolverToJsonFile)
     {

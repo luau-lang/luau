@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Parser.h"
 
+#include "Luau/Ast.h"
 #include "Luau/Common.h"
 #include "Luau/TimeTrace.h"
 
@@ -25,6 +26,7 @@ LUAU_FASTFLAGVARIABLE(LuauConst2)
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(LuauExternReadWriteAttributes)
 LUAU_FASTFLAGVARIABLE(LuauConstJustReportErrorForUnderfill)
+LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClasses)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -487,6 +489,16 @@ AstStat* Parser::parseStat()
     if (ident == "type")
         return parseTypeAlias(expr->location, /* exported= */ false, expr->location.begin);
 
+    if (FFlag::DebugLuauUserDefinedClasses && ident == "class")
+    {
+        AstStatClass* cls = parseClassStat(start);
+        // We only allow classes at the top level: we can make use of the
+        // recursion counter to check this, though it's a little clowny.
+        if (recursionCounter > 1)
+            report(cls->name->location, "Cannot declare class '%s' inside another statement or expression" , cls->name->name.value);
+        return cls;
+    }
+
     if (ident == "export" && lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "type")
     {
         Position typeKeywordPosition = lexer.current().location.begin;
@@ -858,7 +870,7 @@ static bool isExprLValue(AstExpr* expr)
 }
 
 // function funcname funcbody
-AstStat* Parser::parseFunctionStat(const AstArray<AstAttr*>& attributes)
+AstStatFunction* Parser::parseFunctionStat(const AstArray<AstAttr*>& attributes)
 {
     Location start = lexer.current().location;
 
@@ -1289,7 +1301,7 @@ AstStat* Parser::parseLocal(const Location start, const Position keywordPosition
                     allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
             }
 
-            // It is a syntax error when a const declaration *definitely* does 
+            // It is a syntax error when a const declaration *definitely* does
             // not have enough values, for example:
             //
             //  const foo
@@ -1379,6 +1391,137 @@ AstStat* Parser::parseTypeAlias(const Location& start, bool exported, Position t
             typeKeywordPosition, genericsOpenPosition, genericsCommaPositions, genericsClosePosition, equalsPosition
         );
     return node;
+}
+
+// classStatement ::= `class` Name classProps `end`
+// classProps ::= classProp [classProps]
+// classProp ::= name [: classQualifier* type]
+AstStatClass* Parser::parseClassStat(const Location& start)
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    std::optional<Name> name = parseNameOpt("type name");  
+
+    // Use error name if the name is missing  
+    if (!name)  
+        name = Name(nameError, lexer.current().location);  
+
+    AstLocal* nameLocal = pushLocal(Binding(*name, nullptr, {0, 0}, true));
+
+    TempVector<AstClassMember> declarations(scratchClassDeclarations);
+
+    // TODO: This does not seem particularly performant, but we need to
+    // establish the invariant that properties and methods share a
+    // namespace, so writing something like:
+    //
+    //  class Foo
+    //      public x
+    //      function x() end
+    //  end
+    //
+    // ... must fail. This gets the job done but maybe we can do something
+    // slightly more performant here (e.g.: a "scratch" set).
+    DenseHashSet<AstName> classNamespace{{}};
+
+    while (lexer.current().type != Lexeme::ReservedEnd && lexer.current().type != Lexeme::Eof)
+    {
+        if (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "public")
+        {
+            Location qualifierLocation = lexer.current().location;
+            nextLexeme();
+
+            std::optional<Name> propName = parseNameOpt("class property name");
+            if (!propName)
+                continue;
+
+            AstType* propType = nullptr;
+            std::optional<Location> typeColonLocation;
+
+            if (lexer.current().type == ':')
+            {
+                typeColonLocation = lexer.current().location;
+                nextLexeme();
+                propType = parseType();
+            }
+
+            if (classNamespace.contains(propName->name))
+            {
+                report(propName->location, "Duplicate class member '%s'", propName->name.value);
+            }
+            else
+            {
+                classNamespace.insert(propName->name);
+
+                // Either both of these are present or neither are.
+                LUAU_ASSERT((bool)propType == (bool)typeColonLocation);
+                declarations.push_back(
+                    AstClassProperty{
+                        qualifierLocation,
+                        propName->name,
+                        propName->location,
+                        typeColonLocation,
+                        propType,
+                    }
+                );
+            }
+        }
+        else if (lexer.current().type == Lexeme::ReservedFunction)
+        {
+            auto matchFunction = lexer.current();
+            nextLexeme();
+
+            Name name = parseName("method name");
+            // This is a little funky as we pass in a debug name but not a
+            // local name. The reason is that // in the declaration:
+            //
+            //  class Student
+            //      public name
+            //      function print(self)
+            //          print(`Hello, I'm a student and my name is {self.name}`)
+            //      end
+            //  end
+            //
+            // ... `print` inside `Student.print` is the _global_ print, and not
+            // the class' print. That would be `self.print`.
+            matchRecoveryStopOnToken[Lexeme::ReservedEnd]++;
+
+            auto [body, _] = parseFunctionBody(false, matchFunction, name.name, nullptr, {});
+
+            matchRecoveryStopOnToken[Lexeme::ReservedEnd]--;
+
+            // TODO CLI-200853: We should support attributes, we do not need
+            // to support them prior to the full launch.
+
+            if (classNamespace.contains(name.name))
+            {
+                report(name.location, "Duplicate class member '%s'", name.name.value);
+            }
+            else
+            {
+                classNamespace.insert(name.name);
+
+                // FIXME CLI-198136: `public` should be allowed as a qualifier.
+                declarations.push_back(AstClassMethod{
+                    matchFunction.location,
+                    name.name,
+                    name.location,
+                    body,
+                });
+            }
+        }
+        else
+        {
+            report(lexer.current().location, "Only class properties and functions can be declared within a class");
+            nextLexeme(); // skip the unexpected token to avoid an infinite loop
+        }
+    }
+
+    // TODO: We should use `expectMatchEndAndConsume`. It is difficult as we
+    // are treating "class" as a contextual keyword (and we must as we also)
+    // plan to add a `class` library.
+    Location end = lexer.current().location;
+    expectAndConsume(Lexeme::ReservedEnd, "class");
+    Location location{start, end};
+    return allocator.alloc<AstStatClass>(location, nameLocal, copy(declarations));
 }
 
 // type function Name `(' arglist `)' `=' funcbody `end'

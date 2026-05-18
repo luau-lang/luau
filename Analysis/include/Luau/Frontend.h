@@ -326,21 +326,6 @@ ModulePtr check(
     NotNull<InternalErrorReporter> iceHandler,
     NotNull<ModuleResolver> moduleResolver,
     NotNull<FileResolver> fileResolver,
-    const ScopePtr& globalScope,
-    const ScopePtr& typeFunctionScope,
-    std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
-    FrontendOptions options,
-    TypeCheckLimits limits
-);
-
-ModulePtr check(
-    const SourceModule& sourceModule,
-    Mode mode,
-    const std::vector<RequireCycle>& requireCycles,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<InternalErrorReporter> iceHandler,
-    NotNull<ModuleResolver> moduleResolver,
-    NotNull<FileResolver> fileResolver,
     const ScopePtr& parentScope,
     const ScopePtr& typeFunctionScope,
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,

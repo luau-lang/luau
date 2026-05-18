@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/Common.h"
 #include "Luau/Parser.h"
 #include "Luau/PrettyPrinter.h"
 #include "Luau/TypeAttach.h"
@@ -11,6 +12,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauNoInline)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 using namespace Luau;
 
@@ -2084,6 +2086,52 @@ TEST_CASE("prettyPrint_chained_function_types")
 TEST_CASE("fuzzer_nil_optional")
 {
     const std::string code = R"( local x: nil? )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+}
+
+TEST_CASE("fuzzer_class")
+{
+    ScopedFastFlag fflag{FFlag::DebugLuauUserDefinedClasses, true};
+    const std::string code = R"( class l0 end )";
+    // should not crash
+    prettyPrint(code, {}, true);
+}
+
+TEST_CASE("simple_class_example")
+{
+    ScopedFastFlag fflag{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string code = R"(
+class Point
+    public x: number
+    public y: number
+    function length(self)
+        return 100
+    end
+    function new()
+        return Point { x = 0, y = 0 }
+    end
+end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+}
+
+TEST_CASE("remixed_simple_class")
+{
+    ScopedFastFlag fflag{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string code = R"(
+class Point
+    function length(self)
+        return 100
+    end
+    public x
+    function new(): Point
+        return Point { x = 0, y = 0 }
+    end
+    public y
+end
+    )";
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
 }
 

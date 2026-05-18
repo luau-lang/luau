@@ -9,6 +9,8 @@
 #include <limits>
 #include <math.h>
 
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+
 namespace
 {
 bool isIdentifierStartChar(char c)
@@ -1304,6 +1306,47 @@ struct Printer
 
             writer.symbol(":");
             visualizeTypeAnnotation(*a->type);
+        }
+        else if (const auto& c = program.as<AstStatClass>(); c && FFlag::DebugLuauUserDefinedClasses)
+        {
+            writer.keyword("class");
+            writer.advance(c->name->location.begin);
+            writer.identifier(c->name->name.value);
+
+            for (const auto& member : c->members)
+            {
+                visit(
+                    overloaded{
+                        [&](const AstClassProperty& prop)
+                        {
+                            writer.advance(prop.qualifierLocation.begin);
+                            writer.keyword("public");
+                            writer.advance(prop.nameLocation.begin);
+                            writer.identifier(prop.name.value);
+                            if (writeTypes && prop.ty)
+                            {
+                                LUAU_ASSERT(prop.typeColonLocation.has_value());
+                                writer.advance(prop.typeColonLocation->begin);
+                                writer.symbol(":");
+                                visualizeTypeAnnotation(*prop.ty);
+                            }
+                        },
+                        [&](const AstClassMethod& method)
+                        {
+                            writer.advance(method.keywordLocation.begin);
+                            writer.keyword("function");
+                            writer.advance(method.nameLocation.begin);
+                            writer.identifier(method.functionName.value);
+                            visualizeFunctionBody(*method.function);
+                        }
+                    },
+                    member
+                );
+            }
+
+            writer.newline();
+            writer.keyword("end");
+            writer.newline();
         }
         else
         {

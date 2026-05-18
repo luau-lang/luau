@@ -6,6 +6,8 @@
 #include <unordered_set>
 #include <algorithm>
 
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+
 namespace Luau
 {
 namespace Bytecode
@@ -729,11 +731,14 @@ bool buildFunctionGraph(BcFunction& func, const Instruction code[], uint32_t cod
             break;
 
         case LOP_CALL:
+        case LOP_CALLFB:
         {
             int nparams = LUAU_INSN_B(insn) - 1;
             int nresults = LUAU_INSN_C(insn) - 1;
             addImmInput(func, node, static_cast<int32_t>(nparams));
             addImmInput(func, node, static_cast<int32_t>(nresults));
+            if (op == LOP_CALLFB)
+                addImmInput(func, node, static_cast<int32_t>(aux));
 
             // Call target.
             addVmRegInput(producers, func, currentBlock, node, LUAU_INSN_A(insn));
@@ -1017,6 +1022,14 @@ bool buildFunctionGraph(BcFunction& func, const Instruction code[], uint32_t cod
             addVmConstInput(func, node, LUAU_INSN_C(insn));
             addProducer(func.regs, producers, currentBlock, LUAU_INSN_A(insn), nodeOp);
             break;
+
+        case LOP_NEWCLASSMEMBER:
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+            addVmRegInput(producers, func, currentBlock, node, LUAU_INSN_A(insn));
+            addVmRegInput(producers, func, currentBlock, node, LUAU_INSN_C(insn));
+            addVmConstInput(func, node, aux);
+            break;
+
 
         case LOP__COUNT:
             LUAU_UNREACHABLE();
@@ -1556,6 +1569,11 @@ void emitInstruction(BytecodeBuilder& bcb, Jumps& jumps, BcFunction& func, BcOp 
         bcb.emitABC(LOP_CALL, getRegInput(func, insn, 2), getImm<int32_t>(func, insn, 0) + 1, getImm<int32_t>(func, insn, 1) + 1);
         break;
 
+    case LOP_CALLFB:
+        bcb.emitABC(LOP_CALLFB, getRegInput(func, insn, 3), getImm<int32_t>(func, insn, 0) + 1, getImm<int32_t>(func, insn, 1) + 1);
+        bcb.emitAux(getImm<int32_t>(func, insn, 2));
+        break;
+
     case LOP_RETURN:
     {
         LUAU_ASSERT(insn.ops.size() > 1);
@@ -1751,6 +1769,12 @@ void emitInstruction(BytecodeBuilder& bcb, Jumps& jumps, BcFunction& func, BcOp 
 
     case LOP_IDIVK:
         bcb.emitABC(LOP_IDIVK, getRegister(func, insnOp), getRegInput(func, insn, 0), getVmConstInput(func, insn, 1));
+        break;
+
+    case LOP_NEWCLASSMEMBER:
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+        bcb.emitABC(LOP_NEWCLASSMEMBER, getRegInput(func, insn, 0), 0, getRegInput(func, insn, 1));
+        bcb.emitAux(getVmConstInput(func, insn, 2));
         break;
 
     case LOP__COUNT:
