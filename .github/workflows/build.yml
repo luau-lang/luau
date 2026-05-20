@@ -22,11 +22,13 @@ jobs:
       matrix:
         os: [{name: ubuntu, version: ubuntu-latest}, {name: macos, version: macos-latest}, {name: macos-arm, version: macos-14}]
         compiler:
-          - cc: clang
+          - name: Clang
+            cc: clang
             cxx: clang++
-          - cc: gcc
+          - name: GCC
+            cc: gcc
             cxx: g++
-    name: ${{matrix.os.name}}
+    name: ${{matrix.os.name}} with ${{matrix.compiler.name}}
     runs-on: ${{matrix.os.version}}
     steps:
     - uses: actions/checkout@v1
