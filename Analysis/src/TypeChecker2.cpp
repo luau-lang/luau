@@ -1524,7 +1524,7 @@ void TypeChecker2::visit(AstExprVarargs* expr)
     // TODO!
 }
 
-static void reportAvailableOverloads(ErrorVec& errors, Location location, const std::vector<TypeId>& overloads)
+static void reportAvailableOverloads(ErrorVec& errors, Location location, const ModuleName& moduleName, const std::vector<TypeId>& overloads)
 {
     if (overloads.empty())
         return;
@@ -1543,7 +1543,7 @@ static void reportAvailableOverloads(ErrorVec& errors, Location location, const 
         s << toString(overloads[i]);
     }
 
-    errors.emplace_back(location, ExtraInformation{s.str()});
+    errors.emplace_back(location, moduleName, ExtraInformation{s.str()});
 }
 
 void TypeChecker2::visitCall(AstExprCall* call)
@@ -1766,7 +1766,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
         if (!overloadsToReport.empty())
         {
             reportError(MultipleNonviableOverloads{argHead.size()}, call->location);
-            reportAvailableOverloads(module->errors, call->location, overloadsToReport);
+            reportAvailableOverloads(module->errors, call->location, module->name, overloadsToReport);
         }
 
         return;
@@ -1795,7 +1795,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
         std::stringstream ss;
         ss << "No overload for function accepts " << argHead.size() << " arguments.";
         reportError(GenericError{ss.str()}, call->func->location);
-        reportAvailableOverloads(module->errors, call->func->location, result2.arityMismatches);
+        reportAvailableOverloads(module->errors, call->func->location, module->name, result2.arityMismatches);
         return;
     }
 
