@@ -21,6 +21,11 @@ jobs:
     strategy:
       matrix:
         os: [{name: ubuntu, version: ubuntu-latest}, {name: macos, version: macos-latest}, {name: macos-arm, version: macos-14}]
+        compiler:
+          - cc: clang
+            cxx: clang++
+          - cc: gcc
+            cxx: g++
     name: ${{matrix.os.name}}
     runs-on: ${{matrix.os.version}}
     steps:
@@ -30,7 +35,7 @@ jobs:
       if: matrix.os.name == 'ubuntu'
     - name: make tests
       run: |
-        make -j2 config=sanitize werror=1 native=1 luau-tests
+        CC=${{matrix.compiler.cc}} CXX=${{matrix.compiler.cxx}} make -j2 config=sanitize werror=1 native=1 luau-tests
     - name: run tests
       run: |
         ./luau-tests
