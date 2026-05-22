@@ -79,6 +79,11 @@ static void sigintHandler(int signum)
     if (signum == SIGINT && replState)
         lua_callbacks(replState)->interrupt = &sigintCallback;
 }
+
+static void sighupHandler(int signum)
+{
+    exit(0);
+}
 #endif
 
 struct GlobalOptions
@@ -562,6 +567,7 @@ static void runRepl()
     SetConsoleCtrlHandler(sigintHandler, TRUE);
 #else
     signal(SIGINT, sigintHandler);
+    signal(SIGHUP, sighupHandler);
 #endif
 
     luaL_sandboxthread(L);
