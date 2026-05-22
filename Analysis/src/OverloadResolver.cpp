@@ -12,6 +12,10 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
+#include <algorithm>
+
+LUAU_FASTFLAGVARIABLE(LuauPreferExactArityOverOptionalOverload)
+
 namespace Luau
 {
 
@@ -172,6 +176,55 @@ static bool areUnsatisfiedArgumentsOptional(const SubtypingReasonings& reasoning
     return true;
 }
 
+static bool needsOmittedOptionalArguments(TypePackId argPack, TypeId overload)
+{
+    const FunctionType* ftv = get<FunctionType>(follow(overload));
+    if (!ftv)
+        return false;
+
+    const auto [argHead, argTail] = flatten(argPack);
+    if (argTail)
+        return false;
+
+    const auto [funArgHead, _funArgTail] = flatten(ftv->argTypes);
+    return argHead.size() < funArgHead.size();
+}
+
+static void preferOverloadsThatDoNotNeedOmittedOptionalArguments(OverloadResolution& result, TypePackId argPack)
+{
+    const bool hasPreferredOverload =
+        std::any_of(result.ok.begin(), result.ok.end(), [argPack](TypeId overload) {
+            return !needsOmittedOptionalArguments(argPack, overload);
+        }) ||
+        std::any_of(result.potentialOverloads.begin(), result.potentialOverloads.end(), [argPack](const auto& overload) {
+            return !needsOmittedOptionalArguments(argPack, overload.first);
+        });
+
+    if (!hasPreferredOverload)
+        return;
+
+    result.ok.erase(
+        std::remove_if(
+            result.ok.begin(),
+            result.ok.end(),
+            [argPack](TypeId overload) {
+                return needsOmittedOptionalArguments(argPack, overload);
+            }
+        ),
+        result.ok.end()
+    );
+    result.potentialOverloads.erase(
+        std::remove_if(
+            result.potentialOverloads.begin(),
+            result.potentialOverloads.end(),
+            [argPack](const auto& overload) {
+                return needsOmittedOptionalArguments(argPack, overload.first);
+            }
+        ),
+        result.potentialOverloads.end()
+    );
+}
+
 OverloadResolution OverloadResolver::resolveOverload(
     TypeId ty,
     TypePackId argsPack,
@@ -191,6 +244,9 @@ OverloadResolution OverloadResolver::resolveOverload(
     }
     else
         testFunctionOrUnion(result, ty, argsPack, fnLocation, uniqueTypes);
+
+    if (FFlag::LuauPreferExactArityOverOptionalOverload)
+        preferOverloadsThatDoNotNeedOmittedOptionalArguments(result, argsPack);
 
     return result;
 }
