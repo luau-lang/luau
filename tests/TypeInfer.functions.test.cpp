@@ -3440,6 +3440,41 @@ TEST_CASE_FIXTURE(Fixture, "overload_selection_ambiguous_call")
     CHECK_EQ("*error-type*", toString(requireType("g")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "overload_selection_prefers_exact_arity_over_omitted_optional_arguments")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    auto result = check(R"(
+        type Source<T> = (() -> T) & ((T) -> T)
+
+        local text = (nil :: any) :: Source<string?>
+
+        local a = text()
+        local b = text("hi")
+        local c = text(nil)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string?", toString(requireType("a")));
+    CHECK_EQ("string?", toString(requireType("b")));
+    CHECK_EQ("string?", toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_prefers_shorter_overload_when_longer_one_only_matches_via_optional_argument")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    auto result = check(R"(
+        local f: ((number) -> "one") & ((number, string?) -> "two") = nil :: any
+        local x = f(1)
+        local y = f(1, "s")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("\"one\"", toString(requireType("x")));
+    CHECK_EQ("\"two\"", toString(requireType("y")));
+}
+
 TEST_CASE_FIXTURE(Fixture, "overload_selection_pick_better_arity")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
