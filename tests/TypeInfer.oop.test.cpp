@@ -17,6 +17,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(LuauFixPropReadsOnMetatableTypes)
+LUAU_FASTFLAG(LuauTidyTypePrototyping)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -844,6 +845,20 @@ TEST_CASE_FIXTURE(Fixture, "classes_arent_in_old_solver")
     CHECK_EQ("class keyword is illegal here", err->message);
 }
 
+TEST_CASE_FIXTURE(Fixture, "export_class_isnt_in_old_solver")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, true},
+    };
+
+    CheckResult result = check(R"( export class Point end )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<GenericError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("class keyword is illegal here", err->message);
+}
+
 TEST_CASE_FIXTURE(Fixture, "empty_class")
 {
     ScopedFastFlag sffs[] = {
@@ -876,7 +891,7 @@ TEST_CASE_FIXTURE(Fixture, "class_decl")
 
     LUAU_CHECK_NO_ERRORS(result);
 
-    TypeId t = requireExportedType("Point");
+    TypeId t = requireTypeAlias("Point");
     CHECK("Point" == toString(t));
 
     const ExternType* point = get<ExternType>(t);
@@ -963,7 +978,9 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_duplicate_class_definition")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(get<DuplicateTypeDefinition>(result.errors[0]));
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
 }
 
 TEST_CASE_FIXTURE(Fixture, "repeat_props")
@@ -1054,7 +1071,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_self_referential_class_definition")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId l0 = requireType("l0");
-    CHECK(is<MetatableType>(l0));
+    CHECK(is<ExternType>(l0));
 }
 
 TEST_CASE_FIXTURE(Fixture, "instantiate_duplicate_class")
@@ -1075,8 +1092,10 @@ _ = l0 {  }
     );
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(get<DuplicateTypeDefinition>(result.errors[0]));
-    CHECK(get<UnknownSymbol>(result.errors[1]));
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
+    REQUIRE(get<UnknownSymbol>(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "prop_with_typeof_reassigned_class")
@@ -1102,6 +1121,26 @@ end
     auto err = get<SyntaxError>(result.errors[0]);
     REQUIRE(err);
     CHECK_EQ("Assigned expression must be a variable or a field", err->message);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "class_that_shadows_a_type_alias")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauTidyTypePrototyping, true},
+    };
+
+    CheckResult result = check(R"(
+        type AAA = { x: number }
+        class AAA end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<DuplicateTypeDefinition>(result.errors[0]);
+    REQUIRE(err);
+    CHECK(err->name == "AAA");
+    CHECK(err->previousLocation.has_value());
 }
 
 TEST_SUITE_END();

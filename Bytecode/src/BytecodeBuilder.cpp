@@ -854,7 +854,7 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
             break;
 
         case Constant::Type_ClassShape:
-            writeByte(ss,LBC_CONSTANT_CLASS_SHAPE);
+            writeByte(ss, LBC_CONSTANT_CLASS_SHAPE);
             writeClassShape(ss, classShapes[c.valueClassShape]);
             break;
 
@@ -939,9 +939,9 @@ void BytecodeBuilder::writeClassShape(std::string& ss, const ClassShape& cs) con
     writeVarInt(ss, cs.className);
     writeVarInt(ss, cs.propertyNames.size());
     writeVarInt(ss, cs.methodNames.size());
-    for (const auto propName: cs.propertyNames)
+    for (const auto propName : cs.propertyNames)
         writeVarInt(ss, propName);
-    for (const auto methodName: cs.methodNames)
+    for (const auto methodName : cs.methodNames)
         writeVarInt(ss, methodName);
 }
 
@@ -1731,7 +1731,7 @@ void BytecodeBuilder::validateInstructions() const
                 LUAU_ASSERT(!"Unsupported capture type");
             }
             break;
-        
+
         case LOP_NEWCLASSMEMBER:
             VREG(LUAU_INSN_A(insn));
             LUAU_ASSERT(LUAU_INSN_B(insn) == 0);
@@ -1751,6 +1751,11 @@ void BytecodeBuilder::validateInstructions() const
             VREG(LUAU_INSN_B(insn));
             VCONST(LUAU_INSN_AUX_KV16(insns[i + 1]), String);
             LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALL);
+            break;
+        
+        case LOP_CMPPROTO:
+            VREG(LUAU_INSN_A(insn));
+            VJUMP(LUAU_INSN_D(insn));
             break;
 
         default:
@@ -2452,6 +2457,10 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         dumpConstant(result, *code);
         result.append("]\n");
         code++;
+        break;
+    
+    case LOP_CMPPROTO:
+        formatAppend(result, "CMPPROTO R%d #%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
         break;
 
     default:

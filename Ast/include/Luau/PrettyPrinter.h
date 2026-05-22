@@ -27,7 +27,7 @@ std::string prettyPrint(AstStatBlock& ast);
 std::string prettyPrintWithTypes(AstStatBlock& block);
 std::string prettyPrintWithTypes(AstStatBlock& block, const CstNodeMap& cstNodeMap);
 
-// Only fails when parsing fails
-PrettyPrintResult prettyPrint(std::string_view source, ParseOptions options = ParseOptions{}, bool withTypes = false);
+// Only fails when parsing fails and we're not ignoring parse errors.
+PrettyPrintResult prettyPrint(std::string_view source, ParseOptions options = ParseOptions{}, bool withTypes = false, bool ignoreParseErrors = false);
 
 } // namespace Luau

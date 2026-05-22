@@ -1038,7 +1038,14 @@ enum class IrCmd : uint8_t
     // A: pointer (buffer)
     // B: int (offset)
     // C: int64 (value)
-    BUFFER_WRITEI64
+    BUFFER_WRITEI64,
+
+    // Perform a conditional jump based on the result of Proto ID comparison
+    // A: closure pointer
+    // B: protoid
+    // C: block (if true)
+    // D: block (if false)
+    JUMP_CMP_PROTOID,
 };
 
 enum class IrConstKind : uint8_t

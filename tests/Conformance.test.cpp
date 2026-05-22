@@ -49,13 +49,14 @@ void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauStacklessPcall)
+LUAU_FASTFLAG(LuauResumeRestoreCcalls)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauUdataDirectAccess4)
+LUAU_FASTFLAG(LuauUdataDirectAccess5)
 LUAU_FASTFLAG(LuauCodegenBufferInteger)
 LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
+LUAU_FASTFLAG(LuauYieldIter2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
@@ -1315,8 +1316,6 @@ TEST_CASE("Literals")
 
 TEST_CASE("Errors")
 {
-    ScopedFastFlag luauStacklessPcall{FFlag::LuauStacklessPcall, true};
-
     runConformance("errors.luau");
 }
 
@@ -1413,7 +1412,7 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
-    ScopedFastFlag luauStacklessPcall{FFlag::LuauStacklessPcall, true};
+    ScopedFastFlag luauResumeRestoreCcalls{FFlag::LuauResumeRestoreCcalls, true};
 
     runConformance(
         "pcall.luau",
@@ -1647,6 +1646,8 @@ int passthroughCallWithStateContinuation(lua_State* L, int status)
 
 TEST_CASE("CYield")
 {
+    ScopedFastFlag luauResumeRestoreCcalls{FFlag::LuauResumeRestoreCcalls, true};
+
     runConformance(
         "cyield.luau",
         [](lua_State* L)
@@ -3598,9 +3599,40 @@ TEST_CASE("DebugApi")
     CHECK(lua_getinfo(L, -10, "f", &ar) == 0); // not on stack
 }
 
+static int cYieldingIteratorContinuation(lua_State* L, int status)
+{
+    int index = luaL_checkinteger(L, 2);
+    lua_pushinteger(L, index + 1);
+    lua_pushinteger(L, index + 1);
+    return 2;
+}
+
+static int cYieldingIterator(lua_State* L)
+{
+    int max = luaL_checkinteger(L, 1);
+    int index = luaL_checkinteger(L, 2);
+
+    if (index >= max)
+        return 0; // nil: end iteration
+
+    lua_pushinteger(L, index + 1);
+    return lua_yield(L, 1);
+}
+
 TEST_CASE("Iter")
 {
-    runConformance("iter.luau");
+    ScopedFastFlag luauYieldIter{FFlag::LuauYieldIter2, true};
+
+    runConformance(
+        "iter.luau",
+        [](lua_State* L)
+        {
+            setupNativeHelpers(L);
+
+            lua_pushcclosurek(L, cYieldingIterator, "cYieldingIterator", 0, cYieldingIteratorContinuation);
+            lua_setglobal(L, "cYieldingIterator");
+        }
+    );
 }
 
 TEST_CASE("IterFenv")
@@ -4046,7 +4078,7 @@ TEST_CASE("NativeUserdata")
 
 TEST_CASE("UserdataDirectAccess")
 {
-    ScopedFastFlag sff{FFlag::LuauUdataDirectAccess4, true};
+    ScopedFastFlag sff{FFlag::LuauUdataDirectAccess5, true};
 
     // Reset global state
     nameToAtom.clear();
@@ -4403,32 +4435,56 @@ local function second(x)
 end
 )";
 
+    auto totalCount = [](const Luau::CodeGen::FunctionBytecodeSummary& summary)
+    {
+        unsigned total = 0;
+        for (unsigned c : summary.getCounts(0))
+            total += c;
+        return total;
+    };
+
     std::vector<Luau::CodeGen::FunctionBytecodeSummary> summaries(analyzeFile(source, 0, 1));
 
     CHECK_EQ(summaries[0].getName(), "inner");
     CHECK_EQ(summaries[0].getLine(), 6);
-    CHECK_EQ(summaries[0].getCounts(0), std::vector<unsigned>({0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+    CHECK_EQ(summaries[0].getCount(0, LOP_LOADN), 1);
+    CHECK_EQ(summaries[0].getCount(0, LOP_MOVE), 1);
+    CHECK_EQ(summaries[0].getCount(0, LOP_GETUPVAL), 1);
+    CHECK_EQ(summaries[0].getCount(0, LOP_GETIMPORT), 1);
+    CHECK_EQ(summaries[0].getCount(0, LOP_CALL), 1);
+    CHECK_EQ(summaries[0].getCount(0, LOP_RETURN), 2);
+    CHECK_EQ(summaries[0].getCount(0, LOP_JUMPIFNOTLT), 1);
+    CHECK_EQ(summaries[0].getCount(0, LOP_SUBK), 1);
+    CHECK_EQ(summaries[0].getCount(0, LOP_FASTCALL1), 1);
+    CHECK_EQ(totalCount(summaries[0]), 10u);
 
     CHECK_EQ(summaries[1].getName(), "first");
     CHECK_EQ(summaries[1].getLine(), 2);
-    CHECK_EQ(summaries[1].getCounts(0), std::vector<unsigned>({0, 0, 1, 0, 2, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1,
-                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
-
+    CHECK_EQ(summaries[1].getCount(0, LOP_LOADNIL), 1);
+    CHECK_EQ(summaries[1].getCount(0, LOP_LOADN), 2);
+    CHECK_EQ(summaries[1].getCount(0, LOP_MOVE), 3);
+    CHECK_EQ(summaries[1].getCount(0, LOP_SETTABLE), 1);
+    CHECK_EQ(summaries[1].getCount(0, LOP_NEWCLOSURE), 1);
+    CHECK_EQ(summaries[1].getCount(0, LOP_RETURN), 1);
+    CHECK_EQ(summaries[1].getCount(0, LOP_MULK), 1);
+    CHECK_EQ(summaries[1].getCount(0, LOP_NEWTABLE), 1);
+    CHECK_EQ(summaries[1].getCount(0, LOP_FORNPREP), 1);
+    CHECK_EQ(summaries[1].getCount(0, LOP_FORNLOOP), 1);
+    CHECK_EQ(summaries[1].getCount(0, LOP_CAPTURE), 1);
+    CHECK_EQ(totalCount(summaries[1]), 14u);
 
     CHECK_EQ(summaries[2].getName(), "second");
     CHECK_EQ(summaries[2].getLine(), 15);
-    CHECK_EQ(summaries[2].getCounts(0), std::vector<unsigned>({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+    CHECK_EQ(summaries[2].getCount(0, LOP_GETTABLEN), 1);
+    CHECK_EQ(summaries[2].getCount(0, LOP_RETURN), 1);
+    CHECK_EQ(totalCount(summaries[2]), 2u);
 
     CHECK_EQ(summaries[3].getName(), "");
     CHECK_EQ(summaries[3].getLine(), 1);
-    CHECK_EQ(summaries[3].getCounts(0), std::vector<unsigned>({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                                               0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+    CHECK_EQ(summaries[3].getCount(0, LOP_RETURN), 1);
+    CHECK_EQ(summaries[3].getCount(0, LOP_DUPCLOSURE), 2);
+    CHECK_EQ(summaries[3].getCount(0, LOP_PREPVARARGS), 1);
+    CHECK_EQ(totalCount(summaries[3]), 4u);
 }
 
 TEST_CASE("NativeAttribute")

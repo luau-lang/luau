@@ -22,6 +22,9 @@ LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
+LUAU_FASTFLAG(LuauCstExprGroup)
+LUAU_FASTFLAG(LuauCstTypeGroup)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -2049,6 +2052,43 @@ TEST_CASE_FIXTURE(Fixture, "parse_declarations")
     matchParseError("declare foo", "Expected ':' when parsing global variable declaration, got <eof>");
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_global_declaration_called_class")
+{
+    ScopedFastFlag sff{FFlag::LuauAllowGlobalDeclarationToBeCalledClass, true};
+
+    AstStatBlock* stat = parseEx(R"(
+        declare class: { x: number }
+    )")
+                             .root;
+
+    REQUIRE(stat);
+    REQUIRE_EQ(stat->body.size, 1);
+
+    AstStatDeclareGlobal* global = stat->body.data[0]->as<AstStatDeclareGlobal>();
+    REQUIRE(global);
+    CHECK(global->name == "class");
+    REQUIRE(global->type);
+    CHECK(global->type->is<AstTypeTable>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_class_declarations_unaffected_by_global_flag")
+{
+    ScopedFastFlag sff{FFlag::LuauAllowGlobalDeclarationToBeCalledClass, true};
+
+    AstStatBlock* stat = parseEx(R"(
+        declare class Foo
+            prop: number
+        end
+    )")
+                             .root;
+
+    REQUIRE(stat);
+    REQUIRE_EQ(stat->body.size, 1);
+    AstStatDeclareExternType* declared = stat->body.data[0]->as<AstStatDeclareExternType>();
+    REQUIRE(declared);
+    CHECK(declared->name == "Foo");
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
 {
     AstStatBlock* stat = parseEx(R"(
@@ -3242,26 +3282,17 @@ end
     CHECK(m3->functionName == "bar");
 }
 
-TEST_CASE_FIXTURE(Fixture, "class_recovery_public_no_name")
+TEST_CASE_FIXTURE(Fixture, "class_public_function")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     ParseResult result = tryParse(R"(
-class Foo
-    public
-    function bar() end
-end
+        class Foo
+            public function bar() end
+        end
     )");
 
-    REQUIRE(!result.errors.empty());
-
-    REQUIRE_EQ(result.root->body.size, 1);
-    const AstStatClass* cls = result.root->body.data[0]->as<AstStatClass>();
-    REQUIRE(cls);
-    REQUIRE(cls->members.size == 1);
-    auto m1 = cls->members.data[0].get_if<AstClassMethod>();
-    REQUIRE(m1);
-    CHECK(m1->functionName == "bar");
+    REQUIRE(result.errors.empty());
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_recovery_invalid_body_token")
@@ -3399,25 +3430,85 @@ TEST_CASE_FIXTURE(Fixture, "class_method_missing_end_error")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
-    matchParseError(R"(
+    matchParseError(
+        R"(
         class Foo
             function bar()
                 local x = 1
-    )", "Expected 'end' (to close 'function' at line 3), got <eof>");
+    )",
+        "Expected 'end' (to close 'function' at line 3), got <eof>"
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "classes_can_only_have_functions_and_properties")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
-    matchParseError(R"(
+    matchParseError(
+        R"(
         class Bicycle
             while true do
                 cycle()
             end
         end
-    )", "Only class properties and functions can be declared within a class");
+    )",
+        "Only class properties and functions can be declared within a class"
+    );
+}
 
+TEST_CASE_FIXTURE(Fixture, "all_disallowed_metamethods")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Foo
+            function __index() end
+            function __newindex() end
+            function __mode() end
+            function __metatable() end
+            function __type() end
+            function __doesnotexist() end
+        end
+    )");
+
+    REQUIRE_EQ(result.errors.size(), 6);
+    CHECK_EQ(result.errors[0].getMessage(), "Classes cannot define '__index' as a metamethod");
+    CHECK_EQ(result.errors[1].getMessage(), "Classes cannot define '__newindex' as a metamethod");
+    CHECK_EQ(result.errors[2].getMessage(), "Classes cannot define '__mode' as a metamethod");
+    CHECK_EQ(result.errors[3].getMessage(), "Classes cannot define '__metatable' as a metamethod");
+    CHECK_EQ(result.errors[4].getMessage(), "Classes cannot define '__type' as a metamethod");
+    CHECK_EQ(result.errors[5].getMessage(), "Cannot use '__doesnotexist' as a method name: names starting with '__' are reserved");
+}
+
+TEST_CASE_FIXTURE(Fixture, "disallow_double_underscore_properties")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    matchParseError(
+        R"(
+        class Foo
+            public __add: any
+        end
+    )",
+        "Class properties cannot start with '__'"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "allowed_metamethods_still_work")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Foo
+            function __tostring(self) end
+            function __add(self, other) end
+            function __eq(self, other) end
+            -- Silly, but allowed.
+            function _(self) end
+        end
+    )");
+
+    REQUIRE_EQ(result.errors.size(), 0);
 }
 
 TEST_CASE_FIXTURE(Fixture, "classes_can_interleave_methods_and_properties")
@@ -3465,7 +3556,6 @@ TEST_CASE_FIXTURE(Fixture, "classes_can_interleave_methods_and_properties")
     auto m4 = cls->members.data[3].get_if<AstClassMethod>();
     REQUIRE(m4);
     CHECK(m4->functionName == "getyear");
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "large_classes_example")
@@ -3512,7 +3602,8 @@ TEST_CASE_FIXTURE(Fixture, "classes_only_work_at_top_level")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
-    matchParseError(R"(
+    matchParseError(
+        R"(
             return function ()
                 class DynamicPlayer
                     public level: number
@@ -3523,7 +3614,8 @@ TEST_CASE_FIXTURE(Fixture, "classes_only_work_at_top_level")
         "Cannot declare class 'DynamicPlayer' inside another statement or expression"
     );
 
-    matchParseError(R"(
+    matchParseError(
+        R"(
             if math.random() > 0.5 then
                 class DynamicPlayer
                     public level: number
@@ -3554,6 +3646,217 @@ TEST_CASE_FIXTURE(Fixture, "classes_work_after_other_statements")
     const AstStatClass* cls = res.root->body.data[1]->as<AstStatClass>();
     REQUIRE(cls);
     CHECK(cls->name->name == "Player");
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_is_still_contextual")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult res = tryParse(R"(
+        local class = 42
+        print(class)
+    )");
+    REQUIRE(res.errors.empty());
+    REQUIRE(res.root->body.size == 2);
+    const AstStatLocal* locals = res.root->body.data[0]->as<AstStatLocal>();
+    REQUIRE(locals);
+    REQUIRE(locals->vars.size == 1);
+    CHECK(locals->vars.data[0]->name == "class");
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_self_cannot_be_annotated")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    matchParseError(
+        R"(
+        class Foobar
+            function baz(self: number, foobar)
+        end
+    )",
+        "The 'self' parameter cannot have a type annotation"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "classes_cannot_be_shadowed_by_classes")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    matchParseError(
+        R"(
+        class Foobar
+        end
+
+        class Foobar
+        end
+    )",
+        "A class named 'Foobar' has already been declared in this module"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "classes_cannot_be_shadowed_by_classes_with_local_between")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    matchParseError(
+        R"(
+        class Foobar
+        end
+
+        local Foobar
+
+        class Foobar
+        end
+    )",
+        "A class named 'Foobar' has already been declared in this module"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "classes_can_be_shadowed_by_locals")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Foobar
+        end
+
+        -- This is legal: the rule is that there is exactly one class with a
+        -- given name, but we can shadow it with a local.
+        local Foobar
+    )");
+
+    CHECK(result.errors.empty());
+}
+
+TEST_CASE_FIXTURE(Fixture, "classes_can_have_members_named_public")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Foobar
+            function public() end
+        end
+
+        class Barbaz
+            public public
+        end
+    )");
+
+    CHECK(result.errors.empty());
+}
+
+TEST_CASE_FIXTURE(Fixture, "classes_nested_and_repeated")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Foo
+        end
+        if true then
+            class Foo
+            end
+        end
+    )");
+
+    // We only report one error per location, so even though "two" errors
+    // occur here (repeat name, nested), we'll only get one message.
+    REQUIRE(result.errors.size() == 1);
+    CHECK_EQ("Cannot declare class 'Foo' inside another statement or expression", result.errors[0].getMessage());
+}
+
+TEST_CASE_FIXTURE(Fixture, "non_exported_class")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        class Foo
+        end
+    )");
+
+    CHECK(result.errors.size() == 0);
+
+    AstStatBlock* block = result.root;
+    REQUIRE(block->body.size == 1);
+
+    AstStatClass* classDecl = block->body.data[0]->as<AstStatClass>();
+    REQUIRE(classDecl != nullptr);
+    CHECK(!classDecl->exported);
+}
+
+TEST_CASE_FIXTURE(Fixture, "export_class")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+        export class Foo
+        end
+    )");
+
+    CHECK(result.errors.size() == 0);
+
+    AstStatBlock* block = result.root;
+    REQUIRE(block->body.size == 1);
+
+    AstStatClass* classDecl = block->body.data[0]->as<AstStatClass>();
+    REQUIRE(classDecl != nullptr);
+    CHECK(classDecl->exported);
+}
+
+TEST_CASE_FIXTURE(Fixture, "expr_group_with_cst")
+{
+    ScopedFastFlag _{FFlag::LuauCstExprGroup, true};
+
+    ParseOptions parseOptions;
+    parseOptions.storeCstData = true;
+
+    ParseResult result = parseEx(
+        R"(
+        local a = (1 + 2)
+    )",
+        parseOptions
+    );
+    REQUIRE(result.root);
+
+    REQUIRE_EQ(result.root->body.size, 1);
+    auto local = result.root->body.data[0]->as<AstStatLocal>();
+    REQUIRE(local);
+    REQUIRE_EQ(local->values.size, 1);
+    auto group = local->values.data[0]->as<AstExprGroup>();
+    REQUIRE(group);
+
+    const auto baseCstNode = result.cstNodeMap.find(group);
+    REQUIRE(baseCstNode);
+    const auto cstNode = (*baseCstNode)->as<CstExprGroup>();
+    REQUIRE(cstNode);
+    CHECK_EQ(cstNode->closePosition, Position{1, 24});
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_group_with_cst")
+{
+    ScopedFastFlag _{FFlag::LuauCstTypeGroup, true};
+
+    ParseOptions parseOptions;
+    parseOptions.storeCstData = true;
+
+    ParseResult result = parseEx(
+        R"(
+        type t = (number)
+    )",
+        parseOptions
+    );
+    REQUIRE(result.root);
+
+    REQUIRE_EQ(result.root->body.size, 1);
+    auto typeAlias = result.root->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(typeAlias);
+    auto group = typeAlias->type->as<AstTypeGroup>();
+    REQUIRE(group);
+
+    const auto baseCstNode = result.cstNodeMap.find(group);
+    REQUIRE(baseCstNode);
+    const auto cstNode = (*baseCstNode)->as<CstTypeGroup>();
+    REQUIRE(cstNode);
+    CHECK_EQ(cstNode->closePosition, Position{1, 24});
 }
 
 TEST_SUITE_END();
@@ -3757,8 +4060,6 @@ TEST_CASE_FIXTURE(Fixture, "recovery_of_parenthesized_expressions")
             checkAstEquivalence(codeWithErrors, code);
         }
     };
-
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     checkRecovery("function foo(a, b. c) return a + b end", "function foo(a, b) return a + b end", 1);
     checkRecovery(

@@ -16,11 +16,11 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAG(LuauCodegenCallWrapImproved)
 LUAU_FASTFLAG(LuauCodegenNewRegSplit)
 LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
+LUAU_FASTFLAG(LuauYieldIter2)
 
 namespace Luau
 {
@@ -2831,12 +2831,27 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         callWrap.addArgument(SizeX64::qword, rState);
         callWrap.addArgument(SizeX64::dword, vmRegOp(OP_A(inst)));
         callWrap.addArgument(SizeX64::dword, intOp(OP_B(inst)));
-        callWrap.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNonTableFallback)]);
 
-        emitUpdateBase(build);
+        if (FFlag::LuauYieldIter2)
+        {
+            callWrap.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNonTableFallback)]);
 
-        build.test(al, al);
-        build.jcc(ConditionX64::NotZero, labelOp(OP_C(inst)));
+            emitUpdateBase(build);
+
+            build.test(eax, eax);
+            build.jcc(ConditionX64::Less, helpers.exitNoContinueVm);
+            build.jcc(ConditionX64::Greater, labelOp(OP_C(inst)));
+        }
+        else
+        {
+            callWrap.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNonTableFallback_DEPRECATED)]);
+
+            emitUpdateBase(build);
+
+            build.test(al, al);
+            build.jcc(ConditionX64::NotZero, labelOp(OP_C(inst)));
+        }
+
         jumpOrFallthrough(blockOp(OP_D(inst)), next);
         break;
     }
@@ -3252,104 +3267,71 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::BUFFER_READI8:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.movsx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.movsx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.movsx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_READU8:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.movzx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.movzx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.movzx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_WRITEI8:
     {
         OperandX64 value = OP_C(inst).kind == IrOpKind::Inst ? byteReg(regOp(OP_C(inst))) : OperandX64(int8_t(intOp(OP_C(inst))));
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.mov(byte[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], value);
-        else
-            build.mov(byte[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], value);
+        build.mov(byte[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], value);
         break;
     }
 
     case IrCmd::BUFFER_READI16:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.movsx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.movsx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.movsx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_READU16:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.movzx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.movzx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.movzx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_WRITEI16:
     {
         OperandX64 value = OP_C(inst).kind == IrOpKind::Inst ? wordReg(regOp(OP_C(inst))) : OperandX64(int16_t(intOp(OP_C(inst))));
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.mov(word[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], value);
-        else
-            build.mov(word[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], value);
+        build.mov(word[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], value);
         break;
     }
 
     case IrCmd::BUFFER_READI32:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.mov(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.mov(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.mov(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_WRITEI32:
     {
         OperandX64 value = OP_C(inst).kind == IrOpKind::Inst ? regOp(OP_C(inst)) : OperandX64(intOp(OP_C(inst)));
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.mov(dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], value);
-        else
-            build.mov(dword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], value);
+        build.mov(dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], value);
         break;
     }
 
     case IrCmd::BUFFER_READF32:
         inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.vmovss(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.vmovss(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.vmovss(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_WRITEF32:
-        if (FFlag::LuauCodegenBufNoDefTag)
-            storeFloat(dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], OP_C(inst));
-        else
-            storeFloat(dword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], OP_C(inst));
+        storeFloat(dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], OP_C(inst));
         break;
 
     case IrCmd::BUFFER_READF64:
         inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.vmovsd(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.vmovsd(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.vmovsd(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_WRITEF64:
@@ -3358,17 +3340,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             ScopedRegX64 tmp{regs, SizeX64::xmmword};
             build.vmovsd(tmp.reg, build.f64(doubleOp(OP_C(inst))));
 
-            if (FFlag::LuauCodegenBufNoDefTag)
-                build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], tmp.reg);
-            else
-                build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], tmp.reg);
+            build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], tmp.reg);
         }
         else if (OP_C(inst).kind == IrOpKind::Inst)
         {
-            if (FFlag::LuauCodegenBufNoDefTag)
-                build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], regOp(OP_C(inst)));
-            else
-                build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], regOp(OP_C(inst)));
+            build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], regOp(OP_C(inst)));
         }
         else
         {
@@ -3378,10 +3354,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::BUFFER_READI64:
         inst.regX64 = regs.allocReg(SizeX64::qword, index);
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.mov(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.mov(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.mov(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_WRITEI64:
@@ -3390,17 +3363,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             ScopedRegX64 tmp{regs, SizeX64::qword};
             build.mov(tmp.reg, build.i64(int64Op(OP_C(inst))));
 
-            if (FFlag::LuauCodegenBufNoDefTag)
-                build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], tmp.reg);
-            else
-                build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], tmp.reg);
+            build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], tmp.reg);
         }
         else if (OP_C(inst).kind == IrOpKind::Inst)
         {
-            if (FFlag::LuauCodegenBufNoDefTag)
-                build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], regOp(OP_C(inst)));
-            else
-                build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], regOp(OP_C(inst)));
+            build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], regOp(OP_C(inst)));
         }
         else
         {
@@ -3841,6 +3808,20 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.mov(inst.regX64, memRegInt64Op(OP_A(inst)));
 
         build.bswap(inst.regX64);
+        break;
+    }
+    case IrCmd::JUMP_CMP_PROTOID:
+    {
+        LUAU_ASSERT(OP_A(inst).kind == IrOpKind::Inst);
+        build.cmp(byte[regOp(OP_A(inst)) + offsetof(Closure, isC)], 1);
+        build.jcc(ConditionX64::Equal, labelOp(OP_D(inst)));
+        {
+            ScopedRegX64 tmp{regs, SizeX64::qword};
+            build.mov(tmp.reg, qword[regOp(OP_A(inst)) + offsetof(Closure, l.p)]);
+            build.cmp(dword[tmp.reg + offsetof(Proto, funid)], uintOp(OP_B(inst)));
+            build.jcc(ConditionX64::NotEqual, labelOp(OP_D(inst)));
+        }
+        jumpOrFallthrough(blockOp(OP_C(inst)), next);
         break;
     }
 

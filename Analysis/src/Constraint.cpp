@@ -30,10 +30,7 @@ struct ReferenceCountInitializer : TypeOnceVisitor
         LUAU_ASSERT(!FFlag::LuauUseConstraintSetsToTrackFreeTypes);
     }
 
-    explicit ReferenceCountInitializer(
-        NotNull<TypeIds> mutatedTypes,
-        NotNull<TypePackIds> mutatedTypePacks
-    )
+    explicit ReferenceCountInitializer(NotNull<TypeIds> mutatedTypes, NotNull<TypePackIds> mutatedTypePacks)
         : TypeOnceVisitor("ReferenceCountInitializer", /* skipBoundTypes */ true)
         , mutatedTypes(mutatedTypes)
         , mutatedTypePacks(mutatedTypePacks.get())
@@ -306,7 +303,7 @@ std::pair<TypeIds, TypePackIds> Constraint::getMaybeMutatedTypes() const
         rci.traverse(ptc->targetType);
     }
 
-    return { std::move(types), std::move(typePacks) };
+    return {std::move(types), std::move(typePacks)};
 }
 
 } // namespace Luau

@@ -64,8 +64,8 @@ typedef struct lua_TValue
 #define ttislightuserdata(o) (ttype(o) == LUA_TLIGHTUSERDATA)
 #define ttisvector(o) (ttype(o) == LUA_TVECTOR)
 #define ttisupval(o) (ttype(o) == LUA_TUPVAL)
-#define ttisclassobject(o) (ttype(o) == LUA_TCLASSOBJ)
-#define ttisclassinstance(o) (ttype(o) == LUA_TCLASSINST)
+#define ttisclass(o) (ttype(o) == LUA_TCLASS)
+#define ttisobject(o) (ttype(o) == LUA_TOBJECT)
 
 // Macros to access values
 #define ttype(o) ((o)->tt)
@@ -82,8 +82,8 @@ typedef struct lua_TValue
 #define thvalue(o) check_exp(ttisthread(o), &(o)->value.gc->th)
 #define bufvalue(o) check_exp(ttisbuffer(o), &(o)->value.gc->buf)
 #define upvalue(o) check_exp(ttisupval(o), &(o)->value.gc->uv)
-#define cobjvalue(o) check_exp(ttisclassobject(o), &(o)->value.gc->classobj)
-#define cinstvalue(o) check_exp(ttisclassinstance(o), &(o)->value.gc->classinst)
+#define classvalue(o) check_exp(ttisclass(o), &(o)->value.gc->lclass)
+#define objectvalue(o) check_exp(ttisobject(o), &(o)->value.gc->lobject)
 
 #define l_isfalse(o) (ttisnil(o) || (ttisboolean(o) && bvalue(o) == 0))
 
@@ -226,20 +226,20 @@ typedef struct lua_TValue
         checkliveness(L->global, o1); \
     }
 
-#define setcobjvalue(L, obj, x) \
+#define setclassvalue(L, obj, x) \
     { \
         TValue* i_o = (obj); \
         i_o->value.gc = cast_to(GCObject*, (x)); \
-        i_o->tt = LUA_TCLASSOBJ; \
+        i_o->tt = LUA_TCLASS; \
         checkliveness(L->global, i_o); \
     }
 
 
-#define setcinstvalue(L, obj, x) \
+#define setobjectvalue(L, obj, x) \
     { \
         TValue* i_o = (obj); \
         i_o->value.gc = cast_to(GCObject*, (x)); \
-        i_o->tt = LUA_TCLASSINST; \
+        i_o->tt = LUA_TOBJECT; \
         checkliveness(L->global, i_o); \
     }
 
@@ -526,7 +526,7 @@ typedef struct LuaTable
 } LuaTable;
 // clang-format on
 
-typedef struct LuaClassObject
+typedef struct LuauClass
 {
     CommonHeader;
 
@@ -547,6 +547,10 @@ typedef struct LuaClassObject
     // __call, but we may add more metamethods to class objects in the future.
     LuaTable* metatable;
 
+    // Metatable for instances of this class. NULL until the first metamethod
+    // is added via luaR_addclassmember.
+    LuaTable* instancemetatable;
+
     // Number of instance members that we expect instances of this class object
     // to have.
     int numberofinstancemembers;
@@ -561,26 +565,26 @@ typedef struct LuaClassObject
     // instance or static members, creating class instances).
     int numberofallmembers;
 
-} LuaClassObject;
+} LuauClass;
 
-typedef struct LuaClassInstance
+typedef struct LuauObject
 {
     CommonHeader;
 
     GCObject* gclist;
 
     // The class object that this value is an instance of.
-    LuaClassObject* classobject;
+    LuauClass* lclass;
 
     // The number of members that this instance contains. We need this in order
-    // to free ourselves if we got swept in the same GC cycle as our class 
+    // to free ourselves if we got swept in the same GC cycle as our class
     // pointer.
     int numberofmembers;
 
     // The fields of this instance.
     TValue* members;
 
-} LuaClassInstance;
+} LuauObject;
 
 /*
 ** `module' operation for hashing (size is always a power of 2)

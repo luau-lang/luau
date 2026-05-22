@@ -15,7 +15,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauUdataDirectAccess4)
+LUAU_FASTFLAG(LuauUdataDirectAccess5)
 LUAU_FASTFLAG(LuauDirectFieldGet)
 
 /*
@@ -291,15 +291,15 @@ static void reallymarkobject(global_State* g, GCObject* o)
         g->gray = o;
         break;
     }
-    case LUA_TCLASSOBJ:
+    case LUA_TCLASS:
     {
-        gco2cobj(o)->gclist = g->gray;
+        gco2class(o)->gclist = g->gray;
         g->gray = o;
         break;
     }
-    case LUA_TCLASSINST:
+    case LUA_TOBJECT:
     {
-        gco2cinst(o)->gclist = g->gray;
+        gco2object(o)->gclist = g->gray;
         g->gray = o;
         break;
     }
@@ -429,7 +429,7 @@ static void traversestack(global_State* g, lua_State* l)
     }
 }
 
-static void traverseclassobject(global_State* g, LuaClassObject* classobject)
+static void traverseclass(global_State* g, LuauClass* classobject)
 {
     markobject(g, classobject->name);
     markobject(g, classobject->memberstooffset);
@@ -438,11 +438,13 @@ static void traverseclassobject(global_State* g, LuaClassObject* classobject)
     for (int i = 0; i < classobject->numberofallmembers - classobject->numberofinstancemembers; i++)
         markvalue(g, &classobject->staticmembers[i]);
     markobject(g, classobject->metatable);
+    if (classobject->instancemetatable)
+        markobject(g, classobject->instancemetatable);
 }
 
-static void traverseclassinstance(global_State* g, LuaClassInstance* classinst)
+static void traverseobject(global_State* g, LuauObject* classinst)
 {
-    markobject(g, classinst->classobject);
+    markobject(g, classinst->lclass);
     for (int i = 0; i < classinst->numberofmembers; i++)
         markvalue(g, &classinst->members[i]);
 }
@@ -559,27 +561,27 @@ static size_t propagatemark(global_State* g)
         return sizeof(Proto) + sizeof(Instruction) * p->sizecode + sizeof(Proto*) * p->sizep + sizeof(TValue) * p->sizek + p->sizelineinfo +
                sizeof(LocVar) * p->sizelocvars + sizeof(TString*) * p->sizeupvalues + p->sizetypeinfo;
     }
-    case LUA_TCLASSOBJ:
+    case LUA_TCLASS:
     {
-        LuaClassObject* classobject = gco2cobj(o);
+        LuauClass* classobject = gco2class(o);
         g->gray = classobject->gclist;
-        traverseclassobject(g, classobject);
+        traverseclass(g, classobject);
         // We've traversed the "object" itself ...
-        return sizeof(LuaClassObject) +
-            // ... plus the method closures, each a `TValue` wide ...
-            ((classobject->numberofallmembers - classobject->numberofinstancemembers) * sizeof(TValue)) +
-            // ... plus a string pointer for each method or property, each a pointer wide.
-            (classobject->numberofallmembers * sizeof(TString*));
+        return sizeof(LuauClass) +
+               // ... plus the method closures, each a `TValue` wide ...
+               ((classobject->numberofallmembers - classobject->numberofinstancemembers) * sizeof(TValue)) +
+               // ... plus a string pointer for each method or property, each a pointer wide.
+               (classobject->numberofallmembers * sizeof(TString*));
     }
-    case LUA_TCLASSINST:
+    case LUA_TOBJECT:
     {
-        LuaClassInstance* classinst = gco2cinst(o);
+        LuauObject* classinst = gco2object(o);
         g->gray = classinst->gclist;
-        traverseclassinstance(g, classinst);
+        traverseobject(g, classinst);
         // We've traversed the instance ...
-        return sizeof(LuaClassInstance) + 
-            // ... plus all of the instance fields.
-            classinst->numberofmembers * sizeof(TValue);
+        return sizeof(LuauObject) +
+               // ... plus all of the instance fields.
+               classinst->numberofmembers * sizeof(TValue);
     }
     default:
         LUAU_ASSERT(0);
@@ -721,11 +723,11 @@ static void freeobj(lua_State* L, GCObject* o, lua_Page* page)
     case LUA_TBUFFER:
         luaB_freebuffer(L, gco2buf(o), page);
         break;
-    case LUA_TCLASSOBJ:
-        luaR_freeclassobject(L, gco2cobj(o), page);
+    case LUA_TCLASS:
+        luaR_freeclass(L, gco2class(o), page);
         break;
-    case LUA_TCLASSINST:
-        luaR_freeclassinstance(L, gco2cinst(o), page);
+    case LUA_TOBJECT:
+        luaR_freeobject(L, gco2object(o), page);
         break;
     default:
         LUAU_ASSERT(0);
@@ -811,7 +813,7 @@ static void markroot(lua_State* L)
     markobject(g, g->mainthread->gt);
     markvalue(g, registry(L));
 
-    if (FFlag::LuauUdataDirectAccess4)
+    if (FFlag::LuauUdataDirectAccess5)
     {
         for (int i = 0; i < UTAG_INTERNAL_LIMIT; i++)
         {

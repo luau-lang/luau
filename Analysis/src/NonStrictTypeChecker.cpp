@@ -1223,10 +1223,10 @@ struct NonStrictTypeChecker
                     if (r.isSubtype && !r.isErrorSuppressing)
                         return {actualType};
                 }
-                else 
+                else
                 {
                     if (r.isSubtype)
-                       return {actualType};
+                        return {actualType};
                 }
             }
         }

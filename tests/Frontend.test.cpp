@@ -1344,6 +1344,9 @@ TEST_CASE_FIXTURE(FrontendFixture, "checked_modules_have_the_correct_mode")
 
 TEST_CASE_FIXTURE(FrontendFixture, "separate_caches_for_autocomplete")
 {
+    // NOTE: This does not pass the new solver because it is exercising behavior
+    // that is only meaningful under the old solver (whether the correct
+    // module resolver is used).
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     fileResolver.source["game/A"] = R"(
