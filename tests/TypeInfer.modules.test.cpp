@@ -14,6 +14,7 @@
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTINT(LuauSolverConstraintLimit)
 
 using namespace Luau;
@@ -951,6 +952,78 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
     std::optional<TypeId> fType = requireType(b, "f");
     REQUIRE(fType);
     CHECK(toString(*fType) == "bad<number>");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "export_class")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true}
+    };
+
+    fileResolver.source["game/A"] = R"(
+        export class Point
+            public x: number
+            public y: number
+
+            function __tostring(self)
+                return `Point x={x} y={y}`
+            end
+        end
+
+        return {Point=Point}
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        local A = require(game.A)
+
+        local a: A.Point = A.Point { x=2, y=3 }
+
+        local x, y = a.x, a.y
+    )";
+
+    CheckResult result = getFrontend().check("game/B");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("number" == toString(requireType("game/B", "x")));
+    CHECK("number" == toString(requireType("game/B", "y")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "non_exported_class")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true}
+    };
+
+    fileResolver.source["game/A"] = R"(
+        class Point
+            public x: number
+            public y: number
+
+            function __tostring(self)
+                return `Point x={x} y={y}`
+            end
+        end
+
+        return {Point=Point}
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        local A = require(game.A)
+
+        local a: A.Point = A.Point { x=2, y=3 }
+    )";
+
+    CheckResult result = getFrontend().check("game/B");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto* err = get<UnknownSymbol>(result.errors[0]);
+    REQUIRE(err);
+    CHECK("A.Point" == err->name);
+    CHECK(UnknownSymbol::Context::Type == err->context);
 }
 
 TEST_SUITE_END();

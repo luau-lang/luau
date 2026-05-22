@@ -357,7 +357,6 @@ struct Constraint
      * Currently we do not do anything with type packs.
      */
     std::pair<TypeIds, TypePackIds> getMaybeMutatedTypes() const;
-
 };
 
 using ConstraintPtr = std::unique_ptr<Constraint>;

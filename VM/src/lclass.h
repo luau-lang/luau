@@ -14,7 +14,7 @@
  * @param numberofinstancemembers The number of instance members (fields) this class has.
  * @param numberofstaticmembers The number of static members (only methods today) this class has.
  */
-LUAI_FUNC LuaClassObject* luaR_newclassobject(
+LUAI_FUNC LuauClass* luaR_newclass(
     lua_State* L,
     TString* name,
     LuaTable* memberstooffset,
@@ -27,9 +27,9 @@ LUAI_FUNC LuaClassObject* luaR_newclassobject(
  * Add a new class member to `classobject` named `name` and with value `method`. As the naming implies
  * we only support methods today.
  */
-LUAI_FUNC void luaR_addclassmember(lua_State* L, LuaClassObject* classobject, TString* name, TValue* method);
+LUAI_FUNC void luaR_addclassmember(lua_State* L, LuauClass* classobject, TString* name, TValue* method);
 
-LUAI_FUNC void luaR_freeclassobject(lua_State *L, LuaClassObject* classobject, lua_Page* page);
+LUAI_FUNC void luaR_freeclass(lua_State* L, LuauClass* classobject, lua_Page* page);
 
 /**
  * Callback for creating class instances. This is written as a Lua API function and expects the stack to be:
@@ -42,14 +42,13 @@ LUAI_FUNC void luaR_freeclassobject(lua_State *L, LuaClassObject* classobject, l
  * initialize each class instance member with the result of indexing into the value, and then assign the
  * value to the top of the stack. If the indexable is not present, all members are initialized to `nil`.
  */
-LUAI_FUNC int luaR_createclassinstance(lua_State* L);
+LUAI_FUNC int luaR_createobject(lua_State* L);
 
-LUAI_FUNC void luaR_freeclassinstance(lua_State *L, LuaClassInstance* classinstance, lua_Page* page);
+LUAI_FUNC void luaR_freeobject(lua_State* L, LuauObject* classinstance, lua_Page* page);
 
-#define luaR_checkoffsetinbounds(inst, offset) (int(offset) >= 0 && int(offset) < (inst)->classobject->numberofallmembers)
+#define luaR_checkoffsetinbounds(inst, offset) (int(offset) >= 0 && int(offset) < (inst)->lclass->numberofallmembers)
 
 #define luaR_lookupmemberatoffset(inst, offset) \
     (LUAU_ASSERT(luaR_checkoffsetinbounds(inst, offset)), \
-        offset < (inst)->classobject->numberofinstancemembers \
-         ? &(inst)->members[offset] \
-         : &(inst)->classobject->staticmembers[offset - inst->classobject->numberofinstancemembers])
+     offset < (inst)->lclass->numberofinstancemembers ? &(inst)->members[offset] \
+                                                      : &(inst)->lclass->staticmembers[offset - inst->lclass->numberofinstancemembers])

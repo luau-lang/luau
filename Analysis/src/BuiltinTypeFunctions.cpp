@@ -690,8 +690,9 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
 
     if (FFlag::LuauConcatDoesntAlwaysReturnString)
     {
-        std::optional<TypePackId> retPack =
-            solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack(std::move(inferredArgs)));
+        std::optional<TypePackId> retPack = solveFunctionCall(
+            ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack(std::move(inferredArgs))
+        );
         if (!retPack)
             return {std::nullopt, Reduction::Erroneous, {}, {}};
 
@@ -703,7 +704,9 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
     }
     else
     {
-        if (!solveFunctionCall(ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack(std::move(inferredArgs))))
+        if (!solveFunctionCall(
+                ctx, ctx->constraint ? ctx->constraint->location : Location{}, *mmType, ctx->arena->addTypePack(std::move(inferredArgs))
+            ))
             return {std::nullopt, Reduction::Erroneous, {}, {}};
 
         return {ctx->builtins->stringType, Reduction::MaybeOk, {}, {}};

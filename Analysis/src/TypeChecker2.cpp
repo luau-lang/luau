@@ -3783,17 +3783,17 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         {
             if (cls->metatable)
             {
-                std::optional<TypeId> mtIndex = Luau::findMetatableEntry(builtinTypes, errors, ty, "__index", location);
-                if (mtIndex)
+                // For user-defined classes, the object metatable holds metamethods (e.g. __add)
+                // directly in its props rather than under an __index table.
+                if (const TableType* mtt = get<TableType>(follow(*cls->metatable)))
                 {
-                    if (auto mtIndexFunction = get<FunctionType>(follow(*mtIndex)))
+                    if (auto mtProp = mtt->props.find(prop); mtProp != mtt->props.end())
                     {
-                        std::optional<TypeId> firstRet = first(mtIndexFunction->retTypes);
-                        if (firstRet)
-                            return hasIndexTypeFromType(*firstRet, prop, context, location, seen, astIndexExprType, errors);
+                        if ((context == ValueContext::LValue && !mtProp->second.writeTy) ||
+                            (context == ValueContext::RValue && !mtProp->second.readTy))
+                            return {NormalizationResult::False, {}};
+                        return {NormalizationResult::True, context == ValueContext::LValue ? mtProp->second.writeTy : mtProp->second.readTy};
                     }
-                    else
-                        return hasIndexTypeFromType(*mtIndex, prop, context, location, seen, astIndexExprType, errors);
                 }
             }
         }

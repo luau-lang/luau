@@ -61,6 +61,7 @@ int getOpLength(LuauOpcode op)
     case LOP_NAMECALLUDATA:
     case LOP_NEWCLASSMEMBER:
     case LOP_CALLFB:
+    case LOP_CMPPROTO:
         return 2;
 
     default:
@@ -92,6 +93,7 @@ bool isJumpD(LuauOpcode op)
     case LOP_JUMPXEQKB:
     case LOP_JUMPXEQKN:
     case LOP_JUMPXEQKS:
+    case LOP_CMPPROTO:
         return true;
 
     default:
@@ -412,6 +414,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Float;
     case IrCmd::BUFFER_READF64:
         return IrValueKind::Double;
+    case IrCmd::JUMP_CMP_PROTOID:
+        return IrValueKind::None;
     }
 
     LUAU_UNREACHABLE();

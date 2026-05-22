@@ -37,8 +37,6 @@ LUAU_FASTFLAG(LuauFollowInExplicitInstantiation)
 LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes2)
 LUAU_FASTFLAG(LuauFollowGenericBeforeCheckingIfMapped)
 LUAU_FASTFLAG(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
-LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
-LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
 LUAU_FASTFLAG(LuauInstantiationUsesPolarity)
 
 using namespace Luau;
@@ -420,13 +418,23 @@ TEST_CASE_FIXTURE(Fixture, "check_block_recursion_limit")
     int limit = 350;
 #else
     // NOTE: This was lowered from 600 after some extra stack space added by
-    // a new scratch field in the parser (`scratchClassDeclarations`).
+    // adding handling Luau classes to the parser and old type solver.
     int limit = 595;
 #endif
 
-    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
+    // This is the recursion limit for the parser and compiler. Both are able
+    // to handle *much* larger ASTs than the new or old solvers, so we set the
+    // limit to be double the "limit" variable.
+    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit * 2};
+
+    // This is the recursion limit for the old solver.
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
+
+    // This is the recursion limit for the entry point to the new solver.
     ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, limit - 100};
+
+    // This is the recursion limit for subtyping, an often deeply recursive
+    // subsystem in the new solver.
     ScopedFastInt luauSubtypingRecursionLimit{DFInt::LuauSubtypingRecursionLimit, limit - 100};
 
     CheckResult result = check(rep("do ", limit) + "local a = 1" + rep(" end", limit));
@@ -444,9 +452,19 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 #else
     int limit = 500;
 #endif
-    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
+    // This is the recursion limit for the parser and compiler. Both are able
+    // to handle *much* larger ASTs than the new or old solvers, so we set the
+    // limit to be double the "limit" variable.
+    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit * 2};
+
+    // This is the recursion limit for the old solver.
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
+
+    // This is the recursion limit for the entry point to the new solver.
     ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, limit - 100};
+
+    // This is the recursion limit for subtyping, an often deeply recursive
+    // subsystem in the new solver.
     ScopedFastInt luauSubtypingRecursionLimit{DFInt::LuauSubtypingRecursionLimit, limit - 100};
 
     CheckResult result = check(R"(("foo"))" + rep(":lower()", limit));
@@ -2909,8 +2927,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_checking_generic_ma
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_allow_failing_to_bind_generic")
 {
-    ScopedFastFlag _{FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         function test(arg1, arg2)
             local fun1 = test(test)
@@ -2924,8 +2940,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_allow_failing_to_bind_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_bind_generic_sigsegv")
 {
-    ScopedFastFlag _{FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         function test(arg1, arg2)
             local fun = test()
@@ -2948,7 +2962,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_global_type_inference")
         function A()
         end
     )"));
-
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_instantiate_iter_function")

@@ -25,15 +25,13 @@ LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
-LUAU_FASTFLAG(LuauGeneralizationMoreAwareOfBounds3)
 LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauSubtypingTablesHasBetterErrorSuppression)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
+LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -2366,10 +2364,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_properties_in_strict")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauGeneralizationMoreAwareOfBounds3, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict
@@ -2386,8 +2381,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_186992_accidental_dropping_free_ty_bounds")
 {
-    ScopedFastFlag _{FFlag::LuauGeneralizationMoreAwareOfBounds3, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local lines = {}
         table.insert(lines, table.concat({}, ""))
@@ -3203,10 +3196,7 @@ do end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_crash_when_setmetatable_does_not_produce_a_metatabletypevar")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::LuauOverloadGetsInstantiated2, true};
 
     CheckResult result = check("local x = setmetatable({})");
 
@@ -4673,7 +4663,6 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_not_subtype_of_readwrite")
     REQUIRE(tm);
     CHECK("{ [string]: number }" == toString(tm->wantedType));
     CHECK("{ read [string]: number }" == toString(tm->givenType));
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_value_covariance")
@@ -5196,15 +5185,28 @@ end
 }
 
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_branching_table")
+TEST_CASE_FIXTURE(Fixture, "indexing_branching_table")
 {
+    ScopedFastFlag _{FFlag::LuauRemoveConstraintSolverEmplace, true};
+
     CheckResult result = check(R"(
         local test = if true then { "meow", "woof" } else { 4, 81 }
         local test2 = test[1]
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("number | string" == toString(requireType("test2")));
+
+    // This is an unfortunate duplication: when we index into `test`, we
+    // construct a union containing `number` and two free variables
+    // representing "meow" and "woof." We only find out after both are
+    // generalized that there is a duplication here.
+    //
+    // It is probably still correct to deduplicate in this way and not
+    // create nested unions.
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK("number | string | string" == toString(requireType("test2")));
+    else
+        CHECK("number | string" == toString(requireType("test2")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_branching_table2")
@@ -6352,7 +6354,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_insert_type_mismatch")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
         {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
@@ -6773,10 +6774,7 @@ TEST_CASE_FIXTURE(Fixture, "table_inference_one_incorrect_member")
 
 TEST_CASE_FIXTURE(Fixture, "basic_data_like_array")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauRelateHandlesCoincidentTables, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local t = {
@@ -6789,10 +6787,7 @@ TEST_CASE_FIXTURE(Fixture, "basic_data_like_array")
 
 TEST_CASE_FIXTURE(Fixture, "large_data_like_array_can_simplify")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauRelateHandlesCoincidentTables, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     std::stringstream stream;
     stream << "local function get()" << '\n';
@@ -6909,7 +6904,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "oss_1986")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
+    ScopedFastFlag _{FFlag::LuauOverloadGetsInstantiated2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type A<T> = { s: T, n: number? }
@@ -6924,7 +6919,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1986")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1947_partial")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
+    ScopedFastFlag _{FFlag::LuauOverloadGetsInstantiated2, true};
 
     // This fixes _one_ case of the given OSS issue, but we don't do
     // bidirectional inference of lambdas afterward.
@@ -6938,7 +6933,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1947_partial")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1890")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
+    ScopedFastFlag _{FFlag::LuauOverloadGetsInstantiated2, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type ListConfig<T> = {
@@ -7240,6 +7235,138 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_union_function_vs_primitive_pr
     )"));
 
     CHECK_EQ("number", toString(requireTypeAtPosition({7, 34})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "indexer_and_subsequent_constraint")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function getnumberandabs(tbl, key: string)
+            local x = tbl[key]
+            return math.abs(x)
+        end
+    )"));
+
+    CHECK_EQ("({ [string]: number }, string) -> number", toString(requireType("getnumberandabs")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "intersection_of_indexers_1")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string | number]: string } & { [string | number]: unknown }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    CHECK_EQ("string", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "intersection_of_indexers_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string | number]: never } & { [string | number]: string }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    CHECK_EQ("never", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "intersection_of_indexers_3")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { good: boolean } & { [string]: string }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    CHECK_EQ("string", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_indexers_1")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string | number]: never } | { [string | number]: string }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    CHECK_EQ("string", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_indexers_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string | number]: unknown } | { [string | number]: string }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    CHECK_EQ("unknown", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_indexers_3")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string | number]: boolean | string } | { [string | number]: boolean | number }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    CHECK_EQ("boolean | number | string", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "test_indexing_into_unsealed_table")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    CheckResult results = check(R"(
+        local key1: string, key2: number
+        local tbl = {}
+        tbl[key1] = 42
+        local val = tbl[key2]
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypeMismatch>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("string", toString(err->wantedType));
+    CHECK_EQ("number", toString(err->givenType));
+    CHECK_EQ("{ [string]: number }", toString(requireType("tbl"), {/* exhaustive */ true}));
 }
 
 TEST_SUITE_END();

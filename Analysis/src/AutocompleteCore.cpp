@@ -2035,11 +2035,9 @@ AutocompleteResult autocomplete_(
             return {autocompleteStatement(*module, ancestry, scopeAtPosition, position), ancestry, AutocompleteContext::Statement};
     }
 
-    else if (
-        AstStatWhile* statWhile = extractStat<AstStatWhile>(ancestry);
-        (statWhile && (!statWhile->hasDo || statWhile->doLocation.containsClosed(position)) && statWhile->condition &&
-         !statWhile->condition->location.containsClosed(position))
-    )
+    else if (AstStatWhile* statWhile = extractStat<AstStatWhile>(ancestry);
+             (statWhile && (!statWhile->hasDo || statWhile->doLocation.containsClosed(position)) && statWhile->condition &&
+              !statWhile->condition->location.containsClosed(position)))
     {
         return autocompleteWhileLoopKeywords(ancestry);
     }
@@ -2058,10 +2056,9 @@ AutocompleteResult autocomplete_(
         else if (!statIf->thenLocation || statIf->thenLocation->containsClosed(position))
             return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     }
-    else if (
-        AstStatIf* statIf = extractStat<AstStatIf>(ancestry); statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)) &&
-                                                              (statIf->condition && !statIf->condition->location.containsClosed(position))
-    )
+    else if (AstStatIf* statIf = extractStat<AstStatIf>(ancestry); statIf &&
+                                                                   (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)) &&
+                                                                   (statIf->condition && !statIf->condition->location.containsClosed(position)))
     {
         AutocompleteEntryMap ret;
         ret["then"] = {AutocompleteEntryKind::Keyword};
@@ -2073,10 +2070,8 @@ AutocompleteResult autocomplete_(
         return autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position);
     else if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat)
         return {autocompleteStatement(*module, ancestry, scopeAtPosition, position), ancestry, AutocompleteContext::Statement};
-    else if (
-        AstExprTable* exprTable = parent->as<AstExprTable>();
-        exprTable && (node->is<AstExprGlobal>() || node->is<AstExprConstantString>() || node->is<AstExprInterpString>())
-    )
+    else if (AstExprTable* exprTable = parent->as<AstExprTable>();
+             exprTable && (node->is<AstExprGlobal>() || node->is<AstExprConstantString>() || node->is<AstExprInterpString>()))
     {
         for (const auto& [kind, key, value] : exprTable->items)
         {

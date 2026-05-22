@@ -178,7 +178,7 @@ private:
     // type Name `=' Type
     AstStat* parseTypeAlias(const Location& start, bool exported, Position typeKeywordPosition);
 
-    AstStatClass* parseClassStat(const Location& start);
+    AstStat* parseClassStat(const Location& start, bool exported);
 
     // type function Name ... end
     AstStat* parseTypeFunction(const Location& start, bool exported, Position typeKeywordPosition);
@@ -516,6 +516,7 @@ private:
 
     DenseHashMap<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
+    DenseHashSet<AstName> classesWithinModule{{}};
 
     std::vector<ParseError> parseErrors;
 

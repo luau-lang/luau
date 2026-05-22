@@ -65,6 +65,7 @@ typedef void (*Pfunc)(lua_State* L, void* ud);
 
 LUAI_FUNC CallInfo* luaD_growCI(lua_State* L);
 
+LUAI_FUNC bool luaD_performcally(lua_State* L, StkId func, int nresults);
 LUAI_FUNC void luaD_callint(lua_State* L, StkId func, int nresults, bool forreentry);
 LUAI_FUNC void luaD_call(lua_State* L, StkId func, int nresults);
 LUAI_FUNC void luaD_callny(lua_State* L, StkId func, int nresults);

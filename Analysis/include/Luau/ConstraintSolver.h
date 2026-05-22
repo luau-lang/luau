@@ -233,11 +233,13 @@ private:
 
     void generalizeOneType(TypeId ty);
 
+    // Clip with LuauRemoveConstraintSolverEmplace
     template<typename T, typename... Args>
-    void emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args);
+    void DEPRECATED_emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args);
 
+    // Clip with LuauRemoveConstraintSolverEmplace
     template<typename T, typename... Args>
-    void emplace(NotNull<const Constraint> constraint, TypePackId tp, Args&&... args);
+    void DEPRECATED_emplace(NotNull<const Constraint> constraint, TypePackId tp, Args&&... args);
 
 public:
     /** Attempt to dispatch a constraint.  Returns true if it was successful. If

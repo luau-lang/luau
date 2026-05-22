@@ -69,6 +69,7 @@ typedef struct CallInfo
 #define LUA_CALLINFO_RETURN (1 << 0) // should the interpreter return after returning from this callinfo? first frame must have this set
 #define LUA_CALLINFO_HANDLE (1 << 1) // should the error thrown during execution get handled by continuation from this callinfo? func must be C
 #define LUA_CALLINFO_NATIVE (1 << 2) // should this function be executed using execution callback for native code
+#define LUA_CALLINFO_OPYIELD (1 << 3) // call frame has yielded on a non-call opcode and requires luaV_finishop
 
 #define curr_func(L) (clvalue(L->ci->func))
 #define ci_func(ci) (clvalue((ci)->func))
@@ -305,8 +306,8 @@ union GCObject
     struct UpVal uv;
     struct lua_State th; // thread
     struct LuauBuffer buf;
-    struct LuaClassObject classobj;
-    struct LuaClassInstance classinst;
+    struct LuauClass lclass;
+    struct LuauObject lobject;
 };
 
 // macros to convert a GCObject into a specific value
@@ -318,8 +319,8 @@ union GCObject
 #define gco2uv(o) check_exp((o)->gch.tt == LUA_TUPVAL, &((o)->uv))
 #define gco2th(o) check_exp((o)->gch.tt == LUA_TTHREAD, &((o)->th))
 #define gco2buf(o) check_exp((o)->gch.tt == LUA_TBUFFER, &((o)->buf))
-#define gco2cobj(o) check_exp((o)->gch.tt == LUA_TCLASSOBJ, &((o)->classobj))
-#define gco2cinst(o) check_exp((o)->gch.tt == LUA_TCLASSINST, &((o)->classinst))
+#define gco2class(o) check_exp((o)->gch.tt == LUA_TCLASS, &((o)->lclass))
+#define gco2object(o) check_exp((o)->gch.tt == LUA_TOBJECT, &((o)->lobject))
 
 // macro to convert any Lua object into a GCObject
 #define obj2gco(v) check_exp(iscollectable(v), cast_to(GCObject*, (v) + 0))

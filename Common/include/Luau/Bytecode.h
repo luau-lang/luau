@@ -50,7 +50,7 @@
 // Version 7: Adds LBC_CONSTANT_TABLE_WITH_CONSTANTS for DUPTABLE with pre-filled constant values. Currently supported.
 // Version 8: Adds LBC_CONSTANT_INTEGER for 64-bit integer constants. Currently supported.
 // Version 9: Adds atom-based userdata field access acceleration. Currently supported.
-// Version 11: Adds CALLFB and feedback vector description. Experimental.
+// Version 11: Adds CALLFB, CMPPROTO and feedback vector description. Experimental.
 
 // # Bytecode type information history
 // Version 1: (from bytecode version 4) Type information for function signature. Currently supported.
@@ -443,6 +443,12 @@ enum LuauOpcode
     // C: result count + 1, or 0 to preserve all values and adjust top (MULTRET)
     // AUX: feedback slot id. 0xFFFFFFFF - sealed
     LOP_CALLFB,
+
+    // CMPPROTO: check if a register contains a closure with a specified Luau function proto id
+    // A: closure register
+    // D: jump offset if proto doesn't match
+    // AUX: proto id
+    LOP_CMPPROTO,
 
     // Enum entry for number of opcodes, not a valid opcode by itself!
     LOP__COUNT
