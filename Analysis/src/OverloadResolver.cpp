@@ -14,6 +14,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAGVARIABLE(LuauPreferExactArityOverOptionalOverload)
+
 namespace Luau
 {
 
@@ -243,7 +245,8 @@ OverloadResolution OverloadResolver::resolveOverload(
     else
         testFunctionOrUnion(result, ty, argsPack, fnLocation, uniqueTypes);
 
-    preferOverloadsThatDoNotNeedOmittedOptionalArguments(result, argsPack);
+    if (FFlag::LuauPreferExactArityOverOptionalOverload)
+        preferOverloadsThatDoNotNeedOmittedOptionalArguments(result, argsPack);
 
     return result;
 }

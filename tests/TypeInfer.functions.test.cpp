@@ -32,6 +32,7 @@ LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes2)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
+LUAU_FASTFLAG(LuauPreferExactArityOverOptionalOverload)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -3443,6 +3444,7 @@ TEST_CASE_FIXTURE(Fixture, "overload_selection_ambiguous_call")
 TEST_CASE_FIXTURE(Fixture, "overload_selection_prefers_exact_arity_over_omitted_optional_arguments")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag preferExactArity{FFlag::LuauPreferExactArityOverOptionalOverload, true};
 
     auto result = check(R"(
         type Source<T> = (() -> T) & ((T) -> T)
@@ -3463,6 +3465,7 @@ TEST_CASE_FIXTURE(Fixture, "overload_selection_prefers_exact_arity_over_omitted_
 TEST_CASE_FIXTURE(Fixture, "overload_selection_prefers_shorter_overload_when_longer_one_only_matches_via_optional_argument")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag preferExactArity{FFlag::LuauPreferExactArityOverOptionalOverload, true};
 
     auto result = check(R"(
         local f: ((number) -> "one") & ((number, string?) -> "two") = nil :: any
