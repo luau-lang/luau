@@ -275,8 +275,7 @@ private:
     );
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
-    LUAU_NOINLINE void checkAliases(const ScopePtr& scope, AstStatBlock* block);
-    void prototypeClassDecls(const ScopePtr& scope, AstStatBlock* block);
+    LUAU_NOINLINE void prototypeTypeDefinitions(const ScopePtr& scope, AstStatBlock* block);
 
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
 
@@ -453,15 +452,6 @@ private:
      * @return the type pack of the AST annotation.
      **/
     TypePackId resolveTypePack(
-        const ScopePtr& scope,
-        const AstTypeList& list,
-        bool inTypeArguments,
-        bool replaceErrorWithFresh = false,
-        Polarity initialPolarity = Polarity::Positive
-    );
-
-    // Clip with LuauForwardPolarityForFunctionTypes
-    TypePackId resolveTypePack_DEPRECATED(
         const ScopePtr& scope,
         const AstTypeList& list,
         bool inTypeArguments,

@@ -46,6 +46,7 @@ inline bool isBlockTerminator(IrCmd cmd)
     case IrCmd::FORGLOOP_FALLBACK:
     case IrCmd::FORGPREP_XNEXT_FALLBACK:
     case IrCmd::FALLBACK_FORGPREP:
+    case IrCmd::JUMP_CMP_PROTOID:
         return true;
     default:
         break;

@@ -14,8 +14,6 @@
 #include <stdint.h>
 #include <string.h>
 
-struct Proto;
-
 namespace Luau
 {
 namespace Bytecode
@@ -230,9 +228,6 @@ struct BcInstEq
 
 inline constexpr uint32_t kBlockNoStartPc = ~0u;
 
-struct BcBlock;
-struct BcFunction;
-
 enum BcBlockEdgeKind
 {
     Branch,
@@ -263,7 +258,6 @@ struct BcBlock
     // Bytecode PC position at which the block was generated
     uint32_t startpc = kBlockNoStartPc;
 
-    void addSuccessor(BcFunction& func, BcOp block, BcBlockEdgeKind kind);
     void appendInstruction(BcOp inst)
     {
         LUAU_ASSERT(inst.kind == BcOpKind::Inst);
@@ -298,6 +292,7 @@ struct DebugLocal
     uint32_t endpc;
 };
 
+template <typename VmConst>
 struct BcFunction
 {
     uint8_t maxstacksize;
@@ -308,7 +303,7 @@ struct BcFunction
 
     std::vector<BcBlock> blocks;
     std::vector<BcInst> instructions;
-    std::vector<BcVmConst> constants;
+    std::vector<VmConst> constants;
     std::vector<BcImm> immediates;
     std::vector<BcPhi> phis;
     std::vector<BcProj> projections;
@@ -379,7 +374,7 @@ struct BcFunction
         return immediates[op.index];
     }
 
-    BcVmConst& constOp(BcOp op)
+    VmConst& constOp(BcOp op)
     {
         LUAU_ASSERT(op.kind == BcOpKind::VmConst);
         return constants[op.index];
@@ -412,10 +407,11 @@ struct BcFunction
     }
 };
 
-std::optional<BcFunction> fromFunctionBytecode(std::string bytecode, std::vector<std::string_view>& strings);
-std::vector<Instruction> toBytecode(BcFunction& func);
-std::string toFunctionBytecode(BcFunction& func);
-std::string toFunctionBytecode(BytecodeBuilder& builder, BcFunction& func);
+using CompTimeBcFunction = BcFunction<BcVmConst>;
+
+std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std::vector<std::string_view>& strings);
+std::string toFunctionBytecode(CompTimeBcFunction& func);
+std::string toFunctionBytecode(BytecodeBuilder& builder, CompTimeBcFunction& func);
 
 } // namespace Bytecode
 } // namespace Luau

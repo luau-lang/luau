@@ -1682,21 +1682,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "overload_concat")
             len:number;
         }
         local metatable = {
-            __concat = function(self:class,str:string):class
+            __concat = function(self:cls,str:string):cls
                 buffer.writestring(self.b,self.len,str)
                 self.len+=#str
                 return self
             end;
         }
 
-        export type class = typeof(setmetatable({}::classData, metatable))
+        export type cls = typeof(setmetatable({}::classData, metatable))
 
         --returns a long string
-        local new = function():class
+        local new = function():cls
             return setmetatable({
                 b = buffer.create(100_000::number);
                 len = 0;
-            }::classData,metatable)::class
+            }::classData,metatable)::cls
         end
         local class = new()
 

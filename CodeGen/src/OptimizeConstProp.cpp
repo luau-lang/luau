@@ -22,13 +22,10 @@ LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
-LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSetBlockEntryState3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenUserdataAddressAlias)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateTagsAcrossChains2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDuplicateDoubleIntValues)
-LUAU_FASTFLAGVARIABLE(LuauCodegenPreciseDupTableEffect)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufferWriteEffects)
 LUAU_FASTFLAGVARIABLE(LuauCodegenJumpCmpIntFoldFix)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLinearSetupEntryState3)
@@ -920,7 +917,7 @@ struct ConstPropState
             return;
 
         int offset = function.intOp(OP_B(loadInst));
-        uint8_t tag = !FFlag::LuauCodegenBufNoDefTag && !HAS_OP_C(loadInst) ? LUA_TBUFFER : function.tagOp(OP_C(loadInst));
+        uint8_t tag = function.tagOp(OP_C(loadInst));
 
         // Find if we have data for this kind of load
         for (BufferLoadStoreInfo& info : bufferLoadStoreInfo)
@@ -1060,7 +1057,7 @@ struct ConstPropState
 
     void forwardBufferStoreToLoad(IrInst& storeInst, IrCmd loadCmd, uint8_t accessSize)
     {
-        uint8_t tag = !FFlag::LuauCodegenBufNoDefTag && !HAS_OP_D(storeInst) ? LUA_TBUFFER : function.tagOp(OP_D(storeInst));
+        uint8_t tag = function.tagOp(OP_D(storeInst));
 
         // Writing at unknown offset removes everything in the same kind of memory (buffer/userdata)
         // For userdata, we could check where the pointer is coming from, but we don't have an example of such usage
@@ -1845,7 +1842,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::STORE_POINTER:
         if (OP_A(inst).kind == IrOpKind::VmReg)
         {
-            if (FFlag::LuauCodegenRemoveDuplicateDoubleIntValues && OP_B(inst).kind == IrOpKind::Inst)
+            if (OP_B(inst).kind == IrOpKind::Inst)
             {
                 if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_POINTER, OP_A(inst)))
                 {
@@ -1890,15 +1887,12 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
             else
             {
-                if (FFlag::LuauCodegenRemoveDuplicateDoubleIntValues)
+                if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_DOUBLE, OP_A(inst)))
                 {
-                    if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_DOUBLE, OP_A(inst)))
+                    if (*prevIdx == OP_B(inst).index)
                     {
-                        if (*prevIdx == OP_B(inst).index)
-                        {
-                            kill(function, inst);
-                            break;
-                        }
+                        kill(function, inst);
+                        break;
                     }
                 }
 
@@ -1923,15 +1917,12 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
             else
             {
-                if (FFlag::LuauCodegenRemoveDuplicateDoubleIntValues)
+                if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_INT, OP_A(inst)))
                 {
-                    if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_INT, OP_A(inst)))
+                    if (*prevIdx == OP_B(inst).index)
                     {
-                        if (*prevIdx == OP_B(inst).index)
-                        {
-                            kill(function, inst);
-                            break;
-                        }
+                        kill(function, inst);
+                        break;
                     }
                 }
 
@@ -1955,15 +1946,12 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
             else
             {
-                if (FFlag::LuauCodegenRemoveDuplicateDoubleIntValues)
+                if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_INT64, OP_A(inst)))
                 {
-                    if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_INT64, OP_A(inst)))
+                    if (*prevIdx == OP_B(inst).index)
                     {
-                        if (*prevIdx == OP_B(inst).index)
-                        {
-                            kill(function, inst);
-                            break;
-                        }
+                        kill(function, inst);
+                        break;
                     }
                 }
 
@@ -2048,15 +2036,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (tag == LUA_TBOOLEAN &&
                 (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Int)))
                 canSplitTvalueStore = true;
-            else if (
-                tag == LUA_TNUMBER &&
-                (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Double))
-            )
+            else if (tag == LUA_TNUMBER &&
+                     (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Double)))
                 canSplitTvalueStore = true;
-            else if (
-                tag == LUA_TINTEGER &&
-                (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Int64))
-            )
+            else if (tag == LUA_TINTEGER &&
+                     (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Int64)))
                 canSplitTvalueStore = true;
             else if (tag != 0xff && isGCO(tag) && value.kind == IrOpKind::Inst)
                 canSplitTvalueStore = true;
@@ -3285,6 +3269,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::GET_TYPE:
     case IrCmd::GET_TYPEOF:
     case IrCmd::FINDUPVAL:
+    case IrCmd::JUMP_CMP_PROTOID:
         break;
 
     case IrCmd::DO_ARITH:
@@ -3390,11 +3375,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::FALLBACK_DUPCLOSURE:
         state.invalidate(OP_B(inst));
 
-        if (FFlag::LuauCodegenPreciseDupTableEffect)
-        {
-            // GC assist inside DUPCLOSURE might modify table data (hash part)
-            state.invalidateHeapTableData();
-        }
+        // GC assist inside DUPCLOSURE might modify table data (hash part)
+        state.invalidateHeapTableData();
         break;
     case IrCmd::FALLBACK_FORGPREP:
         state.invalidate(IrOp{OP_B(inst).kind, vmRegOp(OP_B(inst)) + 0u});

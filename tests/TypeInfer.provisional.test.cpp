@@ -20,9 +20,9 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauIntegerType)
 LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
+LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -1534,10 +1534,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauThreadUniferStateThroughTypeFunctionReduction, true},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
     };
 
-    CHECK_THROWS_AS(
-        check(R"(
+    CheckResult results = check(R"(
         local settingsTable = {}
 
         type Settings = typeof(settingsTable)
@@ -1553,16 +1553,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
         end
 
         return settings
-        )"),
-        InternalCompilerError
-    );
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    // It's *maybe* correct for this to error. We claim that `index<_, never>`
+    // is uninhabited. This is a valid interpretation, but unclear if
+    // it's the right one for Luau.
+    //
+    // Prior it threw an exception, this seems better.
+    CHECK(get<UninhabitedTypeFunction>(results.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_calling_pcall")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
         {FFlag::LuauOverloadGetsInstantiated2, true},
     };
 
@@ -1584,12 +1589,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_calling_pcall")
 // `1` alone should fully determine T. The ideal inferred type for `a` would be `number`.
 //
 // The over-constraining is sound (wider types, not false errors) and benign for the common case
-// (`T | nil` has only one free member).
+// (`T | nil` has only one free member). See .claude/luau-unifier2-free-type-bounds.md, Gap 5.
 TEST_CASE_FIXTURE(BuiltinsFixture, "union_super_with_multiple_free_members_over_constrains_lower_bounds")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
         {FFlag::LuauOverloadGetsInstantiated2, true},
         {FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds, true},
     };
@@ -1606,6 +1610,80 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "union_super_with_multiple_free_members_over_
     // Should ideally be "number" — T is fully determined by y=1, but the `true` argument
     // to x: T|U propagates boolean to T as well, so we get the over-approximated type.
     CHECK("boolean | number" == toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181248_intersection_of_indexers_should_error")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local tbl: { good: boolean } & { bad: boolean }
+        local key: string
+        local val = tbl[key]
+    )");
+
+    // This should definitely error.
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("*error-type*", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181248_union_of_indexers_should_error")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local tbl: { good: boolean } | { bad: boolean }
+        local key: string
+        local val = tbl[key]
+    )");
+
+    // This should definitely error.
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("*error-type*", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181248_union_of_indexers_with_one_good_option_should_error")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local tbl: { good: boolean } | { [string]: string }
+        local key: string
+        local val = tbl[key]
+    )");
+
+    // This should definitely error ...
+    LUAU_REQUIRE_NO_ERRORS(result);
+    // ... but `string | *error-type*` is correct.
+    CHECK_EQ("*error-type* | string", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181248_unreduced_intersection_of_indexers")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string]: string | number } & { [string]: string | boolean }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    // We *probably* want to normalize this to `string`.
+    CHECK_EQ("(boolean | string) & (number | string)", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181248_unreduced_union_of_indexers")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string]: "hi" } | { [string]: string}
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    // We *probably* want to normalize this to `string`.
+    CHECK_EQ("\"hi\" | string", toString(requireType("val")));
 }
 
 TEST_SUITE_END();

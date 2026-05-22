@@ -16,8 +16,6 @@ LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenGcoDse2)
-LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
-LUAU_FASTFLAG(LuauCodegenRemoveDuplicateDoubleIntValues)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
 LUAU_FASTFLAG(LuauCodegenUserdataAddressAlias)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
@@ -1291,7 +1289,6 @@ bb_0:
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionStoreForward")
 {
     ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
-    ScopedFastFlag luauCodegenRemoveDuplicateDoubleIntValues{FFlag::LuauCodegenRemoveDuplicateDoubleIntValues, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1791,8 +1788,16 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumToInt64OutOfRangeNotFolded")
     build.beginBlock(block);
 
     build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::NUM_TO_INT64, build.constDouble(1e19)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::NUM_TO_INT64, build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0))));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::NUM_TO_INT64, build.inst(IrCmd::DIV_NUM, build.constDouble(1.0), build.constDouble(0.0))));
+    build.inst(
+        IrCmd::STORE_INT64,
+        build.vmReg(1),
+        build.inst(IrCmd::NUM_TO_INT64, build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0)))
+    );
+    build.inst(
+        IrCmd::STORE_INT64,
+        build.vmReg(2),
+        build.inst(IrCmd::NUM_TO_INT64, build.inst(IrCmd::DIV_NUM, build.constDouble(1.0), build.constDouble(0.0)))
+    );
 
     build.inst(IrCmd::RETURN, build.constUint(0));
 
@@ -2555,7 +2560,6 @@ bb_0:
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64StoreForwardToLoad")
 {
     ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
-    ScopedFastFlag luauCodegenRemoveDuplicateDoubleIntValues{FFlag::LuauCodegenRemoveDuplicateDoubleIntValues, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -2587,7 +2591,6 @@ bb_0:
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DuplicateStoreRemoval")
 {
     ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
-    ScopedFastFlag luauCodegenRemoveDuplicateDoubleIntValues{FFlag::LuauCodegenRemoveDuplicateDoubleIntValues, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -3351,8 +3354,6 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "IntNumIntPeepholes")
 {
-    ScopedFastFlag luauCodegenRemoveDuplicateDoubleIntValues{FFlag::LuauCodegenRemoveDuplicateDoubleIntValues, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -4561,8 +4562,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateBufferLengthChecks")
 {
-    ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
@@ -4630,8 +4629,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksNegativeIndex")
 {
-    ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
@@ -4665,8 +4662,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksIntegerMatch")
 {
-    ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
@@ -4703,8 +4698,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksIntegerMatch2")
 {
-    ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
@@ -5745,8 +5738,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicatePointerStoreRemoval")
 {
-    ScopedFastFlag luauCodegenRemoveDuplicateDoubleIntValues{FFlag::LuauCodegenRemoveDuplicateDoubleIntValues, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);

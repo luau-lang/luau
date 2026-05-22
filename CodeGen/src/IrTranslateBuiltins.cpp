@@ -9,7 +9,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenBufNoDefTag)
 LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerArg3Fix)
 LUAU_FASTFLAG(LuauCodegenInteger2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufferInteger)
@@ -930,8 +929,7 @@ static BuiltinImplResult translateBuiltinBufferRead(
     IrOp buf, intIndex;
     translateBufferArgsAndCheckBounds(build, nparams, arg, args, arg3, size, pcpos, buf, intIndex, false);
 
-    IrOp result =
-        FFlag::LuauCodegenBufNoDefTag ? build.inst(readCmd, buf, intIndex, build.constTag(LUA_TBUFFER)) : build.inst(readCmd, buf, intIndex);
+    IrOp result = build.inst(readCmd, buf, intIndex, build.constTag(LUA_TBUFFER));
 
     build.inst(storeCmd, build.vmReg(ra), convCmd == IrCmd::NOP ? result : build.inst(convCmd, result));
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(storeTag));
@@ -962,10 +960,7 @@ static BuiltinImplResult translateBuiltinBufferWrite(
 
     IrOp numValue = loadInt64 ? builtinLoadInt64(build, arg3) : builtinLoadDouble(build, arg3);
 
-    if (FFlag::LuauCodegenBufNoDefTag)
-        build.inst(writeCmd, buf, intIndex, convCmd == IrCmd::NOP ? numValue : build.inst(convCmd, numValue), build.constTag(LUA_TBUFFER));
-    else
-        build.inst(writeCmd, buf, intIndex, convCmd == IrCmd::NOP ? numValue : build.inst(convCmd, numValue));
+    build.inst(writeCmd, buf, intIndex, convCmd == IrCmd::NOP ? numValue : build.inst(convCmd, numValue), build.constTag(LUA_TBUFFER));
 
     return {BuiltinImplType::Full, 0};
 }
@@ -1382,7 +1377,17 @@ static BuiltinImplResult translateBuiltinInt64Binary(
     return {BuiltinImplType::Full, 1};
 }
 
-static BuiltinImplResult translateBuiltinInt64MinMax(IrBuilder& build, int nparams, int ra, int arg, IrOp args, IrOp arg3, int nresults, int pcpos, bool min)
+static BuiltinImplResult translateBuiltinInt64MinMax(
+    IrBuilder& build,
+    int nparams,
+    int ra,
+    int arg,
+    IrOp args,
+    IrOp arg3,
+    int nresults,
+    int pcpos,
+    bool min
+)
 {
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};

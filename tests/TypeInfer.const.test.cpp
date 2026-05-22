@@ -84,7 +84,7 @@ TEST_CASE_FIXTURE(Fixture, "const_extra_lvalues_are_nil_and_syntax_error_from_ca
     auto err = get<CountMismatch>(results.errors[0]);
     REQUIRE(err);
     CHECK_EQ(err->actual, 3);
-    CHECK_EQ(err->expected,2);
+    CHECK_EQ(err->expected, 2);
     CHECK_EQ("number", toString(requireType("X")));
     CHECK_EQ("number", toString(requireType("Y")));
     CHECK_EQ("nil", toString(requireType("Z")));
@@ -201,7 +201,7 @@ TEST_CASE_FIXTURE(Fixture, "const_shadowing")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    // TODO CLI-197269: checking the types of `y` and `X` have different 
+    // TODO CLI-197269: checking the types of `y` and `X` have different
     // results on different platforms.
 }
 

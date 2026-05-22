@@ -2,9 +2,6 @@
 #include "Luau/Common.h"
 #include "Luau/Parser.h"
 #include "Luau/PrettyPrinter.h"
-#include "Luau/TypeAttach.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/Type.h"
 
 #include "Fixture.h"
 #include "ScopedFlags.h"
@@ -13,6 +10,9 @@
 
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauErrorTolerantPrettyPrinting)
+LUAU_FASTFLAG(LuauCstExprGroup)
+LUAU_FASTFLAG(LuauCstTypeGroup)
 
 using namespace Luau;
 
@@ -2135,6 +2135,25 @@ end
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
 }
 
+TEST_CASE("simple_class_with_public_functions")
+{
+    ScopedFastFlag fflag{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string code = R"(
+class Point
+    public function length(self)
+        return 100
+    end
+    public x
+    public function new(): Point
+        return Point { x = 0, y = 0 }
+    end
+    public y
+end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+}
+
 TEST_CASE("prettyPrint_function_attributes")
 {
     std::string code = R"(
@@ -2203,6 +2222,28 @@ TEST_CASE("transpile_explicit_type_instantiations")
 
     code = "f < < A , B , C... > >( ) t.f < < A, B, C... > >  ( )  t:f< < A, B, C > > ( )";
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
+}
+
+TEST_CASE("pretty_print_incomplete_expr_group")
+{
+    ScopedFastFlag fflags[] = {{FFlag::LuauErrorTolerantPrettyPrinting, true}, {FFlag::LuauCstExprGroup, true}};
+
+    std::string code = "local x = (1 + 2";
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = "local x = (1 + 2                 )";
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE("pretty_print_incomplete_type_group")
+{
+    ScopedFastFlag fflags[] = {{FFlag::LuauErrorTolerantPrettyPrinting, true}, {FFlag::LuauCstTypeGroup, true}};
+
+    std::string code = "type t = (number";
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = "type t = (number           )";
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
 }
 
 TEST_SUITE_END();

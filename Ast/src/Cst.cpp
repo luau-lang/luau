@@ -3,10 +3,20 @@
 #include "Luau/Cst.h"
 #include "Luau/Common.h"
 
+LUAU_FASTFLAG(LuauCstExprGroup)
+LUAU_FASTFLAG(LuauCstTypeGroup)
+
 namespace Luau
 {
 
 int gCstRttiIndex = 0;
+
+CstExprGroup::CstExprGroup(Position closePosition)
+    : CstNode(CstClassIndex())
+    , closePosition(closePosition)
+{
+    LUAU_ASSERT(FFlag::LuauCstExprGroup);
+}
 
 CstExprConstantNumber::CstExprConstantNumber(const AstArray<char>& value)
     : CstNode(CstClassIndex())
@@ -279,6 +289,13 @@ CstTypeSingletonString::CstTypeSingletonString(AstArray<char> sourceString, CstE
     , blockDepth(blockDepth)
 {
     LUAU_ASSERT(quoteStyle != CstExprConstantString::QuotedInterp);
+}
+
+CstTypeGroup::CstTypeGroup(Position closePosition)
+    : CstNode(CstClassIndex())
+    , closePosition(closePosition)
+{
+    LUAU_ASSERT(FFlag::LuauCstTypeGroup);
 }
 
 CstTypePackExplicit::CstTypePackExplicit()

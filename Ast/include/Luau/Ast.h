@@ -1100,6 +1100,7 @@ struct AstClassProperty
 
 struct AstClassMethod
 {
+    std::optional<Location> qualifierLocation;
     Location keywordLocation;
     AstName functionName;
     Location nameLocation;
@@ -1115,12 +1116,9 @@ public:
 
     AstLocal* name;
     AstArray<AstClassMember> members;
+    bool exported;
 
-    AstStatClass(
-        const Location& location,
-        AstLocal* name,
-        AstArray<AstClassMember> members
-    );
+    AstStatClass(const Location& location, AstLocal* name, AstArray<AstClassMember> members, bool exported);
 
     void visit(AstVisitor* visitor) override;
 };

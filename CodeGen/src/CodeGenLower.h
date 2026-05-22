@@ -254,10 +254,13 @@ inline bool lowerImpl(
             // gadget offsets unpredictable. 0–7 bytes; A64 rounds down to a multiple of 4.
             IrInst& termInst = function.instructions[block.finish];
 
-            bool blockFallsThrough = anyArgumentMatch(termInst, [&](IrOp op)
-            {
-                return op.kind == IrOpKind::Block && function.blockOp(op).start == nextBlock.start;
-            });
+            bool blockFallsThrough = anyArgumentMatch(
+                termInst,
+                [&](IrOp op)
+                {
+                    return op.kind == IrOpKind::Block && function.blockOp(op).start == nextBlock.start;
+                }
+            );
 
             // Single-predecessor fallthrough should skip padding altogether
             if (!(blockFallsThrough && termInst.cmd == IrCmd::JUMP && nextBlock.useCount == 1))

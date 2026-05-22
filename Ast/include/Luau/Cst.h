@@ -51,6 +51,16 @@ public:
     const int classIndex;
 };
 
+class CstExprGroup : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstExprGroup)
+
+    explicit CstExprGroup(Position closePosition);
+
+    Position closePosition;
+};
+
 class CstExprConstantNumber : public CstNode
 {
 public:
@@ -504,6 +514,16 @@ public:
     AstArray<char> sourceString;
     CstExprConstantString::QuoteStyle quoteStyle;
     unsigned int blockDepth;
+};
+
+class CstTypeGroup : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstTypeGroup)
+
+    CstTypeGroup(Position closePosition);
+
+    Position closePosition;
 };
 
 class CstTypePackExplicit : public CstNode

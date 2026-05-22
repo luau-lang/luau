@@ -7,7 +7,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 LUAU_FASTFLAG(LuauVisitCallTypeArgsInDfg)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
@@ -564,7 +563,6 @@ TEST_CASE_FIXTURE(Fixture, "replacing_generic_with_generic")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExplicitTypeInstantiationSupport, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
     };
 
     CheckResult result = check(R"(
