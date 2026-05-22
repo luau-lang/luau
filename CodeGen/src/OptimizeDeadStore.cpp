@@ -5,6 +5,7 @@
 #include "Luau/IrVisitUseDef.h"
 #include "Luau/IrUtils.h"
 
+#include <algorithm>
 #include <array>
 
 #include "lobject.h"
