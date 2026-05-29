@@ -33,10 +33,6 @@ LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarityFollow)
 LUAU_FASTFLAG(LuauRefineNilFromTableIndexerResultType)
-LUAU_FASTFLAG(LuauFollowInExplicitInstantiation)
-LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes2)
-LUAU_FASTFLAG(LuauFollowGenericBeforeCheckingIfMapped)
-LUAU_FASTFLAG(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
 LUAU_FASTFLAG(LuauInstantiationUsesPolarity)
 
 using namespace Luau;
@@ -2841,8 +2837,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "2236_iterate_over_table_with_values_as_optio
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_function_call")
 {
-    ScopedFastFlag _{FFlag::LuauFollowInExplicitInstantiation, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         do end
         _ = if _ then true elseif _ then if _ then _ elseif _ then 2 .. {} elseif _._ then l0 else _ elseif _ then if ... then _ elseif {} then `` elseif _ then {_G=_,}
@@ -2852,8 +2846,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_function_call")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_avoid_emplacing_blocked_types_you_dont_own")
 {
-    ScopedFastFlag _{FFlag::LuauKeepExplicitMapForGlobalTypes2, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         if if _ then _ else nil then
             local l0 = require(module0)
@@ -2885,8 +2877,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_avoid_emplacing_blocked_types_you_don
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_attach_polarity_to_ret_free_type")
 {
-    ScopedFastFlag _{FFlag::LuauTypeFunctionsAddFreeTypePackWithPositivePolarity, true};
-
     // When we dispatch constraints in *just* the right order, we end up
     // evaluating the type of `1 // setmetatable({}, FOO)` before we
     // generalize the type of the lambda passed to `__idiv`. We end up
@@ -2902,8 +2892,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_attach_polarity_to_ret_free_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_checking_generic_mapping")
 {
-    ScopedFastFlag _{FFlag::LuauFollowGenericBeforeCheckingIfMapped, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         function _<U...,M...>(l0,l0,l0,l0,)
             l0(_(rshift),_()(_(if _ then _),))
@@ -2954,8 +2942,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_bind_generic_sigsegv")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_global_type_inference")
 {
-    ScopedFastFlag _{FFlag::LuauKeepExplicitMapForGlobalTypes2, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         A = A
         A = A

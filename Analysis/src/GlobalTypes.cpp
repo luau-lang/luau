@@ -2,7 +2,7 @@
 
 #include "Luau/GlobalTypes.h"
 
-LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
@@ -18,7 +18,7 @@ GlobalTypes::GlobalTypes(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
     globalScope->addBuiltinTypeBinding("any", TypeFun{{}, builtinTypes->anyType});
     globalScope->addBuiltinTypeBinding("nil", TypeFun{{}, builtinTypes->nilType});
     globalScope->addBuiltinTypeBinding("number", TypeFun{{}, builtinTypes->numberType});
-    if (FFlag::LuauIntegerType)
+    if (FFlag::LuauIntegerType2)
         globalScope->addBuiltinTypeBinding("integer", TypeFun{{}, builtinTypes->integerType});
     globalScope->addBuiltinTypeBinding("string", TypeFun{{}, builtinTypes->stringType});
     globalScope->addBuiltinTypeBinding("boolean", TypeFun{{}, builtinTypes->booleanType});

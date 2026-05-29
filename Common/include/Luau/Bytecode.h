@@ -517,6 +517,9 @@ enum LuauBytecodeTag
     LBC_CONSTANT_TABLE_WITH_CONSTANTS,
     LBC_CONSTANT_INTEGER,
     LBC_CONSTANT_CLASS_SHAPE,
+
+    /** WARNING: This must always be last. */
+    LBC_CONSTANT__COUNT
 };
 
 // Type table tags

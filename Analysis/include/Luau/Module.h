@@ -161,4 +161,6 @@ struct Module
     bool constraintGenerationDidNotComplete = true;
 };
 
+void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> module);
+
 } // namespace Luau

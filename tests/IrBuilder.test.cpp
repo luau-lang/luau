@@ -17,12 +17,12 @@ LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenGcoDse2)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
-LUAU_FASTFLAG(LuauCodegenUserdataAddressAlias)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
 LUAU_FASTFLAG(LuauCodegenInteger2)
-LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
+LUAU_FASTFLAG(LuauCodegenLoadPropagateOrigin)
 
 using namespace Luau::CodeGen;
 
@@ -593,7 +593,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64Arithmetic")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -631,7 +631,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64Bitwise")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -700,7 +700,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ShiftsAndRotates")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -761,7 +761,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64Comparisons")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -837,7 +837,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -871,7 +871,7 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpFoldPass")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -899,7 +899,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ArithmeticExtended")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -940,7 +940,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ShiftEdgeCases")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -991,7 +991,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64BitwiseExtended")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1052,7 +1052,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionOpsPreserved")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1097,7 +1097,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivGuardFoldKnownNonZero")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1129,7 +1129,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivGuardZeroDivisorJumps")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1159,7 +1159,7 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64SelectPreservedWithDifferentBranches")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1193,7 +1193,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NegationConstFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1226,7 +1226,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ConversionConstProp")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1257,7 +1257,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ConversionDedup")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1288,7 +1288,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionStoreForward")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1322,7 +1322,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpUnsignedFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1351,7 +1351,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpUnsignedFoldFail")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1382,7 +1382,7 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ArithChainConstFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1421,7 +1421,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64BitwiseLargeValues")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1471,7 +1471,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ComparisonBoundaryValues")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1535,7 +1535,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseInt64Overwrite")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp entry = build.block(IrBlockKind::Internal);
 
@@ -1568,7 +1568,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionConstFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1618,7 +1618,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionUnsafeCasesNotFolded")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1660,7 +1660,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckDivFoldSafe")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1687,7 +1687,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckDivFoldZeroDivisor")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1716,7 +1716,7 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckDivFoldOverflow")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1745,7 +1745,7 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ConversionConstFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1781,7 +1781,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumToInt64OutOfRangeNotFolded")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1820,7 +1820,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ShiftBoundary63")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1934,7 +1934,7 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64SplitTvalueStoreConstProp")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp entry = build.block(IrBlockKind::Internal);
 
@@ -2531,7 +2531,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumRoundtripElimination")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -2559,7 +2559,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64StoreForwardToLoad")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -2590,7 +2590,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DuplicateStoreRemoval")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -4562,6 +4562,8 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateBufferLengthChecks")
 {
+    ScopedFastFlag luauCodegenLoadPropagateOrigin{FFlag::LuauCodegenLoadPropagateOrigin, true};
+
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
@@ -4609,7 +4611,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateBufferLengthChecks")
 bb_0:
    %0 = LOAD_TVALUE R0
    STORE_TVALUE R2, %0
-   %2 = LOAD_POINTER R2
+   %2 = LOAD_POINTER R0
    CHECK_BUFFER_LEN %2, 12i, -4i, 8i, undef, bb_fallback_1
    BUFFER_WRITEI32 %2, 12i, 32i, tbuffer
    BUFFER_WRITEI32 %2, 8i, 30i, tbuffer
@@ -4662,6 +4664,8 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksIntegerMatch")
 {
+    ScopedFastFlag luauCodegenLoadPropagateOrigin{FFlag::LuauCodegenLoadPropagateOrigin, true};
+
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
@@ -4686,7 +4690,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksIntegerMatch")
 bb_0:
    %0 = LOAD_TVALUE R0
    STORE_TVALUE R2, %0
-   %2 = LOAD_POINTER R2
+   %2 = LOAD_POINTER R0
    CHECK_BUFFER_LEN %2, 0i, 0i, 4i, undef, bb_fallback_1
    JUMP bb_fallback_1
 
@@ -7761,8 +7765,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ToDot")
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "UserdataBufferStoreForwardingInvalidation")
 {
-    ScopedFastFlag luauCodegenUserdataAddressAlias{FFlag::LuauCodegenUserdataAddressAlias, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);

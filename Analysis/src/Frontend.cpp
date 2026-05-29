@@ -41,7 +41,8 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAGVARIABLE(LuauExportValueTypecheck)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
 
@@ -1620,6 +1621,9 @@ ModulePtr check(
         {
             module->cancelled = true;
         }
+
+        if (FFlag::LuauExportValueSyntax && FFlag::LuauExportValueTypecheck && !module->timeout && !module->cancelled)
+            synthesizeExportReturn(builtinTypes, NotNull{module.get()});
     }
 
     // if the only error we're producing is one about constraint solving being incomplete, we can silence it.
@@ -1629,32 +1633,16 @@ ModulePtr check(
         !FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete)
         module->errors.clear();
 
-    if (FFlag::LuauOverloadGetsInstantiated2)
-    {
-        ExpectedTypeVisitor etv{
-            NotNull{&module->astTypes},
-            NotNull{&module->astExpectedTypes},
-            NotNull{&module->astResolvedTypes},
-            NotNull{&module->astOverloadResolvedTypes},
-            NotNull{&module->internalTypes},
-            builtinTypes,
-            NotNull{parentScope.get()}
-        };
-        sourceModule.root->visit(&etv);
-    }
-    else
-    {
-
-        ExpectedTypeVisitor etv{
-            NotNull{&module->astTypes},
-            NotNull{&module->astExpectedTypes},
-            NotNull{&module->astResolvedTypes},
-            NotNull{&module->internalTypes},
-            builtinTypes,
-            NotNull{parentScope.get()}
-        };
-        sourceModule.root->visit(&etv);
-    }
+    ExpectedTypeVisitor etv{
+        NotNull{&module->astTypes},
+        NotNull{&module->astExpectedTypes},
+        NotNull{&module->astResolvedTypes},
+        NotNull{&module->astOverloadResolvedTypes},
+        NotNull{&module->internalTypes},
+        builtinTypes,
+        NotNull{parentScope.get()}
+    };
+    sourceModule.root->visit(&etv);
 
     // NOTE: This used to be done prior to cloning the public interface, but
     // we now replace "internal" types with `*error-type*`.

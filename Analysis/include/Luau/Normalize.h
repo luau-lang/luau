@@ -22,15 +22,6 @@ struct TypeFunctionRuntime;
 
 using ModulePtr = std::shared_ptr<Module>;
 
-bool isSubtype_DEPRECATED(
-    TypeId subTy,
-    TypeId superTy,
-    NotNull<Scope> scope,
-    NotNull<BuiltinTypes> builtinTypes,
-    InternalErrorReporter& ice,
-    SolverMode solverMode
-);
-
 } // namespace Luau
 
 template<>

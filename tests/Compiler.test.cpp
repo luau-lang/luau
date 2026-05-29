@@ -24,10 +24,12 @@ LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauCompileDuptableConstantPack2)
-LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauCompileTypeAliases)
 LUAU_FASTFLAG(LuauCompilePropagateTableProps2)
@@ -98,6 +100,16 @@ static std::string compileFunction0(const char* source)
 {
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::compileOrThrow(bcb, source);
+
+    return bcb.dumpFunction(0);
+}
+
+static std::string compileFunction0Constants(const char* source)
+{
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
+
     Luau::compileOrThrow(bcb, source);
 
     return bcb.dumpFunction(0);
@@ -861,6 +873,40 @@ LOADN R1 42
 SETTABLEN R1 R0 1
 RETURN R0 1
 )");
+}
+
+TEST_CASE("DumpConstantsTables")
+{
+    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0Constants(R"(
+return {a=1,b=2,c=3}, {only=42}, {first=10, second=20, third=30}
+)"),
+        R"(
+K0: 'a'
+K1: 1
+K2: 'b'
+K3: 2
+K4: 'c'
+K5: 3
+K6: {['a'] = 1 #0, ['b'] = 2 #3, ['c'] = 3 #2} sizenode=4
+K7: 'only'
+K8: 42
+K9: {['only'] = 42 #0} sizenode=1
+K10: 'first'
+K11: 10
+K12: 'second'
+K13: 20
+K14: 'third'
+K15: 30
+K16: {['first'] = 10 #1, ['second'] = 20 #3, ['third'] = 30 #3 (conflict)} sizenode=4
+DUPTABLE R0 6
+DUPTABLE R1 9
+DUPTABLE R2 16
+RETURN R0 3
+)"
+    );
 }
 
 TEST_CASE("TableLiteralsIndexConstant")
@@ -10821,7 +10867,7 @@ RETURN R1 1
 
 TEST_CASE("IntegerType")
 {
-    if (!FFlag::LuauIntegerType)
+    if (!FFlag::LuauIntegerType2)
         return;
 
     // i suffix
@@ -10887,7 +10933,7 @@ RETURN R0 1
 
 TEST_CASE("IntegerBcb")
 {
-    ScopedFastFlag luauInteger{FFlag::LuauIntegerType, true};
+    ScopedFastFlag luauInteger{FFlag::LuauIntegerType2, true};
 
     const char* source = R"(
 function foo()
@@ -11263,6 +11309,78 @@ CALL R2 3 0
 L0: RETURN R0 0
 )"
     );
+}
+
+TEST_CASE("ExportLocalBytecode")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+
+    // basic exported local: value is stored into the export table, then table is frozen and returned
+    CHECK_EQ(
+        "\n" + compileFunction0("export local x = 5"),
+        R"(
+LOADN R0 5
+NEWTABLE R1 0 0
+SETTABLEKS R0 R1 K0 ['x']
+GETIMPORT R2 3 [table.freeze]
+MOVE R3 R1
+CALL R2 1 1
+RETURN R2 1
+)"
+    );
+
+    // multiple exported locals are all stored into the same export table
+    CHECK_EQ(
+        "\n" + compileFunction0("export local x = 5\nexport local y = 10"),
+        R"(
+LOADN R0 5
+NEWTABLE R1 0 0
+SETTABLEKS R0 R1 K0 ['x']
+LOADN R2 10
+SETTABLEKS R2 R1 K1 ['y']
+GETIMPORT R3 4 [table.freeze]
+MOVE R4 R1
+CALL R3 1 1
+RETURN R3 1
+)"
+    );
+
+    // reassigning an exported local updates the export table
+    CHECK_EQ(
+        "\n" + compileFunction0("export local x = 5\nx = 10"),
+        R"(
+LOADN R0 5
+NEWTABLE R1 0 0
+SETTABLEKS R0 R1 K0 ['x']
+LOADN R2 10
+SETTABLEKS R2 R1 K0 ['x']
+GETIMPORT R2 3 [table.freeze]
+MOVE R3 R1
+CALL R2 1 1
+RETURN R2 1
+)"
+    );
+}
+
+/**
+ * This was introduced as a regression test to ensure that the LBC_CONSTANT_*
+ * values do not incidentally change.
+ */
+TEST_CASE("LBCConstantRegressionTest")
+{
+    CHECK_EQ(LBC_CONSTANT_NIL, 0);
+    CHECK_EQ(LBC_CONSTANT_BOOLEAN, 1);
+    CHECK_EQ(LBC_CONSTANT_NUMBER, 2);
+    CHECK_EQ(LBC_CONSTANT_STRING, 3);
+    CHECK_EQ(LBC_CONSTANT_IMPORT, 4);
+    CHECK_EQ(LBC_CONSTANT_TABLE, 5);
+    CHECK_EQ(LBC_CONSTANT_CLOSURE,6);
+    CHECK_EQ(LBC_CONSTANT_VECTOR, 7);
+    CHECK_EQ(LBC_CONSTANT_TABLE_WITH_CONSTANTS, 8);
+    CHECK_EQ(LBC_CONSTANT_INTEGER, 9);
+    CHECK_EQ(LBC_CONSTANT_CLASS_SHAPE, 10);
+
+    CHECK_EQ(LBC_CONSTANT__COUNT, 11);
 }
 
 TEST_SUITE_END();

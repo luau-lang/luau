@@ -303,12 +303,8 @@ struct NonStrictTypeChecker
             return visit(s);
         else if (auto s = stat->as<AstStatDeclareExternType>())
             return visit(s);
-        else if (stat->is<AstStatClass>())
-        {
-            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-            // TODO: CLI-199130
-            return NonStrictContext{};
-        }
+        else if (auto s = stat->as<AstStatClass>())
+            return visit(s);
         else if (auto s = stat->as<AstStatError>())
             return visit(s);
         else
@@ -505,6 +501,21 @@ struct NonStrictTypeChecker
 
         for (auto prop : declClass->props)
             visit(prop.ty);
+
+        return {};
+    }
+
+    NonStrictContext visit(AstStatClass* declClass)
+    {
+        for (auto prop : declClass->members)
+        {
+            if (auto property = get_if<AstClassProperty>(&prop))
+                visit(property->ty);
+            else if (auto method = get_if<AstClassMethod>(&prop))
+                visit(method->function);
+            else
+                LUAU_ASSERT(!"Unknown class field");
+        }
 
         return {};
     }

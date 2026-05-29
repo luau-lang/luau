@@ -21,6 +21,7 @@ LUAU_FASTINT(LuauNonStrictTypeCheckerRecursionLimit)
 LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(LuauAddRecursionCounterToNonStrictTypeChecker)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
+LUAU_FASTFLAG(LuauTidyTypePrototyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 using namespace Luau;
@@ -67,7 +68,6 @@ using namespace Luau;
 
 struct NonStrictTypeCheckerFixture : Fixture
 {
-
     NonStrictTypeCheckerFixture() = default;
 
     CheckResult checkNonStrict(const std::string& code)
@@ -896,5 +896,27 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_check_expr_recursion_l
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 #endif
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "typecheck_class_method_bodies")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauTidyTypePrototyping, true},
+    };
+
+    CheckResult result = checkNonStrict(R"(
+        --!nonstrict
+        class Student
+            public name: number
+            function greet(self)
+                return `Hello, {lower(self.name)}!`
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_CHECK_ERROR(result, CheckedFunctionCallError);
+}
 
 TEST_SUITE_END();
