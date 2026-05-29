@@ -40,9 +40,9 @@ LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
-LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
+LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -3688,8 +3688,13 @@ void TypeChecker2::checkIndexTypeFromType(
                 reportError(NotATable{tableTy}, location);
             else
             {
-                if (FFlag::LuauExternReadWriteAttributes && get<ExternType>(tableTy))
-                    reportError(UnknownProperty{tableTy, prop}, location);
+                if (auto et = get<ExternType>(tableTy); et && FFlag::LuauExternReadWriteAttributes)
+                {
+                    if (!FFlag::LuauTweakAccessViolationReporting || et->indexer || context == ValueContext::RValue)
+                        reportError(UnknownProperty{tableTy, prop}, location);
+                    else
+                        reportError(PropertyAccessViolation{tableTy, prop, PropertyAccessViolation::CannotWrite}, location);
+                }
                 else
                     reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
             }
@@ -3743,11 +3748,7 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         {
             TypeId indexType = follow(tt->indexer->indexType);
             TypeId givenType = module->internalTypes.addType(SingletonType{StringSingleton{prop}});
-            bool keyMatches = false;
-            if (FFlag::LuauThreadUniferStateThroughTypeFunctionReduction)
-                keyMatches = subtyping->isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}).isSubtype;
-            else
-                keyMatches = isSubtype_DEPRECATED(givenType, indexType, NotNull{module->getModuleScope().get()}, builtinTypes, *ice, SolverMode::New);
+            bool keyMatches = subtyping->isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}).isSubtype;
 
             if (keyMatches)
             {

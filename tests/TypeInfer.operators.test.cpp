@@ -1331,7 +1331,7 @@ TEST_CASE_FIXTURE(Fixture, "unrelated_primitives_cannot_be_compared")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "mm_comparisons_must_return_a_boolean")
 {
-    // CLI-115687
+#if 0 // CLI-115687
     if (true || FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1362,6 +1362,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mm_comparisons_must_return_a_boolean")
 
     CHECK(toString(result.errors[1]) == "Metamethod '__lt' must return a boolean");
     CHECK(toString(result.errors[3]) == "Metamethod '__lt' must return a boolean");
+#endif
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "reworked_and")

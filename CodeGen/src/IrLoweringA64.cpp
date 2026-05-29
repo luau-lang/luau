@@ -12,7 +12,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenCallWrapImproved)
 LUAU_FASTFLAGVARIABLE(LuauCodegenFixBufferLenCheck)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAG(LuauYieldIter2)
@@ -1373,8 +1372,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         CODEGEN_ASSERT(OP_A(inst).kind == IrOpKind::VmReg && OP_B(inst).kind == IrOpKind::VmReg);
         IrCondition cond = conditionOp(OP_C(inst));
 
-        if (FFlag::LuauCodegenCallWrapImproved)
-            inst.regA64 = regs.allocReg(KindA64::w, index);
+        inst.regA64 = regs.allocReg(KindA64::w, index);
 
         Label skip, exit;
 
@@ -1392,11 +1390,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.b(ConditionA64::NotEqual, skip);
         }
 
-        if (FFlag::LuauCodegenCallWrapImproved)
-        {
-            // We have reserved the result register, so we can free it now so it is not recorded in the spill sequence
-            regs.freeReg(inst.regA64);
-        }
+        // We have reserved the result register, so we can free it now so it is not recorded in the spill sequence
+        regs.freeReg(inst.regA64);
 
         size_t spills = regs.spill(index);
 
@@ -1415,23 +1410,14 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.blr(x3);
 
-        if (FFlag::LuauCodegenCallWrapImproved)
-        {
-            if (inst.regA64 != w0)
-                build.mov(inst.regA64, w0);
+        if (inst.regA64 != w0)
+            build.mov(inst.regA64, w0);
 
-            inst.regA64 = regs.takeReg(inst.regA64, index);
+        inst.regA64 = regs.takeReg(inst.regA64, index);
 
-            emitUpdateBase(build);
+        emitUpdateBase(build);
 
-            regs.restore(spills);
-        }
-        else
-        {
-            emitUpdateBase(build);
-
-            inst.regA64 = regs.takeReg(w0, index);
-        }
+        regs.restore(spills);
 
         if (cond == IrCondition::Equal)
         {

@@ -24,12 +24,11 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSetBlockEntryState3)
-LUAU_FASTFLAGVARIABLE(LuauCodegenUserdataAddressAlias)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateTagsAcrossChains2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenBufferWriteEffects)
-LUAU_FASTFLAGVARIABLE(LuauCodegenJumpCmpIntFoldFix)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLinearSetupEntryState3)
+LUAU_FASTFLAGVARIABLE(LuauCodegenLoadPropagateOrigin)
 LUAU_FASTFLAGVARIABLE(LuauCodegenExtraTableOpts)
+LUAU_FASTFLAGVARIABLE(LuauCodegenRecordAllBlockExitInfo)
 
 namespace Luau
 {
@@ -647,6 +646,32 @@ struct ConstPropState
         return false;
     }
 
+    // If a prior LOAD_TVALUE for this register version came from a different VM register and is still usable,
+    // rewrite this load to read from that origin register
+    bool tryRedirectVmRegLoadToTValueOrigin(IrInst& loadInst)
+    {
+        CODEGEN_ASSERT(OP_A(loadInst).kind == IrOpKind::VmReg);
+
+        if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_TVALUE, OP_A(loadInst)))
+        {
+            IrInst& tvalueLoad = function.instructions[*prevIdx];
+
+            if (tvalueLoad.cmd != IrCmd::LOAD_TVALUE || OP_A(tvalueLoad).kind != IrOpKind::VmReg)
+                return false;
+
+            if (vmRegOp(OP_A(tvalueLoad)) == vmRegOp(OP_A(loadInst)))
+                return false;
+
+            if (tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}) == nullptr)
+                return false;
+
+            replace(function, OP_A(loadInst), OP_A(tvalueLoad));
+            return true;
+        }
+
+        return false;
+    }
+
     IrInst versionedVmUpvalueLoad(IrInst& loadInst)
     {
         IrOp op = OP_A(loadInst);
@@ -1096,8 +1121,7 @@ struct ConstPropState
                 const IrInst& infoPtr = function.instOp(info.address);
 
                 // Pointers from separate allocations cannot be the same
-                if (currPtr.cmd == IrCmd::NEW_USERDATA && infoPtr.cmd == IrCmd::NEW_USERDATA &&
-                    (!FFlag::LuauCodegenUserdataAddressAlias || OP_A(storeInst) != info.address))
+                if (currPtr.cmd == IrCmd::NEW_USERDATA && infoPtr.cmd == IrCmd::NEW_USERDATA && OP_A(storeInst) != info.address)
                 {
                     i++;
                     continue;
@@ -1546,8 +1570,7 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_BUFFER_WRITEF32:
     case LBF_BUFFER_WRITEF64:
     case LBF_BUFFER_WRITEINTEGER:
-        if (FFlag::LuauCodegenBufferWriteEffects)
-            state.invalidateHeapBufferData();
+        state.invalidateHeapBufferData();
         break;
     case LBF_TABLE_INSERT:
         state.invalidateHeap();
@@ -1581,6 +1604,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (state.substituteTagLoadWithTValueData(build, inst))
                 break;
 
+            if (FFlag::LuauCodegenLoadPropagateOrigin)
+                state.tryRedirectVmRegLoadToTValueOrigin(inst);
+
             state.substituteOrRecordVmRegLoad(inst);
         }
         break;
@@ -1589,6 +1615,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         {
             if (state.substituteOrRecordValueLoadWithTValueData(build, inst))
                 break;
+
+            if (FFlag::LuauCodegenLoadPropagateOrigin)
+                state.tryRedirectVmRegLoadToTValueOrigin(inst);
 
             state.substituteOrRecordVmRegLoad(inst);
         }
@@ -1605,6 +1634,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         {
             if (state.substituteOrRecordValueLoadWithTValueData(build, inst))
                 break;
+
+            if (FFlag::LuauCodegenLoadPropagateOrigin)
+                state.tryRedirectVmRegLoadToTValueOrigin(inst);
 
             state.substituteOrRecordVmRegLoad(inst);
         }
@@ -1623,6 +1655,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (state.substituteOrRecordValueLoadWithTValueData(build, inst))
                 break;
 
+            if (FFlag::LuauCodegenLoadPropagateOrigin)
+                state.tryRedirectVmRegLoadToTValueOrigin(inst);
+
             state.substituteOrRecordVmRegLoad(inst);
         }
         break;
@@ -1639,6 +1674,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         {
             if (state.substituteOrRecordValueLoadWithTValueData(build, inst))
                 break;
+
+            if (FFlag::LuauCodegenLoadPropagateOrigin)
+                state.tryRedirectVmRegLoadToTValueOrigin(inst);
 
             state.substituteOrRecordVmRegLoad(inst);
         }
@@ -2131,19 +2169,12 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         std::optional<int> valueA = function.asIntOp(OP_A(inst).kind == IrOpKind::Constant ? OP_A(inst) : state.tryGetValue(OP_A(inst)));
         std::optional<int> valueB = function.asIntOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst)));
 
-        if (FFlag::LuauCodegenJumpCmpIntFoldFix && valueA && valueB)
+        if (valueA && valueB)
         {
             if (compare(*valueA, *valueB, conditionOp(OP_C(inst))))
                 replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
             else
                 replace(function, block, index, {IrCmd::JUMP, {OP_E(inst)}});
-        }
-        else if (valueA && valueB)
-        {
-            if (compare(*valueA, *valueB, conditionOp(OP_C(inst))))
-                replace(function, block, index, {IrCmd::JUMP, {OP_C(inst)}});
-            else
-                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
         }
         break;
     }
@@ -3530,13 +3561,19 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
             }
         }
 
-        if (FFlag::LuauCodegenPropagateTagsAcrossChains2)
+        if (FFlag::LuauCodegenRecordAllBlockExitInfo)
+            saveBlockExitState(function, *block, state);
+        else if (FFlag::LuauCodegenPropagateTagsAcrossChains2)
             lastBlock = block;
+
         block = nextBlock;
     }
 
-    if (FFlag::LuauCodegenPropagateTagsAcrossChains2 && lastBlock)
-        saveBlockExitState(function, *lastBlock, state);
+    if (!FFlag::LuauCodegenRecordAllBlockExitInfo)
+    {
+        if (FFlag::LuauCodegenPropagateTagsAcrossChains2 && lastBlock)
+            saveBlockExitState(function, *lastBlock, state);
+    }
 }
 
 // Note that blocks in the collected path are marked as visited

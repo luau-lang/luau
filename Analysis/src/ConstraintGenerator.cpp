@@ -42,7 +42,6 @@ LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
-LUAU_FASTFLAGVARIABLE(LuauKeepExplicitMapForGlobalTypes2)
 LUAU_FASTFLAGVARIABLE(LuauRefinementTypeVector)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 LUAU_FASTFLAGVARIABLE(LuauReadOnlyIndexers)
@@ -1811,21 +1810,11 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
         if (!existingFunctionTy)
             ice->ice("prepopulateGlobalScope did not populate a global name", globalName->location);
 
-        if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
+        if (auto bt = get<BlockedType>(*existingFunctionTy); bt && uninitializedGlobals.contains(globalName->name))
         {
-            if (auto bt = get<BlockedType>(*existingFunctionTy); bt && uninitializedGlobals.contains(globalName->name))
-            {
-                LUAU_ASSERT(bt->getOwner() == nullptr);
-                uninitializedGlobals.erase(globalName->name);
-                emplaceType<BoundType>(asMutable(*existingFunctionTy), generalizedType);
-            }
-        }
-        else
-        {
-            // Sketchy: We're specifically looking for BlockedTypes that were
-            // initially created by ConstraintGenerator::prepopulateGlobalScope.
-            if (auto bt = get<BlockedType>(*existingFunctionTy); bt && nullptr == bt->getOwner())
-                emplaceType<BoundType>(asMutable(*existingFunctionTy), generalizedType);
+            LUAU_ASSERT(bt->getOwner() == nullptr);
+            uninitializedGlobals.erase(globalName->name);
+            emplaceType<BoundType>(asMutable(*existingFunctionTy), generalizedType);
         }
 
 
@@ -3677,22 +3666,12 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprGlobal* glob
         if (annotatedTy == follow(rhsType))
             return;
 
-        if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
+        auto followedAnnotation = follow(*annotatedTy);
+        if (auto bt = get<BlockedType>(followedAnnotation); bt && uninitializedGlobals.contains(global->name))
         {
-            auto followedAnnotation = follow(*annotatedTy);
-            if (auto bt = get<BlockedType>(followedAnnotation); bt && uninitializedGlobals.contains(global->name))
-            {
-                LUAU_ASSERT(bt->getOwner() == nullptr);
-                uninitializedGlobals.erase(global->name);
-                emplaceType<BoundType>(asMutable(followedAnnotation), rhsType);
-            }
-        }
-        else
-        {
-            // Sketchy: We're specifically looking for BlockedTypes that were
-            // initially created by ConstraintGenerator::prepopulateGlobalScope.
-            if (auto bt = get<BlockedType>(follow(*annotatedTy)); bt && !bt->getOwner())
-                emplaceType<BoundType>(asMutable(*annotatedTy), rhsType);
+            LUAU_ASSERT(bt->getOwner() == nullptr);
+            uninitializedGlobals.erase(global->name);
+            emplaceType<BoundType>(asMutable(followedAnnotation), rhsType);
         }
 
 
@@ -4791,8 +4770,7 @@ struct GlobalPrepopulator : AstVisitor
                 if (globalScope->bindings.find(g->name) == globalScope->bindings.end())
                 {
                     TypeId bt = arena->addType(BlockedType{});
-                    if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
-                        uninitializedGlobals.insert(g->name);
+                    uninitializedGlobals.insert(g->name);
                     globalScope->bindings[g->name] = Binding{bt, g->location};
                 }
             }
@@ -4806,8 +4784,7 @@ struct GlobalPrepopulator : AstVisitor
         if (AstExprGlobal* g = function->name->as<AstExprGlobal>())
         {
             TypeId bt = arena->addType(BlockedType{});
-            if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
-                uninitializedGlobals.insert(g->name);
+            uninitializedGlobals.insert(g->name);
             globalScope->bindings[g->name] = Binding{bt};
         }
 
@@ -4831,11 +4808,8 @@ void ConstraintGenerator::prepopulateGlobalScopeForFragmentTypecheck(const Scope
     GlobalPrepopulator tfgp{NotNull{typeFunctionRuntime->rootScope.get()}, arena, dfg};
     program->visit(&tfgp);
 
-    if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
-    {
-        for (auto name : tfgp.uninitializedGlobals)
-            uninitializedGlobals.insert(name);
-    }
+    for (auto name : tfgp.uninitializedGlobals)
+        uninitializedGlobals.insert(name);
 }
 
 void ConstraintGenerator::prepopulateGlobalScope(const ScopePtr& globalScope, AstStatBlock* program)
@@ -4847,21 +4821,15 @@ void ConstraintGenerator::prepopulateGlobalScope(const ScopePtr& globalScope, As
 
     program->visit(&gp);
 
-    if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
-    {
-        for (auto name : gp.uninitializedGlobals)
-            uninitializedGlobals.insert(name);
-    }
+    for (auto name : gp.uninitializedGlobals)
+        uninitializedGlobals.insert(name);
 
     // Handle type function globals as well, without preparing a module scope since they have a separate environment
     GlobalPrepopulator tfgp{NotNull{typeFunctionRuntime->rootScope.get()}, arena, dfg};
     program->visit(&tfgp);
 
-    if (FFlag::LuauKeepExplicitMapForGlobalTypes2)
-    {
-        for (auto name : tfgp.uninitializedGlobals)
-            uninitializedGlobals.insert(name);
-    }
+    for (auto name : tfgp.uninitializedGlobals)
+        uninitializedGlobals.insert(name);
 }
 
 bool ConstraintGenerator::recordPropertyAssignment(TypeId ty)

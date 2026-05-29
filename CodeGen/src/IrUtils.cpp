@@ -19,7 +19,6 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenConsistentHasResult)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 
 namespace Luau

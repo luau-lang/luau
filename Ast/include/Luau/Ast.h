@@ -75,6 +75,8 @@ struct AstLocal
     size_t functionDepth;
     size_t loopDepth;
     bool isConst;
+    // exported is only a property set after construction
+    bool isExported = false;
 
     AstType* annotation;
 
@@ -844,7 +846,9 @@ public:
 
     AstArray<AstLocal*> vars;
     AstArray<AstExpr*> values;
-    bool isConst;
+
+    bool isConst = false;
+    bool isExported = false;
 
     std::optional<Location> equalsSignLocation;
 };

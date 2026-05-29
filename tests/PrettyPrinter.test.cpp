@@ -8,6 +8,9 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauConst2)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauErrorTolerantPrettyPrinting)
@@ -2206,7 +2209,7 @@ TEST_CASE("prettyPrint_function_attributes")
     }
 }
 
-TEST_CASE("transpile_explicit_type_instantiations")
+TEST_CASE("pretty_print_explicit_type_instantiations")
 {
     std::string code = "f<<A, B, C...>>() t.f<<A, B, C...>>() t:f<<A, B, C>>()";
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
@@ -2221,6 +2224,72 @@ TEST_CASE("transpile_explicit_type_instantiations")
     CHECK_EQ("f              () t.f              () t:f           ()", prettyPrint(code).code);
 
     code = "f < < A , B , C... > >( ) t.f < < A, B, C... > >  ( )  t:f< < A, B, C > > ( )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+}
+
+TEST_CASE("export")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+    std::string code;
+
+    code = (R"(
+export local version = "1.0.0"
+export const TAU = math.pi * 2
+export local settings: Settings = getSettings()
+export local a, b, c = 1, 2, 3
+export local d
+    )");
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = (R"(
+export function add(a: number, b: number): number
+    return a + b
+end
+
+export function greet(name: string): string
+    return "Hello, " .. name
+end
+
+export function noop()
+end
+    )");
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = (R"(
+@native
+export function foo()
+end
+    )");
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = (R"(
+export local f, g
+
+function f()
+    return g()
+end
+
+function g()
+    return 42
+end
+    )");
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = (R"(
+export type Config = {
+    debug: boolean,
+    timeout: number,
+}
+
+export local currentConfig: Config
+
+export function createConfig(debug: boolean, timeout: number): Config
+    return {
+        debug = debug,
+        timeout = timeout,
+    }
+end
+    )");
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
 }
 
@@ -2243,6 +2312,217 @@ TEST_CASE("pretty_print_incomplete_type_group")
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
 
     code = "type t = (number           )";
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE("pretty_print_incomplete_explicit_type_instantiations")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    // Parser branch for explicit type instantiations is triggered by two '<' tokens
+    std::string code = "f<<A, B, C...>() t.f<<A, B, C...>() t:f<<A, B, C>()";
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = "f < < A , B , C...  >( ) t.f < < A, B, C...  >  ( )  t:f< < A, B, C  > ( )";
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE("pretty_print_incomplete_function_call")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    // Parser branch for function call is triggered by a '(' token
+    std::string code = "print('hello world'";
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = "t:hello('world'";
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_index_expr")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    // Parser branch for index expr is triggered by a '[' token
+    std::string code = "local a = {1, 2, 3} local b = a[2";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_function_expr")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = R"(
+local a = function<T(x : T, y: string, ... : number)
+    return x
+end)";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_table_expr")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = R"(
+local a = {
+    a = 1
+    ["b"] = 2
+}
+    )";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = R"(local a = { ["b" = 2, ["c"] 3, ["d" 4 })";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_if_else_expr")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = R"(local a = if true 1 else 2)";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_do_stat")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = R"(
+do
+    print("hello world")
+)";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_repeat_stat")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = R"(
+repeat
+    print("hello world")
+)";
+    // The parser tries to parse the condition even if "until" is missing
+    std::string expected = R"(
+repeat
+    print("hello world")
+(error-expr))";
+
+    CHECK_EQ(expected, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_for_stat")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = R"(
+for i : number = 1 10 do
+    print(i)
+end
+)";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_assign_stat")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = R"(
+x , y 1, 2
+)";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_generic_typepack")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = "type foo<T, U..., V> = bar<T, U..., V>";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_type_alias")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = "type foo number";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_type_reference")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = "type foo = Bar<number";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_table_type")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = R"(type foo = { ["hello" : number })";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = R"(type foo = { ["hello"] number })";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = R"(type foo = { ["hello" number })";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = R"(type foo = { ["hello"] number, ["world"] number, ["i" : "rule" })";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = R"(type foo = { [number] number })";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = R"(type foo = { [number : number })";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = R"(type foo = { [number  number })";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_function_type")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = R"(
+local function foo() : (number, string -> ()
+end
+)";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = "type foo = <A(number) -> string";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = "type foo = <A>number) -> string";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = "type foo = <A>(number -> string";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_typeof_type")
+{
+    ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
+    std::string code = "type foo = typeof x)";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = "type foo = typeof(x";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+    code = "type foo = typeof x";
+
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
 }
 

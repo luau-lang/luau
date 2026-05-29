@@ -43,7 +43,6 @@ inline constexpr RegisterX64 rConstants = r12;     // TValue* k
 
 inline constexpr unsigned kExtraLocals = 3;            // Number of 8 byte slots available for specialized local variables specified below
 inline constexpr unsigned kSpillSlots = 13;            // Number of 8 byte slots available for register allocator to spill data into
-inline constexpr unsigned kSpillSlots_NEW = 12;        // TODO: remove with FFlagLuauCodegenNewRegSplit
 static_assert((kExtraLocals + kSpillSlots) * 8 % 16 == 0, "locals have to preserve 16 byte alignment");
 inline constexpr unsigned kExtraSpillSlots = 64;
 static_assert(kExtraSpillSlots * 8 <= LUA_EXECUTION_CALLBACK_STORAGE, "can't use more extra slots than Luau global state provides");

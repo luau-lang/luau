@@ -12,7 +12,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
-LUAU_FASTFLAG(LuauUseConstraintSetsToTrackFreeTypes)
 LUAU_FASTFLAG(LuauRefinementTypeVector)
 
 using namespace Luau;
@@ -796,7 +795,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
-        {FFlag::LuauUseConstraintSetsToTrackFreeTypes, true},
     };
 
     CheckResult result = check(R"(

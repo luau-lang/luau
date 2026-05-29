@@ -50,6 +50,7 @@
 // Version 7: Adds LBC_CONSTANT_TABLE_WITH_CONSTANTS for DUPTABLE with pre-filled constant values. Currently supported.
 // Version 8: Adds LBC_CONSTANT_INTEGER for 64-bit integer constants. Currently supported.
 // Version 9: Adds atom-based userdata field access acceleration. Currently supported.
+// Version 10: Adds LBC_CONSTANT_CLASS_SHAPE and NEWCLASSMEMBER for use with Luau Classes. Experimental.
 // Version 11: Adds CALLFB, CMPPROTO and feedback vector description. Experimental.
 
 // # Bytecode type information history
@@ -514,8 +515,11 @@ enum LuauBytecodeTag
     LBC_CONSTANT_CLOSURE,
     LBC_CONSTANT_VECTOR,
     LBC_CONSTANT_TABLE_WITH_CONSTANTS,
-    LBC_CONSTANT_CLASS_SHAPE,
     LBC_CONSTANT_INTEGER,
+    LBC_CONSTANT_CLASS_SHAPE,
+
+    /** WARNING: This must always be last. */
+    LBC_CONSTANT__COUNT
 };
 
 // Type table tags

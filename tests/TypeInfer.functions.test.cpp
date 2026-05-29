@@ -22,8 +22,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
-LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes2)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 
@@ -729,10 +727,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_2")
 
 TEST_CASE_FIXTURE(Fixture, "higher_order_function_3")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag  _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         function swap(p)
@@ -1438,10 +1433,7 @@ g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
 local a = {{x=4}, {x=7}, {x=1}}
@@ -2387,10 +2379,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_wi
 
 TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local function apply<a, b..., c...>(f: (a, b...) -> c..., x: a)
@@ -4041,10 +4030,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_polarity_of_annotated_code")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "lute_tasklib_createtask")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function createtask(f, ...)
@@ -4071,7 +4057,6 @@ TEST_CASE_FIXTURE(Fixture, "global_emplacing_steals_type_from_elsewhere")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauKeepExplicitMapForGlobalTypes2, true},
     };
 
     CheckResult result = check(R"(
@@ -4092,10 +4077,7 @@ TEST_CASE_FIXTURE(Fixture, "global_emplacing_steals_type_from_elsewhere")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "are_we_in_the_new_solver")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         -- This file should fail the old solver
@@ -4121,10 +4103,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "are_we_in_the_new_solver")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_generics_keyof")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function makeOtherThing(template)

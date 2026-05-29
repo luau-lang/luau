@@ -16,8 +16,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenCallWrapImproved)
-LUAU_FASTFLAG(LuauCodegenNewRegSplit)
 LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAG(LuauYieldIter2)
@@ -1529,100 +1527,50 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         CODEGEN_ASSERT(OP_A(inst).kind == IrOpKind::VmReg && OP_B(inst).kind == IrOpKind::VmReg);
         IrCondition cond = conditionOp(OP_C(inst));
 
-        if (FFlag::LuauCodegenCallWrapImproved)
+        inst.regX64 = regs.allocReg(SizeX64::dword, index);
+
+        Label skip, exit;
+
+        // For equality comparison, 'luaV_equalval' expects tag to be equal before the call
+        if (cond == IrCondition::Equal)
         {
-            inst.regX64 = regs.allocReg(SizeX64::dword, index);
+            ScopedRegX64 tmp{regs, SizeX64::dword};
 
-            Label skip, exit;
+            build.mov(tmp.reg, memRegTagOp(OP_A(inst)));
+            build.cmp(memRegTagOp(OP_B(inst)), tmp.reg);
 
-            // For equality comparison, 'luaV_equalval' expects tag to be equal before the call
-            if (cond == IrCondition::Equal)
-            {
-                ScopedRegX64 tmp{regs, SizeX64::dword};
-
-                build.mov(tmp.reg, memRegTagOp(OP_A(inst)));
-                build.cmp(memRegTagOp(OP_B(inst)), tmp.reg);
-
-                // If the tags are not equal, skip the call and set result to 0
-                build.jcc(ConditionX64::NotEqual, skip);
-            }
-
-            {
-                ScopedSpills spillGuard(regs);
-
-                IrCallWrapperX64 callWrap(regs, build);
-                callWrap.addArgument(SizeX64::qword, rState);
-                callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_A(inst))));
-                callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_B(inst))));
-                callWrap.setResultRegister(inst.regX64, index);
-
-                if (cond == IrCondition::LessEqual)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessequal)]);
-                else if (cond == IrCondition::Less)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessthan)]);
-                else if (cond == IrCondition::Equal)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_equalval)]);
-                else
-                    CODEGEN_ASSERT(!"Unsupported condition");
-
-                emitUpdateBase(build);
-            }
-
-            if (cond == IrCondition::Equal)
-            {
-                build.jmp(exit);
-                build.setLabel(skip);
-
-                build.xor_(inst.regX64, inst.regX64);
-                build.setLabel(exit);
-            }
+            // If the tags are not equal, skip the call and set result to 0
+            build.jcc(ConditionX64::NotEqual, skip);
         }
-        else
+
         {
-            Label skip, exit;
+            ScopedSpills spillGuard(regs);
 
-            // For equality comparison, 'luaV_lessequal' expects tag to be equal before the call
-            if (cond == IrCondition::Equal)
-            {
-                ScopedRegX64 tmp{regs, SizeX64::dword};
+            IrCallWrapperX64 callWrap(regs, build);
+            callWrap.addArgument(SizeX64::qword, rState);
+            callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_A(inst))));
+            callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_B(inst))));
+            callWrap.setResultRegister(inst.regX64, index);
 
-                build.mov(tmp.reg, memRegTagOp(OP_A(inst)));
-                build.cmp(memRegTagOp(OP_B(inst)), tmp.reg);
-
-                // If the tags are not equal, skip 'luaV_lessequal' call and set result to 0
-                build.jcc(ConditionX64::NotEqual, skip);
-            }
-
-            {
-                ScopedSpills spillGuard(regs);
-
-                IrCallWrapperX64 callWrap(regs, build);
-                callWrap.addArgument(SizeX64::qword, rState);
-                callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_A(inst))));
-                callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_B(inst))));
-
-                if (cond == IrCondition::LessEqual)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessequal)]);
-                else if (cond == IrCondition::Less)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessthan)]);
-                else if (cond == IrCondition::Equal)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_equalval)]);
-                else
-                    CODEGEN_ASSERT(!"Unsupported condition");
-            }
+            if (cond == IrCondition::LessEqual)
+                callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessequal)]);
+            else if (cond == IrCondition::Less)
+                callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessthan)]);
+            else if (cond == IrCondition::Equal)
+                callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_equalval)]);
+            else
+                CODEGEN_ASSERT(!"Unsupported condition");
 
             emitUpdateBase(build);
+        }
 
-            inst.regX64 = regs.takeReg(eax, index);
+        if (cond == IrCondition::Equal)
+        {
+            build.jmp(exit);
+            build.setLabel(skip);
 
-            if (cond == IrCondition::Equal)
-            {
-                build.jmp(exit);
-                build.setLabel(skip);
-
-                build.xor_(inst.regX64, inst.regX64);
-                build.setLabel(exit);
-            }
+            build.xor_(inst.regX64, inst.regX64);
+            build.setLabel(exit);
         }
 
         // If case we made a call, skip high register bits clear, only consumer is JUMP_CMP_INT which doesn't read them
@@ -1933,69 +1881,35 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::TRY_CALL_FASTGETTM:
     {
-        if (FFlag::LuauCodegenCallWrapImproved)
+        inst.regX64 = regs.allocReg(SizeX64::qword, index);
+
+        ScopedRegX64 tmp{regs, SizeX64::qword};
+
+        build.mov(tmp.reg, qword[regOp(OP_A(inst)) + offsetof(LuaTable, metatable)]);
+        regs.freeLastUseReg(function.instOp(OP_A(inst)), index); // Release before the call if it's the last use
+
+        build.test(tmp.reg, tmp.reg);
+        build.jcc(ConditionX64::Zero, labelOp(OP_C(inst))); // No metatable
+
+        build.test(byte[tmp.reg + offsetof(LuaTable, tmcache)], 1 << intOp(OP_B(inst)));
+        build.jcc(ConditionX64::NotZero, labelOp(OP_C(inst))); // No tag method
+
+        ScopedRegX64 tmp2{regs, SizeX64::qword};
+        build.mov(tmp2.reg, qword[rState + offsetof(lua_State, global)]);
+
         {
-            inst.regX64 = regs.allocReg(SizeX64::qword, index);
+            ScopedSpills spillGuard(regs);
 
-            ScopedRegX64 tmp{regs, SizeX64::qword};
-
-            build.mov(tmp.reg, qword[regOp(OP_A(inst)) + offsetof(LuaTable, metatable)]);
-            regs.freeLastUseReg(function.instOp(OP_A(inst)), index); // Release before the call if it's the last use
-
-            build.test(tmp.reg, tmp.reg);
-            build.jcc(ConditionX64::Zero, labelOp(OP_C(inst))); // No metatable
-
-            build.test(byte[tmp.reg + offsetof(LuaTable, tmcache)], 1 << intOp(OP_B(inst)));
-            build.jcc(ConditionX64::NotZero, labelOp(OP_C(inst))); // No tag method
-
-            ScopedRegX64 tmp2{regs, SizeX64::qword};
-            build.mov(tmp2.reg, qword[rState + offsetof(lua_State, global)]);
-
-            {
-                ScopedSpills spillGuard(regs);
-
-                IrCallWrapperX64 callWrap(regs, build, index);
-                callWrap.addArgument(SizeX64::qword, tmp);
-                callWrap.addArgument(SizeX64::qword, intOp(OP_B(inst)));
-                callWrap.addArgument(SizeX64::qword, qword[tmp2.release() + offsetof(global_State, tmname) + intOp(OP_B(inst)) * sizeof(TString*)]);
-                callWrap.setResultRegister(inst.regX64, index);
-                callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaT_gettm)]);
-            }
-
-            build.test(inst.regX64, inst.regX64);
-            build.jcc(ConditionX64::Zero, labelOp(OP_C(inst))); // No tag method
+            IrCallWrapperX64 callWrap(regs, build, index);
+            callWrap.addArgument(SizeX64::qword, tmp);
+            callWrap.addArgument(SizeX64::qword, intOp(OP_B(inst)));
+            callWrap.addArgument(SizeX64::qword, qword[tmp2.release() + offsetof(global_State, tmname) + intOp(OP_B(inst)) * sizeof(TString*)]);
+            callWrap.setResultRegister(inst.regX64, index);
+            callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaT_gettm)]);
         }
-        else
-        {
-            ScopedRegX64 tmp{regs, SizeX64::qword};
 
-            build.mov(tmp.reg, qword[regOp(OP_A(inst)) + offsetof(LuaTable, metatable)]);
-            regs.freeLastUseReg(function.instOp(OP_A(inst)), index); // Release before the call if it's the last use
-
-            build.test(tmp.reg, tmp.reg);
-            build.jcc(ConditionX64::Zero, labelOp(OP_C(inst))); // No metatable
-
-            build.test(byte[tmp.reg + offsetof(LuaTable, tmcache)], 1 << intOp(OP_B(inst)));
-            build.jcc(ConditionX64::NotZero, labelOp(OP_C(inst))); // No tag method
-
-            ScopedRegX64 tmp2{regs, SizeX64::qword};
-            build.mov(tmp2.reg, qword[rState + offsetof(lua_State, global)]);
-
-            {
-                ScopedSpills spillGuard(regs);
-
-                IrCallWrapperX64 callWrap(regs, build, index);
-                callWrap.addArgument(SizeX64::qword, tmp);
-                callWrap.addArgument(SizeX64::qword, intOp(OP_B(inst)));
-                callWrap.addArgument(SizeX64::qword, qword[tmp2.release() + offsetof(global_State, tmname) + intOp(OP_B(inst)) * sizeof(TString*)]);
-                callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaT_gettm)]);
-            }
-
-            build.test(rax, rax);
-            build.jcc(ConditionX64::Zero, labelOp(OP_C(inst))); // No tag method
-
-            inst.regX64 = regs.takeReg(rax, index);
-        }
+        build.test(inst.regX64, inst.regX64);
+        build.jcc(ConditionX64::Zero, labelOp(OP_C(inst))); // No tag method
         break;
     }
     case IrCmd::NEW_USERDATA:
@@ -3908,7 +3822,7 @@ void IrLoweringX64::finishFunction()
 
     if (stats)
     {
-        if (regs.maxUsedSlot > (FFlag::LuauCodegenNewRegSplit ? kSpillSlots : kSpillSlots_NEW) + kExtraSpillSlots)
+        if (regs.maxUsedSlot > kSpillSlots + kExtraSpillSlots)
             stats->regAllocErrors++;
 
         if (regs.maxUsedSlot > stats->maxSpillSlotsUsed)
@@ -3919,7 +3833,7 @@ void IrLoweringX64::finishFunction()
 bool IrLoweringX64::hasError() const
 {
     // If register allocator had to use more stack slots than we have available, this function can't run natively
-    if (regs.maxUsedSlot > (FFlag::LuauCodegenNewRegSplit ? kSpillSlots : kSpillSlots_NEW) + kExtraSpillSlots)
+    if (regs.maxUsedSlot > kSpillSlots + kExtraSpillSlots)
         return true;
 
     return false;

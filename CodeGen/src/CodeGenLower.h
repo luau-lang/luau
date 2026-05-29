@@ -212,6 +212,14 @@ inline bool lowerImpl(
             // This also prevents them from getting into text output when that's enabled
             if (isPseudo(inst.cmd))
             {
+                // Process potential store location hint that existed at this location
+                if (const StoreLocationHint* hint = function.findStoreLocationHint(index))
+                {
+                    lowering.regs.currInstIdx = index;
+                    lowering.valueTracker.processStoreLocationHint(hint);
+                    lowering.regs.currInstIdx = kInvalidInstIdx;
+                }
+
                 CODEGEN_ASSERT(inst.useCount == 0);
                 continue;
             }
@@ -312,7 +320,7 @@ inline bool lowerIr(
 
     X64::IrLoweringX64 lowering(build, helpers, ir.function, stats);
 
-    return lowerImpl(build, lowering, ir.function, sortedBlocks, proto->bytecodeid, options);
+    return lowerImpl(build, lowering, ir.function, sortedBlocks, proto ? proto->bytecodeid : 0, options);
 }
 
 inline bool lowerIr(
@@ -327,7 +335,7 @@ inline bool lowerIr(
 {
     A64::IrLoweringA64 lowering(build, helpers, ir.function, stats);
 
-    return lowerImpl(build, lowering, ir.function, sortedBlocks, proto->bytecodeid, options);
+    return lowerImpl(build, lowering, ir.function, sortedBlocks, proto ? proto->bytecodeid : 0, options);
 }
 
 template<typename AssemblyBuilder>
@@ -344,7 +352,7 @@ inline bool lowerFunction(
     ir.function.stats = stats;
     ir.function.recordCounters = options.compilationOptions.recordCounters;
 
-    if (options.compilationOptions.nopPadding)
+    if (options.compilationOptions.nopPadding && proto != nullptr)
         ir.function.jitRngState = jitRngSeed(uintptr_t(proto));
 
     killUnusedBlocks(ir.function);

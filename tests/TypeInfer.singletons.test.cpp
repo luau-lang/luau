@@ -8,7 +8,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -807,10 +806,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2018")
 
 TEST_CASE_FIXTURE(Fixture, "oss_2010_but_with_booleans")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult results = check(R"(
         local function foo<T>(my_enum: true | T): T
