@@ -30,7 +30,6 @@ LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
@@ -1257,31 +1256,16 @@ FragmentTypeCheckResult typecheckFragment_(
 
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::ConstraintSolverEnd);
 
-    if (FFlag::LuauOverloadGetsInstantiated2)
-    {
-        ExpectedTypeVisitor etv{
-            NotNull{&incrementalModule->astTypes},
-            NotNull{&incrementalModule->astExpectedTypes},
-            NotNull{&incrementalModule->astResolvedTypes},
-            NotNull{&incrementalModule->astOverloadResolvedTypes},
-            NotNull{&incrementalModule->internalTypes},
-            frontend.builtinTypes,
-            NotNull{freshChildOfNearestScope.get()}
-        };
-        root->visit(&etv);
-    }
-    else
-    {
-        ExpectedTypeVisitor etv{
-            NotNull{&incrementalModule->astTypes},
-            NotNull{&incrementalModule->astExpectedTypes},
-            NotNull{&incrementalModule->astResolvedTypes},
-            NotNull{&incrementalModule->internalTypes},
-            frontend.builtinTypes,
-            NotNull{freshChildOfNearestScope.get()}
-        };
-        root->visit(&etv);
-    }
+    ExpectedTypeVisitor etv{
+        NotNull{&incrementalModule->astTypes},
+        NotNull{&incrementalModule->astExpectedTypes},
+        NotNull{&incrementalModule->astResolvedTypes},
+        NotNull{&incrementalModule->astOverloadResolvedTypes},
+        NotNull{&incrementalModule->internalTypes},
+        frontend.builtinTypes,
+        NotNull{freshChildOfNearestScope.get()}
+    };
+    root->visit(&etv);
 
 
     // In frontend we would forbid internal types

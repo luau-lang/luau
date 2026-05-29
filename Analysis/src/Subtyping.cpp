@@ -26,8 +26,6 @@ LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
-LUAU_FASTFLAGVARIABLE(LuauFollowGenericBeforeCheckingIfMapped)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingTablesHasBetterErrorSuppression)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
@@ -488,8 +486,7 @@ struct ApplyMappedGenerics : Substitution
         {
             for (TypeId g : f->generics)
             {
-                if (FFlag::LuauFollowGenericBeforeCheckingIfMapped)
-                    g = follow(g);
+                g = follow(g);
                 if (const std::vector<SubtypingEnvironment::GenericBounds>* bounds = env->mappedGenerics.find(g); bounds && !bounds->empty())
                     // We don't want to mutate the generics of a function that's being subtyped
                     return true;
@@ -2441,38 +2438,24 @@ SubtypingResult Subtyping::isCovariantWith(
 
     if (*subFunction->argTypes == *superFunction->argTypes && *subFunction->retTypes == *superFunction->retTypes)
     {
-        if (FFlag::LuauOverloadGetsInstantiated2)
-        {
-            // It's fine to upcast a function with generics to a function without, for example:
-            //
-            //  local f: ({number}) -> number = (nil :: <T>({T}) -> T)
-            //
-            // ... or even ...
-            //
-            //  local f: () -> () = (nil :: <T>() -> ())
-            //
-            // Intuitively: a generic function should always be a subtype of its instantiations.
-            if (superFunction->generics.size() != subFunction->generics.size() && !superFunction->generics.empty())
-                result.andAlso({false}).withError(
-                    TypeError{scope->location, GenericTypeCountMismatch{superFunction->generics.size(), subFunction->generics.size()}}
-                );
+        // It's fine to upcast a function with generics to a function without, for example:
+        //
+        //  local f: ({number}) -> number = (nil :: <T>({T}) -> T)
+        //
+        // ... or even ...
+        //
+        //  local f: () -> () = (nil :: <T>() -> ())
+        //
+        // Intuitively: a generic function should always be a subtype of its instantiations.
+        if (superFunction->generics.size() != subFunction->generics.size() && !superFunction->generics.empty())
+            result.andAlso({false}).withError(
+                TypeError{scope->location, GenericTypeCountMismatch{superFunction->generics.size(), subFunction->generics.size()}}
+            );
 
-            if (superFunction->genericPacks.size() != subFunction->genericPacks.size() && !superFunction->genericPacks.empty())
-                result.andAlso({false}).withError(
-                    TypeError{scope->location, GenericTypePackCountMismatch{superFunction->genericPacks.size(), subFunction->genericPacks.size()}}
-                );
-        }
-        else
-        {
-            if (superFunction->generics.size() != subFunction->generics.size())
-                result.andAlso({false}).withError(
-                    TypeError{scope->location, GenericTypeCountMismatch{superFunction->generics.size(), subFunction->generics.size()}}
-                );
-            if (superFunction->genericPacks.size() != subFunction->genericPacks.size())
-                result.andAlso({false}).withError(
-                    TypeError{scope->location, GenericTypePackCountMismatch{superFunction->genericPacks.size(), subFunction->genericPacks.size()}}
-                );
-        }
+        if (superFunction->genericPacks.size() != subFunction->genericPacks.size() && !superFunction->genericPacks.empty())
+            result.andAlso({false}).withError(
+                TypeError{scope->location, GenericTypePackCountMismatch{superFunction->genericPacks.size(), subFunction->genericPacks.size()}}
+            );
     }
 
     if (!subFunction->generics.empty())

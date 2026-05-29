@@ -15,6 +15,9 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauExportValueTypecheck)
+LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTINT(LuauSolverConstraintLimit)
 
 using namespace Luau;
@@ -952,6 +955,247 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
     std::optional<TypeId> fType = requireType(b, "f");
     REQUIRE(fType);
     CHECK(toString(*fType) == "bad<number>");
+}
+
+// exported modules
+TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_basic")
+{
+    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        export local version = "1.0.0"
+        export const name = "test module"
+        export local count = 41
+
+        count += 1
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        local A = require(game.A)
+
+        local version = A.version
+        local name = A.name
+        local count = A.count
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = getFrontend().check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
+    CHECK_EQ("number", toString(requireType(b, "count")));
+    CHECK_EQ("string", toString(requireType(b, "version")));
+    CHECK_EQ("string", toString(requireType(b, "name")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_mutual_recursive_functions")
+{
+    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        export local a, b
+
+        function a()
+            return b() + 1
+        end
+
+        function b()
+            return 42
+        end
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        local A = require(game.A)
+
+        local a = A.a
+        local b = A.b
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = getFrontend().check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
+    CHECK_EQ("(...any) -> number", toString(requireType(b, "a")));
+    CHECK_EQ("(...any) -> number", toString(requireType(b, "b")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_unassigned_local_stays_nil")
+{
+    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        export local a
+        export local b = function() return 1 end
+        b = nil
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        local A = require(game.A)
+
+        local a = A.a
+        local b = A.b
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = getFrontend().check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
+    CHECK_EQ("nil", toString(requireType(b, "a")));
+    CHECK_EQ("nil", toString(requireType(b, "b")));
+}
+
+// maintain consistency with exported_module_unassigned_local_stays_nil
+TEST_CASE_FIXTURE(BuiltinsFixture, "returned_module_unassigned_local_stays_nil")
+{
+    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        local a = nil
+        local b = function() return 1 end
+        b = nil
+        return {a = a, b = b}
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        local A = require(game.A)
+
+        local a = A.a
+        local b = A.b
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = getFrontend().check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
+    CHECK_EQ("nil", toString(requireType(b, "a")));
+    CHECK_EQ("nil", toString(requireType(b, "b")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_function")
+{
+    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        export function add(a: number, b: number): number
+            return a + b
+        end
+
+        export function greet(name: string): string
+            return "Hello, " .. name
+        end
+
+        export function noop()
+            -- do nothing
+        end
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        local A = require(game.A)
+
+        local add = A.add
+        local greet = A.greet
+        local noop = A.noop
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = getFrontend().check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
+    CHECK_EQ("(number, number) -> number", toString(requireType(b, "add")));
+    CHECK_EQ("(string) -> string", toString(requireType(b, "greet")));
+    CHECK_EQ("(...any) -> ()", toString(requireType(b, "noop")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "exported_multret")
+{
+    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        local function huh()
+            return 42, "huh", false
+        end
+
+        export local a, b, c = huh()
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        local A = require(game.A)
+
+        local a = A.a
+        local b = A.b
+        local c = A.c
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = getFrontend().check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
+    CHECK_EQ("number", toString(requireType(b, "a")));
+    CHECK_EQ("string", toString(requireType(b, "b")));
+    CHECK_EQ("boolean", toString(requireType(b, "c")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "exported_partial_multret")
+{
+    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        local function huh()
+            return "huh", false
+        end
+
+        export local a, b, c = 42, huh()
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        local A = require(game.A)
+
+        local a = A.a
+        local b = A.b
+        local c = A.c
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = getFrontend().check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
+    CHECK_EQ("number", toString(requireType(b, "a")));
+    CHECK_EQ("string", toString(requireType(b, "b")));
+    CHECK_EQ("boolean", toString(requireType(b, "c")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "export_class")

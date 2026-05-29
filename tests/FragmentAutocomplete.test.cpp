@@ -23,9 +23,7 @@ using namespace Luau;
 LUAU_FASTINT(LuauParseErrorLimit)
 
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
-LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauAutocompleteStringSingletonIntersection)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -1706,9 +1704,10 @@ return module)";
         getFrontend().setLuauSolverMode(SolverMode::New);
         checkAndExamine(source, "module", "{  }");
         // [TODO] CLI-140762 Fragment autocomplete still doesn't return correct result when LuauSolverV2 is on
-        return;
+#if 0
         fragmentACAndCheck(updated1, Position{1, 17}, "module", "{  }", "{ a: (%error-id%: unknown) -> () }");
         fragmentACAndCheck(updated2, Position{1, 18}, "module", "{  }", "{ ab: (%error-id%: unknown) -> () }");
+#endif
     }
 }
 
@@ -4778,8 +4777,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_inde
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_function_call_with_variadic_args")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails2, true};
-
     std::string source = R"(
         local function foo(...: "Val1" | "Val2") end
     )";
@@ -4806,7 +4803,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_sin
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauAutocompleteStringSingletonIntersection, true},
-        {FFlag::LuauAutocompleteFunctionCallArgTails2, true},
     };
 
     std::string source = R"(
@@ -4858,8 +4854,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_sin
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_table_insert")
 {
-    ScopedFastFlag _{FFlag::LuauOverloadGetsInstantiated2, true};
-
     std::string src = R"(
         local function addToTable(t: {{ foobar: number }})
             table.insert(t, {})
@@ -4886,8 +4880,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_ta
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_properties")
 {
-    ScopedFastFlag _{FFlag::LuauOverloadGetsInstantiated2, true};
-
     std::string src = R"(
         type React_Node = any
         type ReactElement<P, T> = any
@@ -4973,8 +4965,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_prop
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_narrow_fragment")
 {
-    ScopedFastFlag sff{FFlag::LuauOverloadGetsInstantiated2, true};
-
     std::string src = R"(
         type React_Node = any
         type ReactElement<P, T> = any

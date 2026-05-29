@@ -18,9 +18,10 @@ LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauConst2)
+LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
-LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauCstExprGroup)
@@ -718,7 +719,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_decimal")
     CHECK_EQ(str->list.data[4]->as<AstExprConstantNumber>()->value, 1.5e-5);
     CHECK_EQ(str->list.data[5]->as<AstExprConstantNumber>()->value, 12345.125);
 
-    if (FFlag::LuauIntegerType)
+    if (FFlag::LuauIntegerType2)
     {
         stat = parse("return 1i, 1_000_000i");
         REQUIRE(stat != nullptr);
@@ -744,7 +745,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_hexadecimal")
     CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 0xFFFF);
     CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
 
-    if (FFlag::LuauIntegerType)
+    if (FFlag::LuauIntegerType2)
     {
         stat = parse("return 0xabi, 0XAB05i, 0xff_ffi, 0x7fffffffffffffffi, 0x8000000000000000i, 0xffffffffffffffffi");
         REQUIRE(stat != nullptr);
@@ -772,7 +773,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
     CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 42);
     CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
 
-    if (FFlag::LuauIntegerType)
+    if (FFlag::LuauIntegerType2)
     {
         AstStat* stat = parse(
             "return 0b1i, 0b0i, 0b101010i, 0b111111111111111111111111111111111111111111111111111111111111111i, "
@@ -799,7 +800,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
     matchParseError("return 0x0x123", "Malformed number");
     matchParseError("return 0xffffffffffffffffffffllllllg", "Malformed number");
     matchParseError("return 0x0xffffffffffffffffffffffffffff", "Malformed number");
-    if (FFlag::LuauIntegerType)
+    if (FFlag::LuauIntegerType2)
     {
         matchParseError("return 0x0xABCi", "Malformed integer");
         matchParseError("return 0xABCMi", "Malformed integer");
@@ -949,6 +950,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_export_type")
 
 TEST_CASE_FIXTURE(Fixture, "export_is_an_identifier_only_when_followed_by_type")
 {
+    // this test actually should work under export value syntax, for obvious reasons
+    ScopedFastFlag sff{FFlag::LuauExportValueSyntax, false};
     try
     {
         parse(R"(
@@ -3141,24 +3144,25 @@ TEST_CASE_FIXTURE(Fixture, "error_const_not_initialized")
 
 TEST_CASE_FIXTURE(Fixture, "error_const_reassignment")
 {
-    ScopedFastFlag sff{FFlag::LuauConst2, true};
+    // LuauExportValueSyntax flag to get better error message change
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
 
-    matchParseError("const a = 42; a = 43", "Assigned expression must be a variable or a field");
+    matchParseError("const a = 42; a = 43", "Variable 'a' is constant and may not be reassigned");
 
-    matchParseError("local b; const a = 42; a, b = 43", "Assigned expression must be a variable or a field");
+    matchParseError("local b; const a = 42; a, b = 43", "Variable 'a' is constant and may not be reassigned");
 
-    matchParseError("local b; const a = 42; b, a = 43", "Assigned expression must be a variable or a field");
+    matchParseError("local b; const a = 42; b, a = 43", "Variable 'a' is constant and may not be reassigned");
 
-    matchParseError("local b; const a = 42; b, a = ...", "Assigned expression must be a variable or a field");
+    matchParseError("local b; const a = 42; b, a = ...", "Variable 'a' is constant and may not be reassigned");
 
-    matchParseError("const a = 42; function a() end", "Assigned expression must be a variable or a field");
+    matchParseError("const a = 42; function a() end", "Variable 'a' is constant and may not be reassigned");
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_const_function_reassignment")
 {
-    ScopedFastFlag sff{FFlag::LuauConst2, true};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
 
-    matchParseError("const function a() return 42 end; a = 43", "Assigned expression must be a variable or a field");
+    matchParseError("const function a() return 42 end; a = 43", "Variable 'a' is constant and may not be reassigned");
 }
 
 TEST_CASE_FIXTURE(Fixture, "const_shadow")
@@ -3416,13 +3420,14 @@ TEST_CASE_FIXTURE(Fixture, "reassigned_class")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
     ScopedFastFlag constFlag{FFlag::LuauConst2, true};
+    ScopedFastFlag exportFlag{FFlag::LuauExportValueSyntax, true};
 
     matchParseError(
         R"(
 class Animal end
 Animal = nil
         )",
-        "Assigned expression must be a variable or a field" // const reassignment msg
+        "Variable 'Animal' is constant and may not be reassigned" // const reassignment msg
     );
 }
 
@@ -4936,6 +4941,32 @@ end)");
     checkAttribute(attributes.data[0], AstAttr::Type::Checked, Location(Position(1, 4), Position(1, 12)));
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_attribute_on_export_function_stat")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+
+    AstStatBlock* stat = parse(R"(
+@checked
+export function hello(x, y)
+    return x + y
+end)");
+
+    LUAU_ASSERT(stat != nullptr);
+
+    AstStatLocalFunction* statFun = stat->body.data[0]->as<AstStatLocalFunction>();
+    LUAU_ASSERT(statFun != nullptr);
+
+    CHECK_EQ(statFun->location.begin, Position(1, 0));
+    CHECK(statFun->name->isExported);
+    CHECK(statFun->name->isConst);
+
+    AstArray<AstAttr*> attributes = statFun->func->attributes;
+
+    CHECK_EQ(attributes.size, 1);
+
+    checkAttribute(attributes.data[0], AstAttr::Type::Checked, Location(Position(1, 0), Position(1, 8)));
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_debugnoinline_on_local_function")
 {
     ScopedFastFlag noInline{FFlag::DebugLuauNoInline, true};
@@ -5068,7 +5099,20 @@ local x = 10
         pr6.errors, 1, Location(Position(2, 6), Position(2, 7)), "Expected 'function' after local declaration with attribute, but got 'x' instead"
     );
 
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+
     ParseResult pr7 = tryParse(R"(
+@checked
+export local x = 10
+)");
+    checkFirstErrorForAttributes(
+        pr7.errors,
+        1,
+        Location(Position(2, 7), Position(2, 12)),
+        "Expected 'function' after export declaration with attribute, but got 'local' instead"
+    );
+
+    ParseResult pr8 = tryParse(R"(
 local i = 1
 while a[i] do
     if a[i] == v then @checked break end
@@ -5076,7 +5120,7 @@ while a[i] do
 end
 )");
     checkFirstErrorForAttributes(
-        pr7.errors,
+        pr8.errors,
         1,
         Location(Position(3, 31), Position(3, 36)),
         FFlag::LuauConst2
@@ -5086,11 +5130,11 @@ end
     );
 
 
-    ParseResult pr8 = tryParse(R"(
+    ParseResult pr9 = tryParse(R"(
 function foo1 () @checked return 'a' end
 )");
     checkFirstErrorForAttributes(
-        pr8.errors,
+        pr9.errors,
         1,
         Location(Position(1, 26), Position(1, 32)),
         FFlag::LuauConst2
@@ -5550,6 +5594,248 @@ TEST_CASE_FIXTURE(Fixture, "parse_type_name")
 TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_errors")
 {
     matchParseError("local a = x:a<<T>>", "Expected '(', '{' or <string> when parsing function call, got <eof>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "export_value_rfc")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+
+    AstStatBlock* block = parse(R"(
+export local version = "1.0.0"
+export const TAU = math.pi * 2
+export local settings: Settings = getSettings()
+export local a, b, c = 1, 2, 3
+export local d
+
+export function add(a: number, b: number): number
+    return a + b
+end
+
+export local f, g
+function f()
+    return g()
+end
+
+function g()
+    return 42
+end
+
+local function ret(): (string, number, boolean)
+    return "heh", 42, false
+end
+export local x, y, z = ret()
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE_EQ(11, block->body.size);
+
+    AstStatLocal* version = block->body.data[0]->as<AstStatLocal>();
+    REQUIRE(version != nullptr);
+    CHECK(version->isExported);
+    CHECK(!version->isConst);
+    REQUIRE_EQ(1, version->vars.size);
+    CHECK(version->vars.data[0]->isExported);
+    CHECK(!version->vars.data[0]->isConst);
+
+    AstStatLocal* tau = block->body.data[1]->as<AstStatLocal>();
+    REQUIRE(tau != nullptr);
+    CHECK(tau->isExported);
+    CHECK(tau->isConst);
+    REQUIRE_EQ(1, tau->vars.size);
+    CHECK(tau->vars.data[0]->isExported);
+    CHECK(tau->vars.data[0]->isConst);
+
+    AstStatLocal* settings = block->body.data[2]->as<AstStatLocal>();
+    REQUIRE(settings != nullptr);
+    CHECK(settings->isExported);
+    CHECK(!settings->isConst);
+    REQUIRE_EQ(1, settings->vars.size);
+    REQUIRE(settings->vars.data[0]->annotation != nullptr);
+
+    AstStatLocal* abc = block->body.data[3]->as<AstStatLocal>();
+    REQUIRE(abc != nullptr);
+    CHECK(abc->isExported);
+    CHECK(!abc->isConst);
+    REQUIRE_EQ(3, abc->vars.size);
+    for (AstLocal* local : abc->vars)
+    {
+        CHECK(local->isExported);
+        CHECK(!local->isConst);
+    }
+
+    AstStatLocal* d = block->body.data[4]->as<AstStatLocal>();
+    REQUIRE(d != nullptr);
+    CHECK(d->isExported);
+    CHECK(!d->isConst);
+    REQUIRE_EQ(1, d->vars.size);
+    CHECK_EQ(0, d->values.size);
+    CHECK(d->vars.data[0]->isExported);
+
+    AstStatLocalFunction* add = block->body.data[5]->as<AstStatLocalFunction>();
+    REQUIRE(add != nullptr);
+    CHECK(add->name->isExported);
+    CHECK(add->name->isConst);
+
+    AstStatLocal* forwardDecls = block->body.data[6]->as<AstStatLocal>();
+    REQUIRE(forwardDecls != nullptr);
+    CHECK(forwardDecls->isExported);
+    CHECK(!forwardDecls->isConst);
+    REQUIRE_EQ(2, forwardDecls->vars.size);
+    CHECK_EQ(0, forwardDecls->values.size);
+    for (AstLocal* local : forwardDecls->vars)
+    {
+        CHECK(local->isExported);
+        CHECK(!local->isConst);
+    }
+
+    REQUIRE(block->body.data[7]->is<AstStatFunction>());
+    REQUIRE(block->body.data[8]->is<AstStatFunction>());
+
+    AstStatLocal* xyz = block->body.data[3]->as<AstStatLocal>();
+    REQUIRE(xyz != nullptr);
+    CHECK(xyz->isExported);
+    CHECK(!xyz->isConst);
+    REQUIRE_EQ(3, xyz->vars.size);
+    for (AstLocal* local : xyz->vars)
+    {
+        CHECK(local->isExported);
+        CHECK(!local->isConst);
+    }
+
+    parse(R"(
+export type Config = {
+    debug: boolean,
+    timeout: number,
+}
+
+return {
+    debug = false,
+    timeout = 5,
+}
+    )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "export_value_parse_failures")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+
+    auto expectParseError = [&](const std::string& source)
+    {
+        INFO(source);
+        ParseResult result = tryParse(source);
+        CHECK_FALSE(result.errors.empty());
+        return result;
+    };
+
+    for (const std::string source : {
+             R"(
+export foo = 5
+    )",
+             R"(
+export foo
+    )",
+             R"(
+function foo()
+end
+export foo
+    )",
+             R"(
+export local function foo()
+end
+    )",
+         })
+    {
+        expectParseError(source);
+    }
+
+    ParseResult duplicateExport = expectParseError(R"(
+export local foo = 1
+export local foo = 2
+    )");
+    CHECK_NE(duplicateExport.errors.front().getMessage().find("foo"), std::string::npos);
+
+    auto expectExportReturnConflict = [&](const std::string& source)
+    {
+        ParseResult result = expectParseError(source);
+        const std::string& message = result.errors.front().getMessage();
+        CHECK_NE(message.find("export"), std::string::npos);
+        CHECK_NE(message.find("return"), std::string::npos);
+    };
+
+    expectExportReturnConflict(R"(
+export local answer = 42
+return {answer = answer}
+    )");
+    expectExportReturnConflict(R"(
+if skip then
+    return
+end
+
+export local answer = 42
+    )");
+
+    for (const std::string source : {
+             R"(
+if true then
+    export local insideIf = 1
+end
+    )",
+             R"(
+do
+    export const insideDo = 1
+end
+    )",
+             R"(
+while true do
+    export local insideWhile = 1
+end
+    )",
+             R"(
+repeat
+    export local insideRepeat = 1
+until true
+    )",
+             R"(
+for i = 1, 1 do
+    export local insideFor = i
+end
+    )",
+             R"(
+local function test()
+    export local insideFunction = 1
+end
+    )",
+         })
+    {
+        matchParseError(source, "'export' may only be applied to top-level statements");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "export_value_parse_edge_cases")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+
+    AstStatBlock* contextualKeywordUses = parse(R"(
+export = 5
+export += 1
+export()
+    )");
+    REQUIRE(contextualKeywordUses != nullptr);
+    REQUIRE_EQ(3, contextualKeywordUses->body.size);
+    CHECK(contextualKeywordUses->body.data[0]->is<AstStatAssign>());
+    CHECK(contextualKeywordUses->body.data[1]->is<AstStatCompoundAssign>());
+    CHECK(contextualKeywordUses->body.data[2]->is<AstStatExpr>());
+
+    parse("export local x = 5");
+    parse("export const x = 5");
+    parse(R"(
+export function foo()
+end
+    )");
+
+    matchParseError("export 42", "Incomplete statement: expected assignment or a function call");
+    matchParseError("export if true then end", "Incomplete statement: expected assignment or a function call");
+    matchParseError("export", "Incomplete statement: expected assignment or a function call");
 }
 
 TEST_CASE_FIXTURE(Fixture, "extern_read_write_attributes")

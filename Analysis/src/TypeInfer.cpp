@@ -32,6 +32,8 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
@@ -286,6 +288,9 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     {
         currentModule->cancelled = true;
     }
+
+    if (FFlag::LuauExportValueSyntax && FFlag::LuauExportValueTypecheck && !currentModule->timeout && !currentModule->cancelled)
+        synthesizeExportReturn(builtinTypes, NotNull{currentModule.get()});
 
     if (get<FreeTypePack>(follow(moduleScope->returnType)))
         moduleScope->returnType = addTypePack(TypePack{{}, std::nullopt});

@@ -14,7 +14,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauSilenceDynamicFormatStringErrors)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -464,7 +463,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_2")
     LUAU_REQUIRE_NO_ERRORS(result);
     auto ty = requireType("t");
 
-    if (FFlag::LuauOverloadGetsInstantiated2 && !FFlag::DebugLuauForceOldSolver)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         // FIXME: This is a result of us solving for `table.pack` before we
         // generalize its arguments. After we've solved it, we end up

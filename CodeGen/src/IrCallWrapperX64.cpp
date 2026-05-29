@@ -6,8 +6,6 @@
 
 #include "EmitCommonX64.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenCallWrapImproved)
-
 namespace Luau
 {
 namespace CodeGen
@@ -81,7 +79,7 @@ void IrCallWrapperX64::call(const OperandX64& func)
     funcOp = func;
 
     // Free the result register before handling arguments so that no live value is preserved from it
-    if (FFlag::LuauCodegenCallWrapImproved && resultReg != noreg)
+    if (resultReg != noreg)
         regs.freeReg(resultReg);
 
     countRegisterUses();
@@ -221,7 +219,7 @@ void IrCallWrapperX64::call(const OperandX64& func)
 
     build.call(funcOp);
 
-    if (FFlag::LuauCodegenCallWrapImproved && resultReg != noreg)
+    if (resultReg != noreg)
     {
         // Result register was allocated before call was made, we freed it temporarily and taking it back
         regs.takeReg(resultReg, resultInstIdx);

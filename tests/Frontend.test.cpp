@@ -19,6 +19,9 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauConst2)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauExportValueTypecheck)
 
 namespace
 {
@@ -199,6 +202,45 @@ TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_cyclically_dependent_scr
 
     CheckResult result2 = getFrontend().check("game/Gui/Modules/D");
     LUAU_REQUIRE_ERROR_COUNT(0, result2);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "export_value_modules_have_typed_require_surface")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}, {FFlag::LuauExportValueTypecheck, true}};
+
+    fileResolver.source["game/ModuleA"] = R"(
+        --!strict
+        export local version = "1.0.0"
+        export const answer = 42
+
+        export function inc(x: number): number
+            return x + 1
+        end
+    )";
+
+    fileResolver.source["game/ModuleB"] = R"(
+        --!strict
+        local M = require(game.ModuleA)
+
+        local version: string = M.version
+        local answer: number = M.answer
+        local nextValue: number = M.inc(answer)
+
+        return version, nextValue
+    )";
+
+    CheckResult aResult = getFrontend().check("game/ModuleA");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = getFrontend().check("game/ModuleB");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    ModulePtr moduleA = getFrontend().moduleResolver.getModule("game/ModuleA");
+    REQUIRE(moduleA != nullptr);
+
+    std::optional<TypeId> exports = first(moduleA->returnType);
+    REQUIRE(exports);
+    CHECK_EQ("{ read answer: number, read inc: (number) -> number, read version: string }", toString(*exports));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "any_annotation_breaks_cycle")

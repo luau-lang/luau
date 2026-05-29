@@ -18,9 +18,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
-LUAU_FASTFLAG(LuauIntegerType)
-LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 
@@ -86,7 +84,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        if (FFlag::LuauIntegerType)
+        if (FFlag::LuauIntegerType2)
             CHECK_EQ(expectedWithNewSolver, decorateWithTypes(code));
         else
             CHECK_EQ(expectedWithNewSolver_NOINTEGER, decorateWithTypes(code));
@@ -1533,7 +1531,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauThreadUniferStateThroughTypeFunctionReduction, true},
         {FFlag::LuauRemoveConstraintSolverEmplace, true},
     };
 
@@ -1566,10 +1563,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_calling_pcall")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // This should have a type checking error, at least, but previously caused
     // an internal compiler exception.
@@ -1589,12 +1583,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_calling_pcall")
 // `1` alone should fully determine T. The ideal inferred type for `a` would be `number`.
 //
 // The over-constraining is sound (wider types, not false errors) and benign for the common case
-// (`T | nil` has only one free member). See .claude/luau-unifier2-free-type-bounds.md, Gap 5.
+// (`T | nil` has only one free member).
 TEST_CASE_FIXTURE(BuiltinsFixture, "union_super_with_multiple_free_members_over_constrains_lower_bounds")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
         {FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds, true},
     };
 
