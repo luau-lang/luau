@@ -6,6 +6,8 @@
 #include "doctest.h"
 #include "ScopedFlags.h"
 
+#include <regex>
+
 LUAU_FASTFLAG(LuauCodegenDseRestoreHints)
 LUAU_FASTFLAG(LuauCodegenForwardRematerialize)
 
@@ -29,6 +31,44 @@ static void stripLinesContaining(std::string& text, const char* needle)
 
         pos = lineStart;
     }
+}
+
+// To not have to update results every time a new field is added to lua_State/global_State, we replace the offsets
+static void normalizeStateOffsets(std::string& text)
+{
+    std::string result;
+    result.reserve(text.size());
+
+    std::string pendingReg;
+
+    size_t pos = 0;
+    while (pos < text.size())
+    {
+        size_t eol = text.find('\n', pos);
+        if (eol == std::string::npos)
+            eol = text.size();
+
+        std::string line = text.substr(pos, eol - pos);
+
+        std::smatch match;
+        if (std::regex_search(line, match, std::regex(R"((\w+),.*\[r15\+[^\]]+\])")))
+        {
+            pendingReg = match[1].str();
+            line = std::regex_replace(line, std::regex(R"(\[r15\+[^\]]+\])"), "[r15+<offset>]");
+        }
+        else if (!pendingReg.empty())
+        {
+            std::regex deref("\\[" + pendingReg + "\\+[^\\]]+\\]");
+            line = std::regex_replace(line, deref, "[" + pendingReg + "+<offset>]");
+        }
+
+        result += line;
+        if (eol < text.size())
+            result += '\n';
+        pos = eol + 1;
+    }
+
+    text = std::move(result);
 }
 
 class IrAssemblyFixture
@@ -56,6 +96,7 @@ public:
     {
         std::string text = getAssemblyFromIr(build, options);
         stripLinesContaining(text, "; skipping ");
+        normalizeStateOffsets(text);
 
         return text;
     }
@@ -106,8 +147,8 @@ bb_0:
   %1 = NUM_TO_INT %0
  vcvttsd2si  eax,xmm0
   INTERRUPT 0u
- mov         rax,qword ptr [r15+018h]
- cmp         qword ptr [rax+0510h],0
+ mov         rax,qword ptr [r15+<offset>]
+ cmp         qword ptr [rax+<offset>],0
  jne         .L12
 .L13:
   STORE_INT R0, %1
@@ -155,8 +196,8 @@ bb_0:
   %1 = NUM_TO_INT %0
  vcvttsd2si  eax,xmm0
   INTERRUPT 0u
- mov         rax,qword ptr [r15+018h]
- cmp         qword ptr [rax+0510h],0
+ mov         rax,qword ptr [r15+<offset>]
+ cmp         qword ptr [rax+<offset>],0
  jne         .L12
 .L13:
   STORE_INT R0, %1
@@ -212,8 +253,8 @@ bb_0:
  vcvttsd2si  eax,xmm0
   INTERRUPT 0u
  mov         dword ptr [rsp+048h],eax
- mov         rax,qword ptr [r15+018h]
- cmp         qword ptr [rax+0510h],0
+ mov         rax,qword ptr [r15+<offset>]
+ cmp         qword ptr [rax+<offset>],0
  jne         .L12
 .L13:
   STORE_INT R3, %3
@@ -279,8 +320,8 @@ bb_0:
   INTERRUPT 0u
  vmovsd      qword ptr [r14+040h],xmm0
  mov         dword ptr [r14+04Ch],0
- mov         rax,qword ptr [r15+018h]
- cmp         qword ptr [rax+0510h],0
+ mov         rax,qword ptr [r15+<offset>]
+ cmp         qword ptr [rax+<offset>],0
  jne         .L12
 .L13:
   STORE_DOUBLE R2, %5
@@ -351,8 +392,8 @@ bb_0:
   INTERRUPT 0u
  mov         dword ptr [rsp+048h],eax
  mov         dword ptr [rsp+04Ch],edx
- mov         rax,qword ptr [r15+018h]
- cmp         qword ptr [rax+0510h],0
+ mov         rax,qword ptr [r15+<offset>]
+ cmp         qword ptr [rax+<offset>],0
  jne         .L12
 .L13:
   %7 = INT_TO_NUM %1
