@@ -85,10 +85,10 @@ static const char* getTagName(uint8_t tag)
         return "tupval";
     case LUA_TDEADKEY:
         return "tdeadkey";
-    case LUA_TCLASSOBJ:
-        return "tclassobj";
-    case LUA_TCLASSINST:
-        return "tclassinst";
+    case LUA_TCLASS:
+        return "tclass";
+    case LUA_TOBJECT:
+        return "tobject";
     case LUA_TINTEGER:
         return "tinteger";
     default:
@@ -531,6 +531,8 @@ const char* getCmdName(IrCmd cmd)
         return "BUFFER_READI64";
     case IrCmd::BUFFER_WRITEI64:
         return "BUFFER_WRITEI64";
+    case IrCmd::JUMP_CMP_PROTOID:
+        return "JUMP_CMP_PROTOID";
     }
 
     LUAU_UNREACHABLE();

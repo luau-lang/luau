@@ -205,6 +205,8 @@ TEST_SUITE_BEGIN("AstQuery");
 
 TEST_CASE_FIXTURE(Fixture, "last_argument_function_call_type")
 {
+    // NOTE: This does not pass in the new solver as we do not give the
+    // expression "foo()" a type, only a type pack.
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     check(R"(

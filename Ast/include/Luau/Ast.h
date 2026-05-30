@@ -75,6 +75,8 @@ struct AstLocal
     size_t functionDepth;
     size_t loopDepth;
     bool isConst;
+    // exported is only a property set after construction
+    bool isExported = false;
 
     AstType* annotation;
 
@@ -844,7 +846,9 @@ public:
 
     AstArray<AstLocal*> vars;
     AstArray<AstExpr*> values;
-    bool isConst;
+
+    bool isConst = false;
+    bool isExported = false;
 
     std::optional<Location> equalsSignLocation;
 };
@@ -1100,6 +1104,7 @@ struct AstClassProperty
 
 struct AstClassMethod
 {
+    std::optional<Location> qualifierLocation;
     Location keywordLocation;
     AstName functionName;
     Location nameLocation;
@@ -1115,12 +1120,9 @@ public:
 
     AstLocal* name;
     AstArray<AstClassMember> members;
+    bool exported;
 
-    AstStatClass(
-        const Location& location,
-        AstLocal* name,
-        AstArray<AstClassMember> members
-    );
+    AstStatClass(const Location& location, AstLocal* name, AstArray<AstClassMember> members, bool exported);
 
     void visit(AstVisitor* visitor) override;
 };

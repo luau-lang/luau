@@ -179,4 +179,27 @@ end
 passthroughcheckpcallcdirect(passthroughCallVaradic)
 passthroughcheckpcallcdirect(passthroughCallWithState)
 
+-- test that error throws correctly restore C call counter
+if not limitedstack then
+	local function errf()
+		error("boom")
+	end
+
+	for i = 1, 100 do
+		local ok, err = pcall(function() passthroughCallVaradic(errf) end)
+		assert(not ok)
+		assert(string.find(err, "boom"), `iter {i}: expected boom, got {err}`)
+	end
+
+	local count = 0
+	local function foo()
+		count += 1
+		pcall(1)
+		coroutine.wrap(foo)()
+	end
+	local ok2 = pcall(foo)
+	assert(not ok2)
+	assert(count == 200, `expected count == 200 (MAXCCALLS), got {count}`)
+end
+
 return "OK"

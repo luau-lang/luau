@@ -345,7 +345,7 @@ private:
     void validateVariadic() const;
 
     std::string dumpCurrentFunction(std::vector<int>& dumpinstoffs) const;
-    void dumpConstant(std::string& result, int k) const;
+    void dumpConstant(std::string& result, int k, bool detailed) const;
     void dumpInstruction(const uint32_t* opcode, std::string& output, int targetLabel) const;
 
     void writeFunction(std::string& ss, uint32_t id, uint8_t flags);
