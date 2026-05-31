@@ -55,8 +55,6 @@ TEST_SUITE_BEGIN("RuntimeLimits");
 
 TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     constexpr const char* src = R"LUAU(
         --!strict
 
@@ -286,7 +284,10 @@ TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
 
     CheckResult result = check(src);
 
-    CHECK(hasError<CodeTooComplex>(result));
+    LUAU_REQUIRE_ERRORS(result);
+
+    if (FFlag::DebugLuauForceOldSolver)
+        CHECK(hasError<CodeTooComplex>(result));
 }
 
 TEST_CASE_FIXTURE(LimitFixture, "Signal_exerpt" * doctest::timeout(1.0))

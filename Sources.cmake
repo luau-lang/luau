@@ -49,6 +49,8 @@ target_sources(Luau.Bytecode PRIVATE
 
     Bytecode/src/BytecodeBuilder.cpp
     Bytecode/src/BytecodeGraph.cpp
+    Bytecode/src/BytecodeGraphParser.h
+    Bytecode/src/BytecodeGraphSerializer.h
 )
 
 # Luau.Compiler Sources
@@ -387,6 +389,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/lintlib.cpp
     VM/src/lvmexecute.cpp
     VM/src/lclass.cpp
+    VM/src/lclasslib.cpp
     VM/src/lvmload.cpp
     VM/src/lvmutils.cpp
 
@@ -493,6 +496,7 @@ if(TARGET Luau.UnitTest)
         tests/Generalization.test.cpp
         tests/InsertionOrderedMap.test.cpp
         tests/IostreamOptional.h
+        tests/IrAssembly.test.cpp
         tests/IrBuilder.test.cpp
         tests/IrCallWrapperX64.test.cpp
         tests/IrRegAllocX64.test.cpp
@@ -529,6 +533,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.anyerror.test.cpp
         tests/TypeInfer.builtins.test.cpp
         tests/TypeInfer.cfa.test.cpp
+        tests/TypeInfer.classes.test.cpp
         tests/TypeInfer.const.test.cpp
         tests/TypeInfer.definitions.test.cpp
         tests/TypeInfer.typeInstantiations.test.cpp

@@ -978,14 +978,11 @@ AstStatDeclareFunction::AstStatDeclareFunction(
 {
 }
 
-AstStatClass::AstStatClass(
-    const Location& location,
-    AstLocal* name,
-    AstArray<AstClassMember> members
-)
+AstStatClass::AstStatClass(const Location& location, AstLocal* name, AstArray<AstClassMember> members, bool exported)
     : AstStat(ClassIndex(), location)
     , name(name)
     , members(members)
+    , exported(exported)
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
 }

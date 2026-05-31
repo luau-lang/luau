@@ -8,8 +8,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -464,7 +462,7 @@ Table type 'a' not compatible with type 'Bad' because the former is missing fiel
 
 TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 {
-    ScopedFastFlag _ {FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         type Ok<T> = {success: true, result: T}
@@ -808,11 +806,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2018")
 
 TEST_CASE_FIXTURE(Fixture, "oss_2010_but_with_booleans")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult results = check(R"(
         local function foo<T>(my_enum: true | T): T

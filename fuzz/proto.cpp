@@ -303,6 +303,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 
     Luau::ParseOptions parseOptions;
     parseOptions.captureComments = true;
+    parseOptions.storeCstData = kFuzzPrettyPrint;
 
     std::vector<Luau::ParseResult> parseResults;
 

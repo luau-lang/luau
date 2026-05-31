@@ -40,9 +40,9 @@ LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
-LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
+LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -3688,8 +3688,13 @@ void TypeChecker2::checkIndexTypeFromType(
                 reportError(NotATable{tableTy}, location);
             else
             {
-                if (FFlag::LuauExternReadWriteAttributes && get<ExternType>(tableTy))
-                    reportError(UnknownProperty{tableTy, prop}, location);
+                if (auto et = get<ExternType>(tableTy); et && FFlag::LuauExternReadWriteAttributes)
+                {
+                    if (!FFlag::LuauTweakAccessViolationReporting || et->indexer || context == ValueContext::RValue)
+                        reportError(UnknownProperty{tableTy, prop}, location);
+                    else
+                        reportError(PropertyAccessViolation{tableTy, prop, PropertyAccessViolation::CannotWrite}, location);
+                }
                 else
                     reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
             }
@@ -3743,11 +3748,7 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         {
             TypeId indexType = follow(tt->indexer->indexType);
             TypeId givenType = module->internalTypes.addType(SingletonType{StringSingleton{prop}});
-            bool keyMatches = false;
-            if (FFlag::LuauThreadUniferStateThroughTypeFunctionReduction)
-                keyMatches = subtyping->isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}).isSubtype;
-            else
-                keyMatches = isSubtype_DEPRECATED(givenType, indexType, NotNull{module->getModuleScope().get()}, builtinTypes, *ice, SolverMode::New);
+            bool keyMatches = subtyping->isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}).isSubtype;
 
             if (keyMatches)
             {
@@ -3783,17 +3784,17 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         {
             if (cls->metatable)
             {
-                std::optional<TypeId> mtIndex = Luau::findMetatableEntry(builtinTypes, errors, ty, "__index", location);
-                if (mtIndex)
+                // For user-defined classes, the object metatable holds metamethods (e.g. __add)
+                // directly in its props rather than under an __index table.
+                if (const TableType* mtt = get<TableType>(follow(*cls->metatable)))
                 {
-                    if (auto mtIndexFunction = get<FunctionType>(follow(*mtIndex)))
+                    if (auto mtProp = mtt->props.find(prop); mtProp != mtt->props.end())
                     {
-                        std::optional<TypeId> firstRet = first(mtIndexFunction->retTypes);
-                        if (firstRet)
-                            return hasIndexTypeFromType(*firstRet, prop, context, location, seen, astIndexExprType, errors);
+                        if ((context == ValueContext::LValue && !mtProp->second.writeTy) ||
+                            (context == ValueContext::RValue && !mtProp->second.readTy))
+                            return {NormalizationResult::False, {}};
+                        return {NormalizationResult::True, context == ValueContext::LValue ? mtProp->second.writeTy : mtProp->second.readTy};
                     }
-                    else
-                        return hasIndexTypeFromType(*mtIndex, prop, context, location, seen, astIndexExprType, errors);
                 }
             }
         }

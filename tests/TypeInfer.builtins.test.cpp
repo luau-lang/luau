@@ -14,8 +14,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauSilenceDynamicFormatStringErrors)
-LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauRemoveLoadstringFromBuiltinDefinitions)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -471,7 +469,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce_2")
     LUAU_REQUIRE_NO_ERRORS(result);
     auto ty = requireType("t");
 
-    if (FFlag::LuauOverloadGetsInstantiated2 && !FFlag::DebugLuauForceOldSolver)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         // FIXME: This is a result of us solving for `table.pack` before we
         // generalize its arguments. After we've solved it, we end up
@@ -1219,8 +1217,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_does_not_retroactively_block_mutation")
 {
-    ScopedFastFlag _{FFlag::LuauRelateHandlesCoincidentTables, true};
-
     CheckResult result = check(R"(
         local t1 = {a = 42}
 

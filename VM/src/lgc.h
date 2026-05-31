@@ -118,7 +118,7 @@
             luaC_barrierback(L, obj2gco(L), &L->gclist); \
     }
 
-#define luaC_classinstbarrier(L) \
+#define luaC_objectbarrier(L) \
     { \
         if (isblack(obj2gco(L))) \
             luaC_barrierback(L, obj2gco(L), &L->gclist); \

@@ -3,7 +3,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckerVectorReadOnly)
 LUAU_FASTFLAG(LuauIntegerLibrary)
-LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauRemoveLoadstringFromBuiltinDefinitions)
 
 namespace Luau
@@ -478,7 +478,7 @@ std::string getBuiltinDefinitionSource()
     result += kBuiltinDefinitionTableSrc;
     result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
-    if (FFlag::LuauIntegerType && FFlag::LuauIntegerLibrary)
+    if (FFlag::LuauIntegerType2 && FFlag::LuauIntegerLibrary)
         result += kBuiltinDefinitionBufferSrc;
     else
         result += kBuiltinDefinitionBufferSrc_NOINTEGER;
@@ -492,7 +492,7 @@ std::string getBuiltinDefinitionSource()
         result += kBuiltinDefinitionVectorSrc_DEPRECATED;
     }
 
-    if (FFlag::LuauIntegerType && FFlag::LuauIntegerLibrary)
+    if (FFlag::LuauIntegerType2 && FFlag::LuauIntegerLibrary)
     {
         result += kBuiltinDefinitionIntegerSrc;
     }
@@ -660,12 +660,12 @@ std::string getTypeFunctionDefinitionSource()
 {
     std::string result;
 
-    if (FFlag::LuauIntegerType)
+    if (FFlag::LuauIntegerType2)
         result += kBuiltinDefinitionTypeMethodSrc;
     else
         result += kBuiltinDefinitionTypeMethodSrc_NOINTEGER;
 
-    if (FFlag::LuauIntegerType)
+    if (FFlag::LuauIntegerType2)
         result += kBuiltinDefinitionTypesLibSrc;
     else
         result += kBuiltinDefinitionTypesLibSrc_NOINTEGER;

@@ -21,6 +21,7 @@ LUAU_FASTFLAGVARIABLE(LuauDirectFieldGet)
 LUAU_FASTFLAGVARIABLE(LuauClosureUsageCounter)
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAGVARIABLE(LuauCallFeedback)
+LUAU_FASTFLAGVARIABLE(LuauYieldIter2)
 
 // Disable c99-designator to avoid the warning in computed goto dispatch table
 #ifdef __clang__
@@ -112,7 +113,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallFeedback)
         VM_DISPATCH_OP(LOP_FASTCALL2), VM_DISPATCH_OP(LOP_FASTCALL2K), VM_DISPATCH_OP(LOP_FORGPREP), VM_DISPATCH_OP(LOP_JUMPXEQKNIL), \
         VM_DISPATCH_OP(LOP_JUMPXEQKB), VM_DISPATCH_OP(LOP_JUMPXEQKN), VM_DISPATCH_OP(LOP_JUMPXEQKS), VM_DISPATCH_OP(LOP_IDIV), \
         VM_DISPATCH_OP(LOP_IDIVK), VM_DISPATCH_OP(LOP_GETUDATAKS), VM_DISPATCH_OP(LOP_SETUDATAKS), VM_DISPATCH_OP(LOP_NAMECALLUDATA), \
-        VM_DISPATCH_OP(LOP_NEWCLASSMEMBER), VM_DISPATCH_OP(LOP_CALLFB),
+        VM_DISPATCH_OP(LOP_NEWCLASSMEMBER), VM_DISPATCH_OP(LOP_CALLFB), VM_DISPATCH_OP(LOP_CMPPROTO),
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VM_USE_CGOTO 1
@@ -628,13 +629,13 @@ reentry:
 
                         // fall through to slow path
                     }
-                    else if (LUAU_UNLIKELY(FFlag::DebugLuauUserDefinedClassesRuntime && ttisclassinstance(rb)))
+                    else if (LUAU_UNLIKELY(FFlag::DebugLuauUserDefinedClassesRuntime && ttisobject(rb)))
                     {
                         // fast-path: the "hash line" is an offset that points
                         // to the class member with the same name.
                         uint8_t slot = LUAU_INSN_C(insn);
-                        LuaClassInstance* inst = cinstvalue(rb);
-                        if (LUAU_LIKELY(slot < inst->classobject->numberofallmembers && tsvalue(kv) == inst->classobject->offsettomember[slot]))
+                        LuauObject* inst = objectvalue(rb);
+                        if (LUAU_LIKELY(slot < inst->lclass->numberofallmembers && tsvalue(kv) == inst->lclass->offsettomember[slot]))
                         {
                             setobj2s(L, ra, luaR_lookupmemberatoffset(inst, slot));
                             VM_NEXT();
@@ -642,7 +643,7 @@ reentry:
                         // slow-er path: the slot mismatched so we fall back to looking up the offset from the string.
                         else
                         {
-                            const TValue* offset = luaH_getstr(inst->classobject->memberstooffset, tsvalue(kv));
+                            const TValue* offset = luaH_getstr(inst->lclass->memberstooffset, tsvalue(kv));
                             if (ttisnil(offset))
                                 luaG_missingmembererror(L, rb, kv);
                             LUAU_ASSERT(ttisnumber(offset));
@@ -988,11 +989,11 @@ reentry:
                                 luaG_methoderror(L, ra + 1, tsvalue(kv));
                         }
                     }
-                    else if (LUAU_UNLIKELY(FFlag::DebugLuauUserDefinedClassesRuntime && ttisclassinstance(rb)))
+                    else if (LUAU_UNLIKELY(FFlag::DebugLuauUserDefinedClassesRuntime && ttisobject(rb)))
                     {
                         int slot = LUAU_INSN_C(insn);
-                        LuaClassInstance* inst = cinstvalue(rb);
-                        if (slot < inst->classobject->numberofallmembers && tsvalue(kv) == inst->classobject->offsettomember[slot])
+                        LuauObject* inst = objectvalue(rb);
+                        if (slot < inst->lclass->numberofallmembers && tsvalue(kv) == inst->lclass->offsettomember[slot])
                         {
                             // note: order of copies allows rb to alias ra+1 or ra
                             setobj2s(L, ra + 1, rb);
@@ -1001,7 +1002,7 @@ reentry:
                         // slow-er path: try to fetch the field manually.
                         else
                         {
-                            const TValue* offset = luaH_getstr(inst->classobject->memberstooffset, tsvalue(kv));
+                            const TValue* offset = luaH_getstr(inst->lclass->memberstooffset, tsvalue(kv));
                             if (ttisnil(offset))
                                 luaG_missingmembererror(L, rb, kv);
                             LUAU_ASSERT(ttisnumber(offset));
@@ -1450,15 +1451,15 @@ reentry:
                         // slow path after switch()
                         break;
 
-                    // Class objects are only ever physically equal, so check 
+                    // Class objects are only ever physically equal, so check
                     // for pointer equality.
-                    case LUA_TCLASSOBJ:
-                        pc += cobjvalue(ra) == cobjvalue(rb) ? LUAU_INSN_D(insn) : 1;
+                    case LUA_TCLASS:
+                        pc += classvalue(ra) == classvalue(rb) ? LUAU_INSN_D(insn) : 1;
                         LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
                         break;
 
-                    case LUA_TCLASSINST:
+                    case LUA_TOBJECT:
                         // For now, hit the slow path after the switch (we may
                         // need to invoke metamethods).
                         break;
@@ -1585,13 +1586,13 @@ reentry:
 
                     // Class objects are only ever physically equal, so check
                     // for pointer inequality.
-                    case LUA_TCLASSOBJ:
-                        pc += cobjvalue(ra) != cobjvalue(rb) ? LUAU_INSN_D(insn) : 1;
+                    case LUA_TCLASS:
+                        pc += classvalue(ra) != classvalue(rb) ? LUAU_INSN_D(insn) : 1;
                         LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
                         break;
 
-                    case LUA_TCLASSINST:
+                    case LUA_TOBJECT:
                         // For now, hit the slow path after the switch (we may
                         // need to invoke metamethods).
                         break;
@@ -2583,7 +2584,7 @@ reentry:
                         LuaTable* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(LuaTable*, NULL);
                         const TValue* fn = fasttm(L, mt, TM_ITER);
 
-                        if (LUAU_UNLIKELY(fn == NULL && ttisclassinstance(ra)))
+                        if (LUAU_UNLIKELY(fn == NULL && ttisobject(ra)))
                         {
                             fn = luaT_gettmbyobj(L, ra, TM_ITER);
                             // if the metamethod is not present, error.
@@ -2775,7 +2776,19 @@ reentry:
                     L->top = ra + 3 + 3; // func + 2 args (state and index)
                     LUAU_ASSERT(L->top <= L->stack_last);
 
-                    VM_PROTECT(luaD_call(L, ra + 3, uint8_t(aux)));
+                    if (FFlag::LuauYieldIter2)
+                    {
+                        bool yielded;
+                        VM_PROTECT(yielded = luaD_performcally(L, ra + 3, uint8_t(aux)));
+
+                        if (yielded)
+                            goto exit;
+                    }
+                    else
+                    {
+                        VM_PROTECT(luaD_call(L, ra + 3, uint8_t(aux)));
+                    }
+
                     L->top = L->ci->top;
 
                     // recompute ra since stack might have been reallocated
@@ -3664,7 +3677,28 @@ reentry:
                 LUAU_ASSERT(LUAU_INSN_B(insn) == 0);
                 VM_CASE_STKID rc = VM_REG(LUAU_INSN_C(insn));
                 // We should not need to protect the PC here, we shouldn't ever allocate in this function.
-                luaR_addclassmember(L, cobjvalue(ra), tsvalue(membername), rc);
+                luaR_addclassmember(L, classvalue(ra), tsvalue(membername), rc);
+                VM_NEXT();
+            }
+
+            VM_CASE(LOP_CMPPROTO)
+            {
+                Instruction insn = *pc++;
+                uint32_t funid = *pc++;
+                StkId ra = VM_REG(LUAU_INSN_A(insn));
+
+                if (LUAU_UNLIKELY(!ttisfunction(ra)))
+                {
+                    pc += LUAU_INSN_D(insn) - 1;
+                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    VM_NEXT();
+                }
+
+                Closure* ccl = clvalue(ra);
+                if (ccl->isC || ccl->l.p->funid != funid)
+                    pc += LUAU_INSN_D(insn) - 1;
+                
+                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }
 
@@ -3685,6 +3719,39 @@ void luau_execute(lua_State* L)
         luau_execute<true>(L);
     else
         luau_execute<false>(L);
+}
+
+void luau_finishop(lua_State* L)
+{
+    CallInfo* ci = L->ci;
+    ci->flags &= ~LUA_CALLINFO_OPYIELD;
+
+    Closure* cl = clvalue(L->ci->func);
+    StkId base = L->base;
+
+    const Instruction* pc = ci->savedpc;
+    Instruction insn = *(pc - 1); // the interrupted instruction
+
+    switch (LUAU_INSN_OP(insn))
+    {
+    case LOP_FORGLOOP:
+    {
+        StkId ra = VM_REG(LUAU_INSN_A(insn));
+
+        // copy first variable back into the iteration index
+        setobj2s(L, ra + 2, ra + 3);
+
+        // note that we need to increment pc by 1 to exit the loop since we need to skip over aux
+        pc += ttisnil(ra + 3) ? 1 : LUAU_INSN_D(insn);
+        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+        break;
+    }
+    default:
+        LUAU_ASSERT(!"Unknown opcode");
+        LUAU_UNREACHABLE();
+    }
+
+    L->ci->savedpc = pc;
 }
 
 int luau_precall(lua_State* L, StkId func, int nresults)

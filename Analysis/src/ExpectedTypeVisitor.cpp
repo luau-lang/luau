@@ -8,29 +8,10 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterUnionHandling)
 
 namespace Luau
 {
-
-ExpectedTypeVisitor::ExpectedTypeVisitor(
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
-    NotNull<DenseHashMap<const AstType*, TypeId>> astResolvedTypes,
-    NotNull<TypeArena> arena,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Scope> rootScope
-)
-    : astTypes(astTypes)
-    , astExpectedTypes(astExpectedTypes)
-    , astResolvedTypes(astResolvedTypes)
-    , arena(arena)
-    , builtinTypes(builtinTypes)
-    , rootScope(rootScope)
-{
-    LUAU_ASSERT(!FFlag::LuauOverloadGetsInstantiated2);
-}
 
 ExpectedTypeVisitor::ExpectedTypeVisitor(
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
@@ -44,12 +25,11 @@ ExpectedTypeVisitor::ExpectedTypeVisitor(
     : astTypes(astTypes)
     , astExpectedTypes(astExpectedTypes)
     , astResolvedTypes(astResolvedTypes)
-    , astOverloadResolvedTypes(astOverloadResolvedTypes.get())
+    , astOverloadResolvedTypes(astOverloadResolvedTypes)
     , arena(arena)
     , builtinTypes(builtinTypes)
     , rootScope(rootScope)
 {
-    LUAU_ASSERT(FFlag::LuauOverloadGetsInstantiated2);
 }
 
 bool ExpectedTypeVisitor::visit(AstStatAssign* stat)
@@ -191,17 +171,9 @@ bool ExpectedTypeVisitor::visit(AstExprIndexExpr* expr)
 
 bool ExpectedTypeVisitor::visit(AstExprCall* expr)
 {
-    TypeId* ty = nullptr;
-    if (FFlag::LuauOverloadGetsInstantiated2)
-    {
-        ty = astOverloadResolvedTypes->find(expr);
-        if (!ty)
-            ty = astTypes->find(expr->func);
-    }
-    else
-    {
+    TypeId* ty = astOverloadResolvedTypes->find(expr);
+    if (!ty)
         ty = astTypes->find(expr->func);
-    }
     if (!ty)
         return true;
 

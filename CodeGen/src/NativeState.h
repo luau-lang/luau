@@ -88,7 +88,8 @@ struct NativeContext
     // Helper functions
     bool (*forgLoopTableIter)(lua_State* L, LuaTable* h, int index, TValue* ra) = nullptr;
     bool (*forgLoopNodeIter)(lua_State* L, LuaTable* h, int index, TValue* ra) = nullptr;
-    bool (*forgLoopNonTableFallback)(lua_State* L, int insnA, int aux) = nullptr;
+    int (*forgLoopNonTableFallback)(lua_State* L, int insnA, int aux) = nullptr;
+    bool (*forgLoopNonTableFallback_DEPRECATED)(lua_State* L, int insnA, int aux) = nullptr;
     void (*forgPrepXnextFallback)(lua_State* L, TValue* ra, int pc) = nullptr;
     Closure* (*callProlog)(lua_State* L, TValue* ra, StkId argtop, int nresults) = nullptr;
     void (*callEpilogC)(lua_State* L, int nresults, int n) = nullptr;

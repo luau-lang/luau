@@ -706,7 +706,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Nop")
         {
             build.nop(0);
         },
-        {}));
+        {}
+    ));
 
     // Non-multiple of 4: rounds down to nearest multiple (7 -> 1 NOP = 4 bytes)
     CHECK(check(
@@ -714,7 +715,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Nop")
         {
             build.nop(7);
         },
-        {0xD503201F}));
+        {0xD503201F}
+    ));
 
     // Exact multiples: 4 -> 1 NOP, 8 -> 2 NOPs, 12 -> 3 NOPs
     CHECK(check(
@@ -722,21 +724,24 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Nop")
         {
             build.nop(4);
         },
-        {0xD503201F}));
+        {0xD503201F}
+    ));
 
     CHECK(check(
         [](AssemblyBuilderA64& build)
         {
             build.nop(8);
         },
-        {0xD503201F, 0xD503201F}));
+        {0xD503201F, 0xD503201F}
+    ));
 
     CHECK(check(
         [](AssemblyBuilderA64& build)
         {
             build.nop(12);
         },
-        {0xD503201F, 0xD503201F, 0xD503201F}));
+        {0xD503201F, 0xD503201F, 0xD503201F}
+    ));
 }
 
 TEST_SUITE_END();

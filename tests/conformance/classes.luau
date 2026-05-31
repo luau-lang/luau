@@ -9,7 +9,10 @@ local function expectfail(s, expected, f)
     local success, actual = pcall(f)
     assert(not success)
     assert(type(actual) == "string", `{s}: error message was not a string, but a {type(actual)}`)
-    assert(string.find(actual, expected), `{s} expected:\n\t{expected}\nActual:\n\t{actual}`)
+    -- We have pass true for the last argument to string.find to disable pattern matching, since error messages
+    -- can have characters in them that would be interpreted as patterns, and we want to match the error message exactly.
+    -- e.g. parens in error messages can be interpreted as pattern groups
+    assert(string.find(actual, expected, 1, true), `{s} expected:\n\t{expected}\nActual:\n\t{actual}`)
     print(`ok: {s}`)
 end
 
@@ -48,22 +51,93 @@ class Point
 
 end
 
+class NotAPoint
+    public x
+end
+
+expectpass("class_first_arg_is_instance", function()
+    local p1 = Point({ x = 1, y = 2})
+    local p2 = Point({ x = 0, y = 0})
+    assert(class.isinstance(p1, Point))
+    assert(class.isinstance(p2, Point))
+end)
+
+expectpass("class_first_arg_is_not_instance", function()
+    local notAPoint = NotAPoint({ x = 1})
+    assert(not class.isinstance(notAPoint, Point))
+end)
+
+expectpass("class_first_arg_is_not_instance_and_isnt_class", function()
+    assert(not class.isinstance(nil, Point))
+    assert(not class.isinstance(false, Point))
+    assert(not class.isinstance(true, Point))
+    assert(not class.isinstance("hello", Point))
+    assert(not class.isinstance(5, Point))
+    assert(not class.isinstance({}, Point))
+end)
+
+expectfail("class_second_arg_is_not_classobject", "invalid argument #2 to 'isinstance' (class expected, got string)", function()
+    class.isinstance(nil, "not a class")
+end)
+
+expectfail("class_second_arg_is_not_classobject", "invalid argument #2 to 'isinstance' (class expected, got string)", function()
+    class.isinstance(Point({x = 1, y = 2}), "not a class")
+end)
+
+expectfail("classof raises on missing first argument", "missing argument #1", function()
+    class.isinstance()
+end)
+
+expectfail("classof raises on missing second argument", "missing argument #2", function()
+    class.isinstance(nil)
+end)
+
+expectpass("classof returns nil for non-classinstance values", function()
+    assert(class.classof(nil) == nil)
+    assert(class.classof(false) == nil)
+    assert(class.classof(42) == nil)
+    assert(class.classof("hello") == nil)
+    assert(class.classof({}) == nil)
+    -- A class object is not itself a class instance.
+    assert(class.classof(Point) == nil)
+end)
+
+expectfail("classof raises on missing argument", "missing argument #1", function()
+    class.classof()
+end)
+
+expectpass("classof returns the class object for a class instance", function()
+    local p = Point { x = 1, y = 2 }
+    local c = class.classof(p)
+    assert(c == Point)
+    assert(typeof(c) == "class")
+end)
+
+expectpass("classof result is usable as the second arg to isinstance", function()
+    local p = Point { x = 3, y = 4 }
+    local notAPoint = NotAPoint ({ x = 1 })
+    -- classof(notAPoint) is NotAPoint, so a Point instance is not an instance of it.
+    assert(not class.isinstance(p, class.classof(notAPoint)))
+    -- classof(p) is Point, so p is an instance of it.
+    assert(class.isinstance(p, class.classof(p)))
+end)
+
 expectpass("basic printing", function ()
-    assert(typeof(Point) == "classobject")
+    assert(typeof(Point) == "class")
     assert(typeof(Point.zero) == "function")
     -- For now we can pass tables to instance methods that expect objects
     assert(Point.magnitude({x = 4, y = 3}) == 5)
 end)
 
-expectfail("classobject missing key", "this classobject does not have a key named 'doesnotexist'", function ()
+expectfail("classobject missing key", "this class does not have a key named 'doesnotexist'", function ()
     return Point.doesnotexist
 end)
 
-expectfail("classobject invalid key", "cannot index classobject with a table", function ()
+expectfail("classobject invalid key", "cannot index class with a table", function ()
     return Point[{}]
 end)
 
-expectfail("classobject set method", "attempt to index classobject with 'zero'", function ()
+expectfail("classobject set method", "attempt to index class with 'zero'", function ()
     Point.zero = function () end
 end)
 
@@ -108,22 +182,22 @@ expectpass("classinstance pcall method", function()
     assert(msg:match("Not a pythagorean triple!"), `Message was: {msg}`)
 end)
 
-expectfail("classinstance assign nonexistent prop", "this classinstance does not have a key named 'huh'", function()
+expectfail("classinstance assign nonexistent prop", "this object does not have a key named 'huh'", function()
     local p = Point({ x = 3, y = 4 })
     p.huh = "???"
 end)
 
-expectfail("classinstance get nonexistent prop", "this classinstance does not have a key named 'huh'", function()
+expectfail("classinstance get nonexistent prop", "this object does not have a key named 'huh'", function()
     local p = Point {}
     print(p.huh)
 end)
 
-expectfail("classinstance assign method", "attempt to index classinstance with 'zero'", function()
+expectfail("classinstance assign method", "attempt to index object with 'zero'", function()
     local p = Point({ x = 3, y = 4 })
     p.zero = "???"
 end)
 
-expectfail("classinstance call missing method", "this classinstance does not have a key named 'hmm'", function()
+expectfail("classinstance call missing method", "this object does not have a key named 'hmm'", function()
     local p = Point {}
     print(p:hmm())
 end)
@@ -180,13 +254,13 @@ expectpass("classinstance more operator overloads", function()
     assert(s3:render() == "I am the modren man!")
 end)
 
-expectpass("classobject first class function", function ()
+expectpass("class instantiate first class function", function ()
     local function makeone(C, args)
         return C(args)
     end
 
     local p = makeone(Point, {x = 10, y = 2})
-    assert(typeof(p) == "classinstance")
+    assert(typeof(p) == "object")
     assert(p.x == 10 and p.y == 2)
 end)
 
@@ -220,11 +294,11 @@ expectpass("classes have referential equality", function()
     assert(Point ~= Box)
 end)
 
-expectfail("classes do not support <", "attempt to compare classobject < classobject", function()
+expectfail("classes do not support <", "attempt to compare class < class", function()
     local _ = Box < Point
 end)
 
-expectfail("classes do not support <=", "attempt to compare classobject <= classobject", function()
+expectfail("classes do not support <=", "attempt to compare class <= class", function()
     local _ = Box <= Point
 end)
 
@@ -233,6 +307,39 @@ expectpass("classes use __eq", function ()
     local p2 = Point { x = 1, y = 2 }
     assert(p1 == p2)
     assert(p1 ~= Point.zero())
+end)
+
+expectpass("classinstance __tostring", function ()
+    local p = Point { x = 3, y = 4 }
+    assert(tostring(p) == "Point(x=3, y=4)")
+    assert(`{p}` == "Point(x=3, y=4)")
+end)
+
+expectpass("classinstance __tostring reflects properties", function ()
+    local p = Point { x = 10, y = 20 }
+    p.x = 99
+    assert(tostring(p) == "Point(x=99, y=20)")
+end)
+
+expectpass("classinstance without __tostring uses default format", function ()
+    local b = Box { item = "sword" }
+    local s = tostring(b)
+    assert(string.match(s, "^object:") ~= nil, `expected default format, got: {s}`)
+end)
+
+expectpass("classobject tostring uses default format", function ()
+    local s = tostring(Point)
+    assert(string.match(s, "^class:") ~= nil, `expected default format, got: {s}`)
+end)
+
+class BadToString
+    function __tostring(self)
+        return {}
+    end
+end
+
+expectfail("classinstance __tostring must return string", "'__tostring' must return a string", function ()
+    tostring(BadToString {})
 end)
 
 class Entry
@@ -289,16 +396,7 @@ expectpass("classes gracefully handle NCG", function()
     assert(fromncg.tier == "S" and fromncg.ordering == 4)
 end)
 
-class PropertyWithMeta
-    public __add
-end
-
-expectfail("class metamethods are methods", "attempt to perform arithmetic", function ()
-    local pwm = PropertyWithMeta { __add = function (...) return 42 end }
-    local _ = pwm + pwm
-end)
-
-expectfail("classes cannot be iterated over", "attempt to iterate over a classinstance value", function ()
+expectfail("classes cannot be iterated over", "attempt to iterate over a object value", function ()
     local p = Point { x = 1, y = 2}
     for k, v in p do
         -- This should be unreachable!
@@ -341,6 +439,35 @@ expectpass("instance survives GC during __index construction", function()
     assert(v.a == 1, `expected a=1, got a={v.a}`)
     assert(v.b == 2, `expected b=2, got b={v.b}`)
     assert(v.c == 3, `expected c=3, got c={v.c}`)
+end)
+
+class Cls end
+
+expectpass("type reports 'class' for class objects", function()
+    assert(type(Cls) == "class", `expected type(Cls) == "class", got {type(Cls)}`)
+    assert(typeof(Cls) == "class", `expected typeof(Cls) == "class", got {typeof(Cls)}`)
+end)
+
+expectpass("type reports 'object' for class instances", function()
+    local inst = Cls {}
+    assert(type(inst) == "object", `expected type(inst) == "object", got {type(inst)}`)
+    assert(typeof(inst) == "object", `expected typeof(inst) == "object", got {typeof(inst)}`)
+end)
+
+expectpass("pcall constructors", function()
+    local AlwaysRaises = setmetatable({}, {
+        __index=function(self, name)
+            error(`Cannot access {name}`)
+        end
+    })
+
+    local success, res = pcall(Test, AlwaysRaises)
+    assert(not success)
+    assert("string" == typeof(res))
+
+    local success, res = pcall(function(a) return Test(a) end, AlwaysRaises)
+    assert(not success)
+    assert("string" == typeof(res))
 end)
 
 return 'OK'

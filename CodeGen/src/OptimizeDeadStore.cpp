@@ -14,9 +14,10 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenGcoDse2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenDseNilClearsValue)
+LUAU_FASTFLAGVARIABLE(LuauCodegenDsePtrStoreTagCheck)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAGVARIABLE(LuauCodegenVmExitSyncFix)
+LUAU_FASTFLAGVARIABLE(LuauCodegenDseRestoreHints)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
@@ -105,6 +106,58 @@ struct RemoveDeadStoreState
         maxReg = function.proto ? function.proto->maxstacksize : 255;
     }
 
+    void recordHintBeforeKill(uint32_t storeInstIdx)
+    {
+        IrInst& storeInst = function.instructions[storeInstIdx];
+
+        IrOp dest = OP_A(storeInst);
+
+        if (dest.kind != IrOpKind::VmReg)
+            return;
+
+        IrOp value;
+        IrValueKind kind = IrValueKind::Unknown;
+
+        switch (storeInst.cmd)
+        {
+        case IrCmd::STORE_DOUBLE:
+            value = OP_B(storeInst);
+            kind = IrValueKind::Double;
+            break;
+        case IrCmd::STORE_INT:
+            value = OP_B(storeInst);
+            kind = IrValueKind::Int;
+            break;
+        case IrCmd::STORE_INT64:
+            value = OP_B(storeInst);
+            kind = IrValueKind::Int64;
+            break;
+        case IrCmd::STORE_POINTER:
+            value = OP_B(storeInst);
+            kind = IrValueKind::Pointer;
+            break;
+        case IrCmd::STORE_TVALUE:
+            value = OP_B(storeInst);
+            kind = IrValueKind::Tvalue;
+            break;
+        case IrCmd::STORE_SPLIT_TVALUE:
+            value = OP_C(storeInst);
+            if (value.kind == IrOpKind::Inst)
+                kind = getCmdValueKind(function.instOp(value).cmd);
+            if (kind == IrValueKind::Unknown)
+                return;
+            break;
+        case IrCmd::STORE_VECTOR:
+            return; // multi-component, not useful as a single-value restore hint
+        default:
+            return;
+        }
+
+        if (value.kind != IrOpKind::Inst)
+            return;
+
+        function.recordStoreLocationHint(storeInstIdx, {dest, value.index, kind});
+    }
     void killTagStore(StoreRegInfo& regInfo)
     {
         if (regInfo.tagInstIdx != ~0u)
@@ -120,6 +173,9 @@ struct RemoveDeadStoreState
     {
         if (regInfo.valueInstIdx != ~0u)
         {
+            if (FFlag::LuauCodegenDseRestoreHints)
+                recordHintBeforeKill(regInfo.valueInstIdx);
+
             kill(function, function.instructions[regInfo.valueInstIdx]);
 
             regInfo.valueInstIdx = ~0u;
@@ -150,6 +206,9 @@ struct RemoveDeadStoreState
 
             if (regInfo.valueInstIdx != ~0u)
             {
+                if (FFlag::LuauCodegenDseRestoreHints)
+                    recordHintBeforeKill(regInfo.valueInstIdx);
+
                 kill(function, function.instructions[regInfo.valueInstIdx]);
                 regInfo.valueInstIdx = ~0u;
             }
@@ -165,6 +224,9 @@ struct RemoveDeadStoreState
             // TValue can only be killed if it is not overlayed by a partial tag/value write
             if (regInfo.tvalueInstIdx != kInvalidInstIdx && regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx)
             {
+                if (FFlag::LuauCodegenDseRestoreHints)
+                    recordHintBeforeKill(regInfo.tvalueInstIdx);
+
                 kill(function, function.instructions[regInfo.tvalueInstIdx]);
 
                 regInfo.tvalueInstIdx = kInvalidInstIdx;
@@ -175,6 +237,9 @@ struct RemoveDeadStoreState
         {
             if (regInfo.tvalueInstIdx != kInvalidInstIdx)
             {
+                if (FFlag::LuauCodegenDseRestoreHints)
+                    recordHintBeforeKill(regInfo.tvalueInstIdx);
+
                 kill(function, function.instructions[regInfo.tvalueInstIdx]);
 
                 regInfo.tvalueInstIdx = kInvalidInstIdx;
@@ -947,7 +1012,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
             if (state.tagValuePairEstablished(regInfo))
             {
-                if (FFlag::LuauCodegenDseNilClearsValue && tag == LUA_TNIL)
+                if (tag == LUA_TNIL)
                     regInfo.valueInstIdx = kInvalidInstIdx;
 
                 regInfo.tvalueInstIdx = kInvalidInstIdx;
@@ -991,11 +1056,28 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
             if (FFlag::LuauCodegenMarkDeadRegisters2)
                 regInfo.ignoreAtExit = false;
 
-            if (tryReplaceValueWithFullStore(state, build, function, block, index, OP_A(inst), OP_B(inst), regInfo))
+            bool maybeGco;
+
+            if (FFlag::LuauCodegenDsePtrStoreTagCheck)
             {
-                regInfo.maybeGco = true;
-                state.hasGcoToClear |= true;
-                break;
+                // If we have a known tag and it is not a pointer, we cannot generate a full store in invalid form
+                maybeGco = regInfo.knownTag == kUnknownTag || isGCO(regInfo.knownTag);
+
+                if (maybeGco && tryReplaceValueWithFullStore(state, build, function, block, index, OP_A(inst), OP_B(inst), regInfo))
+                {
+                    regInfo.maybeGco = true;
+                    state.hasGcoToClear = true;
+                    break;
+                }
+            }
+            else
+            {
+                if (tryReplaceValueWithFullStore(state, build, function, block, index, OP_A(inst), OP_B(inst), regInfo))
+                {
+                    regInfo.maybeGco = true;
+                    state.hasGcoToClear |= true;
+                    break;
+                }
             }
 
             // Partial value store can be removed by a new one if the tag is known
@@ -1007,8 +1089,17 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
             if (state.tagValuePairEstablished(regInfo))
                 regInfo.tvalueInstIdx = kInvalidInstIdx;
 
-            regInfo.maybeGco = true;
-            state.hasGcoToClear = true;
+            if (FFlag::LuauCodegenDsePtrStoreTagCheck)
+            {
+                // While pointer was stored, TValue can still be under a non-GCO tag
+                regInfo.maybeGco = maybeGco;
+                state.hasGcoToClear |= maybeGco;
+            }
+            else
+            {
+                regInfo.maybeGco = true;
+                state.hasGcoToClear = true;
+            }
         }
         break;
     case IrCmd::STORE_DOUBLE:
@@ -1201,6 +1292,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::JUMP_CMP_FLOAT:
     case IrCmd::JUMP_FORN_LOOP_COND:
     case IrCmd::JUMP_SLOT_MATCH:
+    case IrCmd::JUMP_CMP_PROTOID:
         visitVmRegDefsUses(state, function, inst);
 
         if (FFlag::LuauCodegenDseOnCondJump)
