@@ -8,7 +8,6 @@
 
 #include "lstate.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenNewRegSplit)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 
 namespace Luau
@@ -394,6 +393,34 @@ void IrRegAllocX64::preserve(IrInst& inst)
     }
     else
     {
+        ValueRestoreLocation loc = function.findRestoreLocation(inst, true);
+
+        // If the value restore location is lazy, we need to materialize it
+        if (loc.lazy)
+        {
+            CODEGEN_ASSERT(loc.op.kind == IrOpKind::VmReg);
+            CODEGEN_ASSERT(loc.conversionCmd == IrCmd::NOP);
+
+            int storeReg = vmRegOp(loc.op);
+
+            if (spill.valueKind == IrValueKind::Tvalue)
+                build.vmovups(luauReg(storeReg), inst.regX64);
+            else if (spill.valueKind == IrValueKind::Double)
+                build.vmovsd(luauRegValue(storeReg), inst.regX64);
+            else if (spill.valueKind == IrValueKind::Pointer || spill.valueKind == IrValueKind::Int64)
+                build.mov(luauRegValue(storeReg), inst.regX64);
+            else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int)
+                build.mov(luauRegValueInt(storeReg), inst.regX64);
+            else
+                CODEGEN_ASSERT(!"Unsupported value kind for lazy store");
+
+            // Partial value store should not have an interpretation in VM/GC and is protected by 'nil' tag
+            if (spill.valueKind != IrValueKind::Tvalue)
+                build.mov(luauRegTag(storeReg), 0);
+
+            function.materializeRestoreLocation(spill.instIdx);
+        }
+
         inst.needsReload = true;
 
         if (stats)
@@ -565,7 +592,7 @@ unsigned IrRegAllocX64::findSpillStackSlot(IrValueKind valueKind)
         for (unsigned i = 0; i < unsigned(usedSpillSlotHalfs.size() - 3); i += 2)
         {
             // Prevent large value from allocating at stack/extra spill storage boundary
-            if (FFlag::LuauCodegenNewRegSplit && i < boundary && i + numHalves > boundary)
+            if (i < boundary && i + numHalves > boundary)
             {
                 i = boundary - 2;
                 continue;
@@ -658,14 +685,14 @@ bool IrRegAllocX64::isExtraSpillSlot(unsigned slot) const
 {
     CODEGEN_ASSERT(slot != kNoStackSlot);
 
-    return slot >= (FFlag::LuauCodegenNewRegSplit ? kSpillSlots : kSpillSlots_NEW) * 2;
+    return slot >= kSpillSlots * 2;
 }
 
 int IrRegAllocX64::getExtraSpillAddressOffset(unsigned slot) const
 {
     CODEGEN_ASSERT(isExtraSpillSlot(slot));
 
-    return (slot - (FFlag::LuauCodegenNewRegSplit ? kSpillSlots : kSpillSlots_NEW) * 2) * 4;
+    return (slot - kSpillSlots * 2) * 4;
 }
 
 void IrRegAllocX64::assertFree(RegisterX64 reg) const

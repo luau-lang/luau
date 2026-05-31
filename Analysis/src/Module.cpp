@@ -358,4 +358,101 @@ ScopePtr Module::getModuleScope() const
     return scopes.front().second;
 }
 
+void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> module)
+{
+    LUAU_ASSERT(module->root);
+
+    ScopePtr moduleScope = module->getModuleScope();
+    TableType::Props props;
+
+    auto lookupExportedBindingType = [&](AstLocal* local) -> TypeId
+    {
+        NotNull<Scope> scope = moduleScope->findNarrowestScopeContaining(local->location);
+
+        if (std::optional<std::pair<Binding*, Scope*>> binding = scope->lookupEx(Symbol{local}))
+            return follow(binding->first->typeId);
+
+        return builtinTypes->errorType;
+    };
+
+    auto lookupExprType = [&](AstExpr* expr) -> TypeId
+    {
+        if (TypeId* ty = module->astTypes.find(expr))
+            return follow(*ty);
+
+        return builtinTypes->errorType;
+    };
+
+    DenseHashSet<AstLocal*> exportedLocals{nullptr};
+
+    for (AstStat* statement : module->root->body)
+    {
+        if (AstStatLocal* localStat = statement->as<AstStatLocal>())
+        {
+            if (!localStat->isExported)
+                continue;
+
+            for (size_t i = 0; i < localStat->vars.size; ++i)
+            {
+                AstLocal* local = localStat->vars.data[i];
+                exportedLocals.insert(local);
+
+                if (localStat->vars.size != localStat->values.size || i >= localStat->values.size)
+                {
+                    props[local->name.value] = lookupExportedBindingType(local);
+                }
+                else
+                {
+                    props[local->name.value] = Property::readonly(lookupExprType(localStat->values.data[i]));
+                }
+
+                props[local->name.value].location = local->location;
+            }
+        }
+        else if (AstStatLocalFunction* localFunction = statement->as<AstStatLocalFunction>())
+        {
+            if (!localFunction->name->isExported)
+                continue;
+
+            props[localFunction->name->name.value] = Property::readonly(lookupExportedBindingType(localFunction->name));
+            props[localFunction->name->name.value].location = localFunction->name->location;
+        }
+        else if (AstStatAssign* assign = statement->as<AstStatAssign>())
+        {
+            for (size_t i = 0; i < assign->vars.size; ++i)
+            {
+                AstExprLocal* exprLocal = assign->vars.data[i]->as<AstExprLocal>();
+                if (!exprLocal || !exportedLocals.contains(exprLocal->local))
+                    continue;
+
+                if (assign->vars.size != assign->values.size || i >= assign->values.size)
+                {
+                    props[exprLocal->local->name.value] = lookupExportedBindingType(exprLocal->local);
+                }
+                else
+                {
+                    props[exprLocal->local->name.value] = Property::readonly(lookupExprType(assign->values.data[i]));
+                }
+
+                props[exprLocal->local->name.value].location = exprLocal->local->location;
+            }
+        }
+        else if (AstStatFunction* funcStat = statement->as<AstStatFunction>())
+        {
+            AstExprLocal* exprLocal = funcStat->name->as<AstExprLocal>();
+            if (exprLocal && exportedLocals.contains(exprLocal->local))
+            {
+                props[exprLocal->local->name.value] = Property::readonly(lookupExprType(funcStat->func));
+                props[exprLocal->local->name.value].location = exprLocal->local->location;
+            }
+        }
+    }
+
+    if (props.empty())
+        return;
+
+    TypeId exports = module->internalTypes.addType(TableType{std::move(props), std::nullopt, moduleScope->level, TableState::Sealed});
+    moduleScope->returnType = module->internalTypes.addTypePack({exports});
+}
+
 } // namespace Luau

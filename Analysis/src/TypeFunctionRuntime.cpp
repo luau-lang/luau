@@ -22,7 +22,8 @@
 #include <vector>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
-LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauIntegerType2)
+
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
@@ -395,7 +396,7 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
         return "boolean";
     else if (auto n = get<TypeFunctionPrimitiveType>(ty); n && n->type == TypeFunctionPrimitiveType::Type::Number)
         return "number";
-    else if (auto n = get<TypeFunctionPrimitiveType>(ty); n && (FFlag::LuauIntegerType && (n->type == TypeFunctionPrimitiveType::Type::Integer)))
+    else if (auto n = get<TypeFunctionPrimitiveType>(ty); n && (FFlag::LuauIntegerType2 && (n->type == TypeFunctionPrimitiveType::Type::Integer)))
         return "integer";
     else if (auto s = get<TypeFunctionPrimitiveType>(ty); s && s->type == TypeFunctionPrimitiveType::Type::String)
         return "string";

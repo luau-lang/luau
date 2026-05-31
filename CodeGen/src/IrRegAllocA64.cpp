@@ -11,7 +11,6 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
-LUAU_FASTFLAG(LuauCodegenNewRegSplit)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 
 namespace Luau
@@ -28,45 +27,28 @@ static int allocSpill(uint64_t& free, KindA64 kind)
 {
     CODEGEN_ASSERT(kStackSize <= 256); // to support larger stack frames, we need to ensure qN is allocated at 16b boundary to fit in ldr/str encoding
 
-    if (FFlag::LuauCodegenNewRegSplit)
+    uint64_t search = free;
+
+    // qN registers use two consecutive slots
+    if (kind == KindA64::q)
     {
-        uint64_t search = free;
+        // Make sure bit N is set only if bit N+1 is also set
+        search = free & (free >> 1);
 
-        // qN registers use two consecutive slots
-        if (kind == KindA64::q)
-        {
-            // Make sure bit N is set only if bit N+1 is also set
-            search = free & (free >> 1);
-
-            // Prevent qN from allocating at stack/extra spill storage boundary (by reserving last stack slot)
-            search &= ~(1ull << (kSpillSlots - 1));
-        }
-
-        int slot = countrz(search);
-        if (slot == 64)
-            return -1;
-
-        uint64_t mask = (kind == KindA64::q ? 3ull : 1ull) << (unsigned long long)slot;
-
-        CODEGEN_ASSERT((free & mask) == mask);
-        free &= ~mask;
-
-        return slot;
+        // Prevent qN from allocating at stack/extra spill storage boundary (by reserving last stack slot)
+        search &= ~(1ull << (kSpillSlots - 1));
     }
-    else
-    {
-        // qN registers use two consecutive slots
-        int slot = countrz(kind == KindA64::q ? free & (free >> 1) : free);
-        if (slot == 64)
-            return -1;
 
-        uint64_t mask = (kind == KindA64::q ? 3ull : 1ull) << (unsigned long long)slot;
+    int slot = countrz(search);
+    if (slot == 64)
+        return -1;
 
-        CODEGEN_ASSERT((free & mask) == mask);
-        free &= ~mask;
+    uint64_t mask = (kind == KindA64::q ? 3ull : 1ull) << (unsigned long long)slot;
 
-        return slot;
-    }
+    CODEGEN_ASSERT((free & mask) == mask);
+    free &= ~mask;
+
+    return slot;
 }
 
 static void freeSpill(uint64_t& free, KindA64 kind, uint8_t slot)
@@ -617,6 +599,26 @@ void IrRegAllocA64::spill(Set& set, uint32_t index, uint32_t targetInstIdx)
     }
     else if (function.hasRestoreLocation(def, /*limitToCurrentBlock*/ true))
     {
+        ValueRestoreLocation loc = function.findRestoreLocation(def, true);
+
+        // If the value restore location is lazy, we need to materialize it
+        if (loc.lazy)
+        {
+            CODEGEN_ASSERT(loc.op.kind == IrOpKind::VmReg);
+            CODEGEN_ASSERT(loc.conversionCmd == IrCmd::NOP);
+
+            int storeReg = vmRegOp(loc.op);
+            AddressA64 addr = mem(rBase, storeReg * sizeof(TValue) + getReloadOffset(loc.kind));
+
+            build.str(def.regA64, addr);
+
+            // Partial value store should not have an interpretation in VM/GC and is protected by 'nil' tag
+            if (loc.kind != IrValueKind::Tvalue)
+                build.str(wzr, mem(rBase, storeReg * sizeof(TValue) + offsetof(TValue, tt)));
+
+            function.materializeRestoreLocation(targetInstIdx);
+        }
+
         // when checking if value has a restore operation to spill it, we only allow it in the same block
         // instead of spilling the register to stack, we can reload it from VM stack/constants
         // we still need to record the spill for restore(start) to work

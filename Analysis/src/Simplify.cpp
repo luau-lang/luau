@@ -20,7 +20,6 @@ LUAU_FASTINT(LuauTypeReductionRecursionLimit)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
-LUAU_FASTFLAGVARIABLE(LuauRelateHandlesCoincidentTables)
 
 namespace Luau
 {
@@ -405,58 +404,6 @@ Relation relateTables(const TableType* leftTable, const TableType* rightTable, S
     return hasSubset ? Relation::Subset : Relation::Coincident;
 }
 
-Relation relateTables_DEPRECATED(TypeId left, TypeId right, SimplifierSeenSet& seen)
-{
-    NotNull<const TableType> leftTable{get<TableType>(left)};
-    NotNull<const TableType> rightTable{get<TableType>(right)};
-    LUAU_ASSERT(1 == rightTable->props.size());
-    // Disjoint props have nothing in common
-    // t1 with props p1's cannot appear in t2 and t2 with props p2's cannot appear in t1
-    bool foundPropFromLeftInRight = std::any_of(
-        begin(leftTable->props),
-        end(leftTable->props),
-        [&](auto prop)
-        {
-            return rightTable->props.count(prop.first) > 0;
-        }
-    );
-    bool foundPropFromRightInLeft = std::any_of(
-        begin(rightTable->props),
-        end(rightTable->props),
-        [&](auto prop)
-        {
-            return leftTable->props.count(prop.first) > 0;
-        }
-    );
-
-    if (!foundPropFromLeftInRight && !foundPropFromRightInLeft && leftTable->props.size() >= 1 && rightTable->props.size() >= 1)
-        return Relation::Intersects;
-
-    const auto [propName, rightProp] = *begin(rightTable->props);
-
-    auto it = leftTable->props.find(propName);
-    if (it == leftTable->props.end())
-    {
-        // Every table lacking a property is a supertype of a table having that
-        // property but the reverse is not true.
-        return Relation::Superset;
-    }
-
-    const Property leftProp = it->second;
-
-    if (!leftProp.isShared() || !rightProp.isShared())
-        return Relation::Intersects;
-
-    Relation r = relate(*leftProp.readTy, *rightProp.readTy, seen);
-    if (r == Relation::Coincident && 1 != leftTable->props.size())
-    {
-        // eg {tag: "cat", prop: string} & {tag: "cat"}
-        return Relation::Subset;
-    }
-    else
-        return r;
-}
-
 // A cheap and approximate subtype test
 Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
 {
@@ -701,39 +648,7 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
 
         if (auto rt = get<TableType>(right))
         {
-            if (FFlag::LuauRelateHandlesCoincidentTables)
-            {
-                return relateTables(lt, rt, seen);
-            }
-            else
-            {
-                // TODO PROBABLY indexers and metatables.
-                if (1 == rt->props.size())
-                {
-                    Relation r = relateTables_DEPRECATED(left, right, seen);
-                    /*
-                     * A reduction of these intersections is certainly possible, but
-                     * it would require minting new table types. Also, I don't think
-                     * it's super likely for this to arise from a refinement.
-                     *
-                     * Time will tell!
-                     *
-                     * ex we simplify this
-                     *     {tag: string} & {tag: "cat"}
-                     * but not this
-                     *     {tag: string, prop: number} & {tag: "cat"}
-                     */
-                    if (lt->props.size() > 1 && r == Relation::Superset)
-                        return Relation::Intersects;
-
-                    return r;
-                }
-
-                if (1 == lt->props.size())
-                    return flip(relate(right, left, seen));
-
-                return Relation::Intersects;
-            }
+            return relateTables(lt, rt, seen);
         }
 
         if (auto re = get<ExternType>(right))

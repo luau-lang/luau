@@ -310,5 +310,89 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options, Lowering
     }
 }
 
+template<typename AssemblyBuilder>
+static std::string getAssemblyFromIrImpl(AssemblyBuilder& build, IrBuilder& ir, AssemblyOptions options, LoweringStats* stats)
+{
+    ModuleHelpers helpers;
+    assembleHelpers(build, helpers);
+
+    if (!options.includeOutlinedCode && options.includeAssembly)
+    {
+        build.text.clear();
+        build.logAppend("; skipping %u bytes of outlined helpers\n", unsigned(build.getCodeSize() * sizeof(build.code[0])));
+    }
+
+    CodeGenCompilationResult result = CodeGenCompilationResult::Success;
+
+    if (!lowerFunction(ir, build, helpers, /* proto */ nullptr, options, stats, result))
+    {
+        if (build.logText)
+            build.logAppend("; skipping (can't lower)\n");
+    }
+
+    if (build.logText)
+        build.logAppend("\n");
+
+    if (!build.finalize())
+        return std::string();
+
+    if (options.outputBinary)
+        return std::string(reinterpret_cast<const char*>(build.code.data()), reinterpret_cast<const char*>(build.code.data() + build.code.size())) +
+               std::string(build.data.begin(), build.data.end());
+    else
+        return build.text;
+}
+
+std::string getAssemblyFromIr(IrBuilder& ir, AssemblyOptions options, LoweringStats* stats)
+{
+    switch (options.target)
+    {
+    case AssemblyOptions::Host:
+    {
+#if defined(CODEGEN_TARGET_A64)
+        static unsigned int cpuFeatures = getCpuFeaturesA64();
+        A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly, cpuFeatures);
+#else
+        static unsigned int cpuFeatures = getCpuFeaturesX64();
+        X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly, cpuFeatures);
+#endif
+
+        return getAssemblyFromIrImpl(build, ir, options, stats);
+    }
+
+    case AssemblyOptions::A64:
+    {
+        A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly, /* features= */ A64::Feature_JSCVT);
+
+        return getAssemblyFromIrImpl(build, ir, options, stats);
+    }
+
+    case AssemblyOptions::A64_NoFeatures:
+    {
+        A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly, /* features= */ 0);
+
+        return getAssemblyFromIrImpl(build, ir, options, stats);
+    }
+
+    case AssemblyOptions::X64_Windows:
+    {
+        X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly, X64::ABIX64::Windows);
+
+        return getAssemblyFromIrImpl(build, ir, options, stats);
+    }
+
+    case AssemblyOptions::X64_SystemV:
+    {
+        X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly, X64::ABIX64::SystemV);
+
+        return getAssemblyFromIrImpl(build, ir, options, stats);
+    }
+
+    default:
+        CODEGEN_ASSERT(!"Unknown target");
+        return std::string();
+    }
+}
+
 } // namespace CodeGen
 } // namespace Luau

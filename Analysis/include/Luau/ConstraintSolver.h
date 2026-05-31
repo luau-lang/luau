@@ -138,12 +138,6 @@ struct ConstraintSolver
     // as never unexpectedly.
     DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors{nullptr};
 
-    // A mapping from free types to the number of unresolved constraints that mention them.
-    DenseHashMap<TypeId, size_t> DEPRECATED_unresolvedConstraints{{}};
-
-    std::unordered_map<NotNull<const Constraint>, TypeIds> DEPRECATED_maybeMutatedFreeTypes;
-    std::unordered_map<TypeId, OrderedSet<const Constraint*>> DEPRECATED_mutatedFreeTypeToConstraint;
-
     /**
      * A mapping from reference counted types (blocked types, free types,
      * unsealed table types, etc.) to the constraints that may mutate them.
@@ -236,11 +230,13 @@ private:
 
     void generalizeOneType(TypeId ty);
 
+    // Clip with LuauRemoveConstraintSolverEmplace
     template<typename T, typename... Args>
-    void emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args);
+    void DEPRECATED_emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args);
 
+    // Clip with LuauRemoveConstraintSolverEmplace
     template<typename T, typename... Args>
-    void emplace(NotNull<const Constraint> constraint, TypePackId tp, Args&&... args);
+    void DEPRECATED_emplace(NotNull<const Constraint> constraint, TypePackId tp, Args&&... args);
 
 public:
     /** Attempt to dispatch a constraint.  Returns true if it was successful. If

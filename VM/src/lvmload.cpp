@@ -16,7 +16,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauUdataDirectAccess4)
+LUAU_FASTFLAGVARIABLE(LuauUdataDirectAccess5)
 LUAU_FASTFLAG(LuauCallFeedback)
 
 template<typename T>
@@ -600,8 +600,8 @@ static int loadsafe(
 
                 membersToOffset->readonly = true;
 
-                LuaClassObject* lco = luaR_newclassobject(L, tsvalue(classname), membersToOffset, offsetToMember, numProperties, numMethods);
-                setcobjvalue(L, &p->k[j], lco);
+                LuauClass* lco = luaR_newclass(L, tsvalue(classname), membersToOffset, offsetToMember, numProperties, numMethods);
+                setclassvalue(L, &p->k[j], lco);
                 break;
             }
 
@@ -618,7 +618,7 @@ static int loadsafe(
             }
         }
 
-        if (FFlag::LuauUdataDirectAccess4)
+        if (FFlag::LuauUdataDirectAccess5)
         {
             for (Instruction* instruction = p->code; instruction < p->code + p->sizecode;)
             {

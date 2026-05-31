@@ -85,6 +85,7 @@ void initFunctions(NativeContext& context)
     context.forgLoopTableIter = forgLoopTableIter;
     context.forgLoopNodeIter = forgLoopNodeIter;
     context.forgLoopNonTableFallback = forgLoopNonTableFallback;
+    context.forgLoopNonTableFallback_DEPRECATED = forgLoopNonTableFallback_DEPRECATED;
     context.forgPrepXnextFallback = forgPrepXnextFallback;
     context.callProlog = callProlog;
     context.callEpilogC = callEpilogC;

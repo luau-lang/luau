@@ -26,15 +26,19 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionCallArgTails2)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringSingletonIntersection)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteConst)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteExport)
+LUAU_FASTFLAG(LuauExportValueSyntax)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords_DEPRECATED =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
 
-static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
+static constexpr std::array<std::string_view, 13> kStatementStartingKeywords_CONST =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
+
+static constexpr std::array<std::string_view, 14> kStatementStartingKeywords_EXPORT =
+    {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const", "export"};
 
 static constexpr std::array<std::string_view, 6> kHotComments = {"nolint", "nocheck", "nonstrict", "strict", "optimize", "native"};
 
@@ -130,7 +134,7 @@ static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* n
     if (AstExprCall* exprCall = expr->as<AstExprCall>())
     {
         if ((exprCall->args.size == 0 && exprCall->argLocation.contains(position)) ||
-            (FFlag::LuauAutocompleteFunctionCallArgTails2 && exprCall->args.size > 0 && (*exprCall->args.begin())->as<AstExprError>()))
+            (exprCall->args.size > 0 && (*exprCall->args.begin())->as<AstExprError>()))
         {
             auto it = module.astTypes.find(exprCall->func);
 
@@ -147,7 +151,7 @@ static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* n
 
             if (index < head.size())
                 return head[index];
-            else if (FFlag::LuauAutocompleteFunctionCallArgTails2 && index == head.size() && tail.has_value() && isVariadic(*tail))
+            else if (index == head.size() && tail.has_value() && isVariadic(*tail))
                 return first(*tail);
 
             return std::nullopt;
@@ -1341,9 +1345,18 @@ static AutocompleteEntryMap autocompleteStatement(
     }
 
     bool shouldIncludeBreakAndContinue = isValidBreakContinueContext(ancestry, position);
-    if (FFlag::LuauAutocompleteConst)
+
+    if (FFlag::LuauExportValueSyntax && FFlag::LuauAutocompleteExport)
     {
-        for (const std::string_view kw : kStatementStartingKeywords)
+        for (const std::string_view kw : kStatementStartingKeywords_EXPORT)
+        {
+            if ((kw != "break" && kw != "continue") || shouldIncludeBreakAndContinue)
+                result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        }
+    }
+    else if (FFlag::LuauAutocompleteConst)
+    {
+        for (const std::string_view kw : kStatementStartingKeywords_CONST)
         {
             if ((kw != "break" && kw != "continue") || shouldIncludeBreakAndContinue)
                 result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});

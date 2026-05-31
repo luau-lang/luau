@@ -17,7 +17,6 @@
 
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxDepth, 15)
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxSteps, 1500)
-LUAU_FASTFLAGVARIABLE(LuauGeneralizationMoreAwareOfBounds3)
 
 namespace Luau
 {
@@ -774,14 +773,9 @@ GeneralizationResult<TypeId> generalizeType(
             //  LO <: 'b <: 'a <: UP
             //
             // ... we can hold onto the bound UP and forward it to 'b.
-            if (FFlag::LuauGeneralizationMoreAwareOfBounds3)
-            {
-                TypeId upperBound = follow(ft->upperBound);
-                removeType(arena, builtinTypes, upperBound, freeTy);
-                lowerFree->upperBound = follow(upperBound);
-            }
-            else
-                lowerFree->upperBound = builtinTypes->unknownType;
+            TypeId upperBound = follow(ft->upperBound);
+            removeType(arena, builtinTypes, upperBound, freeTy);
+            lowerFree->upperBound = follow(upperBound);
         }
         else
             removeType(arena, builtinTypes, lb, freeTy);
@@ -802,19 +796,14 @@ GeneralizationResult<TypeId> generalizeType(
         TypeId ub = follow(ft->upperBound);
         if (FreeType* upperFree = getMutable<FreeType>(ub); upperFree && upperFree->lowerBound == freeTy)
         {
-            if (FFlag::LuauGeneralizationMoreAwareOfBounds3)
-            {
-                // If we are generalizing 'a in:
-                //
-                //  LO <: 'a <: 'b <: UP
-                //
-                // ... we can hold onto the bound LO and forward it to 'b.
-                TypeId lowerBound = follow(ft->lowerBound);
-                removeType(arena, builtinTypes, lowerBound, freeTy);
-                upperFree->lowerBound = follow(lowerBound);
-            }
-            else
-                upperFree->lowerBound = builtinTypes->neverType;
+            // If we are generalizing 'a in:
+            //
+            //  LO <: 'a <: 'b <: UP
+            //
+            // ... we can hold onto the bound LO and forward it to 'b.
+            TypeId lowerBound = follow(ft->lowerBound);
+            removeType(arena, builtinTypes, lowerBound, freeTy);
+            upperFree->lowerBound = follow(lowerBound);
         }
         else
             removeType(arena, builtinTypes, ub, freeTy);

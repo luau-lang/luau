@@ -1038,7 +1038,14 @@ enum class IrCmd : uint8_t
     // A: pointer (buffer)
     // B: int (offset)
     // C: int64 (value)
-    BUFFER_WRITEI64
+    BUFFER_WRITEI64,
+
+    // Perform a conditional jump based on the result of Proto ID comparison
+    // A: closure pointer
+    // B: protoid
+    // C: block (if true)
+    // D: block (if false)
+    JUMP_CMP_PROTOID,
 };
 
 enum class IrConstKind : uint8_t
@@ -1389,6 +1396,14 @@ struct ValueRestoreLocation
     IrOp op;             // Operand representing the location (Rn/Kn)
     IrValueKind kind;    // The kind of value at the restore location
     IrCmd conversionCmd; // Type conversion instruction that was used to store the value at the restore location
+    bool lazy;           // This location comes from a DSE hint and is emitted on demand (see StoreLocationHint)
+};
+
+struct StoreLocationHint
+{
+    IrOp op;          // Operand representing available location (Rn)
+    uint32_t instIdx; // Value that was supposed to be stored there
+    IrValueKind kind; // Value kind
 };
 
 struct VmExitStoreRecord
@@ -1431,6 +1446,7 @@ struct IrFunction
     // For each instruction, an operand that can be used to recompute the value
     std::vector<ValueRestoreLocation> valueRestoreOps;
     std::vector<uint32_t> validRestoreOpBlocks;
+    DenseHashMap<uint32_t, StoreLocationHint> storeLocationHints{kInvalidInstIdx};
 
     DenseHashMap<uint32_t, VmExitSyncInfo> vmExitInfo{kInvalidInstIdx};
     DenseHashMap<uint32_t, uint32_t> blockToVmExitMap{~0u};
@@ -1451,7 +1467,6 @@ struct IrFunction
 
     // Stores register tags that are known after constant propagating through a block, indexed by that block's index
     std::vector<std::vector<uint8_t>> blockExitTags; // blockIdx → tag array
-
 
     IrBlock& blockOp(IrOp op)
     {
@@ -1616,6 +1631,14 @@ struct IrFunction
         valueRestoreOps[instIdx] = location;
     }
 
+    void materializeRestoreLocation(uint32_t instIdx)
+    {
+        CODEGEN_ASSERT(instIdx < valueRestoreOps.size());
+        CODEGEN_ASSERT(valueRestoreOps[instIdx].lazy);
+
+        valueRestoreOps[instIdx].lazy = false;
+    }
+
     ValueRestoreLocation findRestoreLocation(uint32_t instIdx, bool limitToCurrentBlock) const
     {
         if (instIdx >= valueRestoreOps.size())
@@ -1646,6 +1669,16 @@ struct IrFunction
     bool hasRestoreLocation(const IrInst& inst, bool limitToCurrentBlock) const
     {
         return findRestoreLocation(getInstIndex(inst), limitToCurrentBlock).op.kind != IrOpKind::None;
+    }
+
+    void recordStoreLocationHint(uint32_t instIdx, StoreLocationHint hint)
+    {
+        storeLocationHints[instIdx] = hint;
+    }
+
+    const StoreLocationHint* findStoreLocationHint(uint32_t instIdx) const
+    {
+        return storeLocationHints.find(instIdx);
     }
 
     BytecodeTypes getBytecodeTypesAt(int pcpos) const

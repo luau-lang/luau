@@ -35,6 +35,12 @@ TEST_CASE_FIXTURE(Fixture, "primitive")
     CHECK_EQ("boolean", toString(requireType("d")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "builtin_top_extern_types")
+{
+    CHECK_EQ("object", toString(getBuiltins()->objectType));
+    CHECK_EQ("class", toString(getBuiltins()->classType));
+}
+
 TEST_CASE_FIXTURE(Fixture, "bound_types")
 {
     CheckResult result = check("local a = 444    local b = a");

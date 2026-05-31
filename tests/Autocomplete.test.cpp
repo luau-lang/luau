@@ -20,9 +20,6 @@ LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauAutocompleteStringSingletonIntersection)
 
 using namespace Luau;
@@ -5042,8 +5039,6 @@ TEST_CASE_FIXTURE(ACFixture, "we_know_the_fields_of_a_class_instance")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_arg")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails2, true};
-
     check(R"(
         local function foo(...: "Val1") end
         foo(@1)
@@ -5055,8 +5050,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_arg")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_union_arg")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails2, true};
-
     check(R"(
         local function foo(...: "Val1" | "Val2") end
         foo(@1)
@@ -5163,8 +5156,6 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_string_singleton_keyof_inters
     ScopedFastFlag sffs[] = {
         {FFlag::LuauAutocompleteStringSingletonIntersection, true},
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
     };
 
     check(R"(
@@ -5215,11 +5206,7 @@ x.@1
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_table_insert")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     check(R"(
         local function addToTable(t: {{ foobar: number }})
@@ -5233,11 +5220,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_table_insert")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_react")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     check(R"(
         type React_Node = any
@@ -5277,11 +5260,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_react")
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "cli_197197_autocomplete_generic_keyof")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     check(R"(
         local function ToggleButton<T>(Table: T, Key: keyof<T>)
@@ -5318,6 +5297,51 @@ TEST_CASE_FIXTURE(ACFixture, "ac_static_method_autocomplete")
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("new") > 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "class_autocomplete_classname_inside_method")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+    };
+
+    check(R"(
+        class Bar
+            function new()
+                return Bar {}
+            end
+            function hmm(self)
+                self:h@2
+            end
+        end
+
+        class Bar
+            function make()
+                return Bar {}
+            end
+            function huh(self)
+                self:h@3
+            end
+        end
+
+        Bar.@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("new") > 0);
+    CHECK(ac.entryMap.count("make") == 0);
+
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.count("hmm") > 0);
+    CHECK(ac.entryMap.count("huh") == 0);
+
+    ac = autocomplete('3');
+
+    // FIXME CLI-204201: It would be a nice-to-have if autocomplete inside
+    // erroneous classes still worked as expected.
+    CHECK(ac.entryMap.count("huh") == 0);
+    CHECK(ac.entryMap.count("hmm") == 0);
 }
 
 TEST_CASE_FIXTURE(ACFixture, "class_autocomplete_classname_inside_method")
