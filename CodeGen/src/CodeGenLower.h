@@ -212,6 +212,14 @@ inline bool lowerImpl(
             // This also prevents them from getting into text output when that's enabled
             if (isPseudo(inst.cmd))
             {
+                // Process potential store location hint that existed at this location
+                if (const StoreLocationHint* hint = function.findStoreLocationHint(index))
+                {
+                    lowering.regs.currInstIdx = index;
+                    lowering.valueTracker.processStoreLocationHint(hint);
+                    lowering.regs.currInstIdx = kInvalidInstIdx;
+                }
+
                 CODEGEN_ASSERT(inst.useCount == 0);
                 continue;
             }
@@ -254,10 +262,13 @@ inline bool lowerImpl(
             // gadget offsets unpredictable. 0–7 bytes; A64 rounds down to a multiple of 4.
             IrInst& termInst = function.instructions[block.finish];
 
-            bool blockFallsThrough = anyArgumentMatch(termInst, [&](IrOp op)
-            {
-                return op.kind == IrOpKind::Block && function.blockOp(op).start == nextBlock.start;
-            });
+            bool blockFallsThrough = anyArgumentMatch(
+                termInst,
+                [&](IrOp op)
+                {
+                    return op.kind == IrOpKind::Block && function.blockOp(op).start == nextBlock.start;
+                }
+            );
 
             // Single-predecessor fallthrough should skip padding altogether
             if (!(blockFallsThrough && termInst.cmd == IrCmd::JUMP && nextBlock.useCount == 1))
@@ -309,7 +320,7 @@ inline bool lowerIr(
 
     X64::IrLoweringX64 lowering(build, helpers, ir.function, stats);
 
-    return lowerImpl(build, lowering, ir.function, sortedBlocks, proto->bytecodeid, options);
+    return lowerImpl(build, lowering, ir.function, sortedBlocks, proto ? proto->bytecodeid : 0, options);
 }
 
 inline bool lowerIr(
@@ -324,7 +335,7 @@ inline bool lowerIr(
 {
     A64::IrLoweringA64 lowering(build, helpers, ir.function, stats);
 
-    return lowerImpl(build, lowering, ir.function, sortedBlocks, proto->bytecodeid, options);
+    return lowerImpl(build, lowering, ir.function, sortedBlocks, proto ? proto->bytecodeid : 0, options);
 }
 
 template<typename AssemblyBuilder>
@@ -341,7 +352,7 @@ inline bool lowerFunction(
     ir.function.stats = stats;
     ir.function.recordCounters = options.compilationOptions.recordCounters;
 
-    if (options.compilationOptions.nopPadding)
+    if (options.compilationOptions.nopPadding && proto != nullptr)
         ir.function.jitRngState = jitRngSeed(uintptr_t(proto));
 
     killUnusedBlocks(ir.function);

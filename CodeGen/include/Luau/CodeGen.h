@@ -141,6 +141,9 @@ CompilationResult compile(const ModuleId& moduleId, lua_State* L, int idx, const
 // Generates assembly for target function and all inner functions
 std::string getAssembly(lua_State* L, int idx, AssemblyOptions options = {}, LoweringStats* stats = nullptr);
 
+// Generate assembly for manually-constructed IR
+std::string getAssemblyFromIr(struct IrBuilder& ir, AssemblyOptions options = {}, LoweringStats* stats = nullptr);
+
 using PerfLogFn = void (*)(void* context, uintptr_t addr, unsigned size, const char* symbol);
 
 void setPerfLog(void* context, PerfLogFn logFn);

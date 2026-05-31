@@ -676,6 +676,11 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_NEWCLASSMEMBER:
         inst(IrCmd::JUMP, vmExit(i));
         break;
+    
+    case LOP_CMPPROTO:
+        translateInstCmpProto(*this, pc, i);
+        break;
+
     default:
         CODEGEN_ASSERT(!"Unknown instruction");
     }

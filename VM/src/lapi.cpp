@@ -2,6 +2,7 @@
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lapi.h"
 
+#include "lobject.h"
 #include "lstate.h"
 #include "lstring.h"
 #include "ltable.h"
@@ -123,9 +124,16 @@ const TValue* luaA_toobject(lua_State* L, int idx)
     return (p == luaO_nilobject) ? NULL : p;
 }
 
-void luaA_pushobject(lua_State* L, const TValue* o)
+void luaA_pushvalue(lua_State* L, const TValue* o)
 {
     setobj2s(L, L->top, o);
+    api_incr_top(L);
+}
+
+void luaA_pushclass(lua_State* L, LuauClass* lco)
+{
+    api_check(L, lco != nullptr);
+    setclassvalue(L, L->top, lco);
     api_incr_top(L);
 }
 
@@ -885,6 +893,9 @@ int lua_getmetatable(lua_State* L, int objindex)
         break;
     case LUA_TUSERDATA:
         mt = uvalue(obj)->metatable;
+        break;
+    case LUA_TOBJECT:
+        mt = objectvalue(obj)->lclass->instancemetatable;
         break;
     default:
         mt = L->global->mt[ttype(obj)];

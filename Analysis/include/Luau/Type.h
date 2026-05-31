@@ -1014,6 +1014,8 @@ public:
     const TypeId bufferType;
     const TypeId functionType;
     const TypeId externType;
+    const TypeId objectType;
+    const TypeId classType;
     const TypeId tableType;
     const TypeId emptyTableType;
     const TypeId trueType;

@@ -1048,7 +1048,7 @@ std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty, Den
     seen.insert(ty);
 
     if (auto ftv = get<FunctionType>(ty))
-        return { ftv->retTypes };
+        return {ftv->retTypes};
 
     if (auto utv = get<UnionType>(ty); utv && begin(utv) != end(utv))
         return getApproximateReturnTypeForFunctionCall(*begin(utv), seen);

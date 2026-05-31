@@ -106,12 +106,6 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_non_persistent_primitive")
 
 TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
 {
-    // Under DCR, we don't seal the outer occurrance of the table `Cyclic` which
-    // breaks this test.  I'm not sure if that behaviour change is important or
-    // not, but it's tangental to the core purpose of this test.
-
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         local Cyclic = {}
         function Cyclic.get()

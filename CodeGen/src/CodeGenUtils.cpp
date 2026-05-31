@@ -133,7 +133,35 @@ bool forgLoopNodeIter(lua_State* L, LuaTable* h, int index, TValue* ra)
     return false;
 }
 
-bool forgLoopNonTableFallback(lua_State* L, int insnA, int aux)
+int forgLoopNonTableFallback(lua_State* L, int insnA, int aux)
+{
+    TValue* base = L->base;
+    TValue* ra = VM_REG(insnA);
+
+    // note: it's safe to push arguments past top for complicated reasons (see lvmexecute.cpp)
+    setobj2s(L, ra + 3 + 2, ra + 2);
+    setobj2s(L, ra + 3 + 1, ra + 1);
+    setobj2s(L, ra + 3, ra);
+
+    L->top = ra + 3 + 3; // func + 2 args (state and index)
+    LUAU_ASSERT(L->top <= L->stack_last);
+
+    if (luaD_performcally(L, ra + 3, uint8_t(aux)))
+        return -1; // yield/break, caller must exit native execution
+
+    L->top = L->ci->top;
+
+    // recompute ra since stack might have been reallocated
+    base = L->base;
+    ra = VM_REG(insnA);
+
+    // copy first variable back into the iteration index
+    setobj2s(L, ra + 2, ra + 3);
+
+    return ttisnil(ra + 3) ? 0 : 1;
+}
+
+bool forgLoopNonTableFallback_DEPRECATED(lua_State* L, int insnA, int aux)
 {
     TValue* base = L->base;
     TValue* ra = VM_REG(insnA);

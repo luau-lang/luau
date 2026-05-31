@@ -16,7 +16,11 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauConst2)
+LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauFixPropReadsOnMetatableTypes)
+LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
+LUAU_FASTFLAG(LuauExternReadWriteAttributes)
+LUAU_FASTFLAG(LuauTidyTypePrototyping)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -844,6 +848,20 @@ TEST_CASE_FIXTURE(Fixture, "classes_arent_in_old_solver")
     CHECK_EQ("class keyword is illegal here", err->message);
 }
 
+TEST_CASE_FIXTURE(Fixture, "export_class_isnt_in_old_solver")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, true},
+    };
+
+    CheckResult result = check(R"( export class Point end )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<GenericError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("class keyword is illegal here", err->message);
+}
+
 TEST_CASE_FIXTURE(Fixture, "empty_class")
 {
     ScopedFastFlag sffs[] = {
@@ -876,7 +894,7 @@ TEST_CASE_FIXTURE(Fixture, "class_decl")
 
     LUAU_CHECK_NO_ERRORS(result);
 
-    TypeId t = requireExportedType("Point");
+    TypeId t = requireTypeAlias("Point");
     CHECK("Point" == toString(t));
 
     const ExternType* point = get<ExternType>(t);
@@ -963,7 +981,9 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_duplicate_class_definition")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(get<DuplicateTypeDefinition>(result.errors[0]));
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
 }
 
 TEST_CASE_FIXTURE(Fixture, "repeat_props")
@@ -1054,7 +1074,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_self_referential_class_definition")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId l0 = requireType("l0");
-    CHECK(is<MetatableType>(l0));
+    CHECK(is<ExternType>(l0));
 }
 
 TEST_CASE_FIXTURE(Fixture, "instantiate_duplicate_class")
@@ -1075,8 +1095,10 @@ _ = l0 {  }
     );
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(get<DuplicateTypeDefinition>(result.errors[0]));
-    CHECK(get<UnknownSymbol>(result.errors[1]));
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
+    REQUIRE(get<UnknownSymbol>(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "prop_with_typeof_reassigned_class")
@@ -1085,6 +1107,7 @@ TEST_CASE_FIXTURE(Fixture, "prop_with_typeof_reassigned_class")
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::LuauConst2, true},
+        {FFlag::LuauExportValueSyntax, true},
     };
 
     // This should not assert or crash
@@ -1101,7 +1124,179 @@ end
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<SyntaxError>(result.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("Assigned expression must be a variable or a field", err->message);
+    CHECK_EQ("Variable 'Animal' is constant and may not be reassigned", err->message);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "class_that_shadows_a_type_alias")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauTidyTypePrototyping, true},
+    };
+
+    CheckResult result = check(R"(
+        type AAA = { x: number }
+        class AAA end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<DuplicateTypeDefinition>(result.errors[0]);
+    REQUIRE(err);
+    CHECK(err->name == "AAA");
+    CHECK(err->previousLocation.has_value());
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "read_unknown_property_from_class_object_or_instance")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauTidyTypePrototyping, true},
+        {FFlag::LuauExternReadWriteAttributes, true},
+        {FFlag::LuauTweakAccessViolationReporting, true},
+    };
+
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+
+            function zero()
+                return Point {x=0, y=0}
+            end
+        end
+
+        local p = Point.zero()
+        local a = p.z
+        local b = Point.z
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    auto* up0 = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(up0);
+    CHECK(up0->key == "z");
+
+    auto* up1 = get<UnknownProperty>(result.errors[1]);
+    REQUIRE(up1);
+    CHECK(up1->key == "z");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_class_object_properties_are_forbidden")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauTidyTypePrototyping, true},
+        {FFlag::LuauExternReadWriteAttributes, true},
+        {FFlag::LuauTweakAccessViolationReporting, true},
+    };
+
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+
+            function zero()
+                return Point {x=0, y=0}
+            end
+
+            function magnitude(self): number
+                return 5 -- stochastic approximation for performance
+            end
+        end
+
+        Point.magnitude = function(p: Point) return 3 end
+        Point.zero = function() return Point { x = 1, y = 1 } end
+        Point.one = function() return Point { x = 1, y = 1 } end
+
+        Point.__index = {}
+        getmetatable(Point).__call = function() end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(5, result);
+
+    auto* pav0 = get<PropertyAccessViolation>(result.errors[0]);
+    REQUIRE(pav0);
+    CHECK(pav0->key == "magnitude");
+    CHECK(pav0->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav1 = get<PropertyAccessViolation>(result.errors[1]);
+    REQUIRE(pav1);
+    CHECK(pav1->key == "zero");
+    CHECK(pav1->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav2 = get<PropertyAccessViolation>(result.errors[2]);
+    REQUIRE(pav2);
+    CHECK(pav2->key == "one");
+    CHECK(pav2->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav3 = get<PropertyAccessViolation>(result.errors[3]);
+    REQUIRE(pav3);
+    CHECK(pav3->key == "__index");
+    CHECK(pav3->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav4 = get<PropertyAccessViolation>(result.errors[4]);
+    REQUIRE(pav4);
+    CHECK(pav4->key == "__call");
+    CHECK(pav4->context == PropertyAccessViolation::CannotWrite);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_unknown_class_instance_properties_are_forbidden")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauTidyTypePrototyping, true},
+        {FFlag::LuauExternReadWriteAttributes, true},
+        {FFlag::LuauTweakAccessViolationReporting, true},
+    };
+
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+
+            function zero()
+                return Point {x=0, y=0}
+            end
+
+            function magnitude(self): number
+                return 5 -- stochastic approximation for performance
+            end
+        end
+
+        local p = Point.zero()
+
+        p.magnitude = function(p: Point) return 3 end
+        p.zero = function() return Point { x = 1, y = 1 } end
+        p.one = function() return Point { x = 1, y = 1 } end
+
+        p.__index = {}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+
+    auto* pav0 = get<PropertyAccessViolation>(result.errors[0]);
+    REQUIRE(pav0);
+    CHECK(pav0->key == "magnitude");
+    CHECK(pav0->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav1 = get<PropertyAccessViolation>(result.errors[1]);
+    REQUIRE(pav1);
+    CHECK(pav1->key == "zero");
+    CHECK(pav1->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav2 = get<PropertyAccessViolation>(result.errors[2]);
+    REQUIRE(pav2);
+    CHECK(pav2->key == "one");
+    CHECK(pav2->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav3 = get<PropertyAccessViolation>(result.errors[3]);
+    REQUIRE(pav3);
+    CHECK(pav3->key == "__index");
+    CHECK(pav3->context == PropertyAccessViolation::CannotWrite);
 }
 
 TEST_SUITE_END();

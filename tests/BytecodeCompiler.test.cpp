@@ -34,7 +34,7 @@ struct BytecodeCompilerFixture
 {
     BytecodeCompilerFixture() {}
 
-    std::optional<Bytecode::BcFunction> buildBytecode(std::string_view src, int optimizationLevel = 0)
+    std::optional<Bytecode::CompTimeBcFunction> buildBytecode(std::string_view src, int optimizationLevel = 0)
     {
         auto bytecode = getFunctionBytecode(src, optimizationLevel);
         if (bytecode)
@@ -112,7 +112,7 @@ struct BytecodeCompilerFixture
             std::vector<std::string_view> table;
             for (std::string& s : bytecode->second)
                 table.push_back(s);
-            std::optional<BcFunction> func = Bytecode::fromFunctionBytecode(bytecode->first, table);
+            std::optional<CompTimeBcFunction> func = Bytecode::fromFunctionBytecode(bytecode->first, table);
             std::string orig = extractCode(bytecode->first);
             std::string dumped = extractCode(Bytecode::toFunctionBytecode(*func));
             REQUIRE_EQ(orig, dumped);
@@ -126,7 +126,7 @@ struct BytecodeCompilerFixture
 
 TEST_SUITE_BEGIN("BytecodeCompiler");
 
-bool checkOps(BcFunction& fn, std::list<BcOp>& ops, std::initializer_list<LuauOpcode> expected_ops)
+bool checkOps(CompTimeBcFunction& fn, std::list<BcOp>& ops, std::initializer_list<LuauOpcode> expected_ops)
 {
     std::vector<LuauOpcode> expected = expected_ops;
     if (ops.size() != expected.size())
@@ -187,27 +187,27 @@ inline BcOp loopOp(BcEdges& edges)
     return getBlockOp(edges, BcBlockEdgeKind::Loop);
 }
 
-inline BcBlock& getBlock(BcFunction& fn, BcEdges& edges, BcBlockEdgeKind kind)
+inline BcBlock& getBlock(CompTimeBcFunction& fn, BcEdges& edges, BcBlockEdgeKind kind)
 {
     return fn.blockOp(getBlockOp(edges, kind));
 }
 
-inline BcBlock& fallthroughBlock(BcFunction& fn, BcEdges& edges)
+inline BcBlock& fallthroughBlock(CompTimeBcFunction& fn, BcEdges& edges)
 {
     return getBlock(fn, edges, BcBlockEdgeKind::Fallthrough);
 }
 
-inline BcBlock& branchBlock(BcFunction& fn, BcEdges& edges)
+inline BcBlock& branchBlock(CompTimeBcFunction& fn, BcEdges& edges)
 {
     return getBlock(fn, edges, BcBlockEdgeKind::Branch);
 }
 
-inline BcBlock& loopBlock(BcFunction& fn, BcEdges& edges)
+inline BcBlock& loopBlock(CompTimeBcFunction& fn, BcEdges& edges)
 {
     return getBlock(fn, edges, BcBlockEdgeKind::Loop);
 }
 
-inline bool isPhiOf(BcFunction& fn, BcOp op, BcOp left, BcOp right)
+inline bool isPhiOf(CompTimeBcFunction& fn, BcOp op, BcOp left, BcOp right)
 {
     if (op.kind != BcOpKind::Phi)
         return false;
@@ -891,7 +891,6 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "classes_bytecode_roundtrips")
 
         return { Point = Point }
     )");
-
 }
 
 TEST_SUITE_END();

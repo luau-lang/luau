@@ -122,10 +122,10 @@ void luaV_gettable(lua_State* L, const TValue* t, TValue* key, StkId val)
             }
             // t isn't a table, so see if it has an INDEX meta-method to look up the key with
         }
-        else if (LUAU_UNLIKELY(FFlag::DebugLuauUserDefinedClassesRuntime && ttisclassinstance(t)))
+        else if (LUAU_UNLIKELY(FFlag::DebugLuauUserDefinedClassesRuntime && ttisobject(t)))
         {
-            LuaClassInstance* inst = cinstvalue(t);
-            const TValue* offsettval = luaH_get(inst->classobject->memberstooffset, key);
+            LuauObject* inst = objectvalue(t);
+            const TValue* offsettval = luaH_get(inst->lclass->memberstooffset, key);
 
             // Class instances throw if you try to access a member that is not
             // present.
@@ -137,9 +137,9 @@ void luaV_gettable(lua_State* L, const TValue* t, TValue* key, StkId val)
             setobj2s(L, val, luaR_lookupmemberatoffset(inst, offset));
             return;
         }
-        else if (LUAU_UNLIKELY(FFlag::DebugLuauUserDefinedClassesRuntime && ttisclassobject(t)))
+        else if (LUAU_UNLIKELY(FFlag::DebugLuauUserDefinedClassesRuntime && ttisclass(t)))
         {
-            LuaClassObject* lco = cobjvalue(t);
+            LuauClass* lco = classvalue(t);
             const TValue* res = luaH_get(lco->memberstooffset, key);
 
             // Class objects throw if you try to access a member that is not
@@ -210,15 +210,15 @@ void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
 
             // fallthrough to metamethod
         }
-        else if (LUAU_UNLIKELY(FFlag::DebugLuauUserDefinedClassesRuntime && ttisclassinstance(t)))
+        else if (LUAU_UNLIKELY(FFlag::DebugLuauUserDefinedClassesRuntime && ttisobject(t)))
         {
-            LuaClassInstance* inst = cinstvalue(t);
-            const TValue* offset = luaH_get(inst->classobject->memberstooffset, key);
+            LuauObject* inst = objectvalue(t);
+            const TValue* offset = luaH_get(inst->lclass->memberstooffset, key);
             if (ttisnil(offset))
                 luaG_missingmembererror(L, t, key);
             const int offsetnum = int(nvalue(offset));
-            LUAU_ASSERT(offsetnum >= 0 && offsetnum < inst->classobject->numberofallmembers);
-            if (offsetnum >= inst->classobject->numberofinstancemembers)
+            LUAU_ASSERT(offsetnum >= 0 && offsetnum < inst->lclass->numberofallmembers);
+            if (offsetnum >= inst->lclass->numberofinstancemembers)
                 luaG_indexerror(L, t, key);
             setobj2class(L, &inst->members[offsetnum], val);
             luaC_barrier(L, inst, val);
@@ -363,17 +363,17 @@ int luaV_equalval(lua_State* L, const TValue* t1, const TValue* t2)
             return uvalue(t1) == uvalue(t2);
         break; // will try TM
     }
-    case LUA_TCLASSOBJ:
-        return cobjvalue(t1) == cobjvalue(t2);
-    case LUA_TCLASSINST:
+    case LUA_TCLASS:
+        return classvalue(t1) == classvalue(t2);
+    case LUA_TOBJECT:
     {
         // We follow roughly the same rules as metatables, except we require
         // that the two instances have *exactly* the same class object. This
         // is not a strict requirement for comparison metamethods.
-        LuaClassInstance* t1inst = cinstvalue(t1);
-        LuaClassInstance* t2inst = cinstvalue(t2);
+        LuauObject* t1inst = objectvalue(t1);
+        LuauObject* t2inst = objectvalue(t2);
         // Class instances with differing class objects are always inequal.
-        if (t1inst->classobject != t2inst->classobject)
+        if (t1inst->lclass != t2inst->lclass)
             return false;
         // Otherwise, check if `__eq` exists and use that
         tm = luaT_gettmbyobj(L, t1, TM_EQ);
