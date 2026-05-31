@@ -16,16 +16,13 @@ LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
 LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
 LUAU_FASTFLAG(LuauCodegenGcoDse2)
-LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
-LUAU_FASTFLAG(LuauCodegenRemoveDuplicateDoubleIntValues)
 LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
-LUAU_FASTFLAG(LuauCodegenUserdataAddressAlias)
 LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
 LUAU_FASTFLAG(LuauCodegenInteger2)
-LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerLibrary)
-LUAU_FASTFLAG(LuauCodegenJumpCmpIntFoldFix)
+LUAU_FASTFLAG(LuauCodegenVmExitSync)
+LUAU_FASTFLAG(LuauCodegenLoadPropagateOrigin)
 
 using namespace Luau::CodeGen;
 
@@ -596,7 +593,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64Arithmetic")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -634,7 +631,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64Bitwise")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -703,7 +700,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ShiftsAndRotates")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -764,7 +761,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64Comparisons")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -840,7 +837,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -874,7 +871,7 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpFoldPass")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -902,7 +899,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ArithmeticExtended")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -943,7 +940,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ShiftEdgeCases")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -994,7 +991,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64BitwiseExtended")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1055,7 +1052,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionOpsPreserved")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1100,7 +1097,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivGuardFoldKnownNonZero")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1132,7 +1129,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivGuardZeroDivisorJumps")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1162,7 +1159,7 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64SelectPreservedWithDifferentBranches")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1196,7 +1193,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NegationConstFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1229,7 +1226,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ConversionConstProp")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1260,7 +1257,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ConversionDedup")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1291,8 +1288,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionStoreForward")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
-    ScopedFastFlag luauCodegenRemoveDuplicateDoubleIntValues{FFlag::LuauCodegenRemoveDuplicateDoubleIntValues, true};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1326,7 +1322,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpUnsignedFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1355,7 +1351,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckCmpUnsignedFoldFail")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1386,7 +1382,7 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ArithChainConstFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1425,7 +1421,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64BitwiseLargeValues")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1475,7 +1471,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ComparisonBoundaryValues")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1539,7 +1535,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseInt64Overwrite")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp entry = build.block(IrBlockKind::Internal);
 
@@ -1572,7 +1568,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionConstFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1622,7 +1618,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DivisionUnsafeCasesNotFolded")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1664,7 +1660,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckDivFoldSafe")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1691,7 +1687,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckDivFoldZeroDivisor")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1720,7 +1716,7 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64CheckDivFoldOverflow")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Internal);
@@ -1749,7 +1745,7 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ConversionConstFold")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1785,15 +1781,23 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumToInt64OutOfRangeNotFolded")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
 
     build.inst(IrCmd::STORE_INT64, build.vmReg(0), build.inst(IrCmd::NUM_TO_INT64, build.constDouble(1e19)));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(1), build.inst(IrCmd::NUM_TO_INT64, build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0))));
-    build.inst(IrCmd::STORE_INT64, build.vmReg(2), build.inst(IrCmd::NUM_TO_INT64, build.inst(IrCmd::DIV_NUM, build.constDouble(1.0), build.constDouble(0.0))));
+    build.inst(
+        IrCmd::STORE_INT64,
+        build.vmReg(1),
+        build.inst(IrCmd::NUM_TO_INT64, build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0)))
+    );
+    build.inst(
+        IrCmd::STORE_INT64,
+        build.vmReg(2),
+        build.inst(IrCmd::NUM_TO_INT64, build.inst(IrCmd::DIV_NUM, build.constDouble(1.0), build.constDouble(0.0)))
+    );
 
     build.inst(IrCmd::RETURN, build.constUint(0));
 
@@ -1816,7 +1820,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64ShiftBoundary63")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -1930,7 +1934,7 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64SplitTvalueStoreConstProp")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp entry = build.block(IrBlockKind::Internal);
 
@@ -2527,7 +2531,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64NumRoundtripElimination")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -2555,8 +2559,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64StoreForwardToLoad")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
-    ScopedFastFlag luauCodegenRemoveDuplicateDoubleIntValues{FFlag::LuauCodegenRemoveDuplicateDoubleIntValues, true};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -2587,8 +2590,7 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Int64DuplicateStoreRemoval")
 {
-    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
-    ScopedFastFlag luauCodegenRemoveDuplicateDoubleIntValues{FFlag::LuauCodegenRemoveDuplicateDoubleIntValues, true};
+    ScopedFastFlag integerFlags[3] = {{FFlag::LuauIntegerType2, true}, {FFlag::LuauIntegerLibrary, true}, {FFlag::LuauCodegenInteger2, true}};
 
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -3352,8 +3354,6 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "IntNumIntPeepholes")
 {
-    ScopedFastFlag luauCodegenRemoveDuplicateDoubleIntValues{FFlag::LuauCodegenRemoveDuplicateDoubleIntValues, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -4562,8 +4562,7 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateBufferLengthChecks")
 {
-    ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
+    ScopedFastFlag luauCodegenLoadPropagateOrigin{FFlag::LuauCodegenLoadPropagateOrigin, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
@@ -4612,7 +4611,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateBufferLengthChecks")
 bb_0:
    %0 = LOAD_TVALUE R0
    STORE_TVALUE R2, %0
-   %2 = LOAD_POINTER R2
+   %2 = LOAD_POINTER R0
    CHECK_BUFFER_LEN %2, 12i, -4i, 8i, undef, bb_fallback_1
    BUFFER_WRITEI32 %2, 12i, 32i, tbuffer
    BUFFER_WRITEI32 %2, 8i, 30i, tbuffer
@@ -4632,9 +4631,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksNegativeIndex")
 {
-    ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
@@ -4668,8 +4664,7 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksIntegerMatch")
 {
-    ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
+    ScopedFastFlag luauCodegenLoadPropagateOrigin{FFlag::LuauCodegenLoadPropagateOrigin, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
@@ -4695,7 +4690,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksIntegerMatch")
 bb_0:
    %0 = LOAD_TVALUE R0
    STORE_TVALUE R2, %0
-   %2 = LOAD_POINTER R2
+   %2 = LOAD_POINTER R0
    CHECK_BUFFER_LEN %2, 0i, 0i, 4i, undef, bb_fallback_1
    JUMP bb_fallback_1
 
@@ -4707,9 +4702,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksIntegerMatch2")
 {
-    ScopedFastFlag luauCodegenBufNoDefTag{FFlag::LuauCodegenBufNoDefTag, true};
-    ScopedFastFlag luauCodegenBufferRangeMerge{FFlag::LuauCodegenBufferRangeMerge4, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
@@ -5750,8 +5742,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicatePointerStoreRemoval")
 {
-    ScopedFastFlag luauCodegenRemoveDuplicateDoubleIntValues{FFlag::LuauCodegenRemoveDuplicateDoubleIntValues, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -7296,6 +7286,449 @@ bb_3:
 )");
 }
 
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncBasic")
+{
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), build.constDouble(2.0));
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(0)), build.constTag(tnumber), build.vmExit(1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0
+   %2 = LOAD_TAG R0
+   CHECK_TAG %2, tnumber, bb_exit_1
+   ; exit sync: R1, {}
+   RETURN R0, 1i
+
+bb_exit_1:
+   STORE_TAG R1, tnumber
+   STORE_DOUBLE R1, 2
+   JUMP exit(1)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncSinking")
+{
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp load = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+    IrOp add = build.inst(IrCmd::ADD_NUM, load, build.constDouble(1.0));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), add);
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(2)), build.constTag(tnumber), build.vmExit(1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    // We are able to sink both the store and the only use of the store argument (ADD_NUM)
+    // TODO: by checking aliasing between instructions, we can sink load into the exit
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0, R2
+   %0 = LOAD_DOUBLE R0
+   %4 = LOAD_TAG R2
+   CHECK_TAG %4, tnumber, bb_exit_1
+   ; exit sync: R1, {%0}
+   RETURN R0, 1i
+
+bb_exit_1:
+   %7 = ADD_NUM %0, 1
+   STORE_TAG R1, tnumber
+   STORE_DOUBLE R1, %7
+   JUMP exit(1)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncMultipleExitRegisters")
+{
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp load = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+    IrOp add = build.inst(IrCmd::ADD_NUM, load, build.constDouble(1.0));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), add);
+
+    // Checking with reverse component order as well
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), load);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(3)), build.constTag(tnumber), build.vmExit(1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    // Two exit-only registers (R1 and R2) both depending on the same load
+    // We sink both stores and the ADD_NUM computation
+    // TODO: by checking aliasing between instructions, we can sink load into the exit
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0, R3
+   %0 = LOAD_DOUBLE R0
+   %6 = LOAD_TAG R3
+   CHECK_TAG %6, tnumber, bb_exit_1
+   ; exit sync: R2, R1, {%0}
+   RETURN R0, 1i
+
+bb_exit_1:
+   %9 = ADD_NUM %0, 1
+   STORE_TAG R2, tnumber
+   STORE_DOUBLE R2, %0
+   STORE_TAG R1, tnumber
+   STORE_DOUBLE R1, %9
+   JUMP exit(1)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncStoreVector")
+{
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp x = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(0), build.constInt(0));
+    IrOp y = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(0), build.constInt(4));
+    IrOp z = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(0), build.constInt(8));
+
+    build.inst(IrCmd::STORE_VECTOR, build.vmReg(1), x, y, z);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tvector));
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(2)), build.constTag(tnumber), build.vmExit(1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    // TODO: by checking aliasing between instructions, we can sink loads into the exit
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0, R2
+   %0 = LOAD_FLOAT R0, 0i
+   %1 = LOAD_FLOAT R0, 4i
+   %2 = LOAD_FLOAT R0, 8i
+   %5 = LOAD_TAG R2
+   CHECK_TAG %5, tnumber, bb_exit_1
+   ; exit sync: R1, {%0, %1, %2}
+   RETURN R0, 1i
+
+bb_exit_1:
+   STORE_TAG R1, tvector
+   STORE_VECTOR R1, %0, %1, %2
+   JUMP exit(1)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncStoreTvalue")
+{
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp tval = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(0));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(1), tval);
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(2)), build.constTag(tnumber), build.vmExit(1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    // TODO: by checking aliasing between instructions, we can sink load into the exit
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0, R2
+   %0 = LOAD_TVALUE R0
+   %2 = LOAD_TAG R2
+   CHECK_TAG %2, tnumber, bb_exit_1
+   ; exit sync: R1, {%0}
+   RETURN R0, 1i
+
+bb_exit_1:
+   STORE_TVALUE R1, %0
+   JUMP exit(1)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncMultipleRegisters")
+{
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), build.constDouble(1.0));
+
+    IrOp tval = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(3));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(2), tval);
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(0)), build.constTag(tnumber), build.vmExit(1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    // Both stores to R1 and R2 are recorded into the sync
+    // TODO: by checking aliasing between instructions, we can sink load into the exit
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0, R3
+   %2 = LOAD_TVALUE R3
+   %4 = LOAD_TAG R0
+   CHECK_TAG %4, tnumber, bb_exit_1
+   ; exit sync: R2, R1, {%2}
+   RETURN R0, 1i
+
+bb_exit_1:
+   STORE_TVALUE R2, %2
+   STORE_TAG R1, tnumber
+   STORE_DOUBLE R1, 1
+   JUMP exit(1)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncNoRecordAfterGuard")
+{
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(0)), build.constTag(tnumber), build.vmExit(1));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), build.constDouble(2.0));
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    // No exit sync as stores happen after the guard
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0
+   %0 = LOAD_TAG R0
+   CHECK_TAG %0, tnumber, exit(1)
+   STORE_TAG R1, tnumber
+   STORE_DOUBLE R1, 2
+   RETURN R1, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncDeepSinkChain")
+{
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp load = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+    IrOp add1 = build.inst(IrCmd::ADD_NUM, load, build.constDouble(1.0));
+    IrOp add2 = build.inst(IrCmd::ADD_NUM, add1, build.constDouble(2.0));
+    IrOp add3 = build.inst(IrCmd::ADD_NUM, add2, build.constDouble(3.0));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), add3);
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(2)), build.constTag(tnumber), build.vmExit(1));
+
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    // Load stays on main path, three ADD_NUM instructions are sunk as a chain
+    // TODO: by checking aliasing between instructions, we can sink more into the exit
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0, R2
+   %0 = LOAD_DOUBLE R0
+   %6 = LOAD_TAG R2
+   CHECK_TAG %6, tnumber, bb_exit_1
+   ; exit sync: R1, {%0}
+   RETURN R0, 1i
+
+bb_exit_1:
+   %9 = ADD_NUM %0, 1
+   %10 = ADD_NUM %9, 2
+   %11 = ADD_NUM %10, 3
+   STORE_TAG R1, tnumber
+   STORE_DOUBLE R1, %11
+   JUMP exit(1)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncUserCallPreventsSync")
+{
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp load = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), load);
+    build.inst(IrCmd::DO_LEN, build.vmReg(3), build.vmReg(2));
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(4)), build.constTag(tnumber), build.vmExit(1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    // R1 stores remain because of DO_LEN user call and no exit sync block is generated
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0, R2, R4
+   %0 = LOAD_DOUBLE R0
+   STORE_TAG R1, tnumber
+   STORE_DOUBLE R1, %0
+   DO_LEN R3, R2
+   %4 = LOAD_TAG R4
+   CHECK_TAG %4, tnumber, exit(1)
+   RETURN R0, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncSinkingNoInlineAcrossBlock")
+{
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp load = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(3));
+    IrOp sub = build.inst(IrCmd::SUB_NUM, build.constDouble(11008), load);
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), sub);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+    build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(8));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    // x64 memory operand optimization should not inline R3 register into %6
+    updateUseCounts(build.function);
+    optimizeMemoryOperandsX64(build.function);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0, R3
+   %0 = LOAD_DOUBLE R3
+   CHECK_SAFE_ENV bb_exit_1
+   ; exit sync: R2, {%0}
+   RETURN R0, 1i
+
+bb_exit_1:
+   %6 = SUB_NUM 11008, %0
+   STORE_TAG R2, tnumber
+   STORE_DOUBLE R2, %6
+   JUMP exit(8)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncVectorFullStore")
+{
+    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
+    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tvector));
+    build.inst(IrCmd::STORE_VECTOR, build.vmReg(1), build.constDouble(1.0), build.constDouble(2.0), build.constDouble(3.0));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tvector));
+    build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(20));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    markDeadStoresInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0
+   CHECK_SAFE_ENV bb_exit_1
+   ; exit sync: R1, {}
+   RETURN R0, 1i
+
+bb_exit_1:
+   STORE_VECTOR R1, 1, 2, 3, tvector
+   JUMP exit(20)
+
+)");
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("Dump");
@@ -7332,8 +7765,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ToDot")
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "UserdataBufferStoreForwardingInvalidation")
 {
-    ScopedFastFlag luauCodegenUserdataAddressAlias{FFlag::LuauCodegenUserdataAddressAlias, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);

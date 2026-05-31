@@ -16,11 +16,9 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenBufferRangeMerge4)
-LUAU_FASTFLAG(LuauCodegenBufNoDefTag)
-LUAU_FASTFLAG(LuauCodegenCallWrapImproved)
-LUAU_FASTFLAG(LuauCodegenNewRegSplit)
 LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
+LUAU_FASTFLAG(LuauCodegenVmExitSync)
+LUAU_FASTFLAG(LuauYieldIter2)
 
 namespace Luau
 {
@@ -1529,100 +1527,50 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         CODEGEN_ASSERT(OP_A(inst).kind == IrOpKind::VmReg && OP_B(inst).kind == IrOpKind::VmReg);
         IrCondition cond = conditionOp(OP_C(inst));
 
-        if (FFlag::LuauCodegenCallWrapImproved)
+        inst.regX64 = regs.allocReg(SizeX64::dword, index);
+
+        Label skip, exit;
+
+        // For equality comparison, 'luaV_equalval' expects tag to be equal before the call
+        if (cond == IrCondition::Equal)
         {
-            inst.regX64 = regs.allocReg(SizeX64::dword, index);
+            ScopedRegX64 tmp{regs, SizeX64::dword};
 
-            Label skip, exit;
+            build.mov(tmp.reg, memRegTagOp(OP_A(inst)));
+            build.cmp(memRegTagOp(OP_B(inst)), tmp.reg);
 
-            // For equality comparison, 'luaV_equalval' expects tag to be equal before the call
-            if (cond == IrCondition::Equal)
-            {
-                ScopedRegX64 tmp{regs, SizeX64::dword};
-
-                build.mov(tmp.reg, memRegTagOp(OP_A(inst)));
-                build.cmp(memRegTagOp(OP_B(inst)), tmp.reg);
-
-                // If the tags are not equal, skip the call and set result to 0
-                build.jcc(ConditionX64::NotEqual, skip);
-            }
-
-            {
-                ScopedSpills spillGuard(regs);
-
-                IrCallWrapperX64 callWrap(regs, build);
-                callWrap.addArgument(SizeX64::qword, rState);
-                callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_A(inst))));
-                callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_B(inst))));
-                callWrap.setResultRegister(inst.regX64, index);
-
-                if (cond == IrCondition::LessEqual)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessequal)]);
-                else if (cond == IrCondition::Less)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessthan)]);
-                else if (cond == IrCondition::Equal)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_equalval)]);
-                else
-                    CODEGEN_ASSERT(!"Unsupported condition");
-
-                emitUpdateBase(build);
-            }
-
-            if (cond == IrCondition::Equal)
-            {
-                build.jmp(exit);
-                build.setLabel(skip);
-
-                build.xor_(inst.regX64, inst.regX64);
-                build.setLabel(exit);
-            }
+            // If the tags are not equal, skip the call and set result to 0
+            build.jcc(ConditionX64::NotEqual, skip);
         }
-        else
+
         {
-            Label skip, exit;
+            ScopedSpills spillGuard(regs);
 
-            // For equality comparison, 'luaV_lessequal' expects tag to be equal before the call
-            if (cond == IrCondition::Equal)
-            {
-                ScopedRegX64 tmp{regs, SizeX64::dword};
+            IrCallWrapperX64 callWrap(regs, build);
+            callWrap.addArgument(SizeX64::qword, rState);
+            callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_A(inst))));
+            callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_B(inst))));
+            callWrap.setResultRegister(inst.regX64, index);
 
-                build.mov(tmp.reg, memRegTagOp(OP_A(inst)));
-                build.cmp(memRegTagOp(OP_B(inst)), tmp.reg);
-
-                // If the tags are not equal, skip 'luaV_lessequal' call and set result to 0
-                build.jcc(ConditionX64::NotEqual, skip);
-            }
-
-            {
-                ScopedSpills spillGuard(regs);
-
-                IrCallWrapperX64 callWrap(regs, build);
-                callWrap.addArgument(SizeX64::qword, rState);
-                callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_A(inst))));
-                callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_B(inst))));
-
-                if (cond == IrCondition::LessEqual)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessequal)]);
-                else if (cond == IrCondition::Less)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessthan)]);
-                else if (cond == IrCondition::Equal)
-                    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_equalval)]);
-                else
-                    CODEGEN_ASSERT(!"Unsupported condition");
-            }
+            if (cond == IrCondition::LessEqual)
+                callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessequal)]);
+            else if (cond == IrCondition::Less)
+                callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessthan)]);
+            else if (cond == IrCondition::Equal)
+                callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_equalval)]);
+            else
+                CODEGEN_ASSERT(!"Unsupported condition");
 
             emitUpdateBase(build);
+        }
 
-            inst.regX64 = regs.takeReg(eax, index);
+        if (cond == IrCondition::Equal)
+        {
+            build.jmp(exit);
+            build.setLabel(skip);
 
-            if (cond == IrCondition::Equal)
-            {
-                build.jmp(exit);
-                build.setLabel(skip);
-
-                build.xor_(inst.regX64, inst.regX64);
-                build.setLabel(exit);
-            }
+            build.xor_(inst.regX64, inst.regX64);
+            build.setLabel(exit);
         }
 
         // If case we made a call, skip high register bits clear, only consumer is JUMP_CMP_INT which doesn't read them
@@ -1755,7 +1703,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         break;
     }
     case IrCmd::JUMP:
-        jumpOrAbortOnUndef(OP_A(inst), next);
+        jumpOrAbortOnUndef(OP_A(inst), index, next);
         break;
     case IrCmd::JUMP_IF_TRUTHY:
         jumpIfTruthy(build, vmRegOp(OP_A(inst)), labelOp(OP_B(inst)), labelOp(OP_C(inst)));
@@ -1933,69 +1881,35 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::TRY_CALL_FASTGETTM:
     {
-        if (FFlag::LuauCodegenCallWrapImproved)
+        inst.regX64 = regs.allocReg(SizeX64::qword, index);
+
+        ScopedRegX64 tmp{regs, SizeX64::qword};
+
+        build.mov(tmp.reg, qword[regOp(OP_A(inst)) + offsetof(LuaTable, metatable)]);
+        regs.freeLastUseReg(function.instOp(OP_A(inst)), index); // Release before the call if it's the last use
+
+        build.test(tmp.reg, tmp.reg);
+        build.jcc(ConditionX64::Zero, labelOp(OP_C(inst))); // No metatable
+
+        build.test(byte[tmp.reg + offsetof(LuaTable, tmcache)], 1 << intOp(OP_B(inst)));
+        build.jcc(ConditionX64::NotZero, labelOp(OP_C(inst))); // No tag method
+
+        ScopedRegX64 tmp2{regs, SizeX64::qword};
+        build.mov(tmp2.reg, qword[rState + offsetof(lua_State, global)]);
+
         {
-            inst.regX64 = regs.allocReg(SizeX64::qword, index);
+            ScopedSpills spillGuard(regs);
 
-            ScopedRegX64 tmp{regs, SizeX64::qword};
-
-            build.mov(tmp.reg, qword[regOp(OP_A(inst)) + offsetof(LuaTable, metatable)]);
-            regs.freeLastUseReg(function.instOp(OP_A(inst)), index); // Release before the call if it's the last use
-
-            build.test(tmp.reg, tmp.reg);
-            build.jcc(ConditionX64::Zero, labelOp(OP_C(inst))); // No metatable
-
-            build.test(byte[tmp.reg + offsetof(LuaTable, tmcache)], 1 << intOp(OP_B(inst)));
-            build.jcc(ConditionX64::NotZero, labelOp(OP_C(inst))); // No tag method
-
-            ScopedRegX64 tmp2{regs, SizeX64::qword};
-            build.mov(tmp2.reg, qword[rState + offsetof(lua_State, global)]);
-
-            {
-                ScopedSpills spillGuard(regs);
-
-                IrCallWrapperX64 callWrap(regs, build, index);
-                callWrap.addArgument(SizeX64::qword, tmp);
-                callWrap.addArgument(SizeX64::qword, intOp(OP_B(inst)));
-                callWrap.addArgument(SizeX64::qword, qword[tmp2.release() + offsetof(global_State, tmname) + intOp(OP_B(inst)) * sizeof(TString*)]);
-                callWrap.setResultRegister(inst.regX64, index);
-                callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaT_gettm)]);
-            }
-
-            build.test(inst.regX64, inst.regX64);
-            build.jcc(ConditionX64::Zero, labelOp(OP_C(inst))); // No tag method
+            IrCallWrapperX64 callWrap(regs, build, index);
+            callWrap.addArgument(SizeX64::qword, tmp);
+            callWrap.addArgument(SizeX64::qword, intOp(OP_B(inst)));
+            callWrap.addArgument(SizeX64::qword, qword[tmp2.release() + offsetof(global_State, tmname) + intOp(OP_B(inst)) * sizeof(TString*)]);
+            callWrap.setResultRegister(inst.regX64, index);
+            callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaT_gettm)]);
         }
-        else
-        {
-            ScopedRegX64 tmp{regs, SizeX64::qword};
 
-            build.mov(tmp.reg, qword[regOp(OP_A(inst)) + offsetof(LuaTable, metatable)]);
-            regs.freeLastUseReg(function.instOp(OP_A(inst)), index); // Release before the call if it's the last use
-
-            build.test(tmp.reg, tmp.reg);
-            build.jcc(ConditionX64::Zero, labelOp(OP_C(inst))); // No metatable
-
-            build.test(byte[tmp.reg + offsetof(LuaTable, tmcache)], 1 << intOp(OP_B(inst)));
-            build.jcc(ConditionX64::NotZero, labelOp(OP_C(inst))); // No tag method
-
-            ScopedRegX64 tmp2{regs, SizeX64::qword};
-            build.mov(tmp2.reg, qword[rState + offsetof(lua_State, global)]);
-
-            {
-                ScopedSpills spillGuard(regs);
-
-                IrCallWrapperX64 callWrap(regs, build, index);
-                callWrap.addArgument(SizeX64::qword, tmp);
-                callWrap.addArgument(SizeX64::qword, intOp(OP_B(inst)));
-                callWrap.addArgument(SizeX64::qword, qword[tmp2.release() + offsetof(global_State, tmname) + intOp(OP_B(inst)) * sizeof(TString*)]);
-                callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaT_gettm)]);
-            }
-
-            build.test(rax, rax);
-            build.jcc(ConditionX64::Zero, labelOp(OP_C(inst))); // No tag method
-
-            inst.regX64 = regs.takeReg(rax, index);
-        }
+        build.test(inst.regX64, inst.regX64);
+        build.jcc(ConditionX64::Zero, labelOp(OP_C(inst))); // No tag method
         break;
     }
     case IrCmd::NEW_USERDATA:
@@ -2351,7 +2265,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CHECK_TAG:
         build.cmp(memRegTagOp(OP_A(inst)), tagOp(OP_B(inst)));
-        jumpOrAbortOnUndef(ConditionX64::NotEqual, OP_C(inst), next);
+        jumpOrAbortOnUndef(ConditionX64::NotEqual, OP_C(inst), index, next);
         break;
     case IrCmd::CHECK_TRUTHY:
     {
@@ -2364,7 +2278,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         {
             // Fail to fallback on 'nil' (falsy)
             build.cmp(memRegTagOp(OP_A(inst)), LUA_TNIL);
-            jumpOrAbortOnUndef(ConditionX64::Equal, OP_C(inst), next);
+            jumpOrAbortOnUndef(ConditionX64::Equal, OP_C(inst), index, next);
 
             // Skip value test if it's not a boolean (truthy)
             build.cmp(memRegTagOp(OP_A(inst)), LUA_TBOOLEAN);
@@ -2375,12 +2289,12 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         if (OP_B(inst).kind != IrOpKind::Constant)
         {
             build.cmp(memRegUintOp(OP_B(inst)), 0);
-            jumpOrAbortOnUndef(ConditionX64::Equal, OP_C(inst), next);
+            jumpOrAbortOnUndef(ConditionX64::Equal, OP_C(inst), index, next);
         }
         else
         {
             if (intOp(OP_B(inst)) == 0)
-                jumpOrAbortOnUndef(OP_C(inst), next);
+                jumpOrAbortOnUndef(OP_C(inst), index, next);
         }
 
         if (OP_A(inst).kind != IrOpKind::Constant)
@@ -2389,15 +2303,15 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CHECK_READONLY:
         build.cmp(byte[regOp(OP_A(inst)) + offsetof(LuaTable, readonly)], 0);
-        jumpOrAbortOnUndef(ConditionX64::NotEqual, OP_B(inst), next);
+        jumpOrAbortOnUndef(ConditionX64::NotEqual, OP_B(inst), index, next);
         break;
     case IrCmd::CHECK_NO_METATABLE:
         build.cmp(qword[regOp(OP_A(inst)) + offsetof(LuaTable, metatable)], 0);
-        jumpOrAbortOnUndef(ConditionX64::NotEqual, OP_B(inst), next);
+        jumpOrAbortOnUndef(ConditionX64::NotEqual, OP_B(inst), index, next);
         break;
     case IrCmd::CHECK_SAFE_ENV:
     {
-        checkSafeEnv(OP_A(inst), next);
+        checkSafeEnv(OP_A(inst), index, next);
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:
@@ -2408,7 +2322,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         else
             CODEGEN_ASSERT(!"Unsupported instruction form");
 
-        jumpOrAbortOnUndef(ConditionX64::BelowEqual, OP_C(inst), next);
+        jumpOrAbortOnUndef(ConditionX64::BelowEqual, OP_C(inst), index, next);
         break;
     case IrCmd::JUMP_SLOT_MATCH:
     case IrCmd::CHECK_SLOT_MATCH:
@@ -2454,18 +2368,122 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.mov(tmp.reg, dword[regOp(OP_A(inst)) + offsetof(LuaNode, key) + kOffsetOfTKeyTagNext]);
         build.shr(tmp.reg, kTKeyTagBits);
-        jumpOrAbortOnUndef(ConditionX64::NotZero, OP_B(inst), next);
+        jumpOrAbortOnUndef(ConditionX64::NotZero, OP_B(inst), index, next);
         break;
     }
     case IrCmd::CHECK_NODE_VALUE:
     {
         build.cmp(dword[regOp(OP_A(inst)) + offsetof(LuaNode, val) + offsetof(TValue, tt)], LUA_TNIL);
-        jumpOrAbortOnUndef(ConditionX64::Equal, OP_B(inst), next);
+        jumpOrAbortOnUndef(ConditionX64::Equal, OP_B(inst), index, next);
         break;
     }
     case IrCmd::CHECK_BUFFER_LEN:
     {
-        if (FFlag::LuauCodegenBufferRangeMerge4)
+        if (FFlag::LuauCodegenVmExitSync)
+        {
+            int minOffset = intOp(OP_C(inst));
+            int maxOffset = intOp(OP_D(inst));
+            CODEGEN_ASSERT(minOffset < maxOffset);
+
+            int accessSize = maxOffset - minOffset;
+            CODEGEN_ASSERT(accessSize > 0);
+
+            // Determine which registers we will need
+            bool hasIntegerCheck = OP_E(inst).kind != IrOpKind::Undef;
+            bool needsExtendedBoundsRegs = OP_B(inst).kind == IrOpKind::Inst && !(accessSize == 1 && minOffset == 0);
+
+            // For jumps to exit sync blocks to work, we need the same register allocation state at each potential taken branch
+            RegisterX64 regA = OP_A(inst).kind == IrOpKind::Inst ? regOp(OP_A(inst)) : noreg;
+            RegisterX64 regB = OP_B(inst).kind == IrOpKind::Inst ? regOp(OP_B(inst)) : noreg;
+            RegisterX64 regE = hasIntegerCheck ? regOp(OP_E(inst)) : noreg;
+
+            ScopedRegX64 tmpXmm{regs};
+            ScopedRegX64 tmp1{regs};
+            ScopedRegX64 tmp2{regs};
+
+            if (hasIntegerCheck)
+                tmpXmm.alloc(SizeX64::xmmword);
+
+            if (needsExtendedBoundsRegs)
+            {
+                tmp1.alloc(SizeX64::qword);
+                tmp2.alloc(SizeX64::dword);
+            }
+
+            Label fresh;
+
+            // Check if we are acting not only as a guard for the size, but as a guard that offset represents an exact integer
+            if (hasIntegerCheck)
+            {
+                CODEGEN_ASSERT(getCmdValueKind(function.instOp(OP_B(inst)).cmd) == IrValueKind::Int);
+                CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
+
+                // Convert integer back to double
+                build.vcvtsi2sd(tmpXmm.reg, tmpXmm.reg, regB);
+
+                build.vucomisd(tmpXmm.reg, regE); // Sets ZF=1 if equal or NaN, PF=1 on NaN
+
+                // We don't allow non-integer values
+                jumpOrAbortOnUndefNoFinalize(ConditionX64::NotZero, OP_F(inst), index, next, fresh); // exit on ZF=0
+                jumpOrAbortOnUndefNoFinalize(ConditionX64::Parity, OP_F(inst), index, next, fresh);  // exit on PF=1
+            }
+
+            if (OP_B(inst).kind == IrOpKind::Inst)
+            {
+                CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
+
+                if (accessSize == 1 && minOffset == 0)
+                {
+                    // Simpler check for a single byte access
+                    build.cmp(dword[regA + offsetof(Buffer, len)], regB);
+                    jumpOrAbortOnUndefNoFinalize(ConditionX64::BelowEqual, OP_F(inst), index, next, fresh);
+                }
+                else
+                {
+                    // To perform the bounds check using a single branch, we take index that is limited to a 32 bit int
+                    // Max offset is then added using a 64 bit addition
+                    // This will make sure that addition will not wrap around for values like 0xffffffff
+
+                    if (minOffset >= 0)
+                    {
+                        build.lea(tmp1.reg, addr[qwordReg(regB) + maxOffset]);
+                    }
+                    else
+                    {
+                        // When the min offset is negative, we subtract it from offset first (in 32 bits)
+                        build.lea(dwordReg(tmp1.reg), addr[regB + minOffset]);
+
+                        // And then add the full access size like before
+                        build.lea(tmp1.reg, addr[tmp1.reg + accessSize]);
+                    }
+
+                    build.mov(tmp2.reg, dword[regA + offsetof(Buffer, len)]);
+                    build.cmp(qwordReg(tmp2.reg), tmp1.reg);
+                    jumpOrAbortOnUndefNoFinalize(ConditionX64::Below, OP_F(inst), index, next, fresh);
+                }
+            }
+            else if (OP_B(inst).kind == IrOpKind::Constant)
+            {
+                int offset = intOp(OP_B(inst));
+
+                int endOffset = FFlag::LuauCodegenFixBufferLenCheck ? maxOffset : accessSize;
+
+                // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
+                if (offset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
+                    jumpOrAbortOnUndefNoFinalize(ConditionX64::Count, OP_F(inst), index, next, fresh);
+                else
+                    build.cmp(dword[regA + offsetof(Buffer, len)], offset + endOffset);
+
+                jumpOrAbortOnUndefNoFinalize(ConditionX64::Below, OP_F(inst), index, next, fresh);
+            }
+            else
+            {
+                CODEGEN_ASSERT(!"Unsupported instruction form");
+            }
+
+            finalizeTargetLabel(OP_F(inst), index, fresh);
+        }
+        else
         {
             int minOffset = intOp(OP_C(inst));
             int maxOffset = intOp(OP_D(inst));
@@ -2488,8 +2506,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
                 build.vucomisd(tmp.reg, regOp(OP_E(inst))); // Sets ZF=1 if equal or NaN, PF=1 on NaN
 
                 // We don't allow non-integer values
-                jumpOrAbortOnUndef(ConditionX64::NotZero, OP_F(inst), next); // exit on ZF=0
-                jumpOrAbortOnUndef(ConditionX64::Parity, OP_F(inst), next);  // exit on PF=1
+                jumpOrAbortOnUndef(ConditionX64::NotZero, OP_F(inst), index, next); // exit on ZF=0
+                jumpOrAbortOnUndef(ConditionX64::Parity, OP_F(inst), index, next);  // exit on PF=1
             }
 
             if (OP_B(inst).kind == IrOpKind::Inst)
@@ -2500,7 +2518,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
                 {
                     // Simpler check for a single byte access
                     build.cmp(dword[regOp(OP_A(inst)) + offsetof(Buffer, len)], regOp(OP_B(inst)));
-                    jumpOrAbortOnUndef(ConditionX64::BelowEqual, OP_F(inst), next);
+                    jumpOrAbortOnUndef(ConditionX64::BelowEqual, OP_F(inst), index, next);
                 }
                 else
                 {
@@ -2527,7 +2545,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
                     build.mov(tmp2.reg, dword[regOp(OP_A(inst)) + offsetof(Buffer, len)]);
                     build.cmp(qwordReg(tmp2.reg), tmp1.reg);
 
-                    jumpOrAbortOnUndef(ConditionX64::Below, OP_F(inst), next);
+                    jumpOrAbortOnUndef(ConditionX64::Below, OP_F(inst), index, next);
                 }
             }
             else if (OP_B(inst).kind == IrOpKind::Constant)
@@ -2538,58 +2556,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
                 // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
                 if (offset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
-                    jumpOrAbortOnUndef(OP_F(inst), next);
+                    jumpOrAbortOnUndef(ConditionX64::Count, OP_F(inst), index, next);
                 else
                     build.cmp(dword[regOp(OP_A(inst)) + offsetof(Buffer, len)], offset + endOffset);
 
-                jumpOrAbortOnUndef(ConditionX64::Below, OP_F(inst), next);
-            }
-            else
-            {
-                CODEGEN_ASSERT(!"Unsupported instruction form");
-            }
-        }
-        else
-        {
-            int accessSize = intOp(OP_C(inst));
-            CODEGEN_ASSERT(accessSize > 0);
-
-            if (OP_B(inst).kind == IrOpKind::Inst)
-            {
-                CODEGEN_ASSERT(!producesDirtyHighRegisterBits(function.instOp(OP_B(inst)).cmd)); // Ensure that high register bits are cleared
-
-                if (accessSize == 1)
-                {
-                    // Simpler check for a single byte access
-                    build.cmp(dword[regOp(OP_A(inst)) + offsetof(Buffer, len)], regOp(OP_B(inst)));
-                    jumpOrAbortOnUndef(ConditionX64::BelowEqual, OP_D(inst), next);
-                }
-                else
-                {
-                    ScopedRegX64 tmp1{regs, SizeX64::qword};
-                    ScopedRegX64 tmp2{regs, SizeX64::dword};
-
-                    // To perform the bounds check using a single branch, we take index that is limited to 32 bit int
-                    // Access size is then added using a 64 bit addition
-                    // This will make sure that addition will not wrap around for values like 0xffffffff
-                    build.lea(tmp1.reg, addr[qwordReg(regOp(OP_B(inst))) + accessSize]);
-                    build.mov(tmp2.reg, dword[regOp(OP_A(inst)) + offsetof(Buffer, len)]);
-                    build.cmp(qwordReg(tmp2.reg), tmp1.reg);
-
-                    jumpOrAbortOnUndef(ConditionX64::Below, OP_D(inst), next);
-                }
-            }
-            else if (OP_B(inst).kind == IrOpKind::Constant)
-            {
-                int offset = intOp(OP_B(inst));
-
-                // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
-                if (offset < 0 || unsigned(offset) + unsigned(accessSize) >= unsigned(INT_MAX))
-                    jumpOrAbortOnUndef(OP_D(inst), next);
-                else
-                    build.cmp(dword[regOp(OP_A(inst)) + offsetof(Buffer, len)], offset + accessSize);
-
-                jumpOrAbortOnUndef(ConditionX64::Below, OP_D(inst), next);
+                jumpOrAbortOnUndef(ConditionX64::Below, OP_F(inst), index, next);
             }
             else
             {
@@ -2601,7 +2572,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::CHECK_USERDATA_TAG:
     {
         build.cmp(byte[regOp(OP_A(inst)) + offsetof(Udata, tag)], intOp(OP_B(inst)));
-        jumpOrAbortOnUndef(ConditionX64::NotEqual, OP_C(inst), next);
+        jumpOrAbortOnUndef(ConditionX64::NotEqual, OP_C(inst), index, next);
         break;
     }
     case IrCmd::CHECK_CMP_NUM:
@@ -2609,13 +2580,13 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         IrCondition cond = conditionOp(OP_C(inst));
 
         Label fresh;
-        Label& fail = getTargetLabel(OP_D(inst), fresh);
+        Label& fail = getTargetLabel(OP_D(inst), index, fresh);
 
         ScopedRegX64 tmp{regs, SizeX64::xmmword};
 
         jumpOnNumberCmp(build, tmp.reg, memRegDoubleOp(OP_A(inst)), memRegDoubleOp(OP_B(inst)), getNegatedCondition(cond), fail, false);
 
-        finalizeTargetLabel(OP_D(inst), fresh);
+        finalizeTargetLabel(OP_D(inst), index, fresh);
         break;
     }
     case IrCmd::CHECK_CMP_INT:
@@ -2625,19 +2596,19 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         if ((cond == IrCondition::Equal || cond == IrCondition::NotEqual) && OP_B(inst).kind == IrOpKind::Constant && intOp(OP_B(inst)) == 0)
         {
             build.test(regOp(OP_A(inst)), regOp(OP_A(inst)));
-            jumpOrAbortOnUndef(cond == IrCondition::Equal ? ConditionX64::NotZero : ConditionX64::Zero, OP_D(inst), next);
+            jumpOrAbortOnUndef(cond == IrCondition::Equal ? ConditionX64::NotZero : ConditionX64::Zero, OP_D(inst), index, next);
         }
         else if (OP_A(inst).kind == IrOpKind::Constant)
         {
             ScopedRegX64 tmp{regs, SizeX64::dword};
             build.mov(tmp.reg, memRegIntOp(OP_A(inst)));
             build.cmp(tmp.reg, memRegIntOp(OP_B(inst)));
-            jumpOrAbortOnUndef(getConditionInt(getNegatedCondition(cond)), OP_D(inst), next);
+            jumpOrAbortOnUndef(getConditionInt(getNegatedCondition(cond)), OP_D(inst), index, next);
         }
         else
         {
             build.cmp(regOp(OP_A(inst)), memRegIntOp(OP_B(inst)));
-            jumpOrAbortOnUndef(getConditionInt(getNegatedCondition(cond)), OP_D(inst), next);
+            jumpOrAbortOnUndef(getConditionInt(getNegatedCondition(cond)), OP_D(inst), index, next);
         }
         break;
     }
@@ -2774,12 +2745,27 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         callWrap.addArgument(SizeX64::qword, rState);
         callWrap.addArgument(SizeX64::dword, vmRegOp(OP_A(inst)));
         callWrap.addArgument(SizeX64::dword, intOp(OP_B(inst)));
-        callWrap.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNonTableFallback)]);
 
-        emitUpdateBase(build);
+        if (FFlag::LuauYieldIter2)
+        {
+            callWrap.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNonTableFallback)]);
 
-        build.test(al, al);
-        build.jcc(ConditionX64::NotZero, labelOp(OP_C(inst)));
+            emitUpdateBase(build);
+
+            build.test(eax, eax);
+            build.jcc(ConditionX64::Less, helpers.exitNoContinueVm);
+            build.jcc(ConditionX64::Greater, labelOp(OP_C(inst)));
+        }
+        else
+        {
+            callWrap.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNonTableFallback_DEPRECATED)]);
+
+            emitUpdateBase(build);
+
+            build.test(al, al);
+            build.jcc(ConditionX64::NotZero, labelOp(OP_C(inst)));
+        }
+
         jumpOrFallthrough(blockOp(OP_D(inst)), next);
         break;
     }
@@ -3195,104 +3181,71 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::BUFFER_READI8:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.movsx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.movsx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.movsx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_READU8:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.movzx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.movzx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.movzx(inst.regX64, byte[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_WRITEI8:
     {
         OperandX64 value = OP_C(inst).kind == IrOpKind::Inst ? byteReg(regOp(OP_C(inst))) : OperandX64(int8_t(intOp(OP_C(inst))));
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.mov(byte[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], value);
-        else
-            build.mov(byte[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], value);
+        build.mov(byte[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], value);
         break;
     }
 
     case IrCmd::BUFFER_READI16:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.movsx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.movsx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.movsx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_READU16:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.movzx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.movzx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.movzx(inst.regX64, word[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_WRITEI16:
     {
         OperandX64 value = OP_C(inst).kind == IrOpKind::Inst ? wordReg(regOp(OP_C(inst))) : OperandX64(int16_t(intOp(OP_C(inst))));
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.mov(word[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], value);
-        else
-            build.mov(word[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], value);
+        build.mov(word[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], value);
         break;
     }
 
     case IrCmd::BUFFER_READI32:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {OP_A(inst), OP_B(inst)});
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.mov(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.mov(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.mov(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_WRITEI32:
     {
         OperandX64 value = OP_C(inst).kind == IrOpKind::Inst ? regOp(OP_C(inst)) : OperandX64(intOp(OP_C(inst)));
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.mov(dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], value);
-        else
-            build.mov(dword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], value);
+        build.mov(dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], value);
         break;
     }
 
     case IrCmd::BUFFER_READF32:
         inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.vmovss(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.vmovss(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.vmovss(inst.regX64, dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_WRITEF32:
-        if (FFlag::LuauCodegenBufNoDefTag)
-            storeFloat(dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], OP_C(inst));
-        else
-            storeFloat(dword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], OP_C(inst));
+        storeFloat(dword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], OP_C(inst));
         break;
 
     case IrCmd::BUFFER_READF64:
         inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.vmovsd(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.vmovsd(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.vmovsd(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_WRITEF64:
@@ -3301,17 +3254,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             ScopedRegX64 tmp{regs, SizeX64::xmmword};
             build.vmovsd(tmp.reg, build.f64(doubleOp(OP_C(inst))));
 
-            if (FFlag::LuauCodegenBufNoDefTag)
-                build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], tmp.reg);
-            else
-                build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], tmp.reg);
+            build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], tmp.reg);
         }
         else if (OP_C(inst).kind == IrOpKind::Inst)
         {
-            if (FFlag::LuauCodegenBufNoDefTag)
-                build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], regOp(OP_C(inst)));
-            else
-                build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], regOp(OP_C(inst)));
+            build.vmovsd(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], regOp(OP_C(inst)));
         }
         else
         {
@@ -3321,10 +3268,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::BUFFER_READI64:
         inst.regX64 = regs.allocReg(SizeX64::qword, index);
 
-        if (FFlag::LuauCodegenBufNoDefTag)
-            build.mov(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
-        else
-            build.mov(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_C(inst) ? LUA_TBUFFER : tagOp(OP_C(inst)))]);
+        build.mov(inst.regX64, qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_C(inst)))]);
         break;
 
     case IrCmd::BUFFER_WRITEI64:
@@ -3333,17 +3277,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             ScopedRegX64 tmp{regs, SizeX64::qword};
             build.mov(tmp.reg, build.i64(int64Op(OP_C(inst))));
 
-            if (FFlag::LuauCodegenBufNoDefTag)
-                build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], tmp.reg);
-            else
-                build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], tmp.reg);
+            build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], tmp.reg);
         }
         else if (OP_C(inst).kind == IrOpKind::Inst)
         {
-            if (FFlag::LuauCodegenBufNoDefTag)
-                build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], regOp(OP_C(inst)));
-            else
-                build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), !HAS_OP_D(inst) ? LUA_TBUFFER : tagOp(OP_D(inst)))], regOp(OP_C(inst)));
+            build.mov(qword[bufferAddrOp(OP_A(inst), OP_B(inst), tagOp(OP_D(inst)))], regOp(OP_C(inst)));
         }
         else
         {
@@ -3360,7 +3298,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         // guard against division by zero
         build.test(tmpB.reg, tmpB.reg);
-        jumpOrAbortOnUndef(ConditionX64::Equal, OP_C(inst), next);
+        jumpOrAbortOnUndef(ConditionX64::Equal, OP_C(inst), index, next);
 
         // guard against dividend == INT64_MIN && divisor == -1 (signed overflow)
         {
@@ -3372,7 +3310,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             ScopedRegX64 tmpMin{regs, SizeX64::qword};
             build.mov64(tmpMin.reg, INT64_MIN);
             build.cmp(tmpA.reg, tmpMin.reg);
-            jumpOrAbortOnUndef(ConditionX64::Equal, OP_C(inst), next);
+            jumpOrAbortOnUndef(ConditionX64::Equal, OP_C(inst), index, next);
 
             build.setLabel(skip);
         }
@@ -3385,19 +3323,19 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         if ((cond == IrCondition::Equal || cond == IrCondition::NotEqual) && OP_B(inst).kind == IrOpKind::Constant && int64Op(OP_B(inst)) == 0)
         {
             build.test(regOp(OP_A(inst)), regOp(OP_A(inst)));
-            jumpOrAbortOnUndef(cond == IrCondition::Equal ? ConditionX64::NotZero : ConditionX64::Zero, OP_D(inst), next);
+            jumpOrAbortOnUndef(cond == IrCondition::Equal ? ConditionX64::NotZero : ConditionX64::Zero, OP_D(inst), index, next);
         }
         else if (OP_A(inst).kind == IrOpKind::Constant)
         {
             ScopedRegX64 tmp{regs, SizeX64::qword};
             build.mov(tmp.reg, memRegInt64Op(OP_A(inst)));
             build.cmp(tmp.reg, memRegInt64Op(OP_B(inst)));
-            jumpOrAbortOnUndef(getConditionInt(getNegatedCondition(cond)), OP_D(inst), next);
+            jumpOrAbortOnUndef(getConditionInt(getNegatedCondition(cond)), OP_D(inst), index, next);
         }
         else
         {
             build.cmp(regOp(OP_A(inst)), memRegInt64Op(OP_B(inst)));
-            jumpOrAbortOnUndef(getConditionInt(getNegatedCondition(cond)), OP_D(inst), next);
+            jumpOrAbortOnUndef(getConditionInt(getNegatedCondition(cond)), OP_D(inst), index, next);
         }
         break;
     }
@@ -3786,6 +3724,20 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.bswap(inst.regX64);
         break;
     }
+    case IrCmd::JUMP_CMP_PROTOID:
+    {
+        LUAU_ASSERT(OP_A(inst).kind == IrOpKind::Inst);
+        build.cmp(byte[regOp(OP_A(inst)) + offsetof(Closure, isC)], 1);
+        build.jcc(ConditionX64::Equal, labelOp(OP_D(inst)));
+        {
+            ScopedRegX64 tmp{regs, SizeX64::qword};
+            build.mov(tmp.reg, qword[regOp(OP_A(inst)) + offsetof(Closure, l.p)]);
+            build.cmp(dword[tmp.reg + offsetof(Proto, funid)], uintOp(OP_B(inst)));
+            build.jcc(ConditionX64::NotEqual, labelOp(OP_D(inst)));
+        }
+        jumpOrFallthrough(blockOp(OP_C(inst)), next);
+        break;
+    }
 
     // Pseudo instructions
     case IrCmd::NOP:
@@ -3809,6 +3761,9 @@ void IrLoweringX64::startBlock(const IrBlock& curr)
         allocAndIncrementCounterAt(
             curr.kind == IrBlockKind::Fallback ? CodeGenCounter::FallbackBlockExecuted : CodeGenCounter::RegularBlockExecuted, curr.startpc
         );
+
+    if (FFlag::LuauCodegenVmExitSync && curr.kind == IrBlockKind::ExitSync)
+        regs.setupExitSyncEntry(function.getBlockIndex(curr));
 }
 
 void IrLoweringX64::finishBlock(const IrBlock& curr, const IrBlock& next)
@@ -3867,7 +3822,7 @@ void IrLoweringX64::finishFunction()
 
     if (stats)
     {
-        if (regs.maxUsedSlot > (FFlag::LuauCodegenNewRegSplit ? kSpillSlots : kSpillSlots_NEW) + kExtraSpillSlots)
+        if (regs.maxUsedSlot > kSpillSlots + kExtraSpillSlots)
             stats->regAllocErrors++;
 
         if (regs.maxUsedSlot > stats->maxSpillSlotsUsed)
@@ -3878,7 +3833,7 @@ void IrLoweringX64::finishFunction()
 bool IrLoweringX64::hasError() const
 {
     // If register allocator had to use more stack slots than we have available, this function can't run natively
-    if (regs.maxUsedSlot > (FFlag::LuauCodegenNewRegSplit ? kSpillSlots : kSpillSlots_NEW) + kExtraSpillSlots)
+    if (regs.maxUsedSlot > kSpillSlots + kExtraSpillSlots)
         return true;
 
     return false;
@@ -3889,7 +3844,7 @@ bool IrLoweringX64::isFallthroughBlock(const IrBlock& target, const IrBlock& nex
     return target.start == next.start;
 }
 
-Label& IrLoweringX64::getTargetLabel(IrOp op, Label& fresh)
+Label& IrLoweringX64::getTargetLabel(IrOp op, uint32_t index, Label& fresh)
 {
     if (op.kind == IrOpKind::Undef)
         return fresh;
@@ -3905,9 +3860,22 @@ Label& IrLoweringX64::getTargetLabel(IrOp op, Label& fresh)
     return labelOp(op);
 }
 
-void IrLoweringX64::finalizeTargetLabel(IrOp op, Label& fresh)
+void IrLoweringX64::finalizeTargetLabel(IrOp op, uint32_t index, Label& fresh)
 {
-    if (op.kind == IrOpKind::VmExit && fresh.id != 0)
+    if (FFlag::LuauCodegenVmExitSync && op.kind == IrOpKind::Block && function.blockOp(op).kind == IrBlockKind::ExitSync)
+    {
+        // If branches were emitted via jumpOrAbortOnUndefNoFinalize, verify no allocations happened since
+        if (exitSyncInstIdx == index)
+            CODEGEN_ASSERT(exitSyncAllocToken == regs.getAllocToken());
+
+        // Snapshot current register/spill locations of values the exit sync block needs, and release registers at last use
+        VmExitSyncInfo* syncInfo = function.vmExitInfo.find(index);
+        CODEGEN_ASSERT(syncInfo);
+
+        for (auto argOp : syncInfo->argOps)
+            regs.recordAndFreeLastUse(op.index, function.instOp(argOp), index);
+    }
+    else if (op.kind == IrOpKind::VmExit && fresh.id != 0)
     {
         exitHandlerMap[vmExitOp(op)] = uint32_t(exitHandlers.size());
         exitHandlers.push_back({fresh, vmExitOp(op)});
@@ -3920,10 +3888,27 @@ void IrLoweringX64::jumpOrFallthrough(IrBlock& target, const IrBlock& next)
         build.jmp(target.label);
 }
 
-void IrLoweringX64::jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, const IrBlock& next)
+void IrLoweringX64::jumpOrAbortOnUndefNoFinalize(ConditionX64 cond, IrOp target, uint32_t index, const IrBlock& next, Label& fresh)
 {
-    Label fresh;
-    Label& label = getTargetLabel(target, fresh);
+    CODEGEN_ASSERT(FFlag::LuauCodegenVmExitSync);
+
+    // Validate that each branch to an exit sync block inside a single instruction will never see different register allocation state
+    if (target.kind == IrOpKind::Block && function.blockOp(target).kind == IrBlockKind::ExitSync)
+    {
+        uint32_t token = regs.getAllocToken();
+
+        if (exitSyncInstIdx != index)
+        {
+            exitSyncInstIdx = index;
+            exitSyncAllocToken = token;
+        }
+        else
+        {
+            CODEGEN_ASSERT(exitSyncAllocToken == token);
+        }
+    }
+
+    Label& label = getTargetLabel(target, index, fresh);
 
     if (target.kind == IrOpKind::Undef)
     {
@@ -3948,13 +3933,52 @@ void IrLoweringX64::jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, const IrB
     {
         build.jcc(cond, label);
     }
-
-    finalizeTargetLabel(target, fresh);
 }
 
-void IrLoweringX64::jumpOrAbortOnUndef(IrOp target, const IrBlock& next)
+void IrLoweringX64::jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, uint32_t index, const IrBlock& next)
 {
-    jumpOrAbortOnUndef(ConditionX64::Count, target, next);
+    if (FFlag::LuauCodegenVmExitSync)
+    {
+        Label fresh;
+        jumpOrAbortOnUndefNoFinalize(cond, target, index, next, fresh);
+        finalizeTargetLabel(target, index, fresh);
+    }
+    else
+    {
+        Label fresh;
+        Label& label = getTargetLabel(target, index, fresh);
+
+        if (target.kind == IrOpKind::Undef)
+        {
+            if (cond == ConditionX64::Count)
+            {
+                build.ud2(); // Unconditional jump to abort is just an abort
+            }
+            else
+            {
+                build.jcc(getNegatedCondition(cond), label);
+                build.ud2();
+                build.setLabel(label);
+            }
+        }
+        else if (cond == ConditionX64::Count)
+        {
+            // Unconditional jump can be skipped if it's a fallthrough
+            if (target.kind == IrOpKind::VmExit || !isFallthroughBlock(blockOp(target), next))
+                build.jmp(label);
+        }
+        else
+        {
+            build.jcc(cond, label);
+        }
+
+        finalizeTargetLabel(target, index, fresh);
+    }
+}
+
+void IrLoweringX64::jumpOrAbortOnUndef(IrOp target, uint32_t index, const IrBlock& next)
+{
+    jumpOrAbortOnUndef(ConditionX64::Count, target, index, next);
 }
 
 void IrLoweringX64::storeFloat(OperandX64 dst, IrOp src)
@@ -3995,7 +4019,7 @@ void IrLoweringX64::storeDoubleAsFloat(OperandX64 dst, IrOp src)
     build.vmovss(dst, tmp.reg);
 }
 
-void IrLoweringX64::checkSafeEnv(IrOp target, const IrBlock& next)
+void IrLoweringX64::checkSafeEnv(IrOp target, uint32_t index, const IrBlock& next)
 {
     ScopedRegX64 tmp{regs, SizeX64::qword};
 
@@ -4003,7 +4027,7 @@ void IrLoweringX64::checkSafeEnv(IrOp target, const IrBlock& next)
     build.mov(tmp.reg, qword[tmp.reg + offsetof(Closure, env)]);
     build.cmp(byte[tmp.reg + offsetof(LuaTable, safeenv)], 0);
 
-    jumpOrAbortOnUndef(ConditionX64::Equal, target, next);
+    jumpOrAbortOnUndef(ConditionX64::Equal, target, index, next);
 }
 
 void IrLoweringX64::allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcpos)

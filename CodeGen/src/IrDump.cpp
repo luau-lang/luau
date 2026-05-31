@@ -9,7 +9,8 @@
 
 #include <stdarg.h>
 
-LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauCodegenVmExitSync)
+
 namespace Luau
 {
 namespace CodeGen
@@ -84,10 +85,12 @@ static const char* getTagName(uint8_t tag)
         return "tupval";
     case LUA_TDEADKEY:
         return "tdeadkey";
+    case LUA_TCLASS:
+        return "tclass";
+    case LUA_TOBJECT:
+        return "tobject";
     case LUA_TINTEGER:
-        if (FFlag::LuauIntegerType)
-            return "tinteger";
-        [[fallthrough]];
+        return "tinteger";
     default:
         CODEGEN_ASSERT(!"Unknown type tag");
         LUAU_UNREACHABLE();
@@ -528,6 +531,8 @@ const char* getCmdName(IrCmd cmd)
         return "BUFFER_READI64";
     case IrCmd::BUFFER_WRITEI64:
         return "BUFFER_WRITEI64";
+    case IrCmd::JUMP_CMP_PROTOID:
+        return "JUMP_CMP_PROTOID";
     }
 
     LUAU_UNREACHABLE();
@@ -545,6 +550,8 @@ const char* getBlockKindName(IrBlockKind kind)
         return "bb";
     case IrBlockKind::Linearized:
         return "bb_linear";
+    case IrBlockKind::ExitSync:
+        return "bb_exit";
     case IrBlockKind::Dead:
         return "dead";
     }
@@ -903,6 +910,44 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blo
     {
         ctx.result.append("\n");
     }
+
+    if (FFlag::LuauCodegenVmExitSync)
+    {
+        if (const VmExitSyncInfo* sync = ctx.vmExitInfo.find(instIdx))
+        {
+            if (!sync->regStores.empty())
+            {
+                append(ctx.result, "   ; exit sync: ");
+
+                bool comma = false;
+
+                for (auto& el : sync->regStores)
+                {
+                    if (comma)
+                        append(ctx.result, ", ");
+                    comma = true;
+
+                    append(ctx.result, "R%d", el.reg);
+                }
+
+                comma = false;
+
+                append(ctx.result, ", {");
+
+                for (auto argOp : sync->argOps)
+                {
+                    if (comma)
+                        append(ctx.result, ", ");
+                    comma = true;
+
+                    toString(ctx, argOp);
+                }
+
+                append(ctx.result, "}");
+                append(ctx.result, "\n");
+            }
+        }
+    }
 }
 
 void toStringDetailed(
@@ -996,7 +1041,7 @@ void toStringDetailed(
 std::string toString(IrFunction& function, IncludeUseInfo includeUseInfo)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     for (size_t i = 0; i < function.blocks.size(); i++)
     {
@@ -1113,7 +1158,7 @@ static void appendBlocks(IrToStringContext& ctx, const IrFunction& function, boo
 std::string toDot(const IrFunction& function, bool includeInst)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
     append(ctx.result, "node[shape=record]\n");
@@ -1155,7 +1200,7 @@ std::string toDot(const IrFunction& function, bool includeInst)
 std::string toDotCfg(const IrFunction& function)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
     append(ctx.result, "node[shape=record]\n");
@@ -1178,7 +1223,7 @@ std::string toDotCfg(const IrFunction& function)
 std::string toDotDjGraph(const IrFunction& function)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.proto};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
 
     append(ctx.result, "digraph CFG {\n");
 

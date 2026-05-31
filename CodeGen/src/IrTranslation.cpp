@@ -1780,7 +1780,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
         if (build.hostHooks.vectorNamecall)
         {
             Instruction call = pc[2];
-            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALLFB || LUAU_INSN_OP(call) == LOP_CALL);
 
             int callra = LUAU_INSN_A(call);
             int nparams = LUAU_INSN_B(call) - 1;
@@ -1804,7 +1804,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
         if (build.hostHooks.userdataNamecall)
         {
             Instruction call = pc[2];
-            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALLFB || LUAU_INSN_OP(call) == LOP_CALL);
 
             int callra = LUAU_INSN_A(call);
             int nparams = LUAU_INSN_B(call) - 1;
@@ -1956,6 +1956,29 @@ void translateInstNewClosure(IrBuilder& build, const Instruction* pc, int pcpos)
     }
 
     build.inst(IrCmd::CHECK_GC);
+}
+
+void translateInstCmpProto(IrBuilder& build, const Instruction* pc, int pcpos)
+{
+    int ra = LUAU_INSN_A(*pc);
+    uint32_t aux = pc[1];
+
+    IrOp target = build.blockAtInst(pcpos + 1 + LUAU_INSN_D(*pc));
+    IrOp next = build.blockAtInst(pcpos + 2);
+    IrOp checkFunId = build.block(IrBlockKind::Internal);
+
+    IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
+    build.inst(IrCmd::JUMP_EQ_TAG, ta, build.constTag(LUA_TFUNCTION), checkFunId, target);
+
+    build.beginBlock(checkFunId);
+    IrOp ccl = build.inst(IrCmd::LOAD_POINTER, build.vmReg(ra));
+    IrOp vb = build.constUint(aux);
+
+    build.inst(IrCmd::JUMP_CMP_PROTOID, ccl, vb, next, target);
+
+    // Fallthrough in original bytecode is implicit, so we start next internal block here
+    if (build.isInternalBlock(next))
+        build.beginBlock(next);
 }
 
 } // namespace CodeGen

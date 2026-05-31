@@ -54,6 +54,14 @@ TESTS_SOURCES=$(wildcard tests/*.cpp) CLI/src/FileUtils.cpp CLI/src/Flags.cpp CL
 TESTS_OBJECTS=$(TESTS_SOURCES:%=$(BUILD)/%.o)
 TESTS_TARGET=$(BUILD)/luau-tests
 
+TEST_LINK_VM_SOURCES=tests/link/Vm.test.cpp
+TEST_LINK_VM_OBJECTS=$(TEST_LINK_VM_SOURCES:%=$(BUILD)/%.o)
+TEST_LINK_VM_TARGET=$(BUILD)/luau-test-link-vm
+
+TEST_LINK_CODEGEN_SOURCES=tests/link/VmCodeGen.test.cpp
+TEST_LINK_CODEGEN_OBJECTS=$(TEST_LINK_CODEGEN_SOURCES:%=$(BUILD)/%.o)
+TEST_LINK_CODEGEN_TARGET=$(BUILD)/luau-test-link-codegen
+
 REPL_CLI_SOURCES=CLI/src/FileUtils.cpp CLI/src/Flags.cpp CLI/src/Profiler.cpp CLI/src/Coverage.cpp CLI/src/Counters.cpp CLI/src/Repl.cpp CLI/src/ReplEntry.cpp CLI/src/ReplRequirer.cpp CLI/src/VfsNavigator.cpp
 REPL_CLI_OBJECTS=$(REPL_CLI_SOURCES:%=$(BUILD)/%.o)
 REPL_CLI_TARGET=$(BUILD)/luau
@@ -83,7 +91,7 @@ ifneq ($(opt),)
 	TESTS_ARGS+=-O$(opt)
 endif
 
-OBJECTS=$(COMMON_OBJECTS) $(AST_OBJECTS) $(COMPILER_OBJECTS) $(CONFIG_OBJECTS) $(ANALYSIS_OBJECTS) $(EQSAT_OBJECTS) $(CODEGEN_OBJECTS) $(VM_OBJECTS) $(REQUIRE_OBJECTS) $(ISOCLINE_OBJECTS) $(TESTS_OBJECTS) $(REPL_CLI_OBJECTS) $(ANALYZE_CLI_OBJECTS) $(COMPILE_CLI_OBJECTS) $(BYTECODE_CLI_OBJECTS) $(FUZZ_OBJECTS)
+OBJECTS=$(COMMON_OBJECTS) $(AST_OBJECTS) $(COMPILER_OBJECTS) $(CONFIG_OBJECTS) $(ANALYSIS_OBJECTS) $(EQSAT_OBJECTS) $(CODEGEN_OBJECTS) $(VM_OBJECTS) $(REQUIRE_OBJECTS) $(ISOCLINE_OBJECTS) $(TESTS_OBJECTS) $(REPL_CLI_OBJECTS) $(ANALYZE_CLI_OBJECTS) $(COMPILE_CLI_OBJECTS) $(BYTECODE_CLI_OBJECTS) $(TEST_LINK_VM_OBJECTS) $(TEST_LINK_CODEGEN_OBJECTS) $(FUZZ_OBJECTS)
 EXECUTABLE_ALIASES = luau luau-analyze luau-compile luau-bytecode luau-tests
 
 # `LUAU_CONFORMANCE_SOURCE_DIR` is configured at build time
@@ -165,11 +173,13 @@ $(CODEGEN_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -ICodeGen/include -IVM
 $(VM_OBJECTS): CXXFLAGS+=-std=c++11 -ICommon/include -IVM/include
 $(REQUIRE_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IVM/include -IAst/include -IConfig/include -IRequire/include
 $(ISOCLINE_OBJECTS): CXXFLAGS+=-Wno-unused-function -Iextern/isocline/include
-$(TESTS_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IBytecode/include -ICompiler/include -IConfig/include -IAnalysis/include -ICodeGen/include -IVM/include -IRequire/include -ICLI/include -Iextern -DDOCTEST_CONFIG_DOUBLE_STRINGIFY -DLUAU_CONFORMANCE_SOURCE_DIR=$(LUAU_CONFORMANCE_SOURCE_DIR)
+$(TESTS_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IBytecode/include -ICompiler/include -IConfig/include -IAnalysis/include -ICodeGen/include -IVM/include -IVM/src -IRequire/include -ICLI/include -Iextern -DDOCTEST_CONFIG_DOUBLE_STRINGIFY -DLUAU_CONFORMANCE_SOURCE_DIR=$(LUAU_CONFORMANCE_SOURCE_DIR)
 $(REPL_CLI_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IBytecode/include -ICompiler/include -IVM/include -ICodeGen/include -IRequire/include -Iextern -Iextern/isocline/include -ICLI/include
 $(ANALYZE_CLI_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IAnalysis/include -IConfig/include -IRequire/include -IVM/include -Iextern -ICLI/include
 $(COMPILE_CLI_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IBytecode/include -ICompiler/include -IVM/include -ICodeGen/include -ICLI/include
 $(BYTECODE_CLI_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IBytecode/include -ICompiler/include -IVM/include -ICodeGen/include -ICLI/include
+$(TEST_LINK_VM_OBJECTS): CXXFLAGS+=-std=c++11 -ICommon/include -IVM/include
+$(TEST_LINK_CODEGEN_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IVM/include -ICodeGen/include
 $(FUZZ_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IBytecode/include -ICompiler/include -IAnalysis/include -IVM/include -ICodeGen/include -IConfig/include
 
 $(TESTS_TARGET): LDFLAGS+=-lpthread
@@ -188,7 +198,7 @@ all: $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET) $(TESTS_TARGET) aliases
 
 aliases: $(EXECUTABLE_ALIASES)
 
-test: $(TESTS_TARGET)
+test: $(TESTS_TARGET) $(TEST_LINK_VM_TARGET) $(TEST_LINK_CODEGEN_TARGET)
 	$(TESTS_TARGET) $(TESTS_ARGS)
 
 conformance: $(TESTS_TARGET)
@@ -210,9 +220,9 @@ coverage: $(TESTS_TARGET) $(COMPILE_CLI_TARGET)
 	mv default.profraw codegen.profraw
 	$(TESTS_TARGET) -ts=Conformance --codegen --fflags=true
 	mv default.profraw codegen-flags.profraw
-	$(COMPILE_CLI_TARGET) --codegennull --target=a64 tests/conformance
+	$(COMPILE_CLI_TARGET) --codegennull --target=a64 --fflags=DebugLuauUserDefinedClasses=true tests/conformance
 	mv default.profraw codegen-a64.profraw
-	$(COMPILE_CLI_TARGET) --codegennull --target=x64 tests/conformance
+	$(COMPILE_CLI_TARGET) --codegennull --target=x64 --fflags=DebugLuauUserDefinedClasses=true tests/conformance
 	mv default.profraw codegen-x64.profraw
 	llvm-profdata merge *.profraw -o default.profdata
 	rm *.profraw
@@ -246,8 +256,8 @@ luau-compile: $(COMPILE_CLI_TARGET)
 luau-bytecode: $(BYTECODE_CLI_TARGET)
 	ln -fs $^ $@
 
-luau-tests: $(TESTS_TARGET)
-	ln -fs $^ $@
+luau-tests: $(TESTS_TARGET) $(TEST_LINK_VM_TARGET) $(TEST_LINK_CODEGEN_TARGET)
+	ln -fs $(TESTS_TARGET) $@
 
 # executable targets
 $(TESTS_TARGET): $(TESTS_OBJECTS) $(ANALYSIS_TARGET) $(EQSAT_TARGET) $(COMPILER_TARGET) $(BYTECODE_TARGET) $(AST_TARGET) $(CODEGEN_TARGET) $(VM_TARGET) $(REQUIRE_TARGET) $(CONFIG_TARGET) $(ISOCLINE_TARGET) $(COMMON_TARGET)
@@ -258,6 +268,15 @@ $(BYTECODE_CLI_TARGET): $(BYTECODE_CLI_OBJECTS) $(COMPILER_TARGET) $(BYTECODE_TA
 
 $(TESTS_TARGET) $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET) $(COMPILE_CLI_TARGET) $(BYTECODE_CLI_TARGET):
 	$(CXX) $^ $(LDFLAGS) -o $@
+
+WHOLE_ARCHIVE_START=$(if $(filter Darwin,$(shell uname -s)),,-Wl,--whole-archive)
+WHOLE_ARCHIVE_END=$(if $(filter Darwin,$(shell uname -s)),,-Wl,--no-whole-archive)
+
+$(TEST_LINK_VM_TARGET): $(TEST_LINK_VM_OBJECTS) $(VM_TARGET) $(COMMON_TARGET)
+	$(CXX) $< $(LDFLAGS) $(WHOLE_ARCHIVE_START) $(VM_TARGET) $(COMMON_TARGET) $(WHOLE_ARCHIVE_END) -o $@
+
+$(TEST_LINK_CODEGEN_TARGET): $(TEST_LINK_CODEGEN_OBJECTS) $(CODEGEN_TARGET) $(VM_TARGET) $(COMMON_TARGET)
+	$(CXX) $< $(LDFLAGS) $(WHOLE_ARCHIVE_START) $(CODEGEN_TARGET) $(VM_TARGET) $(COMMON_TARGET) $(WHOLE_ARCHIVE_END) -o $@
 
 # executable targets for fuzzing
 fuzz-%: $(BUILD)/fuzz/%.cpp.o $(ANALYSIS_TARGET) $(EQSAT_TARGET) $(COMPILER_TARGET) $(BYTECODE_TARGET) $(AST_TARGET) $(CONFIG_TARGET) $(CODEGEN_TARGET) $(VM_TARGET) $(COMMON_TARGET)

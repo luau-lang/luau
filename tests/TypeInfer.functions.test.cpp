@@ -22,14 +22,8 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
-LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
-LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
-LUAU_FASTFLAG(LuauForwardPolarityForFunctionTypes)
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes2)
+LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
+LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -733,9 +727,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_2")
 
 TEST_CASE_FIXTURE(Fixture, "higher_order_function_3")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReplacerRespectsReboundGenerics, true}, {FFlag::LuauOverloadGetsInstantiated2, true}
-    };
+    ScopedFastFlag  _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         function swap(p)
@@ -1441,11 +1433,7 @@ g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
 local a = {{x=4}, {x=7}, {x=1}}
@@ -2268,8 +2256,6 @@ TEST_CASE_FIXTURE(Fixture, "function_exprs_are_generalized_at_signature_scope_no
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_but_their_arguments_are_incompatible")
 {
-    ScopedFastFlag sff{FFlag::LuauRelateHandlesCoincidentTables, true};
-
     CheckResult result = check(R"(
         local function foo<a>(x: a, y: a?)
             return x
@@ -2393,11 +2379,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_wi
 
 TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local function apply<a, b..., c...>(f: (a, b...) -> c..., x: a)
@@ -3798,10 +3780,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "bidirectional_function_statement_inference
 
 TEST_CASE_FIXTURE(Fixture, "table_containing_factorial_standalone")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
-        {FFlag::DebugLuauAssertOnForcedConstraint, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauAssertOnForcedConstraint, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local coolmath = {}
@@ -3818,7 +3797,6 @@ TEST_CASE_FIXTURE(Fixture, "table_containing_factorial_assign_later")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
@@ -3842,10 +3820,7 @@ TEST_CASE_FIXTURE(Fixture, "table_containing_factorial_assign_later")
 
 TEST_CASE_FIXTURE(Fixture, "table_containing_factorial_assign_with_correct_typing")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
-        {FFlag::DebugLuauAssertOnForcedConstraint, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauAssertOnForcedConstraint, true};
 
     CheckResult results = check(R"(
         local coolmath = {}
@@ -3873,8 +3848,6 @@ TEST_CASE_FIXTURE(Fixture, "table_containing_factorial_assign_with_correct_typin
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_static_method_must_refer_to_the_ungeneralized_type")
 {
-    ScopedFastFlag _{FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true};
-
     CheckResult result = check(R"(
         local lexer = {}
         local subContent: string = ""
@@ -3891,10 +3864,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_static_method_must_refer_to_the_un
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2216_recursive_global_function_works_as_expected")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
-        {FFlag::DebugLuauAssertOnForcedConstraint, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauAssertOnForcedConstraint, true};
 
     CheckResult result = check(R"(
         type tb_any = {[any]:any}
@@ -3926,7 +3896,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_187542_recursive_call_in_loop")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
@@ -3950,7 +3919,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_187542_recursive_call_in_loop")
 
 TEST_CASE_FIXTURE(Fixture, "global_function_redefinition")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true}, {FFlag::DebugLuauAssertOnForcedConstraint, true}};
+    ScopedFastFlag _{FFlag::DebugLuauAssertOnForcedConstraint, true};
 
     CheckResult result = check(R"(
         function fact(n: number)
@@ -4022,8 +3991,8 @@ TEST_CASE_FIXTURE(Fixture, "global_function_blocked")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
-        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true}
     };
+
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         --!strict
         local addInstanceToState: any = nil
@@ -4046,10 +4015,7 @@ TEST_CASE_FIXTURE(Fixture, "global_function_blocked")
 
 TEST_CASE_FIXTURE(Fixture, "generic_polarity_of_annotated_code")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauForwardPolarityForFunctionTypes, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
     // This test is _just_ for checking the polarity of the generic in the
     // annotation.
     check(R"(
@@ -4064,11 +4030,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_polarity_of_annotated_code")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "lute_tasklib_createtask")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function createtask(f, ...)
@@ -4095,7 +4057,6 @@ TEST_CASE_FIXTURE(Fixture, "global_emplacing_steals_type_from_elsewhere")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauKeepExplicitMapForGlobalTypes2, true},
     };
 
     CheckResult result = check(R"(
@@ -4116,11 +4077,7 @@ TEST_CASE_FIXTURE(Fixture, "global_emplacing_steals_type_from_elsewhere")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "are_we_in_the_new_solver")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         -- This file should fail the old solver
@@ -4146,11 +4103,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "are_we_in_the_new_solver")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_generics_keyof")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function makeOtherThing(template)
@@ -4178,5 +4131,131 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_generics_keyof")
     CHECK_EQ("{ Input: { Stuff: { a: number } }, Test: (\"a\") -> () }", toString(requireType("thing")));
     CHECK_EQ("{ Input: { Stuff: { b: number, c: number } }, Test: (\"b\" | \"c\") -> () }", toString(requireType("otherthing")));
 }
+
+TEST_CASE_FIXTURE(Fixture, "bidi_inference_functions_complete_ex")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+        {FFlag::LuauExplicitTypeInstantiationSupport, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type Player = {}
+
+        export type RemoteEventWrapper<T...> = {
+            connect:( self: RemoteEventWrapper<T...>, callback: ((T...) -> ()) | ((player: Player, T...) -> ()) ) -> () -> (),
+        }
+
+        local function useRemoteEvent<T...>(remoteEventName: string, isUnreliable: boolean?): RemoteEventWrapper<T...>
+            return nil :: any
+        end
+
+        type Payload = {
+            name: string,
+            time: number,
+            data: { [string]: any },
+        }
+
+        local payload = useRemoteEvent<<(Payload)>>("initial-payload")
+
+        -- We expect bidirectional inference to kick in here and ensure that
+        -- player and payload have non-unknown types.
+        payload:connect(function(player, payload)
+            local _ = player
+            local _ = payload
+        end)
+
+        return useRemoteEvent
+    )"));
+
+    CHECK_EQ("Player", toString(requireTypeAtPosition({23, 23})));
+    CHECK_EQ("Payload", toString(requireTypeAtPosition({24, 23})));
+}
+
+// FIXME: CLI-201899: These examples could be more concise.
+
+TEST_CASE_FIXTURE(Fixture, "bidi_inference_union_of_functions_1")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(_: ((string) -> ()) | ((number, number) -> ()))
+        end
+
+        f(function (one, two)
+            local _ = one
+            local _ = two
+        end)
+    )"));
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({5, 23})));
+    CHECK_EQ("number", toString(requireTypeAtPosition({6, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidi_inference_union_of_functions_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(_: ((string) -> ()) | ((number, number) -> ()))
+        end
+
+        f(function (one)
+            local _ = one
+        end)
+    )"));
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidi_inference_union_of_functions_3")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    // Weird edge case: pick the "first" option.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(_: ((string) -> ()) | ((number) -> ()))
+        end
+
+        f(function (one)
+            local _ = one
+        end)
+    )"));
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 23})));
+}
+
+
+TEST_CASE_FIXTURE(Fixture, "bidi_inference_union_of_functions_4")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    // Works with `nil`.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(_: ((string) -> ())?)
+        end
+
+        f(function (one)
+            local _ = one
+        end)
+    )"));
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 23})));
+}
+
 
 TEST_SUITE_END();

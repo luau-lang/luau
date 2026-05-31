@@ -23,10 +23,9 @@ using namespace Luau;
 LUAU_FASTINT(LuauParseErrorLimit)
 
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
-LUAU_FASTFLAG(LuauAutocompleteFunctionCallArgTails2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
+LUAU_FASTFLAG(LuauAutocompleteStringSingletonIntersection)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -1102,6 +1101,45 @@ local function bar() return x + foo() end
     CHECK(returnSt != nullptr);
 }
 
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_method_self_in_local_stack")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    auto result = runAutocompleteVisitor(
+        R"(
+class Bar
+    public value: number
+    function doThing(self)
+    end
+end
+)",
+        {4, 2}
+    );
+
+    CHECK_EQ(1, result.localStack.size());
+    CHECK_EQ(result.localMap.size(), result.localStack.size());
+    CHECK_EQ("self", std::string(result.localStack.back()->name.value));
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_method_args_not_in_scope_outside_class")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    // Cursor is after the class `end` — method args must not leak into the outer scope.
+    auto result = runAutocompleteVisitor(
+        R"(
+class Bar
+    function method(self)
+    end
+end
+local x = 4
+)",
+        {6, 10}
+    );
+
+    CHECK(result.localMap.find(AstName("self")) == nullptr);
+}
+
 TEST_SUITE_END();
 
 
@@ -1395,6 +1433,9 @@ abc("bar")
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "respects_frontend_options")
 {
+    // NOTE: This does not pass the new solver because it is exercising behavior
+    // that is only meaningful under the old solver (whether the correct
+    // module resolver is used).
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     std::string source = R"(
@@ -1663,9 +1704,10 @@ return module)";
         getFrontend().setLuauSolverMode(SolverMode::New);
         checkAndExamine(source, "module", "{  }");
         // [TODO] CLI-140762 Fragment autocomplete still doesn't return correct result when LuauSolverV2 is on
-        return;
+#if 0
         fragmentACAndCheck(updated1, Position{1, 17}, "module", "{  }", "{ a: (%error-id%: unknown) -> () }");
         fragmentACAndCheck(updated2, Position{1, 18}, "module", "{  }", "{ ab: (%error-id%: unknown) -> () }");
+#endif
     }
 }
 
@@ -4735,8 +4777,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_inde
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_function_call_with_variadic_args")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionCallArgTails2, true};
-
     std::string source = R"(
         local function foo(...: "Val1" | "Val2") end
     )";
@@ -4759,13 +4799,61 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_using_func
     );
 }
 
-TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_table_insert")
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_singleton_intersection_param")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
+        {FFlag::LuauAutocompleteStringSingletonIntersection, true},
     };
 
+    std::string source = R"(
+        local function C(_: "Example"&"Example") end
+    )";
+
+    std::string dest = R"(
+        local function C(_: "Example"&"Example") end
+        C(@1
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("\"Example\"") == 1);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_singleton_intersection_variable_annotation")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteStringSingletonIntersection, true};
+
+    std::string source = R"(
+        local _: "foo"&"foo"
+    )";
+
+    std::string dest = R"(
+        local _: "foo"&"foo" = "@1"
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("foo") == 1);
+            CHECK_EQ(frag.result->acResults.context, AutocompleteContext::String);
+        },
+        Position{1, 33}
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_table_insert")
+{
     std::string src = R"(
         local function addToTable(t: {{ foobar: number }})
             table.insert(t, {})
@@ -4792,11 +4880,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_ta
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_properties")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-    };
-
     std::string src = R"(
         type React_Node = any
         type ReactElement<P, T> = any
@@ -4882,11 +4965,6 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_prop
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_narrow_fragment")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-    };
-
     std::string src = R"(
         type React_Node = any
         type ReactElement<P, T> = any
@@ -4948,5 +5026,397 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_react_narr
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_method_self_dot_autocomplete")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function doThing(self)
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function doThing(self)
+        self.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("value"));
+            CHECK(!frag.result->acResults.entryMap.count("z"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_method_self_dot_multiple_properties")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Vec3
+    public x: number
+    public y: number
+    public z: number
+    function length(self)
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Vec3
+    public x: number
+    public y: number
+    public z: number
+    function length(self)
+        self.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("x"));
+            CHECK(frag.result->acResults.entryMap.count("y"));
+            CHECK(frag.result->acResults.entryMap.count("z"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_method_extra_args_visible_in_body")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Counter
+    public value: number
+    function increment(self, count: number)
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Counter
+    public value: number
+    function increment(self, count: number)
+        @1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("self"));
+            CHECK(frag.result->acResults.entryMap.count("count"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_second_method_self_dot")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function first(self)
+    end
+    function second(self)
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function first(self)
+    end
+    function second(self)
+        self.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("value"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_instance_dot_property_from_outside")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+end
+local bar = Bar { value = 1 }
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+end
+local bar = Bar { value = 1 }
+bar.@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("value"));
+            CHECK(!frag.result->acResults.entryMap.count("z"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_instance_dot_includes_method_from_outside")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function doThing(self)
+    end
+end
+local bar = Bar { value = 1 }
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function doThing(self)
+    end
+end
+local bar = Bar { value = 1 }
+bar.@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("value"));
+            CHECK(frag.result->acResults.entryMap.count("doThing"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_instance_multiple_props_from_outside")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Point
+    public x: number
+    public y: number
+    public z: number
+end
+local p = Point { x = 0, y = 0, z = 0 }
+)";
+
+    const std::string dest = R"(--!strict
+class Point
+    public x: number
+    public y: number
+    public z: number
+end
+local p = Point { x = 0, y = 0, z = 0 }
+p.@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("x"));
+            CHECK(frag.result->acResults.entryMap.count("y"));
+            CHECK(frag.result->acResults.entryMap.count("z"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_static_method_dot_autocomplete_1")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function new()
+        return Bar { value = 0 }
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function new()
+        return Bar { value = 0 }
+    end
+end
+
+Bar.@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("new"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_static_method_dot_autocomplete_2")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function new()
+        return Bar { value = 0 }
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function new()
+        return Bar { value = 0 }
+    end
+end
+
+local _ = Bar.new()
+
+Bar.@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("new"));
+        }
+    );
+}
+
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_autocomplete_between_definitions")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function printvalue(self)
+        print(self.value)
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function printvalue(self)
+        print(self.value)
+    end
+    s@1
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("self") == 0);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_autocomplete_classname_inside_method")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    const std::string source = R"(--!strict
+class Bar
+    public value: number
+    function new()
+    end
+end
+)";
+
+    const std::string dest = R"(--!strict
+class Bar
+    public value: number
+    function new()
+        return B@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("Bar"));
+        }
+    );
+}
 
 TEST_SUITE_END();

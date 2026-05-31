@@ -2,6 +2,7 @@
 
 #include "Luau/Subtyping.h"
 
+#include "Luau/Ast.h"
 #include "Luau/Common.h"
 #include "Luau/Error.h"
 #include "Luau/Normalize.h"
@@ -25,21 +26,23 @@ LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
-LUAU_FASTFLAGVARIABLE(LuauFollowGenericBeforeCheckingIfMapped)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingTablesHasBetterErrorSuppression)
+LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
+LUAU_FASTFLAG(LuauReadOnlyIndexers)
 
 namespace Luau
 {
 
 bool SubtypingReasoning::operator==(const SubtypingReasoning& other) const
 {
-    return subPath == other.subPath && superPath == other.superPath && variance == other.variance;
+    return subPath == other.subPath && superPath == other.superPath && variance == other.variance &&
+           isPropertyModifierViolation == other.isPropertyModifierViolation;
 }
 
 size_t SubtypingReasoningHash::operator()(const SubtypingReasoning& r) const
 {
-    return TypePath::PathHash()(r.subPath) ^ (TypePath::PathHash()(r.superPath) << 1) ^ (static_cast<size_t>(r.variance) << 1);
+    return TypePath::PathHash()(r.subPath) ^ (TypePath::PathHash()(r.superPath) << 1) ^ (static_cast<size_t>(r.variance) << 1) ^
+           (static_cast<size_t>(r.isPropertyModifierViolation) << 2);
 }
 
 MappedGenericEnvironment::MappedGenericFrame::MappedGenericFrame(
@@ -368,6 +371,13 @@ SubtypingResult& SubtypingResult::withError(TypeError err)
     return *this;
 }
 
+SubtypingResult& SubtypingResult::withPropertyModifierViolation()
+{
+    for (auto& r : reasoning)
+        r.isPropertyModifierViolation = true;
+    return *this;
+}
+
 SubtypingResult& SubtypingResult::withAssumedConstraint(ConstraintV constraint)
 {
     assumedConstraints.push_back(std::move(constraint));
@@ -476,8 +486,7 @@ struct ApplyMappedGenerics : Substitution
         {
             for (TypeId g : f->generics)
             {
-                if (FFlag::LuauFollowGenericBeforeCheckingIfMapped)
-                    g = follow(g);
+                g = follow(g);
                 if (const std::vector<SubtypingEnvironment::GenericBounds>* bounds = env->mappedGenerics.find(g); bounds && !bounds->empty())
                     // We don't want to mutate the generics of a function that's being subtyped
                     return true;
@@ -1813,7 +1822,6 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
                 result.orElse(isCovariantWith(env, subTy, &negatedTmp, scope));
             }
         }
-
     }
     else if (auto p = get2<PrimitiveType, PrimitiveType>(subTy, negatedTy))
     {
@@ -1967,20 +1975,37 @@ SubtypingResult Subtyping::isCovariantWith(
         {
             if (superProp.isShared())
             {
-                record(isInvariantWith(env, subTable->indexer->indexResultType, *superProp.readTy, scope)
-                           .withSubComponent(TypePath::TypeField::IndexResult)
-                           .withSuperComponent(TypePath::Property::read(name)));
+                if (FFlag::LuauReadOnlyIndexers && subTable->indexer->isReadOnly)
+                    // A read-only indexer cannot satisfy a read-write property requirement.
+                    record(
+                        SubtypingResult{false}.withSubComponent(TypePath::TypeField::IndexResult).withSuperComponent(TypePath::Property::read(name))
+                    );
+                else
+                    record(isInvariantWith(env, subTable->indexer->indexResultType, *superProp.readTy, scope)
+                               .withSubComponent(TypePath::TypeField::IndexResult)
+                               .withSuperComponent(TypePath::Property::read(name)));
             }
             else
             {
                 if (superProp.readTy)
+                {
                     record(isCovariantWith(env, subTable->indexer->indexResultType, *superProp.readTy, scope)
                                .withSubComponent(TypePath::TypeField::IndexResult)
                                .withSuperComponent(TypePath::Property::read(name)));
+                }
                 if (superProp.writeTy)
-                    record(isContravariantWith(env, subTable->indexer->indexResultType, *superProp.writeTy, scope)
-                               .withSubComponent(TypePath::TypeField::IndexResult)
-                               .withSuperComponent(TypePath::Property::write(name)));
+                {
+                    if (FFlag::LuauReadOnlyIndexers && subTable->indexer->isReadOnly)
+                        record(
+                            SubtypingResult{false}
+                                .withSubComponent(TypePath::TypeField::IndexResult)
+                                .withSuperComponent(TypePath::Property::write(name))
+                        );
+                    else
+                        record(isContravariantWith(env, subTable->indexer->indexResultType, *superProp.writeTy, scope)
+                                   .withSubComponent(TypePath::TypeField::IndexResult)
+                                   .withSuperComponent(TypePath::Property::write(name)));
+                }
             }
         }
         else if (FFlag::LuauSubtypingMissingPropertiesAsNil)
@@ -2003,7 +2028,15 @@ SubtypingResult Subtyping::isCovariantWith(
     {
         if (subTable->indexer)
         {
-            record(isInvariantWith(env, *subTable->indexer, *superTable->indexer, scope));
+            if (FFlag::LuauReadOnlyIndexers)
+            {
+                // We say covariant here, but the implementation of
+                // isCovariantWith() properly handles variance of the index
+                // result type.
+                record(isCovariantWith(env, *subTable->indexer, *superTable->indexer, scope));
+            }
+            else
+                record(isInvariantWith(env, *subTable->indexer, *superTable->indexer, scope));
         }
         else if (subTable->state != TableState::Sealed)
         {
@@ -2051,20 +2084,38 @@ SubtypingResult Subtyping::isCovariantWith_DEPRECATED(
             {
                 if (superProp.isShared())
                 {
-                    results.push_back(isInvariantWith(env, subTable->indexer->indexResultType, *superProp.readTy, scope)
-                                          .withSubComponent(TypePath::TypeField::IndexResult)
-                                          .withSuperComponent(TypePath::Property::read(name)));
+                    if (FFlag::LuauReadOnlyIndexers && subTable->indexer->isReadOnly)
+                        results.push_back(
+                            SubtypingResult{false}
+                                .withSubComponent(TypePath::TypeField::IndexResult)
+                                .withSuperComponent(TypePath::Property::read(name))
+                        );
+                    else
+                        results.push_back(isInvariantWith(env, subTable->indexer->indexResultType, *superProp.readTy, scope)
+                                              .withSubComponent(TypePath::TypeField::IndexResult)
+                                              .withSuperComponent(TypePath::Property::read(name)));
                 }
                 else
                 {
                     if (superProp.readTy)
+                    {
                         results.push_back(isCovariantWith(env, subTable->indexer->indexResultType, *superProp.readTy, scope)
                                               .withSubComponent(TypePath::TypeField::IndexResult)
                                               .withSuperComponent(TypePath::Property::read(name)));
+                    }
                     if (superProp.writeTy)
-                        results.push_back(isContravariantWith(env, subTable->indexer->indexResultType, *superProp.writeTy, scope)
-                                              .withSubComponent(TypePath::TypeField::IndexResult)
-                                              .withSuperComponent(TypePath::Property::write(name)));
+                    {
+                        if (FFlag::LuauReadOnlyIndexers && subTable->indexer->isReadOnly)
+                            results.push_back(
+                                SubtypingResult{false}
+                                    .withSubComponent(TypePath::TypeField::IndexResult)
+                                    .withSuperComponent(TypePath::Property::write(name))
+                            );
+                        else
+                            results.push_back(isContravariantWith(env, subTable->indexer->indexResultType, *superProp.writeTy, scope)
+                                                  .withSubComponent(TypePath::TypeField::IndexResult)
+                                                  .withSuperComponent(TypePath::Property::write(name)));
+                    }
                 }
             }
         }
@@ -2105,7 +2156,12 @@ SubtypingResult Subtyping::isCovariantWith_DEPRECATED(
     if (superTable->indexer)
     {
         if (subTable->indexer)
-            result.andAlso(isInvariantWith(env, *subTable->indexer, *superTable->indexer, scope));
+        {
+            if (FFlag::LuauReadOnlyIndexers)
+                result.andAlso(isCovariantWith(env, *subTable->indexer, *superTable->indexer, scope));
+            else
+                result.andAlso(isInvariantWith(env, *subTable->indexer, *superTable->indexer, scope));
+        }
         else if (subTable->state != TableState::Sealed)
         {
             // As above, we assume that {| |} <: {T} because the unsealed table
@@ -2382,38 +2438,24 @@ SubtypingResult Subtyping::isCovariantWith(
 
     if (*subFunction->argTypes == *superFunction->argTypes && *subFunction->retTypes == *superFunction->retTypes)
     {
-        if (FFlag::LuauOverloadGetsInstantiated2)
-        {
-            // It's fine to upcast a function with generics to a function without, for example:
-            //
-            //  local f: ({number}) -> number = (nil :: <T>({T}) -> T)
-            //
-            // ... or even ...
-            //
-            //  local f: () -> () = (nil :: <T>() -> ())
-            //
-            // Intuitively: a generic function should always be a subtype of its instantiations.
-            if (superFunction->generics.size() != subFunction->generics.size() && !superFunction->generics.empty())
-                result.andAlso({false}).withError(
-                    TypeError{scope->location, GenericTypeCountMismatch{superFunction->generics.size(), subFunction->generics.size()}}
-                );
+        // It's fine to upcast a function with generics to a function without, for example:
+        //
+        //  local f: ({number}) -> number = (nil :: <T>({T}) -> T)
+        //
+        // ... or even ...
+        //
+        //  local f: () -> () = (nil :: <T>() -> ())
+        //
+        // Intuitively: a generic function should always be a subtype of its instantiations.
+        if (superFunction->generics.size() != subFunction->generics.size() && !superFunction->generics.empty())
+            result.andAlso({false}).withError(
+                TypeError{scope->location, GenericTypeCountMismatch{superFunction->generics.size(), subFunction->generics.size()}}
+            );
 
-            if (superFunction->genericPacks.size() != subFunction->genericPacks.size() && !superFunction->genericPacks.empty())
-                result.andAlso({false}).withError(
-                    TypeError{scope->location, GenericTypePackCountMismatch{superFunction->genericPacks.size(), subFunction->genericPacks.size()}}
-                );
-        }
-        else
-        {
-            if (superFunction->generics.size() != subFunction->generics.size())
-                result.andAlso({false}).withError(
-                    TypeError{scope->location, GenericTypeCountMismatch{superFunction->generics.size(), subFunction->generics.size()}}
-                );
-            if (superFunction->genericPacks.size() != subFunction->genericPacks.size())
-                result.andAlso({false}).withError(
-                    TypeError{scope->location, GenericTypePackCountMismatch{superFunction->genericPacks.size(), subFunction->genericPacks.size()}}
-                );
-        }
+        if (superFunction->genericPacks.size() != subFunction->genericPacks.size() && !superFunction->genericPacks.empty())
+            result.andAlso({false}).withError(
+                TypeError{scope->location, GenericTypePackCountMismatch{superFunction->genericPacks.size(), subFunction->genericPacks.size()}}
+            );
     }
 
     if (!subFunction->generics.empty())
@@ -2538,11 +2580,31 @@ SubtypingResult Subtyping::isCovariantWith(
     NotNull<Scope> scope
 )
 {
-    return isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope)
-        .withBothComponent(TypePath::TypeField::IndexLookup)
-        .andAlso(
-            isInvariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope).withBothComponent(TypePath::TypeField::IndexResult)
-        );
+    if (FFlag::LuauReadOnlyIndexers)
+    {
+        SubtypingResult result{false};
+        if (subIndexer.isReadOnly && !superIndexer.isReadOnly)
+            return result.withBothComponent(TypePath::TypeField::IndexResult);
+
+        result = isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope).withBothComponent(TypePath::TypeField::IndexLookup);
+
+        // Value-type variance: read-only super → covariant; read-write super → invariant.
+        if (superIndexer.isReadOnly)
+            result.andAlso(isCovariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope)
+                               .withBothComponent(TypePath::TypeField::IndexResult));
+        else
+            result.andAlso(isInvariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope)
+                               .withBothComponent(TypePath::TypeField::IndexResult));
+
+        return result;
+    }
+    else
+    {
+        return isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope)
+            .withBothComponent(TypePath::TypeField::IndexLookup)
+            .andAlso(isInvariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope)
+                         .withBothComponent(TypePath::TypeField::IndexResult));
+    }
 }
 
 SubtypingResult Subtyping::isCovariantWith(
@@ -2573,9 +2635,19 @@ SubtypingResult Subtyping::isCovariantWith(
         if (superProp.isReadWrite())
         {
             if (subProp.isReadOnly())
-                res.andAlso(SubtypingResult{false}.withBothComponent(TypePath::Property::read(name)));
+            {
+                if (FFlag::LuauPropertyModifierMismatchErrors)
+                    res.andAlso(SubtypingResult{false}.withBothComponent(TypePath::Property::read(name)).withPropertyModifierViolation());
+                else
+                    res.andAlso(SubtypingResult{false}.withBothComponent(TypePath::Property::read(name)));
+            }
             else if (subProp.isWriteOnly())
-                res.andAlso(SubtypingResult{false}.withBothComponent(TypePath::Property::write(name)));
+            {
+                if (FFlag::LuauPropertyModifierMismatchErrors)
+                    res.andAlso(SubtypingResult{false}.withBothComponent(TypePath::Property::write(name)).withPropertyModifierViolation());
+                else
+                    res.andAlso(SubtypingResult{false}.withBothComponent(TypePath::Property::write(name)));
+            }
         }
     }
 

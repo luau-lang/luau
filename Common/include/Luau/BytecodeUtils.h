@@ -36,6 +36,9 @@ inline int getOpLength(LuauOpcode op)
     case LOP_GETUDATAKS:
     case LOP_SETUDATAKS:
     case LOP_NAMECALLUDATA:
+    case LOP_NEWCLASSMEMBER:
+    case LOP_CALLFB:
+    case LOP_CMPPROTO:
         return 2;
 
     default:
@@ -83,6 +86,7 @@ inline bool isJumpD(LuauOpcode op)
     case LOP_JUMPXEQKB:
     case LOP_JUMPXEQKN:
     case LOP_JUMPXEQKS:
+    case LOP_CMPPROTO:
         return true;
 
     default:

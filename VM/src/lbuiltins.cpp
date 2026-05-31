@@ -25,8 +25,6 @@
 #endif
 #endif
 
-LUAU_FASTFLAG(LuauIntegerType)
-
 // luauF functions implement FASTCALL instruction that performs a direct execution of some builtin functions from the VM
 // The rule of thumb is that FASTCALL functions can not call user code, yield, fail, or reallocate stack.
 // If types of the arguments mismatch, luauF_* needs to return -1 and the execution will fall back to the usual call path
@@ -1323,16 +1321,15 @@ static int luauF_tostring(lua_State* L, StkId res, TValue* arg0, int nresults, S
             return 1;
         }
         case LUA_TINTEGER:
-            if (FFlag::LuauIntegerType)
-            {
-                if (luaC_needsGC(L))
-                    return -1; // we can't call luaC_checkGC so fall back to C implementation
+        {
+            if (luaC_needsGC(L))
+                return -1; // we can't call luaC_checkGC so fall back to C implementation
 
-                char s[LUAI_MAXINT2STR];
-                char* e = luai_int2str(s, lvalue(arg0));
-                setsvalue(L, res, luaS_newlstr(L, s, e - s));
-                return 1;
-            }
+            char s[LUAI_MAXINT2STR];
+            char* e = luai_int2str(s, lvalue(arg0));
+            setsvalue(L, res, luaS_newlstr(L, s, e - s));
+            return 1;
+        }
         }
 
         // fall back to generic C implementation

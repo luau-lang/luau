@@ -6,6 +6,7 @@
 #include "Luau/Common.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/HashUtil.h"
+#include "Luau/IterativeTypeVisitor.h"
 #include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Type.h"
@@ -13,11 +14,68 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
+LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
+
 namespace Luau
 {
 
 namespace
 {
+
+struct FindFunctionTypeIn : IterativeTypeVisitor
+{
+    int numberOfLambdaParameters;
+    const FunctionType* candidate = nullptr;
+
+    explicit FindFunctionTypeIn(int numberOfLambdaParameters)
+        : IterativeTypeVisitor("FindFunctionTypeIn", true, true)
+        , numberOfLambdaParameters(numberOfLambdaParameters)
+    {
+    }
+
+    bool visit(TypeId) override
+    {
+        return false;
+    }
+
+    bool visit(TypeId, const UnionType&) override
+    {
+        return true;
+    }
+
+    bool visit(TypeId, const IntersectionType&) override
+    {
+        return true;
+    }
+
+    bool visit(TypeId ty, const FunctionType& ftv) override
+    {
+        // This logic is a little clowny.
+        //
+        // For bidirectional inference we're trying to _guess_ what the user
+        // is intending so that we can give decent results. For functions, we
+        // will error if the user doesn't provide exactly the correct number of
+        // arguments. However, consider:
+        //
+        //  local f: (ReallyComplexTableType, boolean) -> () = function (tbl)
+        //      tbl.|
+        //  end
+        //
+        // ... the user would probably prefer to have autocomplete here while
+        // they're writing the function, even if we'll eventually error. Or,
+        // the user may be in nonstrict mode.
+        //
+        // On top of that we have to do a bunch of `int` casting here.
+        if (candidate == nullptr ||
+            std::abs(int(size(candidate->argTypes)) - numberOfLambdaParameters) > std::abs(int(size(ftv.argTypes)) - numberOfLambdaParameters))
+        {
+            candidate = get<FunctionType>(ty);
+            return false;
+        }
+
+        return false;
+    }
+};
 
 struct BidirectionalTypePusher
 {
@@ -159,7 +217,17 @@ struct BidirectionalTypePusher
         if (auto exprLambda = expr->as<AstExprFunction>())
         {
             const auto lambdaTy = get<FunctionType>(exprType);
-            const auto expectedLambdaTy = get<FunctionType>(stripNil(solver->builtinTypes, *solver->arena, expectedType));
+            const FunctionType* expectedLambdaTy = nullptr;
+            if (FFlag::LuauBidirectionalInferenceBetterUnionHandling)
+            {
+                FindFunctionTypeIn ffti{int(exprLambda->args.size)};
+                ffti.run(expectedType);
+                expectedLambdaTy = ffti.candidate;
+            }
+            else
+            {
+                expectedLambdaTy = get<FunctionType>(stripNil(solver->builtinTypes, *solver->arena, expectedType));
+            }
             if (lambdaTy && expectedLambdaTy)
             {
                 const auto& [lambdaArgTys, _lambdaTail] = flatten(lambdaTy->argTypes);
@@ -190,12 +258,20 @@ struct BidirectionalTypePusher
             {
                 if (auto utv = get<UnionType>(expectedType))
                 {
-                    std::vector<TypeId> parts{begin(utv), end(utv)};
+                    if (FFlag::LuauBidirectionalInferenceBetterUnionHandling)
+                    {
+                        if (auto tt = extractMatchingTableType(utv, exprType, solver->builtinTypes))
+                            (void)pushType(*tt, expr);
+                    }
+                    else
+                    {
+                        std::vector<TypeId> parts{begin(utv), end(utv)};
 
-                    std::optional<TypeId> tt = extractMatchingTableType(parts, exprType, solver->builtinTypes);
+                        std::optional<TypeId> tt = extractMatchingTableType_DEPRECATED(parts, exprType, solver->builtinTypes);
 
-                    if (tt)
-                        (void)pushType(*tt, expr);
+                        if (tt)
+                            (void)pushType(*tt, expr);
+                    }
                 }
                 else if (auto itv = get<IntersectionType>(expectedType))
                 {

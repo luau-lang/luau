@@ -31,12 +31,8 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
 LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauFollowInExplicitInstantiation)
-LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes2)
-LUAU_FASTFLAG(LuauFollowGenericBeforeCheckingIfMapped)
-LUAU_FASTFLAG(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
-LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
-LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
+LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarityFollow)
+LUAU_FASTFLAG(LuauRefineNilFromTableIndexerResultType)
 LUAU_FASTFLAG(LuauInstantiationUsesPolarity)
 
 using namespace Luau;
@@ -417,12 +413,24 @@ TEST_CASE_FIXTURE(Fixture, "check_block_recursion_limit")
 #elif defined(_DEBUG) || defined(_NOOPT)
     int limit = 350;
 #else
-    int limit = 600;
+    // NOTE: This was lowered from 600 after some extra stack space added by
+    // adding handling Luau classes to the parser and old type solver.
+    int limit = 595;
 #endif
 
-    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
+    // This is the recursion limit for the parser and compiler. Both are able
+    // to handle *much* larger ASTs than the new or old solvers, so we set the
+    // limit to be double the "limit" variable.
+    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit * 2};
+
+    // This is the recursion limit for the old solver.
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
+
+    // This is the recursion limit for the entry point to the new solver.
     ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, limit - 100};
+
+    // This is the recursion limit for subtyping, an often deeply recursive
+    // subsystem in the new solver.
     ScopedFastInt luauSubtypingRecursionLimit{DFInt::LuauSubtypingRecursionLimit, limit - 100};
 
     CheckResult result = check(rep("do ", limit) + "local a = 1" + rep(" end", limit));
@@ -440,9 +448,19 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 #else
     int limit = 500;
 #endif
-    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
+    // This is the recursion limit for the parser and compiler. Both are able
+    // to handle *much* larger ASTs than the new or old solvers, so we set the
+    // limit to be double the "limit" variable.
+    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit * 2};
+
+    // This is the recursion limit for the old solver.
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
+
+    // This is the recursion limit for the entry point to the new solver.
     ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, limit - 100};
+
+    // This is the recursion limit for subtyping, an often deeply recursive
+    // subsystem in the new solver.
     ScopedFastInt luauSubtypingRecursionLimit{DFInt::LuauSubtypingRecursionLimit, limit - 100};
 
     CheckResult result = check(R"(("foo"))" + rep(":lower()", limit));
@@ -2754,10 +2772,71 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_instantiation2")
     )"));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_table_with_optional_indexer_values")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        type Bar = {x: number}
+        type Foo = {[string]: Bar?}
+
+        function printAllClassNames(foo: Foo)
+            for _, value in foo do
+                print(value.x)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_local_table_with_optional_indexer_values")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        type TypeA = {Value: any}
+
+        local list = {} :: {[string]: TypeA?}
+
+        for index, a in list do
+            a.Value = 1
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+// https://github.com/luau-lang/luau/issues/2236
+TEST_CASE_FIXTURE(BuiltinsFixture, "2236_iterate_over_table_with_values_as_optional_types")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local t: { number? } = {}
+
+        for _, v in t do
+            local x: number = v
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_function_call")
 {
-    ScopedFastFlag _{FFlag::LuauFollowInExplicitInstantiation, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         do end
         _ = if _ then true elseif _ then if _ then _ elseif _ then 2 .. {} elseif _._ then l0 else _ elseif _ then if ... then _ elseif {} then `` elseif _ then {_G=_,}
@@ -2767,8 +2846,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_function_call")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_avoid_emplacing_blocked_types_you_dont_own")
 {
-    ScopedFastFlag _{FFlag::LuauKeepExplicitMapForGlobalTypes2, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         if if _ then _ else nil then
             local l0 = require(module0)
@@ -2800,8 +2877,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_avoid_emplacing_blocked_types_you_don
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_attach_polarity_to_ret_free_type")
 {
-    ScopedFastFlag _{FFlag::LuauTypeFunctionsAddFreeTypePackWithPositivePolarity, true};
-
     // When we dispatch constraints in *just* the right order, we end up
     // evaluating the type of `1 // setmetatable({}, FOO)` before we
     // generalize the type of the lambda passed to `__idiv`. We end up
@@ -2817,8 +2892,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_attach_polarity_to_ret_free_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_checking_generic_mapping")
 {
-    ScopedFastFlag _{FFlag::LuauFollowGenericBeforeCheckingIfMapped, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         function _<U...,M...>(l0,l0,l0,l0,)
             l0(_(rshift),_()(_(if _ then _),))
@@ -2842,8 +2915,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_checking_generic_ma
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_allow_failing_to_bind_generic")
 {
-    ScopedFastFlag _{FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         function test(arg1, arg2)
             local fun1 = test(test)
@@ -2857,8 +2928,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_allow_failing_to_bind_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_bind_generic_sigsegv")
 {
-    ScopedFastFlag _{FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         function test(arg1, arg2)
             local fun = test()
@@ -2873,15 +2942,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_bind_generic_sigsegv")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_global_type_inference")
 {
-    ScopedFastFlag _{FFlag::LuauKeepExplicitMapForGlobalTypes2, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         A = A
         A = A
         function A()
         end
     )"));
-
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_instantiate_iter_function")

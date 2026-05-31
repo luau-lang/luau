@@ -25,13 +25,12 @@ LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
-LUAU_FASTFLAG(LuauComparisonToNilsIsAlwaysOk2)
-LUAU_FASTFLAG(LuauGeneralizationMoreAwareOfBounds3)
 LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauSubtypingTablesHasBetterErrorSuppression)
+LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
+LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
+LUAU_FASTFLAG(LuauReadOnlyIndexers)
+LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -2364,10 +2363,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_properties_in_strict")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauGeneralizationMoreAwareOfBounds3, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict
@@ -2384,8 +2380,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_186992_accidental_dropping_free_ty_bounds")
 {
-    ScopedFastFlag _{FFlag::LuauGeneralizationMoreAwareOfBounds3, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local lines = {}
         table.insert(lines, table.concat({}, ""))
@@ -3201,11 +3195,6 @@ do end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_crash_when_setmetatable_does_not_produce_a_metatabletypevar")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
-
     CheckResult result = check("local x = setmetatable({})");
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -4358,6 +4347,8 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported
 
 TEST_CASE_FIXTURE(Fixture, "read_and_write_only_indexers_are_unsupported")
 {
+    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+
     CheckResult result = check(R"(
         type T = {read [string]: number}
         type U = {write [string]: boolean}
@@ -4511,6 +4502,70 @@ TEST_CASE_FIXTURE(Fixture, "write_to_unusually_named_read_only_property")
     CHECK("Property \"hello world\" of table '{ read [\"hello world\"]: number }' is read-only" == toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(Fixture, "read_only_property_with_type_mismatch_reports_both_errors")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauPropertyModifierMismatchErrors, true};
+
+    // When a property is both read-only AND has a type mismatch, both issues are reported
+    // independently so the user knows they need to fix both.
+    CheckResult result = check(R"(
+        local function f(t: { read woof: string }): { woof: number }
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    const std::string msg = toString(result.errors[0]);
+    CHECK(msg.find("accessing `woof` results in `string` in the latter type and `number` in the former type") != std::string::npos);
+    CHECK(msg.find("`woof` is a read-only property in the latter type, but the former type requires a read-write property") != std::string::npos);
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_property_subtype_mismatch_error_message")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauPropertyModifierMismatchErrors, true};
+
+    CheckResult result = check(R"(
+        local function f(t: { read woof: number }): { woof: number }
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(
+        "Expected this to be\n"
+        "\t'{ woof: number }'\n"
+        "but got\n"
+        "\t'{ read woof: number }'; \n"
+        "`woof` is a read-only property in the latter type, but the former type requires a read-write property" == toString(result.errors[0])
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "write_only_property_subtype_mismatch_error_message")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauPropertyModifierMismatchErrors, true};
+
+    CheckResult result = check(R"(
+        local function f(t: { write woof: number }): { woof: number }
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(
+        "Expected this to be\n"
+        "\t'{ woof: number }'\n"
+        "but got\n"
+        "\t'{ write woof: number }'; \n"
+        "`woof` is a write-only property in the latter type, but the former type requires a read-write property" == toString(result.errors[0])
+    );
+}
+
 TEST_CASE_FIXTURE(Fixture, "write_annotations_are_supported_with_the_new_solver")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
@@ -4547,19 +4602,204 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported
     CHECK(Location{{5, 18}, {5, 23}} == result.errors[3].location);
 }
 
-TEST_CASE_FIXTURE(Fixture, "read_and_write_only_indexers_are_unsupported")
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_basic")
 {
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+
+    // Read-only indexer annotations round-trip through ToString.
     CheckResult result = check(R"(
         type T = {read [string]: number}
-        type U = {write [string]: boolean}
+        type A = {read number}
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
 
-    CHECK("read keyword is illegal here" == toString(result.errors[0]));
-    CHECK(Location{{1, 18}, {1, 22}} == result.errors[0].location);
-    CHECK("write keyword is illegal here" == toString(result.errors[1]));
-    CHECK(Location{{2, 18}, {2, 23}} == result.errors[1].location);
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_write_rejected")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+
+    CheckResult result = check(R"(
+        local t: {read [string]: number} = {}
+        t["k"] = 1
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto* pav = get<PropertyAccessViolation>(result.errors[0]);
+    REQUIRE(pav);
+    CHECK(PropertyAccessViolation::CannotWrite == pav->context);
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_covariance")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+
+    // A read-write indexer is a subtype of a read-only indexer (covariance).
+    CheckResult result = check(R"(
+        local rw: {[string]: number} = {}
+        local ro: {read [string]: number} = rw
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_not_subtype_of_readwrite")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+
+    // A read-only indexer is NOT a subtype of a read-write indexer.
+    CheckResult result = check(R"(
+        local ro: {read [string]: number} = {}
+        local rw: {[string]: number} = ro
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK("{ [string]: number }" == toString(tm->wantedType));
+    CHECK("{ read [string]: number }" == toString(tm->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_value_covariance")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+
+    // Value type is covariant for read-only indexers.
+    CheckResult result = check(R"(
+        local narrow: {read [string]: number} = {}
+        local wide: {read [string]: number | string} = narrow
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_array_shorthand")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+
+    // {read T} is a read-only array (desugars to {read [number]: T}).
+    CheckResult result = check(R"(
+        local t: {read number} = {1, 2, 3}
+        local x: number = t[1]
+        t[1] = 4
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto* pav = get<PropertyAccessViolation>(result.errors[0]);
+    REQUIRE(pav);
+    CHECK(PropertyAccessViolation::CannotWrite == pav->context);
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_value_not_contravariant")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+
+    // {read [K]: number | string} is NOT a subtype of {read [K]: number}: value type is covariant.
+    CheckResult result = check(R"(
+        local wide: {read [string]: number | string} = {}
+        local narrow: {read [string]: number} = wide
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK("{ read [string]: number }" == toString(tm->wantedType));
+    CHECK("{ read [string]: number | string }" == toString(tm->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_tostring")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+
+    CheckResult result = check(R"(
+        local t: {read [string]: number} = {}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("{ read [string]: number }" == toString(requireType("t")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_read_allowed")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+
+    CheckResult result = check(R"(
+        local t: {read [string]: number} = {}
+        local x: number = t["k"]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_cannot_cover_readwrite_property")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+
+    // A read-only string indexer cannot satisfy a read-write named property because the
+    // holder cannot be written through.
+    CheckResult result = check(R"(
+        local ro: {read [string]: number} = {}
+        local t: {foo: number} = ro
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK("{ foo: number }" == toString(tm->wantedType));
+    CHECK("{ read [string]: number }" == toString(tm->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "intersection_of_read_only_indexers_is_read_only")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+
+    // {read [K]: V} & {read [K]: W} must normalize to {read [K]: V & W}.
+    // Reading is fine; writing must fail because both sides are read-only.
+    CheckResult result = check(R"(
+        local function readOk(t: {read [string]: number} & {read [string]: number | string})
+            local _x: number = t["k"]
+        end
+        local function writeFails(t: {read [string]: number} & {read [string]: number | string})
+            t["k"] = 1
+        end
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto av = get<PropertyAccessViolation>(result.errors[0]);
+    REQUIRE(av);
+    CHECK("{ read [string]: number | string } & { read [string]: number }" == toString(av->table));
+    CHECK("k" == av->key);
+    CHECK(PropertyAccessViolation::CannotWrite == av->context);
+}
+
+TEST_CASE_FIXTURE(Fixture, "intersection_of_read_only_and_read_write_indexer_allows_writes")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+
+    // {read [K]: V} & {[K]: W} normalizes to {[K]: V & W} — read-write with intersection value.
+    // Write access comes from the read-write side; write type is the conservative intersection.
+    CheckResult result = check(R"(
+        local function readOk(t: {read [string]: number} & {[string]: number | string})
+            local _x: number = t["k"]
+        end
+        local function writeOk(t: {read [string]: number} & {[string]: number | string})
+            t["k"] = 1
+        end
+        local function writeFails(t: {read [string]: number} & {[string]: number | string})
+            t["k"] = "hello"
+        end
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK("number" == toString(tm->wantedType));
+    CHECK("string" == toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
@@ -4942,15 +5182,28 @@ end
 }
 
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_branching_table")
+TEST_CASE_FIXTURE(Fixture, "indexing_branching_table")
 {
+    ScopedFastFlag _{FFlag::LuauRemoveConstraintSolverEmplace, true};
+
     CheckResult result = check(R"(
         local test = if true then { "meow", "woof" } else { 4, 81 }
         local test2 = test[1]
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("number | string" == toString(requireType("test2")));
+
+    // This is an unfortunate duplication: when we index into `test`, we
+    // construct a union containing `number` and two free variables
+    // representing "meow" and "woof." We only find out after both are
+    // generalized that there is a duplication here.
+    //
+    // It is probably still correct to deduplicate in this way and not
+    // create nested unions.
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK("number | string | string" == toString(requireType("test2")));
+    else
+        CHECK("number | string" == toString(requireType("test2")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_branching_table2")
@@ -6096,11 +6349,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_array_of_any")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "bad_insert_type_mismatch")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local function doInsert(t: { string })
@@ -6519,10 +6768,7 @@ TEST_CASE_FIXTURE(Fixture, "table_inference_one_incorrect_member")
 
 TEST_CASE_FIXTURE(Fixture, "basic_data_like_array")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauRelateHandlesCoincidentTables, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local t = {
@@ -6535,10 +6781,7 @@ TEST_CASE_FIXTURE(Fixture, "basic_data_like_array")
 
 TEST_CASE_FIXTURE(Fixture, "large_data_like_array_can_simplify")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauRelateHandlesCoincidentTables, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     std::stringstream stream;
     stream << "local function get()" << '\n';
@@ -6562,7 +6805,6 @@ TEST_CASE_FIXTURE(Fixture, "cmpeq_any_with_nil_ok")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
     };
 
     CheckResult result = check(R"(
@@ -6585,7 +6827,6 @@ TEST_CASE_FIXTURE(Fixture, "cmpneq_any_with_nil_ok")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
     };
 
     CheckResult result = check(R"(
@@ -6608,7 +6849,6 @@ TEST_CASE_FIXTURE(Fixture, "cmpneq_any_with_nil_ok_in_if")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
     };
 
     CheckResult result = check(R"(
@@ -6634,7 +6874,6 @@ TEST_CASE_FIXTURE(Fixture, "cmpeq_any_with_nil_ok_in_if")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauComparisonToNilsIsAlwaysOk2, true},
     };
 
     CheckResult result = check(R"(
@@ -6659,8 +6898,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "oss_1986")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type A<T> = { s: T, n: number? }
 
@@ -6674,8 +6911,6 @@ TEST_CASE_FIXTURE(Fixture, "oss_1986")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1947_partial")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
-
     // This fixes _one_ case of the given OSS issue, but we don't do
     // bidirectional inference of lambdas afterward.
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -6688,8 +6923,6 @@ TEST_CASE_FIXTURE(Fixture, "oss_1947_partial")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1890")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauOverloadGetsInstantiated2, true}, {FFlag::LuauReplacerRespectsReboundGenerics, true}};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type ListConfig<T> = {
             items: T,
@@ -6841,6 +7074,287 @@ TEST_CASE_FIXTURE(Fixture, "table_read_any_counts_as_read_nil")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "tables_routing_bidirectional_inference")
+{
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        export type ReceivedRequest = {
+            method: string,
+            path: string,
+            body: string,
+            query: { [string]: string },
+            headers: { [string]: string },
+            params: { [string]: string },
+        }
+
+        export type ServerResponse = string | {
+            status: number?,
+            body: string?,
+            headers: { [string]: string }?,
+        }
+
+        export type RouteHandler = Handler | ServerResponse
+
+        export type MethodRoutes = {
+            GET: RouteHandler?,
+            POST: RouteHandler?,
+            PUT: RouteHandler?,
+            DELETE: RouteHandler?,
+            PATCH: RouteHandler?,
+            HEAD: RouteHandler?,
+            OPTIONS: RouteHandler?,
+        }
+
+        export type RouteEntry = RouteHandler | MethodRoutes
+
+        export type Routes = { [string]: RouteEntry }
+
+        export type Server = {
+            hostname: string,
+            port: number,
+            close: () -> (),
+            upgrade: (self: Server, req: ReceivedRequest) -> boolean,
+        }
+
+        export type Handler = (request: ReceivedRequest, server: Server) -> ServerResponse?
+
+        local routes: Routes? = {
+            ["/health"] = "ok",
+            ["/json"] = {
+                status = 200,
+                headers = { ["Content-Type"] = "application/json" },
+                body = '{"ok":true}',
+            },
+            ["/hello"] = function(req)
+                local _ = req
+                return { status = 200, body = "hello" }
+            end,
+        }
+
+    )"));
+
+    // This check ensures bidirectional inference is kicking in for the
+    // function at the "/hello" route.
+    CHECK_EQ("ReceivedRequest", toString(requireTypeAtPosition({49, 28})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_union_non_singleton_discrimination")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type NumericRecord = { value: number, label: string }
+        type StringRecord = { value: string, flag: boolean }
+        type Record = NumericRecord | StringRecord
+
+        local r1: Record = { value = 42, label = "hello" }
+        local r2: Record = { value = "hmmm", flag = true }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_union_mixed_table_and_non_table")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Response = string | { status: number, body: string }
+
+        local r: Response = { status = 200, body = "ok" }
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_union_via_type_function")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type function Optional(t)
+            return types.unionof(t, types.singleton(nil))
+        end
+
+        type Config = {
+            host: string,
+            port: number,
+            verbose: boolean?,
+        }
+
+        local cfg: Optional<Config> = {
+            host = "localhost",
+            port = 8080,
+            verbose = true,
+        }
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_union_function_vs_primitive_property_discrimination")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type FnRecord = { handler: (number) -> string, label: string? }
+        type StrRecord = { handler: string, label: string? }
+        type Record = FnRecord | StrRecord
+
+        local r: Record = {
+            handler = function(input)
+                return tostring(input)
+            end,
+            label = "test"
+        }
+    )"));
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({7, 34})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "indexer_and_subsequent_constraint")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function getnumberandabs(tbl, key: string)
+            local x = tbl[key]
+            return math.abs(x)
+        end
+    )"));
+
+    CHECK_EQ("({ [string]: number }, string) -> number", toString(requireType("getnumberandabs")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "intersection_of_indexers_1")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string | number]: string } & { [string | number]: unknown }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    CHECK_EQ("string", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "intersection_of_indexers_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string | number]: never } & { [string | number]: string }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    CHECK_EQ("never", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "intersection_of_indexers_3")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { good: boolean } & { [string]: string }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    CHECK_EQ("string", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_indexers_1")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string | number]: never } | { [string | number]: string }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    CHECK_EQ("string", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_indexers_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string | number]: unknown } | { [string | number]: string }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    CHECK_EQ("unknown", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_indexers_3")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl: { [string | number]: boolean | string } | { [string | number]: boolean | number }
+        local key: string
+        local val = tbl[key]
+    )"));
+
+    CHECK_EQ("boolean | number | string", toString(requireType("val")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "test_indexing_into_unsealed_table")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemoveConstraintSolverEmplace, true},
+    };
+
+    CheckResult results = check(R"(
+        local key1: string, key2: number
+        local tbl = {}
+        tbl[key1] = 42
+        local val = tbl[key2]
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypeMismatch>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("string", toString(err->wantedType));
+    CHECK_EQ("number", toString(err->givenType));
+    CHECK_EQ("{ [string]: number }", toString(requireType("tbl"), {/* exhaustive */ true}));
 }
 
 TEST_SUITE_END();

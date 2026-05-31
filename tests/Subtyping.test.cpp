@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/Ast.h"
 #include "Luau/Instantiation2.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePath.h"
@@ -157,6 +158,16 @@ struct SubtypeFixture : Fixture
         TypeId ty = cls(name);
         getMutable<ExternType>(ty)->props = std::move(props);
         return ty;
+    }
+
+    TypeId obj(const std::string& name, std::optional<TypeId> parent = std::nullopt)
+    {
+        return arena.addType(ExternType{name, {}, parent.value_or(getBuiltins()->objectType), std::nullopt, {}, nullptr, "", std::nullopt});
+    }
+
+    TypeId userDefinedCls(const std::string& name, std::optional<TypeId> parent = std::nullopt)
+    {
+        return arena.addType(ExternType{name, {}, parent.value_or(getBuiltins()->classType), std::nullopt, {}, nullptr, "", std::nullopt});
     }
 
     TypeId opt(TypeId ty)
@@ -999,6 +1010,67 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Child & Root <: userdata")
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~Root <: userdata")
 {
     CHECK_IS_SUBTYPE(meet(childClass, negate(rootClass)), getBuiltins()->externType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "random extern type <!: object")
+{
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->externType, getBuiltins()->objectType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "object <!: class")
+{
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->objectType, getBuiltins()->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "class <!: object")
+{
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->classType, getBuiltins()->objectType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "extern(object) <: object")
+{
+    TypeId myObject = obj("MyObject");
+    CHECK_IS_SUBTYPE(myObject, getBuiltins()->objectType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "extern(class) <: class")
+{
+    TypeId myClass = userDefinedCls("MyClass");
+    CHECK_IS_SUBTYPE(myClass, getBuiltins()->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "multiple inheritance subclass object <: object")
+{
+    TypeId b = obj("B");
+    TypeId a = obj("A", b);
+    CHECK_IS_SUBTYPE(a, getBuiltins()->objectType);
+    CHECK_IS_SUBTYPE(b, getBuiltins()->objectType);
+    CHECK_IS_NOT_SUBTYPE(b, a);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "class A and B class subtypes")
+{
+    TypeId a = userDefinedCls("A");
+    TypeId b = userDefinedCls("B");
+    CHECK_IS_SUBTYPE(a, getBuiltins()->classType);
+    CHECK_IS_SUBTYPE(b, getBuiltins()->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "class A and B not subtypes of each other")
+{
+    TypeId a = userDefinedCls("A");
+    TypeId b = userDefinedCls("B");
+    CHECK_IS_NOT_SUBTYPE(a, b);
+    CHECK_IS_NOT_SUBTYPE(b, a);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Classes are subtypes of themselves")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+    TypeId a = userDefinedCls("A");
+    TypeId b = userDefinedCls("B");
+    CHECK_IS_SUBTYPE(a, a);
+    CHECK_IS_SUBTYPE(b, b);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: number")

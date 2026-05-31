@@ -32,6 +32,9 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauExportValueTypecheck)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauTypeNegationSupport)
 
 namespace Luau
@@ -287,6 +290,9 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
         currentModule->cancelled = true;
     }
 
+    if (FFlag::LuauExportValueSyntax && FFlag::LuauExportValueTypecheck && !currentModule->timeout && !currentModule->cancelled)
+        synthesizeExportReturn(builtinTypes, NotNull{currentModule.get()});
+
     if (get<FreeTypePack>(follow(moduleScope->returnType)))
         moduleScope->returnType = addTypePack(TypePack{{}, std::nullopt});
     else
@@ -396,6 +402,11 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStat& program)
         // we don't think the type errors will be useful most of the time.
         currentModule->errors.resize(oldSize);
 
+        return ControlFlow::None;
+    }
+    else if (FFlag::DebugLuauUserDefinedClasses && program.is<AstStatClass>())
+    {
+        reportError(program.as<AstStatClass>()->name->location, GenericError{"class keyword is illegal here"});
         return ControlFlow::None;
     }
     else

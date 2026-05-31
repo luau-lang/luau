@@ -47,13 +47,13 @@ int lua_getargument(lua_State* L, int level, int n)
         if (n <= fp->numparams)
         {
             luaC_threadbarrier(L);
-            luaA_pushobject(L, ci->base + (n - 1));
+            luaA_pushvalue(L, ci->base + (n - 1));
             res = 1;
         }
         else if (fp->is_vararg && n < ci->base - ci->func)
         {
             luaC_threadbarrier(L);
-            luaA_pushobject(L, ci->func + n);
+            luaA_pushvalue(L, ci->func + n);
             res = 1;
         }
     }
@@ -76,7 +76,7 @@ const char* lua_getlocal(lua_State* L, int level, int n)
     if (var)
     {
         luaC_threadbarrier(L);
-        luaA_pushobject(L, ci->base + var->reg);
+        luaA_pushvalue(L, ci->base + var->reg);
     }
     const char* name = var ? getstr(var->varname) : NULL;
     return name;
@@ -293,6 +293,14 @@ l_noret luaG_indexerror(lua_State* L, const TValue* p1, const TValue* p2)
         luaG_runerror(L, "attempt to index %s with '%s'", t1, getstr(key));
     else
         luaG_runerror(L, "attempt to index %s with %s", t1, t2);
+}
+
+l_noret luaG_missingmembererror(lua_State* L, const TValue* p1, const TValue* p2)
+{
+    if (!ttisstring(p2))
+        luaG_runerrorL(L, "cannot index %s with a %s", luaT_objtypename(L, p1), luaT_objtypename(L, p2));
+    else
+        luaG_runerrorL(L, "this %s does not have a key named '%s'", luaT_objtypename(L, p1), getstr(tsvalue(p2)));
 }
 
 l_noret luaG_methoderror(lua_State* L, const TValue* p1, const TString* p2)

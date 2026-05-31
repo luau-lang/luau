@@ -14,6 +14,7 @@
 
 LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck)
 LUAU_FASTFLAG(LuauCodegenFreeBlocks)
+LUAU_FASTFLAG(LuauClosureUsageCounter)
 
 namespace Luau
 {
@@ -167,6 +168,13 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.str(rBase, mem(rState, offsetof(lua_State, base))); // L->base = cip->base
 
     build.str(x1, mem(rState, offsetof(lua_State, top))); // L->top = res
+
+    if (FFlag::LuauClosureUsageCounter)
+    {
+        build.ldr(x4, mem(rClosure, offsetof(Closure, usage)));
+        build.sub(x4, x4, static_cast<uint16_t>(1));
+        build.str(x4, mem(rClosure, offsetof(Closure, usage)));
+    }
 
     // Unlikely, but this might be the last return from VM
     build.ldr(w4, mem(x0, offsetof(CallInfo, flags)));

@@ -38,11 +38,15 @@ LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
-LUAU_FASTFLAGVARIABLE(LuauComparisonToNilsIsAlwaysOk2)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauExternReadWriteAttributes)
-LUAU_FASTFLAG(LuauThreadUniferStateThroughTypeFunctionReduction)
+LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
+LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
+LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
+LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_FASTFLAG(LuauTypeNegationSupport)
+
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
@@ -670,6 +674,12 @@ void TypeChecker2::visit(AstStat* stat)
         return visit(s);
     else if (auto s = stat->as<AstStatDeclareExternType>())
         return visit(s);
+    else if (stat->is<AstStatClass>())
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+        // TODO CLI-199139
+        return;
+    }
     else if (auto s = stat->as<AstStatError>())
         return visit(s);
     else
@@ -1515,7 +1525,7 @@ void TypeChecker2::visit(AstExprVarargs* expr)
     // TODO!
 }
 
-static void reportAvailableOverloads(ErrorVec& errors, Location location, const std::vector<TypeId>& overloads)
+static void reportAvailableOverloads(ErrorVec& errors, Location location, const ModuleName& moduleName, const std::vector<TypeId>& overloads)
 {
     if (overloads.empty())
         return;
@@ -1534,7 +1544,7 @@ static void reportAvailableOverloads(ErrorVec& errors, Location location, const 
         s << toString(overloads[i]);
     }
 
-    errors.emplace_back(location, ExtraInformation{s.str()});
+    errors.emplace_back(location, moduleName, ExtraInformation{s.str()});
 }
 
 void TypeChecker2::visitCall(AstExprCall* call)
@@ -1757,7 +1767,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
         if (!overloadsToReport.empty())
         {
             reportError(MultipleNonviableOverloads{argHead.size()}, call->location);
-            reportAvailableOverloads(module->errors, call->location, overloadsToReport);
+            reportAvailableOverloads(module->errors, call->location, module->name, overloadsToReport);
         }
 
         return;
@@ -1786,7 +1796,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
         std::stringstream ss;
         ss << "No overload for function accepts " << argHead.size() << " arguments.";
         reportError(GenericError{ss.str()}, call->func->location);
-        reportAvailableOverloads(module->errors, call->func->location, result2.arityMismatches);
+        reportAvailableOverloads(module->errors, call->func->location, module->name, result2.arityMismatches);
         return;
     }
 
@@ -1936,7 +1946,11 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
     if (auto tt = get<TableType>(exprType))
     {
         if (tt->indexer)
+        {
             testIsSubtype(indexType, tt->indexer->indexType, indexExpr->index->location);
+            if (FFlag::LuauReadOnlyIndexers && context == ValueContext::LValue && tt->indexer->isReadOnly)
+                reportError(PropertyAccessViolation{exprType, "indexer", PropertyAccessViolation::CannotWrite}, indexExpr->location);
+        }
         else
             reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
     }
@@ -2283,8 +2297,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
     NotNull<Scope> scope = stack.back();
 
     bool isEquality = expr->op == AstExprBinary::Op::CompareEq || expr->op == AstExprBinary::Op::CompareNe;
-    bool isComparison = FFlag::LuauComparisonToNilsIsAlwaysOk2 ? isComparisonOp(expr->op)
-                                                               : expr->op >= AstExprBinary::Op::CompareEq && expr->op <= AstExprBinary::Op::CompareGe;
+    bool isComparison = isComparisonOp(expr->op);
     bool isLogical = expr->op == AstExprBinary::Op::And || expr->op == AstExprBinary::Op::Or;
 
     TypeId leftType = follow(lookupType(expr->left));
@@ -2331,36 +2344,20 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
 
     NormalizationResult typesHaveIntersection = normalizer.isIntersectionInhabited(leftType, rightType);
 
-    if (FFlag::LuauComparisonToNilsIsAlwaysOk2)
+    if (isEquality || isComparison)
     {
-        if (isEquality || isComparison)
+        if (!isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight))
         {
-            if (!isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight))
-            {
-                reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
-                return builtinTypes->errorType;
-            }
-
-            auto eitherExprIsNil = (normLeft && normLeft->isNil()) || (normRight && normRight->isNil());
-
-            // For equality operations, if either operand is nil, we should allow this comparison through
-            if (isEquality && eitherExprIsNil)
-                return builtinTypes->booleanType;
+            reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
+            return builtinTypes->errorType;
         }
-    }
-    else
-    {
-        if (isEquality || isComparison)
-        {
-            // As a special exception, we allow anything to be compared to nil.
-            if (!isOkToCompare(normalizer, typesHaveIntersection, normLeft, normRight))
-            {
-                reportError(CannotCompareUnrelatedTypes{leftType, rightType, expr->op}, expr->location);
-                return builtinTypes->errorType;
-            }
-        }
-    }
 
+        auto eitherExprIsNil = (normLeft && normLeft->isNil()) || (normRight && normRight->isNil());
+
+        // For equality operations, if either operand is nil, we should allow this comparison through
+        if (isEquality && eitherExprIsNil)
+            return builtinTypes->booleanType;
+    }
     if (auto it = kBinaryOpMetamethods.find(expr->op); it != kBinaryOpMetamethods.end())
     {
         std::optional<TypeId> leftMt = getMetatable(leftType, builtinTypes);
@@ -3079,7 +3076,30 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
 
         std::stringstream reason;
 
-        if (reasoning.subPath == reasoning.superPath)
+        if (FFlag::LuauPropertyModifierMismatchErrors && reasoning.isPropertyModifierViolation)
+        {
+            // The leaf types at the end of the paths are the same type, so a
+            // plain "X is not a subtype of X" message would be misleading.
+            // Instead, explain that the mismatch is about the property modifier.
+            std::string propName = "a property";
+            bool isReadOnly = true;
+            auto last = reasoning.subPath.last();
+            LUAU_ASSERT(last && get_if<TypePath::Property>(&*last));
+            if (last)
+            {
+                if (auto* prop = get_if<TypePath::Property>(&*last))
+                {
+                    propName = "`" + prop->name + "`";
+                    isReadOnly = prop->isRead;
+                }
+            }
+
+            if (isReadOnly)
+                reason << propName << " is a read-only property in the latter type, but the former type requires a read-write property";
+            else
+                reason << propName << " is a write-only property in the latter type, but the former type requires a read-write property";
+        }
+        else if (reasoning.subPath == reasoning.superPath)
             reason << toStringHuman(reasoning.subPath) << "`" << subLeafAsString << "` in the latter type and `" << superLeafAsString
                    << "` in the former type, and " << baseReason;
         else if (!reasoning.subPath.empty() && !reasoning.superPath.empty())
@@ -3213,10 +3233,18 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     {
         if (auto utv = get<UnionType>(expectedType))
         {
-            std::vector<TypeId> parts{begin(utv), end(utv)};
-            std::optional<TypeId> tt = extractMatchingTableType(parts, exprType, builtinTypes);
-            if (tt)
-                return testPotentialLiteralIsSubtype(expr, *tt);
+            if (FFlag::LuauBidirectionalInferenceBetterUnionHandling)
+            {
+                if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes))
+                    return testLiteralOrAstTypeIsSubtype(expr, *tt);
+            }
+            else
+            {
+                std::vector<TypeId> parts{begin(utv), end(utv)};
+                std::optional<TypeId> tt = extractMatchingTableType_DEPRECATED(parts, exprType, builtinTypes);
+                if (tt)
+                    return testPotentialLiteralIsSubtype(expr, *tt);
+            }
         }
 
         if (auto itv = get<IntersectionType>(expectedType))
@@ -3484,6 +3512,19 @@ PropertyTypes TypeChecker2::lookupProp(
     if (normValid)
         fetch(norm->booleans);
 
+    if (FFlag::DebugLuauUserDefinedClasses)
+    {
+        if (normValid)
+        {
+            for (const auto& partTy : norm->externTypes.ordering)
+            {
+                fetch(partTy);
+                if (!normValid)
+                    break;
+            }
+        }
+    }
+
     // TODO: the subsequent code here is basically proof that this broader approach to doing indexing isn't quite right.
     // we _should_ be leveraging one unified implementation of indexing here, shared with e.g. the `index` type function.
     if (normValid && FFlag::LuauExternTypesNormalizeWithShapes)
@@ -3655,8 +3696,13 @@ void TypeChecker2::checkIndexTypeFromType(
                 reportError(NotATable{tableTy}, location);
             else
             {
-                if (FFlag::LuauExternReadWriteAttributes && get<ExternType>(tableTy))
-                    reportError(UnknownProperty{tableTy, prop}, location);
+                if (auto et = get<ExternType>(tableTy); et && FFlag::LuauExternReadWriteAttributes)
+                {
+                    if (!FFlag::LuauTweakAccessViolationReporting || et->indexer || context == ValueContext::RValue)
+                        reportError(UnknownProperty{tableTy, prop}, location);
+                    else
+                        reportError(PropertyAccessViolation{tableTy, prop, PropertyAccessViolation::CannotWrite}, location);
+                }
                 else
                     reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
             }
@@ -3710,15 +3756,13 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         {
             TypeId indexType = follow(tt->indexer->indexType);
             TypeId givenType = module->internalTypes.addType(SingletonType{StringSingleton{prop}});
-            if (FFlag::LuauThreadUniferStateThroughTypeFunctionReduction)
+            bool keyMatches = subtyping->isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}).isSubtype;
+
+            if (keyMatches)
             {
-                if (subtyping->isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}).isSubtype)
-                    return {NormalizationResult::True, {tt->indexer->indexResultType}};
-            }
-            else
-            {
-                if (isSubtype_DEPRECATED(givenType, indexType, NotNull{module->getModuleScope().get()}, builtinTypes, *ice, SolverMode::New))
-                    return {NormalizationResult::True, {tt->indexer->indexResultType}};
+                if (FFlag::LuauReadOnlyIndexers && context == ValueContext::LValue && tt->indexer->isReadOnly)
+                    return {NormalizationResult::False, {}};
+                return {NormalizationResult::True, {tt->indexer->indexResultType}};
             }
         }
 
@@ -3743,6 +3787,26 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
             TypeId inhabitedTestType = module->internalTypes.addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});
             return {normalizer.isInhabited(inhabitedTestType), {cls->indexer->indexResultType}};
         }
+
+        if (FFlag::DebugLuauUserDefinedClasses)
+        {
+            if (cls->metatable)
+            {
+                // For user-defined classes, the object metatable holds metamethods (e.g. __add)
+                // directly in its props rather than under an __index table.
+                if (const TableType* mtt = get<TableType>(follow(*cls->metatable)))
+                {
+                    if (auto mtProp = mtt->props.find(prop); mtProp != mtt->props.end())
+                    {
+                        if ((context == ValueContext::LValue && !mtProp->second.writeTy) ||
+                            (context == ValueContext::RValue && !mtProp->second.readTy))
+                            return {NormalizationResult::False, {}};
+                        return {NormalizationResult::True, context == ValueContext::LValue ? mtProp->second.writeTy : mtProp->second.readTy};
+                    }
+                }
+            }
+        }
+
         return {NormalizationResult::False, {}};
     }
     else if (const UnionType* utv = get<UnionType>(ty))

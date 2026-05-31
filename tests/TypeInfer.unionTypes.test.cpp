@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -1035,6 +1036,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "handle_multiple_optionals")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_union_bounds")
+{
+    /*
+     * When unifying 'a <: T | nil in a context where T substituted for 't, we must constrain the lower bound of 't by 'a.
+     */
+    ScopedFastFlag sff{FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds, true};
+
+    CheckResult result = check(R"(
+        local function unwrap<T>(a: T?): T
+            if a == nil then
+                error("Unexpected nil!")
+            end
+            return a
+        end
+
+        local b = unwrap(42)
+        local c = unwrap(true)
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    CHECK("number" == toString(requireType("b")));
+    CHECK("boolean" == toString(requireType("c")));
 }
 
 TEST_SUITE_END();

@@ -159,6 +159,9 @@ struct TypeFunctionFunctionType
 
     TypeFunctionTypePackId argTypes;
     TypeFunctionTypePackId retTypes;
+
+    // Parallel to argTypes.head; nullopt entries mean the parameter has no name.
+    std::vector<std::optional<std::string>> argNames;
 };
 
 template<typename T>

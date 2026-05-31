@@ -24,8 +24,8 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated2)
 LUAU_FASTFLAG(LuauOccursCheckForAllBindings)
+LUAU_FASTFLAGVARIABLE(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 
 namespace Luau
 {
@@ -201,14 +201,7 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
 
     if (superFree)
     {
-        if (FFlag::LuauOverloadGetsInstantiated2)
-        {
-            superFree->lowerBound = mkUnion(superFree->lowerBound, instantiateWithBoundTypes(subTy));
-        }
-        else
-        {
-            superFree->lowerBound = mkUnion(superFree->lowerBound, subTy);
-        }
+        superFree->lowerBound = mkUnion(superFree->lowerBound, instantiateWithBoundTypes(subTy));
     }
 
     if (subFree)
@@ -331,17 +324,9 @@ UnifyResult Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
 
     auto doDefault = [&]()
     {
-        if (FFlag::LuauOverloadGetsInstantiated2)
-        {
-            auto newSuperTy = instantiateWithBoundTypes(superTy);
-            subFree->upperBound = mkIntersection(subFree->upperBound, newSuperTy);
-            expandedFreeTypes[subTy].push_back(newSuperTy);
-        }
-        else
-        {
-            subFree->upperBound = mkIntersection(subFree->upperBound, superTy);
-            expandedFreeTypes[subTy].push_back(superTy);
-        }
+        auto newSuperTy = instantiateWithBoundTypes(superTy);
+        subFree->upperBound = mkIntersection(subFree->upperBound, newSuperTy);
+        expandedFreeTypes[subTy].push_back(newSuperTy);
         return UnifyResult::Ok;
     };
 
@@ -349,6 +334,39 @@ UnifyResult Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
 
     if (get<FunctionType>(upperBound))
         return unify_(subFree->upperBound, superTy);
+
+    // When superTy is a union or intersection, propagate subTy as a lower bound into any
+    // free-type members. Without this, `freeA <: 'T | nil` (or `freeA <: 'T & C`) never
+    // constrains 'T, because the FreeType path intercepts before structural dispatch.
+    // Members may be GenericTypes that map to FreeTypes via genericSubstitutions.
+    if (FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
+    {
+        auto propagateToFreeMembers = [&](auto memberRange)
+        {
+            for (TypeId member : memberRange)
+            {
+                TypeId m = follow(member);
+                if (auto subst = genericSubstitutions.find(m))
+                    m = follow(*subst);
+                if (FreeType* memberFree = getMutable<FreeType>(m))
+                {
+                    memberFree->lowerBound = mkUnion(memberFree->lowerBound, instantiateWithBoundTypes(subTy));
+                }
+            }
+        };
+
+        if (const UnionType* superUnion = get<UnionType>(superTy))
+        {
+            propagateToFreeMembers(superUnion->options);
+            return doDefault();
+        }
+
+        if (const IntersectionType* superIntersection = get<IntersectionType>(superTy))
+        {
+            propagateToFreeMembers(superIntersection->parts);
+            return doDefault();
+        }
+    }
 
     const FunctionType* superFunction = get<FunctionType>(superTy);
     if (!superFunction)
@@ -396,24 +414,12 @@ UnifyResult Unifier2::unify_(TypeId subTy, const FunctionType* superFn)
     if (shouldInstantiate)
     {
 
-        if (FFlag::LuauOverloadGetsInstantiated2)
+        for (TypeId generic : subFn->generics)
         {
-            for (TypeId generic : subFn->generics)
-            {
-                generic = follow(generic);
-                const GenericType* gen = get<GenericType>(generic);
-                if (gen)
-                    genericSubstitutions[generic] = freshType(scope, gen->polarity);
-            }
-        }
-        else
-        {
-            for (TypeId generic : subFn->generics)
-            {
-                const GenericType* gen = get<GenericType>(follow(generic));
-                if (gen)
-                    genericSubstitutions[generic] = freshType(scope, gen->polarity);
-            }
+            generic = follow(generic);
+            const GenericType* gen = get<GenericType>(generic);
+            if (gen)
+                genericSubstitutions[generic] = freshType(scope, gen->polarity);
         }
 
         for (TypePackId genericPack : subFn->genericPacks)
@@ -692,8 +698,7 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
     {
         LUAU_ASSERT(is<FreeTypePack>(target));
 
-        if (FFlag::LuauOverloadGetsInstantiated2)
-            boundTo = instantiateWithBoundTypes(boundTo);
+        boundTo = instantiateWithBoundTypes(boundTo);
 
         if (FFlag::LuauOccursCheckForAllBindings)
         {

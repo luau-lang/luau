@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
+LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
@@ -2927,6 +2928,37 @@ type function test(t: type) return t end
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]) == "Type functions do not currently support types of the form 'index<D, L>'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_identity_preserves_parameter_names")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag serializeArgNames{FFlag::LuauTypeFunctionSerializeArgNames, true};
+
+    CheckResult result = check(R"(
+type function identity(t)
+    return t
+end
+
+type baz = string
+type foo = (foo: number, bar: baz) -> baz
+type bar = identity<foo>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    std::optional<TypeId> barTy = lookupType("bar");
+    REQUIRE(barTy);
+
+    const FunctionType* ftv = get<FunctionType>(follow(*barTy));
+    REQUIRE(ftv);
+    REQUIRE(ftv->argNames.size() == 2);
+
+    REQUIRE(ftv->argNames[0].has_value());
+    CHECK(ftv->argNames[0]->name == "foo");
+
+    REQUIRE(ftv->argNames[1].has_value());
+    CHECK(ftv->argNames[1]->name == "bar");
 }
 
 TEST_SUITE_END();
