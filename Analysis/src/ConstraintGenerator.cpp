@@ -4223,7 +4223,7 @@ TypeId ConstraintGenerator::resolveReferenceType(
             result = freshType(scope, Polarity::Mixed);
     }
 
-    if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(result)); tfit && !tfit->isBuiltinApplied)
+    if (get<TypeFunctionInstanceType>(follow(result)))
     {
         reportError(ty->location, UnappliedTypeFunction{});
         addConstraint(scope, ty->location, ReduceConstraint{result});
@@ -4460,10 +4460,14 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
         else if (!get<ErrorType>(inner)) // avoid excessive cascading
         {
             TypeFunctionInstanceType tfit{builtinTypes->typeFunctions->negateFunc, {inner}};
-            tfit.isBuiltinApplied = true;
+            TypeId tfty = arena->addType(tfit);
 
-            result = arena->addType(tfit);
-            addConstraint(scope, ty->location, ReduceConstraint{result});
+            TypeFun tf{{}, tfty};
+
+            PendingExpansionType pet{tf, {inner}, {}};
+            result = arena->addType(pet);
+
+            addConstraint(scope, ty->location, TypeAliasExpansionConstraint{result});
         }
         else
             result = builtinTypes->errorType;
