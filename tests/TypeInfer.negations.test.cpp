@@ -9,7 +9,6 @@
 
 LUAU_FASTFLAG(LuauTypeNegationSyntax)
 LUAU_FASTFLAG(LuauTypeNegationSupport)
-LUAU_FASTFLAG(LuauSolverV2)
 
 using namespace Luau;
 
