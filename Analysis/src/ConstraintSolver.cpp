@@ -1431,8 +1431,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
     if (itf.foundInfiniteType)
     {
-        bindResult(builtinTypes->errorType);
-
+        // `bindResult` corrupts the `typeId` of the petv->target Variant
         if (const PendingExpansionType::NamedType* nt = get_if<PendingExpansionType::NamedType>(&petv->target))
         {
             constraint->scope->invalidTypeAliases[nt->name.value] = constraint->location;
@@ -1449,6 +1448,8 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
             constraint->scope->invalidTypeAliases[tfit->function->name] = constraint->location;
         }
+
+        bindResult(builtinTypes->errorType);
 
         return true;
     }
