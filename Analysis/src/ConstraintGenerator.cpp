@@ -4223,7 +4223,7 @@ TypeId ConstraintGenerator::resolveReferenceType(
             result = freshType(scope, Polarity::Mixed);
     }
 
-    if (get<TypeFunctionInstanceType>(follow(result)))
+    if (is<TypeFunctionInstanceType>(follow(result)))
     {
         reportError(ty->location, UnappliedTypeFunction{});
         addConstraint(scope, ty->location, ReduceConstraint{result});

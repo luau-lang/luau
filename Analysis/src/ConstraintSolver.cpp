@@ -1450,7 +1450,6 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
         }
 
         bindResult(builtinTypes->errorType);
-
         return true;
     }
 

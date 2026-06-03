@@ -977,17 +977,13 @@ void persist(TypeId ty)
             queue.push_back(mtv->table);
             queue.push_back(mtv->metatable);
         }
-        else if (auto nty = get<NegationType>(t))
-        {
-            persist(nty->ty);
-        }
-        else if (get<GenericType>(t) || get<AnyType>(t) || get<FreeType>(t) || get<SingletonType>(t) || get<PrimitiveType>(t))
+        else if (get<GenericType>(t) || get<AnyType>(t) || get<FreeType>(t) || get<SingletonType>(t) || get<PrimitiveType>(t) || get<NegationType>(t))
         {
         }
         else if (auto tfit = get<TypeFunctionInstanceType>(t))
         {
             for (auto ty : tfit->typeArguments)
-                persist(ty);
+                queue.push_back(ty);
 
             for (auto tp : tfit->packArguments)
                 persist(tp);
