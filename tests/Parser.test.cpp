@@ -5869,6 +5869,8 @@ TEST_CASE_FIXTURE(Fixture, "extern_read_write_attributes")
     CHECK_EQ(declaredExternType->props.data[3].access, AstTableAccess::ReadWrite);
 }
 
+// TODO unit tests for various parse errors.
+
 TEST_CASE_FIXTURE(Fixture, "type_negation_syntax")
 {
     ScopedFastFlag sff{FFlag::LuauTypeNegationSyntax, true};
