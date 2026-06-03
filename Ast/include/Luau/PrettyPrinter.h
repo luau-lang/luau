@@ -23,7 +23,8 @@ std::string toString(AstNode* node);
 void dump(AstNode* node);
 
 // Never fails on a well-formed AST
-std::string prettyPrint(AstStatBlock& ast);
+std::string prettyPrint(AstStatBlock& block);
+std::string prettyPrint(AstStatBlock& block, const CstNodeMap& cstNodeMap);
 std::string prettyPrintWithTypes(AstStatBlock& block);
 std::string prettyPrintWithTypes(AstStatBlock& block, const CstNodeMap& cstNodeMap);
 
