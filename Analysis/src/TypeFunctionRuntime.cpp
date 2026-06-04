@@ -1807,7 +1807,12 @@ static int isSubtypeOf(lua_State* L)
     NotNull<TypeFunctionContext> ctx = runtimeBuilder->ctx;
 
     TypeId subTy = Luau::deserialize(self, runtimeBuilder);
+    if (FFlag::LuauTypeFunctionStructuredErrors ? !runtimeBuilder->errors.empty() : !runtimeBuilder->errors_DEPRECATED.empty())
+        luaL_error(L, "failed to deserialize the self type");
+
     TypeId superTy = Luau::deserialize(arg, runtimeBuilder);
+    if (FFlag::LuauTypeFunctionStructuredErrors ? !runtimeBuilder->errors.empty() : !runtimeBuilder->errors_DEPRECATED.empty())
+        luaL_error(L, "failed to deserialize the argument type");
 
     SubtypingResult result = ctx->subtyping->isSubtype(subTy, superTy, ctx->scope);
 
