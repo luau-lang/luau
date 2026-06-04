@@ -3953,7 +3953,11 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
         {
             if (expectedFunctionType && !isNonstrictMode())
             {
-                auto [head, tail] = flatten(expectedFunctionType->argTypes);
+                // Only infer vararg from expected type when there are no generic packs,
+                // to avoid interfering with variadic generic functions
+                if (expectedFunctionType->generics.empty() && expectedFunctionType->genericPacks.empty())
+                {
+                    auto [head, tail] = flatten(expectedFunctionType->argTypes);
 
                 if (expr.args.size <= head.size())
                 {
@@ -3969,6 +3973,7 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
                 else
                 {
                     funScope->varargPack = addTypePack({});
+                    }
                 }
             }
 
