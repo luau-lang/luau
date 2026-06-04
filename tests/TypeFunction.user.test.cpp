@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2959,6 +2960,38 @@ type bar = identity<foo>
 
     REQUIRE(ftv->argNames[1].has_value());
     CHECK(ftv->argNames[1]->name == "bar");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauUdtfTypeIsSubtypeOf, true};
+
+    CheckResult results = check(R"(
+        type function checksubtype(a, b)
+            if not a:issubtypeof(b) then
+                error("Not a subtype!")
+            end
+            return a
+        end
+
+        local x: checksubtype<nil, nil>                          -- S
+        local y: checksubtype<nil, string?>                      -- S
+        local z: checksubtype<"Hello", string>                   -- S
+        local w: checksubtype<string | vector | number, number>  -- F
+        local a: checksubtype<boolean, number>                   -- F
+        local b: checksubtype<false, nil>                        -- F
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, results);
+
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[0]));
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[1]));
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[2]));
+
+    CHECK_EQ(results.errors[0].location.begin.line, 11);
+    CHECK_EQ(results.errors[1].location.begin.line, 12);
+    CHECK_EQ(results.errors[2].location.begin.line, 13);
 }
 
 TEST_SUITE_END();
