@@ -3953,11 +3953,7 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
         {
             if (expectedFunctionType && !isNonstrictMode())
             {
-                // Only infer vararg from expected type when there are no generic packs,
-                // to avoid interfering with variadic generic functions
-                if (expectedFunctionType->generics.empty() && expectedFunctionType->genericPacks.empty())
-                {
-                    auto [head, tail] = flatten(expectedFunctionType->argTypes);
+                auto [head, tail] = flatten(expectedFunctionType->argTypes);
 
                 if (expr.args.size <= head.size())
                 {
@@ -3973,19 +3969,12 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
                 else
                 {
                     funScope->varargPack = addTypePack({});
-                    }
                 }
             }
 
-            // In strict mode, use a free type pack so the type of '...' can be
-            // inferred from usage rather than defaulting to 'any'. Resolves CLI-39910.
+            // TODO: should this be a free type pack? CLI-39910
             if (!funScope->varargPack)
-            {
-                if (isNonstrictMode())
-                    funScope->varargPack = anyTypePack;
-                else
-                    funScope->varargPack = freshTypePack(funScope);
-            }
+                funScope->varargPack = anyTypePack;
         }
     }
 
