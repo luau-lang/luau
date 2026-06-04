@@ -477,7 +477,7 @@ public:
 
     ToStringOptions opts;
 
-     NotNull<Subtyping> subtyping;
+    NotNull<Subtyping> subtyping;
 
     void fillInDiscriminantTypes(NotNull<const Constraint> constraint, const std::vector<std::optional<TypeId>>& discriminantTypes);
 };
