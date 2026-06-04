@@ -1000,7 +1000,7 @@ struct ErrorConverter
 
     std::string operator()(const InvalidNegation& bn) const
     {
-        std::string message = "It is not possible to negate the type `" + toString(bn.inner) + "` as";
+        std::string message = "It is not possible to negate the type `" + toString(bn.inner) + "` as it";
 
         if (get<TableType>(bn.inner) || get<MetatableType>(bn.inner))
             message += ", being a table type,";
@@ -1009,7 +1009,7 @@ struct ErrorConverter
         else if (get<GenericType>(bn.inner))
             message += ", being a generic type,";
 
-        message += " it is non-testable.";
+        message += " is non-testable.";
         return message;
     }
 };
