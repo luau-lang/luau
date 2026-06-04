@@ -40,10 +40,48 @@ TEST_CASE_FIXTURE(NegationFixture, "negated_string_is_a_subtype_of_string")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(NegationFixture, "negated_string_is_a_subtype_of_string_syntax")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        function foo(arg: string) end
+        local a: string & ~"Hello"
+        foo(a)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(NegationFixture, "string_is_not_a_subtype_of_negated_string")
 {
     CheckResult result = check(R"(
         function foo(arg: string & Not<"hello">) end
+        local a: string
+        foo(a)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "string_is_not_a_subtype_of_negated_string_syntax")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        function foo(arg: string & ~"hello") end
         local a: string
         foo(a)
     )");
@@ -77,6 +115,25 @@ local v : "b"
 if u == v then
 end
 )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "compare_cofinite_strings_syntax")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        local u : ~"a"
+        local v : "b"
+        if u == v then
+        end
+    )");
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -274,6 +331,28 @@ TEST_CASE_FIXTURE(NegationFixture, "negate_inner_expansion_constraint")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(0, result);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "somewhat_sensible_error_messages")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _[] = {
+        {FFlag::LuauTypeNegationSyntax, true},
+        {FFlag::LuauTypeNegationSupport, true}
+    };
+
+    CheckResult result = check(R"(
+        type T = ~number
+        local t: T = 5
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(
+        toString(result.errors[0]),
+        "Expected this to be '~number', but got 'number'; \nthe negation `~number`, and `number` is not a subtype of `~number`"
+    );
 }
 
 TEST_SUITE_END();
