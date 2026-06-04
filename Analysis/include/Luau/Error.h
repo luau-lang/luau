@@ -602,7 +602,7 @@ struct AmbiguousFunctionCall
     bool operator==(const AmbiguousFunctionCall& rhs) const;
 };
 
-// Error for attempting to negate a structural or generic type
+// Error for attempting to negate a non-testable type
 struct InvalidNegation
 {
     TypeId inner; // type being negated
