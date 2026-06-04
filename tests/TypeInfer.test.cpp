@@ -2975,4 +2975,47 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_instantiate_iter_function")
     )");
 }
 
+TEST_CASE_FIXTURE(Fixture, "vararg_type_inferred_from_usage_in_strict_mode")
+{
+    // In strict mode, unannotated vararg should get a fresh type pack
+    // inferred from usage instead of defaulting to 'any'. Resolves CLI-39910.
+    CheckResult result = check(R"(
+        local function f(...)
+            local x: number = select(1, ...)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "vararg_type_error_caught_in_strict_mode")
+{
+    // After inference, passing wrong type to a function that uses vararg as number should error
+    CheckResult result = check(R"(
+        local function sum(...: number)
+            local result = 0
+            for i = 1, select('#', ...) do
+                result += select(i, ...)
+            end
+            return result
+        end
+        local x: number = sum(1, 2, 3)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "vararg_stays_any_in_nonstrict_mode")
+{
+    // In nonstrict mode vararg must stay 'any' for backwards compatibility
+    CheckResult result = check(R"(
+--!nonstrict
+        local function f(...)
+            return ...
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

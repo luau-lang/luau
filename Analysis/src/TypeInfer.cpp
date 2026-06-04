@@ -3972,9 +3972,15 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
                 }
             }
 
-            // TODO: should this be a free type pack? CLI-39910
+            // In strict mode, use a free type pack so the type of '...' can be
+            // inferred from usage rather than defaulting to 'any'. Resolves CLI-39910.
             if (!funScope->varargPack)
-                funScope->varargPack = anyTypePack;
+            {
+                if (isNonstrictMode())
+                    funScope->varargPack = anyTypePack;
+                else
+                    funScope->varargPack = freshTypePack(funScope);
+            }
         }
     }
 
