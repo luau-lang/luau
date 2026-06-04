@@ -2522,6 +2522,18 @@ TypeFunctionReductionResult<TypeId> weakoptionalTypeFunc(
     return {targetTy, Reduction::MaybeOk, {}, {}};
 }
 
+static bool isTestable(TypeId ty)
+{
+    ty = follow(ty);
+
+    if (auto ut = get<UnionType>(ty))
+        return std::all_of(begin(ut), end(ut), isTestable);
+    else if (auto it = get<IntersectionType>(ty))
+        return std::all_of(begin(it), end(it), isTestable);
+
+    return is<PrimitiveType, SingletonType, GenericType, ExternType, AnyType, UnknownType, NeverType>(ty);
+}
+
 TypeFunctionReductionResult<TypeId> negateTypeFunction(
     TypeId instance,
     const std::vector<TypeId>& typeParams,
@@ -2537,23 +2549,21 @@ TypeFunctionReductionResult<TypeId> negateTypeFunction(
 
     TypeId inner = follow(typeParams.at(0));
 
+    // Russell's paradox: `type T = ~T`.
+    if (inner == instance)
+        return {ctx->builtins->errorType, Reduction::Erroneous};
+
     if (isPending(inner, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {inner}, {}};
 
-    if (is<TableType>(inner) || is<MetatableType>(inner) || is<FunctionType>(inner) || is<GenericType>(inner))
-        return {std::nullopt, Reduction::Erroneous, {}, {}};
+    // Types that are not testable are turned into errors.
+    if (!isTestable(inner))
+        return {ctx->builtins->errorType, Reduction::Erroneous};
 
     if (is<ErrorType>(inner))
         return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
 
     TypeId negated = ctx->arena->addType(NegationType{inner});
-    std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(negated);
-    NormalizationResult inhabited = ctx->normalizer->isInhabited(normTy.get());
-
-    // if the type failed to normalize, we can't reduce, but know nothing about inhabitance.
-    if (!normTy || inhabited == NormalizationResult::HitLimits)
-        return {std::nullopt, Reduction::MaybeOk, {}, {}};
-
     return {negated, Reduction::MaybeOk, {}, {}};
 }
 
