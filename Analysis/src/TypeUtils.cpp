@@ -944,38 +944,38 @@ TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, st
     return ub.build();
 }
 
-ContainsAnyGeneric::ContainsAnyGeneric()
+ContainsAnyGeneric_DEPRECATED::ContainsAnyGeneric_DEPRECATED()
     : TypeOnceVisitor("ContainsAnyGeneric", /* skipBoundTypes */ true)
 {
 }
 
-bool ContainsAnyGeneric::visit(TypeId ty, const ExternType&)
+bool ContainsAnyGeneric_DEPRECATED::visit(TypeId ty, const ExternType&)
 {
     return false;
 }
 
-bool ContainsAnyGeneric::visit(TypeId ty)
+bool ContainsAnyGeneric_DEPRECATED::visit(TypeId ty)
 {
     found = found || is<GenericType>(ty);
     return !found;
 }
 
-bool ContainsAnyGeneric::visit(TypePackId ty)
+bool ContainsAnyGeneric_DEPRECATED::visit(TypePackId ty)
 {
     found = found || is<GenericTypePack>(follow(ty));
     return !found;
 }
 
-bool ContainsAnyGeneric::hasAnyGeneric(TypeId ty)
+bool ContainsAnyGeneric_DEPRECATED::hasAnyGeneric(TypeId ty)
 {
-    ContainsAnyGeneric cg;
+    ContainsAnyGeneric_DEPRECATED cg;
     cg.traverse(ty);
     return cg.found;
 }
 
-bool ContainsAnyGeneric::hasAnyGeneric(TypePackId tp)
+bool ContainsAnyGeneric_DEPRECATED::hasAnyGeneric(TypePackId tp)
 {
-    ContainsAnyGeneric cg;
+    ContainsAnyGeneric_DEPRECATED cg;
     cg.traverse(tp);
     return cg.found;
 }

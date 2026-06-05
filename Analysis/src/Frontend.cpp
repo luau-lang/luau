@@ -41,6 +41,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
+LUAU_FASTFLAG(LuauConstraintGraph)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauExportValueTypecheck)
 
@@ -1506,6 +1507,10 @@ ModulePtr check(
 
     typeFunctionRuntime.allowEvaluation = true;
 
+    std::unique_ptr<ConstraintGraph> cgraph;
+    if (FFlag::LuauConstraintGraph)
+        cgraph = std::make_unique<ConstraintGraph>(builtinTypes);
+
     ConstraintGenerator cg{
         module,
         NotNull{&normalizer},
@@ -1518,7 +1523,8 @@ ModulePtr check(
         std::move(prepareModuleScope),
         logger.get(),
         NotNull{&dfg},
-        requireCycles
+        requireCycles,
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
     };
 
     ConstraintSet constraintSet = cg.run(sourceModule.root);
@@ -1534,8 +1540,10 @@ ModulePtr check(
         logger.get(),
         NotNull{&dfg},
         limits,
-        std::move(constraintSet)
+        std::move(constraintSet),
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
     };
+
 
     if (options.randomizeConstraintResolutionSeed)
         cs.randomize(*options.randomizeConstraintResolutionSeed);
@@ -2076,6 +2084,10 @@ TypeId Frontend::parseType(
 
     DataFlowGraph dfg = DataFlowGraphBuilder::empty(NotNull{&module->defArena}, NotNull{&module->keyArena});
 
+    std::unique_ptr<ConstraintGraph> cgraph;
+    if (FFlag::LuauConstraintGraph)
+        cgraph = std::make_unique<ConstraintGraph>(builtinTypes);
+
     ConstraintGenerator cg{
         module,
         NotNull{&normalizer},
@@ -2088,7 +2100,8 @@ TypeId Frontend::parseType(
         nullptr,
         nullptr,
         NotNull{&dfg},
-        {}
+        {},
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr
     };
 
     TypeId t = cg.resolveType(globals.globalScope, parseResult.root, false);

@@ -80,17 +80,6 @@ struct MagicPack final : MagicFunction
     bool infer(const MagicFunctionCallContext& ctx) override;
 };
 
-struct MagicRequire final : MagicFunction
-{
-    std::optional<WithPredicate<TypePackId>> handleOldSolver(
-        struct TypeChecker&,
-        const std::shared_ptr<struct Scope>&,
-        const class AstExprCall&,
-        WithPredicate<TypePackId>
-    ) override;
-    bool infer(const MagicFunctionCallContext& ctx) override;
-};
-
 struct MagicClone final : MagicFunction
 {
     std::optional<WithPredicate<TypePackId>> handleOldSolver(

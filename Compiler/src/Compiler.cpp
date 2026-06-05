@@ -40,6 +40,7 @@ LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCompilePropagateTableProps2)
 LUAU_FASTFLAG(LuauCompileFoldOptimize)
+LUAU_FASTFLAGVARIABLE(LuauCompileInlineTableFunctions)
 
 namespace Luau
 {
@@ -246,6 +247,55 @@ struct Compiler
         }
     }
 
+    AstExpr* tryIndexConstantTable(AstExprIndexName* expr)
+    {
+        // If we are referring to a local
+        AstExprLocal* tableLocal = unwrapExprOfType<AstExprLocal>(expr->expr);
+        if (!tableLocal)
+            return nullptr;
+
+        // And it's not mutable and has an initializer
+        Variable* lv = variables.find(tableLocal->local);
+        if (!lv || lv->written || !lv->init)
+            return nullptr;
+
+        // And the local is a constant table
+        TableConstantKind* tableKind = tableConstants.find(tableLocal->local);
+        if (!tableKind || *tableKind != ConstantTable)
+            return nullptr;
+
+        AstExprTable* table = unwrapExprOfType<AstExprTable>(lv->init);
+        if (!table)
+            return nullptr;
+
+        // Look into the initializer to find the function value
+        AstExpr* match = nullptr;
+
+        for (const AstExprTable::Item& item : table->items)
+        {
+            if (item.kind == AstExprTable::Item::Record || item.kind == AstExprTable::Item::General)
+            {
+                Constant* keyConstant = constants.find(item.key);
+
+                // Dynamic key can alias any of the constant keys
+                if (!keyConstant)
+                {
+                    match = nullptr;
+                }
+                else if (keyConstant->type == Constant::Type_String && keyConstant->stringLength != 0)
+                {
+                    AstName keyName = names.getOrAdd(keyConstant->valueString, keyConstant->stringLength);
+
+                    // No break as last match determines the lookup result if there are duplicates
+                    if (keyName == expr->index)
+                        match = item.value;
+                }
+            }
+        }
+
+        return match;
+    }
+
     AstExprFunction* getFunctionExpr(AstExpr* node)
     {
         if (AstExprLocal* expr = node->as<AstExprLocal>())
@@ -257,9 +307,18 @@ struct Compiler
 
             return getFunctionExpr(lv->init);
         }
+        else if (AstExprIndexName* expr = node->as<AstExprIndexName>(); expr && FFlag::LuauCompileInlineTableFunctions)
+        {
+            if (AstExpr* value = tryIndexConstantTable(expr))
+                return getFunctionExpr(value);
+
+            return nullptr;
+        }
         else if (AstExprGroup* expr = node->as<AstExprGroup>())
             return getFunctionExpr(expr->expr);
         else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
+            return getFunctionExpr(expr->expr);
+        else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>(); expr && FFlag::LuauCompileInlineTableFunctions)
             return getFunctionExpr(expr->expr);
         else
             return node->as<AstExprFunction>();
@@ -267,14 +326,14 @@ struct Compiler
 
     void compileExportTable()
     {
-        LUAU_ASSERT(!exportedLocals.empty());
+        LUAU_ASSERT(!exportedLocals.empty() || !exportedClasses.empty());
         LUAU_ASSERT(currentFunction);
 
+        // this arises when we have a module that is only exporting classes
         if (!locals.contains(&exportTableLocal))
         {
-            // all exported locals were optimized away, but we still need to return an empty frozen table
             uint8_t tableReg = allocReg(currentFunction, 1u);
-            bytecode.emitABC(LOP_NEWTABLE, tableReg, encodeHashSize(unsigned(exportedLocals.size())), 0);
+            bytecode.emitABC(LOP_NEWTABLE, tableReg, encodeHashSize(unsigned(exportedLocals.size() + exportedClasses.size())), 0);
             bytecode.emitAux(0);
             pushLocal(&exportTableLocal, tableReg, kDefaultAllocPc);
         }
@@ -282,6 +341,20 @@ struct Compiler
         AstExprFunction* locNode = currentFunction;
         int8_t tableReg = getLocalReg(&exportTableLocal);
         LUAU_ASSERT(tableReg >= 0);
+
+        if (FFlag::DebugLuauUserDefinedClasses)
+        {
+            for (auto& [className, classReg] : exportedClasses)
+            {
+                BytecodeBuilder::StringRef classNameRef = sref(className);
+                int32_t classNameCid = bytecode.addConstantString(classNameRef);
+                if (classNameCid < 0)
+                    CompileError::raise(locNode->location, "Exceeded constant limit; simplify the code to compile");
+
+                bytecode.emitABC(LOP_SETTABLEKS, classReg, tableReg, uint8_t(BytecodeBuilder::getStringHash(classNameRef)));
+                bytecode.emitAux(classNameCid);
+            }
+        }
 
         uint8_t freezeReg = allocReg(locNode, 2u);
         AstName freezeName = names.getOrAdd("freeze");
@@ -306,7 +379,6 @@ struct Compiler
         {
             CompileError::raise(locNode->location, "Exceeded constant limit; simplify the code to compile");
         }
-
 
         bytecode.emitABC(LOP_MOVE, uint8_t(freezeReg + 1), tableReg, 0);
         bytecode.emitABC(LOP_CALL, freezeReg, 2, 2);
@@ -371,7 +443,7 @@ struct Compiler
         {
             setDebugLineEnd(stat);
             // in main
-            if ((!exportedLocals.empty()) && atTopLevel())
+            if ((!exportedLocals.empty() || !exportedClasses.empty()) && atTopLevel())
             {
                 compileExportTable();
             }
@@ -1530,6 +1602,9 @@ struct Compiler
         int32_t classConst = bytecode.addClassShape(std::move(shape));
         checkConstant(classConst, decl->location);
         bytecode.patchAux(auxOffset, classConst);
+
+        if (FFlag::LuauExportValueSyntax && decl->exported)
+            exportedClasses.emplace_back(decl->name->name, dest);
     }
 
     LuauOpcode getUnaryOp(AstExprUnary::Op op)
@@ -3256,14 +3331,21 @@ struct Compiler
 
     AstExprLocal* getExprLocal(AstExpr* node)
     {
-        if (AstExprLocal* expr = node->as<AstExprLocal>())
-            return expr;
-        else if (AstExprGroup* expr = node->as<AstExprGroup>())
-            return getExprLocal(expr->expr);
-        else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
-            return getExprLocal(expr->expr);
+        if (FFlag::LuauCompileInlineTableFunctions)
+        {
+            return unwrapExprOfType<AstExprLocal>(node);
+        }
         else
-            return nullptr;
+        {
+            if (AstExprLocal* expr = node->as<AstExprLocal>())
+                return expr;
+            else if (AstExprGroup* expr = node->as<AstExprGroup>())
+                return getExprLocal(expr->expr);
+            else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
+                return getExprLocal(expr->expr);
+            else
+                return nullptr;
+        }
     }
 
     int getExprLocalReg(AstExpr* node)
@@ -3620,8 +3702,8 @@ struct Compiler
                 Variable* lv = variables.find(stat->vars.data[0]);
                 Variable* rv = variables.find(re->local);
 
-                if (int reg = getExprLocalReg(re); reg >= 0 && (!lv || !lv->written) && (!rv || !rv->written) && !stat->vars.data[0]->isExported &&
-                    !re->local->isExported)
+                if (int reg = getExprLocalReg(re);
+                    reg >= 0 && (!lv || !lv->written) && (!rv || !rv->written) && !stat->vars.data[0]->isExported && !re->local->isExported)
                 {
                     pushLocal(stat->vars.data[0], uint8_t(reg), kDefaultAllocPc);
                     return;
@@ -4943,8 +5025,8 @@ struct Compiler
     std::vector<Loop> loops;
     std::vector<InlineFrame> inlineFrames;
     std::vector<Capture> captures;
-    // invariant: all of these AstLocals have isConst = true and isExported = true
     std::vector<AstLocal*> exportedLocals;
+    std::vector<std::pair<AstName, uint8_t>> exportedClasses;
 };
 
 static void setCompileOptionsForNativeCompilation(CompileOptions& options)

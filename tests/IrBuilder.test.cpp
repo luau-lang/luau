@@ -13,11 +13,6 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
-LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
-LUAU_FASTFLAG(LuauCodegenGcoDse2)
-LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
-LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
 LUAU_FASTFLAG(LuauCodegenInteger2)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerLibrary)
@@ -2232,8 +2227,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ControlFlowCmpNum")
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "ControlFlowCmpInt")
 {
-    ScopedFastFlag luauCodegenPropagateTagsAcrossChains{FFlag::LuauCodegenPropagateTagsAcrossChains2, false};
-
     auto compareFold = [this](IrOp lhs, IrOp rhs, IrCondition cond, bool result)
     {
         IrOp instOp;
@@ -3643,9 +3636,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "TagsFlowFromSinglePredecessor")
 {
-    ScopedFastFlag luauCodegenSetBlockEntryState2{FFlag::LuauCodegenSetBlockEntryState3, true};
-    ScopedFastFlag luauCodegenPropagateTagsAcrossChains{FFlag::LuauCodegenPropagateTagsAcrossChains2, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp trueBlock = build.block(IrBlockKind::Internal);
     IrOp falseBlock = build.block(IrBlockKind::Internal);
@@ -3694,9 +3684,6 @@ bb_2:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "TagsAreJoinedFromPredecessors")
 {
-    ScopedFastFlag luauCodegenSetBlockEntryState2{FFlag::LuauCodegenSetBlockEntryState3, true};
-    ScopedFastFlag luauCodegenPropagateTagsAcrossChains{FFlag::LuauCodegenPropagateTagsAcrossChains2, true};
-
     IrOp entry1 = build.block(IrBlockKind::Internal);
     IrOp entry2 = build.block(IrBlockKind::Internal);
     IrOp trueBlock = build.block(IrBlockKind::Internal);
@@ -3770,9 +3757,6 @@ bb_3:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "TagsAreJoinedFromPredecessors2")
 {
-    ScopedFastFlag luauCodegenSetBlockEntryState2{FFlag::LuauCodegenSetBlockEntryState3, true};
-    ScopedFastFlag luauCodegenPropagateTagsAcrossChains{FFlag::LuauCodegenPropagateTagsAcrossChains2, true};
-
     IrOp entry1 = build.block(IrBlockKind::Internal);
     IrOp entry2 = build.block(IrBlockKind::Internal);
     IrOp trueBlock = build.block(IrBlockKind::Internal);
@@ -6067,8 +6051,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "HiddenPointerUse1")
 {
-    ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -6094,8 +6076,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "HiddenPointerUse2")
 {
-    ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -6315,8 +6295,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "PartialVsFullStoresNoRemoval1")
 {
-    ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -6342,8 +6320,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "PartialVsFullStoresNoRemoval2")
 {
-    ScopedFastFlag luauCodegenGcoDse{FFlag::LuauCodegenGcoDse2, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -6808,9 +6784,6 @@ bb_2:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotReturnWithPartialStores")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
-    ScopedFastFlag luauCodegenDseOnCondJump{FFlag::LuauCodegenDseOnCondJump, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp success = build.block(IrBlockKind::Internal);
     IrOp fail = build.block(IrBlockKind::Internal);
@@ -7210,9 +7183,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DsePartialStoreWithKnownTagFromPredecessors")
 {
-    ScopedFastFlag luauCodegenSetBlockEntryState2{FFlag::LuauCodegenSetBlockEntryState3, true};
-    ScopedFastFlag luauCodegenPropagateTagsAcrossChains{FFlag::LuauCodegenPropagateTagsAcrossChains2, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp other = build.block(IrBlockKind::Internal);
     IrOp target = build.block(IrBlockKind::Internal);
@@ -7288,7 +7258,6 @@ bb_3:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncBasic")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -7323,7 +7292,6 @@ bb_exit_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncSinking")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -7365,7 +7333,6 @@ bb_exit_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncMultipleExitRegisters")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -7415,7 +7382,6 @@ bb_exit_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncStoreVector")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -7458,7 +7424,6 @@ bb_exit_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncStoreTvalue")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -7494,7 +7459,6 @@ bb_exit_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncMultipleRegisters")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -7537,7 +7501,6 @@ bb_exit_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncNoRecordAfterGuard")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -7570,7 +7533,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncDeepSinkChain")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -7618,7 +7580,6 @@ bb_exit_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncUserCallPreventsSync")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -7655,7 +7616,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncSinkingNoInlineAcrossBlock")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
 
     IrOp block = build.block(IrBlockKind::Internal);
@@ -7698,7 +7658,6 @@ bb_exit_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncVectorFullStore")
 {
-    ScopedFastFlag luauCodegenMarkDeadRegisters{FFlag::LuauCodegenMarkDeadRegisters2, true};
     ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
 
     IrOp block = build.block(IrBlockKind::Internal);

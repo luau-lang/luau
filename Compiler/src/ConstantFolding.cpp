@@ -2,6 +2,7 @@
 #include "ConstantFolding.h"
 
 #include "BuiltinFolding.h"
+#include "Utils.h"
 #include "Luau/Bytecode.h"
 #include "Luau/Lexer.h"
 
@@ -11,6 +12,7 @@
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauCompilePropagateTableProps2)
 LUAU_FASTFLAGVARIABLE(LuauCompileFoldOptimize)
+LUAU_FASTFLAGVARIABLE(LuauCompileNewTableMutationTracker)
 
 namespace Luau
 {
@@ -445,12 +447,12 @@ static void foldInterpString(Constant& result, AstExprInterpString* expr, DenseH
 // with a constant table literal, we start tracking it as a potentially foldable ConstantTable.
 // observeMutations is used to check for whether a local we have mapped to a ConstantTable is ever potentially mutated in order to ensure that any
 // folding we perform later on is sound.
-struct TableMutationTracker : AstVisitor
+struct TableMutationTracker_DEPRECATED : AstVisitor
 {
     DenseHashMap<AstLocal*, TableConstantKind>& constantTables;
     const DenseHashMap<AstLocal*, Variable>& variables;
 
-    TableMutationTracker(DenseHashMap<AstLocal*, TableConstantKind>& constantTables, const DenseHashMap<AstLocal*, Variable>& variables)
+    TableMutationTracker_DEPRECATED(DenseHashMap<AstLocal*, TableConstantKind>& constantTables, const DenseHashMap<AstLocal*, Variable>& variables)
         : constantTables(constantTables)
         , variables(variables)
     {
@@ -782,6 +784,160 @@ struct TableMutationTracker : AstVisitor
         node->body->visit(this);
 
         return false;
+    }
+};
+
+// Pass to detect which tables are mutated or 'escape'
+struct TableMutationTracker : AstVisitor
+{
+    const DenseHashMap<AstLocal*, Variable>& variables;
+
+    DenseHashSet<AstLocal*> escaped{nullptr};
+
+    TableMutationTracker(const DenseHashMap<AstLocal*, Variable>& variables)
+        : variables(variables)
+    {
+    }
+
+    void markEscaped(AstExpr* expr)
+    {
+        for (;;)
+        {
+            if (AstExprLocal* local = expr->as<AstExprLocal>())
+            {
+                escaped.insert(local->local);
+                return;
+            }
+            else if (AstExprGroup* group = expr->as<AstExprGroup>())
+            {
+                expr = group->expr;
+            }
+            else if (AstExprTypeAssertion* assertion = expr->as<AstExprTypeAssertion>())
+            {
+                expr = assertion->expr;
+            }
+            else if (AstExprInstantiate* inst = expr->as<AstExprInstantiate>())
+            {
+                expr = inst->expr;
+            }
+            else if (AstExprIfElse* ifElse = expr->as<AstExprIfElse>())
+            {
+                markEscaped(ifElse->trueExpr); // recurse through true branch
+                expr = ifElse->falseExpr;      // continue loop with false branch
+            }
+            else if (AstExprBinary* bin = expr->as<AstExprBinary>())
+            {
+                if (bin->op == AstExprBinary::And || bin->op == AstExprBinary::Or)
+                {
+                    markEscaped(bin->left); // recurse through lhs
+                    expr = bin->right;      // continue loop with rhs
+                }
+                else
+                {
+                    return;
+                }
+            }
+            else
+            {
+                return;
+            }
+        }
+    }
+
+    void markEscapedTableIndex(AstExpr* expr, bool isLvalue)
+    {
+        if (AstExprIndexName* idx = expr->as<AstExprIndexName>())
+        {
+            markEscaped(idx->expr);
+        }
+        else if (AstExprIndexExpr* idx = expr->as<AstExprIndexExpr>())
+        {
+            markEscaped(idx->expr);
+
+            if (isLvalue)
+                markEscaped(idx->index);
+        }
+    }
+
+    bool visit(AstExprCall* node) override
+    {
+        // Values passed in as arguments can escape
+        for (AstExpr* arg : node->args)
+            markEscaped(arg);
+
+        // Table indexed in a self call escapes through 'self'
+        if (node->self)
+            markEscapedTableIndex(node->func, false);
+
+        return true;
+    }
+
+    bool visit(AstExprTable* node) override
+    {
+        // Values stored inside a table constructor can escape
+        for (const AstExprTable::Item& item : node->items)
+        {
+            if (item.key)
+                markEscaped(item.key);
+
+            markEscaped(item.value);
+        }
+
+        return true;
+    }
+
+    bool visit(AstStatLocal* node) override
+    {
+        // Aliasing a table reference marks the source as escaped
+        for (size_t i = 0; i < node->values.size && i < node->vars.size; ++i)
+            markEscaped(node->values.data[i]);
+
+        return true;
+    }
+
+    bool visit(AstStatAssign* node) override
+    {
+        // RHS values that are table locals are being aliased
+        for (AstExpr* rhs : node->values)
+            markEscaped(rhs);
+
+        // LHS index expressions mutate the table being indexed
+        for (AstExpr* lhs : node->vars)
+            markEscapedTableIndex(lhs, true);
+
+        return true;
+    }
+
+    bool visit(AstStatCompoundAssign* node) override
+    {
+        // LHS index expressions mutate the table
+        markEscapedTableIndex(node->var, true);
+        return true;
+    }
+
+    bool visit(AstStatFunction* node) override
+    {
+        // Adding a method on a table mutates it
+        markEscapedTableIndex(node->name, true);
+        return true;
+    }
+
+    bool visit(AstStatForIn* node) override
+    {
+        // Iterator state values escape
+        for (AstExpr* expr : node->values)
+            markEscaped(expr);
+
+        return true;
+    }
+
+    bool visit(AstStatReturn* node) override
+    {
+        // Returning a table is sometimes safe, but when it's combined with upvalues and local functions, it's very brittle
+        for (AstExpr* expr : node->list)
+            markEscaped(expr);
+
+        return true;
     }
 };
 
@@ -1243,8 +1399,28 @@ void buildTableConstantMap(DenseHashMap<AstLocal*, TableConstantKind>& result, c
 {
     LUAU_ASSERT(FFlag::LuauCompileFoldOptimize && FFlag::LuauCompilePropagateTableProps2);
 
-    TableMutationTracker mutationTracker{result, variables};
-    root->visit(&mutationTracker);
+    if (FFlag::LuauCompileNewTableMutationTracker)
+    {
+        TableMutationTracker tracker{variables};
+        root->visit(&tracker);
+
+        for (auto& [local, var] : variables)
+        {
+            if (var.written)
+                continue;
+
+            if (!var.init || !unwrapExprOfType<AstExprTable>(var.init))
+                continue;
+
+            if (!tracker.escaped.contains(local))
+                result[local] = ConstantTable;
+        }
+    }
+    else
+    {
+        TableMutationTracker_DEPRECATED mutationTracker{result, variables};
+        root->visit(&mutationTracker);
+    }
 }
 
 void undoChanges(DenseHashMap<AstExpr*, Constant>& constants, const ExprConstantChangeLog& changes)
@@ -1297,7 +1473,7 @@ void foldConstants(
 
     if (FFlag::LuauCompilePropagateTableProps2 && !FFlag::LuauCompileFoldOptimize)
     {
-        TableMutationTracker mutationTracker{constantTables_DEPRECATED, variables};
+        TableMutationTracker_DEPRECATED mutationTracker{constantTables_DEPRECATED, variables};
         root->visit(&mutationTracker);
     }
 

@@ -988,6 +988,10 @@ struct Printer
             if (FFlag::LuauExportValueSyntax && FFlag::LuauConst2 && a->isExported)
             {
                 writer.keyword("export");
+
+                if (cstNode)
+                    advance(cstNode->declarationKeywordPosition);
+
                 writer.keyword(a->isConst ? "const" : "local");
             }
             else if (FFlag::LuauConst2 && a->isConst)

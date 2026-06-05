@@ -39,7 +39,6 @@ LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
-LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
 LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
@@ -673,12 +672,8 @@ void TypeChecker2::visit(AstStat* stat)
         return visit(s);
     else if (auto s = stat->as<AstStatDeclareExternType>())
         return visit(s);
-    else if (stat->is<AstStatClass>())
-    {
-        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-        // TODO CLI-199139
-        return;
-    }
+    else if (auto s = stat->as<AstStatClass>())
+        return visit(s);
     else if (auto s = stat->as<AstStatError>())
         return visit(s);
     else
@@ -1354,6 +1349,26 @@ void TypeChecker2::visit(AstStatDeclareExternType* stat)
 {
     for (const AstDeclaredExternTypeProperty& prop : stat->props)
         visit(prop.ty);
+}
+
+void TypeChecker2::visit(AstStatClass* stat)
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+    for (const auto& member : stat->members)
+    {
+        if (const auto* prop = member.get_if<AstClassProperty>())
+        {
+            if (prop->ty)
+                visit(prop->ty);
+        }
+        else if (const auto* method = member.get_if<AstClassMethod>())
+        {
+            visit(method->function);
+        }
+        else
+            LUAU_ASSERT(!"Unknown class member!");
+    }
 }
 
 void TypeChecker2::visit(AstStatError* stat)
@@ -3679,27 +3694,24 @@ void TypeChecker2::checkIndexTypeFromType(
         // because extern typeArguments come into being with full knowledge of their
         // shape. We instead want to report the unknown property error of
         // the `else` branch.
-        else if (context == ValueContext::LValue && (FFlag::LuauExternReadWriteAttributes || !get<ExternType>(tableTy)))
+        else if (context == ValueContext::LValue)
         {
             const auto lvPropTypes = lookupProp(norm.get(), prop, ValueContext::RValue, location, astIndexExprType, dummy);
             if (lvPropTypes.foundOneProp() && lvPropTypes.noneMissingProp())
                 reportError(PropertyAccessViolation{tableTy, prop, PropertyAccessViolation::CannotWrite}, location);
             else if (get<PrimitiveType>(tableTy) || get<FunctionType>(tableTy))
                 reportError(NotATable{tableTy}, location);
-            else
+            else if (auto et = get<ExternType>(tableTy))
             {
-                if (auto et = get<ExternType>(tableTy); et && FFlag::LuauExternReadWriteAttributes)
-                {
-                    if (!FFlag::LuauTweakAccessViolationReporting || et->indexer || context == ValueContext::RValue)
-                        reportError(UnknownProperty{tableTy, prop}, location);
-                    else
-                        reportError(PropertyAccessViolation{tableTy, prop, PropertyAccessViolation::CannotWrite}, location);
-                }
+                if (!FFlag::LuauTweakAccessViolationReporting || et->indexer || context == ValueContext::RValue)
+                    reportError(UnknownProperty{tableTy, prop}, location);
                 else
-                    reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
+                    reportError(PropertyAccessViolation{tableTy, prop, PropertyAccessViolation::CannotWrite}, location);
             }
+            else
+                reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
         }
-        else if (context == ValueContext::RValue && (FFlag::LuauExternReadWriteAttributes || !get<ExternType>(tableTy)))
+        else if (context == ValueContext::RValue)
         {
             const auto rvPropTypes = lookupProp(norm.get(), prop, ValueContext::LValue, location, astIndexExprType, dummy);
             if (rvPropTypes.foundOneProp() && rvPropTypes.noneMissingProp())
@@ -3768,8 +3780,7 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         // Construct the intersection and test inhabitedness!
         if (auto property = lookupExternTypeProp(cls, prop))
         {
-            if (FFlag::LuauExternReadWriteAttributes &&
-                ((context == ValueContext::LValue && !property->writeTy) || (context == ValueContext::RValue && !property->readTy)))
+            if ((context == ValueContext::LValue && !property->writeTy) || (context == ValueContext::RValue && !property->readTy))
                 return {NormalizationResult::False, {}};
             else
                 return {NormalizationResult::True, context == ValueContext::LValue ? property->writeTy : property->readTy};

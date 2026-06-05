@@ -18,7 +18,6 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenPropagateTagsAcrossChains2)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 
 namespace Luau
@@ -1869,8 +1868,6 @@ void propagateTagsFromPredecessors(
     std::function<void(size_t, uint8_t)> setTag
 )
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenPropagateTagsAcrossChains2);
-
     uint32_t blockIdx = function.getBlockIndex(block);
 
     if (blockIdx >= function.cfg.predecessorsOffsets.size())

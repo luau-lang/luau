@@ -31,6 +31,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauConstraintGraph)
 
 namespace Luau
 {
@@ -1178,6 +1179,11 @@ FragmentTypeCheckResult typecheckFragment_(
 
     FrontendModuleResolver& resolver = getModuleResolver(frontend, opts);
     std::shared_ptr<Scope> freshChildOfNearestScope = std::make_shared<Scope>(nullptr);
+
+    std::unique_ptr<ConstraintGraph> cgraph;
+    if (FFlag::LuauConstraintGraph)
+        cgraph = std::make_unique<ConstraintGraph>(frontend.builtinTypes);
+
     /// Contraint Generator
     ConstraintGenerator cg{
         incrementalModule,
@@ -1191,7 +1197,8 @@ FragmentTypeCheckResult typecheckFragment_(
         nullptr,
         nullptr,
         NotNull{&dfg},
-        {}
+        {},
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
     };
 
     CloneState cloneState{frontend.builtinTypes};
@@ -1238,7 +1245,8 @@ FragmentTypeCheckResult typecheckFragment_(
         {},
         nullptr,
         NotNull{&dfg},
-        std::move(limits)
+        std::move(limits),
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
     };
 
     try

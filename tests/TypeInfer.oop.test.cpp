@@ -19,7 +19,6 @@ LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauFixPropReadsOnMetatableTypes)
 LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
-LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 LUAU_FASTFLAG(LuauTidyTypePrototyping)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
@@ -1147,13 +1146,68 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "class_that_shadows_a_type_alias")
     CHECK(err->previousLocation.has_value());
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_class_method_field_access")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauTidyTypePrototyping, true},
+    };
+
+    CheckResult result = check(R"(
+        class Point
+            public x: number?
+            public y: number?
+            function magnitude(self)
+                return math.sqrt(self.x * self.x + self.y * self.y)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+
+    for (const auto& err : result.errors)
+    {
+        auto* utf = get<UninhabitedTypeFunction>(err);
+        REQUIRE(utf);
+        CHECK_EQ(toString(utf->ty), "mul<number?, number?>");
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_class_annotations")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauTidyTypePrototyping, true},
+    };
+
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+            public name: string
+            function magnitude(self): string
+                -- self.name is not a number
+                self.name = self.x
+
+                -- This function is declared to return string.
+                return math.sqrt(self.x * self.x + self.y * self.y)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR(result, TypeMismatch);
+    LUAU_REQUIRE_ERROR(result, TypePackMismatch);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "read_unknown_property_from_class_object_or_instance")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::LuauTidyTypePrototyping, true},
-        {FFlag::LuauExternReadWriteAttributes, true},
         {FFlag::LuauTweakAccessViolationReporting, true},
     };
 
@@ -1189,7 +1243,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_class_object_properties_are_forbid
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::LuauTidyTypePrototyping, true},
-        {FFlag::LuauExternReadWriteAttributes, true},
         {FFlag::LuauTweakAccessViolationReporting, true},
     };
 
@@ -1249,7 +1302,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_unknown_class_instance_properties_
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::LuauTidyTypePrototyping, true},
-        {FFlag::LuauExternReadWriteAttributes, true},
         {FFlag::LuauTweakAccessViolationReporting, true},
     };
 

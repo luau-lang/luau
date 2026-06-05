@@ -400,11 +400,12 @@ private:
 TypeId addIntersection(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
 TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
 
-struct ContainsAnyGeneric final : public TypeOnceVisitor
+// Clip with LuauInstantiateFunctionTypeBeforePush
+struct ContainsAnyGeneric_DEPRECATED final : public TypeOnceVisitor
 {
     bool found = false;
 
-    explicit ContainsAnyGeneric();
+    explicit ContainsAnyGeneric_DEPRECATED();
 
     bool visit(TypeId ty) override;
     bool visit(TypePackId ty) override;
