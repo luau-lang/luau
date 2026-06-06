@@ -301,15 +301,6 @@ $(ISOCLINE_TARGET): $(ISOCLINE_OBJECTS)
 $(COMMON_TARGET) $(AST_TARGET) $(BYTECODE_TARGET) $(COMPILER_TARGET) $(CONFIG_TARGET) $(ANALYSIS_TARGET) $(EQSAT_TARGET) $(CODEGEN_TARGET) $(VM_TARGET) $(REQUIRE_TARGET) $(ISOCLINE_TARGET):
 	ar rcs $@ $^
 
-# object file targets
-$(BUILD)/%.cpp.o: %.cpp
-	@mkdir -p $(dir $@)
-	$(CXX) $< $(CXXFLAGS) -c -MMD -MP -o $@
-
-$(BUILD)/%.c.o: %.c
-	@mkdir -p $(dir $@)
-	$(CXX) -x c $< $(CXXFLAGS) -c -MMD -MP -o $@
-
 # Git commit hash and tag
 LCOMMITFLAGS=
 GIT_COMMIT_HASH:=$(shell git rev-parse HEAD)
@@ -333,6 +324,15 @@ endif
 $(BUILD)/lcommit.cpp.o: lcommit.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $< $(CXXFLAGS) $(LCOMMITFLAGS) -c -MMD -MP -o $@
+
+# object file targets
+$(BUILD)/%.cpp.o: %.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $< $(CXXFLAGS) -c -MMD -MP -o $@
+
+$(BUILD)/%.c.o: %.c
+	@mkdir -p $(dir $@)
+	$(CXX) -x c $< $(CXXFLAGS) -c -MMD -MP -o $@
 
 # protobuf fuzzer setup
 fuzz/luau.pb.cpp: fuzz/luau.proto $(MUTATOR_LIBS)
