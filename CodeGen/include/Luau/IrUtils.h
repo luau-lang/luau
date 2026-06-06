@@ -7,9 +7,6 @@
 
 #include <optional>
 
-LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
-LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
-
 namespace Luau
 {
 namespace CodeGen
@@ -118,10 +115,7 @@ inline bool canInvalidateSafeEnv(IrCmd cmd)
 inline bool isPseudo(IrCmd cmd)
 {
     // Instructions that are used for internal needs and are not a part of final lowering
-    if (FFlag::LuauCodegenMarkDeadRegisters2 || FFlag::LuauCodegenDseOnCondJump)
-        return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE || cmd == IrCmd::MARK_USED || cmd == IrCmd::MARK_DEAD;
-    else
-        return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
+    return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE || cmd == IrCmd::MARK_USED || cmd == IrCmd::MARK_DEAD;
 }
 
 inline bool hasSideEffects(IrCmd cmd)

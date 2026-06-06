@@ -272,6 +272,8 @@ public:
 
     CstStatLocal(AstArray<Position> varsAnnotationColonPositions, AstArray<Position> varsCommaPositions, AstArray<Position> valuesCommaPositions);
 
+    // if the StatLocal is being exported, this is the position of `const` or `local`
+    Position declarationKeywordPosition;
     AstArray<Position> varsAnnotationColonPositions;
     AstArray<Position> varsCommaPositions;
     AstArray<Position> valuesCommaPositions;

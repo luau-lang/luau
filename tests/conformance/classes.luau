@@ -470,4 +470,36 @@ expectpass("pcall constructors", function()
     assert("string" == typeof(res))
 end)
 
+class Foo
+    public x
+    public y
+    public z
+end
+
+expectpass("stack reallocation in creation", function()
+
+    local function deepStack(n)
+        local a01, a02, a03, a04, a05, a06, a07, a08, a09, a10 = 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+        local a11, a12, a13, a14, a15, a16, a17, a18, a19, a20 = 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+        if n > 0 then
+            return deepStack(n - 1)+a01+a02+a03+a04+a05+a06+a07+a08+a09+a10+a11+a12+a13+a14+a15+a16+a17+a18+a19+a20
+        end
+        return 1
+    end
+
+    local mt = setmetatable({}, {
+        __index = function(t, k)
+            local trigger = deepStack(80)
+            if k == "x" then return 100 + trigger - trigger end
+            if k == "y" then return 200 end
+            if k == "z" then return 300 end
+        end
+    })
+
+    local f = Foo(mt)
+    assert(f.x == 100)
+    assert(f.y == 200)
+    assert(f.z == 300)
+end)
+
 return 'OK'

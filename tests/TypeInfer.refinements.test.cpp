@@ -12,7 +12,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
-LUAU_FASTFLAG(LuauRefinementTypeVector)
 
 using namespace Luau;
 
@@ -781,12 +780,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_narrow_to_vector")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
-    {
-        if (FFlag::LuauRefinementTypeVector)
-            CHECK_EQ("unknown & vector", toString(requireTypeAtPosition({3, 28})));
-        else
-            CHECK_EQ("never", toString(requireTypeAtPosition({3, 28})));
-    }
+        CHECK_EQ("unknown & vector", toString(requireTypeAtPosition({3, 28})));
     else
         CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 28})));
 }
@@ -3224,7 +3218,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_184413_refinement_of_union_of_read_types_is_read
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_vector_refine")
 {
-    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauRefinementTypeVector, true}};
+    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     CheckResult result = check(R"(
         function foo(x: unknown)

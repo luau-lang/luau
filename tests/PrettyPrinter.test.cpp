@@ -16,6 +16,7 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauErrorTolerantPrettyPrinting)
 LUAU_FASTFLAG(LuauCstExprGroup)
 LUAU_FASTFLAG(LuauCstTypeGroup)
+LUAU_FASTFLAG(LuauTableEntriesDontNeedToMatchIndent)
 LUAU_FASTFLAG(LuauTypeNegationSyntax)
 
 using namespace Luau;
@@ -2247,7 +2248,8 @@ TEST_CASE("export")
     std::string code;
 
     code = (R"(
-export local version = "1.0.0"
+export                      local version = "1.0.0"
+export           const tabbed = ...
 export const TAU = math.pi * 2
 export local settings: Settings = getSettings()
 export local a, b, c = 1, 2, 3
@@ -2266,12 +2268,20 @@ end
 
 export function noop()
 end
+
+export        function tabbed(): number
+    return 1
+end
     )");
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
 
     code = (R"(
 @native
 export function foo()
+end
+
+@native
+export                 function tabbed_attribute()
 end
     )");
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
@@ -2374,12 +2384,9 @@ end)";
 TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_table_expr")
 {
     ScopedFastFlag fflag{FFlag::LuauErrorTolerantPrettyPrinting, true};
-    std::string code = R"(
-local a = {
-    a = 1
-    ["b"] = 2
-}
-    )";
+    ScopedFastFlag fflag2{FFlag::LuauTableEntriesDontNeedToMatchIndent, true};
+
+    std::string code = R"(local a = { a = 1 ["b"] = 2 })";
 
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
 

@@ -156,6 +156,7 @@ using BcOps = SmallVector<BcOp, 4>;
 struct BcInst
 {
     LuauOpcode op;
+    BcOp block;
 
     // Operands
     BcOps ops;
@@ -243,6 +244,11 @@ struct BcBlockEdge
 
 using BcEdges = SmallVector<BcBlockEdge, 2>;
 
+enum BcBlockFlag
+{
+    Dead = 1 << 0
+};
+
 struct BcBlock
 {
     uint8_t flags = 0;
@@ -292,7 +298,26 @@ struct DebugLocal
     uint32_t endpc;
 };
 
-template <typename VmConst>
+template<typename T>
+struct BcRef
+{
+    std::vector<T>& vec;
+    BcOp op;
+
+    T* operator->()
+    {
+        LUAU_ASSERT(op.index < vec.size());
+        return &vec[op.index];
+    }
+
+    T& operator*()
+    {
+        LUAU_ASSERT(op.index < vec.size());
+        return vec[op.index];
+    }
+};
+
+template<typename VmConst>
 struct BcFunction
 {
     uint8_t maxstacksize;
@@ -404,6 +429,59 @@ struct BcFunction
         // Can only be called with instructions from our vector
         LUAU_ASSERT(&inst >= instructions.data() && &inst <= instructions.data() + instructions.size());
         return uint32_t(&inst - instructions.data());
+    }
+
+    BcOp addImm(BcImmKind kind)
+    {
+        BcImm imm{kind};
+        imm.valueInt = 0;
+        immediates.emplace_back(imm);
+        return BcOp{BcOpKind::Imm, static_cast<uint32_t>(immediates.size() - 1)};
+    }
+
+    BcRef<BcBlock> block(BcOp op)
+    {
+        LUAU_ASSERT(op.kind == BcOpKind::Block);
+        return {blocks, op};
+    }
+
+    BcRef<BcInst> inst(BcOp op)
+    {
+        LUAU_ASSERT(op.kind == BcOpKind::Inst);
+        return {instructions, op};
+    }
+
+    template<typename T>
+    T as(BcOp op)
+    {
+        BcRef<BcInst> insn = inst(op);
+        LUAU_ASSERT(insn->op == T::opcode);
+
+        return T{*this, insn};
+    }
+
+    BcRef<BcImm> imm(BcOp op)
+    {
+        LUAU_ASSERT(op.kind == BcOpKind::Imm);
+        return {immediates, op};
+    }
+
+    BcRef<BcPhi> phi(BcOp op)
+    {
+        LUAU_ASSERT(op.kind == BcOpKind::Phi);
+        return {phis, op};
+    }
+
+    BcRef<BcProj> proj(BcOp op)
+    {
+        LUAU_ASSERT(op.kind == BcOpKind::Proj);
+        return {projections, op};
+    }
+
+    BcRef<VmConst> vmConst(BcOp op)
+    {
+        LUAU_ASSERT(op.kind == BcOpKind::VmConst);
+        return {constants, op};
     }
 };
 

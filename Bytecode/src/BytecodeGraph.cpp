@@ -250,11 +250,14 @@ struct CompTimeBytecodeGraphSerializer : public BytecodeGraphSerializer<BcVmCons
 {
     std::vector<uint16_t>& consts;
     CompTimeBytecodeGraphSerializer(BytecodeBuilder& bcb, CompTimeBcFunction& fn, std::vector<uint16_t>& consts)
-        : BytecodeGraphSerializer<BcVmConst>(bcb, fn), consts(consts) {}
-
-    uint16_t getVmConstInput(BcInst& insn, uint8_t index) override
+        : BytecodeGraphSerializer<BcVmConst>(bcb, fn)
+        , consts(consts)
     {
-        uint16_t cid = BytecodeGraphSerializer<BcVmConst>::getVmConstInput(insn, index);
+    }
+
+    uint32_t getVmConstInputRaw(BcInst& insn, uint8_t index) override
+    {
+        uint32_t cid = BytecodeGraphSerializer<BcVmConst>::getVmConstInputRaw(insn, index);
         LUAU_ASSERT(cid < consts.size());
         return consts[cid];
     }
@@ -343,6 +346,9 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
     bcb.expandJumps();
 
     bcb.endFunction(fn.maxstacksize, fn.nups, fn.flags);
+
+    if (serializer.error)
+        return "";
 
     return bcb.getFunctionData(functionId);
 }
