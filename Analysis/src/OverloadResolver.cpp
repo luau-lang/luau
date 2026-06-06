@@ -492,7 +492,7 @@ void OverloadResolver::testFunction(
         return;
     }
 
-    TypeFunctionContext context{arena, builtinTypes, scope, normalizer, typeFunctionRuntime, ice, limits};
+    TypeFunctionContext context{arena, builtinTypes, scope, normalizer, typeFunctionRuntime, ice, limits, NotNull{&subtyping}};
     FunctionGraphReductionResult reduceResult = reduceTypeFunctions(fnTy, callLoc, NotNull{&context}, /*force=*/true);
     if (!reduceResult.errors.empty())
     {

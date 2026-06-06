@@ -3675,7 +3675,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.mov(temp2, protoId);
             build.cmp(tempw, temp2);
         }
-        
+
         build.b(ConditionA64::NotEqual, labelOp(OP_D(inst)));
 
         jumpOrFallthrough(blockOp(OP_C(inst)), next);

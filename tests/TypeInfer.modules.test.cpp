@@ -960,7 +960,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
 // exported modules
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_basic")
 {
-    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+    ScopedFastFlag _[4]{
+        {FFlag::LuauConst2, true},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueTypecheck, true}
+    };
 
     fileResolver.source["game/A"] = R"(
         --!strict
@@ -994,7 +999,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_basic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_mutual_recursive_functions")
 {
-    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+    ScopedFastFlag _[4]{
+        {FFlag::LuauConst2, true},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueTypecheck, true}
+    };
 
     fileResolver.source["game/A"] = R"(
         --!strict
@@ -1030,7 +1040,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_mutual_recursive_functions")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_unassigned_local_stays_nil")
 {
-    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+    ScopedFastFlag _[4]{
+        {FFlag::LuauConst2, true},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueTypecheck, true}
+    };
 
     fileResolver.source["game/A"] = R"(
         --!strict
@@ -1061,7 +1076,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_unassigned_local_stays_nil")
 // maintain consistency with exported_module_unassigned_local_stays_nil
 TEST_CASE_FIXTURE(BuiltinsFixture, "returned_module_unassigned_local_stays_nil")
 {
-    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+    ScopedFastFlag _[4]{
+        {FFlag::LuauConst2, true},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueTypecheck, true}
+    };
 
     fileResolver.source["game/A"] = R"(
         --!strict
@@ -1092,7 +1112,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "returned_module_unassigned_local_stays_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_function")
 {
-    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+    ScopedFastFlag _[4]{
+        {FFlag::LuauConst2, true},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueTypecheck, true}
+    };
 
     fileResolver.source["game/A"] = R"(
         --!strict
@@ -1132,7 +1157,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_function")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_multret")
 {
-    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+    ScopedFastFlag _[4]{
+        {FFlag::LuauConst2, true},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueTypecheck, true}
+    };
 
     fileResolver.source["game/A"] = R"(
         --!strict
@@ -1166,7 +1196,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_multret")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_partial_multret")
 {
-    ScopedFastFlag _[4]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueTypecheck, true}};
+    ScopedFastFlag _[4]{
+        {FFlag::LuauConst2, true},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueTypecheck, true}
+    };
 
     fileResolver.source["game/A"] = R"(
         --!strict
@@ -1201,6 +1236,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_partial_multret")
 TEST_CASE_FIXTURE(BuiltinsFixture, "export_class")
 {
     ScopedFastFlag sff[] = {
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+        {FFlag::LuauConst2, true},
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true}
     };
@@ -1211,11 +1249,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "export_class")
             public y: number
 
             function __tostring(self)
-                return `Point x={x} y={y}`
+                return `Point x={self.x} y={self.y}`
             end
         end
-
-        return {Point=Point}
     )";
 
     fileResolver.source["game/B"] = R"(
@@ -1236,10 +1272,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "export_class")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "non_exported_class")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::DebugLuauUserDefinedClasses, true}
-    };
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::DebugLuauUserDefinedClasses, true}};
 
     fileResolver.source["game/A"] = R"(
         class Point
@@ -1247,7 +1280,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_exported_class")
             public y: number
 
             function __tostring(self)
-                return `Point x={x} y={y}`
+                return `Point x={self.x} y={self.y}`
             end
         end
 

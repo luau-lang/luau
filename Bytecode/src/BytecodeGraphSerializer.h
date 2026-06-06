@@ -3,13 +3,14 @@
 
 #include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeUtils.h"
+#include "Luau/BytecodeOps.h"
 
 namespace Luau
 {
 namespace Bytecode
 {
 
-template <typename VmConst>
+template<typename VmConst>
 struct BytecodeGraphSerializer
 {
     struct JumpInfo
@@ -23,15 +24,21 @@ struct BytecodeGraphSerializer
     BytecodeBuilder& bcb;
     BcFunction<VmConst>& func;
     Jumps jumps;
+    bool error = false;
 
-    BytecodeGraphSerializer(BytecodeBuilder& bcb, BcFunction<VmConst>& func): bcb(bcb), func(func) {}
+    BytecodeGraphSerializer(BytecodeBuilder& bcb, BcFunction<VmConst>& func)
+        : bcb(bcb)
+        , func(func)
+    {
+    }
 
     std::vector<BcOp> reschedule()
     {
         std::vector<BcOp> sortedBlocks;
         sortedBlocks.reserve(func.blocks.size());
         for (uint32_t i = 0; i < func.blocks.size(); i++)
-            sortedBlocks.push_back(BcOp{BcOpKind::Block, i});
+            if ((func.blocks[i].flags & BcBlockFlag::Dead) == 0)
+                sortedBlocks.push_back(BcOp{BcOpKind::Block, i});
 
         std::sort(
             sortedBlocks.begin(),
@@ -41,7 +48,8 @@ struct BytecodeGraphSerializer
                 const BcBlock& a = func.blockOp(opA);
                 const BcBlock& b = func.blockOp(opB);
 
-                if (a.sortkey == b.sortkey) return a.chainkey < b.chainkey;
+                if (a.sortkey == b.sortkey)
+                    return a.chainkey < b.chainkey;
 
                 return a.sortkey < b.sortkey;
             }
@@ -116,13 +124,38 @@ struct BytecodeGraphSerializer
         return imm.valueImport;
     }
 
-    virtual uint16_t getVmConstInput(BcInst& insn, uint8_t index)
+    virtual uint32_t getVmConstInputRaw(BcInst& insn, uint8_t index)
     {
         LUAU_ASSERT(index < insn.ops.size());
         BcOp inp = insn.ops[index];
         LUAU_ASSERT(inp.kind == BcOpKind::VmConst);
         LUAU_ASSERT(inp.index < func.constants.size());
         return inp.index;
+    }
+
+    uint8_t getVmConstInputABC(BcInst& insn, uint8_t index)
+    {
+        uint32_t cid = getVmConstInputRaw(insn, index);
+
+        if (cid > 0xff)
+            error = true;
+
+        return uint8_t(cid);
+    }
+
+    uint16_t getVmConstInputD(BcInst& insn, uint8_t index)
+    {
+        uint32_t cid = getVmConstInputRaw(insn, index);
+
+        if (cid > 0xffff)
+            error = true;
+
+        return uint16_t(cid);
+    }
+
+    uint32_t getVmConstInputAux(BcInst& insn, uint8_t index)
+    {
+        return getVmConstInputRaw(insn, index);
     }
 
     uint8_t getUpvalInput(BcInst& insn, uint8_t index)
@@ -139,7 +172,11 @@ struct BytecodeGraphSerializer
         LUAU_ASSERT(index < insn.ops.size());
         BcOp inp = insn.ops[index];
         LUAU_ASSERT(inp.kind == BcOpKind::VmProto);
-        return inp.index;
+
+        if (inp.index > 0xffff)
+            error = true;
+
+        return uint16_t(inp.index);
     }
 
     uint8_t getRegInput(BcInst& insn, uint8_t index)
@@ -201,7 +238,7 @@ struct BytecodeGraphSerializer
             break;
 
         case LOP_LOADK:
-            bcb.emitAD(LOP_LOADK, getRegister(insnOp), getVmConstInput(insn, 0));
+            bcb.emitAD(LOP_LOADK, getRegister(insnOp), getVmConstInputD(insn, 0));
             break;
 
         case LOP_MOVE:
@@ -210,12 +247,12 @@ struct BytecodeGraphSerializer
 
         case LOP_GETGLOBAL:
             bcb.emitABC(LOP_GETGLOBAL, getRegister(insnOp), 0, getImmInt(insn, 0));
-            bcb.emitAux(getVmConstInput(insn, 1));
+            bcb.emitAux(getVmConstInputAux(insn, 1));
             break;
 
         case LOP_SETGLOBAL:
             bcb.emitABC(LOP_SETGLOBAL, getRegInput(insn, 0), 0, getImmInt(insn, 1));
-            bcb.emitAux(getVmConstInput(insn, 2));
+            bcb.emitAux(getVmConstInputAux(insn, 2));
             break;
 
         case LOP_GETUPVAL:
@@ -233,7 +270,7 @@ struct BytecodeGraphSerializer
 
         case LOP_GETIMPORT:
         {
-            bcb.emitAD(LOP_GETIMPORT, getRegister(insnOp), getVmConstInput(insn, 0));
+            bcb.emitAD(LOP_GETIMPORT, getRegister(insnOp), getVmConstInputD(insn, 0));
             bcb.emitAux(getImmImport(insn, 1));
             break;
         }
@@ -249,13 +286,13 @@ struct BytecodeGraphSerializer
         case LOP_GETUDATAKS:
         case LOP_GETTABLEKS:
             bcb.emitABC(insn.op, getRegister(insnOp), getRegInput(insn, 0), getImmInt(insn, 1));
-            bcb.emitAux(getVmConstInput(insn, 2));
+            bcb.emitAux(getVmConstInputAux(insn, 2));
             break;
 
         case LOP_SETUDATAKS:
         case LOP_SETTABLEKS:
             bcb.emitABC(insn.op, getRegInput(insn, 0), getRegInput(insn, 1), getImmInt(insn, 2));
-            bcb.emitAux(getVmConstInput(insn, 3));
+            bcb.emitAux(getVmConstInputAux(insn, 3));
             break;
 
         case LOP_GETTABLEN:
@@ -273,7 +310,7 @@ struct BytecodeGraphSerializer
         case LOP_NAMECALLUDATA:
         case LOP_NAMECALL:
             bcb.emitABC(insn.op, getRegister(insnOp), getRegInput(insn, 0), getImmInt(insn, 1));
-            bcb.emitAux(getVmConstInput(insn, 2));
+            bcb.emitAux(getVmConstInputAux(insn, 2));
             break;
 
         case LOP_CALL:
@@ -338,7 +375,7 @@ struct BytecodeGraphSerializer
         case LOP_POWK:
         case LOP_ANDK:
         case LOP_ORK:
-            bcb.emitABC(insn.op, getRegister(insnOp), getRegInput(insn, 0), getVmConstInput(insn, 1));
+            bcb.emitABC(insn.op, getRegister(insnOp), getRegInput(insn, 0), getVmConstInputABC(insn, 1));
             break;
 
         case LOP_CONCAT:
@@ -358,7 +395,7 @@ struct BytecodeGraphSerializer
             break;
 
         case LOP_DUPTABLE:
-            bcb.emitAD(LOP_DUPTABLE, getRegister(insnOp), getVmConstInput(insn, 0));
+            bcb.emitAD(LOP_DUPTABLE, getRegister(insnOp), getVmConstInputD(insn, 0));
             break;
 
         case LOP_SETLIST:
@@ -405,7 +442,7 @@ struct BytecodeGraphSerializer
 
         case LOP_FASTCALL2K:
             bcb.emitABC(LOP_FASTCALL2K, getImmInt(insn, 0), getRegInput(insn, 1), getImmInt(insn, 3));
-            bcb.emitAux(getVmConstInput(insn, 2));
+            bcb.emitAux(getVmConstInputAux(insn, 2));
             break;
 
         case LOP_FASTCALL3:
@@ -419,7 +456,7 @@ struct BytecodeGraphSerializer
             break;
 
         case LOP_DUPCLOSURE:
-            bcb.emitAD(LOP_DUPCLOSURE, getRegister(insnOp), getVmConstInput(insn, 0));
+            bcb.emitAD(LOP_DUPCLOSURE, getRegister(insnOp), getVmConstInputD(insn, 0));
             break;
 
         case LOP_PREPVARARGS:
@@ -428,7 +465,7 @@ struct BytecodeGraphSerializer
 
         case LOP_LOADKX:
             bcb.emitAD(LOP_LOADKX, getRegister(insnOp), 0);
-            bcb.emitAux(getVmConstInput(insn, 0));
+            bcb.emitAux(getVmConstInputAux(insn, 0));
             break;
 
         case LOP_JUMPX:
@@ -452,7 +489,7 @@ struct BytecodeGraphSerializer
 
         case LOP_SUBRK:
         case LOP_DIVRK:
-            bcb.emitABC(insn.op, getRegister(insnOp), getVmConstInput(insn, 0), getRegInput(insn, 1));
+            bcb.emitABC(insn.op, getRegister(insnOp), getVmConstInputABC(insn, 0), getRegInput(insn, 1));
             break;
 
         case LOP_JUMPXEQKNIL:
@@ -471,7 +508,7 @@ struct BytecodeGraphSerializer
         case LOP_JUMPXEQKS:
             recordJump(insn, 2);
             bcb.emitAD(insn.op, getRegInput(insn, 0), 0);
-            bcb.emitAux(static_cast<uint32_t>(getImmBool(insn, 1)) << 31 | getVmConstInput(insn, 3));
+            bcb.emitAux(static_cast<uint32_t>(getImmBool(insn, 1)) << 31 | getVmConstInputAux(insn, 3));
             break;
 
         case LOP_IDIV:
@@ -479,13 +516,13 @@ struct BytecodeGraphSerializer
             break;
 
         case LOP_IDIVK:
-            bcb.emitABC(LOP_IDIVK, getRegister(insnOp), getRegInput(insn, 0), getVmConstInput(insn, 1));
+            bcb.emitABC(LOP_IDIVK, getRegister(insnOp), getRegInput(insn, 0), getVmConstInputABC(insn, 1));
             break;
 
         case LOP_NEWCLASSMEMBER:
             LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
             bcb.emitABC(LOP_NEWCLASSMEMBER, getRegInput(insn, 0), 0, getRegInput(insn, 1));
-            bcb.emitAux(getVmConstInput(insn, 2));
+            bcb.emitAux(getVmConstInputAux(insn, 2));
             break;
 
         case LOP_CMPPROTO:
@@ -520,11 +557,10 @@ struct BytecodeGraphSerializer
             std::optional<BcOp> fallthrough = getFallthrough(block);
             if (fallthrough && *fallthrough != func.exitBlock && (i + 1 >= schedule.size() || *fallthrough != schedule[i + 1]))
             {
-                BcOp jumpOp = func.addInst();
-                BcInst& jump = func.instOp(jumpOp);
-                jump.op = LOP_JUMP;
-                block.appendInstruction(jumpOp);
-                jump.ops.push_back(*fallthrough);
+                BcJump jump = BcJump<VmConst>::create(func);
+                jump.setTarget(*fallthrough);
+                jump.appendTo(blockOp);
+                insnsPC.resize(func.instructions.size());
             }
             block.startpc = bcb.getDebugPC();
             for (BcOp op : block.ops)
@@ -537,6 +573,10 @@ struct BytecodeGraphSerializer
 
         for (auto& jump : jumps)
             patchJump(jump);
+
+        // Serialization failed
+        if (error)
+            return {};
 
         return insnsPC;
     }

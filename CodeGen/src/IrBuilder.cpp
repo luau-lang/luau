@@ -12,7 +12,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
 LUAU_FASTFLAG(LuauCallFeedback)
 
 namespace Luau
@@ -41,11 +40,10 @@ static bool hasTypedParameters(const BytecodeTypeInfo& typeInfo)
 
 static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 {
-    const BytecodeTypeInfo& typeInfo = FFlag::LuauCodegenSetBlockEntryState3 ? build.function.bcOriginalTypeInfo : build.function.bcTypeInfo;
+    const BytecodeTypeInfo& typeInfo = build.function.bcOriginalTypeInfo;
     CODEGEN_ASSERT(hasTypedParameters(typeInfo));
 
-    if (FFlag::LuauCodegenSetBlockEntryState3)
-        build.function.blockOp(entry).flags |= kBlockFlagEntryArgCheck;
+    build.function.blockOp(entry).flags |= kBlockFlagEntryArgCheck;
 
     for (size_t i = 0; i < typeInfo.argumentTypes.size(); i++)
     {
@@ -69,8 +67,7 @@ static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 
             build.beginBlock(fallbackCheck);
 
-            if (FFlag::LuauCodegenSetBlockEntryState3)
-                build.function.blockOp(fallbackCheck).flags |= kBlockFlagEntryArgCheck;
+            build.function.blockOp(fallbackCheck).flags |= kBlockFlagEntryArgCheck;
         }
 
         switch (tag)
@@ -126,8 +123,7 @@ static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 
             build.beginBlock(nextCheck);
 
-            if (FFlag::LuauCodegenSetBlockEntryState3)
-                build.function.blockOp(nextCheck).flags |= kBlockFlagEntryArgCheck;
+            build.function.blockOp(nextCheck).flags |= kBlockFlagEntryArgCheck;
         }
     }
 
@@ -676,7 +672,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_NEWCLASSMEMBER:
         inst(IrCmd::JUMP, vmExit(i));
         break;
-    
+
     case LOP_CMPPROTO:
         translateInstCmpProto(*this, pc, i);
         break;

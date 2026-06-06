@@ -39,7 +39,10 @@ struct BytecodeGraphParser
     Producers producers;
     BcOp currentBlock;
 
-    BytecodeGraphParser(BcFunction<VmConst>& func): func(func) {}
+    BytecodeGraphParser(BcFunction<VmConst>& func)
+        : func(func)
+    {
+    }
 
     void addSuccessor(BcOp fromOp, BcOp toOp, BcBlockEdgeKind kind)
     {
@@ -61,7 +64,7 @@ struct BytecodeGraphParser
     bool isJumpTrampoline(uint32_t pc, const Instruction* code, uint32_t codesize)
     {
         return LuauOpcode(LUAU_INSN_OP(code[pc])) == LOP_JUMP && pc + 1 < codesize && LuauOpcode(LUAU_INSN_OP(code[pc + 1])) == LOP_JUMPX &&
-            static_cast<uint32_t>(getJumpTarget(code[pc + 2], pc + 2)) == pc + 1;
+               static_cast<uint32_t>(getJumpTarget(code[pc + 2], pc + 2)) == pc + 1;
     }
 
     size_t rebuildBlocks(const Instruction code[], uint32_t codesize)
@@ -90,7 +93,8 @@ struct BytecodeGraphParser
                         // The new block was created in the middle of the existing one.
                         // We need to maintain predecessor/successor relations.
                         uint32_t blockStartPc = target - 1;
-                        while (blockByPC.count(blockStartPc) == 0 && blockStartPc-- != 0) ;
+                        while (blockByPC.count(blockStartPc) == 0 && blockStartPc-- != 0)
+                            ;
                         LUAU_ASSERT(blockByPC.count(blockStartPc) > 0);
                         BcOp prevBlockOp = blockByPC[blockStartPc];
                         BcBlock& prevBlock = func.blockOp(prevBlockOp);
@@ -185,14 +189,7 @@ struct BytecodeGraphParser
         return findProducer(block, reg, visited);
     }
 
-    bool hasProducerBefore(
-        BcOp rangeStart,
-        BcOp rangeEnd,
-        BcOp startOp,
-        Reg reg,
-        bool checkCached,
-        std::unordered_set<BcOp, BcOpHash>& visited
-    )
+    bool hasProducerBefore(BcOp rangeStart, BcOp rangeEnd, BcOp startOp, Reg reg, bool checkCached, std::unordered_set<BcOp, BcOpHash>& visited)
     {
         LUAU_ASSERT(startOp.kind == BcOpKind::Inst);
         visited.insert(rangeEnd);
@@ -236,13 +233,7 @@ struct BytecodeGraphParser
         return hasProducerBefore(rangeStart, rangeEnd, startOp, reg, false, visited);
     }
 
-    std::optional<BcOp> findForwardProducerInRange(
-        BcOp rangeStart,
-        BcOp rangeEnd,
-        BcOp startOp,
-        Reg reg,
-        std::unordered_set<BcOp, BcOpHash>& visited
-    )
+    std::optional<BcOp> findForwardProducerInRange(BcOp rangeStart, BcOp rangeEnd, BcOp startOp, Reg reg, std::unordered_set<BcOp, BcOpHash>& visited)
     {
         LUAU_ASSERT(startOp.kind == BcOpKind::Inst);
         visited.insert(rangeEnd);
@@ -524,6 +515,7 @@ struct BytecodeGraphParser
             BcOp nodeOp = func.addInst();
             func.blockOp(currentBlock).appendInstruction(nodeOp);
             BcInst& node = func.instOp(nodeOp);
+            node.block = currentBlock;
             if (i < lines.size())
                 node.line = lines[i];
             node.op = op;
@@ -1009,7 +1001,7 @@ struct BytecodeGraphParser
                 addVmConstInput(node, LUAU_INSN_C(insn));
                 addProducer(LUAU_INSN_A(insn), nodeOp);
                 break;
-            
+
             case LOP_CMPPROTO:
                 addVmRegInput(node, LUAU_INSN_A(insn));
                 addImmInput(node, static_cast<int32_t>(aux));

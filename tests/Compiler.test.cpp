@@ -35,6 +35,9 @@ LUAU_FASTFLAG(LuauCompileTypeAliases)
 LUAU_FASTFLAG(LuauCompilePropagateTableProps2)
 LUAU_FASTFLAG(LuauCompileFastcall3CostModel)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauCompileNewTableMutationTracker)
+LUAU_FASTFLAG(LuauCompileFoldOptimize)
+LUAU_FASTFLAG(LuauCompileInlineTableFunctions)
 
 using namespace Luau;
 
@@ -8730,6 +8733,313 @@ RETURN R0 0
     );
 }
 
+TEST_CASE("InlineTableFunction")
+{
+    ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
+    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
+    ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
+    ScopedFastFlag luauCompileInlineTableFunctions{FFlag::LuauCompileInlineTableFunctions, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = {
+    f = function(x) return x + 1 end
+}
+return t.f(100)
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPTABLE R0 1
+DUPCLOSURE R1 K2 ['f']
+SETTABLEKS R1 R0 K0 ['f']
+LOADN R1 101
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = {
+    f = function(x) return x + 1 end
+} :: any
+return t.f(100)
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPTABLE R0 1
+DUPCLOSURE R1 K2 ['f']
+SETTABLEKS R1 R0 K0 ['f']
+LOADN R1 101
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = {
+    f = function(x) return x + 1 end
+}
+local g = t.f
+return g(100)
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPTABLE R0 1
+DUPCLOSURE R1 K2 ['f']
+SETTABLEKS R1 R0 K0 ['f']
+GETTABLEKS R1 R0 K0 ['f']
+LOADN R2 101
+RETURN R2 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = {
+    f = function(x) return x + 1 end
+}
+return (t).f(100)
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPTABLE R0 1
+DUPCLOSURE R1 K2 ['f']
+SETTABLEKS R1 R0 K0 ['f']
+LOADN R1 101
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+            R"(
+local t = {
+    f = function(x) return x + 1 end
+}
+return t.f<<number>>(100)
+)",
+1,
+2
+),
+R"(
+DUPTABLE R0 1
+DUPCLOSURE R1 K2 ['f']
+SETTABLEKS R1 R0 K0 ['f']
+LOADN R1 101
+RETURN R1 1
+)"
+);
+
+    // cannot inline if the table escapes
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function id(x) return x end
+local t = {
+    f = function(x) return x + 1 end
+}
+id(t)
+return t.f(1)
+)",
+                   2,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['id']
+DUPTABLE R1 2
+DUPCLOSURE R2 K3 ['f']
+SETTABLEKS R2 R1 K1 ['f']
+GETTABLEKS R2 R1 K1 ['f']
+LOADN R3 1
+CALL R2 1 -1
+RETURN R2 -1
+)"
+    );
+
+    // cannot inline if the table is mutated (individual key mutability is not tracked)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = { f = function(x) return x + 1 end }
+t.g = print
+return t.f(1)
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPTABLE R0 1
+DUPCLOSURE R1 K2 ['f']
+SETTABLEKS R1 R0 K0 ['f']
+GETIMPORT R1 4 [print]
+SETTABLEKS R1 R0 K5 ['g']
+GETTABLEKS R1 R0 K0 ['f']
+LOADN R2 1
+CALL R1 1 -1
+RETURN R1 -1
+)"
+    );
+
+    // empty key handling
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = {
+    [""] = "anything",
+    f = function(x) return x + 1 end
+}
+return t.f(100)
+)",
+                   1,
+                   2
+               ),
+        R"(
+NEWTABLE R0 2 0
+LOADK R1 K0 ['anything']
+SETTABLEKS R1 R0 K1 ['']
+DUPCLOSURE R1 K2 ['f']
+SETTABLEKS R1 R0 K3 ['f']
+LOADN R1 101
+RETURN R1 1
+)"
+    );
+
+    // duplicate key handling
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = {
+    f = function(x) return x + 1 end,
+    ["f"] = function() return 2 end
+}
+return t.f(100)
+)",
+                   2,
+                   2
+               ),
+        R"(
+NEWTABLE R0 2 0
+DUPCLOSURE R1 K0 ['f']
+SETTABLEKS R1 R0 K1 ['f']
+DUPCLOSURE R1 K2 []
+SETTABLEKS R1 R0 K1 ['f']
+LOADN R1 2
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = {
+    f = function(x) return x + 1 end,
+    f = function() return 2 end
+}
+return t.f(100)
+)",
+                   2,
+                   2
+               ),
+        R"(
+DUPTABLE R0 1
+DUPCLOSURE R1 K2 ['f']
+SETTABLEKS R1 R0 K0 ['f']
+DUPCLOSURE R1 K3 ['f']
+SETTABLEKS R1 R0 K0 ['f']
+LOADN R1 2
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local k = "f"
+local t = {
+    f = function(x) return x + 1 end,
+    [k] = function() return 2 end
+}
+return t.f(100)
+)",
+                   2,
+                   2
+               ),
+        R"(
+NEWTABLE R0 2 0
+DUPCLOSURE R1 K0 ['f']
+SETTABLEKS R1 R0 K1 ['f']
+DUPCLOSURE R1 K2 []
+SETTABLEKS R1 R0 K1 ['f']
+LOADN R1 2
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local k = ...
+local t = {
+    f = function(x) return x + 1 end,
+    [k] = function() return 2 end
+}
+return t.f(100)
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+NEWTABLE R1 2 0
+DUPCLOSURE R2 K0 ['f']
+SETTABLEKS R2 R1 K1 ['f']
+DUPCLOSURE R2 K2 []
+SETTABLE R2 R1 R0
+GETTABLEKS R2 R1 K1 ['f']
+LOADN R3 100
+CALL R2 1 -1
+RETURN R2 -1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local k = ...
+local t = {
+    [k] = function() return 2 end,
+    f = function(x) return x + 1 end
+}
+return t.f(100)
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+NEWTABLE R1 2 0
+DUPCLOSURE R2 K0 []
+SETTABLE R2 R1 R0
+DUPCLOSURE R2 K1 ['f']
+SETTABLEKS R2 R1 K2 ['f']
+LOADN R2 101
+RETURN R2 1
+)"
+    );
+}
+
 TEST_CASE("ReturnConsecutive")
 {
     // we can return a single local directly
@@ -11019,8 +11329,10 @@ RETURN R1 1
 
 TEST_CASE("FoldConstTableProps")
 {
-    ScopedFastFlag sff{FFlag::LuauCompilePropagateTableProps2, true};
-    ScopedFastFlag sff1{FFlag::LuauCompileDuptableConstantPack2, true};
+    ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
+    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack2, true};
+    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
+    ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -11220,7 +11532,120 @@ RETURN R2 1
 )"
     );
 
-    // Empty key name is used
+    // if nested table folding is supported, it's important to find individual key escapes
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function id(x) return x end
+local t = { inner = { x = 1 } }
+id(t.inner)
+return t.inner.x
+)",
+                   1
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['id']
+DUPTABLE R1 2
+DUPTABLE R2 5
+SETTABLEKS R2 R1 K1 ['inner']
+MOVE R2 R0
+GETTABLEKS R3 R1 K1 ['inner']
+CALL R2 1 0
+GETTABLEKS R2 R1 K1 ['inner']
+GETTABLEKS R2 R2 K3 ['x']
+RETURN R2 1
+)"
+    );
+
+    // method call implicitly escapes a table through self argument
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local color = {red = 1}
+color:test()
+return color.red
+)",
+                   0,
+                   1
+               ),
+        R"(
+DUPTABLE R0 2
+NAMECALL R1 R0 K3 ['test']
+CALL R1 1 0
+GETTABLEKS R1 R0 K0 ['red']
+RETURN R1 1
+)"
+    );
+
+    // table used as a key in another table that escapes allows mutation through iteration
+    CHECK_EQ(
+        "\n" + compileFunction(R"(
+local function id(x) return x end
+local t = { x = 1 }
+local u = { [t] = true }
+id(u)
+return t.x
+)", 1),
+R"(
+DUPCLOSURE R0 K0 ['id']
+DUPTABLE R1 3
+NEWTABLE R2 1 0
+LOADB R3 1
+SETTABLE R3 R2 R1
+MOVE R3 R0
+MOVE R4 R2
+CALL R3 1 0
+GETTABLEKS R3 R1 K1 ['x']
+RETURN R3 1
+)"
+);
+
+    CHECK_EQ(
+        "\n" + compileFunction(R"(
+local function id(x) return x end
+local t = { x = 1 }
+u[t] = 100
+id(u)
+return t.x
+)", 1),
+R"(
+DUPCLOSURE R0 K0 ['id']
+DUPTABLE R1 3
+GETIMPORT R2 5 [u]
+LOADN R3 100
+SETTABLE R3 R2 R1
+MOVE R2 R0
+GETIMPORT R3 5 [u]
+CALL R2 1 0
+GETTABLEKS R2 R1 K1 ['x']
+RETURN R2 1
+)"
+);
+
+    CHECK_EQ(
+        "\n" + compileFunction(R"(
+local function id(x) return x end
+local t = { x = 1 }
+u[t] += 100
+id(u)
+return t.x
+)", 1),
+R"(
+DUPCLOSURE R0 K0 ['id']
+DUPTABLE R1 3
+GETIMPORT R2 5 [u]
+GETTABLE R3 R2 R1
+ADDK R3 R3 K6 [100]
+SETTABLE R3 R2 R1
+MOVE R2 R0
+GETIMPORT R3 5 [u]
+CALL R2 1 0
+GETTABLEKS R2 R1 K1 ['x']
+RETURN R2 1
+)"
+);
+
+    // empty key name is used
     CHECK_EQ(
         "\n" + compileFunction0(
                    R"(
@@ -11266,6 +11691,171 @@ LOADN R1 2
 SETTABLEKS R1 R0 K1 ['a\x00']
 LOADN R1 3
 RETURN R1 1
+)"
+    );
+}
+
+TEST_CASE("FoldConstTablePropsOrAnd")
+{
+    ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
+    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack2, true};
+    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
+    ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
+
+    // handle 'or'
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local t = { a = 1, b = 2 }
+return t.a or t.b
+)"),
+        R"(
+DUPTABLE R0 4
+LOADN R1 1
+RETURN R1 1
+)"
+    );
+
+    // handle 'and'
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local t = { a = 1, b = 2 }
+return t.a and t.b
+)"),
+        R"(
+DUPTABLE R0 4
+LOADN R1 2
+RETURN R1 1
+)"
+    );
+
+    // or with falsy left
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local t = { a = false, b = 42 }
+return t.a or t.b
+)"),
+        R"(
+DUPTABLE R0 4
+LOADN R1 42
+RETURN R1 1
+)"
+    );
+
+    // and with falsy left
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local t = { a = nil, b = 42 }
+return t.a and t.b
+)"),
+        R"(
+DUPTABLE R0 4
+LOADNIL R1
+RETURN R1 1
+)"
+    );
+
+    // nested
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local t = { a = nil, b = false, c = 99 }
+return t.a or t.b or t.c
+)"),
+        R"(
+DUPTABLE R0 6
+LOADN R1 99
+RETURN R1 1
+)"
+    );
+}
+
+// We do not optimize these as tracking escapes through returns is challenging
+TEST_CASE("FoldConstTablePropsReturnLocal")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
+    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack2, true};
+    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
+    ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local t = { a = 1, b = 2 }
+print(t.a + t.b)
+return t
+)"),
+        R"(
+DUPTABLE R0 4
+GETIMPORT R1 6 [print]
+GETTABLEKS R3 R0 K0 ['a']
+GETTABLEKS R4 R0 K2 ['b']
+ADD R2 R3 R4
+CALL R1 1 0
+RETURN R0 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local function foo()
+    local t = { a = 1, b = 2 }
+    print(t.a + t.b)
+    return t
+end
+return foo()
+)"),
+        R"(
+DUPTABLE R0 4
+GETIMPORT R1 6 [print]
+GETTABLEKS R3 R0 K0 ['a']
+GETTABLEKS R4 R0 K2 ['b']
+ADD R2 R3 R4
+CALLFB R1 1 0 [0]
+RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE("FoldConstTablePropsReturnUpvalue")
+{
+    ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
+    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack2, true};
+    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
+    ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
+
+    // returning a table is an 'escape' if we also provide a separate way of observing the same table
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = { x = 1 }
+local function get() return t.x end
+return t, get
+)",
+                   0
+               ),
+        R"(
+GETUPVAL R0 0
+GETTABLEKS R0 R0 K0 ['x']
+RETURN R0 1
+)"
+    );
+
+    // same pattern inside a nested function scope
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function make()
+    local t = { x = 1 }
+    local function get() return t.x end
+    return t, get
+end
+return make()
+)",
+                   0
+               ),
+        R"(
+GETUPVAL R0 0
+GETTABLEKS R0 R0 K0 ['x']
+RETURN R0 1
 )"
     );
 }
@@ -11374,13 +11964,69 @@ TEST_CASE("LBCConstantRegressionTest")
     CHECK_EQ(LBC_CONSTANT_STRING, 3);
     CHECK_EQ(LBC_CONSTANT_IMPORT, 4);
     CHECK_EQ(LBC_CONSTANT_TABLE, 5);
-    CHECK_EQ(LBC_CONSTANT_CLOSURE,6);
+    CHECK_EQ(LBC_CONSTANT_CLOSURE, 6);
     CHECK_EQ(LBC_CONSTANT_VECTOR, 7);
     CHECK_EQ(LBC_CONSTANT_TABLE_WITH_CONSTANTS, 8);
     CHECK_EQ(LBC_CONSTANT_INTEGER, 9);
     CHECK_EQ(LBC_CONSTANT_CLASS_SHAPE, 10);
 
     CHECK_EQ(LBC_CONSTANT__COUNT, 11);
+}
+
+TEST_CASE("ExportClass")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}, {FFlag::DebugLuauUserDefinedClasses, true}};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+export class Point
+    public x: number
+    public y: number
+end
+)"),
+        R"(
+LOADKX R0 K3 [class Point (props: 2, methods: 0)]
+NEWTABLE R1 1 0
+SETTABLEKS R0 R1 K0 ['Point']
+GETIMPORT R2 6 [table.freeze]
+MOVE R3 R1
+CALL R2 1 1
+RETURN R2 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+export class Point
+    public x: number
+    public y: number
+
+    function getX(self)
+        return self.x
+    end
+
+    function getY(self)
+        return self.y
+    end
+end
+)",
+                   2
+               ),
+        R"(
+LOADKX R0 K7 [class Point (props: 2, methods: 2)]
+DUPCLOSURE R1 K3 ['getX']
+NEWCLASSMEMBER R0 R1 ['getX']
+DUPCLOSURE R1 K5 ['getY']
+NEWCLASSMEMBER R0 R1 ['getY']
+NEWTABLE R1 1 0
+SETTABLEKS R0 R1 K0 ['Point']
+GETIMPORT R2 10 [table.freeze]
+MOVE R3 R1
+CALL R2 1 1
+RETURN R2 1
+)"
+    );
 }
 
 TEST_SUITE_END();

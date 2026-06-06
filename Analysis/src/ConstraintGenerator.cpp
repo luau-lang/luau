@@ -2,6 +2,7 @@
 #include "Luau/ConstraintGenerator.h"
 
 #include "Luau/Ast.h"
+#include "Luau/AstUtils.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Common.h"
@@ -42,11 +43,10 @@ LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
-LUAU_FASTFLAGVARIABLE(LuauRefinementTypeVector)
-LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 LUAU_FASTFLAGVARIABLE(LuauReadOnlyIndexers)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauTidyTypePrototyping)
+LUAU_FASTFLAG(LuauConstraintGraph)
 
 namespace Luau
 {
@@ -78,44 +78,23 @@ static std::optional<AstExpr*> matchRequire(const AstExprCall& call)
     return call.args.data[0];
 }
 
-struct TypeGuard
+
+static const RefinementKey* matchIsInstanceGuard(const AstExprCall& call, NotNull<const DataFlowGraph> dfg)
 {
-    bool isTypeof;
-    AstExpr* target;
-    std::string type;
-};
+    AstExprIndexName* index = call.func->as<AstExprIndexName>();
+    if (!index || index->op != '.')
+        return nullptr;
 
-static std::optional<TypeGuard> matchTypeGuard(const AstExprBinary::Op op, AstExpr* left, AstExpr* right)
-{
-    if (op != AstExprBinary::CompareEq && op != AstExprBinary::CompareNe)
-        return std::nullopt;
+    if (index->index != "isinstance")
+        return nullptr;
 
-    if (right->is<AstExprCall>())
-        std::swap(left, right);
+    if (!index->expr->is<AstExprGlobal>())
+        return nullptr;
 
-    if (!right->is<AstExprConstantString>())
-        return std::nullopt;
+    if (call.args.size < 1)
+        return nullptr;
 
-    AstExprCall* call = left->as<AstExprCall>();
-    AstExprConstantString* string = right->as<AstExprConstantString>();
-    if (!call || !string)
-        return std::nullopt;
-
-    AstExprGlobal* callee = call->func->as<AstExprGlobal>();
-    if (!callee)
-        return std::nullopt;
-
-    if (callee->name != "type" && callee->name != "typeof")
-        return std::nullopt;
-
-    if (call->args.size != 1)
-        return std::nullopt;
-
-    return TypeGuard{
-        /*isTypeof*/ callee->name == "typeof",
-        /*target*/ call->args.data[0],
-        /*type*/ std::string(string->value.data, string->value.size),
-    };
+    return dfg->getRefinementKey(call.args.data[0]);
 }
 
 namespace
@@ -131,6 +110,81 @@ void forEachConstraint(const Checkpoint& start, const Checkpoint& end, const Con
 {
     for (size_t i = start.offset; i < end.offset; ++i)
         f(cg->constraints[i]);
+}
+
+/**
+ * For all constraints [C] from [start] to [end], block dispatching
+ * [target] on [C].
+ */
+LUAU_NOINLINE void addAllAsDependencies(const Checkpoint& start, const Checkpoint& end, const ConstraintGenerator* cg, NotNull<Constraint> target)
+{
+    LUAU_ASSERT(FFlag::LuauConstraintGraph);
+    forEachConstraint(
+        start,
+        end,
+        cg,
+        [cg, target](const ConstraintPtr& ptr)
+        {
+            cg->cgraph->addDependencyOf(ptr.get(), target);
+        }
+    );
+}
+
+/**
+ * For all constraints [C] from [start] to [end], block dispatching
+ * [C] on [target].
+ */
+LUAU_NOINLINE void addAllAsReverseDependencies(
+    const Checkpoint& start,
+    const Checkpoint& end,
+    const ConstraintGenerator* cg,
+    NotNull<Constraint> target
+)
+{
+    LUAU_ASSERT(FFlag::LuauConstraintGraph);
+    forEachConstraint(
+        start,
+        end,
+        cg,
+        [cg, target](const ConstraintPtr& ptr)
+        {
+            cg->cgraph->addDependencyOf(target, ptr.get());
+        }
+    );
+}
+
+/**
+ * For all constraints [C] from [start] to [end], block dispatching
+ * [target] on [C].
+ *
+ * HACK: Additionally, chain `PackSubtypeConstraint`s that are tied to return
+ * statements in order to preserve some behavior from the old solver.
+ */
+LUAU_NOINLINE void addAllAsDependenciesAndChainReturns(
+    const Checkpoint& start,
+    const Checkpoint& end,
+    const ConstraintGenerator* cg,
+    NotNull<Constraint> target
+)
+{
+    LUAU_ASSERT(FFlag::LuauConstraintGraph);
+    Constraint* previous = nullptr;
+    forEachConstraint(
+        start,
+        end,
+        cg,
+        [cg, target, &previous](const ConstraintPtr& constraint)
+        {
+            cg->cgraph->addDependencyOf(constraint.get(), target);
+            if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+            {
+                if (previous)
+                    cg->cgraph->addDependencyOf(previous, constraint.get());
+
+                previous = constraint.get();
+            }
+        }
+    );
 }
 
 struct HasFreeType : TypeOnceVisitor
@@ -211,7 +265,8 @@ ConstraintGenerator::ConstraintGenerator(
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
     DcrLogger* logger,
     NotNull<DataFlowGraph> dfg,
-    std::vector<RequireCycle> requireCycles
+    std::vector<RequireCycle> requireCycles,
+    ConstraintGraph* cgraph
 )
     : module(module)
     , builtinTypes(builtinTypes)
@@ -227,6 +282,7 @@ ConstraintGenerator::ConstraintGenerator(
     , prepareModuleScope(std::move(prepareModuleScope))
     , requireCycles(std::move(requireCycles))
     , logger(logger)
+    , cgraph(cgraph)
 {
     LUAU_ASSERT(module);
 }
@@ -295,15 +351,25 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
     scope->interiorFreeTypePacks = std::move(interiorFreeTypes.back().typePacks);
 
     getMutable<BlockedType>(result)->setOwner(genConstraint);
-    forEachConstraint(
-        start,
-        end,
-        this,
-        [genConstraint](const ConstraintPtr& c)
-        {
-            genConstraint->dependencies.emplace_back(c.get());
-        }
-    );
+
+    if (FFlag::LuauConstraintGraph)
+    {
+        addAllAsDependencies(start, end, this, genConstraint);
+    }
+    else
+    {
+
+        forEachConstraint(
+            start,
+            end,
+            this,
+            [genConstraint](const ConstraintPtr& c)
+            {
+                genConstraint->DEPRECATED_dependencies.emplace_back(c.get());
+            }
+        );
+    }
+
 
     interiorFreeTypes.pop_back();
 
@@ -1067,6 +1133,10 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
                 ExternType{declName, staticProps, builtinTypes->classType, metatableTy, Tags{}, nullptr, module->name, classDecl->location}
             );
 
+            // Setup a bidirectional relationship between classes and objects
+            getMutable<ExternType>(externTy)->relation.emplace(Obj{classInstanceTy});
+            getMutable<ExternType>(classInstanceTy)->relation.emplace(Klass{externTy});
+
             LUAU_ASSERT(!is<BoundType>(theTy));
             [[maybe_unused]] const BlockedType* bt = get<BlockedType>(theTy);
             LUAU_ASSERT(bt);
@@ -1401,15 +1471,22 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
         LUAU_ASSERT(tail);
         NotNull<Constraint> uc = addConstraint(scope, statLocal->location, UnpackConstraint{deferredTypes, *tail});
 
-        forEachConstraint(
-            start,
-            end,
-            this,
-            [&uc](const ConstraintPtr& runBefore)
-            {
-                uc->dependencies.emplace_back(runBefore.get());
-            }
-        );
+        if (FFlag::LuauConstraintGraph)
+        {
+            addAllAsDependencies(start, end, this, uc);
+        }
+        else
+        {
+            forEachConstraint(
+                start,
+                end,
+                this,
+                [&uc](const ConstraintPtr& runBefore)
+                {
+                    uc->DEPRECATED_dependencies.emplace_back(runBefore.get());
+                }
+            );
+        }
 
         // This is a separate set from `deferredTypes` to
         // distinguish between blocked types we just minted
@@ -1569,7 +1646,14 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forI
     loopScope->lvalueTypes[keyDef] = intersectionTy;
 
     auto c = addConstraint(loopScope, keyVar->location, ReduceConstraint{intersectionTy});
-    c->dependencies.push_back(iterable);
+    if (FFlag::LuauConstraintGraph)
+    {
+        cgraph->addDependencyOf(iterable, c);
+    }
+    else
+    {
+        c->DEPRECATED_dependencies.push_back(iterable);
+    }
 
     for (TypeId var : variableTypes)
     {
@@ -1585,15 +1669,23 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forI
     scope->inheritAssignments(loopScope);
 
     // This iter constraint must dispatch first.
-    forEachConstraint(
-        start,
-        end,
-        this,
-        [&iterable](const ConstraintPtr& runLater)
-        {
-            runLater->dependencies.push_back(iterable);
-        }
-    );
+    if (FFlag::LuauConstraintGraph)
+    {
+        addAllAsReverseDependencies(start, end, this, iterable);
+    }
+    else
+    {
+
+        forEachConstraint(
+            start,
+            end,
+            this,
+            [&iterable](const ConstraintPtr& runLater)
+            {
+                runLater->DEPRECATED_dependencies.push_back(iterable);
+            }
+        );
+    }
 
     return ControlFlow::None;
 }
@@ -1671,25 +1763,32 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
 
     propagateDeprecatedAttributeToConstraint(c->c, function->func);
 
-    Constraint* previous = nullptr;
-    forEachConstraint(
-        start,
-        end,
-        this,
-        [&c, &previous](const ConstraintPtr& constraint)
-        {
-            c->dependencies.emplace_back(constraint.get());
-            if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+    if (FFlag::LuauConstraintGraph)
+    {
+        addAllAsDependenciesAndChainReturns(start, end, this, NotNull{c.get()});
+    }
+    else
+    {
+        Constraint* previous = nullptr;
+        forEachConstraint(
+            start,
+            end,
+            this,
+            [&c, &previous](const ConstraintPtr& constraint)
             {
-                if (previous)
+                c->DEPRECATED_dependencies.emplace_back(constraint.get());
+                if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
                 {
-                    constraint->dependencies.emplace_back(previous);
-                }
+                    if (previous)
+                    {
+                        constraint->DEPRECATED_dependencies.emplace_back(previous);
+                    }
 
-                previous = constraint.get();
+                    previous = constraint.get();
+                }
             }
-        }
-    );
+        );
+    }
 
     getMutable<BlockedType>(functionType)->setOwner(addConstraint(scope, std::move(c)));
     module->astTypes[function->func] = functionType;
@@ -1739,27 +1838,41 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
                 /* isSelf */ indexName->op == ':',
             }
         );
-        forEachConstraint(
-            beginProp,
-            endProp,
-            this,
-            [pftc](const ConstraintPtr& c)
-            {
-                pftc->dependencies.emplace_back(c.get());
-            }
-        );
-        auto beginBody = checkpoint(this);
-        checkFunctionBody(sig.bodyScope, function->func);
-        auto endBody = checkpoint(this);
-        forEachConstraint(
-            beginBody,
-            endBody,
-            this,
-            [pftc](const ConstraintPtr& c)
-            {
-                c->dependencies.push_back(pftc);
-            }
-        );
+
+        if (FFlag::LuauConstraintGraph)
+        {
+            addAllAsDependencies(beginProp, endProp, this, pftc);
+
+            auto beginBody = checkpoint(this);
+            checkFunctionBody(sig.bodyScope, function->func);
+            auto endBody = checkpoint(this);
+
+            addAllAsReverseDependencies(beginBody, endBody, this, pftc);
+        }
+        else
+        {
+            forEachConstraint(
+                beginProp,
+                endProp,
+                this,
+                [pftc](const ConstraintPtr& c)
+                {
+                    pftc->DEPRECATED_dependencies.emplace_back(c.get());
+                }
+            );
+            auto beginBody = checkpoint(this);
+            checkFunctionBody(sig.bodyScope, function->func);
+            auto endBody = checkpoint(this);
+            forEachConstraint(
+                beginBody,
+                endBody,
+                this,
+                [pftc](const ConstraintPtr& c)
+                {
+                    c->DEPRECATED_dependencies.push_back(pftc);
+                }
+            );
+        }
     }
     else
     {
@@ -1776,25 +1889,32 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
 
     propagateDeprecatedAttributeToConstraint(c->c, function->func);
 
-    Constraint* previous = nullptr;
-    forEachConstraint(
-        start,
-        end,
-        this,
-        [&c, &previous](const ConstraintPtr& constraint)
-        {
-            c->dependencies.emplace_back(constraint.get());
-            if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+    if (FFlag::LuauConstraintGraph)
+    {
+        addAllAsDependenciesAndChainReturns(start, end, this, c);
+    }
+    else
+    {
+        Constraint* previous = nullptr;
+        forEachConstraint(
+            start,
+            end,
+            this,
+            [&c, &previous](const ConstraintPtr& constraint)
             {
-                if (previous)
+                c->DEPRECATED_dependencies.emplace_back(constraint.get());
+                if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
                 {
-                    constraint->dependencies.emplace_back(previous);
-                }
+                    if (previous)
+                    {
+                        constraint->DEPRECATED_dependencies.emplace_back(previous);
+                    }
 
-                previous = constraint.get();
+                    previous = constraint.get();
+                }
             }
-        }
-    );
+        );
+    }
 
     std::optional<TypeId> existingFunctionTy = follow(lookup(scope, function->name->location, def));
 
@@ -2109,26 +2229,33 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunctio
     getMutable<BlockedType>(generalizedTy)->setOwner(gc);
     interiorFreeTypes.pop_back();
 
-    Constraint* previous = nullptr;
-    forEachConstraint(
-        startCheckpoint,
-        endCheckpoint,
-        this,
-        [gc, &previous](const ConstraintPtr& constraint)
-        {
-            gc->dependencies.emplace_back(constraint.get());
-
-            if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+    if (FFlag::LuauConstraintGraph)
+    {
+        addAllAsDependenciesAndChainReturns(startCheckpoint, endCheckpoint, this, gc);
+    }
+    else
+    {
+        Constraint* previous = nullptr;
+        forEachConstraint(
+            startCheckpoint,
+            endCheckpoint,
+            this,
+            [gc, &previous](const ConstraintPtr& constraint)
             {
-                if (previous)
-                {
-                    constraint->dependencies.emplace_back(previous);
-                }
+                gc->DEPRECATED_dependencies.emplace_back(constraint.get());
 
-                previous = constraint.get();
+                if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+                {
+                    if (previous)
+                    {
+                        constraint->DEPRECATED_dependencies.emplace_back(previous);
+                    }
+
+                    previous = constraint.get();
+                }
             }
-        }
-    );
+        );
+    }
 
     std::optional<TypeId> existingFunctionTy = environmentScope->lookup(function->name);
 
@@ -2288,21 +2415,14 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
         {
             Property tableProp;
 
-            if (FFlag::LuauExternReadWriteAttributes)
-            {
-                if (externProp.access == AstTableAccess::Read)
-                    tableProp = Property::readonly(propTy);
-                else if (externProp.access == AstTableAccess::Write)
-                    tableProp = Property::writeonly(propTy);
-                else
-                    tableProp = Property::rw(propTy);
-
-                tableProp.location = externProp.location;
-            }
+            if (externProp.access == AstTableAccess::Read)
+                tableProp = Property::readonly(propTy);
+            else if (externProp.access == AstTableAccess::Write)
+                tableProp = Property::writeonly(propTy);
             else
-            {
-                tableProp = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", externProp.location};
-            }
+                tableProp = Property::rw(propTy);
+
+            tableProp.location = externProp.location;
 
             props[propName] = tableProp;
         }
@@ -2329,29 +2449,16 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
 
                     prop.readTy = intersection;
                 }
-                else
-                {
-                    if (FFlag::LuauExternReadWriteAttributes)
+                else if (externProp.access == AstTableAccess::Write && !prop.writeTy.has_value())
                     {
-                        if (externProp.access == AstTableAccess::Write && !prop.writeTy.has_value())
-                        {
-                            prop.writeTy = propTy;
-                            addedWriteTypeByOverload = true;
-                        }
-                        else
-                            reportError(
-                                declaredExternType->location,
-                                GenericError{format("Cannot overload read type of non-function extern type member '%s'", propName.c_str())}
-                            );
-                    }
-                    else
-                    {
-                        reportError(
-                            declaredExternType->location,
-                            GenericError{format("Cannot overload read type of non-function extern type member '%s'", propName.c_str())}
-                        );
-                    }
+                    prop.writeTy = propTy;
+                    addedWriteTypeByOverload = true;
                 }
+                else
+                    reportError(
+                        declaredExternType->location,
+                        GenericError{format("Cannot overload read type of non-function extern type member '%s'", propName.c_str())}
+                    );
             }
 
             if (auto writeTy = prop.writeTy; writeTy && !addedWriteTypeByOverload)
@@ -2372,26 +2479,13 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
 
                     prop.writeTy = intersection;
                 }
+                else if (externProp.access == AstTableAccess::Read && !prop.readTy.has_value())
+                    prop.readTy = propTy;
                 else
-                {
-                    if (FFlag::LuauExternReadWriteAttributes)
-                    {
-                        if (externProp.access == AstTableAccess::Read && !prop.readTy.has_value())
-                            prop.readTy = propTy;
-                        else
-                            reportError(
-                                declaredExternType->location,
-                                GenericError{format("Cannot overload write type of non-function extern type member '%s'", propName.c_str())}
-                            );
-                    }
-                    else
-                    {
-                        reportError(
-                            declaredExternType->location,
-                            GenericError{format("Cannot overload write type of non-function extern type member '%s'", propName.c_str())}
-                        );
-                    }
-                }
+                    reportError(
+                        declaredExternType->location,
+                        GenericError{format("Cannot overload write type of non-function extern type member '%s'", propName.c_str())}
+                    );
             }
         }
     }
@@ -2514,25 +2608,32 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
 
             propagateDeprecatedAttributeToConstraint(c->c, method->function);
 
-            Constraint* previous = nullptr;
-            forEachConstraint(
-                start,
-                end,
-                this,
-                [&c, &previous](const ConstraintPtr& constraint)
-                {
-                    c->dependencies.emplace_back(constraint.get());
-                    if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+            if (FFlag::LuauConstraintGraph)
+            {
+                addAllAsDependenciesAndChainReturns(start, end, this, NotNull{c.get()});
+            }
+            else
+            {
+                Constraint* previous = nullptr;
+                forEachConstraint(
+                    start,
+                    end,
+                    this,
+                    [&c, &previous](const ConstraintPtr& constraint)
                     {
-                        if (previous)
+                        c->DEPRECATED_dependencies.emplace_back(constraint.get());
+                        if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
                         {
-                            constraint->dependencies.emplace_back(previous);
-                        }
+                            if (previous)
+                            {
+                                constraint->DEPRECATED_dependencies.emplace_back(previous);
+                            }
 
-                        previous = constraint.get();
+                            previous = constraint.get();
+                        }
                     }
-                }
-            );
+                );
+            }
 
             getMutable<BlockedType>(functionType)->setOwner(addConstraint(scope, std::move(c)));
 
@@ -2742,6 +2843,20 @@ InferencePack ConstraintGenerator::checkExprCall(
 
     Checkpoint argEndCheckpoint = checkpoint(this);
 
+    if (FFlag::DebugLuauUserDefinedClasses)
+    {
+        if (auto instanceGuard = matchIsInstanceGuard(*call, dfg))
+        {
+            if (args.size() >= 2)
+            {
+                // The class type may not be solved yet (e.g. `A.Point` from a
+                // required module).
+                TypeId objectofInst = createTypeFunctionInstance(builtinTypes->typeFunctions->objectofFunc, {args[1]}, {}, scope, call->location);
+                returnRefinements.emplace_back(refinementArena.implicitProposition(instanceGuard, objectofInst));
+            }
+        }
+    }
+
     if (matchSetMetatable(*call))
     {
         TypePack argTailPack;
@@ -2855,15 +2970,24 @@ InferencePack ConstraintGenerator::checkExprCall(
         scope, call->func->location, FunctionCheckConstraint{fnType, argPack, call, NotNull{&module->astTypes}, NotNull{&module->astExpectedTypes}}
     );
 
-    forEachConstraint(
-        funcBeginCheckpoint,
-        funcEndCheckpoint,
-        this,
-        [checkConstraint](const ConstraintPtr& constraint)
-        {
-            checkConstraint->dependencies.emplace_back(constraint.get());
-        }
-    );
+    if (FFlag::LuauConstraintGraph)
+    {
+        addAllAsDependencies(funcBeginCheckpoint, funcEndCheckpoint, this, checkConstraint);
+    }
+    else
+    {
+
+        forEachConstraint(
+            funcBeginCheckpoint,
+            funcEndCheckpoint,
+            this,
+            [checkConstraint](const ConstraintPtr& constraint)
+            {
+                checkConstraint->DEPRECATED_dependencies.emplace_back(constraint.get());
+            }
+        );
+    }
+
 
     NotNull<Constraint> callConstraint = addConstraint(
         scope,
@@ -2882,18 +3006,35 @@ InferencePack ConstraintGenerator::checkExprCall(
 
     getMutable<BlockedTypePack>(rets)->owner = callConstraint.get();
 
-    callConstraint->dependencies.push_back(checkConstraint);
+    if (FFlag::LuauConstraintGraph)
+    {
+        cgraph->addDependencyOf(checkConstraint, callConstraint);
+        forEachConstraint(
+            argBeginCheckpoint,
+            argEndCheckpoint,
+            this,
+            [this, checkConstraint, callConstraint](const ConstraintPtr& constraint)
+            {
+                cgraph->addDependencyOf(checkConstraint, constraint.get());
+                cgraph->addDependencyOf(constraint.get(), callConstraint);
+            }
+        );
+    }
+    else
+    {
+        callConstraint->DEPRECATED_dependencies.push_back(checkConstraint);
+        forEachConstraint(
+            argBeginCheckpoint,
+            argEndCheckpoint,
+            this,
+            [checkConstraint, callConstraint](const ConstraintPtr& constraint)
+            {
+                constraint->DEPRECATED_dependencies.emplace_back(checkConstraint);
+                callConstraint->DEPRECATED_dependencies.emplace_back(constraint.get());
+            }
+        );
+    }
 
-    forEachConstraint(
-        argBeginCheckpoint,
-        argEndCheckpoint,
-        this,
-        [checkConstraint, callConstraint](const ConstraintPtr& constraint)
-        {
-            constraint->dependencies.emplace_back(checkConstraint);
-            callConstraint->dependencies.emplace_back(constraint.get());
-        }
-    );
 
     return InferencePack{rets, {refinementArena.variadic(returnRefinements)}};
 }
@@ -3202,26 +3343,33 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprFunction* fun
 
     getMutable<BlockedType>(generalizedTy)->setOwner(gc);
 
-    Constraint* previous = nullptr;
-    forEachConstraint(
-        startCheckpoint,
-        endCheckpoint,
-        this,
-        [gc, &previous](const ConstraintPtr& constraint)
-        {
-            gc->dependencies.emplace_back(constraint.get());
-
-            if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+    if (FFlag::LuauConstraintGraph)
+    {
+        addAllAsDependenciesAndChainReturns(startCheckpoint, endCheckpoint, this, gc);
+    }
+    else
+    {
+        Constraint* previous = nullptr;
+        forEachConstraint(
+            startCheckpoint,
+            endCheckpoint,
+            this,
+            [gc, &previous](const ConstraintPtr& constraint)
             {
-                if (previous)
-                {
-                    constraint->dependencies.emplace_back(previous);
-                }
+                gc->DEPRECATED_dependencies.emplace_back(constraint.get());
 
-                previous = constraint.get();
+                if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+                {
+                    if (previous)
+                    {
+                        constraint->DEPRECATED_dependencies.emplace_back(previous);
+                    }
+
+                    previous = constraint.get();
+                }
             }
-        }
-    );
+        );
+    }
 
     if (generalize && hasFreeType(sig.signature))
     {
@@ -3532,15 +3680,10 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
         }
         else if (typeguard->type == "vector" && !typeguard->isTypeof)
         {
-            if (FFlag::LuauRefinementTypeVector)
-            {
-                // `vector` is defined in EmbeddedBultinDefinitions, not as an actual built-in type
-                auto typeFun = globalScope->lookupType("vector");
-                if (typeFun)
-                    discriminantTy = follow(typeFun->type);
-            }
-            else
-                discriminantTy = builtinTypes->neverType; // TODO: figure out a way to deal with this quirky type
+            // `vector` is defined in EmbeddedBuiltinDefinitions, not as an actual built-in type
+            auto typeFun = globalScope->lookupType("vector");
+            if (typeFun)
+                discriminantTy = follow(typeFun->type);
         }
         else if (!typeguard->isTypeof)
             discriminantTy = builtinTypes->neverType;
@@ -3838,15 +3981,24 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
                 /* expr */ NotNull{expr},
             }
         );
-        forEachConstraint(
-            start,
-            end,
-            this,
-            [ptc](const ConstraintPtr& c)
-            {
-                c->dependencies.emplace_back(ptc.get());
-            }
-        );
+
+        if (FFlag::LuauConstraintGraph)
+        {
+            addAllAsReverseDependencies(start, end, this, ptc);
+        }
+        else
+        {
+            forEachConstraint(
+                start,
+                end,
+                this,
+                [ptc](const ConstraintPtr& c)
+                {
+                    c->DEPRECATED_dependencies.emplace_back(ptc.get());
+                }
+            );
+        }
+
     }
 
     if (FInt::LuauPrimitiveInferenceInTableLimit > 0 && expr->items.size > size_t(FInt::LuauPrimitiveInferenceInTableLimit))

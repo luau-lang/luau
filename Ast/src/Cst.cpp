@@ -123,6 +123,7 @@ CstStatLocal::CstStatLocal(
     AstArray<Position> valuesCommaPositions
 )
     : CstNode(CstClassIndex())
+    , declarationKeywordPosition(Position::missing())
     , varsAnnotationColonPositions(varsAnnotationColonPositions)
     , varsCommaPositions(varsCommaPositions)
     , valuesCommaPositions(valuesCommaPositions)

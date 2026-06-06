@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <array>
 
-LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenRegTag2)
 
 namespace Luau
@@ -112,8 +111,7 @@ void loadBytecodeTypeInfo(IrFunction& function)
     }
 
     // Preserve original information
-    if (FFlag::LuauCodegenSetBlockEntryState3)
-        function.bcOriginalTypeInfo = function.bcTypeInfo;
+    function.bcOriginalTypeInfo = function.bcTypeInfo;
 
     CODEGEN_ASSERT(offset == size_t(proto->sizetypeinfo));
 }

@@ -26,6 +26,7 @@ LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauAutocompleteStringSingletonIntersection)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -5415,6 +5416,52 @@ end
         {
             REQUIRE(frag.result);
             CHECK(frag.result->acResults.entryMap.count("Bar"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "isinstance_refines_for_autocomplete")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauAllowGlobalDeclarationToBeCalledClass, true},
+    };
+
+    const std::string source = R"(
+class Point
+    public x
+    public y
+end
+
+local function f(v: Point | string)
+    if class.isinstance(v, Point) then
+
+    end
+end
+)";
+
+    const std::string dest = R"(
+class Point
+    public x
+    public y
+end
+
+local function f(v: Point | string)
+    if class.isinstance(v, Point) then
+        v.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("x"));
+            CHECK(frag.result->acResults.entryMap.count("y"));
         }
     );
 }
