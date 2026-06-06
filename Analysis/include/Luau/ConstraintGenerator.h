@@ -3,6 +3,7 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Constraint.h"
+#include "Luau/ConstraintGraph.h"
 #include "Luau/ConstraintSet.h"
 #include "Luau/ControlFlow.h"
 #include "Luau/DataFlowGraph.h"
@@ -149,6 +150,8 @@ struct ConstraintGenerator
 
     bool recursionLimitMet = false;
 
+    ConstraintGraph* cgraph = nullptr;
+
     ConstraintGenerator(
         ModulePtr module,
         NotNull<Normalizer> normalizer,
@@ -161,7 +164,8 @@ struct ConstraintGenerator
         std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
         DcrLogger* logger,
         NotNull<DataFlowGraph> dfg,
-        std::vector<RequireCycle> requireCycles
+        std::vector<RequireCycle> requireCycles,
+        ConstraintGraph* cgraph
     );
 
     ConstraintSet run(AstStatBlock* block);

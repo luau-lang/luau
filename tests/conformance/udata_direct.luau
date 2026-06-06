@@ -151,6 +151,31 @@ assert(fuzzyeq(mag, math.sqrt(0.125 * 0.125 + 0.875 * 0.875)))
 local dotResult = vtx3.uv:Dot(vec2(1, 0))
 assert(dotResult == 0.125)
 
+-- check reentrancy into different form of the instruction
+do
+    function callReenter(obj)
+        return obj:Reenter()
+    end
+
+    local fakeObj = { Reenter = function(self) return -1 end }
+
+    reenterCallback = function()
+        callReenter(fakeObj)
+    end
+
+    -- call userdata path that  will reenter and de-optimize to table path
+    local r1 = callReenter(vec2(10, 20))
+    assert(r1 == 30)
+
+    -- call table path with a table
+    local r2 = callReenter(fakeObj)
+    assert(r2 == -1)
+
+    -- call table path with userdata
+    local r3 = callReenter(vec2(5, 6))
+    assert(r3 == 11)
+end
+
 -- check interactions on VM/NCG switch
 function guardedReadX(obj, _guard: number)
     return obj.X

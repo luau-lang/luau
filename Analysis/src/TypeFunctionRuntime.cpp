@@ -13,6 +13,7 @@
 #include "Luau/Type.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/TypeFunctionRuntimeBuilder.h"
+#include "Luau/RecursionCounter.h"
 
 #include "lua.h"
 #include "lualib.h"
@@ -27,6 +28,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionRobustness)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeIsSubtypeOf)
 
 namespace Luau
@@ -427,7 +429,7 @@ static std::string getTag(lua_State* L, TypeFunctionTypeId ty)
     else if (get<TypeFunctionGenericType>(ty))
         return "generic";
 
-    LUAU_UNREACHABLE();
+    LUAU_ASSERT(!"Unsupported type in getTag");
     luaL_error(L, "VM encountered unexpected type variant when determining tag");
 }
 
@@ -1107,7 +1109,13 @@ static int setTableMetatable(lua_State* L)
 
     TypeFunctionTypeId arg = getTypeUserData(L, 2);
     if (!get<TypeFunctionTableType>(arg))
-        luaL_error(L, "type.setmetatable: expected the argument to be a table, but got %s instead", getTag(L, self).c_str());
+    {
+        luaL_error(
+            L,
+            "type.setmetatable: expected the argument to be a table, but got %s instead",
+            getTag(L, FFlag::LuauTypeFunctionRobustness ? arg : self).c_str()
+        );
+    }
 
     tftt->metatable = arg;
 
@@ -1411,8 +1419,17 @@ static int setFunctionGenerics(lua_State* L)
         luaL_error(L, "type.setgenerics: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
     int argumentCount = lua_gettop(L);
-    if (argumentCount > 3)
-        luaL_error(L, "type.setgenerics: expected 3 arguments, but got %d", argumentCount);
+
+    if (FFlag::LuauTypeFunctionRobustness)
+    {
+        if (argumentCount > 2)
+            luaL_error(L, "type.setgenerics: expected 2 arguments, but got %d", argumentCount);
+    }
+    else
+    {
+        if (argumentCount > 3)
+            luaL_error(L, "type.setgenerics: expected 3 arguments, but got %d", argumentCount);
+    }
 
     auto [genericTypes, genericPacks] = getGenerics(L, 2, "types.setgenerics");
 
@@ -1833,6 +1850,10 @@ static int deepCopy(lua_State* L)
     TypeFunctionTypeId arg = getTypeUserData(L, 1);
 
     TypeFunctionTypeId copy = deepClone(NotNull{getTypeFunctionRuntime(L)}, arg);
+
+    if (FFlag::LuauTypeFunctionRobustness && !copy)
+        luaL_error(L, "types.copy: complexity limit reached during type copy");
+
     allocTypeUserData(L, copy->type);
     return 1;
 }
@@ -1910,7 +1931,7 @@ static int typeUserdataIndex(lua_State* L)
 
 void registerTypeUserData(lua_State* L)
 {
-    luaL_Reg typeUserdataMethods[] = {
+    luaL_Reg typeUserdataMethods_DEPRECATED[] = {
         {"is", checkTag},
 
         // Negation type methods
@@ -1961,6 +1982,53 @@ void registerTypeUserData(lua_State* L)
         {nullptr, nullptr}
     };
 
+    luaL_Reg typeUserdataMethods[] = {
+        {"is", checkTag},
+
+        // Negation type methods
+        {"inner", getNegatedValue},
+
+        // Singleton type methods
+        {"value", getSingletonValue},
+
+        // Table type methods
+        {"setproperty", setTableProp},
+        {"setreadproperty", setReadTableProp},
+        {"setwriteproperty", setWriteTableProp},
+        {"readproperty", readTableProp},
+        {"writeproperty", writeTableProp},
+        {"properties", getProps},
+        {"setindexer", setTableIndexer},
+        {"setreadindexer", setTableReadIndexer},
+        {"setwriteindexer", setTableWriteIndexer},
+        {"indexer", getIndexer},
+        {"readindexer", getReadIndexer},
+        {"writeindexer", getWriteIndexer},
+        {"setmetatable", setTableMetatable},
+        {"metatable", getMetatable},
+
+        // Function type methods
+        {"setparameters", setFunctionParameters},
+        {"parameters", getFunctionParameters},
+        {"setreturns", setFunctionReturns},
+        {"returns", getFunctionReturns},
+        {"setgenerics", setFunctionGenerics},
+        {"generics", getFunctionGenerics},
+
+        // Union and Intersection type methods
+        {"components", getComponents},
+
+        //  Extern type methods
+        {"readparent", getReadParent},
+        {"writeparent", getWriteParent},
+
+        // Generic type methods
+        {"name", getGenericName},
+        {"ispack", getGenericIsPack},
+
+        {nullptr, nullptr}
+    };
+
     // Create and register metatable for type userdata
     luaL_newmetatable(L, "type");
 
@@ -1976,7 +2044,7 @@ void registerTypeUserData(lua_State* L)
 
     // Indexing will be a dynamic function because some type fields are dynamic
     lua_newtable(L);
-    luaL_register(L, nullptr, typeUserdataMethods);
+    luaL_register(L, nullptr, FFlag::LuauTypeFunctionRobustness ? typeUserdataMethods : typeUserdataMethods_DEPRECATED);
 
     if (FFlag::LuauUdtfTypeIsSubtypeOf)
     {
@@ -2080,26 +2148,30 @@ void resetTypeFunctionState(lua_State* L)
 
 /*
  * Below are helper methods for __eq
- * Same as one from Type.cpp
  */
-using SeenSet = std::set<std::pair<const void*, const void*>>;
-bool areEqual(SeenSet& seen, const TypeFunctionType& lhs, const TypeFunctionType& rhs);
-bool areEqual(SeenSet& seen, const TypeFunctionTypePackVar& lhs, const TypeFunctionTypePackVar& rhs);
+struct AreEqualState
+{
+    std::set<std::pair<const void*, const void*>> seen;
+    int recursionCount = 0;
+};
 
-bool seenSetContains(SeenSet& seen, const void* lhs, const void* rhs)
+bool areEqual(AreEqualState& seen, const TypeFunctionType& lhs, const TypeFunctionType& rhs);
+bool areEqual(AreEqualState& seen, const TypeFunctionTypePackVar& lhs, const TypeFunctionTypePackVar& rhs);
+
+bool seenSetContains(AreEqualState& seen, const void* lhs, const void* rhs)
 {
     if (lhs == rhs)
         return true;
 
     auto p = std::make_pair(lhs, rhs);
-    if (seen.find(p) != seen.end())
+    if (seen.seen.find(p) != seen.seen.end())
         return true;
 
-    seen.insert(p);
+    seen.seen.insert(p);
     return false;
 }
 
-bool areEqual(SeenSet& seen, const TypeFunctionSingletonType& lhs, const TypeFunctionSingletonType& rhs)
+bool areEqual(AreEqualState& seen, const TypeFunctionSingletonType& lhs, const TypeFunctionSingletonType& rhs)
 {
     if (seenSetContains(seen, &lhs, &rhs))
         return true;
@@ -2121,7 +2193,7 @@ bool areEqual(SeenSet& seen, const TypeFunctionSingletonType& lhs, const TypeFun
     return false;
 }
 
-bool areEqual(SeenSet& seen, const TypeFunctionUnionType& lhs, const TypeFunctionUnionType& rhs)
+bool areEqual(AreEqualState& seen, const TypeFunctionUnionType& lhs, const TypeFunctionUnionType& rhs)
 {
     if (seenSetContains(seen, &lhs, &rhs))
         return true;
@@ -2143,7 +2215,7 @@ bool areEqual(SeenSet& seen, const TypeFunctionUnionType& lhs, const TypeFunctio
     return true;
 }
 
-bool areEqual(SeenSet& seen, const TypeFunctionIntersectionType& lhs, const TypeFunctionIntersectionType& rhs)
+bool areEqual(AreEqualState& seen, const TypeFunctionIntersectionType& lhs, const TypeFunctionIntersectionType& rhs)
 {
     if (seenSetContains(seen, &lhs, &rhs))
         return true;
@@ -2165,7 +2237,7 @@ bool areEqual(SeenSet& seen, const TypeFunctionIntersectionType& lhs, const Type
     return true;
 }
 
-bool areEqual(SeenSet& seen, const TypeFunctionNegationType& lhs, const TypeFunctionNegationType& rhs)
+bool areEqual(AreEqualState& seen, const TypeFunctionNegationType& lhs, const TypeFunctionNegationType& rhs)
 {
     if (seenSetContains(seen, &lhs, &rhs))
         return true;
@@ -2173,7 +2245,7 @@ bool areEqual(SeenSet& seen, const TypeFunctionNegationType& lhs, const TypeFunc
     return areEqual(seen, *lhs.type, *rhs.type);
 }
 
-bool areEqual(SeenSet& seen, const TypeFunctionTableType& lhs, const TypeFunctionTableType& rhs)
+bool areEqual(AreEqualState& seen, const TypeFunctionTableType& lhs, const TypeFunctionTableType& rhs)
 {
     if (seenSetContains(seen, &lhs, &rhs))
         return true;
@@ -2217,7 +2289,7 @@ bool areEqual(SeenSet& seen, const TypeFunctionTableType& lhs, const TypeFunctio
     return true;
 }
 
-bool areEqual(SeenSet& seen, const TypeFunctionFunctionType& lhs, const TypeFunctionFunctionType& rhs)
+bool areEqual(AreEqualState& seen, const TypeFunctionFunctionType& lhs, const TypeFunctionFunctionType& rhs)
 {
     if (seenSetContains(seen, &lhs, &rhs))
         return true;
@@ -2261,7 +2333,7 @@ bool areEqual(SeenSet& seen, const TypeFunctionFunctionType& lhs, const TypeFunc
     return true;
 }
 
-bool areEqual(SeenSet& seen, const TypeFunctionExternType& lhs, const TypeFunctionExternType& rhs)
+bool areEqual(AreEqualState& seen, const TypeFunctionExternType& lhs, const TypeFunctionExternType& rhs)
 {
     if (seenSetContains(seen, &lhs, &rhs))
         return true;
@@ -2269,8 +2341,12 @@ bool areEqual(SeenSet& seen, const TypeFunctionExternType& lhs, const TypeFuncti
     return lhs.externTy == rhs.externTy;
 }
 
-bool areEqual(SeenSet& seen, const TypeFunctionType& lhs, const TypeFunctionType& rhs)
+bool areEqual(AreEqualState& seen, const TypeFunctionType& lhs, const TypeFunctionType& rhs)
 {
+    std::optional<RecursionLimiter> _ra;
+
+    if (FFlag::LuauTypeFunctionRobustness)
+        _ra.emplace("areEqual", &seen.recursionCount, 100);
 
     if (lhs.type.index() != rhs.type.index())
         return false;
@@ -2350,7 +2426,7 @@ bool areEqual(SeenSet& seen, const TypeFunctionType& lhs, const TypeFunctionType
     return false;
 }
 
-bool areEqual(SeenSet& seen, const TypeFunctionTypePack& lhs, const TypeFunctionTypePack& rhs)
+bool areEqual(AreEqualState& seen, const TypeFunctionTypePack& lhs, const TypeFunctionTypePack& rhs)
 {
     if (lhs.head.size() != rhs.head.size())
         return false;
@@ -2369,7 +2445,7 @@ bool areEqual(SeenSet& seen, const TypeFunctionTypePack& lhs, const TypeFunction
     return true;
 }
 
-bool areEqual(SeenSet& seen, const TypeFunctionVariadicTypePack& lhs, const TypeFunctionVariadicTypePack& rhs)
+bool areEqual(AreEqualState& seen, const TypeFunctionVariadicTypePack& lhs, const TypeFunctionVariadicTypePack& rhs)
 {
     if (seenSetContains(seen, &lhs, &rhs))
         return true;
@@ -2377,7 +2453,7 @@ bool areEqual(SeenSet& seen, const TypeFunctionVariadicTypePack& lhs, const Type
     return areEqual(seen, *lhs.type, *rhs.type);
 }
 
-bool areEqual(SeenSet& seen, const TypeFunctionTypePackVar& lhs, const TypeFunctionTypePackVar& rhs)
+bool areEqual(AreEqualState& seen, const TypeFunctionTypePackVar& lhs, const TypeFunctionTypePackVar& rhs)
 {
     {
         const TypeFunctionTypePack* lb = get<TypeFunctionTypePack>(&lhs);
@@ -2405,16 +2481,15 @@ bool areEqual(SeenSet& seen, const TypeFunctionTypePackVar& lhs, const TypeFunct
 
 bool TypeFunctionType::operator==(const TypeFunctionType& rhs) const
 {
-    SeenSet seen;
+    AreEqualState seen;
     return areEqual(seen, *this, rhs);
 }
 
 bool TypeFunctionTypePackVar::operator==(const TypeFunctionTypePackVar& rhs) const
 {
-    SeenSet seen;
+    AreEqualState seen;
     return areEqual(seen, *this, rhs);
 }
-
 
 TypeFunctionProperty TypeFunctionProperty::readonly(TypeFunctionTypeId ty)
 {
@@ -2582,6 +2657,9 @@ private:
                 break;
             case TypeFunctionPrimitiveType::Number:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Number));
+                break;
+            case TypeFunctionPrimitiveType::Integer:
+                target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::Integer));
                 break;
             case TypeFunctionPrimitiveType::String:
                 target = typeFunctionRuntime->typeArena.allocate(TypeFunctionPrimitiveType(TypeFunctionPrimitiveType::String));

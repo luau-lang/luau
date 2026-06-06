@@ -107,6 +107,10 @@ int luaR_createobject(lua_State* L)
     setobjectvalue(L, L->top, classinst);
     L->top++;
 
+    // Stack location to hold the table lookup result
+    setnilvalue(L->top);
+    L->top++;
+
     switch (numargs)
     {
     case 1:
@@ -118,26 +122,19 @@ int luaR_createobject(lua_State* L)
         {
             TValue key;
             setsvalue(L, &key, classobject->offsettomember[idx]);
-            luaV_gettable(L, L->base + 1, &key, &classinst->members[idx]);
+            luaV_gettable(L, L->base + 1, &key, L->top - 1);
+            setobj(L, &classinst->members[idx], L->top - 1);
         }
         break;
     default:
         luaL_error(L, "wrong number of arguments for constructing a '%s'", getstr(classobject->name));
     }
 
-    // There is a small chance that the following occurs:
-    //
-    //  [BASE] | CLASSOBJ | TBL | CLASSINST | [TOP]
-    //
-    // 1. We mark TBL as grey and CLASSINST as black
-    // 2. We copy some white GCObject from TBL to CLASSINST before marking TBL
-    //    as black.
-    // 3. We exit this function and drop the last reference to TBL.
-    // 4. We now sweep the aforementioned GCObject as it is white.
-    //
-    // The easiest way to avoid this is to check if the classinst is black
-    // at the end of this function, and then add it back to the greylist.
+    L->top--;
+
+    // Preserve the GC invariant, moving barrier back once after writing multiple objects (similar to SETLIST)
     luaC_barrierfast(L, classinst);
+
     return 1;
 }
 

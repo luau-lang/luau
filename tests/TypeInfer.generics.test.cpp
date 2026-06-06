@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauInstantiateFunctionTypeBeforePush)
 
 using namespace Luau;
 
@@ -2151,6 +2152,40 @@ TEST_CASE_FIXTURE(Fixture, "id_function_do_not_leak_generic")
     )"));
 
     CHECK_EQ("(unknown) -> ()", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pushing")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauInstantiateFunctionTypeBeforePush, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        export type Parent = {
+            Func1:<P...> (self: Parent, value: boolean, P...) -> (Parent?),
+            Func2: (self: Parent, value: boolean) -> (Parent?),
+        }
+
+        export type Child = {
+            Parent: Parent,
+            Func: (self: Child) -> (Child?),
+        }
+
+        local Parent = {} :: Parent
+        local Child = {} :: Child
+
+        function Parent:Func1(value, ...)
+            if value then return self else return nil end
+        end
+
+        function Parent:Func2(value)
+            if value then return self else return nil end
+        end
+
+        function Child:Func()
+            if math.random() > 0.5 then return self else return nil end
+        end
+    )"));
 }
 
 TEST_SUITE_END();

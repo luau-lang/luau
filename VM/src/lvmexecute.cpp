@@ -3455,8 +3455,8 @@ reentry:
                         uint16_t cachedslot = LUAU_INSN_AUX_SLOT(aux);
                         onudataindex(L, udata, tsvalue(kv)->atom, &cachedslot, utag);
 
-                        // update cached slot
-                        if (cachedslot != LUAU_INSN_AUX_SLOT(aux))
+                        // update cached slot if instruction didn't deoptimize
+                        if (cachedslot != LUAU_INSN_AUX_SLOT(aux) && LUAU_INSN_OP(*(pc - 2)) == LOP_GETUDATAKS)
                             VM_PATCH_AUX_SLOT(pc - 1, kidx, cachedslot);
 
                         // ci is our callinfo, cip is our parent
@@ -3536,8 +3536,8 @@ reentry:
                         uint16_t cachedslot = LUAU_INSN_AUX_SLOT(aux);
                         onudatanewindex(L, udata, tsvalue(kv)->atom, &cachedslot, utag);
 
-                        // update cached slot
-                        if (cachedslot != LUAU_INSN_AUX_SLOT(aux))
+                        // update cached slot if instruction didn't deoptimize
+                        if (cachedslot != LUAU_INSN_AUX_SLOT(aux) && LUAU_INSN_OP(*(pc - 2)) == LOP_SETUDATAKS)
                             VM_PATCH_AUX_SLOT(pc - 1, kidx, cachedslot);
 
                         // ci is our callinfo, cip is our parent
@@ -3620,8 +3620,8 @@ reentry:
                         uint16_t cachedslot = LUAU_INSN_AUX_SLOT(aux);
                         int results = onudatanamecall(L, udata, tsvalue(kv)->atom, &cachedslot, utag);
 
-                        // update cached slot
-                        if (cachedslot != LUAU_INSN_AUX_SLOT(aux))
+                        // update cached slot if instruction didn't deoptimize
+                        if (cachedslot != LUAU_INSN_AUX_SLOT(aux) && LUAU_INSN_OP(*(ncslot - 1)) == LOP_NAMECALLUDATA)
                             VM_PATCH_AUX_SLOT(ncslot, kidx, cachedslot);
 
                         // yield
@@ -3676,7 +3676,7 @@ reentry:
                 LUAU_ASSERT(ttisstring(membername));
                 LUAU_ASSERT(LUAU_INSN_B(insn) == 0);
                 VM_CASE_STKID rc = VM_REG(LUAU_INSN_C(insn));
-                // We should not need to protect the PC here, we shouldn't ever allocate in this function.
+                VM_PROTECT_PC();
                 luaR_addclassmember(L, classvalue(ra), tsvalue(membername), rc);
                 VM_NEXT();
             }
@@ -3697,7 +3697,7 @@ reentry:
                 Closure* ccl = clvalue(ra);
                 if (ccl->isC || ccl->l.p->funid != funid)
                     pc += LUAU_INSN_D(insn) - 1;
-                
+
                 LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }

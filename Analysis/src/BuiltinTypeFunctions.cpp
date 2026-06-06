@@ -21,6 +21,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAGVARIABLE(LuauConcatDoesntAlwaysReturnString)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
@@ -2490,6 +2491,34 @@ TypeFunctionReductionResult<TypeId> getmetatableTypeFunction(
     return getmetatableHelper(targetTy, location, ctx);
 }
 
+TypeFunctionReductionResult<TypeId> objectofTypeFunction(
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    if (typeParams.size() != 1 || !packParams.empty())
+    {
+        ctx->ice->ice("objectof type function: encountered a type function instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId targetTy = follow(typeParams.at(0));
+
+    if (isPending(targetTy, ctx->solver))
+        return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
+
+    if (auto klass = get<ExternType>(targetTy); klass && klass->relation)
+    {
+        if (auto obj = klass->relation->get_if<Obj>())
+            return {obj->ty, Reduction::MaybeOk, {}, {}};
+    }
+
+    return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
+}
+
 TypeFunctionReductionResult<TypeId> weakoptionalTypeFunc(
     TypeId instance,
     const std::vector<TypeId>& typeParams,
@@ -2550,6 +2579,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , rawgetFunc{"rawget", rawgetTypeFunction}
     , setmetatableFunc{"setmetatable", setmetatableTypeFunction}
     , getmetatableFunc{"getmetatable", getmetatableTypeFunction}
+    , objectofFunc{"objectof", objectofTypeFunction}
     , weakoptionalFunc{"weakoptional", weakoptionalTypeFunc}
 {
 }

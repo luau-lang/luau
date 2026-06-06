@@ -4,6 +4,8 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
 
+LUAU_FASTFLAGVARIABLE(LuauConstraintGraph)
+
 namespace Luau
 {
 
@@ -14,56 +16,70 @@ Constraint::Constraint(NotNull<Scope> scope, const Location& location, Constrain
 {
 }
 
-struct ReferenceCountInitializer : TypeOnceVisitor
+ReferenceCountInitializer::ReferenceCountInitializer(NotNull<TypeIds> mutatedTypes, NotNull<TypePackIds> mutatedTypePacks)
+    : TypeOnceVisitor("ReferenceCountInitializer", /* skipBoundTypes */ true)
+    , mutatedTypes(mutatedTypes)
+    , mutatedTypePacks(mutatedTypePacks.get())
 {
-    NotNull<TypeIds> mutatedTypes;
-    TypePackIds* mutatedTypePacks;
-    bool traverseIntoTypeFunctions = true;
+}
 
-    explicit ReferenceCountInitializer(NotNull<TypeIds> mutatedTypes, NotNull<TypePackIds> mutatedTypePacks)
-        : TypeOnceVisitor("ReferenceCountInitializer", /* skipBoundTypes */ true)
-        , mutatedTypes(mutatedTypes)
-        , mutatedTypePacks(mutatedTypePacks.get())
-    {
-    }
+bool ReferenceCountInitializer::visit(TypeId ty, const FreeType&)
+{
+    mutatedTypes->insert(ty);
+    return false;
+}
 
-    bool visit(TypeId ty, const FreeType&) override
-    {
+bool ReferenceCountInitializer::visit(TypeId ty, const BlockedType&)
+{
+    mutatedTypes->insert(ty);
+    return false;
+}
+
+bool ReferenceCountInitializer::visit(TypeId ty, const PendingExpansionType&)
+{
+    mutatedTypes->insert(ty);
+    return false;
+}
+
+bool ReferenceCountInitializer::visit(TypeId ty, const TableType& tt)
+{
+    if (tt.state == TableState::Unsealed || tt.state == TableState::Free)
         mutatedTypes->insert(ty);
-        return false;
-    }
 
-    bool visit(TypeId ty, const BlockedType&) override
+    return true;
+}
+
+bool ReferenceCountInitializer::visit(TypeId ty, const ExternType&)
+{
+    // ExternTypes never contain free types.
+    return false;
+}
+
+bool ReferenceCountInitializer::visit(TypeId, const TypeFunctionInstanceType& tfit)
+{
+    return tfit.function->canReduceGenerics;
+}
+
+
+bool ReferenceCountInitializer::visit(TypePackId tp, const BlockedTypePack&)
+{
+    if (FFlag::LuauConstraintGraph)
     {
-        mutatedTypes->insert(ty);
-        return false;
+        LUAU_ASSERT(mutatedTypePacks);
+        mutatedTypePacks->insert(tp);
     }
+    return true;
+}
 
-    bool visit(TypeId ty, const PendingExpansionType&) override
+bool ReferenceCountInitializer::visit(TypePackId tp, const FreeTypePack&)
+{
+    if (FFlag::LuauConstraintGraph)
     {
-        mutatedTypes->insert(ty);
-        return false;
+        LUAU_ASSERT(mutatedTypePacks);
+        mutatedTypePacks->insert(tp);
     }
-
-    bool visit(TypeId ty, const TableType& tt) override
-    {
-        if (tt.state == TableState::Unsealed || tt.state == TableState::Free)
-            mutatedTypes->insert(ty);
-
-        return true;
-    }
-
-    bool visit(TypeId ty, const ExternType&) override
-    {
-        // ExternTypes never contain free types.
-        return false;
-    }
-
-    bool visit(TypeId, const TypeFunctionInstanceType& tfit) override
-    {
-        return tfit.function->canReduceGenerics;
-    }
-};
+    return true;
+}
 
 bool isReferenceCountedType(const TypeId typ)
 {

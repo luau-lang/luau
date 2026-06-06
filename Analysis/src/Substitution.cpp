@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Substitution.h"
 
+#include "Luau/Ast.h"
 #include "Luau/Common.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
@@ -10,7 +11,7 @@
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
-
+LUAU_FASTFLAG(LuauUserDefinedClasses)
 namespace Luau
 {
 
@@ -129,6 +130,8 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
         else if constexpr (std::is_same_v<T, ExternType>)
         {
             ExternType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName, a.definitionLocation, a.indexer};
+            if (FFlag::DebugLuauUserDefinedClasses)
+                clone.relation = a.relation;
             return dest.addType(std::move(clone));
         }
         else if constexpr (std::is_same_v<T, NegationType>)
@@ -257,6 +260,23 @@ void Tarjan::visitChildren(TypeId ty, int index)
         {
             visitChild(etv->indexer->indexType);
             visitChild(etv->indexer->indexResultType);
+        }
+
+        if (FFlag::DebugLuauUserDefinedClasses && etv->relation)
+        {
+            Luau::visit(
+                overloaded{
+                    [&](const Obj& obj)
+                    {
+                        visitChild(obj.ty);
+                    },
+                    [&](const Klass& klass)
+                    {
+                        visitChild(klass.ty);
+                    }
+                },
+                *etv->relation
+            );
         }
     }
     else if (const NegationType* ntv = get<NegationType>(ty))

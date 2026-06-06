@@ -148,7 +148,9 @@ struct Fixture
     TypeId requireType(const ScopePtr& scope, const std::string& name);
 
     std::optional<TypeId> findTypeAtPosition(Position position);
+    std::optional<TypeId> findTypeAtPosition(const ModuleName& moduleName, Position position);
     TypeId requireTypeAtPosition(Position position);
+    TypeId requireTypeAtPosition(const ModuleName& moduleName, Position position);
     std::optional<TypeId> findExpectedTypeAtPosition(Position position);
 
     std::optional<TypeId> lookupType(const std::string& name);

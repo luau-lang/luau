@@ -2,14 +2,19 @@
 
 #include "Fixture.h"
 
+#include "Luau/BuiltinDefinitions.h"
 #include "Luau/Error.h"
 #include "ScopedFlags.h"
 #include "doctest.h"
-#include <cfloat>
 
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass);
+LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauExportValueTypecheck)
+LUAU_FASTFLAG(LuauConst2)
 
 namespace
 {
@@ -17,7 +22,14 @@ namespace
 struct ClassesFixture : Fixture
 {
     const std::string definitions = R"LUAU_SRC(
-    declare function tostring<T>(value: T): string
+@checked declare function require(target: any): any
+declare function sqrt(n: number): number
+declare function tostring<T>(value: T): string
+
+declare class: {
+    isinstance: @checked (o: unknown, c: class) -> boolean,
+    classof: @checked (o: unknown) -> class?
+}
 )LUAU_SRC";
     Frontend& getFrontend() override
     {
@@ -26,14 +38,21 @@ struct ClassesFixture : Fixture
 
         Frontend& f = Fixture::getFrontend();
         Luau::unfreeze(f.globals.globalTypes);
-        // Can register additional classes here
+
         f.loadDefinitionFile(f.globals, f.globals.globalScope, definitions, "@test", false);
+        AstName reqName = f.globals.globalNames.names->getOrAdd("require");
+        auto it = f.globals.globalScope->bindings.find(reqName);
+        LUAU_ASSERT(it != f.globals.globalScope->bindings.end());
+        attachTag(it->second.typeId, kRequireTagName);
+        attachMagicFunction(it->second.typeId, std::make_shared<MagicRequire>());
+        registerTestTypes();
         Luau::freeze(f.globals.globalTypes);
 
 
         return *frontend;
     }
     ScopedFastFlag sff_DebugLuauUserDefinedClasses{FFlag::DebugLuauUserDefinedClasses, true};
+    ScopedFastFlag sff_LuauAllowGlobalDeclarationToBeCalledClass{FFlag::LuauAllowGlobalDeclarationToBeCalledClass, true};
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 };
 
@@ -73,7 +92,7 @@ class Point
     function zero()
         return Point { x = 0, y = 0 }
     end
-end        
+end
 
 local p1 = Point { x = 1, y = 2 }
 local p2 = Point { x = 1, y = 2 }
@@ -90,7 +109,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "Box_Point_no_eq")
 class Point
     public x
     public y
-end        
+end
 
 
 class Box
@@ -139,7 +158,7 @@ class Point
     public y
 
     function magnitude(self)
-        return math.sqrt(self.x * self.x + self.y * self.y)
+        return sqrt(self.x * self.x + self.y * self.y)
     end
 
     function zero()
@@ -168,6 +187,181 @@ local p = Point
     REQUIRE(cobjmeta);
     auto& cobjMetaProps = cobjmeta->props;
     CHECK(cobjMetaProps.find("__call") != cobjmeta->props.end());
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_unknown_value")
+{
+    ScopedFastFlag sff{FFlag::LuauIntegerType2, true};
+    CheckResult result = check(R"(
+class Point
+    public x
+end
+
+local function f(v: unknown)
+    if class.isinstance(v, Point) then
+        local s = v
+    else
+        local s = v
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Point", toString(requireTypeAtPosition({7, 18})));
+    CHECK_EQ(
+        "((userdata & ~Point) | boolean | buffer | function | integer | number | string | table | thread)?", toString(requireTypeAtPosition({9, 18}))
+    );
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_union_value")
+{
+    CheckResult result = check(R"(
+class Point
+    public x
+end
+
+local function f(v: Point | string)
+    if class.isinstance(v, Point) then
+        local s = v
+    else
+        local s = v
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Point", toString(requireTypeAtPosition({7, 18})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({9, 18})));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "not_isinstance_refines_union")
+{
+    CheckResult result = check(R"(
+class Point
+    public x
+end
+
+local function f(v: Point | string)
+    if not class.isinstance(v, Point) then
+        local s = v
+    else
+        local s = v
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireTypeAtPosition({7, 18})));
+    CHECK_EQ("Point", toString(requireTypeAtPosition({9, 18})));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "not_isinstance_refines_unknown")
+{
+    CheckResult result = check(R"(
+class Point
+    public x
+end
+
+local function f(v: unknown)
+    if not class.isinstance(v, Point) then
+        local s = v
+    else
+        local s = v
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Point", toString(requireTypeAtPosition({9, 18})));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_optional_property")
+{
+    CheckResult result = check(R"(
+class Point
+    public x
+end
+
+local function f(t: { x: Point? })
+    if t.x and class.isinstance(t.x, Point) then
+        local s = t.x
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Point", toString(requireTypeAtPosition({7, 20})));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_property_already_typed")
+{
+    CheckResult result = check(R"(
+class Point
+    public x
+end
+
+local function f(t: { x: Point })
+    if class.isinstance(t.x, Point) then
+        local s = t.x
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Point", toString(requireTypeAtPosition({7, 20})));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class")
+{
+    ScopedFastFlag _[3]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportValueTypecheck, true}};
+
+    fileResolver.source["game/A"] = R"(
+        export class Point
+            public x: number
+        end
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        local A = require(game.A)
+
+        local x : unknown = (A.Point {} ) :: any
+        if class.isinstance(x, A.Point) then
+            local y = x
+        end
+    )";
+    CheckResult modB = getFrontend().check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(modB);
+    CHECK_EQ("Point", toString(requireTypeAtPosition("game/B", {5, 22})));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class_but_not_a_class")
+{
+    ScopedFastFlag _[3]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportValueTypecheck, true}};
+
+    fileResolver.source["game/A"] = R"(
+        export class Point
+            public x: number
+        end
+
+        export const notAPoint = nil
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        local A = require(game.A)
+
+        local x : unknown = (A.Point {} ) :: any
+        if class.isinstance(x, A.notAPoint) then
+            local y = x
+        end
+    )";
+    CheckResult modA = getFrontend().check("game/A");
+    CheckResult modB = getFrontend().check("game/B");
+    LUAU_REQUIRE_ERROR_COUNT(1, modB);
+    // Theres an unknown property on A.foo, but
+    LUAU_REQUIRE_ERROR(modB, TypeMismatch);
+    auto err = get<TypeMismatch>(modB.errors[0]);
+    CHECK_EQ("class", toString(err->wantedType));
+    CHECK_EQ("nil", toString(err->givenType));
 }
 
 TEST_SUITE_END();
