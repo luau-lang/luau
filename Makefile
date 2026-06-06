@@ -323,7 +323,7 @@ endif
 
 $(BUILD)/lcommit.cpp.o: VM/src/lcommit.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) $< $(CXXFLAGS) $(LCOMMITFLAGS) -c -MMD -MP -o $@
+	$(CXX) $< $(CXXFLAGS) $(LCOMMITFLAGS) CXXFLAGS+=-std=c++11 -IVM/include -c -MMD -MP -o $@
 
 # object file targets
 $(BUILD)/%.cpp.o: %.cpp
