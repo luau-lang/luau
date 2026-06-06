@@ -315,22 +315,22 @@ LCOMMITFLAGS=
 GIT_COMMIT_HASH:=$(shell git rev-parse HEAD)
 
 ifeq ($(.SHELLSTATUS),0)
-	LCOMMITFLAGS+=-DLCOMMIT_CPP_COMMIT_HASH=\"$(GIT_COMMIT_HASH)\"
-	$(info The Git commit hash is $(GIT_COMMIT_HASH))
+    LCOMMITFLAGS+=-DLCOMMIT_CPP_COMMIT_HASH=\"$(GIT_COMMIT_HASH)\"
+    $(info The Git commit hash is $(GIT_COMMIT_HASH))
 else
-	$(warning Unable to detect the current Luau Git commit hash.)
+    $(warning Unable to detect the current Luau Git commit hash.)
 endif
 
 GIT_COMMIT_TAG:=$(shell git describe --tags)
 
 ifeq ($(.SHELLSTATUS),0)
-	LCOMMITFLAGS+=-DLCOMMIT_CPP_COMMIT_TAG=\"$(GIT_COMMIT_TAG)\"
-	$(info The Git commit tag is $(GIT_COMMIT_TAG))
+    LCOMMITFLAGS+=-DLCOMMIT_CPP_COMMIT_TAG=\"$(GIT_COMMIT_TAG)\"
+    $(info The Git commit tag is $(GIT_COMMIT_TAG))
 else
-	$(warning Unable to detect the current Luau Git commit tag.)
+    $(warning Unable to detect the current Luau Git commit tag.)
 endif
 
-$(BUILD)/lcommit.cpp.o lcommit.cpp
+$(BUILD)/lcommit.cpp.o: lcommit.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $< $(CXXFLAGS) $(LCOMMITFLAGS) -c -MMD -MP -o $@
 
