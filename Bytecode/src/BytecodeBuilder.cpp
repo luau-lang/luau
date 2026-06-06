@@ -416,8 +416,8 @@ int32_t BytecodeBuilder::addConstantClosure(uint32_t fid)
 uint32_t BytecodeBuilder::addFbSlot(LuauFeedbackType t)
 {
     LUAU_ASSERT(t == LuauFeedbackType::LFT_CALLTARGET);
-    fbSlots.push_back(getInstructionCount());
-    return fbSlots.size() - 1;
+    fbSlots.push_back(uint32_t(getInstructionCount()));
+    return uint32_t(fbSlots.size() - 1);
 }
 
 int16_t BytecodeBuilder::addChildFunction(uint32_t fid)
@@ -1759,7 +1759,7 @@ void BytecodeBuilder::validateInstructions() const
             VCONST(LUAU_INSN_AUX_KV16(insns[i + 1]), String);
             LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALL);
             break;
-        
+
         case LOP_CMPPROTO:
             VREG(LUAU_INSN_A(insn));
             VJUMP(LUAU_INSN_D(insn));
@@ -2521,7 +2521,7 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         result.append("]\n");
         code++;
         break;
-    
+
     case LOP_CMPPROTO:
         formatAppend(result, "CMPPROTO R%d #%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
         break;

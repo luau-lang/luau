@@ -446,6 +446,17 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
                 props[exprLocal->local->name.value].location = exprLocal->local->location;
             }
         }
+        else if (FFlag::DebugLuauUserDefinedClasses)
+        {
+            if (AstStatClass* classStat = statement->as<AstStatClass>())
+            {
+                if (!classStat->exported)
+                    continue;
+
+                props[classStat->name->name.value] = Property::readonly(lookupExportedBindingType(classStat->name));
+                props[classStat->name->name.value].location = classStat->name->location;
+            }
+        }
     }
 
     if (props.empty())

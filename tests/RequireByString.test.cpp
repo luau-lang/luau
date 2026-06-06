@@ -25,6 +25,8 @@
 
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauConst2)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 
 #if __APPLE__
 #include <TargetConditionals.h>
@@ -1213,6 +1215,24 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportTrap")
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_trap";
     runProtectedRequire(path);
     assertOutputContainsAll({"true"});
+}
+
+TEST_CASE("RequireExportClass")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauConst2, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauUserDefinedClassesRuntime, true}
+    };
+
+    // we create a new fixture so the new lua_State has the class library
+    ReplWithPathFixture fixture;
+
+    std::string path =
+        fixture.getLuauDirectory(ReplWithPathFixture::PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_class";
+    fixture.runProtectedRequire(path);
+    fixture.assertOutputContainsAll({"true"});
 }
 
 TEST_SUITE_END();

@@ -20,7 +20,6 @@ LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
 LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
-LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
@@ -5717,7 +5716,7 @@ return {
 
 TEST_CASE_FIXTURE(Fixture, "export_value_parse_failures")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}, {FFlag::DebugLuauUserDefinedClasses, true}};
 
     auto expectParseError = [&](const std::string& source)
     {
@@ -5754,25 +5753,44 @@ export local foo = 2
     )");
     CHECK_NE(duplicateExport.errors.front().getMessage().find("foo"), std::string::npos);
 
-    auto expectExportReturnConflict = [&](const std::string& source)
-    {
-        ParseResult result = expectParseError(source);
-        const std::string& message = result.errors.front().getMessage();
-        CHECK_NE(message.find("export"), std::string::npos);
-        CHECK_NE(message.find("return"), std::string::npos);
-    };
-
-    expectExportReturnConflict(R"(
+    matchParseError(
+        R"(
 export local answer = 42
 return {answer = answer}
-    )");
-    expectExportReturnConflict(R"(
+    )",
+        "Exporting values is not compatible with top-level return (export/return conflict)"
+    );
+
+    matchParseError(
+        R"(
 if skip then
     return
 end
 
 export local answer = 42
-    )");
+    )",
+        "Exporting values is not compatible with top-level return (export/return conflict)"
+    );
+
+    matchParseError(
+        R"(
+export class Player
+    public health: number
+    
+    function setHealth(self, health: number)
+        self.health = health
+        return self
+    end
+
+    function getHealth(self): number
+        return self.health
+    end
+end
+
+return Player {health = 100}
+    )",
+        "Exporting values is not compatible with top-level return (export/return conflict)"
+    );
 
     for (const std::string source : {
              R"(
@@ -5840,7 +5858,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "extern_read_write_attributes")
 {
-    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExternReadWriteAttributes, true}};
+    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     ParseResult result = tryParse(R"(
         declare extern type Foo with
