@@ -321,7 +321,7 @@ else
     $(warning Unable to detect the current Luau Git commit tag.)
 endif
 
-$(BUILD)/lcommit.cpp.o: lcommit.cpp
+$(BUILD)/lcommit.cpp.o: VM/src/lcommit.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $< $(CXXFLAGS) $(LCOMMITFLAGS) -c -MMD -MP -o $@
 
