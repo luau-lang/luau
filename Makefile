@@ -38,7 +38,7 @@ CODEGEN_SOURCES=$(wildcard CodeGen/src/*.cpp)
 CODEGEN_OBJECTS=$(CODEGEN_SOURCES:%=$(BUILD)/%.o)
 CODEGEN_TARGET=$(BUILD)/libluaucodegen.a
 
-VM_SOURCES=$(wildcard VM/src/*.cpp)
+VM_SOURCES=$(filter-out VM/src/lcommit.cpp, $(wildcard VM/src/*.cpp))
 VM_OBJECTS=$(VM_SOURCES:%=$(BUILD)/%.o)
 VM_TARGET=$(BUILD)/libluauvm.a
 
@@ -309,6 +309,30 @@ $(BUILD)/%.cpp.o: %.cpp
 $(BUILD)/%.c.o: %.c
 	@mkdir -p $(dir $@)
 	$(CXX) -x c $< $(CXXFLAGS) -c -MMD -MP -o $@
+
+# Git commit hash and tag
+LCOMMITFLAGS=
+GIT_COMMIT_HASH:=$(shell git rev-parse HEAD)
+
+ifeq ($(.SHELLSTATUS),0)
+	LCOMMITFLAGS+=-DLCOMMIT_CPP_COMMIT_HASH=\"$(GIT_COMMIT_HASH)\"
+	$(info The Git commit hash is $(GIT_COMMIT_HASH))
+else
+	$(warning Unable to detect the current Luau Git commit hash.)
+endif
+
+GIT_COMMIT_TAG:=$(shell git describe --tags)
+
+ifeq ($(.SHELLSTATUS),0)
+	LCOMMITFLAGS+=-DLCOMMIT_CPP_COMMIT_TAG=\"$(GIT_COMMIT_TAG)\"
+	$(info The Git commit tag is $(GIT_COMMIT_TAG))
+else
+	$(warning Unable to detect the current Luau Git commit tag.)
+endif
+
+$(BUILD)/lcommit.cpp.o lcommit.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $< $(CXXFLAGS) $(LCOMMITFLAGS) -c -MMD -MP -o $@
 
 # protobuf fuzzer setup
 fuzz/luau.pb.cpp: fuzz/luau.proto $(MUTATOR_LIBS)
