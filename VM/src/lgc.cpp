@@ -15,7 +15,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauUdataDirectAccess5)
+LUAU_FASTFLAG(LuauUdataDirectAccess6)
 LUAU_FASTFLAG(LuauDirectFieldGet)
 
 /*
@@ -813,7 +813,7 @@ static void markroot(lua_State* L)
     markobject(g, g->mainthread->gt);
     markvalue(g, registry(L));
 
-    if (FFlag::LuauUdataDirectAccess5)
+    if (FFlag::LuauUdataDirectAccess6)
     {
         for (int i = 0; i < UTAG_INTERNAL_LIMIT; i++)
         {

@@ -16,7 +16,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauUdataDirectAccess5)
+LUAU_FASTFLAGVARIABLE(LuauUdataDirectAccess6)
 LUAU_FASTFLAG(LuauCallFeedback)
 
 template<typename T>
@@ -618,7 +618,7 @@ static int loadsafe(
             }
         }
 
-        if (FFlag::LuauUdataDirectAccess5)
+        if (FFlag::LuauUdataDirectAccess6)
         {
             for (Instruction* instruction = p->code; instruction < p->code + p->sizecode;)
             {

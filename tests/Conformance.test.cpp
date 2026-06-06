@@ -53,7 +53,7 @@ LUAU_FASTFLAG(LuauResumeRestoreCcalls)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauUdataDirectAccess5)
+LUAU_FASTFLAG(LuauUdataDirectAccess6)
 LUAU_FASTFLAG(LuauCodegenBufferInteger)
 LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
 LUAU_FASTFLAG(LuauYieldIter2)
@@ -299,8 +299,9 @@ static StateRef runConformance(
     luaL_register(L, nullptr, funcs.data());
     lua_pop(L, 1);
 
-    // In some configurations we have a larger C stack consumption which trips some conformance tests
-#if defined(LUAU_ENABLE_ASAN) || defined(_NOOPT) || defined(_DEBUG)
+    // In some configurations we have a larger C stack consumption which trips some conformance tests.
+    // On Android, process memory limits are tight enough that deep-recursion stress tests cause OOM kills.
+#if defined(LUAU_ENABLE_ASAN) || defined(_NOOPT) || defined(_DEBUG) || defined(__ANDROID__)
     lua_pushboolean(L, true);
     lua_setglobal(L, "limitedstack");
 #endif
@@ -558,6 +559,16 @@ static int lua_vec2_clone(lua_State* L, Vec2* self)
     return 1;
 }
 
+static int lua_vec2_reenter(lua_State* L, Vec2* self)
+{
+    lua_getglobal(L, "reenterCallback");
+    REQUIRE(lua_isfunction(L, -1));
+    lua_pcall(L, 0, 0, 0);
+
+    lua_pushnumber(L, self->x + self->y);
+    return 1;
+}
+
 static int lua_vec2_index(lua_State* L)
 {
     Vec2* v = lua_vec2_get(L, 1);
@@ -631,6 +642,9 @@ static int lua_vec2_namecall(lua_State* L)
 
         if (strcmp(str, "Clone") == 0)
             return lua_vec2_clone(L, self);
+
+        if (strcmp(str, "Reenter") == 0)
+            return lua_vec2_reenter(L, self);
     }
 
     luaL_error(L, "%s is not a valid method of vector", luaL_checkstring(L, 1));
@@ -913,6 +927,7 @@ enum class DirectSlot : uint16_t
     Dot,
     Min,
     Clone,
+    Reenter,
     Pos,
     Normal,
     UV,
@@ -927,6 +942,7 @@ const std::unordered_map<std::string, DirectSlot> nameToDirectSlot = {
     {"Dot", DirectSlot::Dot},
     {"Min", DirectSlot::Min},
     {"Clone", DirectSlot::Clone},
+    {"Reenter", DirectSlot::Reenter},
     {"pos", DirectSlot::Pos},
     {"normal", DirectSlot::Normal},
     {"uv", DirectSlot::UV},
@@ -1028,6 +1044,8 @@ static int vec2DirectNamecall(lua_State* L, void* data, int atom, uint16_t* cach
         return lua_vec2_min(L, self);
     case DirectSlot::Clone:
         return lua_vec2_clone(L, self);
+    case DirectSlot::Reenter:
+        return lua_vec2_reenter(L, self);
     default:
         luaL_error(L, "%s is not a valid method of vec2", lua_namecallatom(L, nullptr));
     }
@@ -4082,7 +4100,7 @@ TEST_CASE("NativeUserdata")
 
 TEST_CASE("UserdataDirectAccess")
 {
-    ScopedFastFlag sff{FFlag::LuauUdataDirectAccess5, true};
+    ScopedFastFlag sff{FFlag::LuauUdataDirectAccess6, true};
 
     // Reset global state
     nameToAtom.clear();

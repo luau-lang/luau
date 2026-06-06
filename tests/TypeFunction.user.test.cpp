@@ -14,6 +14,10 @@ LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauTypeFunctionRobustness)
+LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2959,6 +2963,250 @@ type bar = identity<foo>
 
     REQUIRE(ftv->argNames[1].has_value());
     CHECK(ftv->argNames[1]->name == "bar");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_serialize_iteration_limit_null_deref")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+    ScopedFastInt luauTypeFunctionSerdeIterationLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
+
+    CheckResult result = check(R"(
+        type function pass(arg)
+            return arg
+        end
+
+        type Complex = {
+            a: number,
+            b: string,
+            c: boolean,
+            d: nil,
+            e: buffer,
+            f: thread,
+            g: (number, string) -> (boolean, nil),
+        }
+
+        local function ok(idx: pass<Complex>): Complex return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK("Complexity limit reached when passing a type to a type function" == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_alias_call_serialize_null_deref")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+    ScopedFastInt luauTypeFunctionSerdeIterationLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
+
+    CheckResult result = check(R"(
+        type Big<T> = {
+            a: T,
+            b: string,
+            c: boolean,
+            d: nil,
+            e: buffer,
+            f: thread,
+            g: (T, string) -> (boolean, nil),
+        }
+
+        type function apply(arg)
+            return Big(arg)
+        end
+
+        local function ok(idx: apply<number>): Big<number> return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(
+        "'apply' type function errored at runtime: [string \"apply\"]:13: Complexity limit reached when passing a type to a type alias" ==
+        toString(result.errors[0])
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_env_alias_serialize_null_deref")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+    ScopedFastInt luauTypeFunctionSerdeIterationLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
+
+    CheckResult result = check(R"(
+        type Alias = {
+            a: number,
+            b: string,
+            c: boolean,
+            d: nil,
+            e: buffer,
+            f: thread,
+            g: (number, string) -> (boolean, nil),
+        }
+
+        type function use_alias()
+            return Alias
+        end
+
+        local function ok(idx: use_alias<>): Alias return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK("'use_alias' type function: returned a non-type value" == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_deep_copy_iteration_limit_null_deref")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+    ScopedFastInt serdeLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
+
+    CheckResult result = check(R"(
+        type function copy_complex(arg)
+            local t = types.newtable()
+            t:setproperty(types.singleton("a"), types.number)
+            t:setproperty(types.singleton("b"), types.string)
+            t:setproperty(types.singleton("c"), types.boolean)
+            t:setproperty(types.singleton("d"), types.buffer)
+            t:setproperty(types.singleton("e"), types.thread)
+            t:setproperty(types.singleton("f"), types.newtable())
+            t:setproperty(types.singleton("g"), types.newfunction())
+            local c = types.copy(t)
+            return c
+        end
+
+        local function ok(idx: copy_complex<number>): number return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(
+        "'copy_complex' type function errored at runtime: [string \"copy_complex\"]:11: types.copy: complexity limit reached during type copy" ==
+        toString(result.errors[0])
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_areequal_stack_overflow_on_deep_types")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+
+    CheckResult result = check(R"(
+        type function deep_eq()
+            local depth = 50000
+            local function build()
+                local t = types.newtable()
+                for i = 1, depth do
+                    local outer = types.newtable()
+                    outer:setproperty(types.singleton("x"), t)
+                    t = outer
+                end
+                return t
+            end
+            local a = build()
+            local b = build()
+            if a == b then
+                return types.boolean
+            end
+            return types.string
+        end
+
+        local x: deep_eq<> = true
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK("'deep_eq' type function errored at runtime: Internal recursion counter limit exceeded in areEqual" == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setmetatable_wrong_error_tag")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+
+    CheckResult result = check(R"(
+        type function foo()
+            local t = types.newtable()
+            t:setmetatable(types.number)
+            return t
+        end
+
+        local x: foo<> = nil
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(
+        "'foo' type function errored at runtime: [string \"foo\"]:4: type.setmetatable: expected the argument to be a table, but got number "
+        "instead" == toString(result.errors[0])
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_cloner_missing_integer_crashes_copy")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
+
+    CheckResult result = check(R"(
+        type function copy_int(arg)
+            local c = types.copy(arg)
+            return c
+        end
+
+        local function ok(idx: copy_int<integer>): integer return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setgenerics_wrong_argcount_check")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+
+    CheckResult result = check(R"(
+        type function extra_arg()
+            local f = types.newfunction()
+            local g = types.generic("T")
+            f:setgenerics({g}, "extra")
+            return f
+        end
+
+        local x: extra_arg<> = nil
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK("Argument count mismatch. Function expects 1 to 2 arguments, but 3 are specified" == toString(result.errors[0]));
+    CHECK(
+        "'extra_arg' type function errored at runtime: [string \"extra_arg\"]:5: type.setgenerics: expected 2 arguments, but got 3" ==
+        toString(result.errors[1])
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauUdtfTypeIsSubtypeOf, true};
+
+    CheckResult results = check(R"(
+        type function checksubtype(a, b)
+            if not a:issubtypeof(b) then
+                error("Not a subtype!")
+            end
+            return a
+        end
+
+        local x: checksubtype<nil, nil>                          -- S
+        local y: checksubtype<nil, string?>                      -- S
+        local z: checksubtype<"Hello", string>                   -- S
+        local w: checksubtype<string | vector | number, number>  -- F
+        local a: checksubtype<boolean, number>                   -- F
+        local b: checksubtype<false, nil>                        -- F
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, results);
+
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[0]));
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[1]));
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[2]));
+
+    CHECK_EQ(results.errors[0].location.begin.line, 11);
+    CHECK_EQ(results.errors[1].location.begin.line, 12);
+    CHECK_EQ(results.errors[2].location.begin.line, 13);
 }
 
 TEST_SUITE_END();

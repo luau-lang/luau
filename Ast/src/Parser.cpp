@@ -27,12 +27,12 @@ LUAU_FASTFLAGVARIABLE(LuauConst2)
 // NOTE: this implicitly depends on LuauConst2
 LUAU_FASTFLAGVARIABLE(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
-LUAU_FASTFLAGVARIABLE(LuauExternReadWriteAttributes)
 LUAU_FASTFLAGVARIABLE(LuauConstJustReportErrorForUnderfill)
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAGVARIABLE(LuauCstExprGroup)
 LUAU_FASTFLAGVARIABLE(LuauCstTypeGroup)
+LUAU_FASTFLAGVARIABLE(LuauTableEntriesDontNeedToMatchIndent)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -501,25 +501,28 @@ AstStat* Parser::parseStat()
 
     if (ident == "export")
     {
-	// TODO: update export surface to support classes
-        if (FFlag::DebugLuauUserDefinedClasses && AstName(lexer.current().name) == "class")
+        if (FFlag::LuauExportValueSyntax && FFlag::LuauConst2)
         {
-            nextLexeme();
-            return parseClassStat(start, /*exported*/ true);
-        }
-        else if (FFlag::LuauExportValueSyntax && FFlag::LuauConst2)
-        {
-            if (lexer.current().type == Lexeme::ReservedLocal || lexer.current().type == Lexeme::ReservedFunction ||
-                (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const"))
+            Lexeme current = lexer.current();
+
+            if (current.type == Lexeme::ReservedLocal || current.type == Lexeme::ReservedFunction ||
+                (current.type == Lexeme::Name && AstName(current.name) == "const") ||
+                ((FFlag::DebugLuauUserDefinedClasses && current.type == Lexeme::Name) && AstName(current.name) == "class"))
             {
                 return parseExportValue(expr->location, expr->location.begin, AstArray<AstAttr*>({nullptr, 0}));
             }
-            else if (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "type")
+            else if (current.type == Lexeme::Name && AstName(current.name) == "type")
             {
-                Position typeKeywordPosition = lexer.current().location.begin;
+                Position typeKeywordPosition = current.location.begin;
                 nextLexeme();
                 return parseTypeAlias(expr->location, /* exported= */ true, typeKeywordPosition);
             }
+        }
+        // TODO: remove with LuauExportValueSyntax
+        else if (FFlag::DebugLuauUserDefinedClasses && AstName(lexer.current().name) == "class")
+        {
+            nextLexeme();
+            return parseClassStat(start, /*exported*/ true);
         }
         else
         {
@@ -1816,10 +1819,9 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
     // global variable declaration whose name is `class`, not as a malformed class declaration. This allows
     // us to support a global table like string/math/bit32 called `class`. CLI-203833 tracks the work to actually
     // remove support for `declare class X [extends Y]` syntax.
-    else if (
-        (AstName(lexer.current().name) == "class" && (FFlag::LuauAllowGlobalDeclarationToBeCalledClass ? lexer.lookahead().type != ':' : true)) ||
-        AstName(lexer.current().name) == "extern"
-    )
+    else if ((AstName(lexer.current().name) == "class" &&
+              (FFlag::LuauAllowGlobalDeclarationToBeCalledClass ? lexer.lookahead().type != ':' : true)) ||
+             AstName(lexer.current().name) == "extern")
     {
         bool foundExtern = false;
         if (AstName(lexer.current().name) == "extern")
@@ -1934,25 +1936,22 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
             {
                 AstTableAccess access = AstTableAccess::ReadWrite;
 
-                if (FFlag::LuauExternReadWriteAttributes)
+                if (lexer.current().type == Lexeme::Name && lexer.lookahead().type != ':')
                 {
-                    if (lexer.current().type == Lexeme::Name && lexer.lookahead().type != ':')
+                    if (AstName(lexer.current().name) == "read")
                     {
-                        if (AstName(lexer.current().name) == "read")
-                        {
-                            access = AstTableAccess::Read;
-                            lexer.next();
-                        }
-                        else if (AstName(lexer.current().name) == "write")
-                        {
-                            access = AstTableAccess::Write;
-                            lexer.next();
-                        }
-                        else
-                        {
-                            report(lexer.current().location, "Expected blank or 'read' or 'write' attribute, got '%s'", lexer.current().name);
-                            lexer.next();
-                        }
+                        access = AstTableAccess::Read;
+                        lexer.next();
+                    }
+                    else if (AstName(lexer.current().name) == "write")
+                    {
+                        access = AstTableAccess::Write;
+                        lexer.next();
+                    }
+                    else
+                    {
+                        report(lexer.current().location, "Expected blank or 'read' or 'write' attribute, got '%s'", lexer.current().name);
+                        lexer.next();
                     }
                 }
 
@@ -2060,7 +2059,7 @@ AstStat* Parser::parseExportValue(const Location& start, const Position keywordP
         return true;
     };
 
-    auto exportLocalStat = [&](AstStat* stat) -> AstStat*
+    auto exportLocalStat = [&](AstStat* stat, const Position& keywordPosition) -> AstStat*
     {
         if (AstStatLocal* localStat = stat->as<AstStatLocal>())
         {
@@ -2072,6 +2071,14 @@ AstStat* Parser::parseExportValue(const Location& start, const Position keywordP
                     return reportStatError(local->location, {}, copy<AstStat*>({stat}), "Duplicate exported identifier '%s'", local->name.value);
 
                 local->isExported = true;
+            }
+
+            if (options.storeCstData)
+            {
+                // if storeCstData is set, then when we parsed the local the cst data should be stored
+                CstStatLocal* cstStatLocal = cstNodeMap[stat]->as<CstStatLocal>();
+                LUAU_ASSERT(cstStatLocal);
+                cstStatLocal->declarationKeywordPosition = keywordPosition;
             }
         }
         else
@@ -2091,14 +2098,20 @@ AstStat* Parser::parseExportValue(const Location& start, const Position keywordP
 
     if (lexer.current().type == Lexeme::ReservedLocal)
     {
+        Position localKeywordPosition = lexer.current().location.begin;
+
         if (lexer.lookahead().type == Lexeme::ReservedFunction)
             return reportStatError(start, {}, {}, "'export' must be followed by an identifier or 'function'; try removing 'local'");
 
-        return exportLocalStat(parseLocal(start, keywordPosition, {nullptr, 0}, false));
+        return exportLocalStat(parseLocal(start, keywordPosition, {nullptr, 0}, false), localKeywordPosition);
     }
     else if (lexer.current().type == Lexeme::ReservedFunction)
     {
         auto funcStat = parseLocal(start, keywordPosition, attributes, true);
+        if (!funcStat->is<AstStatLocalFunction>())
+            // parseLocal returned a parse error
+            return funcStat;
+
         auto func = funcStat->as<AstStatLocalFunction>();
 
         if (!checkDuplicateExport(func->name->name, func->name->location))
@@ -2118,7 +2131,22 @@ AstStat* Parser::parseExportValue(const Location& start, const Position keywordP
         if (lexer.current().type == Lexeme::ReservedFunction)
             return reportStatError(start, {}, {}, "'export' must be followed by an identifier or 'function'");
 
-        return exportLocalStat(parseLocal(start, constKeywordPosition, {nullptr, 0}, true));
+        return exportLocalStat(parseLocal(start, constKeywordPosition, {nullptr, 0}, true), constKeywordPosition);
+    }
+    else if (FFlag::DebugLuauUserDefinedClasses && lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "class")
+    {
+        nextLexeme();
+        auto stat = parseClassStat(start, /*exported*/ true);
+        if (auto classStat = stat->as<AstStatClass>())
+        {
+            if (!checkDuplicateExport(classStat->name->name, classStat->name->location))
+                return reportStatError(
+                    classStat->name->location, {}, copy<AstStat*>({classStat}), "Duplicate exported class '%s'", classStat->name->name.value
+                );
+
+            classStat->name->isExported = true;
+        }
+        return stat;
     }
 
     return reportStatError(start, {}, {}, "'export' must be followed by an identifier or 'function'");
@@ -3486,9 +3514,8 @@ std::optional<AstExprBinary::Op> Parser::checkBinaryConfusables(const BinaryOpPr
         report(Location(start, next.location), "Unexpected '||'; did you mean 'or'?");
         return AstExprBinary::Or;
     }
-    else if (
-        curr.type == '!' && next.type == '=' && curr.location.end == next.location.begin && binaryPriority[AstExprBinary::CompareNe].left > limit
-    )
+    else if (curr.type == '!' && next.type == '=' && curr.location.end == next.location.begin &&
+             binaryPriority[AstExprBinary::CompareNe].left > limit)
     {
         nextLexeme();
         report(Location(start, next.location), "Unexpected '!='; did you mean '~='?");
@@ -3948,10 +3975,8 @@ AstExpr* Parser::parseSimpleExpr()
     {
         return parseNumber();
     }
-    else if (
-        lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString ||
-        lexer.current().type == Lexeme::InterpStringSimple
-    )
+    else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString ||
+             lexer.current().type == Lexeme::InterpStringSimple)
     {
         return parseString();
     }
@@ -4151,11 +4176,13 @@ AstExpr* Parser::parseTableConstructor()
 
     MatchLexeme matchBrace = lexer.current();
     expectAndConsume('{', "table literal");
-    unsigned lastElementIndent = 0;
+    // Clip with LuauTableEntriesDontNeedToMatchIndent
+    unsigned lastElementIndent_DEPRECATED = 0;
 
     while (lexer.current().type != '}')
     {
-        lastElementIndent = lexer.current().location.begin.column;
+        if (!FFlag::LuauTableEntriesDontNeedToMatchIndent)
+            lastElementIndent_DEPRECATED = lexer.current().location.begin.column;
 
         if (lexer.current().type == '[')
         {
@@ -4238,7 +4265,8 @@ AstExpr* Parser::parseTableConstructor()
         {
             nextLexeme();
         }
-        else if ((lexer.current().type == '[' || lexer.current().type == Lexeme::Name) && lexer.current().location.begin.column == lastElementIndent)
+        else if ((lexer.current().type == '[' || lexer.current().type == Lexeme::Name) &&
+                 (FFlag::LuauTableEntriesDontNeedToMatchIndent ? true : lexer.current().location.begin.column == lastElementIndent_DEPRECATED))
         {
             report(lexer.current().location, "Expected ',' after table constructor element");
         }

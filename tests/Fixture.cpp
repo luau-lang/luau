@@ -504,6 +504,15 @@ std::optional<TypeId> Fixture::findTypeAtPosition(Position position)
     return Luau::findTypeAtPosition(*module, *sourceModule, position);
 }
 
+std::optional<TypeId> Fixture::findTypeAtPosition(const ModuleName& moduleName, Position position)
+{
+    ModulePtr module = getFrontend().moduleResolver.getModule(moduleName);
+    SourceModule* sourceModule = getFrontend().getSourceModule(moduleName);
+    REQUIRE_MESSAGE(module, "findTypeAtPosition: No module \"" << moduleName << "\"");
+    REQUIRE_MESSAGE(sourceModule, "findTypeAtPosition: No source module \"" << moduleName << "\"");
+    return Luau::findTypeAtPosition(*module, *sourceModule, position);
+}
+
 std::optional<TypeId> Fixture::findExpectedTypeAtPosition(Position position)
 {
     ModulePtr module = getMainModule();
@@ -515,6 +524,13 @@ TypeId Fixture::requireTypeAtPosition(Position position)
 {
     auto ty = findTypeAtPosition(position);
     REQUIRE_MESSAGE(ty, "requireTypeAtPosition: No type at position " << position);
+    return *ty;
+}
+
+TypeId Fixture::requireTypeAtPosition(const ModuleName& moduleName, Position position)
+{
+    auto ty = findTypeAtPosition(moduleName, position);
+    REQUIRE_MESSAGE(ty, "requireTypeAtPosition: No type at position " << position << " in module \"" << moduleName << "\"");
     return *ty;
 }
 
