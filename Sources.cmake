@@ -400,6 +400,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/lclasslib.cpp
     VM/src/lvmload.cpp
     VM/src/lvmutils.cpp
+    VM/src/lcommit.cpp
 
     VM/src/lapi.h
     VM/src/lbuffer.h

@@ -666,6 +666,7 @@ static void displayHelp(const char* argv0)
     printf("  --codegen-perf: execute code using native code generation and profile using perf (only on Linux)\n");
     printf("  --program-args,-a: declare start of arguments to be passed to the Luau program\n");
     printf("  --fflags=<flags>: comma-separated list of fast flags to enable/disable (--fflags=true,false,LuauFlag1=true,LuauFlag2=false).\n");
+    printf("  --version: Display version information\n");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)
@@ -762,6 +763,12 @@ int replMain(int argc, char** argv)
         {
             program_args = i + 1;
             break;
+        }
+        else if (strcmp(argv[i], "--version") == 0)
+        {
+            printf("The Luau commit hash is %s\n", luau_getcommithash());
+            printf("The Luau commit tag is %s\n\n", luau_getcommittag());
+            return 0;
         }
         else if (argv[i][0] == '-')
         {

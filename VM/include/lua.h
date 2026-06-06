@@ -529,6 +529,15 @@ typedef struct lua_Callbacks lua_Callbacks;
 
 LUA_API lua_Callbacks* lua_callbacks(lua_State* L);
 
+// Get the hash of the commit used to build this version of Luau.
+// Will be "unknown" if it could not be fetched at build time.
+// e.g.: "8f33df910d790c1321a20028af8d8134fa3e0334"
+LUA_API const char* luau_getcommithash();
+// Get the associated tag of the commit used to build this version of Luau.
+// Will be "unknown" if it could not be fetched at build time.
+// e.g.: "0.724", "696"
+LUA_API const char* luau_getcommittag();
+
 /******************************************************************************
  * Copyright (c) 2019-2023 Roblox Corporation
  * Copyright (C) 1994-2008 Lua.org, PUC-Rio.  All rights reserved.

@@ -323,6 +323,43 @@ if(LUAU_BUILD_WEB)
     target_link_options(Luau.Web PRIVATE -sSINGLE_FILE=1)
 endif()
 
+# Get the full Git commit hash
+execute_process(
+    COMMAND git rev-parse HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_COMMIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE GIT_COMMAND_RESULT
+)
+
+# Check if git command was successful
+if (GIT_COMMAND_RESULT EQUAL 0)
+    set_property(SOURCE VM/src/lcommit.cpp APPEND  PROPERTY COMPILE_DEFINITIONS
+        "LCOMMIT_CPP_COMMIT_HASH=\"${GIT_COMMIT_HASH}\""
+    )
+    message("The Git commit hash is ${GIT_COMMIT_HASH}")
+else()
+    message(WARNING "Unable to detect the current Luau Git commit hash.")
+endif()
+
+# Commit tag (if available)
+execute_process(
+    COMMAND git describe --tags
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_COMMIT_TAG
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE GIT_COMMAND_RESULT
+)
+
+if (GIT_COMMAND_RESULT EQUAL 0)
+    set_property(SOURCE VM/src/lcommit.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+        "LCOMMIT_CPP_COMMIT_TAG=\"${GIT_COMMIT_TAG}\""
+    )
+    message("The Git commit tag is ${GIT_COMMIT_TAG}")
+else()
+    message(WARNING "Unable to detect the current Luau Git commit tag.")
+endif()
+
 # validate dependencies for internal libraries
 foreach(LIB Luau.Ast Luau.Compiler Luau.Config Luau.Analysis Luau.CodeGen Luau.VM)
     if(TARGET ${LIB})
