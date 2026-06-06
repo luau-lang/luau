@@ -535,7 +535,7 @@ LUA_API lua_Callbacks* lua_callbacks(lua_State* L);
 LUA_API const char* luau_getcommithash();
 // Get the associated tag of the commit used to build this version of Luau.
 // Will be "unknown" if it could not be fetched at build time.
-// e.g.: "0.724", "696"
+// e.g.: "0.724", "696", "0.723-4-g1e7463b5"
 LUA_API const char* luau_getcommittag();
 
 /******************************************************************************
