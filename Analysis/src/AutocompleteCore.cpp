@@ -452,7 +452,7 @@ static void autocompleteProps(
     {
         autocompleteProps(module, typeArena, builtinTypes, rootTy, mt->table, indexType, nodes, result, seen);
 
-        if (auto mtable = get<TableType>(follow(mt->metatable)))
+        if (auto mtable = getTableType(follow(mt->metatable)))
             fillMetatableProps(mtable);
     }
     else if (auto i = get<IntersectionType>(ty))
