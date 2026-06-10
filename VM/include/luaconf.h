@@ -22,7 +22,9 @@
 
 // Some functions like floor/ceil have SSE4.1 equivalents but we currently support systems without SSE4.1
 // Note that we only need to do this when SSE4.1 support is not guaranteed by compiler settings, as otherwise compiler will optimize these for us.
-#if (defined(__x86_64__) || defined(_M_X64)) && !defined(__SSE4_1__) && !defined(__AVX__)
+#if defined(__riscv)
+// RISC-V must not inherit host x64 SSE4.1 assumptions during cross-target builds.
+#elif (defined(__x86_64__) || defined(_M_X64)) && !defined(__SSE4_1__) && !defined(__AVX__)
 #if defined(_MSC_VER) && !defined(__clang__)
 #define LUAU_TARGET_SSE41
 #elif defined(__GNUC__) && defined(__has_attribute)
