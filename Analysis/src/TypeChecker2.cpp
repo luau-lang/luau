@@ -43,6 +43,7 @@ LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
 LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
+LUAU_FASTFLAG(LuauTypeNegationSupport)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -2795,6 +2796,8 @@ void TypeChecker2::visit(AstType* ty)
         return visit(t);
     else if (auto t = ty->as<AstTypeGroup>())
         return visit(t->type);
+    else if (auto t = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && t)
+        visit(t->inner);
 }
 
 void TypeChecker2::visit(AstTypeReference* ty)
@@ -2963,6 +2966,11 @@ void TypeChecker2::visit(AstTypeTypeof* ty)
     visit(ty->expr, ValueContext::RValue);
 }
 
+void TypeChecker2::visit(AstTypeNegation* ty)
+{
+    visit(ty->inner);
+}
+
 void TypeChecker2::visit(AstTypeUnion* ty)
 {
     // TODO!
@@ -3073,6 +3081,13 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
             subLeafAsString = "()";
 
         std::string superLeafAsString = toString(superLeaf);
+        if (FFlag::LuauTypeNegationSupport && !reasoning.superPath.components.empty())
+        {
+            // If we don't do this, we get "`number` is not a subtype of `number`" etc in our error messages
+            if (const TypePath::TypeField* tf = get_if<TypePath::TypeField>(&reasoning.superPath.components.back()); tf && *tf == TypePath::TypeField::Negated)
+                superLeafAsString = "~" + superLeafAsString;
+        }
+
         // if the string is empty, it must be an empty type pack
         if (superLeafAsString.empty())
             superLeafAsString = "()";

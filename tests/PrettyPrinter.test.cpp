@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauErrorTolerantPrettyPrinting)
 LUAU_FASTFLAG(LuauCstExprGroup)
 LUAU_FASTFLAG(LuauCstTypeGroup)
 LUAU_FASTFLAG(LuauTableEntriesDontNeedToMatchIndent)
+LUAU_FASTFLAG(LuauTypeNegationSyntax)
 
 using namespace Luau;
 
@@ -2544,6 +2545,14 @@ TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_typeof_type")
     code = "type foo = typeof x";
 
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE("type_negation")
+{
+    ScopedFastFlag sff{FFlag::LuauTypeNegationSyntax, true};
+
+    std::string code = "type T = (~ vector)";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
 }
 
 TEST_SUITE_END();

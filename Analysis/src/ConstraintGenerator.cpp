@@ -47,6 +47,7 @@ LUAU_FASTFLAGVARIABLE(LuauReadOnlyIndexers)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauTidyTypePrototyping)
 LUAU_FASTFLAG(LuauConstraintGraph)
+LUAU_FASTFLAGVARIABLE(LuauTypeNegationSupport)
 
 namespace Luau
 {
@@ -4323,7 +4324,7 @@ TypeId ConstraintGenerator::resolveReferenceType(
     if (alias.has_value())
     {
         // If the alias is not generic, we don't need to set up a blocked type and an instantiation constraint
-        if (alias.has_value() && alias->typeParams.empty() && alias->typePackParams.empty() && !ref->hasParameterList)
+        if (alias->typeParams.empty() && alias->typePackParams.empty() && !ref->hasParameterList)
         {
             result = alias->type;
         }
@@ -4541,7 +4542,6 @@ TypeId ConstraintGenerator::resolveFunctionType(
         ftv.deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
     }
 
-
     // This replicates the behavior of the appropriate FunctionType
     // constructors.
     ftv.generics = std::move(genericTypes);
@@ -4599,6 +4599,30 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
     else if (ty->is<AstTypeOptional>())
     {
         result = builtinTypes->nilType;
+    }
+    else if (AstTypeNegation* nty = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && nty)
+    {
+        TypeId inner = resolveType_(scope, nty->inner, inTypeArguments);
+
+        if (get<TableType>(inner) || get<MetatableType>(inner) || get<FunctionType>(inner) || get<GenericType>(inner))
+        {
+            reportError(nty->location, InvalidNegation{inner});
+            result = builtinTypes->errorType;
+        }
+        else if (!get<ErrorType>(inner)) // avoid excessive cascading
+        {
+            TypeFunctionInstanceType tfit{builtinTypes->typeFunctions->negateFunc, {inner}};
+            TypeId tfty = arena->addType(tfit);
+
+            TypeFun tf{{}, tfty};
+
+            PendingExpansionType pet{tf, {inner}, {}};
+            result = arena->addType(pet);
+
+            addConstraint(scope, ty->location, TypeAliasExpansionConstraint{result});
+        }
+        else
+            result = builtinTypes->errorType;
     }
     else if (auto unionAnnotation = ty->as<AstTypeUnion>())
     {

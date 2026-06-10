@@ -25,6 +25,7 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauCstExprGroup)
 LUAU_FASTFLAG(LuauCstTypeGroup)
+LUAU_FASTFLAG(LuauTypeNegationSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -5886,5 +5887,31 @@ TEST_CASE_FIXTURE(Fixture, "extern_read_write_attributes")
     CHECK_EQ(declaredExternType->props.data[3].access, AstTableAccess::ReadWrite);
 }
 
+TEST_CASE_FIXTURE(Fixture, "type_negation_syntax")
+{
+    ScopedFastFlag sff{FFlag::LuauTypeNegationSyntax, true};
+
+    AstStatBlock* block = parse(R"(
+        type T = ~number
+    )");
+
+    REQUIRE_EQ(1, block->body.size);
+
+    const auto stat1 = block->body.data[0];
+    LUAU_ASSERT(stat1);
+    CHECK_EQ(Position{1, 18}, stat1->location.end);
+
+    AstStatTypeAlias* ta = stat1->as<AstStatTypeAlias>();
+    CHECK(ta != nullptr);
+
+    CHECK(ta->type->is<AstTypeNegation>());
+
+    AstTypeReference* tr = ta->type->as<AstTypeNegation>()->inner->as<AstTypeReference>();
+    CHECK(tr != nullptr);
+
+    CHECK_EQ(tr->name, "number");
+}
+
 // TODO unit tests for various parse errors.
+
 TEST_SUITE_END();

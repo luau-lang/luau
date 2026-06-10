@@ -29,6 +29,7 @@ LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingTablesHasBetterErrorSuppression)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
+LUAU_FASTFLAG(LuauTypeNegationSupport)
 
 namespace Luau
 {
@@ -1772,6 +1773,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
     TypeId negatedTy = follow(superNegation->ty);
 
     SubtypingResult result;
+    bool moved = false;
 
     if (is<NeverType>(negatedTy))
     {
@@ -1803,6 +1805,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
             {
                 NegationType negatedTmp{ty};
                 result.andAlso(isCovariantWith(env, subTy, &negatedTmp, scope));
+                moved = true;
             }
         }
     }
@@ -1820,6 +1823,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
             {
                 NegationType negatedTmp{ty};
                 result.orElse(isCovariantWith(env, subTy, &negatedTmp, scope));
+                moved = true;
             }
         }
     }
@@ -1869,7 +1873,10 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
     else
         result = {false};
 
-    return result.withSuperComponent(TypePath::TypeField::Negated);
+    if (FFlag::LuauTypeNegationSupport && moved)
+        return result;
+    else
+        return result.withSuperComponent(TypePath::TypeField::Negated);
 }
 
 SubtypingResult Subtyping::isCovariantWith(
