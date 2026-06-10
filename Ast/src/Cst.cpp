@@ -3,6 +3,7 @@
 #include "Luau/Cst.h"
 #include "Luau/Common.h"
 
+LUAU_FASTFLAG(LuauCstAttribute)
 LUAU_FASTFLAG(LuauCstExprGroup)
 LUAU_FASTFLAG(LuauCstTypeGroup)
 
@@ -96,6 +97,23 @@ CstExprExplicitTypeInstantiation::CstExprExplicitTypeInstantiation(CstTypeInstan
     : CstNode(CstClassIndex())
     , instantiation(instantiation)
 {
+}
+
+CstAttribute::CstAttribute(
+    Position openBracketPosition,
+    Position namePosition,
+    Position argsOpenParens,
+    AstArray<Position> argsCommaPositions,
+    Position argsCloseParens
+)
+    : CstNode(CstClassIndex())
+    , openBracketPosition(openBracketPosition)
+    , namePosition(namePosition)
+    , argsOpenParens(argsOpenParens)
+    , argsCommaPositions(argsCommaPositions)
+    , argsCloseParens(argsCloseParens)
+{
+    LUAU_ASSERT(FFlag::LuauCstAttribute);
 }
 
 CstStatDo::CstStatDo(Position statsStartPosition, Position endPosition)

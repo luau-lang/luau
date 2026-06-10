@@ -23,6 +23,7 @@ LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
+LUAU_FASTFLAG(LuauCstAttribute)
 LUAU_FASTFLAG(LuauCstExprGroup)
 LUAU_FASTFLAG(LuauCstTypeGroup)
 
@@ -3863,6 +3864,59 @@ TEST_CASE_FIXTURE(Fixture, "type_group_with_cst")
     CHECK_EQ(cstNode->closePosition, Position{1, 24});
 }
 
+TEST_CASE_FIXTURE(Fixture, "bracketed_attributes_with_cst")
+{
+    ScopedFastFlag _{FFlag::LuauCstAttribute, true};
+
+    ParseOptions parseOptions;
+    parseOptions.storeCstData = true;
+
+    ParseResult result = parseEx("@[checked, native()] local function f() end", parseOptions);
+    REQUIRE(result.root);
+
+    REQUIRE_EQ(result.root->body.size, 1);
+    auto localFunction = result.root->body.data[0]->as<AstStatLocalFunction>();
+    REQUIRE(localFunction);
+    REQUIRE_EQ(localFunction->func->attributes.size, 2);
+
+    CHECK_EQ(localFunction->location.begin, Position{0, 0});
+
+    AstAttr* checkedAttribute = localFunction->func->attributes.data[0];
+    CHECK_EQ(checkedAttribute->location.begin, Position{0, 0});
+
+    const auto baseCheckedCstNode = result.cstNodeMap.find(checkedAttribute);
+    REQUIRE(baseCheckedCstNode);
+    const auto checkedCstNode = (*baseCheckedCstNode)->as<CstAttribute>();
+    REQUIRE(checkedCstNode);
+    CHECK_EQ(checkedCstNode->openBracketPosition, Position{0, 0});
+    CHECK_EQ(checkedCstNode->namePosition, Position{0, 2});
+    CHECK_EQ(checkedCstNode->separatorPosition, Position{0, 9});
+    CHECK(!checkedCstNode->closeBracketPosition.hasValue());
+    CHECK(!checkedCstNode->argsOpenParens.hasValue());
+
+    AstAttr* nativeAttribute = localFunction->func->attributes.data[1];
+
+    const auto baseNativeCstNode = result.cstNodeMap.find(nativeAttribute);
+    REQUIRE(baseNativeCstNode);
+    const auto nativeCstNode = (*baseNativeCstNode)->as<CstAttribute>();
+    REQUIRE(nativeCstNode);
+    CHECK(!nativeCstNode->openBracketPosition.hasValue());
+    CHECK_EQ(nativeCstNode->namePosition, Position{0, 11});
+    CHECK_EQ(nativeCstNode->argsOpenParens, Position{0, 17});
+    CHECK_EQ(nativeCstNode->argsCommaPositions.size, 0);
+    CHECK_EQ(nativeCstNode->argsCloseParens, Position{0, 18});
+    CHECK(!nativeCstNode->separatorPosition.hasValue());
+    CHECK_EQ(nativeCstNode->closeBracketPosition, Position{0, 19});
+
+    result = parseEx("@native local function g() end", parseOptions);
+    REQUIRE(result.root);
+    REQUIRE_EQ(result.root->body.size, 1);
+    localFunction = result.root->body.data[0]->as<AstStatLocalFunction>();
+    REQUIRE(localFunction);
+    REQUIRE_EQ(localFunction->func->attributes.size, 1);
+    CHECK(!result.cstNodeMap.find(localFunction->func->attributes.data[0]));
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("ParseErrorRecovery");
@@ -4797,7 +4851,8 @@ end)");
 
     CHECK_EQ(attributes.size, 1);
 
-    checkAttribute(attributes.data[0], AstAttr::Type::Deprecated, Location(Position(1, 2), Position(1, 70)));
+    Location location = FFlag::LuauCstAttribute ? Location(Position(1, 0), Position(1, 70)) : Location(Position(1, 2), Position(1, 70));
+    checkAttribute(attributes.data[0], AstAttr::Type::Deprecated, location);
 }
 
 TEST_CASE_FIXTURE(Fixture, "non_literal_attribute_arguments_is_not_allowed")

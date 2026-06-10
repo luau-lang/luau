@@ -30,6 +30,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(LuauConstJustReportErrorForUnderfill)
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauAllowGlobalDeclarationToBeCalledClass)
+LUAU_FASTFLAGVARIABLE(LuauCstAttribute)
 LUAU_FASTFLAGVARIABLE(LuauCstExprGroup)
 LUAU_FASTFLAGVARIABLE(LuauCstTypeGroup)
 LUAU_FASTFLAGVARIABLE(LuauTableEntriesDontNeedToMatchIndent)
@@ -1015,6 +1016,9 @@ void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
 
         if (lexer.current().type != ']')
         {
+            bool isFirstAttribute = true;
+            CstAttribute* previousCstNode = nullptr;
+
             while (true)
             {
                 Name name = parseName("attribute name");
@@ -1022,11 +1026,25 @@ void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
                 Location nameLoc = name.location;
                 const char* attrName = name.name.value;
 
+                AstAttr* attribute = nullptr;
+
+                Position argsOpenParens = Position::missing();
+                TempVector<Position> argsCommaPositions(scratchPosition);
+                Position argsCloseParens = Position::missing();
+
                 if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString || lexer.current().type == '{' ||
                     lexer.current().type == '(')
                 {
+                    const bool parensForm = lexer.current().type == '(';
 
-                    auto [args, argsLocation, _exprLocation] = parseCallList(nullptr);
+                    auto [args, argsLocation, exprLocation] =
+                        parseCallList(FFlag::LuauCstAttribute && options.storeCstData ? &argsCommaPositions : nullptr);
+
+                    if (FFlag::LuauCstAttribute && options.storeCstData && parensForm)
+                    {
+                        argsOpenParens = exprLocation.begin;
+                        argsCloseParens = exprLocation.end;
+                    }
 
                     for (const AstExpr* arg : args)
                     {
@@ -1036,18 +1054,45 @@ void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
 
                     std::optional<AstAttr::Type> type = validateAttribute(nameLoc, attrName, attributes, args);
 
-                    attributes.push_back(
-                        allocator.alloc<AstAttr>(Location(nameLoc, argsLocation), type.value_or(AstAttr::Type::Unknown), args, AstName(attrName))
-                    );
+                    Location attributeLocation = Location(nameLoc, argsLocation);
+                    if (FFlag::LuauCstAttribute && isFirstAttribute)
+                        attributeLocation = Location(open.location.begin, attributeLocation.end);
+
+                    attribute = allocator.alloc<AstAttr>(attributeLocation, type.value_or(AstAttr::Type::Unknown), args, AstName(attrName));
                 }
                 else
                 {
                     std::optional<AstAttr::Type> type = validateAttribute(nameLoc, attrName, attributes, empty);
-                    attributes.push_back(allocator.alloc<AstAttr>(nameLoc, type.value_or(AstAttr::Type::Unknown), empty, AstName(attrName)));
+
+                    Location attributeLocation = nameLoc;
+                    if (FFlag::LuauCstAttribute && isFirstAttribute)
+                        attributeLocation = Location(open.location.begin, attributeLocation.end);
+
+                    attribute = allocator.alloc<AstAttr>(attributeLocation, type.value_or(AstAttr::Type::Unknown), empty, AstName(attrName));
                 }
+
+                attributes.push_back(attribute);
+
+                if (FFlag::LuauCstAttribute && options.storeCstData)
+                {
+                    CstAttribute* cstNode = allocator.alloc<CstAttribute>(
+                        isFirstAttribute ? open.location.begin : Position::missing(),
+                        nameLoc.begin,
+                        argsOpenParens,
+                        copy(argsCommaPositions),
+                        argsCloseParens
+                    );
+                    cstNodeMap[attribute] = cstNode;
+                    previousCstNode = cstNode;
+                }
+
+                isFirstAttribute = false;
 
                 if (lexer.current().type == ',')
                 {
+                    if (previousCstNode)
+                        previousCstNode->separatorPosition = lexer.current().location.begin;
+
                     nextLexeme();
                 }
                 else
@@ -1055,6 +1100,9 @@ void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
                     break;
                 }
             }
+
+            if (previousCstNode && lexer.current().type == ']')
+                previousCstNode->closeBracketPosition = lexer.current().location.begin;
         }
         else
         {

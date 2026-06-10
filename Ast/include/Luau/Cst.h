@@ -234,6 +234,28 @@ public:
     CstTypeInstantiation instantiation;
 };
 
+class CstAttribute : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstAttribute)
+
+    CstAttribute(
+        Position openBracketPosition,
+        Position namePosition,
+        Position argsOpenParens,
+        AstArray<Position> argsCommaPositions,
+        Position argsCloseParens
+    );
+
+    Position openBracketPosition; // '@[', only on the first attribute of the list
+    Position namePosition;
+    Position argsOpenParens; // '(', only if the arguments are parenthesized
+    AstArray<Position> argsCommaPositions;
+    Position argsCloseParens;                            // ')', only if the arguments are parenthesized
+    Position separatorPosition = Position::missing();    // ',', may be missing for last attribute
+    Position closeBracketPosition = Position::missing(); // ']', only on the last attribute of the list
+};
+
 class CstStatDo : public CstNode
 {
 public:

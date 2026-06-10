@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauExplicitTypeInstantiationSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauErrorTolerantPrettyPrinting)
+LUAU_FASTFLAG(LuauCstAttribute)
 LUAU_FASTFLAG(LuauCstExprGroup)
 LUAU_FASTFLAG(LuauCstTypeGroup)
 LUAU_FASTFLAG(LuauTableEntriesDontNeedToMatchIndent)
@@ -2220,6 +2221,132 @@ TEST_CASE("prettyPrint_function_attributes")
         local function t() end
         )";
         CHECK_EQ(code, prettyPrint(code, {}, true).code);
+    }
+}
+
+TEST_CASE("prettyPrint_bracketed_function_attributes")
+{
+    ScopedFastFlag _{FFlag::LuauCstAttribute, true};
+
+    std::string code = R"(
+        @[native]
+        function foo()
+        end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"(
+        @[native()]
+        function foo()
+        end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"(
+        @[checked, native]
+        local function foo()
+        end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"(
+        @[ checked , native ]
+        function foo()
+        end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"(
+        @[deprecated { use = "bar", reason = "legacy" }]
+        function foo()
+        end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"(
+        local foo = @[native] function() end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"(
+        @native @[checked]
+        function foo:bar()
+        end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"(
+        @[
+            deprecated {
+                use = "bar",
+            },
+            native
+        ]
+        function foo()
+        end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"(
+        @[ native()]
+        function foo()
+        end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"(
+        @[ native   (  )       ]
+        function foo()
+        end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"(
+        @[native,checked]
+        function foo()
+        end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"(
+        @[native] @[checked]
+        function foo()
+        end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    {
+        ScopedFastFlag errorTolerant{FFlag::LuauErrorTolerantPrettyPrinting, true};
+
+        // invalid attribute arguments are parse errors, but still roundtrip
+        code = R"(
+            @[deprecated("a", "b")]
+            function foo()
+            end
+        )";
+        CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+        code = R"(
+            @[deprecated "Very deprecated"]
+            function foo()
+            end
+        )";
+        CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+        code = R"(
+            @[deprecated(
+                "a",
+                "b"
+            )]
+            function foo()
+            end
+        )";
+        CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+
+        // should not crash
+        prettyPrint("@[] function foo() end", {}, true, true);
+        prettyPrint("@[", {}, true, true);
+        prettyPrint("@[native", {}, true, true);
     }
 }
 

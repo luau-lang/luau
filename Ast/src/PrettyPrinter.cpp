@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauConst2)
 
 LUAU_FASTFLAGVARIABLE(LuauErrorTolerantPrettyPrinting)
+LUAU_FASTFLAG(LuauCstAttribute)
 LUAU_FASTFLAG(LuauCstExprGroup)
 LUAU_FASTFLAG(LuauCstTypeGroup)
 
@@ -1600,9 +1601,51 @@ struct Printer
 
     void visualizeAttribute(AstAttr& attribute)
     {
-        advance(attribute.location.begin);
-        writer.symbol("@");
-        writer.identifier(attribute.name.value);
+        if (FFlag::LuauCstAttribute)
+        {
+            if (const auto cstNode = lookupCstNode<CstAttribute>(&attribute))
+            {
+                maybeAdvanceAndWrite(cstNode->openBracketPosition, "@[");
+
+                advance(cstNode->namePosition);
+                writer.identifier(attribute.name.value);
+
+                if (cstNode->argsOpenParens.hasValue())
+                {
+                    advance(cstNode->argsOpenParens);
+                    writer.symbol("(");
+
+                    CommaSeparatorInserter comma(writer, cstNode->argsCommaPositions.begin());
+                    for (const auto& arg : attribute.args)
+                    {
+                        comma();
+                        visualize(*arg);
+                    }
+
+                    maybeAdvanceAndWrite(cstNode->argsCloseParens, ")");
+                }
+                else
+                {
+                    for (const auto& arg : attribute.args)
+                        visualize(*arg);
+                }
+
+                maybeAdvanceAndWrite(cstNode->separatorPosition, ",");
+                maybeAdvanceAndWrite(cstNode->closeBracketPosition, "]");
+            }
+            else
+            {
+                advance(attribute.location.begin);
+                writer.symbol("@");
+                writer.identifier(attribute.name.value);
+            }
+        }
+        else
+        {
+            advance(attribute.location.begin);
+            writer.symbol("@");
+            writer.identifier(attribute.name.value);
+        }
     }
 
     void visualizeTypeAnnotation(AstType& typeAnnotation)
