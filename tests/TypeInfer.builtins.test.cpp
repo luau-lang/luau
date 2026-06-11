@@ -14,6 +14,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauTableFreezeCheckIsSubtype)
 LUAU_FASTFLAG(LuauSilenceDynamicFormatStringErrors)
+LUAU_FASTFLAG(LuauRemoveLoadstringFromBuiltinDefinitions)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -213,7 +214,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_tables_sealed")
 TEST_CASE_FIXTURE(BuiltinsFixture, "lua_51_exported_globals_all_exist")
 {
     // Extracted from lua5.1
-    CheckResult result = check(R"(
+    std::string checkStr = R"(
         local v__G = _G
         local v_string_sub = string.sub
         local v_string_upper = string.upper
@@ -353,7 +354,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lua_51_exported_globals_all_exist")
         local v_gcinfo = gcinfo
         local v_pairs = pairs
         local v_rawget = rawget
-        local v_loadstring = loadstring
+        --local v_loadstring = loadstring
         local v_ipairs = ipairs
         local v__VERSION = _VERSION
         --local v_dofile = dofile
@@ -361,7 +362,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lua_51_exported_globals_all_exist")
         --local v_load = load
         local v_error = error
         --local v_loadfile = loadfile
-    )");
+    )";
+
+    if (!FFlag::LuauRemoveLoadstringFromBuiltinDefinitions)
+        checkStr.append("\nlocal v_loadstring = loadstring");
+
+    CheckResult result = check(checkStr);
 
     dumpErrors(result);
     LUAU_REQUIRE_NO_ERRORS(result);
