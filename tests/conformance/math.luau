@@ -354,6 +354,10 @@ assert(math.round(-3.5) == -4)
 assert(math.round(math.huge) == math.huge)
 assert(math.round(0.49999999999999994) == 0)
 assert(math.round(-0.49999999999999994) == 0)
+-- a zero result keeps the sign of the input; noinline stops the call from being constant folded so the runtime path is exercised
+assert(1 / math.round(noinline(-0.0)) == -math.huge)
+assert(1 / math.round(noinline(-0.4)) == -math.huge)
+assert(1 / math.round(noinline(0.0)) == math.huge)
 
 assert(math.round(noinline(0)) == 0)
 assert(math.round(noinline(0.4)) == 0)
