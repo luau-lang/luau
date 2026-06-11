@@ -395,6 +395,31 @@ TEST_CASE_FIXTURE(CFGFixture, "typeof_guard_emits_type_proposition")
     checkRefine(requireInst<Refine>(elseBlk, 0), "x-2", "x-0", /*sense*/ false, "string", /*isTypeof*/ true);
 }
 
+TEST_CASE_FIXTURE(CFGFixture, "dump_renders_type_guard_as_a_call")
+{
+    // Regression test for a formatting bug in DumpCFG.cpp's dumpRefinement():
+    // a `typeof(x) == "string"` guard must be rendered with call syntax
+    // `typeof(x-0) == "string"`, not as the malformed `x-0 typeof == "string"`.
+    auto cfg = build(R"(
+        local x = nil
+        if typeof(x) == "string" then
+            local y = x
+        end
+    )");
+
+    std::string dump = dumpCFG(*cfg);
+
+    // The well-formed rendering puts the guard name before the variable, as a call.
+    CHECK_MESSAGE(
+        dump.find("typeof(x-0) == \"string\"") != std::string::npos,
+        "dumpCFG produced malformed refinement text:\n",
+        dump
+    );
+
+    // And it must NOT contain the broken juxtaposition where the variable precedes the guard.
+    CHECK(dump.find("x-0 typeof") == std::string::npos);
+}
+
 TEST_CASE_FIXTURE(CFGFixture, "type_guard_inequality_flips_sense")
 {
     auto cfg = build(R"(
