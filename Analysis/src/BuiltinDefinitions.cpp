@@ -30,9 +30,6 @@
  * about a function that takes any number of values, but where each value must have some specific type.
  */
 
-LUAU_FASTFLAGVARIABLE(LuauTableFreezeCheckIsSubtype)
-LUAU_FASTFLAGVARIABLE(LuauSilenceDynamicFormatStringErrors)
-
 namespace Luau
 {
 
@@ -754,19 +751,8 @@ bool MagicFormat::typeCheck(const MagicFunctionTypeCheckContext& context)
             formatString = {stringSingleton->value};
     }
 
-    if (FFlag::LuauSilenceDynamicFormatStringErrors)
-    {
-        if (!formatString)
-            return true;
-    }
-    else
-    {
-        if (!formatString)
-        {
-            context.typechecker->reportError(CannotCheckDynamicStringFormatCalls{}, context.callSite->location);
-            return true;
-        }
-    }
+    if (!formatString)
+        return true;
 
     // CLI-150726: The block below effectively constructs a type pack and then type checks it by going parameter-by-parameter.
     // This does _not_ handle cases like:
@@ -1697,10 +1683,6 @@ static std::optional<TypeId> freezeTable(TypeId inputType, const MagicFunctionCa
         return resultType;
     }
 
-    if (!FFlag::LuauTableFreezeCheckIsSubtype)
-    {
-        context.solver->reportError(TypeMismatch{context.solver->builtinTypes->tableType, inputType}, context.callSite->argLocation);
-    }
     return std::nullopt;
 }
 
@@ -1762,9 +1744,6 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
 // `table` and returns a read-only version of that table).
 bool MagicFreeze::typeCheck(const MagicFunctionTypeCheckContext& ctx)
 {
-    if (!FFlag::LuauTableFreezeCheckIsSubtype)
-        return false;
-
     const auto& [paramTypes, paramTail] = flatten(ctx.arguments);
 
     if (paramTypes.size() < 1 && !paramTail)

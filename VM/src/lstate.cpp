@@ -256,11 +256,8 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     for (i = 0; i < LUA_LUTAG_LIMIT; i++)
         g->lightuserdataname[i] = NULL;
 
-    if (FFlag::LuauDirectFieldGet)
-    {
-        for (i = 0; i < UTAG_INTERNAL_LIMIT; i++)
-            g->udatadirectfields[i] = NULL;
-    }
+    for (i = 0; i < UTAG_INTERNAL_LIMIT; i++)
+        g->udatadirectfields[i] = NULL;
 
     for (i = 0; i < LUA_MEMORY_CATEGORIES; i++)
         g->memcatbytes[i] = 0;

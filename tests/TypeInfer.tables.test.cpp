@@ -25,7 +25,6 @@ LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAG(LuauSubtypingTablesHasBetterErrorSuppression)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
@@ -6956,8 +6955,6 @@ TEST_CASE_FIXTURE(Fixture, "compound_assignment_writes_lhs")
 {
     // the old solver does not support read-only properties.
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag sff{FFlag::LuauLValueCompoundAssignmentVisitLhs, true};
 
     CheckResult result = check(R"(
         type T = {

@@ -86,7 +86,7 @@ class CstExprConstantString : public CstNode
 public:
     LUAU_CST_RTTI(CstExprConstantString)
 
-    enum QuoteStyle
+    enum class QuoteStyle
     {
         QuotedSingle,
         QuotedDouble,
@@ -159,7 +159,7 @@ class CstExprTable : public CstNode
 public:
     LUAU_CST_RTTI(CstExprTable)
 
-    enum Separator
+    enum class Separator
     {
         Comma,
         Semicolon,
@@ -272,8 +272,6 @@ public:
 
     CstStatLocal(AstArray<Position> varsAnnotationColonPositions, AstArray<Position> varsCommaPositions, AstArray<Position> valuesCommaPositions);
 
-    // if the StatLocal is being exported, this is the position of `const` or `local`
-    Position declarationKeywordPosition;
     AstArray<Position> varsAnnotationColonPositions;
     AstArray<Position> varsCommaPositions;
     AstArray<Position> valuesCommaPositions;
@@ -424,7 +422,7 @@ public:
 
     struct Item
     {
-        enum struct Kind
+        enum class Kind
         {
             Indexer,
             Property,

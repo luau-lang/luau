@@ -13,7 +13,6 @@
 #include "ltm.h"
 
 LUAU_FASTFLAG(LuauCodegenInteger2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerFastcall2k)
 
 namespace Luau
 {
@@ -1038,7 +1037,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
         if (protok.tt == LUA_TNUMBER)
             builtinArgs = build.constDouble(protok.value.n);
-        else if (FFlag::LuauCodegenInteger2 && FFlag::LuauCodegenIntegerFastcall2k && protok.tt == LUA_TINTEGER)
+        else if (FFlag::LuauCodegenInteger2 && protok.tt == LUA_TINTEGER)
             builtinArgs = build.constInt64(protok.value.l);
     }
 

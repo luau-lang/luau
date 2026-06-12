@@ -17,6 +17,7 @@
 
 LUAU_FASTFLAG(LuauUdataDirectAccess6)
 LUAU_FASTFLAG(LuauDirectFieldGet)
+LUAU_FASTFLAGVARIABLE(LuauUdataMetatablePinned)
 
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
@@ -801,6 +802,15 @@ static void markmt(global_State* g)
             markobject(g, g->mt[i]);
 }
 
+static void marktaggetmt(global_State* g)
+{
+    for (int i = 0; i < LUA_UTAG_LIMIT; i++)
+    {
+        if (g->udatamt[i])
+            markobject(g, g->udatamt[i]);
+    }
+}
+
 // mark root set
 static void markroot(lua_State* L)
 {
@@ -833,6 +843,10 @@ static void markroot(lua_State* L)
     }
 
     markmt(g);
+
+    if (FFlag::LuauUdataMetatablePinned)
+        marktaggetmt(g);
+
     g->gcstate = GCSpropagate;
 }
 
@@ -913,8 +927,13 @@ static size_t atomic(lua_State* L)
     g->gray = g->weak;
     g->weak = NULL;
     LUAU_ASSERT(!iswhite(obj2gco(g->mainthread)));
+
     markobject(g, L); // mark running thread
     markmt(g);        // mark basic metatables (again)
+
+    if (FFlag::LuauUdataMetatablePinned)
+        marktaggetmt(g); // mark tagged userdata metatables (again)
+
     work += propagateall(g);
 
 #ifdef LUAI_GCMETRICS

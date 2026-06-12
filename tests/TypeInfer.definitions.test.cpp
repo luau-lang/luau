@@ -10,7 +10,6 @@
 using namespace Luau;
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -629,7 +628,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "vector_readonly")
 {
-    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauLValueCompoundAssignmentVisitLhs, true}};
+    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     loadDefinition(R"(
         declare extern type vector with
@@ -660,7 +659,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "extern_writeonly_props")
 {
-    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauLValueCompoundAssignmentVisitLhs, true}};
+    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     loadDefinition(R"(
         declare extern type noread with
@@ -692,7 +691,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "extern_read_write_dual_attribute")
 {
-    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauLValueCompoundAssignmentVisitLhs, true}};
+    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     loadDefinition(R"(
         declare extern type dual_attribute with
