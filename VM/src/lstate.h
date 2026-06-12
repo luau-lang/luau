@@ -59,7 +59,12 @@ typedef struct CallInfo
     StkId base;    // base for this function
     StkId func;    // function index in the stack
     StkId top;     // top for this function
-    const Instruction* savedpc;
+
+    union
+    {
+        const Instruction* savedpc;
+        int errfunc; // For C functions, the error function index in the stack
+    };
 
     int nresults;       // expected number of results from this function
     unsigned int flags; // call frame flags, see LUA_CALLINFO_*

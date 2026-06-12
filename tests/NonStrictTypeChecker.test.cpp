@@ -20,7 +20,6 @@ LUAU_DYNAMIC_FASTINT(LuauConstraintGeneratorRecursionLimit)
 LUAU_FASTINT(LuauNonStrictTypeCheckerRecursionLimit)
 LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(LuauAddRecursionCounterToNonStrictTypeChecker)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAG(LuauTidyTypePrototyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
@@ -462,8 +461,6 @@ end
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "generic_type_instantiation")
 {
-    ScopedFastFlag semantics{FFlag::LuauExplicitTypeInstantiationSupport, true};
-
     CheckResult result = checkNonStrict(R"(
         function array<T>(): {T}
             return {}

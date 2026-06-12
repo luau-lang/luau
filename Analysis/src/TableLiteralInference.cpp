@@ -328,7 +328,7 @@ struct BidirectionalTypePusher
                     //
                     // NOTE: We also do nothing for write properties.
                 }
-                else if (item.kind == AstExprTable::Item::List)
+                else if (item.kind == AstExprTable::Item::Kind::List)
                 {
                     if (expectedTableTy->indexer)
                     {
@@ -336,7 +336,7 @@ struct BidirectionalTypePusher
                         (void)pushType(expectedTableTy->indexer->indexResultType, item.value);
                     }
                 }
-                else if (item.kind == AstExprTable::Item::General)
+                else if (item.kind == AstExprTable::Item::Kind::General)
                 {
 
                     // We have { ..., [blocked] : somePropExpr, ...}

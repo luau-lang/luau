@@ -112,6 +112,11 @@ size_t TypeIds::count(TypeId ty) const
     return (val && *val) ? 1 : 0;
 }
 
+bool TypeIds::contains(TypeId ty) const
+{
+    return 0 != count(ty);
+}
+
 void TypeIds::retain(const TypeIds& tys)
 {
     for (auto it = begin(); it != end();)

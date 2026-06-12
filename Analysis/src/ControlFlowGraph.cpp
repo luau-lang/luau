@@ -411,7 +411,7 @@ std::optional<CFGRefinement::RefinementId> CFGBuilder::resolveCondition(AstExpr*
     }
     else if (auto unop = condition->as<AstExprUnary>())
     {
-        if (unop->op == AstExprUnary::Not)
+        if (unop->op == AstExprUnary::Op::Not)
         {
             if (auto inner = resolveCondition(unop->expr))
                 return arena.negation(*inner);

@@ -627,10 +627,10 @@ struct TypeMapVisitor : AstVisitor
 
         switch (node->op)
         {
-        case AstExprUnary::Not:
+        case AstExprUnary::Op::Not:
             recordResolvedType(node, &builtinTypes.booleanType);
             break;
-        case AstExprUnary::Minus:
+        case AstExprUnary::Op::Minus:
         {
             const AstType** typePtr = resolvedExprs.find(node->expr);
             LuauBytecodeType* bcTypePtr = exprTypes.find(node->expr);
@@ -645,7 +645,7 @@ struct TypeMapVisitor : AstVisitor
 
             break;
         }
-        case AstExprUnary::Len:
+        case AstExprUnary::Op::Len:
             recordResolvedType(node, &builtinTypes.numberType);
             break;
         }

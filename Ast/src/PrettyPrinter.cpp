@@ -196,7 +196,7 @@ struct StringWriter : Writer
 
     void sourceString(std::string_view s, CstExprConstantString::QuoteStyle quoteStyle, unsigned int blockDepth) override
     {
-        if (quoteStyle == CstExprConstantString::QuotedRaw)
+        if (quoteStyle == CstExprConstantString::QuoteStyle::QuotedRaw)
         {
             auto blocks = std::string(blockDepth, '=');
             write('[');
@@ -214,13 +214,13 @@ struct StringWriter : Writer
             char quote = '"';
             switch (quoteStyle)
             {
-            case CstExprConstantString::QuotedDouble:
+            case CstExprConstantString::QuoteStyle::QuotedDouble:
                 quote = '"';
                 break;
-            case CstExprConstantString::QuotedSingle:
+            case CstExprConstantString::QuoteStyle::QuotedSingle:
                 quote = '\'';
                 break;
-            case CstExprConstantString::QuotedInterp:
+            case CstExprConstantString::QuoteStyle::QuotedInterp:
                 quote = '`';
                 break;
             default:
@@ -667,10 +667,10 @@ struct Printer
 
                 switch (item.kind)
                 {
-                case AstExprTable::Item::List:
+                case AstExprTable::Item::Kind::List:
                     break;
 
-                case AstExprTable::Item::Record:
+                case AstExprTable::Item::Kind::Record:
                 {
                     const auto& value = item.key->as<AstExprConstantString>()->value;
 
@@ -686,7 +686,7 @@ struct Printer
                 }
                 break;
 
-                case AstExprTable::Item::General:
+                case AstExprTable::Item::Kind::General:
                 {
                     if (cstItem)
                     {
@@ -719,10 +719,10 @@ struct Printer
 
                 if (cstItem)
                 {
-                    if (cstItem->separator != CstExprTable::Missing)
+                    if (cstItem->separator != CstExprTable::Separator::Missing)
                     {
                         LUAU_ASSERT(cstItem->separatorPosition.hasValue());
-                        maybeAdvanceAndWrite(cstItem->separatorPosition, cstItem->separator == CstExprTable::Comma ? "," : ";", true);
+                        maybeAdvanceAndWrite(cstItem->separatorPosition, cstItem->separator == CstExprTable::Separator::Comma ? "," : ";", true);
                     }
                     cstItem++;
                 }
@@ -744,13 +744,13 @@ struct Printer
 
             switch (a->op)
             {
-            case AstExprUnary::Not:
+            case AstExprUnary::Op::Not:
                 writer.keyword("not");
                 break;
-            case AstExprUnary::Minus:
+            case AstExprUnary::Op::Minus:
                 writer.symbol("-");
                 break;
-            case AstExprUnary::Len:
+            case AstExprUnary::Op::Len:
                 writer.symbol("#");
                 break;
             }
@@ -989,8 +989,8 @@ struct Printer
             {
                 writer.keyword("export");
 
-                if (cstNode)
-                    advance(cstNode->declarationKeywordPosition);
+                if (a->keywordLocation.has_value())
+                    advance(a->keywordLocation->begin);
 
                 writer.keyword(a->isConst ? "const" : "local");
             }
@@ -1747,10 +1747,10 @@ struct Printer
 
                             visualizeTypeAnnotation(*a->indexer->resultType);
 
-                            if (item.separator != CstExprTable::Missing)
+                            if (item.separator != CstExprTable::Separator::Missing)
                             {
                                 LUAU_ASSERT(item.separatorPosition.hasValue());
-                                maybeAdvanceAndWrite(item.separatorPosition, item.separator == CstExprTable::Comma ? "," : ";", true);
+                                maybeAdvanceAndWrite(item.separatorPosition, item.separator == CstExprTable::Separator::Comma ? "," : ";", true);
                             }
                         }
                         else
@@ -1786,10 +1786,10 @@ struct Printer
 
                             visualizeTypeAnnotation(*prop->type);
 
-                            if (item.separator != CstExprTable::Missing)
+                            if (item.separator != CstExprTable::Separator::Missing)
                             {
                                 LUAU_ASSERT(item.separatorPosition.hasValue());
-                                maybeAdvanceAndWrite(item.separatorPosition, item.separator == CstExprTable::Comma ? "," : ";", true);
+                                maybeAdvanceAndWrite(item.separatorPosition, item.separator == CstExprTable::Separator::Comma ? "," : ";", true);
                             }
 
                             ++prop;

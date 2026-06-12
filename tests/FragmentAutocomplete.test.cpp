@@ -1391,7 +1391,7 @@ abc("bar")
     CHECK_EQ(Position{1, 4}, asString->location.begin);
     CHECK_EQ(Position{1, 9}, asString->location.end);
     CHECK_EQ("foo", std::string{asString->value.data});
-    CHECK_EQ(AstExprConstantString::QuotedSimple, asString->quoteStyle);
+    CHECK_EQ(AstExprConstantString::QuoteStyle::QuotedSimple, asString->quoteStyle);
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_multi_line_fragment_override")

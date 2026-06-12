@@ -20,6 +20,7 @@
 LUAU_FASTFLAG(LuauClosureUsageCounter)
 LUAU_FASTFLAG(LuauYieldIter2)
 LUAU_FASTFLAGVARIABLE(LuauResumeRestoreCcalls)
+LUAU_FASTFLAG(LuauCustomYieldablePcalls)
 
 // keep max stack allocation request under 1GB
 #define MAX_STACK_SIZE (int(1024 / sizeof(TValue)) * 1024 * 1024)
@@ -417,12 +418,19 @@ static void resume_continue(lua_State* L)
         {
             LUAU_ASSERT(cl->c.cont);
 
+            // continuation can use non-protected calls again
+            if (FFlag::LuauCustomYieldablePcalls)
+                L->ci->flags &= ~LUA_CALLINFO_HANDLE;
+
             // C continuation; we expect this to be followed by Lua continuations
             int n = cl->c.cont(L, 0);
 
             // continuation can break or yield again
             if (L->status == LUA_BREAK || L->status == LUA_YIELD)
                 break;
+
+            if (FFlag::LuauCustomYieldablePcalls && L->status == SCHEDULED_REENTRY)
+                continue;
 
             luau_poscall(L, L->top - n);
         }
@@ -525,6 +533,21 @@ static void restore_stack_limit(lua_State* L)
         if (inuse + 1 < LUAI_MAXCALLS) // can `undo' overflow?
             luaD_reallocCI(L, LUAI_MAXCALLS);
     }
+    else
+    {
+        condhardstacktests(luaD_reallocCI(L, L->size_ci));
+    }
+}
+
+static void callerrfunc(lua_State* L, void* ud)
+{
+    StkId errfunc = cast_to(StkId, ud);
+
+    setobj2s(L, L->top, L->top - 1);
+    setobj2s(L, L->top - 1, errfunc);
+    incr_top(L);
+
+    luaD_callny(L, L->top - 2, 1);
 }
 
 static void resume_handle(lua_State* L, void* ud)
@@ -554,26 +577,78 @@ static void resume_handle(lua_State* L, void* ud)
     if (status != LUA_ERRRUN)
         luaD_seterrorobj(L, status, L->top);
 
-    // adjust the stack frame for ci to prepare for cont call
-    L->base = ci->base;
-    ci->top = L->top;
+    // call user-defined error function
+    if (FFlag::LuauCustomYieldablePcalls && ci->errfunc != 0)
+    {
+        // save ci pointer - it will be invalidated by callerrfunc call
+        ptrdiff_t old_ci = saveci(L, ci);
 
-    // save ci pointer - it will be invalidated by cont call!
-    ptrdiff_t old_ci = saveci(L, ci);
+        // if errfunc fails, we fail with "error in error handling" or "not enough memory"
+        int err = luaD_rawrunprotected(L, callerrfunc, ci->base + (ci->errfunc - 1));
 
-    // handle the error in continuation; note that this executes on top of original stack!
-    int n = cl->c.cont(L, status);
+        // restore nCcalls to base if errfunc itself errored
+        L->nCcalls = L->baseCcalls;
 
-    // restore the stack frame to the frame with continuation
-    L->ci = restoreci(L, old_ci);
+        // in general we preserve the status, except for cases when the error handler fails
+        // out of memory is treated specially because it's common for it to be cascading, in which case we preserve the code
+        if (err == 0)
+            status = LUA_ERRRUN;
+        else if (status == LUA_ERRMEM && err == LUA_ERRMEM)
+            status = LUA_ERRMEM;
+        else
+            status = LUA_ERRERR;
 
-    // close eventual pending closures; this means it's now safe to restore stack
-    luaF_close(L, L->ci->base);
+        luaD_seterrorobj(L, status, L->top - 1);
 
-    restore_stack_limit(L);
+        ci = restoreci(L, old_ci);
+        ci->errfunc = 0;
+    }
 
-    // finish cont call and restore stack to previous ci top
-    luau_poscall(L, L->top - n);
+    if (FFlag::LuauCustomYieldablePcalls)
+    {
+        // restore the stack frame to the frame with continuation
+        L->ci = ci;
+
+        // close eventual pending closures; this means it's now safe to restore stack
+        luaF_close(L, L->ci->base);
+
+        // adjust the stack frame for ci to prepare for cont call
+        L->base = ci->base;
+        ci->top = L->top;
+
+        restore_stack_limit(L);
+
+        int n = cl->c.cont(L, status);
+
+        if (L->status != LUA_OK)
+            return;
+
+        // finish cont call and restore stack to previous ci top
+        luau_poscall(L, L->top - n);
+    }
+    else
+    {
+        // adjust the stack frame for ci to prepare for cont call
+        L->base = ci->base;
+        ci->top = L->top;
+
+        // save ci pointer - it will be invalidated by cont call!
+        ptrdiff_t old_ci = saveci(L, ci);
+
+        // handle the error in continuation; note that this executes on top of original stack!
+        int n = cl->c.cont(L, status);
+
+        // restore the stack frame to the frame with continuation
+        L->ci = restoreci(L, old_ci);
+
+        // close eventual pending closures; this means it's now safe to restore stack
+        luaF_close(L, L->ci->base);
+
+        restore_stack_limit(L);
+
+        // finish cont call and restore stack to previous ci top
+        luau_poscall(L, L->top - n);
+    }
 
     // run remaining continuations from the stack; typically resumes pcalls
     resume_continue(L);
@@ -713,17 +788,6 @@ int lua_break(lua_State* L)
 int lua_isyieldable(lua_State* L)
 {
     return (L->nCcalls <= L->baseCcalls);
-}
-
-static void callerrfunc(lua_State* L, void* ud)
-{
-    StkId errfunc = cast_to(StkId, ud);
-
-    setobj2s(L, L->top, L->top - 1);
-    setobj2s(L, L->top - 1, errfunc);
-    incr_top(L);
-
-    luaD_callny(L, L->top - 2, 1);
 }
 
 int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t ef)

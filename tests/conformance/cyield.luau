@@ -1,6 +1,27 @@
 -- This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 print('testing yields from C functions')
 
+function ecall(fn, ...)
+    local ok, err = pcall(fn, ...)
+    print(ok, err)
+    assert(not ok)
+    return err:sub(err:find(": ") + 2, #err)
+end
+
+function resume(co, ...)
+    local ok, result = coroutine.resume(co)
+    print(ok, result)
+    assert(ok)
+    return result
+end
+
+function eresume(co, ...)
+    local ok, err = coroutine.resume(co)
+    print(ok, err)
+    assert(not ok)
+    return err:sub(err:find(": ") + 2, #err)
+end
+
 -- Regular yield from a C function
 do
     local co = coroutine.wrap(singleYield)
@@ -201,5 +222,98 @@ if not limitedstack then
 	assert(not ok2)
 	assert(count == 200, `expected count == 200 (MAXCCALLS), got {count}`)
 end
+
+local function ok_simple()
+    return 100
+end
+
+local function err_simple()
+    error("error_sync")
+end
+
+local function yield_then_ok()
+    coroutine.yield(15)
+    return 5
+end
+
+local function yield_then_err()
+    coroutine.yield(25)
+    error("error_async")
+end
+
+assert(pcallThenCall(ok_simple, ok_simple) == 100 * 100)
+assert(ecall(pcallThenCall, ok_simple, err_simple) == "error_sync")
+
+assert(pcallThenCall(err_simple, ok_simple) == -100)
+assert(ecall(pcallThenCall, err_simple, err_simple) == "error_sync")
+
+do
+    local co = coroutine.create(function() return pcallThenCall(ok_simple, yield_then_ok) end)
+    
+    assert(resume(co) == 15)
+    assert(resume(co) == 100 * 5)
+end
+
+do
+    local co = coroutine.create(function() return pcallThenCall(ok_simple, yield_then_err) end)
+    
+    assert(resume(co) == 25)
+    assert(eresume(co) == "error_async")
+end
+
+do
+    local co = coroutine.create(function() return pcallThenCall(yield_then_ok, ok_simple) end)
+
+    assert(resume(co) == 15)
+    assert(resume(co) == 5 * 100)
+end
+
+do
+    local co = coroutine.create(function() return pcallThenCall(yield_then_ok, err_simple) end)
+    
+    assert(resume(co) == 15)
+    assert(eresume(co) == "error_sync")
+end
+
+do
+    local co = coroutine.create(function() return pcallThenCall(yield_then_ok, yield_then_ok) end)
+    
+    assert(resume(co) == 15)
+    assert(resume(co) == 15)
+    assert(resume(co) == 5 * 5)
+end
+
+do
+    local co = coroutine.create(function() return pcallThenCall(yield_then_ok, yield_then_err) end)
+
+    assert(resume(co) == 15)
+    assert(resume(co) == 25)
+    assert(eresume(co) == "error_async")
+end
+
+do
+    local co = coroutine.create(function() return pcallThenCall(yield_then_err, yield_then_ok) end)
+
+    assert(resume(co) == 25)
+    assert(resume(co) == 15)
+    assert(resume(co) == -1 * 5)
+end
+
+do
+    local co = coroutine.create(function() return pcallThenCall(err_simple, yield_then_ok) end)
+
+    assert(resume(co) == 15)
+    assert(resume(co) == -1 * 5)
+end
+
+-- extra tests where second call in continuation is also protected
+do
+    local co = coroutine.create(function() return pcallThenPcall(yield_then_ok, ok_simple) end)
+
+    assert(resume(co) == 15)
+    assert(resume(co) == 5 * 100)
+end
+
+assert(pcallThenPcall(ok_simple, err_simple) == 100 * -1)
 
 return "OK"
