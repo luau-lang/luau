@@ -1234,6 +1234,12 @@ struct AstJsonEncoder : public AstVisitor
         return false;
     }
 
+    bool visit(class AstExprConstantInteger* node) override
+    {
+        write(node);
+        return false;
+    }
+
     bool visit(class AstExprConstantString* node) override
     {
         write(node);
