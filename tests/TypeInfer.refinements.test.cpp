@@ -11,7 +11,6 @@
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 
 using namespace Luau;
 
@@ -1677,7 +1676,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_optional_properties_sh
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauExternTypesNormalizeWithShapes)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("WeldConstraint & { read Part1: ~(false?) }", toString(requireTypeAtPosition({3, 15})));
     else
         CHECK_EQ("WeldConstraint", toString(requireTypeAtPosition({3, 15})));
@@ -2909,10 +2908,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_from_and_should_not_refine_to_ne
 
     LUAU_REQUIRE_NO_ERRORS(results);
 
-    if (FFlag::LuauExternTypesNormalizeWithShapes)
-        CHECK_EQ("(Config & { read KeyboardEnabled: false? }) | (Config & { read MouseEnabled: false? })", toString(requireTypeAtPosition({6, 24})));
-    else
-        CHECK_EQ("Config", toString(requireTypeAtPosition({6, 24})));
+    CHECK_EQ("(Config & { read KeyboardEnabled: false? }) | (Config & { read MouseEnabled: false? })", toString(requireTypeAtPosition({6, 24})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")

@@ -34,6 +34,7 @@ LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarityFollow)
 LUAU_FASTFLAG(LuauRefineNilFromTableIndexerResultType)
 LUAU_FASTFLAG(LuauInstantiationUsesPolarity)
+LUAU_FASTFLAG(LuauCollapseDirectBoundCycles)
 
 using namespace Luau;
 
@@ -2973,6 +2974,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_instantiate_iter_function")
         for _, _ in setmetatable({}, { __iter = iterfunc }) do
         end
     )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_and_unpack_generic_order_independence")
+{
+    ScopedFastFlag sff{FFlag::LuauCollapseDirectBoundCycles, true};
+
+    CheckResult result = check(R"(
+        local tbl = {}
+        for i=0, 3 do
+            table.insert(tbl, i)
+        end
+        return table.unpack(tbl)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+// The fuzzer reported this ICE because exports were returning errors rather than just reporting them
+// By returning errors, this resulted in the ConstraintGenerator expecting there to be a DefId that was dropped by the DFG when handling AstStatError
+TEST_CASE_FIXTURE(Fixture, "fuzzer_export_no_ice")
+{
+
+    CHECK_NOTHROW(check(R"(
+        while true do
+            export local _
+        end
+        do
+            export local _
+            _ = _
+        end
+    )"));
 }
 
 TEST_SUITE_END();

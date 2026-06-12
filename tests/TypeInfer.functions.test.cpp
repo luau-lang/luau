@@ -23,7 +23,6 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauFormatUseLastPosition)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4141,7 +4140,6 @@ TEST_CASE_FIXTURE(Fixture, "bidi_inference_functions_complete_ex")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauBidirectionalInferenceBetterUnionHandling, true},
-        {FFlag::LuauExplicitTypeInstantiationSupport, true},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(

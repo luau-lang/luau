@@ -14,6 +14,11 @@
 #include <string_view>
 #include <utility>
 
+LUAU_FASTFLAG(LuauCyclicRequireShortCircuit)
+
+// Mirrors kRequireStackValues in RequireImpl.cpp: slot index of the module placeholder.
+static const int kRequireStackValues = 6;
+
 static luarequire_WriteResult write(std::optional<std::string> contents, char* buffer, size_t bufferSize, size_t* sizeOut)
 {
     if (!contents)
@@ -181,7 +186,18 @@ static int load(lua_State* L, void* ctx, const char* path, const char* chunkname
         if (req->countersActive())
             req->countersTrack(ML, -1);
 
-        int status = lua_resume(ML, L, 0);
+        int status;
+        if (FFlag::LuauCyclicRequireShortCircuit)
+        {
+            // Pass the module placeholder as ... so the module can adopt it as its export surface.
+            lua_pushvalue(L, kRequireStackValues);
+            lua_xmove(L, ML, 1);
+            status = lua_resume(ML, L, 1);
+        }
+        else
+        {
+            status = lua_resume(ML, L, 0);
+        }
 
         if (status == 0)
         {

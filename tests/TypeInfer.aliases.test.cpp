@@ -11,6 +11,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
+LUAU_FASTFLAG(LuauAvoidCascadingRecursiveConstraintViolationError)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -1351,5 +1352,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_allow_redefining_builtin_types")
     LUAU_CHECK_ERROR(result, DuplicateTypeDefinition);
 }
 
+TEST_CASE_FIXTURE(Fixture, "only_report_single_error_for_missing_generics_1")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauAvoidCascadingRecursiveConstraintViolationError, true};
+
+    CheckResult results = check(R"(
+        type t0<A> = {[t0]: t0<A>}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    REQUIRE(get<IncorrectGenericParameterCount>(results.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "only_report_single_error_for_missing_generics_2")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauAvoidCascadingRecursiveConstraintViolationError, true};
+
+    CheckResult results = check(R"(
+        type Tree<A> = { [string]: Tree }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    REQUIRE(get<IncorrectGenericParameterCount>(results.errors[0]));
+}
 
 TEST_SUITE_END();

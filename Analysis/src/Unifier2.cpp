@@ -24,7 +24,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
-LUAU_FASTFLAG(LuauOccursCheckForAllBindings)
 LUAU_FASTFLAGVARIABLE(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 
 namespace Luau
@@ -700,24 +699,11 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
 
         boundTo = instantiateWithBoundTypes(boundTo);
 
-        if (FFlag::LuauOccursCheckForAllBindings)
+        if (occursCheck(target, boundTo) == OccursCheckResult::Fail)
         {
-            if (::Luau::occursCheck(target, boundTo) == OccursCheckResult::Fail)
-            {
-                emplaceTypePack<BoundTypePack>(asMutable(target), builtinTypes->errorTypePack);
-                return UnifyResult::OccursCheckFailed;
-            }
+            emplaceTypePack<BoundTypePack>(asMutable(target), builtinTypes->errorTypePack);
+            return UnifyResult::OccursCheckFailed;
         }
-        else
-        {
-            DenseHashSet<TypePackId> seen{nullptr};
-            if (OccursCheckResult::Fail == occursCheck_DEPRECATED(seen, target, boundTo))
-            {
-                emplaceTypePack<BoundTypePack>(asMutable(target), builtinTypes->errorTypePack);
-                return UnifyResult::OccursCheckFailed;
-            }
-        }
-
         emplaceTypePack<BoundTypePack>(asMutable(target), boundTo);
         return UnifyResult::Ok;
     };
@@ -820,89 +806,6 @@ TypeId Unifier2::mkIntersection(TypeId left, TypeId right)
     right = follow(right);
 
     return simplifyIntersection(builtinTypes, arena, left, right).result;
-}
-
-OccursCheckResult Unifier2::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack)
-{
-    RecursionLimiter _ra("Unifier2::occursCheck", &recursionCount, recursionLimit);
-
-    OccursCheckResult occurrence = OccursCheckResult::Pass;
-
-    auto check = [&](TypeId ty)
-    {
-        if (occursCheck(seen, needle, ty) == OccursCheckResult::Fail)
-            occurrence = OccursCheckResult::Fail;
-    };
-
-    needle = follow(needle);
-    haystack = follow(haystack);
-
-    if (seen.find(haystack))
-        return OccursCheckResult::Pass;
-
-    seen.insert(haystack);
-
-    if (get<ErrorType>(needle))
-        return OccursCheckResult::Pass;
-
-    if (!get<FreeType>(needle))
-        ice->ice("Expected needle to be free");
-
-    if (needle == haystack)
-        return OccursCheckResult::Fail;
-
-    if (auto haystackFree = get<FreeType>(haystack))
-    {
-        check(haystackFree->lowerBound);
-        check(haystackFree->upperBound);
-    }
-    else if (auto ut = get<UnionType>(haystack))
-    {
-        for (TypeId ty : ut->options)
-            check(ty);
-    }
-    else if (auto it = get<IntersectionType>(haystack))
-    {
-        for (TypeId ty : it->parts)
-            check(ty);
-    }
-
-    return occurrence;
-}
-
-OccursCheckResult Unifier2::occursCheck_DEPRECATED(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack)
-{
-    needle = follow(needle);
-    haystack = follow(haystack);
-
-    if (seen.find(haystack))
-        return OccursCheckResult::Pass;
-
-    seen.insert(haystack);
-
-    if (getMutable<ErrorTypePack>(needle))
-        return OccursCheckResult::Pass;
-
-    if (!getMutable<FreeTypePack>(needle))
-        ice->ice("Expected needle pack to be free");
-
-    RecursionLimiter _ra("Unifier2::occursCheck", &recursionCount, recursionLimit);
-
-    while (!getMutable<ErrorTypePack>(haystack))
-    {
-        if (needle == haystack)
-            return OccursCheckResult::Fail;
-
-        if (auto a = get<TypePack>(haystack); a && a->tail)
-        {
-            haystack = follow(*a->tail);
-            continue;
-        }
-
-        break;
-    }
-
-    return OccursCheckResult::Pass;
 }
 
 TypeId Unifier2::freshType(NotNull<Scope> scope, Polarity polarity)

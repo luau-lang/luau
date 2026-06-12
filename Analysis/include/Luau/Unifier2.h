@@ -132,15 +132,6 @@ private:
      */
     TypeId mkIntersection(TypeId left, TypeId right);
 
-    // Returns true if needle occurs within haystack already.  ie if we bound
-    // needle to haystack, would a cyclic type result?
-    OccursCheckResult occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
-
-    // Returns true if needle occurs within haystack already.  ie if we bound
-    // needle to haystack, would a cyclic TypePack result?
-    // Clip with LuauOccursCheckForAllBindings LuauBindTypePackOccursCheck
-    OccursCheckResult occursCheck_DEPRECATED(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
-
     TypeId freshType(NotNull<Scope> scope, Polarity polarity);
     TypePackId freshTypePack(NotNull<Scope> scope, Polarity polarity);
 };

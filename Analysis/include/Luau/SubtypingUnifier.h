@@ -65,9 +65,6 @@ private:
         UpperBounds& upperBoundContributors
     ) const;
 
-    // Clip with LuauOccursCheckForAllBindings
-    OccursCheckResult occursCheck_DEPRECATED(TypePackId needle, TypePackId haystack) const;
-
     bool canBeUnified(TypeId ty) const;
 };
 

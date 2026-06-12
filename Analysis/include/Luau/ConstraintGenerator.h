@@ -67,8 +67,8 @@ struct Checkpoint
 
 struct ClassDeclRecord
 {
-    AstStatClass* dataDecl = nullptr;
     TypeId ty = nullptr;
+    DenseHashMap<AstName, TypeId> memberTypes{AstName{""}};
 };
 
 struct ConstraintGenerator
@@ -144,7 +144,7 @@ struct ConstraintGenerator
 
     DenseHashMap<AstExpr*, Inference> inferredExprCache{nullptr};
 
-    DenseHashMap<AstLocal*, ClassDeclRecord> classDeclRecords{nullptr};
+    DenseHashMap<AstLocal*, std::unique_ptr<ClassDeclRecord>> classDeclRecords{nullptr};
 
     DcrLogger* logger;
 

@@ -19,7 +19,6 @@
 
 #include <algorithm>
 #include <bitset>
-#include <memory>
 
 #include <math.h>
 
@@ -273,7 +272,7 @@ struct Compiler
 
         for (const AstExprTable::Item& item : table->items)
         {
-            if (item.kind == AstExprTable::Item::Record || item.kind == AstExprTable::Item::General)
+            if (item.kind == AstExprTable::Item::Kind::Record || item.kind == AstExprTable::Item::Kind::General)
             {
                 Constant* keyConstant = constants.find(item.key);
 
@@ -344,9 +343,9 @@ struct Compiler
 
         if (FFlag::DebugLuauUserDefinedClasses)
         {
-            for (auto& [className, classReg] : exportedClasses)
+            for (auto& [classLocal, classReg] : exportedClasses)
             {
-                BytecodeBuilder::StringRef classNameRef = sref(className);
+                BytecodeBuilder::StringRef classNameRef = sref(classLocal->name);
                 int32_t classNameCid = bytecode.addConstantString(classNameRef);
                 if (classNameCid < 0)
                     CompileError::raise(locNode->location, "Exceeded constant limit; simplify the code to compile");
@@ -1539,6 +1538,12 @@ struct Compiler
         // ... properties and methods need to share a namespace.
 
         pushLocal(decl->name, dest, kDefaultAllocPc);
+        if (FFlag::LuauExportValueSyntax && decl->exported)
+        {
+            // we want to eagerly insert into the exported classes map, as the class may be referenced by one of its methods
+            ensureExportTable(decl);
+            exportedClasses[decl->name] = dest;
+        }
 
         RegScope _(this);
 
@@ -1602,22 +1607,19 @@ struct Compiler
         int32_t classConst = bytecode.addClassShape(std::move(shape));
         checkConstant(classConst, decl->location);
         bytecode.patchAux(auxOffset, classConst);
-
-        if (FFlag::LuauExportValueSyntax && decl->exported)
-            exportedClasses.emplace_back(decl->name->name, dest);
     }
 
     LuauOpcode getUnaryOp(AstExprUnary::Op op)
     {
         switch (op)
         {
-        case AstExprUnary::Not:
+        case AstExprUnary::Op::Not:
             return LOP_NOT;
 
-        case AstExprUnary::Minus:
+        case AstExprUnary::Op::Minus:
             return LOP_MINUS;
 
-        case AstExprUnary::Len:
+        case AstExprUnary::Op::Len:
             return LOP_LENGTH;
 
         default:
@@ -1964,7 +1966,7 @@ struct Compiler
         {
             // if we *do* need to compute the target, we'd have to inject "not" ops on every return path
             // this is possible but cumbersome; so for now we only optimize not expression when we *don't* need the value
-            if (!target && expr->op == AstExprUnary::Not)
+            if (!target && expr->op == AstExprUnary::Op::Not)
             {
                 compileConditionValue(expr->expr, target, skipJump, !onlyTruth);
                 return;
@@ -2090,7 +2092,7 @@ struct Compiler
 
         // Special case for integer constants, like -1000000000i
         AstExprConstantInteger* cint = expr->expr->as<AstExprConstantInteger>();
-        if (FFlag::LuauIntegerType2 && (expr->op == AstExprUnary::Minus) && (cint != nullptr))
+        if (FFlag::LuauIntegerType2 && (expr->op == AstExprUnary::Op::Minus) && (cint != nullptr))
         {
             int32_t cid = bytecode.addConstantInteger((int64_t)(~(uint64_t)cint->value + 1));
             if (cid < 0)
@@ -2424,9 +2426,9 @@ struct Compiler
         {
             const AstExprTable::Item& item = expr->items.data[i];
 
-            arraySize += (item.kind == AstExprTable::Item::List);
-            hashSize += (item.kind != AstExprTable::Item::List);
-            recordSize += (item.kind == AstExprTable::Item::Record);
+            arraySize += (item.kind == AstExprTable::Item::Kind::List);
+            hashSize += (item.kind != AstExprTable::Item::Kind::List);
+            recordSize += (item.kind == AstExprTable::Item::Kind::Record);
         }
 
         // Optimization: allocate sequential explicitly specified numeric indices ([1]) as arrays
@@ -2472,7 +2474,7 @@ struct Compiler
                 for (size_t i = 0; i < expr->items.size; ++i)
                 {
                     const AstExprTable::Item& item = expr->items.data[i];
-                    LUAU_ASSERT(item.kind == AstExprTable::Item::Record);
+                    LUAU_ASSERT(item.kind == AstExprTable::Item::Kind::Record);
 
                     AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
                     LUAU_ASSERT(ckey);
@@ -2509,7 +2511,7 @@ struct Compiler
                 for (size_t i = 0; i < expr->items.size; ++i)
                 {
                     const AstExprTable::Item& item = expr->items.data[i];
-                    LUAU_ASSERT(item.kind == AstExprTable::Item::Record);
+                    LUAU_ASSERT(item.kind == AstExprTable::Item::Kind::Record);
 
                     AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
                     LUAU_ASSERT(ckey);
@@ -2553,7 +2555,7 @@ struct Compiler
             // correct amount of storage
             const AstExprTable::Item* last = expr->items.size > 0 ? &expr->items.data[expr->items.size - 1] : nullptr;
 
-            bool trailingVarargs = last && last->kind == AstExprTable::Item::List && last->value->is<AstExprVarargs>();
+            bool trailingVarargs = last && last->kind == AstExprTable::Item::Kind::List && last->value->is<AstExprVarargs>();
             LUAU_ASSERT(!trailingVarargs || arraySize > 0);
 
             unsigned int arrayAllocation = arraySize - trailingVarargs + indexSize;
@@ -2935,17 +2937,26 @@ struct Compiler
         }
         else if (AstExprLocal* expr = node->as<AstExprLocal>())
         {
-            if (FFlag::LuauExportValueSyntax && expr->local->isExported)
+            if (FFlag::LuauExportValueSyntax && expr->local->isExported && !exportedClasses.contains(expr->local))
             {
-                uint8_t tableReg = getExportTableReg(node);
-
                 BytecodeBuilder::StringRef name = sref(expr->local->name);
                 int32_t cid = bytecode.addConstantString(name);
                 if (cid < 0)
                     CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
 
-                bytecode.emitABC(LOP_GETTABLEKS, target, tableReg, uint8_t(BytecodeBuilder::getStringHash(name)));
-                bytecode.emitAux(cid);
+                if (int tableReg = getLocalReg(&exportTableLocal); tableReg >= 0)
+                {
+                    bytecode.emitABC(LOP_GETTABLEKS, target, tableReg, uint8_t(BytecodeBuilder::getStringHash(name)));
+                    bytecode.emitAux(cid);
+                }
+                else
+                {
+                    // we must reuse the target register for the export table lookup
+                    uint8_t upval = getUpval(&exportTableLocal);
+                    bytecode.emitABC(LOP_GETUPVAL, target, upval, 0);
+                    bytecode.emitABC(LOP_GETTABLEKS, target, target, uint8_t(BytecodeBuilder::getStringHash(name)));
+                    bytecode.emitAux(cid);
+                }
             }
             else
             {
@@ -5026,7 +5037,7 @@ struct Compiler
     std::vector<InlineFrame> inlineFrames;
     std::vector<Capture> captures;
     std::vector<AstLocal*> exportedLocals;
-    std::vector<std::pair<AstName, uint8_t>> exportedClasses;
+    DenseHashMap<AstLocal*, uint8_t> exportedClasses{nullptr};
 };
 
 static void setCompileOptionsForNativeCompilation(CompileOptions& options)

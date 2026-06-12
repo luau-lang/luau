@@ -42,16 +42,15 @@ LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500)
 LUAU_FASTFLAGVARIABLE(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
 LUAU_FASTFLAGVARIABLE(LuauRefineNilFromTableIndexerResultType)
 LUAU_FASTFLAGVARIABLE(LuauFixPropReadsOnMetatableTypes)
-LUAU_FASTFLAGVARIABLE(LuauIterativeInstantiationQueuer)
-LUAU_FASTFLAGVARIABLE(LuauOccursCheckForAllBindings)
 LUAU_FASTFLAGVARIABLE(LuauAlsoInstantiateInferredArguments)
+LUAU_FLAGVERSION(LuauAlsoInstantiateInferredArguments, 2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauConstraintGraph)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateFunctionTypeBeforePush)
+LUAU_FASTFLAGVARIABLE(LuauAvoidCascadingRecursiveConstraintViolationError)
 
 namespace Luau
 {
@@ -285,38 +284,6 @@ size_t HashInstantiationSignature::operator()(const InstantiationSignature& sign
     return hash;
 }
 
-struct InstantiationQueuer_DEPRECATED : TypeOnceVisitor
-{
-    ConstraintSolver* solver;
-    NotNull<Scope> scope;
-    Location location;
-
-    explicit InstantiationQueuer_DEPRECATED(NotNull<Scope> scope, const Location& location, ConstraintSolver* solver)
-        : TypeOnceVisitor("InstantiationQueuer", /* skipBoundTypes */ true)
-        , solver(solver)
-        , scope(scope)
-        , location(location)
-    {
-    }
-
-    bool visit(TypeId ty, const PendingExpansionType& petv) override
-    {
-        solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
-        return false;
-    }
-
-    bool visit(TypeId ty, const TypeFunctionInstanceType&) override
-    {
-        solver->pushConstraint(scope, location, ReduceConstraint{ty});
-        return true;
-    }
-
-    bool visit(TypeId ty, const ExternType& etv) override
-    {
-        return false;
-    }
-};
-
 struct InstantiationQueuer : IterativeTypeVisitor
 {
     ConstraintSolver* solver;
@@ -339,7 +306,15 @@ struct InstantiationQueuer : IterativeTypeVisitor
 
     bool visit(TypeId ty, const TypeFunctionInstanceType&) override
     {
-        solver->pushConstraint(scope, location, ReduceConstraint{ty});
+        if (FFlag::LuauAlsoInstantiateInferredArguments)
+        {
+            if (!solver->typeFunctionsToFinalize.contains(ty))
+                solver->typeFunctionsToFinalize[ty] = solver->pushConstraint(scope, location, ReduceConstraint{ty});
+        }
+        else
+        {
+            solver->pushConstraint(scope, location, ReduceConstraint{ty});
+        }
         return true;
     }
 
@@ -389,10 +364,26 @@ struct InfiniteTypeFinder : IterativeTypeVisitor
         // type are exactly the generic arguments provided.
         for (size_t i = 0; i < std::min(petv.typeArguments.size(), tf->typeParams.size()); ++i)
         {
-            if (petv.typeArguments[i] != tf->typeParams[i].ty)
+            if (FFlag::LuauAvoidCascadingRecursiveConstraintViolationError)
             {
-                foundInfiniteType = true;
-                return false;
+                auto pendingTypeArg = follow(petv.typeArguments[i]);
+                auto tfTypeParam = follow(tf->typeParams[i].ty);
+                if (is<ErrorType>(pendingTypeArg) || is<ErrorType>(tfTypeParam))
+                    continue;
+
+                if (pendingTypeArg != tfTypeParam)
+                {
+                    foundInfiniteType = true;
+                    return false;
+                }
+            }
+            else
+            {
+                if (petv.typeArguments[i] != tf->typeParams[i].ty)
+                {
+                    foundInfiniteType = true;
+                    return false;
+                }
             }
         }
 
@@ -942,39 +933,24 @@ void ConstraintSolver::bind(NotNull<const Constraint> constraint, TypeId ty, Typ
 
     boundTo = follow(boundTo);
 
-    if (FFlag::LuauOccursCheckForAllBindings)
+    // This follow shouldn't be needed, but if for some reason we end up
+    // with a bound type, we want to also follow it when doing this
+    // occurence check.
+    if (follow(ty) == boundTo)
     {
-        // This follow shouldn't be needed, but if for some reason we end up
-        // with a bound type, we want to also follow it when doing this
-        // occurence check.
-        if (follow(ty) == boundTo)
-        {
-            auto freshTy = freshType(arena, builtinTypes, constraint->scope, Polarity::Mixed);
-            emplaceType<BoundType>(asMutable(ty), freshTy);
-            trackInteriorFreeType(constraint->scope, freshTy);
-            unblock(ty, constraint->location);
-            return;
-        }
+        auto freshTy = freshType(arena, builtinTypes, constraint->scope, Polarity::Mixed);
+        emplaceType<BoundType>(asMutable(ty), freshTy);
+        trackInteriorFreeType(constraint->scope, freshTy);
+        unblock(ty, constraint->location);
+        return;
     }
-    else
-    {
-        if (get<BlockedType>(ty) && ty == boundTo)
-        {
-            DEPRECATED_emplace<FreeType>(
-                constraint, ty, constraint->scope, builtinTypes->neverType, builtinTypes->unknownType, Polarity::Mixed
-            ); // FIXME?  Is this the right polarity?
-            trackInteriorFreeType(constraint->scope, ty);
-            return;
-        }
-    }
-
-    emplaceType<BoundType>(asMutable(ty), boundTo);
 
     if (!FFlag::LuauConstraintGraph)
     {
         // `unblock` will "shift references" under the hood.
         DEPRECATED_shiftReferences(ty, boundTo);
     }
+    emplaceType<BoundType>(asMutable(ty), boundTo);
 
     unblock(ty, constraint->location);
 }
@@ -987,7 +963,7 @@ void ConstraintSolver::bind(NotNull<const Constraint> constraint, TypePackId tp,
     boundTo = follow(boundTo);
     LUAU_ASSERT(tp != boundTo);
 
-    if (FFlag::LuauOccursCheckForAllBindings && occursCheck(tp, boundTo) == OccursCheckResult::Fail)
+    if (occursCheck(tp, boundTo) == OccursCheckResult::Fail)
     {
         reportError(InternalError{"Attempted to create a type pack cycle"}, constraint->location);
         emplaceTypePack<BoundTypePack>(asMutable(tp), builtinTypes->errorTypePack);
@@ -1026,7 +1002,7 @@ void ConstraintSolver::DEPRECATED_emplace(NotNull<const Constraint> constraint, 
 
 bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool force)
 {
-    
+
     if (FFlag::LuauConstraintGraph)
     {
         LUAU_ASSERT(force || !cgraph->hasUnsolvedDependencies(constraint.get()));
@@ -1080,10 +1056,7 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
     else if (auto pftc = get<PushFunctionTypeConstraint>(*constraint))
         success = tryDispatch(*pftc, constraint);
     else if (auto esgc = get<TypeInstantiationConstraint>(*constraint))
-    {
-        LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSupport);
         success = tryDispatch(*esgc, constraint);
-    }
     else if (auto ptc = get<PushTypeConstraint>(*constraint))
         success = tryDispatch(*ptc, constraint, force);
     else
@@ -1546,17 +1519,8 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     // The application is not recursive, so we need to queue up application of
     // any child type function instantiations within the result in order for it
     // to be complete.
-    if (FFlag::LuauIterativeInstantiationQueuer)
-    {
-        InstantiationQueuer queuer{constraint->scope, constraint->location, this};
-        queuer.run(target);
-    }
-    else
-    {
-        InstantiationQueuer_DEPRECATED queuer{constraint->scope, constraint->location, this};
-        queuer.traverse(target);
-    }
-
+    InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+    queuer.run(target);
     if (target->persistent || target->owningArena != arena)
     {
         bindResult(target);
@@ -1724,12 +1688,9 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         }
     }
 
-    if (FFlag::LuauExplicitTypeInstantiationSupport)
+    if (!c.typeArguments.empty() || !c.typePackArguments.empty())
     {
-        if (!c.typeArguments.empty() || !c.typePackArguments.empty())
-        {
-            fn = instantiateFunctionType(c.fn, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location);
-        }
+        fn = instantiateFunctionType(c.fn, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location);
     }
 
     fillInDiscriminantTypes(constraint, c.discriminantTypes);
@@ -1902,23 +1863,11 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         break;
     }
 
-    if (FFlag::LuauIterativeInstantiationQueuer)
-    {
-        InstantiationQueuer queuer{constraint->scope, constraint->location, this};
-        queuer.run(overloadToUse);
-        if (FFlag::LuauAlsoInstantiateInferredArguments)
-            queuer.run(argsPack);
-        queuer.run(result);
-    }
-    else
-    {
-        InstantiationQueuer_DEPRECATED queuer{constraint->scope, constraint->location, this};
-        queuer.traverse(overloadToUse);
-        if (FFlag::LuauAlsoInstantiateInferredArguments)
-            queuer.traverse(argsPack);
-        queuer.traverse(result);
-    }
-
+    InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+    queuer.run(overloadToUse);
+    if (FFlag::LuauAlsoInstantiateInferredArguments)
+        queuer.run(argsPack);
+    queuer.run(result);
     if (!FFlag::LuauConstraintGraph)
     {
         // We don't need this anymore: `bind` will unblock the result.
@@ -2471,7 +2420,7 @@ bool ConstraintSolver::tryDispatch(const HasIndexerConstraint& c, NotNull<const 
     {
         auto result = tryDispatchHasIndexer(recursionDepth, constraint, subjectType, indexType, c.resultType, seen);
 
-        // CLI-205496: This implies that we also need an edge representing 
+        // CLI-205496: This implies that we also need an edge representing
         // having an indexer, which is terrifying.
         if (result)
             unblock(subjectType, Location{});
@@ -3162,8 +3111,6 @@ bool ConstraintSolver::tryDispatch(const PushFunctionTypeConstraint& c, NotNull<
 
 bool ConstraintSolver::tryDispatch(const TypeInstantiationConstraint& c, NotNull<const Constraint> constraint)
 {
-    LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSupport);
-
     if (isBlocked(c.functionType))
         return block(c.functionType, constraint);
 
@@ -3906,7 +3853,7 @@ void ConstraintSolver::block(NotNull<const Constraint> target, NotNull<const Con
 
 bool ConstraintSolver::block(TypeId target, NotNull<const Constraint> constraint)
 {
-    const bool newBlock = FFlag::LuauConstraintGraph 
+    const bool newBlock = FFlag::LuauConstraintGraph
         ? cgraph->addDependencyOf(follow(target), constraint.get())
         : DEPRECATED_block_(follow(target), constraint);
 

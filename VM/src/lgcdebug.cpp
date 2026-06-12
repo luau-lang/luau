@@ -268,8 +268,16 @@ void luaC_validate(lua_State* L)
     checkliveness(g, &g->registry);
 
     for (int i = 0; i < LUA_T_COUNT; ++i)
+    {
         if (g->mt[i])
             LUAU_ASSERT(!isdead(g, obj2gco(g->mt[i])));
+    }
+
+    for (int i = 0; i < LUA_UTAG_LIMIT; i++)
+    {
+        if (g->udatamt[i])
+            LUAU_ASSERT(!isdead(g, obj2gco(g->udatamt[i])));
+    }
 
     validategraylist(g, g->weak);
     validategraylist(g, g->gray);
