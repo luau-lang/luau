@@ -22,10 +22,11 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
 LUAU_FASTFLAGVARIABLE(LuauIntegerType2)
-LUAU_FASTFLAGVARIABLE(DesugaredArrayTypeReferenceIsEmpty)
 LUAU_FASTFLAGVARIABLE(LuauConst2)
 // NOTE: this implicitly depends on LuauConst2
 LUAU_FASTFLAGVARIABLE(LuauExportValueSyntax)
+LUAU_FLAGVERSION(LuauExportValueSyntax, 3)
+
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(LuauConstJustReportErrorForUnderfill)
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClasses)
@@ -1391,9 +1392,7 @@ AstStat* Parser::parseReturn()
     if (FFlag::LuauExportValueSyntax && FFlag::LuauConst2 && functionStack.size() == 1)
     {
         if (!declaredExportBindings.empty())
-            return reportStatError(
-                node->location, {}, copy<AstStat*>({node}), "Exporting values is not compatible with top-level return (export/return conflict)"
-            );
+            report(node->location, "Exporting values is not compatible with top-level return (export/return conflict)");
 
         hasModuleReturn = true;
     }
@@ -2059,7 +2058,7 @@ AstStat* Parser::parseExportValue(const Location& start, const Position keywordP
         return true;
     };
 
-    auto exportLocalStat = [&](AstStat* stat, const Position& keywordPosition) -> AstStat*
+    auto exportLocalStat = [&](AstStat* stat, const Location& keywordLocation) -> AstStat*
     {
         if (AstStatLocal* localStat = stat->as<AstStatLocal>())
         {
@@ -2068,18 +2067,15 @@ AstStat* Parser::parseExportValue(const Location& start, const Position keywordP
             for (AstLocal* local : localStat->vars)
             {
                 if (!checkDuplicateExport(local->name, local->location))
-                    return reportStatError(local->location, {}, copy<AstStat*>({stat}), "Duplicate exported identifier '%s'", local->name.value);
+                {
+                    report(local->location, "Duplicate exported identifier '%s'", local->name.value);
+                    continue;
+                }
 
                 local->isExported = true;
             }
 
-            if (options.storeCstData)
-            {
-                // if storeCstData is set, then when we parsed the local the cst data should be stored
-                CstStatLocal* cstStatLocal = cstNodeMap[stat]->as<CstStatLocal>();
-                LUAU_ASSERT(cstStatLocal);
-                cstStatLocal->declarationKeywordPosition = keywordPosition;
-            }
+            localStat->keywordLocation = keywordLocation;
         }
         else
             LUAU_ASSERT(!"Expected export local/const to parse as AstStatLocal");
@@ -2098,12 +2094,16 @@ AstStat* Parser::parseExportValue(const Location& start, const Position keywordP
 
     if (lexer.current().type == Lexeme::ReservedLocal)
     {
-        Position localKeywordPosition = lexer.current().location.begin;
+        Location localKeywordLocation = lexer.current().location;
 
         if (lexer.lookahead().type == Lexeme::ReservedFunction)
-            return reportStatError(start, {}, {}, "'export' must be followed by an identifier or 'function'; try removing 'local'");
+        {
+            report(start, "'export' must be followed by an identifier or 'function'; try removing 'local'");
+            // still parse the function for error recovery
+            return parseLocal(start, localKeywordLocation.begin, {nullptr, 0}, true);
+        }
 
-        return exportLocalStat(parseLocal(start, keywordPosition, {nullptr, 0}, false), localKeywordPosition);
+        return exportLocalStat(parseLocal(start, keywordPosition, {nullptr, 0}, false), localKeywordLocation);
     }
     else if (lexer.current().type == Lexeme::ReservedFunction)
     {
@@ -2115,9 +2115,7 @@ AstStat* Parser::parseExportValue(const Location& start, const Position keywordP
         auto func = funcStat->as<AstStatLocalFunction>();
 
         if (!checkDuplicateExport(func->name->name, func->name->location))
-            return reportStatError(
-                func->name->location, {}, copy<AstStat*>({funcStat}), "Duplicate exported identifier '%s'", func->name->name.value
-            );
+            report(func->name->location, "Duplicate exported identifier '%s'", func->name->name.value);
 
         func->name->isExported = true;
         func->name->isConst = true;
@@ -2125,13 +2123,17 @@ AstStat* Parser::parseExportValue(const Location& start, const Position keywordP
     }
     else if (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const")
     {
-        Position constKeywordPosition = lexer.current().location.begin;
+        Location constKeywordLocation = lexer.current().location;
         nextLexeme();
 
         if (lexer.current().type == Lexeme::ReservedFunction)
-            return reportStatError(start, {}, {}, "'export' must be followed by an identifier or 'function'");
+        {
+            report(start, "'export' must be followed by an identifier or 'function'");
+            // still parse the function for error recovery
+            return parseLocal(start, constKeywordLocation.begin, {nullptr, 0}, true);
+        }
 
-        return exportLocalStat(parseLocal(start, constKeywordPosition, {nullptr, 0}, true), constKeywordPosition);
+        return exportLocalStat(parseLocal(start, constKeywordLocation.begin, {nullptr, 0}, true), constKeywordLocation);
     }
     else if (FFlag::DebugLuauUserDefinedClasses && lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "class")
     {
@@ -2140,9 +2142,7 @@ AstStat* Parser::parseExportValue(const Location& start, const Position keywordP
         if (auto classStat = stat->as<AstStatClass>())
         {
             if (!checkDuplicateExport(classStat->name->name, classStat->name->location))
-                return reportStatError(
-                    classStat->name->location, {}, copy<AstStat*>({classStat}), "Duplicate exported class '%s'", classStat->name->name.value
-                );
+                report(classStat->name->location, "Duplicate exported class '%s'", classStat->name->name.value);
 
             classStat->name->isExported = true;
         }
@@ -2634,15 +2634,15 @@ std::pair<CstExprConstantString::QuoteStyle, unsigned int> Parser::extractString
     switch (lexer.current().type)
     {
     case Lexeme::QuotedString:
-        style =
-            lexer.current().getQuoteStyle() == Lexeme::QuoteStyle::Double ? CstExprConstantString::QuotedDouble : CstExprConstantString::QuotedSingle;
+        style = lexer.current().getQuoteStyle() == Lexeme::QuoteStyle::Double ? CstExprConstantString::QuoteStyle::QuotedDouble
+                                                                              : CstExprConstantString::QuoteStyle::QuotedSingle;
         break;
     case Lexeme::InterpStringSimple:
-        style = CstExprConstantString::QuotedInterp;
+        style = CstExprConstantString::QuoteStyle::QuotedInterp;
         break;
     case Lexeme::RawString:
     {
-        style = CstExprConstantString::QuotedRaw;
+        style = CstExprConstantString::QuoteStyle::QuotedRaw;
         blockDepth = lexer.current().getBlockDepth();
         break;
     }
@@ -2753,7 +2753,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
                                 indexerClosePosition,
                                 colonPosition,
                                 separator,
-                                separator != CstExprTable::Missing ? lexer.current().location.begin : Position::missing(),
+                                separator != CstExprTable::Separator::Missing ? lexer.current().location.begin : Position::missing(),
                                 allocator.alloc<CstExprConstantString>(sourceString, style, blockDepth),
                                 stringPosition
                             }
@@ -2788,7 +2788,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
                                 tableIndexerResult.indexerClosePosition,
                                 tableIndexerResult.colonPosition,
                                 separator,
-                                separator != CstExprTable::Missing ? lexer.current().location.begin : Position::missing(),
+                                separator != CstExprTable::Separator::Missing ? lexer.current().location.begin : Position::missing(),
                             }
                         );
                     }
@@ -2801,18 +2801,9 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
 
             // array-like table type: {T} desugars into {[number]: T}
             isArray = true;
-            if (FFlag::DesugaredArrayTypeReferenceIsEmpty)
-            {
-                Location nullTypeLocation = Location(start.begin, 0);
-                AstType* index = allocator.alloc<AstTypeReference>(nullTypeLocation, std::nullopt, nameNumber, std::nullopt, nullTypeLocation);
-                indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer{index, type, type->location, access, accessLocation});
-            }
-            else
-            {
-                AstType* index = allocator.alloc<AstTypeReference>(type->location, std::nullopt, nameNumber, std::nullopt, type->location);
-                indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer{index, type, type->location, access, accessLocation});
-            }
-
+            Location nullTypeLocation = Location(start.begin, 0);
+            AstType* index = allocator.alloc<AstTypeReference>(nullTypeLocation, std::nullopt, nameNumber, std::nullopt, nullTypeLocation);
+            indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer{index, type, type->location, access, accessLocation});
             break;
         }
         else
@@ -2838,7 +2829,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
                         Position::missing(),
                         colonPosition,
                         separator,
-                        separator != CstExprTable::Missing ? lexer.current().location.begin : Position::missing(),
+                        separator != CstExprTable::Separator::Missing ? lexer.current().location.begin : Position::missing(),
                     }
                 );
             }
@@ -3401,11 +3392,11 @@ AstTypePack* Parser::parseTypePack()
 std::optional<AstExprUnary::Op> Parser::parseUnaryOp(const Lexeme& l)
 {
     if (l.type == Lexeme::ReservedNot)
-        return AstExprUnary::Not;
+        return AstExprUnary::Op::Not;
     else if (l.type == '-')
-        return AstExprUnary::Minus;
+        return AstExprUnary::Op::Minus;
     else if (l.type == '#')
-        return AstExprUnary::Len;
+        return AstExprUnary::Op::Len;
     else
         return std::nullopt;
 }
@@ -3484,7 +3475,7 @@ std::optional<AstExprUnary::Op> Parser::checkUnaryConfusables()
     if (curr.type == '!')
     {
         report(start, "Unexpected '!'; did you mean 'not'?");
-        return AstExprUnary::Not;
+        return AstExprUnary::Op::Not;
     }
 
     return {};
@@ -4156,11 +4147,11 @@ LUAU_NOINLINE void Parser::reportAmbiguousCallError()
 CstExprTable::Separator Parser::tableSeparator()
 {
     if (lexer.current().type == ',')
-        return CstExprTable::Comma;
+        return CstExprTable::Separator::Comma;
     else if (lexer.current().type == ';')
-        return CstExprTable::Semicolon;
+        return CstExprTable::Separator::Semicolon;
     else
-        return CstExprTable::Missing;
+        return CstExprTable::Separator::Missing;
 }
 
 // tableconstructor ::= `{' [fieldlist] `}'
@@ -4200,7 +4191,7 @@ AstExpr* Parser::parseTableConstructor()
 
             AstExpr* value = parseExpr();
 
-            items.push_back({AstExprTable::Item::General, key, value});
+            items.push_back({AstExprTable::Item::Kind::General, key, value});
             if (options.storeCstData)
             {
                 CstExprTable::Separator separator = tableSeparator();
@@ -4209,7 +4200,7 @@ AstExpr* Parser::parseTableConstructor()
                      indexerClosePosition,
                      equalsPosition,
                      separator,
-                     separator == CstExprTable::Missing ? Position::missing() : lexer.current().location.begin}
+                     separator == CstExprTable::Separator::Missing ? Position::missing() : lexer.current().location.begin}
                 );
             }
         }
@@ -4224,13 +4215,13 @@ AstExpr* Parser::parseTableConstructor()
             nameString.data = const_cast<char*>(name.name.value);
             nameString.size = strlen(name.name.value);
 
-            AstExpr* key = allocator.alloc<AstExprConstantString>(name.location, nameString, AstExprConstantString::Unquoted);
+            AstExpr* key = allocator.alloc<AstExprConstantString>(name.location, nameString, AstExprConstantString::QuoteStyle::Unquoted);
             AstExpr* value = parseExpr();
 
             if (AstExprFunction* func = value->as<AstExprFunction>())
                 func->debugname = name.name;
 
-            items.push_back({AstExprTable::Item::Record, key, value});
+            items.push_back({AstExprTable::Item::Kind::Record, key, value});
             if (options.storeCstData)
             {
                 CstExprTable::Separator separator = tableSeparator();
@@ -4239,7 +4230,7 @@ AstExpr* Parser::parseTableConstructor()
                      Position::missing(),
                      equalsPosition,
                      separator,
-                     separator == CstExprTable::Missing ? Position::missing() : lexer.current().location.begin}
+                     separator == CstExprTable::Separator::Missing ? Position::missing() : lexer.current().location.begin}
                 );
             }
         }
@@ -4247,7 +4238,7 @@ AstExpr* Parser::parseTableConstructor()
         {
             AstExpr* expr = parseExpr();
 
-            items.push_back({AstExprTable::Item::List, nullptr, expr});
+            items.push_back({AstExprTable::Item::Kind::List, nullptr, expr});
             if (options.storeCstData)
             {
                 CstExprTable::Separator separator = tableSeparator();
@@ -4256,7 +4247,7 @@ AstExpr* Parser::parseTableConstructor()
                      Position::missing(),
                      Position::missing(),
                      separator,
-                     separator == CstExprTable::Missing ? Position::missing() : lexer.current().location.begin}
+                     separator == CstExprTable::Separator::Missing ? Position::missing() : lexer.current().location.begin}
                 );
             }
         }
@@ -4675,10 +4666,10 @@ AstExpr* Parser::parseString()
     {
     case Lexeme::QuotedString:
     case Lexeme::InterpStringSimple:
-        style = AstExprConstantString::QuotedSimple;
+        style = AstExprConstantString::QuoteStyle::QuotedSimple;
         break;
     case Lexeme::RawString:
-        style = AstExprConstantString::QuotedRaw;
+        style = AstExprConstantString::QuoteStyle::QuotedRaw;
         break;
     default:
         LUAU_ASSERT(false && "Invalid string type");

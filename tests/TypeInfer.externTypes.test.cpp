@@ -14,7 +14,6 @@
 using namespace Luau;
 using std::nullopt;
 
-LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
@@ -1196,7 +1195,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_1")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExternTypesNormalizeWithShapes, true},
     };
 
     loadDefinition(R"(
@@ -1227,7 +1225,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_2")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExternTypesNormalizeWithShapes, true},
     };
 
     loadDefinition(R"(

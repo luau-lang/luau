@@ -16,6 +16,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
+LUAU_FASTFLAG(LuauCollapseDirectBoundCycles)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -466,5 +467,92 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_fuzzer_crash")
     )"));
 }
 
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "collapse_two_type_direct_cycle")
+{
+    ScopedFastFlag sff2{FFlag::LuauCollapseDirectBoundCycles, true};
+
+    auto [t1, ft1] = freshType();
+    auto [t2, ft2] = freshType();
+
+    // t1.upper = t2, t2.lower = t1 -- direct 2-cycle
+    ft1->upperBound = t2;
+    ft2->lowerBound = t1;
+
+    TypeId functionTy = arena.addType(FunctionType{arena.addTypePack({t1}), arena.addTypePack({t2})});
+
+    generalize(functionTy);
+
+    // Both should resolve to the same generic
+    CHECK(follow(t1) == follow(t2));
+}
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "collapse_cycle_with_external_bound")
+{
+    ScopedFastFlag sff2{FFlag::LuauCollapseDirectBoundCycles, true};
+
+    auto [t1, ft1] = freshType();
+    auto [t2, ft2] = freshType();
+
+    // t1.upper = t2, t2.lower = t1, t1.lower = number
+    // After cycle collapse, the representative should generalize to number.
+    ft1->upperBound = t2;
+    ft1->lowerBound = builtinTypes.numberType;
+    ft2->lowerBound = t1;
+
+    TypeId functionTy = arena.addType(FunctionType{builtinTypes.emptyTypePack, arena.addTypePack({t1})});
+
+    generalize(functionTy);
+
+    CHECK("number" == toString(follow(t1)));
+    CHECK("number" == toString(follow(t2)));
+}
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "collapse_cycle_with_external_bound_in_union")
+{
+    ScopedFastFlag sff2{FFlag::LuauCollapseDirectBoundCycles, true};
+
+    auto [t1, ft1] = freshType();
+    auto [t2, ft2] = freshType();
+
+    // t1.upper = t2, t2.lower = t1, t1.lower = number | t2
+    // This is the pattern from the table.insert/table.unpack interaction.
+    ft1->upperBound = t2;
+    ft1->lowerBound = arena.addType(UnionType{{builtinTypes.numberType, t2}});
+    ft2->lowerBound = t1;
+    ft2->upperBound = t1;
+
+    TypeId functionTy = arena.addType(FunctionType{builtinTypes.emptyTypePack, arena.addTypePack({t1})});
+
+    generalize(functionTy);
+
+    CHECK("number" == toString(follow(t1)));
+    CHECK("number" == toString(follow(t2)));
+}
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "no_spurious_cycle_through_intersection")
+{
+    ScopedFastFlag sff2{FFlag::LuauCollapseDirectBoundCycles, true};
+
+    TableType tt;
+    tt.indexer = TableIndexer{builtinTypes.numberType, builtinTypes.numberType};
+    TypeId numberArray = arena.addType(TableType{tt});
+
+    auto [t1, ft1] = freshType();
+    auto [t2, ft2] = freshType();
+
+    // t1.upper = t2 & {number} (intersection containing t2 -- NOT a direct bound)
+    // t2.lower = t1 (direct)
+    // These should NOT form a cycle because t1's bound is an intersection, not t2 directly.
+    ft1->upperBound = arena.addType(IntersectionType{{t2, numberArray}});
+    ft2->lowerBound = t1;
+
+    TypeId functionTy = arena.addType(FunctionType{arena.addTypePack({t1, t2}), builtinTypes.emptyTypePack});
+
+    generalize(functionTy);
+
+    // t1 and t2 should remain distinct (not collapsed into one)
+    CHECK(toString(follow(t1)) != toString(follow(t2)));
+}
 
 TEST_SUITE_END();

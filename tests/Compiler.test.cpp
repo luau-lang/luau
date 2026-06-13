@@ -11952,6 +11952,29 @@ RETURN R2 1
     );
 }
 
+TEST_CASE("ExportSyntaxRegression")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+
+    // this used to ICE the compiler due to mishandling of export lookups, and StatIn expecting three allocated registers
+    CHECK_NOTHROW(compileFunction0(R"(
+        export function test()
+            for _ in test, _ do
+            end
+        end
+
+        export function test2()
+            for _ in _,test2 do
+            end
+        end
+
+        export local test3 = function()
+           for _ in _, test3 do
+           end
+        end
+    )"));
+}
+
 /**
  * This was introduced as a regression test to ensure that the LBC_CONSTANT_*
  * values do not incidentally change.
@@ -11975,7 +11998,12 @@ TEST_CASE("LBCConstantRegressionTest")
 
 TEST_CASE("ExportClass")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}, {FFlag::DebugLuauUserDefinedClasses, true}};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauConst2, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauCompileDuptableConstantPack2, true}
+    };
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -11985,8 +12013,8 @@ export class Point
 end
 )"),
         R"(
+NEWTABLE R1 0 0
 LOADKX R0 K3 [class Point (props: 2, methods: 0)]
-NEWTABLE R1 1 0
 SETTABLEKS R0 R1 K0 ['Point']
 GETIMPORT R2 6 [table.freeze]
 MOVE R3 R1
@@ -12014,17 +12042,44 @@ end
                    2
                ),
         R"(
+NEWTABLE R1 0 0
 LOADKX R0 K7 [class Point (props: 2, methods: 2)]
-DUPCLOSURE R1 K3 ['getX']
-NEWCLASSMEMBER R0 R1 ['getX']
-DUPCLOSURE R1 K5 ['getY']
-NEWCLASSMEMBER R0 R1 ['getY']
-NEWTABLE R1 1 0
+DUPCLOSURE R2 K3 ['getX']
+NEWCLASSMEMBER R0 R2 ['getX']
+DUPCLOSURE R2 K5 ['getY']
+NEWCLASSMEMBER R0 R2 ['getY']
 SETTABLEKS R0 R1 K0 ['Point']
 GETIMPORT R2 10 [table.freeze]
 MOVE R3 R1
 CALL R2 1 1
 RETURN R2 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+export class Point
+    public x: number
+    public y: number
+end
+
+local p = Point {x = 1, y = 2}
+)",
+                   0,
+                   2
+               ),
+        R"(
+NEWTABLE R1 0 0
+LOADKX R0 K3 [class Point (props: 2, methods: 0)]
+MOVE R2 R0
+DUPTABLE R3 6
+CALL R2 1 1
+SETTABLEKS R0 R1 K0 ['Point']
+GETIMPORT R3 9 [table.freeze]
+MOVE R4 R1
+CALL R3 1 1
+RETURN R3 1
 )"
     );
 }

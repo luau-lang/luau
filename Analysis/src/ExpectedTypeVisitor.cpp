@@ -300,11 +300,11 @@ void ExpectedTypeVisitor::applyExpectedType(TypeId expectedType, const AstExpr* 
                     applyExpectedType(expectedTableType->indexer->indexResultType, item.value);
                 }
             }
-            else if (item.kind == AstExprTable::Item::List && expectedTableType->indexer)
+            else if (item.kind == AstExprTable::Item::Kind::List && expectedTableType->indexer)
             {
                 applyExpectedType(expectedTableType->indexer->indexResultType, item.value);
             }
-            else if (item.kind == AstExprTable::Item::General && expectedTableType->indexer)
+            else if (item.kind == AstExprTable::Item::Kind::General && expectedTableType->indexer)
             {
                 applyExpectedType(expectedTableType->indexer->indexResultType, item.value);
                 applyExpectedType(expectedKeyType, item.key);

@@ -12,6 +12,7 @@
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
+LUAU_FASTFLAG(LuauCodegenNoEcbData)
 
 namespace Luau
 {
@@ -21,7 +22,7 @@ namespace A64
 {
 
 static const int8_t kInvalidSpill = 64;
-static_assert(kSpillSlots + kExtraSpillSlots < 64, "arm64 lowering can only handle 63 spill slots");
+static_assert(kSpillSlots + kExtraSpillSlots_DEPRECATED < 64, "arm64 lowering can only handle 63 spill slots");
 
 static int allocSpill(uint64_t& free, KindA64 kind)
 {
@@ -128,8 +129,16 @@ IrRegAllocA64::IrRegAllocA64(
     memset(gpr.defs, -1, sizeof(gpr.defs));
     memset(simd.defs, -1, sizeof(simd.defs));
 
-    CODEGEN_ASSERT(kSpillSlots + kExtraSpillSlots < 64);
-    freeSpillSlots = (1ull << (kSpillSlots + kExtraSpillSlots)) - 1ull;
+    if (FFlag::LuauCodegenNoEcbData)
+    {
+        CODEGEN_ASSERT(kSpillSlots < 64);
+        freeSpillSlots = (1ull << kSpillSlots) - 1ull;
+    }
+    else
+    {
+        CODEGEN_ASSERT(kSpillSlots + kExtraSpillSlots_DEPRECATED < 64);
+        freeSpillSlots = (1ull << (kSpillSlots + kExtraSpillSlots_DEPRECATED)) - 1ull;
+    }
 }
 
 RegisterA64 IrRegAllocA64::allocReg(KindA64 kind, uint32_t index)
@@ -518,9 +527,9 @@ void IrRegAllocA64::restore(const IrRegAllocA64::Spill& s, RegisterA64 reg)
 
     if (s.slot >= 0)
     {
-        if (isExtraSpillSlot(s.slot))
+        if (!FFlag::LuauCodegenNoEcbData && isExtraSpillSlot_DEPRECATED(s.slot))
         {
-            int extraOffset = getExtraSpillAddressOffset(s.slot);
+            int extraOffset = getExtraSpillAddressOffset_DEPRECATED(s.slot);
 
             // Need to calculate an address, but everything might be taken
             // If we are restoring an integer register, we can just use it as a temporary
@@ -639,9 +648,9 @@ void IrRegAllocA64::spill(Set& set, uint32_t index, uint32_t targetInstIdx)
             error = true;
         }
 
-        if (isExtraSpillSlot(slot))
+        if (!FFlag::LuauCodegenNoEcbData && isExtraSpillSlot_DEPRECATED(slot))
         {
-            int extraOffset = getExtraSpillAddressOffset(slot);
+            int extraOffset = getExtraSpillAddressOffset_DEPRECATED(slot);
 
             // Tricky situation, no registers left, but need a register to calculate an address
             // We will try to take x17 unless it's actually the register being spilled
@@ -712,14 +721,17 @@ uint32_t IrRegAllocA64::findInstructionWithFurthestNextUse(Set& set) const
 }
 
 
-bool IrRegAllocA64::isExtraSpillSlot(unsigned slot) const
+bool IrRegAllocA64::isExtraSpillSlot_DEPRECATED(unsigned slot) const
 {
+    CODEGEN_ASSERT(!FFlag::LuauCodegenNoEcbData);
+
     return slot >= kSpillSlots;
 }
 
-int IrRegAllocA64::getExtraSpillAddressOffset(unsigned slot) const
+int IrRegAllocA64::getExtraSpillAddressOffset_DEPRECATED(unsigned slot) const
 {
-    CODEGEN_ASSERT(isExtraSpillSlot(slot));
+    CODEGEN_ASSERT(!FFlag::LuauCodegenNoEcbData);
+    CODEGEN_ASSERT(isExtraSpillSlot_DEPRECATED(slot));
 
     return (slot - kSpillSlots) * 8;
 }

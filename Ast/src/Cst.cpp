@@ -123,7 +123,6 @@ CstStatLocal::CstStatLocal(
     AstArray<Position> valuesCommaPositions
 )
     : CstNode(CstClassIndex())
-    , declarationKeywordPosition(Position::missing())
     , varsAnnotationColonPositions(varsAnnotationColonPositions)
     , varsCommaPositions(varsCommaPositions)
     , valuesCommaPositions(valuesCommaPositions)
@@ -284,7 +283,7 @@ CstTypeSingletonString::CstTypeSingletonString(AstArray<char> sourceString, CstE
     , quoteStyle(quoteStyle)
     , blockDepth(blockDepth)
 {
-    LUAU_ASSERT(quoteStyle != CstExprConstantString::QuotedInterp);
+    LUAU_ASSERT(quoteStyle != CstExprConstantString::QuoteStyle::QuotedInterp);
 }
 
 CstTypeGroup::CstTypeGroup(Position closePosition)

@@ -750,9 +750,9 @@ std::optional<TypeId> extractMatchingTableType(const UnionType* expectedUnion, T
 
 bool isRecord(const AstExprTable::Item& item)
 {
-    if (item.kind == AstExprTable::Item::Record)
+    if (item.kind == AstExprTable::Item::Kind::Record)
         return true;
-    else if (item.kind == AstExprTable::Item::General && item.key->is<AstExprConstantString>())
+    else if (item.kind == AstExprTable::Item::Kind::General && item.key->is<AstExprConstantString>())
         return true;
     else
         return false;

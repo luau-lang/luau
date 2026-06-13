@@ -509,11 +509,11 @@ struct AstJsonEncoder : public AstVisitor
     {
         switch (kind)
         {
-        case AstExprTable::Item::List:
+        case AstExprTable::Item::Kind::List:
             return writeString("item");
-        case AstExprTable::Item::Record:
+        case AstExprTable::Item::Kind::Record:
             return writeString("record");
-        case AstExprTable::Item::General:
+        case AstExprTable::Item::Kind::General:
             return writeString("general");
         }
     }
@@ -526,7 +526,7 @@ struct AstJsonEncoder : public AstVisitor
         write("kind", item.kind);
         switch (item.kind)
         {
-        case AstExprTable::Item::List:
+        case AstExprTable::Item::Kind::List:
             write("value", item.value);
             break;
         default:
@@ -583,11 +583,11 @@ struct AstJsonEncoder : public AstVisitor
     {
         switch (op)
         {
-        case AstExprUnary::Not:
+        case AstExprUnary::Op::Not:
             return writeString("Not");
-        case AstExprUnary::Minus:
+        case AstExprUnary::Op::Minus:
             return writeString("Minus");
-        case AstExprUnary::Len:
+        case AstExprUnary::Op::Len:
             return writeString("Len");
         }
     }
