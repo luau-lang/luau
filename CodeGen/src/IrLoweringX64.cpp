@@ -3822,8 +3822,16 @@ void IrLoweringX64::finishFunction()
 
     if (stats)
     {
-        if (regs.maxUsedSlot > kSpillSlots + kExtraSpillSlots)
-            stats->regAllocErrors++;
+        if (FFlag::LuauCodegenNoEcbData)
+        {
+            if (regs.maxUsedSlot > kSpillSlots)
+                stats->regAllocErrors++;
+        }
+        else
+        {
+            if (regs.maxUsedSlot > kSpillSlots_DEPRECATED + kExtraSpillSlots_DEPRECATED)
+                stats->regAllocErrors++;
+        }
 
         if (regs.maxUsedSlot > stats->maxSpillSlotsUsed)
             stats->maxSpillSlotsUsed = regs.maxUsedSlot;
@@ -3833,8 +3841,16 @@ void IrLoweringX64::finishFunction()
 bool IrLoweringX64::hasError() const
 {
     // If register allocator had to use more stack slots than we have available, this function can't run natively
-    if (regs.maxUsedSlot > kSpillSlots + kExtraSpillSlots)
-        return true;
+    if (FFlag::LuauCodegenNoEcbData)
+    {
+        if (regs.maxUsedSlot > kSpillSlots)
+            return true;
+    }
+    else
+    {
+        if (regs.maxUsedSlot > kSpillSlots_DEPRECATED + kExtraSpillSlots_DEPRECATED)
+            return true;
+    }
 
     return false;
 }

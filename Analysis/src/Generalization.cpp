@@ -13,10 +13,12 @@
 #include "Luau/TypeArena.h"
 #include "Luau/TypeIds.h"
 #include "Luau/TypePack.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/VisitType.h"
 
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxDepth, 15)
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxSteps, 1500)
+LUAU_FASTFLAGVARIABLE(LuauCollapseDirectBoundCycles)
 
 namespace Luau
 {
@@ -725,6 +727,138 @@ void removeType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, Ty
     tr.process(haystack);
 }
 
+TypeId getDirectFreeNeighbor(TypeId ty)
+{
+    ty = follow(ty);
+    if (get<FreeType>(ty))
+        return ty;
+    return nullptr;
+}
+
+// Walk direct free-type bounds starting from `startTy`.  If a cycle is
+// reachable, collapse every member into one representative free type whose
+// bounds are the union of every member's external lower bound and the
+// intersection of every member's external upper bound.  Cycle self-references
+// (whether direct or nested in unions/intersections) are stripped from those
+// bounds.
+//
+// A "direct bound" means A.lowerBound or A.upperBound IS another free type
+// (not nested inside a union/intersection/table/function).  Cycles formed by
+// direct bounds (A->B->...->A) are the only cycles this helper detects;
+// non-cycling chains are left alone.
+//
+// Returns true if any types were collapsed.
+bool collapseDirectBoundCycleAt(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, TypeId startTy)
+{
+    startTy = follow(startTy);
+    if (!get<FreeType>(startTy))
+        return false;
+
+    TypeIds path;
+    TypeId cur = startTy;
+
+    while (cur)
+    {
+        if (path.contains(cur))
+        {
+            // Collect cycle members: everything on the path from `cur` onward.
+            TypeIds cycleMembers;
+            bool inCycle = false;
+            for (TypeId member : path)
+            {
+                if (member == cur)
+                    inCycle = true;
+                if (inCycle)
+                    cycleMembers.insert(member);
+            }
+            LUAU_ASSERT(!cycleMembers.empty());
+
+            // Merge external bounds from every cycle member into the
+            // representative.  Lower bounds union; upper bounds intersect.
+            // Skip bounds that are entirely cycle self-refs.
+            UnionBuilder mergedLowers{arena, builtinTypes};
+            IntersectionBuilder mergedUppers{arena, builtinTypes};
+
+            for (TypeId m : cycleMembers)
+            {
+                FreeType* ft = getMutable<FreeType>(m);
+                if (!ft)
+                    continue;
+
+                TypeId lb = follow(ft->lowerBound);
+                if (!cycleMembers.contains(lb))
+                {
+                    for (TypeId other : cycleMembers)
+                        removeType(arena, builtinTypes, lb, other);
+                    lb = follow(lb);
+                    if (!get<NeverType>(lb) && !cycleMembers.contains(lb))
+                        mergedLowers.add(lb);
+                }
+
+                TypeId ub = follow(ft->upperBound);
+                if (!cycleMembers.contains(ub))
+                {
+                    for (TypeId other : cycleMembers)
+                        removeType(arena, builtinTypes, ub, other);
+                    ub = follow(ub);
+                    if (!get<UnknownType>(ub) && !cycleMembers.contains(ub))
+                        mergedUppers.add(ub);
+                }
+            }
+
+            // Pick the back-edge target (cycleMembers[0] = `cur`) as the
+            // representative, give it the merged bounds, and bind the rest.
+            TypeId rep = cycleMembers.front();
+            FreeType* repFree = getMutable<FreeType>(rep);
+            LUAU_ASSERT(repFree);
+
+            repFree->lowerBound = mergedLowers.build();
+            repFree->upperBound = mergedUppers.build();
+
+            auto it = cycleMembers.begin() + 1;
+            while (it != cycleMembers.end())
+            {
+                emplaceType<BoundType>(asMutable(*it), rep);
+                ++it;
+            }
+
+            return true;
+        }
+
+        path.insert(cur);
+
+        FreeType* ft = getMutable<FreeType>(cur);
+        if (!ft)
+            break;
+
+        // Try to follow a direct free-type bound (prefer upper, then lower).
+        TypeId next = getDirectFreeNeighbor(ft->upperBound);
+        if (!next || next == cur)
+            next = getDirectFreeNeighbor(ft->lowerBound);
+        if (next == cur)
+            next = nullptr;
+
+        cur = next;
+    }
+
+    return false;
+}
+
+// Batch pre-pass: collapse direct-bound cycles among the free types in the
+// generalization frontier.  Iteration order does not matter -- once a cycle
+// has been collapsed, subsequent walks from any member terminate immediately
+// because the type is no longer free (it has been bound to the rep) or
+// because the rep's bounds no longer reference cycle members.
+void collapseFreeTypeCycles(
+    NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    const InsertionOrderedMap<TypeId, GeneralizationParams<TypeId>>& freeTypes
+)
+{
+    for (const auto& [startTy, _] : freeTypes)
+        collapseDirectBoundCycleAt(arena, builtinTypes, startTy);
+}
+
 } // namespace
 
 GeneralizationResult<TypeId> generalizeType(
@@ -736,6 +870,21 @@ GeneralizationResult<TypeId> generalizeType(
 )
 {
     freeTy = follow(freeTy);
+
+    // Collapse any direct-bound cycle this free type participates in before we
+    // commit to a generalization decision.  This handles the per-call
+    // invocations from ConstraintSolver -- which bypass the batch pre-pass in
+    // generalize() -- and is a no-op when the cycle has already been collapsed
+    // by that pre-pass.  When this fires, freeTy may be re-bound to the
+    // representative of the cycle, so we re-follow it.
+    if (FFlag::LuauCollapseDirectBoundCycles)
+    {
+        if (collapseDirectBoundCycleAt(arena, builtinTypes, freeTy))
+            freeTy = follow(freeTy);
+
+        if (!get<FreeType>(freeTy))
+            return {freeTy, /*wasReplacedByGeneric*/ false};
+    }
 
     FreeType* ft = getMutable<FreeType>(freeTy);
     LUAU_ASSERT(ft);
@@ -766,19 +915,24 @@ GeneralizationResult<TypeId> generalizeType(
     else if (isPositive(params.polarity) && !hasUpperBound)
     {
         TypeId lb = follow(ft->lowerBound);
-        if (FreeType* lowerFree = getMutable<FreeType>(lb); lowerFree && lowerFree->upperBound == freeTy)
-        {
-            // If we are generalizing 'a in:
-            //
-            //  LO <: 'b <: 'a <: UP
-            //
-            // ... we can hold onto the bound UP and forward it to 'b.
-            TypeId upperBound = follow(ft->upperBound);
-            removeType(arena, builtinTypes, upperBound, freeTy);
-            lowerFree->upperBound = follow(upperBound);
-        }
-        else
+        if (FFlag::LuauCollapseDirectBoundCycles)
             removeType(arena, builtinTypes, lb, freeTy);
+        else
+        {
+            if (FreeType* lowerFree = getMutable<FreeType>(lb); lowerFree && lowerFree->upperBound == freeTy)
+            {
+                // If we are generalizing 'a in:
+                //
+                //  LO <: 'b <: 'a <: UP
+                //
+                // ... we can hold onto the bound UP and forward it to 'b.
+                TypeId upperBound = follow(ft->upperBound);
+                removeType(arena, builtinTypes, upperBound, freeTy);
+                lowerFree->upperBound = follow(upperBound);
+            }
+            else
+                removeType(arena, builtinTypes, lb, freeTy);
+        }
 
         if (follow(lb) != freeTy)
             emplaceType<BoundType>(asMutable(freeTy), lb);
@@ -794,19 +948,27 @@ GeneralizationResult<TypeId> generalizeType(
     else
     {
         TypeId ub = follow(ft->upperBound);
-        if (FreeType* upperFree = getMutable<FreeType>(ub); upperFree && upperFree->lowerBound == freeTy)
-        {
-            // If we are generalizing 'a in:
-            //
-            //  LO <: 'a <: 'b <: UP
-            //
-            // ... we can hold onto the bound LO and forward it to 'b.
-            TypeId lowerBound = follow(ft->lowerBound);
-            removeType(arena, builtinTypes, lowerBound, freeTy);
-            upperFree->lowerBound = follow(lowerBound);
-        }
-        else
+        // When LuauCollapseDirectBoundCycles is on, the pre-pass
+        // collapseDirectBoundCycleAt has already collapsed any 2-cycle here,
+        // so the forwarding branch below would never fire -- skip it.
+        if (FFlag::LuauCollapseDirectBoundCycles)
             removeType(arena, builtinTypes, ub, freeTy);
+        else
+        {
+            if (FreeType* upperFree = getMutable<FreeType>(ub); upperFree && upperFree->lowerBound == freeTy)
+            {
+                // If we are generalizing 'a in:
+                //
+                //  LO <: 'a <: 'b <: UP
+                //
+                // ... we can hold onto the bound LO and forward it to 'b.
+                TypeId lowerBound = follow(ft->lowerBound);
+                removeType(arena, builtinTypes, lowerBound, freeTy);
+                upperFree->lowerBound = follow(lowerBound);
+            }
+            else
+                removeType(arena, builtinTypes, ub, freeTy);
+        }
 
         if (follow(ub) != freeTy)
             emplaceType<BoundType>(asMutable(freeTy), ub);
@@ -910,17 +1072,65 @@ std::optional<TypeId> generalize(
             functionTy->genericPacks.push_back(tp);
     };
 
-    for (const auto& [freeTy, params] : fts.types)
+    if (FFlag::LuauCollapseDirectBoundCycles && !generalizationTarget)
+        collapseFreeTypeCycles(arena, builtinTypes, fts.types);
+
+    if (FFlag::LuauCollapseDirectBoundCycles)
     {
-        if (!generalizationTarget || freeTy == *generalizationTarget)
+        auto generalizeJustOne = [&](TypeId freeTy, const auto& params)
         {
+            if (!get<FreeType>(follow(freeTy)))
+                return GeneralizationResult<TypeId>{};
+
             GeneralizationResult<TypeId> res = generalizeType(arena, builtinTypes, scope, freeTy, params);
 
             if (res.resourceLimitsExceeded)
-                return std::nullopt;
+                return res;
 
             if (res && res.wasReplacedByGeneric)
                 pushGeneric(*res.result);
+
+            return res;
+        };
+
+        if (generalizationTarget)
+        {
+            auto it = fts.types.find(*generalizationTarget);
+            if (it != fts.types.end())
+            {
+                const auto [freeTy, params] = *it;
+                auto res = generalizeJustOne(freeTy, params);
+                if (res.resourceLimitsExceeded)
+                    return std::nullopt;
+            }
+        }
+        else
+        {
+            for (const auto& [freeTy, params] : fts.types)
+            {
+                auto res = generalizeJustOne(freeTy, params);
+                if (res.resourceLimitsExceeded)
+                    return std::nullopt;
+            }
+        }
+    }
+    else
+    {
+        for (const auto& [freeTy, params] : fts.types)
+        {
+            if (!generalizationTarget || freeTy == *generalizationTarget)
+            {
+                if (FFlag::LuauCollapseDirectBoundCycles && !get<FreeType>(follow(freeTy)))
+                    continue;
+
+                GeneralizationResult<TypeId> res = generalizeType(arena, builtinTypes, scope, freeTy, params);
+
+                if (res.resourceLimitsExceeded)
+                    return std::nullopt;
+
+                if (res && res.wasReplacedByGeneric)
+                    pushGeneric(*res.result);
+            }
         }
     }
 

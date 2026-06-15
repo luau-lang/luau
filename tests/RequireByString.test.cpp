@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
+LUAU_FASTFLAG(LuauCyclicRequireShortCircuit)
 
 #if __APPLE__
 #include <TargetConditionals.h>
@@ -930,6 +931,68 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireChainedAliasesFailureDependOnInne
         runProtectedRequire(path);
         assertOutputContainsAll({"false", "error requiring module \"@dependoninner\": @passthroughinner is not a valid alias"});
     }
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicPath")
+{
+    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
+    // Both modules use the require table (...) as their require surface, so the
+    // cycle resolves consistently: each module's cached table is the one distributed
+    // to the other during loading.
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_requirer";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnAccess")
+{
+    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
+    // A requires B, B requires A (cycle hit), B then tries to read
+    // a field from A's incomplete require table. CyclicDependencyError is raised.
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_access_a";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"false", "Cannot access the exported field 'Tree'"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnMutation")
+{
+    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
+    // B requires A, A requires B (cycle hit), A then tries to write
+    // to B's incomplete require table. CyclicDependencyError is raised.
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_mutation_b";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"false", "Cannot set the exported field 'foo'"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnNonStringKey")
+{
+    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
+    // A requires B, B requires A (cycle hit), B then accesses A's incomplete require
+    // table using a table as the key. CyclicDependencyError is raised without crashing
+    // (verifies luaL_tolstring handles non-string keys instead of lua_tostring).
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_access_nonstringkey_a";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"false", "Cannot access the exported field"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicPlaceholderPrevMetatableRestored")
+{
+    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
+    // A sets a metatable (__index) on its placeholder before calling require(B).
+    // When B finishes, lua_requirecont restores the saved metatable instead of clearing it
+    // to nil. After both modules load, A's __index should still be active.
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_prev_mt_requirer";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyPlaceholderMetatableLocked")
+{
+    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
+
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_locked_mt_requirer";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
 }
 
 TEST_SUITE_END();

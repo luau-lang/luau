@@ -364,4 +364,87 @@ TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class_but_not_a_c
     CHECK_EQ("nil", toString(err->givenType));
 }
 
+TEST_CASE_FIXTURE(ClassesFixture, "typed_self_parameter_after_class_declaration")
+{
+    // Annotations on the self parameter are forbidden, but we still have to
+    // parse this without crashing.
+    CheckResult result = check(R"(
+        class Q
+            function f(self: number) end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    auto e0 = get<SyntaxError>(result.errors[0]);
+    REQUIRE(e0);
+    CHECK("The 'self' parameter cannot have a type annotation" == e0->message);
+
+    auto e1 = get<TypeMismatch>(result.errors[1]);
+    REQUIRE(e1);
+    CHECK("number" == toString(e1->wantedType));
+    CHECK("Q" == toString(e1->givenType));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "typeof_class_prop_ice")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local x = 1
+        class Foo
+            public bar: typeof(x)
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "typeof_indexing_ice_in_class_prop_typeof")
+{
+    CheckResult results = check(R"(
+local A = ""
+class B
+    public C: { _: typeof(A.D) }
+end
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<UnknownProperty>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("D", err->key);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_refers_to_later_type_alias")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        class Foo
+            public bar: BarType
+        end
+
+        type BarType = number | string
+
+        local function getbar(f: Foo)
+            return f.bar
+        end
+    )"));
+
+    CHECK_EQ("(Foo) -> number | string", toString(requireType("getbar")));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "accept_read_only_tables")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        class Foo
+            public bar: number | string
+        end
+
+        local function ofnumbertbl(tbl: { bar: number })
+            return Foo(tbl)
+        end
+
+        local function inference(tbl)
+            return Foo(tbl)
+        end
+    )"));
+
+    CHECK_EQ("({ bar: number }) -> Foo", toString(requireType("ofnumbertbl")));
+    CHECK_EQ("({ read bar: number | string }) -> Foo", toString(requireType("inference")));
+}
+
+
 TEST_SUITE_END();

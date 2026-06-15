@@ -67,7 +67,7 @@ static void foldUnary(Constant& result, AstExprUnary::Op op, const Constant& arg
 {
     switch (op)
     {
-    case AstExprUnary::Not:
+    case AstExprUnary::Op::Not:
         if (arg.type != Constant::Type_Unknown)
         {
             result.type = Constant::Type_Boolean;
@@ -75,7 +75,7 @@ static void foldUnary(Constant& result, AstExprUnary::Op op, const Constant& arg
         }
         break;
 
-    case AstExprUnary::Minus:
+    case AstExprUnary::Op::Minus:
         if (arg.type == Constant::Type_Number)
         {
             result.type = Constant::Type_Number;
@@ -91,7 +91,7 @@ static void foldUnary(Constant& result, AstExprUnary::Op op, const Constant& arg
         }
         break;
 
-    case AstExprUnary::Len:
+    case AstExprUnary::Op::Len:
         if (arg.type == Constant::Type_String)
         {
             result.type = Constant::Type_Number;

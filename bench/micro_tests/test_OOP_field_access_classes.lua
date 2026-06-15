@@ -1,3 +1,4 @@
+-- --bench-args: --fflags=DebugLuauUserDefinedClasses,DebugLuauUserDefinedClassesRuntime
 local function prequire(name) local success, result = pcall(require, name); return success and result end
 local bench = script and require(script.Parent.bench_support) or prequire("bench_support") or require("../bench_support")
 
