@@ -2811,6 +2811,33 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
     LUAU_REQUIRE_NO_ERRORS(results);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_function_result_in_generic_return_can_infer_into_another_generic")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        export type Generic<T> = { key: T }
+
+        type function Identity(t: type): type
+            return t
+        end
+
+        local function transform<S>(witness: S): Generic<Identity<S>>
+            return {} :: Generic<Identity<S>>
+        end
+
+        local function Optional<T>(inner: Generic<T>): Generic<T?>
+            return {} :: Generic<T?>
+        end
+
+        local dt = transform("")
+        local opt = Optional(dt)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Generic<string?>", toString(requireType("opt")));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "externs_are_extern")
 {
     ScopedFastFlag _ = {FFlag::DebugLuauForceOldSolver, false};
