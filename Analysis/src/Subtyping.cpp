@@ -28,6 +28,8 @@ LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingTablesHasBetterErrorSuppression)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
+LUAU_FASTFLAGVARIABLE(LuauSubtypeUnionsTogether)
+LUAU_FASTFLAGVARIABLE(LuauDropUnionSubtypeReasoning)
 
 namespace Luau
 {
@@ -890,6 +892,12 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
             result.isCacheable = false;
         }
     }
+    else if (auto p = get2<UnionType, UnionType>(subTy, superTy); FFlag::LuauSubtypeUnionsTogether && p)
+    {
+        result = isCovariantWith(env, p.first, p.second, scope);
+        if (!result.isSubtype && !result.normalizationTooComplex)
+            result = trySemanticSubtyping(env, subTy, superTy, scope, result);
+    }
     else if (auto subUnion = get<UnionType>(subTy))
         result = isCovariantWith(env, subUnion, superTy, scope);
     else if (auto superUnion = get<UnionType>(superTy))
@@ -1635,7 +1643,56 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         ++index;
     }
 
+    if (FFlag::LuauDropUnionSubtypeReasoning)
+    {
+        LUAU_ASSERT(!result.isSubtype);
+        result.reasoning.clear();
+    }
+
     return result;
+}
+
+LUAU_NOINLINE
+SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const UnionType* subUnion, const UnionType* superUnion, NotNull<Scope> scope)
+{
+    LUAU_ASSERT(FFlag::LuauSubtypeUnionsTogether);
+    // A | B | C <: D | E | F
+    //
+    // ... when all of A, B and C are subtypes of D | E | F. However, we can
+    // optimize this (and avoid some correctness issues) by skipping any
+    // options in the union subtype that are present in the union super type.
+    // A trivial example is:
+    //
+    //  -- We can skip the `nil` part of the subtype.
+    //  T? <: U? iff T <: U
+    //
+    // NOTE: The correct way to do this would be to unconditionally
+    // semantically subtype unions.
+    std::unique_ptr<SubtypingResult> result = std::make_unique<SubtypingResult>();
+    result->isSubtype = true;
+
+    TypeIds superUnionOptions;
+    superUnionOptions.reserve(superUnion->options.size());
+    superUnionOptions.insert(begin(superUnion), end(superUnion));
+
+    for (TypeId ty : superUnionOptions)
+        LUAU_ASSERT(ty == follow(ty));
+
+    size_t subIndex = 0;
+
+    for (TypeId ty : subUnion)
+    {
+        if (!superUnionOptions.contains(ty))
+        {
+            result->andAlso(isCovariantWith(env, ty, superUnion, scope).withSubComponent(TypePath::Index{subIndex, TypePath::Index::Variant::Union}));
+            if (result->normalizationTooComplex)
+                return SubtypingResult{false, /* normalizationTooComplex */ true};
+        }
+
+        subIndex++;
+    }
+
+    return *result;
 }
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const UnionType* subUnion, TypeId superTy, NotNull<Scope> scope)

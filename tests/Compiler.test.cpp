@@ -23,7 +23,6 @@ LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
 LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
-LUAU_FASTFLAG(LuauCompileDuptableConstantPack2)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
@@ -680,8 +679,6 @@ RETURN R0 0
 
 TEST_CASE("TableLiterals")
 {
-    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
-
     // empty table, note it's computed directly to target
     CHECK_EQ("\n" + compileFunction0("return {}"), R"(
 NEWTABLE R0 0 0
@@ -793,8 +790,6 @@ RETURN R0 3
 
 TEST_CASE("TableLiteralsConstantPackFlag")
 {
-    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
-
     // basic literals becomes a single duptable
     CHECK_EQ("\n" + compileFunction0("return {a=1,b=2,c=3}"), R"(
 DUPTABLE R0 6
@@ -880,8 +875,6 @@ RETURN R0 1
 
 TEST_CASE("DumpConstantsTables")
 {
-    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
-
     CHECK_EQ(
         "\n" + compileFunction0Constants(R"(
 return {a=1,b=2,c=3}, {only=42}, {first=10, second=20, third=30}
@@ -3491,8 +3484,6 @@ until f == 0
 
 TEST_CASE("DebugLineInfoSubTable")
 {
-    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
-
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
     Luau::compileOrThrow(bcb, R"(
@@ -3598,8 +3589,6 @@ return
 
 TEST_CASE("DebugLineInfoAssignment")
 {
-    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
-
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
     Luau::compileOrThrow(bcb, R"(
@@ -5190,8 +5179,6 @@ L1: RETURN R0 0
 
 TEST_CASE("TableConstantStringIndex")
 {
-    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
-
     ScopedFastFlag sff{FFlag::LuauCompilePropagateTableProps2, true};
 
     CHECK_EQ(
@@ -5222,8 +5209,6 @@ RETURN R0 0
 
 TEST_CASE("DuptableNoConstantPack")
 {
-    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
-
     // function has duplicate keys that are not constant fold-able
     CHECK_EQ(
         "\n" + compileFunction(
@@ -5249,7 +5234,6 @@ RETURN R1 1
 
 TEST_CASE("Coverage")
 {
-    ScopedFastFlag LuauCompileDuptableConstantPack2{FFlag::LuauCompileDuptableConstantPack2, true};
     // basic statement coverage
     CHECK_EQ(
         "\n" + compileFunction0Coverage(
@@ -11330,7 +11314,6 @@ RETURN R1 1
 TEST_CASE("FoldConstTableProps")
 {
     ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
-    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack2, true};
     ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
     ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
 
@@ -11698,7 +11681,6 @@ RETURN R1 1
 TEST_CASE("FoldConstTablePropsOrAnd")
 {
     ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
-    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack2, true};
     ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
     ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
 
@@ -11773,7 +11755,6 @@ TEST_CASE("FoldConstTablePropsReturnLocal")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
-    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack2, true};
     ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
     ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
 
@@ -11818,7 +11799,6 @@ RETURN R0 1
 TEST_CASE("FoldConstTablePropsReturnUpvalue")
 {
     ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
-    ScopedFastFlag luauCompileDuptableConstantPack{FFlag::LuauCompileDuptableConstantPack2, true};
     ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
     ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
 
@@ -12002,7 +11982,6 @@ TEST_CASE("ExportClass")
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::LuauConst2, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauCompileDuptableConstantPack2, true}
     };
 
     CHECK_EQ(

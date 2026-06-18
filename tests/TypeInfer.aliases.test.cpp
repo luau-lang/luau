@@ -12,6 +12,8 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauAvoidCascadingRecursiveConstraintViolationError)
+LUAU_FASTFLAG(LuauConstraintGraph)
+LUAU_FASTFLAG(LuauFixInfiniteTypeRedundantBind)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -1378,6 +1380,29 @@ TEST_CASE_FIXTURE(Fixture, "only_report_single_error_for_missing_generics_2")
 
     LUAU_REQUIRE_ERROR_COUNT(1, results);
     REQUIRE(get<IncorrectGenericParameterCount>(results.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cyclic_type_alias_through_generic_does_not_assert")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauConstraintGraph, true},
+        {FFlag::LuauFixInfiniteTypeRedundantBind, true},
+    };
+
+    // We had an issue where a generic type alias cycle caused the system to
+    // improperly rebind a concrete type.  This was tripping an assertion in
+    // noopt builds.
+    CheckResult result = check(R"(
+        type A = B
+        type B = { x: C<any> }
+        type C<T> = A
+    )");
+
+    // The actual thing we care about is that we not LUAU_ASSERT.  As long as
+    // that doesn't happen, we're okay.
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<RecursiveRestraintViolation>(result.errors.at(0)));
 }
 
 TEST_SUITE_END();
