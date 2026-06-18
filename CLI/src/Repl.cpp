@@ -572,10 +572,28 @@ static void runRepl()
     runReplImpl(L);
 }
 
+static std::string getFilePath(const char* name)
+{
+    if (isFile(name))
+        return name;
+
+    std::string base = name;
+
+    std::string luauPath = base + ".luau";
+    if (isFile(luauPath))
+        return luauPath;
+
+    std::string luaPath = base + ".lua";
+    if (isFile(luaPath))
+        return luaPath;
+
+    return "";
+}
+
 // `repl` is used it indicate if a repl should be started after executing the file.
 static bool runFile(const char* name, lua_State* GL, bool repl)
 {
-    std::optional<std::string> source = readFile(name);
+    std::optional<std::string> source = readFile(getFilePath(name));
     if (!source)
     {
         fprintf(stderr, "Error opening %s\n", name);
