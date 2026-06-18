@@ -31,7 +31,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauConst2)
-LUAU_FASTFLAGVARIABLE(LuauCompileDuptableConstantPack2)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAGVARIABLE(LuauCompileNoOptNext)
@@ -516,7 +515,7 @@ struct Compiler
         if (func->hasNativeAttribute())
             protoflags |= LPF_NATIVE_FUNCTION;
 
-        bool isInlinable = !func->vararg && !getfenvUsed && !setfenvUsed;
+        bool isInlinable = !hasMultiRet && !getfenvUsed && !setfenvUsed;
         if (FFlag::LuauEmitCallFeedback && isInlinable && upvals.empty())
             protoflags |= LPF_INLINABLE;
 
@@ -555,6 +554,7 @@ struct Compiler
         argCount = 0;
 
         hasLoops = false;
+        hasMultiRet = false;
         currentFunction = nullptr;
 
         return fid;
@@ -2469,61 +2469,39 @@ struct Compiler
         {
             BytecodeBuilder::TableShape shape;
 
-            if (FFlag::LuauCompileDuptableConstantPack2)
+            for (size_t i = 0; i < expr->items.size; ++i)
             {
-                for (size_t i = 0; i < expr->items.size; ++i)
-                {
-                    const AstExprTable::Item& item = expr->items.data[i];
-                    LUAU_ASSERT(item.kind == AstExprTable::Item::Kind::Record);
+                const AstExprTable::Item& item = expr->items.data[i];
+                LUAU_ASSERT(item.kind == AstExprTable::Item::Kind::Record);
 
-                    AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
-                    LUAU_ASSERT(ckey);
+                AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
+                LUAU_ASSERT(ckey);
 
-                    int keyCid = bytecode.addConstantString(sref(ckey->value));
-                    if (keyCid < 0)
-                        CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
+                int keyCid = bytecode.addConstantString(sref(ckey->value));
+                if (keyCid < 0)
+                    CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
 
-                    int32_t valueCid = getConstantIndex(item.value);
-                    if (lastKeyVal.contains(keyCid) && lastKeyVal[keyCid] == -1)
-                        continue;
+                int32_t valueCid = getConstantIndex(item.value);
+                if (lastKeyVal.contains(keyCid) && lastKeyVal[keyCid] == -1)
+                    continue;
 
-                    lastKeyVal[keyCid] = valueCid;
-                }
-
-                for (auto& [keyCid, valueCid] : lastKeyVal)
-                {
-                    LUAU_ASSERT(shape.length < BytecodeBuilder::TableShape::kMaxLength);
-
-                    size_t idx = shape.length;
-                    shape.keys[idx] = keyCid;
-
-                    shape.constants[idx] = valueCid;
-                    if (valueCid >= 0)
-                    {
-                        shape.hasConstants = true;
-                    }
-
-                    shape.length++;
-                }
+                lastKeyVal[keyCid] = valueCid;
             }
-            else
+
+            for (auto& [keyCid, valueCid] : lastKeyVal)
             {
-                for (size_t i = 0; i < expr->items.size; ++i)
+                LUAU_ASSERT(shape.length < BytecodeBuilder::TableShape::kMaxLength);
+
+                size_t idx = shape.length;
+                shape.keys[idx] = keyCid;
+
+                shape.constants[idx] = valueCid;
+                if (valueCid >= 0)
                 {
-                    const AstExprTable::Item& item = expr->items.data[i];
-                    LUAU_ASSERT(item.kind == AstExprTable::Item::Kind::Record);
-
-                    AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
-                    LUAU_ASSERT(ckey);
-
-                    int cid = bytecode.addConstantString(sref(ckey->value));
-                    if (cid < 0)
-                        CompileError::raise(ckey->location, "Exceeded constant limit; simplify the code to compile");
-
-                    LUAU_ASSERT(shape.length < BytecodeBuilder::TableShape::kMaxLength);
-
-                    shape.keys[shape.length++] = cid;
+                    shape.hasConstants = true;
                 }
+
+                shape.length++;
             }
 
             int32_t tid = bytecode.addConstantTable(shape);
@@ -2539,11 +2517,8 @@ struct Compiler
             else
             {
                 // must disable duptable constant optimization here, as we're defaulting back to new table
-                if (FFlag::LuauCompileDuptableConstantPack2)
-                {
-                    shape.hasConstants = false;
-                    lastKeyVal.clear();
-                }
+                shape.hasConstants = false;
+                lastKeyVal.clear();
 
                 bytecode.emitABC(LOP_NEWTABLE, reg, uint8_t(encodedHashSize), 0);
                 bytecode.emitAux(0);
@@ -2585,7 +2560,7 @@ struct Compiler
             AstExpr* key = item.key;
             AstExpr* value = item.value;
 
-            if (FFlag::LuauCompileDuptableConstantPack2 && lastKeyVal.size() > 0 && key && key->is<AstExprConstantString>())
+            if (lastKeyVal.size() > 0 && key && key->is<AstExprConstantString>())
             {
                 AstExprConstantString* ckey = item.key->as<AstExprConstantString>();
                 LUAU_ASSERT(ckey);
@@ -3672,6 +3647,9 @@ struct Compiler
         }
 
         closeLocals(0);
+
+        if (multRet)
+            hasMultiRet = true;
 
         bytecode.emitABC(LOP_RETURN, uint8_t(temp), multRet ? 0 : uint8_t(stat->list.size + 1), 0);
     }
@@ -5023,6 +5001,7 @@ struct Compiler
     unsigned int stackSize = 0;
     size_t argCount = 0;
     bool hasLoops = false;
+    bool hasMultiRet = false;
     AstExprFunction* currentFunction = nullptr;
 
     size_t blockDepth = 0;

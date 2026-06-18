@@ -51,6 +51,7 @@ LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauConstraintGraph)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateFunctionTypeBeforePush)
 LUAU_FASTFLAGVARIABLE(LuauAvoidCascadingRecursiveConstraintViolationError)
+LUAU_FASTFLAGVARIABLE(LuauFixInfiniteTypeRedundantBind)
 
 namespace Luau
 {
@@ -1327,7 +1328,15 @@ bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constr
             constraint->scope->invalidTypeAliases[c.name] = constraint->location;
             if (FFlag::LuauConstraintGraph)
             {
-                bind(constraint, target, builtinTypes->errorType);
+                if (FFlag::LuauFixInfiniteTypeRedundantBind)
+                {
+                    if (get<BlockedType>(target) || get<FreeType>(target) || get<PendingExpansionType>(target))
+                        bind(constraint, target, builtinTypes->errorType);
+                }
+                else
+                {
+                    bind(constraint, target, builtinTypes->errorType);
+                }
             }
             else
             {
