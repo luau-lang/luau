@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
+LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -561,6 +562,8 @@ TEST_CASE_FIXTURE(Fixture, "intersect_false_and_bool_and_false")
 
 TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")
 {
+    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
+
     CheckResult result = check(R"(
         function foo(x: ((number?) -> number?) & ((string?) -> string?))
             local y : (nil) -> nil = x -- Not OK (fixed in DCR)
@@ -589,8 +592,7 @@ TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")
             "	 * in the 1st component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the union as `nil` and it returns the 1st entry in the type pack is `number`, and `nil` is not a subtype of `number`\n"
             "	 * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the union as `string` and it returns the 1st entry in the type pack is `number`, and `string` is not a subtype of `number`\n"
             "	 * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the union as `nil` and it returns the 1st entry in the type pack is `number`, and `nil` is not a subtype of `number`\n"
-            "	 * in the 2nd component of the intersection, the function takes the 1st entry in the type pack which has the 1st component of the union as `string` and it takes the 1st entry in the type pack is `number`, and `string` is not a supertype of `number`\n"
-            "	 * in the 2nd component of the intersection, the function takes the 1st entry in the type pack which has the 2nd component of the union as `nil` and it takes the 1st entry in the type pack is `number`, and `nil` is not a supertype of `number`\n"
+            "	 * in the 2nd component of the intersection, the function takes the 1st entry in the type pack which is `string?` and it takes the 1st entry in the type pack is `number`, and `string?` is not a supertype of `number`"
         ;
         // clang-format on
 
@@ -661,6 +663,8 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
 {
+    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
+
     CheckResult result = check(R"(
         function f(x : { p : number?, q : any } & { p : unknown, q : string? })
             local y : { p : number?, q : string? } = x -- OK
@@ -677,16 +681,12 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
             "but got\n"
             "\t'{ p: number?, q: any } & { p: unknown, q: string? }'; \n"
             "this is because \n"
-            "\t * in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and accessing `p` has the 1st component of the union as `string`, and `number` is not exactly `string`\n"
-            "\t * in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and accessing `p` has the 2nd component of the union as `nil`, and `number` is not exactly `nil`\n"
-            "\t * in the 1st component of the intersection, accessing `p` has the 2nd component of the union as `nil` and accessing `p` has the 1st component of the union as `string`, and `nil` is not exactly `string`\n"
-            "\t * in the 1st component of the intersection, accessing `q` results in `any` and accessing `q` has the 1st component of the union as `number`, and `any` is not exactly `number`\n"
-            "\t * in the 1st component of the intersection, accessing `q` results in `any` and accessing `q` has the 2nd component of the union as `nil`, and `any` is not exactly `nil`\n"
-            "\t * in the 2nd component of the intersection, accessing `p` results in `unknown` and accessing `p` has the 1st component of the union as `string`, and `unknown` is not exactly `string`\n"
-            "\t * in the 2nd component of the intersection, accessing `p` results in `unknown` and accessing `p` has the 2nd component of the union as `nil`, and `unknown` is not exactly `nil`\n"
-            "\t * in the 2nd component of the intersection, accessing `q` has the 1st component of the union as `string` and accessing `q` has the 1st component of the union as `number`, and `string` is not exactly `number`\n"
-            "\t * in the 2nd component of the intersection, accessing `q` has the 1st component of the union as `string` and accessing `q` has the 2nd component of the union as `nil`, and `string` is not exactly `nil`\n"
-            "\t * in the 2nd component of the intersection, accessing `q` has the 2nd component of the union as `nil` and accessing `q` has the 1st component of the union as `number`, and `nil` is not exactly `number`\n"
+            "\t* in the 1st component of the intersection, accessing `p` has the 1st component of the union as `number` and accessing `p` results in `string?`, and `number` is not exactly `string?`\n"
+            "\t* in the 1st component of the intersection, accessing `p` results in `number?` and accessing `p` has the 1st component of the union as `string`, and `number?` is not exactly `string`\n"
+            "\t* in the 1st component of the intersection, accessing `q` results in `any` and accessing `q` results in `number?`, and `any` is not exactly `number?`\n"
+            "\t* in the 2nd component of the intersection, accessing `p` results in `unknown` and accessing `p` results in `string?`, and `unknown` is not exactly `string?`\n"
+            "\t* in the 2nd component of the intersection, accessing `q` has the 1st component of the union as `string` and accessing `q` results in `number?`, and `string` is not exactly `number?`\n"
+            "\t* in the 2nd component of the intersection, accessing `q` results in `string?` and accessing `q` has the 1st component of the union as `number`, and `string?` is not exactly `number`"
         ;
         // clang-format on
 
@@ -717,6 +717,8 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_never_properties")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
 {
+    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
+
     CheckResult result = check(R"(
         function f(x : ((number?) -> ({ p : number } & { q : number })) & ((string?) -> ({ p : number } & { r : number })))
             local y : (nil) -> { p : number, q : number, r : number} = x -- OK
@@ -739,18 +741,17 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
             "	 * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the intersection as `{ p: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ p: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
             "	 * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the intersection as `{ r: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ r: number }` is not a subtype of `{ p: number, q: number, r: number }`"
         ;
-        const std::string expected2 =
+        const std::string expected2 = 
             "Expected this to be\n"
-            "	'(number?) -> { p: number, q: number, r: number }'\n"
+            "\t'(number?) -> { p: number, q: number, r: number }'\n"
             "but got\n"
-            "	'((number?) -> { p: number } & { q: number }) & ((string?) -> { p: number } & { r: number })'; \n"
+            "\t'((number?) -> { p: number } & { q: number }) & ((string?) -> { p: number } & { r: number })'; \n"
             "this is because \n"
-            "	 * in the 1st component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the intersection as `{ p: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ p: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
-            "	 * in the 1st component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the intersection as `{ q: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ q: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
-            "	 * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the intersection as `{ p: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ p: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
-            "	 * in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the intersection as `{ r: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ r: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
-            "	 * in the 2nd component of the intersection, the function takes the 1st entry in the type pack which has the 1st component of the union as `string` and it takes the 1st entry in the type pack has the 1st component of the union as `number`, and `string` is not a supertype of `number`\n"
-            "	 * in the 2nd component of the intersection, the function takes the 1st entry in the type pack which has the 2nd component of the union as `nil` and it takes the 1st entry in the type pack has the 1st component of the union as `number`, and `nil` is not a supertype of `number`"
+            "\t* in the 1st component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the intersection as `{ p: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ p: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
+            "\t* in the 1st component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the intersection as `{ q: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ q: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
+            "\t* in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 1st component of the intersection as `{ p: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ p: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
+            "\t* in the 2nd component of the intersection, the function returns the 1st entry in the type pack which has the 2nd component of the intersection as `{ r: number }` and it returns the 1st entry in the type pack is `{ p: number, q: number, r: number }`, and `{ r: number }` is not a subtype of `{ p: number, q: number, r: number }`\n"
+            "\t* in the 2nd component of the intersection, the function takes the 1st entry in the type pack which is `string?` and it takes the 1st entry in the type pack has the 1st component of the union as `number`, and `string?` is not a supertype of `number`"
         ;
         // clang-format on
 

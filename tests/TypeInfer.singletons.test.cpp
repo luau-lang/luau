@@ -8,6 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -207,6 +208,8 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
 {
+    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
+
     CheckResult result = check(R"(
         type MyEnum = "foo" | "bar" | "baz"
         local a : MyEnum = "bang"
@@ -215,19 +218,7 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     if (!FFlag::DebugLuauForceOldSolver)
-    {
-        // clang-format off
-        const std::string expected =
-            "Expected this to be '\"bar\" | \"baz\" | \"foo\"', but got '\"bang\"'; \n"
-            "this is because \n"
-            "	 * the 1st component of the union is `\"foo\"`, and `\"bang\"` is not a subtype of `\"foo\"`\n"
-            "	 * the 2nd component of the union is `\"bar\"`, and `\"bang\"` is not a subtype of `\"bar\"`\n"
-            "	 * the 3rd component of the union is `\"baz\"`, and `\"bang\"` is not a subtype of `\"baz\"`"
-        ;
-        // clang-format on
-
-        CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
-    }
+        CHECK_EQ(R"(Expected this to be '"bar" | "baz" | "foo"', but got '"bang"')", toString(result.errors[0]));
     else
         CHECK_EQ(
             "Expected this to be '\"bar\" | \"baz\" | \"foo\"', but got '\"bang\"'; none of the union options are compatible",

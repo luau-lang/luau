@@ -14,6 +14,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAGVARIABLE(LuauDoNotExportBrokenTypeFunction)
+
 namespace Luau
 {
 
@@ -201,6 +203,10 @@ struct ClonePublicInterface : Substitution
             else if (auto genericty = getMutable<GenericType>(result))
             {
                 genericty->scope = nullptr;
+            }
+            else if (auto tfit = get<TypeFunctionInstanceType>(ty); FFlag::LuauDoNotExportBrokenTypeFunction && tfit && tfit->state != TypeFunctionInstanceState::Solved)
+            {
+                result = builtinTypes->errorType;
             }
         }
 

@@ -16,6 +16,7 @@ LUAU_FASTFLAG(LuauErrorTolerantPrettyPrinting)
 LUAU_FASTFLAG(LuauCstExprGroup)
 LUAU_FASTFLAG(LuauCstTypeGroup)
 LUAU_FASTFLAG(LuauTableEntriesDontNeedToMatchIndent)
+LUAU_FASTFLAG(LuauCstAttr)
 
 using namespace Luau;
 
@@ -44,7 +45,7 @@ TEST_CASE("prettyPrint_AstStatBlock_overload")
     AstNameTable names(allocator);
     ParseResult result = Parser::parse(code.c_str(), code.size(), names, allocator, options);
     REQUIRE(result.root != nullptr);
-    
+
     std::string printed = prettyPrint(*result.root);
     CHECK_EQ("local a = 1", printed);
 }
@@ -2172,6 +2173,8 @@ end
 
 TEST_CASE("prettyPrint_function_attributes")
 {
+    ScopedFastFlag fflags[] = {{FFlag::LuauCstAttr, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+
     std::string code = R"(
         @native
         function foo()
@@ -2212,7 +2215,6 @@ TEST_CASE("prettyPrint_function_attributes")
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
 
     {
-
         ScopedFastFlag noInline{FFlag::DebugLuauNoInline, true};
         code = R"(
         @debugnoinline
@@ -2220,6 +2222,84 @@ TEST_CASE("prettyPrint_function_attributes")
         )";
         CHECK_EQ(code, prettyPrint(code, {}, true).code);
     }
+
+    code = R"=(
+    @[deprecated {
+        use = "newApi()",
+        reason = "newApi is faster and supports all value types.",
+    }]
+    local function oldApi()
+    end
+    )=";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"=(
+    @[deprecated {use = "newApi()"}, native]
+    local function oldFastApi()
+    end
+    )=";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"=(
+    @[deprecated({use = "newApi()"})]
+    local function oldFastApi()
+    end
+    )=";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"=(
+    @[deprecated {
+        use = "newApi()",
+        reason = "newApi is faster and supports all value types.",
+    }, native]
+    function oldApi()
+    end
+    )=";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"=(
+    @checked
+    @[    deprecated  , native    ]
+    function oldApi()
+    end
+    )=";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+
+    code = R"=(
+    @checked
+    @[    deprecated  , native    ]
+    export function oldApi()
+    end
+    )=";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+    {
+        // We don't currently have any attributes which accept a single string, so we ignore parse errors for this example.
+        ScopedFastFlag errorTolerant{FFlag::LuauErrorTolerantPrettyPrinting, true};
+
+        code = R"=(
+    @checked
+    @[    why  "it's bad"     , native    ]
+    const function oldApi()
+    end
+    )=";
+
+        CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+    }
+
+    code = R"=(
+    local foo = @checked
+    @[    deprecated  , native    ]
+    function()
+    end
+    )=";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
 }
 
 TEST_CASE("pretty_print_explicit_type_instantiations")
@@ -2541,6 +2621,33 @@ TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_typeof_type")
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
 
     code = "type foo = typeof x";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE("pretty_print_incomplete_attr_list")
+{
+    ScopedFastFlag fflags[] = {{FFlag::LuauErrorTolerantPrettyPrinting, true}, {FFlag::LuauCstAttr, true}};
+
+    std::string code = R"=(
+    @unknown
+    @[deprecated  , native
+    function oldApi()
+    end
+    )=";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE("pretty_print_incomplete_attr_args")
+{
+    ScopedFastFlag fflags[] = {{FFlag::LuauErrorTolerantPrettyPrinting, true}, {FFlag::LuauCstAttr, true}};
+
+    std::string code = R"=(
+    @[deprecated ({ use = "newApi()"} ]
+    function oldApi()
+    end
+    )=";
 
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
 }

@@ -15,6 +15,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauDoNotExportBrokenTypeFunction)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -2075,6 +2076,33 @@ TEST_CASE_FIXTURE(TFFixture, "reduce_cyclic_add")
     CHECK(res.errors.size() == 0);
     CHECK(res.irreducibleTypes.size() == 0);
     CHECK(res.blockedTypes.size() == 0);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_type")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _{FFlag::LuauDoNotExportBrokenTypeFunction, true};
+
+    fileResolver.source["game/A"] = R"(
+        local function get(x: string, y: unknown)
+            return x .. y
+        end
+
+        return { get = get }
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_ERROR_COUNT(3, aResult);
+
+    CheckResult bResult = check(R"(
+local Test = require(game.A);
+local x = Test.get("hello", "world")
+    )");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    CHECK(toString(requireType("x")) == "*error-type*");
 }
 
 TEST_SUITE_END();
