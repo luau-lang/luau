@@ -140,6 +140,7 @@ struct FrontendModuleResolver : ModuleResolver
     std::string getHumanReadableModuleName(const ModuleName& moduleName) const override;
 
     bool setModule(const ModuleName& moduleName, ModulePtr module);
+    void eraseModules(const std::vector<ModuleName>& names);
     void clearModules();
 
 
@@ -208,6 +209,7 @@ struct Frontend
 
     void clearStats();
     void clear();
+    void clearModules(const std::vector<ModuleName>& names);
     void clearBuiltinEnvironments();
 
     ScopePtr addEnvironment(const std::string& environmentName);
