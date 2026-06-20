@@ -87,7 +87,7 @@ LUAU_FASTFLAGVARIABLE(LuauYieldIter2)
             if (L->status != 0) \
             { \
                 L->ci->savedpc--; \
-                goto exit; \
+                return; \
             } \
         } \
     }
@@ -134,10 +134,12 @@ LUAU_FASTFLAGVARIABLE(LuauYieldIter2)
 #if VM_USE_CGOTO
 #define VM_CASE(op) CASE_##op:
 #define VM_NEXT() goto*(SingleStep ? &&dispatch : kDispatchTable[LUAU_INSN_OP(*pc)])
+#define VM_START() VM_NEXT()
 #define VM_CONTINUE(op) goto* kDispatchTable[uint8_t(op)]
 #else
 #define VM_CASE(op) case op:
-#define VM_NEXT() goto dispatch
+#define VM_NEXT() continue;
+#define VM_START()
 #define VM_CONTINUE(op) \
     dispatchOp = uint8_t(op); \
     goto dispatchContinue
@@ -285,10 +287,12 @@ reentry:
     base = L->base;
     k = cl->l.p->k;
 
-    VM_NEXT(); // starts the interpreter "loop"
+    VM_START(); // starts the interpreter "loop"
 
-    {
+    while (true) {
+#if VM_USE_CGOTO
     dispatch:
+#endif
         // Note: this code doesn't always execute! on some platforms we use computed goto which bypasses all of this unless we run in single-step mode
         // Therefore only ever put assertions here.
         LUAU_ASSERT(base == L->base && L->base == L->ci->base);
@@ -303,7 +307,7 @@ reentry:
 
                 // allow debugstep hook to put thread into error/yield state
                 if (L->status != 0)
-                    goto exit;
+                    return;
             }
 
 #if VM_USE_CGOTO
@@ -1110,7 +1114,7 @@ reentry:
 
                     // yield
                     if (n < 0)
-                        goto exit;
+                        return;
 
                     // ci is our callinfo, cip is our parent
                     CallInfo* ci = L->ci;
@@ -1305,7 +1309,7 @@ reentry:
                 // we're done!
                 if (LUAU_UNLIKELY(ci->flags & LUA_CALLINFO_RETURN))
                 {
-                    goto exit;
+                    return;
                 }
 
                 LUAU_ASSERT(isLua(L->ci));
@@ -1319,7 +1323,7 @@ reentry:
                     if (L->global->ecb.enter(L, nextproto) == 1)
                         goto reentry;
                     else
-                        goto exit;
+                        return;
                 }
 #endif
 
@@ -2737,10 +2741,15 @@ reentry:
 
                             pc += LUAU_INSN_D(insn);
                             LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
-                            VM_NEXT();
+                            break;
                         }
 
                         index++;
+                    }
+
+                    if (unsigned(index) < unsigned(sizearray))
+                    {
+                        VM_NEXT();
                     }
 
                     int sizenode = 1 << h->lsizenode;
@@ -2758,10 +2767,15 @@ reentry:
 
                             pc += LUAU_INSN_D(insn);
                             LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
-                            VM_NEXT();
+                            break;
                         }
 
                         index++;
+                    }
+
+                    if (unsigned(index - sizearray) < unsigned(sizenode))
+                    {
+                        VM_NEXT();
                     }
 
                     // fallthrough to exit
@@ -2865,7 +2879,7 @@ reentry:
                 if (L->global->ecb.enter(L, p) == 1)
                     goto reentry;
                 else
-                    goto exit;
+                    return;
 #else
                 LUAU_ASSERT(!"Opcode is only valid when VM_HAS_NATIVE is defined");
                 LUAU_UNREACHABLE();
@@ -3352,7 +3366,7 @@ reentry:
 
                     // allow debugbreak hook to put thread into error/yield state
                     if (L->status != 0)
-                        goto exit;
+                        return;
                 }
 
                 VM_CONTINUE(op);
@@ -3711,8 +3725,6 @@ reentry:
 #endif
         }
     }
-
-exit:;
 }
 
 void luau_execute(lua_State* L)
