@@ -1504,7 +1504,7 @@ void* lua_newuserdatataggedwithmetatable(lua_State* L, size_t sz, int tag)
     return u->data;
 }
 
-void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*))
+void* lua_newuserdatadtor(lua_State* L, size_t sz, lua_Destructor dtor)
 {
     api_check(L, dtor != nullptr);
     luaC_checkGC(L);
