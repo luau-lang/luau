@@ -21,6 +21,7 @@ LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauAutocompleteStringSingletonIntersection)
+LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 
 using namespace Luau;
 
@@ -5202,6 +5203,21 @@ x.@1
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.empty());
+}
+
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_props_through_metatable_typed_metatable")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteMetatableInheritance, true};
+
+    check(R"(
+        local Base = { baseProp = 5 }
+        local Meta = setmetatable({ __index = Base }, {})
+        local obj = setmetatable({}, Meta)
+        obj.@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("baseProp"));
 }
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_table_insert")
