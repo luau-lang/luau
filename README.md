@@ -17,6 +17,13 @@ Luau is an embeddable programming language, but it also comes with two command-l
 
 `luau-analyze` is a command-line type checker and linter; given a set of input files, it produces errors/warnings according to the file configuration, which can be customized by using `--!` comments in the files or [`.luaurc`](https://rfcs.luau.org/config-luaurc) files. For details, please refer to our [type checking](https://luau.org/typecheck) and [linting](https://luau.org/lint) documentation. Our community maintains a language server frontend for `luau-analyze` called [luau-lsp](https://github.com/JohnnyMorganz/luau-lsp) for use with text editors.
 
+# Community projects
+
+A number of community-maintained projects build on or reimplement parts of Luau. These are not maintained by the Luau development team:
+
+- [luau-lsp](https://github.com/JohnnyMorganz/luau-lsp) — a language server frontend for `luau-analyze` for use with text editors.
+- [luau-rs](https://github.com/FlavouredTux/luau-rs) — an experimental, from-scratch reimplementation of the Luau bytecode VM in Rust (tree-walking interpreter; loads bytecode produced by `luau-compile`).
+
 # Installation
 
 You can install and run Luau by downloading the compiled binaries from [a recent release](https://github.com/luau-lang/luau/releases); note that `luau` and `luau-analyze` binaries from the archives will need to be added to PATH or copied to a directory like `/usr/local/bin` on Linux/macOS.
