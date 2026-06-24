@@ -179,21 +179,6 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
     if (subTy == superTy)
         return UnifyResult::Ok;
 
-    // We have potentially done some unifications while dispatching either `SubtypeConstraint` or `PackSubtypeConstraint`,
-    // so rather than implementing backtracking or traversing the entire type graph multiple times, we could push
-    // additional constraints as we discover blocked types along with their proper bounds.
-    //
-    // But we exclude these two subtyping patterns, they are tautological:
-    //   - never <: *blocked*
-    //   - *blocked* <: unknown
-    if ((isIrresolvable(subTy) || isIrresolvable(superTy)) && !get<NeverType>(subTy) && !get<UnknownType>(superTy))
-    {
-        if (uninhabitedTypeFunctions && (uninhabitedTypeFunctions->contains(subTy) || uninhabitedTypeFunctions->contains(superTy)))
-            return UnifyResult::Ok;
-
-        incompleteSubtypes.emplace_back(SubtypeConstraint{subTy, superTy});
-        return UnifyResult::Ok;
-    }
 
     FreeType* subFree = getMutable<FreeType>(subTy);
     FreeType* superFree = getMutable<FreeType>(superTy);
@@ -210,6 +195,24 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
 
     if (subFree || superFree)
         return UnifyResult::Ok;
+
+    // We have potentially done some unifications while dispatching either `SubtypeConstraint` or `PackSubtypeConstraint`,
+    // so rather than implementing backtracking or traversing the entire type graph multiple times, we could push
+    // additional constraints as we discover blocked types along with their proper bounds.
+    //
+    // But we exclude these two subtyping patterns, they are tautological:
+    //   - never <: *blocked*
+    //   - *blocked* <: unknown
+    if ((isIrresolvable(subTy) || isIrresolvable(superTy)) && !get<NeverType>(subTy) && !get<UnknownType>(superTy))
+    {
+        if (uninhabitedTypeFunctions && (uninhabitedTypeFunctions->contains(subTy) || uninhabitedTypeFunctions->contains(superTy)))
+            return UnifyResult::Ok;
+
+        incompleteSubtypes.emplace_back(SubtypeConstraint{subTy, superTy});
+        return UnifyResult::Ok;
+    }
+
+
 
     auto subFn = get<FunctionType>(subTy);
     auto superFn = get<FunctionType>(superTy);
