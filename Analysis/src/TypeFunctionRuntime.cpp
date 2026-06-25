@@ -30,6 +30,7 @@ LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionRobustness)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeIsSubtypeOf)
+LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
 
 namespace Luau
 {
@@ -205,8 +206,13 @@ std::optional<TypeFunctionError> TypeFunctionRuntime::registerFunction(AstStatTy
     lua_setreadonly(L, -1, true);
     lua_pop(L, 1);
 
+    std::string chunkName = name.value;
+
+    if (FFlag::LuauUdtfTerseChunkNames)
+        chunkName.insert(0, "="); // in error messages, replaces the source location being `[string "ty"]` with just `ty`
+
     // Load bytecode into Luau state
-    if (auto error = checkResultForError(L, name.value, luau_load(L, name.value, bytecode.data(), bytecode.size(), 0)))
+    if (auto error = checkResultForError(L, chunkName.c_str(), luau_load(L, chunkName.c_str(), bytecode.data(), bytecode.size(), 0)))
         return error;
 
     // Execute the global function which should return our user-defined type function
