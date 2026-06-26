@@ -9,12 +9,10 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauErrorTolerantPrettyPrinting)
 LUAU_FASTFLAG(LuauCstExprGroup)
-LUAU_FASTFLAG(LuauCstTypeGroup)
 LUAU_FASTFLAG(LuauTableEntriesDontNeedToMatchIndent)
 LUAU_FASTFLAG(LuauCstAttr)
 
@@ -2173,7 +2171,7 @@ end
 
 TEST_CASE("prettyPrint_function_attributes")
 {
-    ScopedFastFlag fflags[] = {{FFlag::LuauCstAttr, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+    ScopedFastFlag fflags[] = {{FFlag::LuauCstAttr, true}, {FFlag::LuauExportValueSyntax, true}};
 
     std::string code = R"(
         @native
@@ -2322,7 +2320,7 @@ TEST_CASE("pretty_print_explicit_type_instantiations")
 
 TEST_CASE("export")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
     std::string code;
 
     code = (R"(
@@ -2408,7 +2406,7 @@ TEST_CASE("pretty_print_incomplete_expr_group")
 
 TEST_CASE("pretty_print_incomplete_type_group")
 {
-    ScopedFastFlag fflags[] = {{FFlag::LuauErrorTolerantPrettyPrinting, true}, {FFlag::LuauCstTypeGroup, true}};
+    ScopedFastFlag fflags[] = {{FFlag::LuauErrorTolerantPrettyPrinting, true}};
 
     std::string code = "type t = (number";
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);

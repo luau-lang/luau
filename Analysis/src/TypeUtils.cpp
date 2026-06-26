@@ -13,8 +13,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
-
 namespace Luau
 {
 
@@ -564,84 +562,6 @@ bool fastIsSubtype(TypeId subTy, TypeId superTy)
     return r == Relation::Coincident || r == Relation::Superset;
 }
 
-std::optional<TypeId> extractMatchingTableType_DEPRECATED(std::vector<TypeId>& tables, TypeId exprType, NotNull<BuiltinTypes> builtinTypes)
-{
-    LUAU_ASSERT(!FFlag::LuauBidirectionalInferenceBetterUnionHandling);
-    if (tables.empty())
-        return std::nullopt;
-
-    const TableType* exprTable = get<TableType>(follow(exprType));
-    if (!exprTable)
-        return std::nullopt;
-
-    size_t tableCount = 0;
-    std::optional<TypeId> firstTable;
-
-    for (TypeId ty : tables)
-    {
-        ty = follow(ty);
-        if (auto tt = get<TableType>(ty))
-        {
-            // If the expected table has a key whose type is a string or boolean
-            // singleton and the corresponding exprType property does not match,
-            // then skip this table.
-
-            if (!firstTable)
-                firstTable = ty;
-            ++tableCount;
-
-            for (const auto& [name, expectedProp] : tt->props)
-            {
-                if (!expectedProp.readTy)
-                    continue;
-
-                const TypeId expectedType = follow(*expectedProp.readTy);
-
-                auto st = get<SingletonType>(expectedType);
-                if (!st)
-                    continue;
-
-                auto it = exprTable->props.find(name);
-                if (it == exprTable->props.end())
-                    continue;
-
-                const auto& [_name, exprProp] = *it;
-
-                if (!exprProp.readTy)
-                    continue;
-
-                const TypeId propType = follow(*exprProp.readTy);
-
-                const FreeType* ft = get<FreeType>(propType);
-
-                if (ft && get<SingletonType>(ft->lowerBound))
-                {
-                    if (fastIsSubtype(builtinTypes->booleanType, ft->upperBound) && fastIsSubtype(expectedType, builtinTypes->booleanType))
-                    {
-                        return ty;
-                    }
-
-                    if (fastIsSubtype(builtinTypes->stringType, ft->upperBound) && fastIsSubtype(expectedType, ft->lowerBound))
-                    {
-                        return ty;
-                    }
-                }
-
-                if (fastIsSubtype(propType, expectedType))
-                    return ty;
-            }
-        }
-    }
-
-    if (tableCount == 1)
-    {
-        LUAU_ASSERT(firstTable);
-        return firstTable;
-    }
-
-    return std::nullopt;
-}
-
 /**
  * There is a tension with how we encode tables and how we _want_ them to be
  * typechecked. The classic example is:
@@ -664,7 +584,6 @@ std::optional<TypeId> extractMatchingTableType_DEPRECATED(std::vector<TypeId>& t
  */
 std::optional<TypeId> extractMatchingTableType(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes)
 {
-    LUAU_ASSERT(FFlag::LuauBidirectionalInferenceBetterUnionHandling);
     const TableType* exprTable = get<TableType>(follow(exprType));
     if (!exprTable)
         return std::nullopt;

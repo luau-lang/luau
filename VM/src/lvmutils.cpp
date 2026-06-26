@@ -13,8 +13,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauClosureUsageCounter)
-
 // limit for table tag-method chains (to avoid loops)
 #define MAXTAGLOOP 100
 
@@ -671,19 +669,13 @@ LUAU_NOINLINE void luaV_callTM(lua_State* L, int nparams, int res)
 
     CallInfo* ci = incr_ci(L);
     ci->func = fun;
+    ci->p = nullptr;
     ci->base = fun + 1;
     ci->top = top + LUA_MINSTACK;
     ci->savedpc = NULL;
     ci->flags = 0;
     ci->nresults = (res >= 0);
     LUAU_ASSERT(ci->top <= L->stack_last);
-
-    Closure* ccl;
-    if (FFlag::LuauClosureUsageCounter)
-    {
-        ccl = clvalue(fun);
-        ccl->usage++;
-    }
 
     LUAU_ASSERT(ttisfunction(ci->func));
     LUAU_ASSERT(clvalue(ci->func)->isC);
@@ -698,12 +690,6 @@ LUAU_NOINLINE void luaV_callTM(lua_State* L, int nparams, int res)
     // ci is our callinfo, cip is our parent
     // note that we read L->ci again since it may have been reallocated by the call
     CallInfo* cip = L->ci - 1;
-
-    if (FFlag::LuauClosureUsageCounter)
-    {
-        LUAU_ASSERT(ccl->usage > 0);
-        ccl->usage--;
-    }
 
     // copy return value into parent stack
     if (res >= 0)

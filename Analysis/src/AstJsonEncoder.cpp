@@ -8,8 +8,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauConst2)
-
 namespace Luau
 {
 
@@ -243,8 +241,7 @@ struct AstJsonEncoder : public AstVisitor
         else
             write("luauType", nullptr);
         write("name", local->name);
-        if (FFlag::LuauConst2)
-            write("isConst", local->isConst);
+        write("isConst", local->isConst);
         writeType("AstLocal");
         write("location", local->location);
         popComma(c);

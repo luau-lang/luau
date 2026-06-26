@@ -31,6 +31,7 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteConst)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteExport)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionArglistSuggestion)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords_DEPRECATED =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -1773,14 +1774,15 @@ static AutocompleteResult autocompleteWhileLoopKeywords(std::vector<AstNode*> an
     return {std::move(ret), std::move(ancestry), AutocompleteContext::Keyword};
 }
 
-static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& funcTy)
+// Builds the argument parameter list string (what goes between the parentheses of a function expression).
+// e.g. for (number, string) -> () returns "a0: number, a1: string"
+static std::string makeAnonymousArgList(const ScopePtr& scope, const FunctionType& funcTy)
 {
-    std::string result = "function(";
+    std::string result;
 
     auto [args, tail] = Luau::flatten(funcTy.argTypes);
 
     bool first = true;
-    // Skip the implicit 'self' argument if call is indexed with ':'
     for (size_t argIdx = 0; argIdx < args.size(); ++argIdx)
     {
         if (!first)
@@ -1816,6 +1818,61 @@ static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& func
             result += "...: " + *varArgType;
         else
             result += "...";
+    }
+
+    return result;
+}
+
+static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& funcTy)
+{
+    std::string result = "function(";
+
+    if (FFlag::LuauAutocompleteFunctionArglistSuggestion)
+    {
+        result += makeAnonymousArgList(scope, funcTy);
+    }
+    else
+    {
+        auto [args, tail] = Luau::flatten(funcTy.argTypes);
+
+        bool first = true;
+        // Skip the implicit 'self' argument if call is indexed with ':'
+        for (size_t argIdx = 0; argIdx < args.size(); ++argIdx)
+        {
+            if (!first)
+                result += ", ";
+            else
+                first = false;
+
+            std::string name;
+            if (argIdx < funcTy.argNames.size() && funcTy.argNames[argIdx])
+                name = funcTy.argNames[argIdx]->name;
+            else
+                name = "a" + std::to_string(argIdx);
+
+            if (std::optional<Name> type = tryGetTypeNameInScope(scope, args[argIdx], true))
+                result += name + ": " + *type;
+            else
+                result += name;
+        }
+
+        if (tail && (Luau::isVariadic(*tail) || Luau::get<Luau::FreeTypePack>(Luau::follow(*tail))))
+        {
+            if (!first)
+                result += ", ";
+
+            std::optional<std::string> varArgType;
+            if (const VariadicTypePack* pack = get<VariadicTypePack>(follow(*tail)))
+            {
+                if (std::optional<std::string> res = tryGetTypeNameInScope(scope, pack->ty, true))
+                    varArgType = std::move(res);
+            }
+
+            if (varArgType)
+                result += "...: " + *varArgType;
+            else
+                result += "...";
+        }
     }
 
     result += ")";
@@ -1907,7 +1964,15 @@ static std::optional<AutocompleteEntry> makeAnonymousAutofilled(
     entry.kind = AutocompleteEntryKind::GeneratedFunction;
     entry.typeCorrect = TypeCorrectKind::Correct;
     entry.type = argType;
-    entry.insertText = makeAnonymous(scope, *type);
+    // When the cursor is inside the arg list of an already-typed "function(...)" (argLocation is set),
+    // only suggest the parameter list — not the full "function(...) end" expression.
+    // If argLocation is absent the user has typed the "function" keyword but not yet the "(", so
+    // the full expression is still the correct completion.
+    const AstExprFunction* exprFunc = node->as<AstExprFunction>();
+    if (FFlag::LuauAutocompleteFunctionArglistSuggestion && exprFunc && exprFunc->argLocation.has_value())
+        entry.insertText = makeAnonymousArgList(scope, *type);
+    else
+        entry.insertText = makeAnonymous(scope, *type);
     return std::make_optional(std::move(entry));
 }
 

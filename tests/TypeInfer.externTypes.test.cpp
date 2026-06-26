@@ -856,13 +856,13 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "cyclic_tables_are_assumed_to_be_compatible
      *
      * Our builtins are essentially defined like so:
      *
-     * declare class BaseClass
+     * declare extern type BaseClass with
      *     BaseField: number
      *     function BaseMethod(self, number): ()
      *     read Touched: Connection
      * end
      *
-     * declare class Connection
+     * declare extern type Connection with
      *     Connect: (Connection, (BaseClass) -> ()) -> ()
      * end
      *

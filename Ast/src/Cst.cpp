@@ -4,7 +4,6 @@
 #include "Luau/Common.h"
 
 LUAU_FASTFLAG(LuauCstExprGroup)
-LUAU_FASTFLAG(LuauCstTypeGroup)
 LUAU_FASTFLAG(LuauCstAttr)
 
 namespace Luau
@@ -334,7 +333,6 @@ CstTypeGroup::CstTypeGroup(Position closePosition)
     : CstNode(CstClassIndex())
     , closePosition(closePosition)
 {
-    LUAU_ASSERT(FFlag::LuauCstTypeGroup);
 }
 
 CstTypePackExplicit::CstTypePackExplicit()

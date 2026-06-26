@@ -36,7 +36,6 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
-LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
 LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
 
@@ -495,7 +494,9 @@ TypeId TypeChecker2::checkForTypeFunctionInhabitance(TypeId instance, Location l
         return instance;
     seenTypeFunctionInstances.insert(instance);
 
-    TypeFunctionContext context{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, subtyping};
+    TypeFunctionContext context{
+        NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, subtyping
+    };
 
     ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true).errors;
     if (!isErrorSuppressing(location, instance))
@@ -3228,18 +3229,8 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     {
         if (auto utv = get<UnionType>(expectedType))
         {
-            if (FFlag::LuauBidirectionalInferenceBetterUnionHandling)
-            {
-                if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes))
-                    return testLiteralOrAstTypeIsSubtype(expr, *tt);
-            }
-            else
-            {
-                std::vector<TypeId> parts{begin(utv), end(utv)};
-                std::optional<TypeId> tt = extractMatchingTableType_DEPRECATED(parts, exprType, builtinTypes);
-                if (tt)
-                    return testPotentialLiteralIsSubtype(expr, *tt);
-            }
+            if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes))
+                return testLiteralOrAstTypeIsSubtype(expr, *tt);
         }
 
         if (auto itv = get<IntersectionType>(expectedType))

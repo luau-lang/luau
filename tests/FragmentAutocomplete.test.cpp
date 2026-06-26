@@ -330,7 +330,7 @@ struct FragmentAutocompleteBuiltinsFixture : FragmentAutocompleteFixtureImpl<Bui
         Luau::unfreeze(f.globals.globalTypes);
         Luau::unfreeze(f.globalsForAutocomplete.globalTypes);
         const std::string fakeVecDecl = R"(
-declare class FakeVec
+declare extern type FakeVec with
     function dot(self, x: FakeVec) : FakeVec
     zero : FakeVec
 end
