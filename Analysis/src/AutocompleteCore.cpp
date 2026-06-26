@@ -29,6 +29,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringSingletonIntersection)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteConst)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteExport)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords_DEPRECATED =
@@ -452,7 +453,9 @@ static void autocompleteProps(
     {
         autocompleteProps(module, typeArena, builtinTypes, rootTy, mt->table, indexType, nodes, result, seen);
 
-        if (auto mtable = get<TableType>(follow(mt->metatable)))
+        const TableType* mtable =
+            FFlag::LuauAutocompleteMetatableInheritance ? getTableType(follow(mt->metatable)) : get<TableType>(follow(mt->metatable));
+        if (mtable)
             fillMetatableProps(mtable);
     }
     else if (auto i = get<IntersectionType>(ty))
