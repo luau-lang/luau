@@ -5,6 +5,7 @@
 #include "Luau/Location.h"
 #include "Luau/StringUtils.h"
 #include "Luau/Common.h"
+#include <string_view>
 
 namespace Luau
 {
@@ -90,11 +91,11 @@ private:
 
 // compiles bytecode into bytecode builder using either a pre-parsed AST or parsing it from source; throws on errors
 void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, AstNameTable& names, const CompileOptions& options = {});
-void compileOrThrow(BytecodeBuilder& bytecode, const std::string& source, const CompileOptions& options = {}, const ParseOptions& parseOptions = {});
+void compileOrThrow(BytecodeBuilder& bytecode, std::string_view source, const CompileOptions& options = {}, const ParseOptions& parseOptions = {});
 
 // compiles bytecode into a bytecode blob, that either contains the valid bytecode or an encoded error that luau_load can decode
 std::string compile(
-    const std::string& source,
+    std::string_view source,
     const CompileOptions& options = {},
     const ParseOptions& parseOptions = {},
     BytecodeEncoder* encoder = nullptr
