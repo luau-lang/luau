@@ -146,6 +146,7 @@ if(MSVC)
     list(APPEND LUAU_OPTIONS /D_CRT_SECURE_NO_WARNINGS) # We need to use the portable CRT functions.
     list(APPEND LUAU_OPTIONS "/we4018") # Signed/unsigned mismatch
     list(APPEND LUAU_OPTIONS "/we4388") # Also signed/unsigned mismatch
+    list(APPEND LUAU_OPTIONS "/utf-8")
 else()
     list(APPEND LUAU_OPTIONS -Wall) # All warnings
     list(APPEND LUAU_OPTIONS -Wimplicit-fallthrough)
