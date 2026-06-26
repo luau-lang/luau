@@ -26,6 +26,8 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauCstExprGroup)
 LUAU_FASTFLAG(LuauCstTypeGroup)
 
+LUAU_FASTFLAG(LuauNoDuplicateBinaryPrefix)
+
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
 
@@ -793,6 +795,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
 {
+    ScopedFastFlag sff{FFlag::LuauNoDuplicateBinaryPrefix, true};
+
     matchParseError("return 0b123", "Malformed number");
     matchParseError("return 0b0b1", "Malformed number");
     matchParseError("return 123x", "Malformed number");
