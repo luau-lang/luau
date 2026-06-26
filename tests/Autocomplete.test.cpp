@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauAutocompleteStringSingletonIntersection)
 LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
+LUAU_FASTFLAG(LuauAutocompleteFunctionArglistSuggestion)
 
 using namespace Luau;
 
@@ -3462,7 +3463,7 @@ local abc = b@1
 TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_on_class")
 {
     loadDefinition(R"(
-declare class Foo
+declare extern type Foo with
     function one(self): number
     two: () -> number
 end
@@ -3958,7 +3959,7 @@ local a: T@1
 TEST_CASE_FIXTURE(ACFixture, "getFrontend().use_correct_global_scope")
 {
     loadDefinition(R"(
-        declare class Instance
+        declare extern type Instance with
             Name: string
         end
     )");
@@ -4461,6 +4462,138 @@ TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_generic_on_argument_type_pack
     CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
     REQUIRE(ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
     CHECK_EQ(EXPECTED_INSERT, *ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+}
+
+// When the user has already typed "function(" (cursor is inside the arg list), the suggestion
+// should only insert the argument parameter list, not the full "function(...) end" expression.
+
+TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_cursor_after_function_keyword")
+{
+    // Cursor is right after the "function" keyword but before any "(" — the arg list has not been
+    // opened yet. The suggestion must expand the full "function(...) end" expression, not just the
+    // parameter list (which would replace the word "function" with bare argument names).
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionArglistSuggestion, true};
+
+    check(R"(
+local function foo(a: (number, string) -> ())
+    a()
+end
+
+foo(function@1)
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count(kGeneratedAnonymousFunctionEntryName) == 1);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].kind == Luau::AutocompleteEntryKind::GeneratedFunction);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
+    REQUIRE(ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+    CHECK_EQ("function(a0: number, a1: string)  end", *ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_cursor_in_arglist_empty")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionArglistSuggestion, true};
+
+    check(R"(
+local function foo(a: () -> ())
+    a()
+end
+
+foo(function(@1))
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count(kGeneratedAnonymousFunctionEntryName) == 1);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].kind == Luau::AutocompleteEntryKind::GeneratedFunction);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
+    REQUIRE(ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+    CHECK_EQ("", *ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_cursor_in_arglist_args")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionArglistSuggestion, true};
+
+    check(R"(
+local function foo(a: (number, string) -> ())
+    a()
+end
+
+foo(function(@1))
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count(kGeneratedAnonymousFunctionEntryName) == 1);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].kind == Luau::AutocompleteEntryKind::GeneratedFunction);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
+    REQUIRE(ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+    CHECK_EQ("a0: number, a1: string", *ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_cursor_in_arglist_with_return")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionArglistSuggestion, true};
+
+    check(R"(
+local function foo(a: (number, string) -> string)
+    return a(1, "x")
+end
+
+foo(function(@1))
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count(kGeneratedAnonymousFunctionEntryName) == 1);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].kind == Luau::AutocompleteEntryKind::GeneratedFunction);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
+    REQUIRE(ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+    CHECK_EQ("a0: number, a1: string", *ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_cursor_in_arglist_named_args")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionArglistSuggestion, true};
+
+    check(R"(
+local function foo(a: (foo: number, bar: string) -> ())
+    a()
+end
+
+foo(function(@1))
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count(kGeneratedAnonymousFunctionEntryName) == 1);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].kind == Luau::AutocompleteEntryKind::GeneratedFunction);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
+    REQUIRE(ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+    CHECK_EQ("foo: number, bar: string", *ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_cursor_in_arglist_varargs")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionArglistSuggestion, true};
+
+    check(R"(
+local function foo(a: (...number) -> ())
+    a()
+end
+
+foo(function(@1))
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count(kGeneratedAnonymousFunctionEntryName) == 1);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].kind == Luau::AutocompleteEntryKind::GeneratedFunction);
+    CHECK(ac.entryMap[kGeneratedAnonymousFunctionEntryName].typeCorrect == Luau::TypeCorrectKind::Correct);
+    REQUIRE(ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
+    CHECK_EQ("...: number", *ac.entryMap[kGeneratedAnonymousFunctionEntryName].insertText);
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_at_end_of_stmt_should_continue_as_part_of_stmt")

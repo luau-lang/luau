@@ -178,7 +178,6 @@ private:
 
     // local function Name funcbody |
     // local namelist [`=' explist]
-    AstStat* parseLocal_DEPRECATED(const AstArray<AstAttr*>& attributes, TempVector<CstAttrList*>* cstAttrLists = nullptr);
     AstStat* parseLocal(
         const Location start,
         const Position keywordPosition,

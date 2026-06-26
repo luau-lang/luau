@@ -22,6 +22,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
+LUAU_FASTFLAG(LuauTypeFunctionTableIndexerIsReadOnly)
 
 namespace Luau
 {
@@ -417,7 +418,13 @@ private:
         }
 
         if (t1->indexer)
-            t2->indexer = TypeFunctionTableIndexer(shallowSerialize(t1->indexer->indexType), shallowSerialize(t1->indexer->indexResultType));
+        {
+            t2->indexer = TypeFunctionTableIndexer(
+                shallowSerialize(t1->indexer->indexType),
+                shallowSerialize(t1->indexer->indexResultType),
+                FFlag::LuauTypeFunctionTableIndexerIsReadOnly ? t1->indexer->isReadOnly : false
+            );
+        }
     }
 
     void serializeChildren(const MetatableType* m1, TypeFunctionTableType* m2)
@@ -975,7 +982,13 @@ private:
         }
 
         if (t2->indexer.has_value())
-            t1->indexer = TableIndexer(shallowDeserialize(t2->indexer->keyType), shallowDeserialize(t2->indexer->valueType));
+        {
+            t1->indexer = TableIndexer(
+                shallowDeserialize(t2->indexer->keyType),
+                shallowDeserialize(t2->indexer->valueType),
+                FFlag::LuauTypeFunctionTableIndexerIsReadOnly ? t2->indexer->isReadOnly : false
+            );
+        }
     }
 
     void deserializeChildren(TypeFunctionTableType* m2, MetatableType* m1)

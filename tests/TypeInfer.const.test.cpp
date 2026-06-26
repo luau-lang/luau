@@ -7,7 +7,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(LuauConstJustReportErrorForUnderfill)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 
@@ -15,8 +14,6 @@ TEST_SUITE_BEGIN("ConstDeclarations");
 
 TEST_CASE_FIXTURE(Fixture, "basic_declarations_work")
 {
-    ScopedFastFlag _{FFlag::LuauConst2, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         const PI = 3.14
     )"));
@@ -26,7 +23,7 @@ TEST_CASE_FIXTURE(Fixture, "basic_declarations_work")
 
 TEST_CASE_FIXTURE(Fixture, "reassignments_dont_affect_type_state")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauExportValueSyntax, true}};
 
     CheckResult results = check(R"(
         const PI = 3.14
@@ -45,7 +42,6 @@ TEST_CASE_FIXTURE(Fixture, "empty_domain_is_ok")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauConst2, true},
         // This test used to throw a compiler exception, this flag fixes it.
         {FFlag::LuauConstJustReportErrorForUnderfill, true},
     };
@@ -67,7 +63,6 @@ TEST_CASE_FIXTURE(Fixture, "const_extra_lvalues_are_nil_and_syntax_error_from_ca
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauConst2, true},
     };
 
     CheckResult results = check(R"(
@@ -92,7 +87,6 @@ TEST_CASE_FIXTURE(Fixture, "const_extra_lvalues_are_nil_and_syntax_error_from_un
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauConst2, true},
         {FFlag::LuauConstJustReportErrorForUnderfill, true},
     };
 
@@ -113,7 +107,6 @@ TEST_CASE_FIXTURE(Fixture, "const_syntax_error_in_annotation")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauConst2, true},
         // This test used to throw a compiler exception, this flag fixes it.
         {FFlag::LuauConstJustReportErrorForUnderfill, true},
     };
@@ -130,8 +123,7 @@ TEST_CASE_FIXTURE(Fixture, "const_syntax_error_in_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "assign_different_values_to_const_x")
 {
-    ScopedFastFlag _[2]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}};
-
+    ScopedFastFlag _[1]{{FFlag::LuauExportValueSyntax, true}};
 
     CheckResult result = check(R"(
         const x: string? = nil
@@ -150,8 +142,6 @@ TEST_CASE_FIXTURE(Fixture, "assign_different_values_to_const_x")
 
 TEST_CASE_FIXTURE(Fixture, "const_recursive_function_works")
 {
-    ScopedFastFlag _{FFlag::LuauConst2, true};
-
     CheckResult result = check(R"(
         const function f(x)
             f(5)
@@ -167,8 +157,6 @@ TEST_CASE_FIXTURE(Fixture, "const_recursive_function_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "const_tables_are_still_mutable")
 {
-    ScopedFastFlag _{FFlag::LuauConst2, true};
-
     CheckResult result = check(R"(
         const TABLE = {}
         TABLE.foobar = "the fooest of bars!"
@@ -190,8 +178,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "const_tables_are_still_mutable")
 
 TEST_CASE_FIXTURE(Fixture, "const_shadowing")
 {
-    ScopedFastFlag _{FFlag::LuauConst2, true};
-
     CheckResult result = check(R"(
         const X = "huh"
         const X = 3.14

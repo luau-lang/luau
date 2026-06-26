@@ -5,6 +5,7 @@
 #include "lualib.h"
 #include "luacode.h"
 #include "luacodegen.h"
+#include "luajitinliner.h"
 
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/DenseHash.h"
@@ -38,6 +39,7 @@
 
 extern bool verbose;
 extern bool codegen;
+extern bool jitInliner;
 extern int optimizationLevel;
 
 // internal functions, declared in lgc.h - not exposed via lua.h
@@ -61,6 +63,7 @@ LUAU_FASTFLAG(LuauCustomYieldablePcalls)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauAutoStack)
 LUAU_FASTFLAG(LuauUdataMetatablePinned)
+LUAU_DYNAMIC_FASTFLAG(LuauGcTableStepFix)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -280,6 +283,9 @@ static StateRef runConformance(
 
     if (codegen && !skipCodegen && luau_codegen_supported())
         luau_codegen_create(L);
+
+    if (jitInliner)
+        luau_enable_jit_inliner(L);
 
     luaL_openlibs(L);
 
@@ -1063,7 +1069,6 @@ static int vec2DirectNamecall(lua_State* L, void* data, int atom, uint16_t* cach
     default:
         luaL_error(L, "%s is not a valid method of vec2", lua_namecallatom(L, nullptr));
     }
-    return 0;
 }
 
 static void vertexDirectIndex(lua_State* L, void* data, int atom, uint16_t* cachedslot, int utag)
@@ -1147,7 +1152,6 @@ static int vertexDirectNamecall(lua_State* L, void* data, int atom, uint16_t* ca
     default:
         luaL_error(L, "%s is not a valid method of vertex", lua_namecallatom(L, nullptr));
     }
-    return 0;
 }
 
 static void setupNativeHelpers(lua_State* L)
@@ -1397,6 +1401,8 @@ static void* blockableRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
 
 TEST_CASE("GC")
 {
+    ScopedFastFlag luauGcTableStepFix{DFFlag::LuauGcTableStepFix, true};
+
     runConformance(
         "gc.luau",
         [](lua_State* L)

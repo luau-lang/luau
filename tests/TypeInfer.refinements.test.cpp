@@ -11,6 +11,7 @@
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 using namespace Luau;
 
@@ -788,6 +789,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
     };
 
     CheckResult result = check(R"(
@@ -812,18 +814,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
     {
         CHECK("nil & string" == toString(requireTypeAtPosition({4, 24})));  // type(v) == "nil"
         CHECK("string & ~nil" == toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
-
-        CHECK("nil & string" == toString(requireTypeAtPosition({10, 24})));  // equivalent to type(v) == "nil"
-        CHECK("string & ~nil" == toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
     }
     else
     {
         CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
         CHECK_EQ("string", toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
-
-        CHECK_EQ("nil", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
-        CHECK_EQ("string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
     }
+
+    CHECK_EQ("nil", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
+    CHECK_EQ("string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_not_to_be_string")
@@ -2922,15 +2921,16 @@ TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")
             if not isBasePart then
                 isCharacter = instance:FindFirstChildOfClass("Humanoid") and instance:FindFirstChild("HumanoidRootPart")
             end
-            -- A verison of `SimplifyConstraint` mucked up the fact that this
-            -- is `boolean | and<unknown, unknown>`, and claimed it was only
-            -- `boolean`.
             return isCharacter
         end
     )");
 
+    // NOTE: This should have *no* errors but due to a constraint cycle
+    // between the `and` type function and the subtype constraint of the
+    // return type, we end up sometimes being unable to reduce this properly.
+
     LUAU_REQUIRE_ERROR_COUNT(1, results);
-    REQUIRE(get<TypeMismatch>(results.errors[0]));
+    CHECK(get<TypeMismatch>(results.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "len_operator_in_if_is_just_a_proposition")

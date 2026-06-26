@@ -2009,7 +2009,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             return "function_check " + tos(c.fn) + " " + tos(c.argsPack);
         }
-        else if constexpr (std::is_same_v<T, PrimitiveTypeConstraint>)
+        else if constexpr (std::is_same_v<T, DEPRECATED_PrimitiveTypeConstraint>)
         {
             if (c.expectedType)
                 return "prim " + tos(c.freeType) + "[expected: " + tos(*c.expectedType) + "] as " + tos(c.primitiveType);

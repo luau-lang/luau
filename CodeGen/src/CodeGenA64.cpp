@@ -13,8 +13,7 @@
 #include "lstate.h"
 
 LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck)
-LUAU_FASTFLAG(LuauCodegenFreeBlocks)
-LUAU_FASTFLAG(LuauClosureUsageCounter)
+LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
 {
@@ -112,7 +111,15 @@ static void emitContinueCall(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.tbnz(x0, 0, helpers.exitNoContinueVm);
 
     // Need to update state of the current function before we jump away
-    build.ldr(x1, mem(x0, offsetof(Closure, l.p))); // cl->l.p aka proto
+    if (FFlag::LuauCIProto)
+    {
+        build.ldr(x1, mem(rState, offsetof(lua_State, ci)));
+        build.ldr(x1, mem(x1, offsetof(CallInfo, p))); // L->ci->p aka proto
+    }
+    else
+    {
+        build.ldr(x1, mem(x0, offsetof(Closure, l.p))); // cl->l.p aka proto
+    }
 
     build.ldr(x2, mem(x1, offsetof(Proto, exectarget)));
     build.cbz(x2, helpers.exitContinueVm);
@@ -169,13 +176,6 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     build.str(x1, mem(rState, offsetof(lua_State, top))); // L->top = res
 
-    if (FFlag::LuauClosureUsageCounter)
-    {
-        build.ldr(x4, mem(rClosure, offsetof(Closure, usage)));
-        build.sub(x4, x4, static_cast<uint16_t>(1));
-        build.str(x4, mem(rClosure, offsetof(Closure, usage)));
-    }
-
     // Unlikely, but this might be the last return from VM
     build.ldr(w4, mem(x0, offsetof(CallInfo, flags)));
     build.tbnz(w4, countrz(uint32_t(LUA_CALLINFO_RETURN)), helpers.exitNoContinueVm);
@@ -188,7 +188,10 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.ldr(rClosure, mem(x2, offsetof(CallInfo, func)));
     build.ldr(rClosure, mem(rClosure, offsetof(TValue, value.gc)));
 
-    build.ldr(x1, mem(rClosure, offsetof(Closure, l.p))); // cl->l.p aka proto
+    if (FFlag::LuauCIProto)
+        build.ldr(x1, mem(x2, offsetof(CallInfo, p))); // ci->p aka proto
+    else
+        build.ldr(x1, mem(rClosure, offsetof(Closure, l.p))); // cl->l.p aka proto
 
     if (DFFlag::AddReturnExectargetCheck)
     {
@@ -295,37 +298,14 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
 
     CODEGEN_ASSERT(build.data.empty());
 
-    uint8_t* codeStart = nullptr;
+    codeGenContext.gateAllocationData = codeGenContext.codeAllocator.allocate(
+        build.data.data(), int(build.data.size()), reinterpret_cast<const uint8_t*>(build.code.data()), int(build.code.size() * sizeof(build.code[0]))
+    );
 
-    if (FFlag::LuauCodegenFreeBlocks)
-    {
-        codeGenContext.gateAllocationData = codeGenContext.codeAllocator.allocate(
-            build.data.data(),
-            int(build.data.size()),
-            reinterpret_cast<const uint8_t*>(build.code.data()),
-            int(build.code.size() * sizeof(build.code[0]))
-        );
+    if (!codeGenContext.gateAllocationData.start)
+        return false;
 
-        if (!codeGenContext.gateAllocationData.start)
-            return false;
-
-        codeStart = codeGenContext.gateAllocationData.codeStart;
-    }
-    else
-    {
-        if (!codeGenContext.codeAllocator.allocate_DEPRECATED(
-                build.data.data(),
-                int(build.data.size()),
-                reinterpret_cast<const uint8_t*>(build.code.data()),
-                int(build.code.size() * sizeof(build.code[0])),
-                codeGenContext.gateData_DEPRECATED,
-                codeGenContext.gateDataSize_DEPRECATED,
-                codeStart
-            ))
-        {
-            return false;
-        }
-    }
+    uint8_t* codeStart = codeGenContext.gateAllocationData.codeStart;
 
     // Set the offset at the beginning so that functions in new blocks will not overlay the locations
     // specified by the unwind information of the entry function
