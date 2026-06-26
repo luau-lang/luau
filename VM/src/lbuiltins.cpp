@@ -2540,7 +2540,7 @@ LUAU_TARGET_SSE41 static int luauF_round_sse41(lua_State* L, StkId res, TValue* 
         // roundsd only supports bankers rounding natively, so we need to emulate rounding by using truncation
         // offset is prevfloat(0.5), which is important so that we round prevfloat(0.5) to 0.
         const double offset = 0.49999999999999994;
-        setnvalue(res, roundsd_sse41<_MM_FROUND_TO_ZERO>(a1 + (a1 < 0 ? -offset : offset)));
+        setnvalue(res, roundsd_sse41<_MM_FROUND_TO_ZERO>(a1 + (signbit(a1) ? -offset : offset)));
         return 1;
     }
 
