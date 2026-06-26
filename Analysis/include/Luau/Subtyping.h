@@ -206,6 +206,8 @@ struct SubtypingEnvironment
     int iterationCount = 0;
 };
 
+struct TypeFunctionRuntime;
+
 struct Subtyping
 {
     NotNull<BuiltinTypes> builtinTypes;
@@ -305,14 +307,6 @@ private:
         NotNull<Scope> scope
     );
     SubtypingResult isCovariantWith(
-        SubtypingEnvironment& env,
-        const TableType* subTable,
-        const TableType* superTable,
-        bool forceCovariantTest,
-        NotNull<Scope> scope
-    );
-
-    SubtypingResult isCovariantWith_DEPRECATED(
         SubtypingEnvironment& env,
         const TableType* subTable,
         const TableType* superTable,

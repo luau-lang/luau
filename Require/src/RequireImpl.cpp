@@ -135,14 +135,12 @@ static int CyclicDependencyIndexError(lua_State* L)
 {
     const char* key = lua_tostring(L, 2);
     luaL_error(L, "Cannot access the exported field '%s' because it has a cyclic dependency on its requiring module", key ? key : "unknown");
-    return 0;
 }
 
 static int CyclicDependencyNewIndexError(lua_State* L)
 {
     const char* key = lua_tostring(L, 2);
     luaL_error(L, "Cannot set the exported field '%s' because it has a cyclic dependency on its requiring module", key ? key : "unknown");
-    return 0;
 }
 
 static void invalidateModulePlaceholder(lua_State* L, int idx)

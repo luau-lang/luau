@@ -4,8 +4,6 @@
 #include "Luau/Common.h"
 #include <iostream>
 
-LUAU_FASTFLAGVARIABLE(LuauUseNativeStackGuard);
-
 // The minimum number of available bytes in the stack's address space.
 // If we have less, we want to fail and exit rather than risking an overflow.
 LUAU_FASTINTVARIABLE(LuauStackGuardThreshold, 1024);
@@ -23,15 +21,12 @@ NativeStackGuard::NativeStackGuard()
     : high(0)
     , low(0)
 {
-    if (!FFlag::LuauUseNativeStackGuard)
-        return;
-
     GetCurrentThreadStackLimits((PULONG_PTR)&low, (PULONG_PTR)&high);
 }
 
 bool NativeStackGuard::isOk() const
 {
-    if (!FFlag::LuauUseNativeStackGuard || FInt::LuauStackGuardThreshold <= 0)
+    if (FInt::LuauStackGuardThreshold <= 0)
         return true;
 
     const uintptr_t sp = uintptr_t(_AddressOfReturnAddress());
@@ -63,9 +58,6 @@ NativeStackGuard::NativeStackGuard()
     : high(0)
     , low(0)
 {
-    if (!FFlag::LuauUseNativeStackGuard)
-        return;
-
     pthread_t self = pthread_self();
     char* addr = static_cast<char*>(pthread_get_stackaddr_np(self));
     size_t size = pthread_get_stacksize_np(self);
@@ -76,7 +68,7 @@ NativeStackGuard::NativeStackGuard()
 
 bool NativeStackGuard::isOk() const
 {
-    if (!FFlag::LuauUseNativeStackGuard || FInt::LuauStackGuardThreshold <= 0)
+    if (FInt::LuauStackGuardThreshold <= 0)
         return true;
 
     const uintptr_t sp = uintptr_t(__builtin_frame_address(0));

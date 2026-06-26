@@ -8,6 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauConstraintGraph)
 LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 
 TEST_SUITE_BEGIN("TypeSingletons");
@@ -848,6 +849,33 @@ TEST_CASE_FIXTURE(Fixture, "cli_184125")
         end
     )"));
 }
+
+TEST_CASE_FIXTURE(Fixture, "pass_singleton_through_to_identity")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauConstraintGraph, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function id(x) return x end
+
+        local function foobar(): "hello"
+            return id("hello")
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "singleton_when_type_is_blocked")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function id(x: typeof("hello")) return x end
+
+        local function foobar()
+            return id("hello")
+        end
+    )"));
+}
+
 
 
 TEST_SUITE_END();

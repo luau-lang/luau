@@ -11,8 +11,8 @@
 #include "Luau/Location.h"
 #include "Luau/Module.h"
 #include "Luau/Normalize.h"
-#include "Luau/OrderedSet.h"
 #include "Luau/Substitution.h"
+#include "Luau/Subtyping.h"
 #include "Luau/SubtypingVariance.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
@@ -182,7 +182,8 @@ struct ConstraintSolver
         NotNull<const DataFlowGraph> dfg,
         TypeCheckLimits limits,
         ConstraintSet constraintSet,
-        ConstraintGraph* cgraph
+        ConstraintGraph* cgraph,
+        NotNull<Subtyping> subtyping
     );
 
     // TODO CLI-169086: Replace all uses of this constructor with the ConstraintSet constructor, above.
@@ -198,7 +199,8 @@ struct ConstraintSolver
         DcrLogger* logger,
         NotNull<const DataFlowGraph> dfg,
         TypeCheckLimits limits,
-        ConstraintGraph* cgraph
+        ConstraintGraph* cgraph,
+        NotNull<Subtyping> subtyping
     );
 
     // Randomize the order in which to dispatch constraints
@@ -248,7 +250,8 @@ public:
     bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint, bool force);
-    bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
+    // Clip with LuauRemovePrimitiveTypeConstraint
+    bool DEPRECATED_tryDispatch(const DEPRECATED_PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const TypeInstantiationConstraint& c, NotNull<const Constraint> constraint);
 
@@ -478,6 +481,8 @@ public:
 
     // Make non-optional with LuauConstraintGraph
     ConstraintGraph* cgraph;
+
+    NotNull<Subtyping> subtyping;
 
     void fillInDiscriminantTypes(NotNull<const Constraint> constraint, const std::vector<std::optional<TypeId>>& discriminantTypes);
 };

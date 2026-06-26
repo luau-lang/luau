@@ -29,6 +29,8 @@ LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionRobustness)
+LUAU_FASTFLAGVARIABLE(LuauUdtfTypeIsSubtypeOf)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionTableIndexerIsReadOnly)
 
 namespace Luau
 {
@@ -1808,6 +1810,34 @@ static int checkTag(lua_State* L)
     return 1;
 }
 
+// Luau `self:issubtypeof(arg: type) -> boolean`
+// Returns true if self is a subtype of the given type
+static int isSubtypeOf(lua_State* L)
+{
+    int argumentCount = lua_gettop(L);
+    if (argumentCount != 2)
+        luaL_error(L, "type.issubtypeof: expected 2 arguments, but got %d", argumentCount);
+
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+    TypeFunctionTypeId arg = getTypeUserData(L, 2);
+
+    TypeFunctionRuntimeBuilderState* runtimeBuilder = Luau::getTypeFunctionRuntime(L)->runtimeBuilder;
+    NotNull<TypeFunctionContext> ctx = runtimeBuilder->ctx;
+
+    TypeId subTy = Luau::deserialize(self, runtimeBuilder);
+    if (FFlag::LuauTypeFunctionStructuredErrors ? !runtimeBuilder->errors.empty() : !runtimeBuilder->errors_DEPRECATED.empty())
+        luaL_error(L, "failed to deserialize the self type");
+
+    TypeId superTy = Luau::deserialize(arg, runtimeBuilder);
+    if (FFlag::LuauTypeFunctionStructuredErrors ? !runtimeBuilder->errors.empty() : !runtimeBuilder->errors_DEPRECATED.empty())
+        luaL_error(L, "failed to deserialize the argument type");
+
+    SubtypingResult result = ctx->subtyping->isSubtype(subTy, superTy, ctx->scope);
+
+    lua_pushboolean(L, static_cast<int>(result.isSubtype));
+    return 1;
+}
+
 TypeFunctionTypeId deepClone(NotNull<TypeFunctionRuntime> runtime, TypeFunctionTypeId ty); // Forward declaration
 
 // Luau: `types.copy(arg: type) -> type`
@@ -2016,6 +2046,13 @@ void registerTypeUserData(lua_State* L)
     // Indexing will be a dynamic function because some type fields are dynamic
     lua_newtable(L);
     luaL_register(L, nullptr, FFlag::LuauTypeFunctionRobustness ? typeUserdataMethods : typeUserdataMethods_DEPRECATED);
+
+    if (FFlag::LuauUdtfTypeIsSubtypeOf)
+    {
+        lua_pushcfunction(L, isSubtypeOf, "issubtypeof");
+        lua_setfield(L, -2, "issubtypeof");
+    }
+
     lua_setreadonly(L, -1, true);
     lua_pushcclosure(L, typeUserdataIndex, "__index", 1);
     lua_setfield(L, -2, "__index");
@@ -2031,7 +2068,6 @@ void registerTypeUserData(lua_State* L)
 static int unsupportedFunction(lua_State* L)
 {
     luaL_errorL(L, "this function is not supported in type functions");
-    return 0;
 }
 
 static int print(lua_State* L)
@@ -2809,7 +2845,13 @@ private:
         }
 
         if (t1->indexer.has_value())
-            t2->indexer = TypeFunctionTableIndexer(shallowClone(t1->indexer->keyType), shallowClone(t1->indexer->valueType));
+        {
+            t2->indexer = TypeFunctionTableIndexer(
+                shallowClone(t1->indexer->keyType),
+                shallowClone(t1->indexer->valueType),
+                FFlag::LuauTypeFunctionTableIndexerIsReadOnly ? t1->indexer->isReadOnly : false
+            );
+        }
 
         if (t1->metatable.has_value())
             t2->metatable = shallowClone(*t1->metatable);

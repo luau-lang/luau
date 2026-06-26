@@ -1161,6 +1161,10 @@ FragmentTypeCheckResult typecheckFragment_(
     /// User defined type functions runtime
     TypeFunctionRuntime typeFunctionRuntime(iceHandler, NotNull{&limits});
 
+    Subtyping subtyping{
+        frontend.builtinTypes, NotNull{&incrementalModule->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler
+    };
+
     typeFunctionRuntime.allowEvaluation = false;
 
     /// Create a DataFlowGraph just for the surrounding context
@@ -1247,6 +1251,7 @@ FragmentTypeCheckResult typecheckFragment_(
         NotNull{&dfg},
         std::move(limits),
         FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
+        NotNull{&subtyping}
     };
 
     try

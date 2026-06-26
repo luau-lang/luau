@@ -39,13 +39,14 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
-LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauReadOnlyIndexers)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauTidyTypePrototyping)
 LUAU_FASTFLAG(LuauConstraintGraph)
+LUAU_FASTFLAGVARIABLE(LuauDoNotEmplaceAnnotatedType)
+LUAU_FASTFLAGVARIABLE(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 namespace Luau
 {
@@ -1083,8 +1084,8 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
                             auto& p = props[classProp.name.value];
 
                             // This needs to be blocked initially: if this
-                            // type refers to a type that contains a typeof 
-                            // or an alias that we have yet to define, then 
+                            // type refers to a type that contains a typeof
+                            // or an alias that we have yet to define, then
                             // we'll ICE or misbehave.
                             p = Property::rw(propertyType);
                             p.location = classProp.nameLocation;
@@ -1443,7 +1444,17 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
         {
             localDomain->insert(annotatedTypes[i]);
             if (i >= head.size() && tail)
-                deferredTypes.emplace_back(annotatedTypes[i]);
+            {
+                if (FFlag::LuauDoNotEmplaceAnnotatedType)
+                {
+                    deferredTypes.push_back(arena->addType(BlockedType{}));
+                    freshBlockedTypes.insert(getMutable<BlockedType>(deferredTypes.back()));
+                }
+                else
+                {
+                    deferredTypes.emplace_back(annotatedTypes[i]);
+                }
+            }
         }
         else
         {
@@ -1601,35 +1612,18 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forI
         TypeId loopVar = arena->addType(BlockedType{});
         variableTypes.push_back(loopVar);
 
-        if (FFlag::LuauPropagateTypeAnnotationsInForInLoops)
-        {
-            DefId def = dfg->getDef(var);
+        DefId def = dfg->getDef(var);
 
-            if (var->annotation)
-            {
-                TypeId annotationTy = resolveType(loopScope, var->annotation, /*inTypeArguments*/ false);
-                loopScope->bindings[var] = Binding{annotationTy, var->location};
-                addConstraint(scope, var->location, SubtypeConstraint{loopVar, annotationTy});
-                loopScope->lvalueTypes[def] = annotationTy;
-            }
-            else
-            {
-                loopScope->bindings[var] = Binding{loopVar, var->location};
-                loopScope->lvalueTypes[def] = loopVar;
-            }
+        if (var->annotation)
+        {
+            TypeId annotationTy = resolveType(loopScope, var->annotation, /*inTypeArguments*/ false);
+            loopScope->bindings[var] = Binding{annotationTy, var->location};
+            addConstraint(scope, var->location, SubtypeConstraint{loopVar, annotationTy});
+            loopScope->lvalueTypes[def] = annotationTy;
         }
         else
         {
-            if (var->annotation)
-            {
-                TypeId annotationTy = resolveType(loopScope, var->annotation, /*inTypeArguments*/ false);
-                loopScope->bindings[var] = Binding{annotationTy, var->location};
-                addConstraint(scope, var->location, SubtypeConstraint{loopVar, annotationTy});
-            }
-            else
-                loopScope->bindings[var] = Binding{loopVar, var->location};
-
-            DefId def = dfg->getDef(var);
+            loopScope->bindings[var] = Binding{loopVar, var->location};
             loopScope->lvalueTypes[def] = loopVar;
         }
     }
@@ -2587,7 +2581,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
                     auto blockedTy = follow(*entry);
                     if (!is<BlockedType>(blockedTy))
                         return;
-                
+
                     auto target = classProp.ty ? resolveType(scope, classProp.ty, false) : builtinTypes->anyType;
                     emplaceType<BoundType>(asMutable(blockedTy), target);
                 },
@@ -3158,8 +3152,16 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantStrin
     LUAU_ASSERT(ft);
     ft->lowerBound = arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}});
     ft->upperBound = builtinTypes->stringType;
-
-    addConstraint(scope, string->location, PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->stringType});
+    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+    {
+        ft->primitiveType = builtinTypes->stringType;
+        if (expectedType)
+            addConstraint(scope, string->location, SubtypeConstraint{freeTy, *expectedType});
+    }
+    else
+    {
+        addConstraint(scope, string->location, DEPRECATED_PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->stringType});
+    }
     return Inference{freeTy};
 }
 
@@ -3188,8 +3190,16 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantBool*
     LUAU_ASSERT(ft);
     ft->lowerBound = singletonType;
     ft->upperBound = builtinTypes->booleanType;
-
-    addConstraint(scope, boolExpr->location, PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->booleanType});
+    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+    {
+        ft->primitiveType = builtinTypes->booleanType;
+        if (expectedType)
+            addConstraint(scope, boolExpr->location, SubtypeConstraint{freeTy, *expectedType});
+    }
+    else
+    {
+        addConstraint(scope, boolExpr->location, DEPRECATED_PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->booleanType});
+    }
     return Inference{freeTy};
 }
 

@@ -6,6 +6,7 @@
 
 #include <stddef.h>
 #include <functional>
+#include <type_traits>
 #include <utility>
 #include <stdint.h>
 
@@ -479,6 +480,13 @@ public:
     typedef typename Impl::const_iterator const_iterator;
     typedef typename Impl::iterator iterator;
 
+    template<typename K = Key, std::enable_if_t<std::is_pointer_v<K>, int> = 0>
+    explicit DenseHashSet(const Key& empty_key = nullptr, size_t buckets = 0)
+        : impl(empty_key, buckets)
+    {
+    }
+
+    template<typename K = Key, std::enable_if_t<!std::is_pointer_v<K>, int> = 0>
     explicit DenseHashSet(const Key& empty_key, size_t buckets = 0)
         : impl(empty_key, buckets)
     {
@@ -567,6 +575,13 @@ public:
     typedef typename Impl::const_iterator const_iterator;
     typedef typename Impl::iterator iterator;
 
+    template<typename K = Key, std::enable_if_t<std::is_pointer_v<K>, int> = 0>
+    explicit DenseHashMap(const Key& empty_key = nullptr, size_t buckets = 0)
+        : impl(empty_key, buckets)
+    {
+    }
+
+    template<typename K = Key, std::enable_if_t<!std::is_pointer_v<K>, int> = 0>
     explicit DenseHashMap(const Key& empty_key, size_t buckets = 0)
         : impl(empty_key, buckets)
     {

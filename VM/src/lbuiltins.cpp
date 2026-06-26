@@ -25,6 +25,8 @@
 #endif
 #endif
 
+LUAU_FASTFLAG(LuauCIProto)
+
 // luauF functions implement FASTCALL instruction that performs a direct execution of some builtin functions from the VM
 // The rule of thumb is that FASTCALL functions can not call user code, yield, fail, or reallocate stack.
 // If types of the arguments mismatch, luauF_* needs to return -1 and the execution will fall back to the usual call path
@@ -1137,7 +1139,7 @@ static int luauF_select(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
 {
     if (nparams == 1 && nresults == 1)
     {
-        int n = cast_int(L->base - L->ci->func) - clvalue(L->ci->func)->l.p->numparams - 1;
+        int n = cast_int(L->base - L->ci->func) - (FFlag::LuauCIProto ? L->ci->p : clvalue(L->ci->func)->l.p)->numparams - 1;
 
         if (ttisnumber(arg0))
         {
