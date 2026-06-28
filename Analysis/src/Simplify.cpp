@@ -164,7 +164,7 @@ Relation invert(Relation r)
         return Relation::Intersects;
     }
 
-    LUAU_UNREACHABLE();
+    LUAU_ASSERT(false);
     return Relation::Intersects;
 }
 

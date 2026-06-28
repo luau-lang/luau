@@ -19,6 +19,7 @@
 LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAG(LuauYieldIter2)
+LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
 {
@@ -2877,8 +2878,16 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::NEWCLOSURE:
     {
         ScopedRegX64 tmp2{regs, SizeX64::qword};
-        build.mov(tmp2.reg, sClosure);
-        build.mov(tmp2.reg, qword[tmp2.reg + offsetof(Closure, l.p)]);
+        if (FFlag::LuauCIProto)
+        {
+            build.mov(tmp2.reg, qword[rState + offsetof(lua_State, ci)]);
+            build.mov(tmp2.reg, qword[tmp2.reg + offsetof(CallInfo, p)]);
+        }
+        else
+        {
+            build.mov(tmp2.reg, sClosure);
+            build.mov(tmp2.reg, qword[tmp2.reg + offsetof(Closure, l.p)]);
+        }
         build.mov(tmp2.reg, qword[tmp2.reg + offsetof(Proto, p)]);
         build.mov(tmp2.reg, qword[tmp2.reg + sizeof(Proto*) * uintOp(OP_C(inst))]);
 
@@ -3822,8 +3831,16 @@ void IrLoweringX64::finishFunction()
 
     if (stats)
     {
-        if (regs.maxUsedSlot > kSpillSlots + kExtraSpillSlots)
-            stats->regAllocErrors++;
+        if (FFlag::LuauCodegenNoEcbData)
+        {
+            if (regs.maxUsedSlot > kSpillSlots)
+                stats->regAllocErrors++;
+        }
+        else
+        {
+            if (regs.maxUsedSlot > kSpillSlots_DEPRECATED + kExtraSpillSlots_DEPRECATED)
+                stats->regAllocErrors++;
+        }
 
         if (regs.maxUsedSlot > stats->maxSpillSlotsUsed)
             stats->maxSpillSlotsUsed = regs.maxUsedSlot;
@@ -3833,8 +3850,16 @@ void IrLoweringX64::finishFunction()
 bool IrLoweringX64::hasError() const
 {
     // If register allocator had to use more stack slots than we have available, this function can't run natively
-    if (regs.maxUsedSlot > kSpillSlots + kExtraSpillSlots)
-        return true;
+    if (FFlag::LuauCodegenNoEcbData)
+    {
+        if (regs.maxUsedSlot > kSpillSlots)
+            return true;
+    }
+    else
+    {
+        if (regs.maxUsedSlot > kSpillSlots_DEPRECATED + kExtraSpillSlots_DEPRECATED)
+            return true;
+    }
 
     return false;
 }

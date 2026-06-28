@@ -17,6 +17,8 @@
 
 LUAU_FASTFLAG(LuauUdataDirectAccess6)
 LUAU_FASTFLAG(LuauDirectFieldGet)
+LUAU_FASTFLAGVARIABLE(LuauUdataMetatablePinned)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcTableStepFix, false)
 
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
@@ -393,6 +395,11 @@ static void traverseproto(global_State* g, Proto* f)
         if (f->locvars[i].varname)
             stringmark(f->locvars[i].varname);
     }
+    if (f->optimized)
+        markobject(g, f->optimized);
+
+    if (f->deoptimized)
+        markobject(g, f->deoptimized);
 }
 
 static void traverseclosure(global_State* g, Closure* cl)
@@ -514,7 +521,11 @@ static size_t propagatemark(global_State* g)
         g->gray = h->gclist;
         if (traversetable(g, h)) // table is weak?
             black2gray(o);       // keep it gray
-        return sizeof(LuaTable) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
+
+        if (DFFlag::LuauGcTableStepFix)
+            return sizeof(LuaTable) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * (h->node == &luaH_dummynode ? 0 : sizenode(h));
+        else
+            return sizeof(LuaTable) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
     }
     case LUA_TFUNCTION:
     {
@@ -647,7 +658,11 @@ static size_t cleartable(lua_State* L, GCObject* l)
     while (l)
     {
         LuaTable* h = gco2h(l);
-        work += sizeof(LuaTable) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
+
+        if (DFFlag::LuauGcTableStepFix)
+            work += sizeof(LuaTable) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * (h->node == &luaH_dummynode ? 0 : sizenode(h));
+        else
+            work += sizeof(LuaTable) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
 
         int i = h->sizearray;
         while (i--)
@@ -801,6 +816,15 @@ static void markmt(global_State* g)
             markobject(g, g->mt[i]);
 }
 
+static void marktaggetmt(global_State* g)
+{
+    for (int i = 0; i < LUA_UTAG_LIMIT; i++)
+    {
+        if (g->udatamt[i])
+            markobject(g, g->udatamt[i]);
+    }
+}
+
 // mark root set
 static void markroot(lua_State* L)
 {
@@ -833,6 +857,10 @@ static void markroot(lua_State* L)
     }
 
     markmt(g);
+
+    if (FFlag::LuauUdataMetatablePinned)
+        marktaggetmt(g);
+
     g->gcstate = GCSpropagate;
 }
 
@@ -913,8 +941,13 @@ static size_t atomic(lua_State* L)
     g->gray = g->weak;
     g->weak = NULL;
     LUAU_ASSERT(!iswhite(obj2gco(g->mainthread)));
+
     markobject(g, L); // mark running thread
     markmt(g);        // mark basic metatables (again)
+
+    if (FFlag::LuauUdataMetatablePinned)
+        marktaggetmt(g); // mark tagged userdata metatables (again)
+
     work += propagateall(g);
 
 #ifdef LUAI_GCMETRICS

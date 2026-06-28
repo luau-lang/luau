@@ -22,6 +22,8 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAGVARIABLE(LuauConcatDoesntAlwaysReturnString)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauRemoveExtraSubtypingInstances)
 
 namespace Luau
 {
@@ -160,14 +162,14 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
 
     if (!unifier.genericSubstitutions.empty() || !unifier.genericPackSubstitutions.empty())
     {
-        Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
+        Subtyping subtyping_DEPRECATED{ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->ice};
         auto newRetTp = getApproximateReturnTypeForFunctionCall(*selected.overload).value_or(ctx->builtins->errorTypePack);
 
         std::optional<TypePackId> subst = instantiate2(
             ctx->arena,
             std::move(unifier.genericSubstitutions),
             std::move(unifier.genericPackSubstitutions),
-            NotNull{&subtyping},
+            FFlag::LuauRemoveExtraSubtypingInstances ? ctx->subtyping : NotNull{&subtyping_DEPRECATED},
             ctx->scope,
             newRetTp
         );
@@ -359,7 +361,12 @@ TypeFunctionReductionResult<TypeId> unmTypeFunction(
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 }
 
-TypeFunctionContext::TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint, NotNull<Subtyping> subtyping)
+TypeFunctionContext::TypeFunctionContext(
+    NotNull<ConstraintSolver> cs,
+    NotNull<Scope> scope,
+    NotNull<const Constraint> constraint,
+    NotNull<Subtyping> subtyping
+)
     : arena(cs->arena)
     , builtins(cs->builtinTypes)
     , scope(scope)
@@ -2258,8 +2265,18 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
     TypeId targetTy = follow(typeParams.at(0));
     TypeId metatableTy = follow(typeParams.at(1));
 
-    if (isPending(targetTy, ctx->solver))
-        return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
+    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+    {
+        // Having the target type be a pending table does not block dispatch.
+        if (isPending(targetTy, ctx->solver) && !is<TableType>(targetTy))
+            return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
+    }
+    else
+    {
+        if (isPending(targetTy, ctx->solver))
+            return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
+    }
+
 
     std::shared_ptr<const NormalizedType> targetNorm = ctx->normalizer->normalize(targetTy);
 
@@ -2277,8 +2294,17 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
         targetNorm->hasExternTypes())
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 
-    if (isPending(metatableTy, ctx->solver))
-        return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
+    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+    {
+        // Having the metatable type be a pending table does not block dispatch.
+        if (isPending(metatableTy, ctx->solver) && !is<TableType>(metatableTy))
+            return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
+    }
+    else
+    {
+        if (isPending(metatableTy, ctx->solver))
+            return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
+    }
 
     // if the supposed metatable is not a table, we will fail to reduce.
     if (!get<TableType>(metatableTy) && !get<MetatableType>(metatableTy))

@@ -39,14 +39,14 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
-LUAU_FASTFLAGVARIABLE(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauReadOnlyIndexers)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauTidyTypePrototyping)
 LUAU_FASTFLAG(LuauConstraintGraph)
+LUAU_FASTFLAGVARIABLE(LuauDoNotEmplaceAnnotatedType)
+LUAU_FASTFLAGVARIABLE(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauTypeNegationSupport)
 
 namespace Luau
@@ -1066,6 +1066,11 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
             TableType::Props staticProps;
             ExternType::Props props;
             TableType::Props instanceMetatableProps;
+            DenseHashMap<AstName, TypeId> memberTypes{AstName{""}};
+
+            TypeId ctorArgTy = arena->addType(TableType{TableType::Props{}, std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed});
+            TableType* ctorArgTable = getMutable<TableType>(ctorArgTy);
+            LUAU_ASSERT(ctorArgTable);
 
             for (const auto& member : classDecl->members)
             {
@@ -1073,20 +1078,32 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
                     overloaded{
                         [&](const AstClassProperty& classProp)
                         {
-                            if (props.count(classProp.name.value) > 0)
+                            if (memberTypes.contains(classProp.name))
                                 return;
 
-                            TypeId propTy = classProp.ty ? resolveType(scope, classProp.ty, false) : builtinTypes->anyType;
+                            auto [propertyType, _] = memberTypes.try_insert(classProp.name, arena->addType(BlockedType{}));
                             auto& p = props[classProp.name.value];
-                            p = Property::rw(propTy);
+
+                            // This needs to be blocked initially: if this
+                            // type refers to a type that contains a typeof
+                            // or an alias that we have yet to define, then
+                            // we'll ICE or misbehave.
+                            p = Property::rw(propertyType);
                             p.location = classProp.nameLocation;
+
+                            // We make the constructor take read-only args.
+                            // This is true, in that we do not write to the
+                            // table you pass for constructing an object.
+                            ctorArgTable->props[classProp.name.value] = Property::readonly(propertyType);
                         },
                         [&](const AstClassMethod& method)
                         {
-                            if (props.count(method.functionName.value) > 0)
+                            if (memberTypes.contains(method.functionName))
                                 return;
 
-                            auto prop = Property::readonly(arena->addType(BlockedType{}));
+                            auto [propertyType, _] = memberTypes.try_insert(method.functionName, arena->addType(BlockedType{}));
+
+                            auto prop = Property::readonly(propertyType);
                             prop.location = method.nameLocation;
                             if (method.function->args.size < 1 || method.function->args.data[0]->name != "self")
                                 staticProps[method.functionName.value] = prop;
@@ -1111,18 +1128,6 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
                 }
             );
 
-            TypeId ctorArgTy = arena->addType(TableType{TableType::Props{}, std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed});
-            TableType* ctorArgTable = getMutable<TableType>(ctorArgTy);
-            LUAU_ASSERT(ctorArgTable);
-            for (const auto& member : classDecl->members)
-            {
-                if (auto prop = member.get_if<AstClassProperty>())
-                {
-                    TypeId propTy = prop->ty ? resolveType(scope, prop->ty, false) : builtinTypes->anyType;
-                    ctorArgTable->props[prop->name.value] = Property::rw(propTy);
-                }
-            }
-
             TypeId ctorTy =
                 arena->addType(FunctionType{arena->addTypePack({builtinTypes->unknownType, ctorArgTy}), arena->addTypePack({classInstanceTy})});
 
@@ -1145,13 +1150,13 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
 
             emplaceType<BoundType>(asMutable(theTy), externTy);
 
-
             if (classDecl->exported)
                 scope->exportedTypeBindings[classDecl->name->name.value] = TypeFun{{}, {}, classInstanceTy, classDecl->location};
             else
                 scope->privateTypeBindings[classDecl->name->name.value] = TypeFun{{}, {}, classInstanceTy, classDecl->location};
 
-            classDeclRecords[classDecl->name] = ClassDeclRecord{classDecl, classInstanceTy};
+            classDeclRecords[classDecl->name] =
+                std::make_unique<ClassDeclRecord>(ClassDeclRecord{classInstanceTy, std::move(memberTypes)});
         }
     }
 
@@ -1440,7 +1445,17 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
         {
             localDomain->insert(annotatedTypes[i]);
             if (i >= head.size() && tail)
-                deferredTypes.emplace_back(annotatedTypes[i]);
+            {
+                if (FFlag::LuauDoNotEmplaceAnnotatedType)
+                {
+                    deferredTypes.push_back(arena->addType(BlockedType{}));
+                    freshBlockedTypes.insert(getMutable<BlockedType>(deferredTypes.back()));
+                }
+                else
+                {
+                    deferredTypes.emplace_back(annotatedTypes[i]);
+                }
+            }
         }
         else
         {
@@ -1598,35 +1613,18 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forI
         TypeId loopVar = arena->addType(BlockedType{});
         variableTypes.push_back(loopVar);
 
-        if (FFlag::LuauPropagateTypeAnnotationsInForInLoops)
-        {
-            DefId def = dfg->getDef(var);
+        DefId def = dfg->getDef(var);
 
-            if (var->annotation)
-            {
-                TypeId annotationTy = resolveType(loopScope, var->annotation, /*inTypeArguments*/ false);
-                loopScope->bindings[var] = Binding{annotationTy, var->location};
-                addConstraint(scope, var->location, SubtypeConstraint{loopVar, annotationTy});
-                loopScope->lvalueTypes[def] = annotationTy;
-            }
-            else
-            {
-                loopScope->bindings[var] = Binding{loopVar, var->location};
-                loopScope->lvalueTypes[def] = loopVar;
-            }
+        if (var->annotation)
+        {
+            TypeId annotationTy = resolveType(loopScope, var->annotation, /*inTypeArguments*/ false);
+            loopScope->bindings[var] = Binding{annotationTy, var->location};
+            addConstraint(scope, var->location, SubtypeConstraint{loopVar, annotationTy});
+            loopScope->lvalueTypes[def] = annotationTy;
         }
         else
         {
-            if (var->annotation)
-            {
-                TypeId annotationTy = resolveType(loopScope, var->annotation, /*inTypeArguments*/ false);
-                loopScope->bindings[var] = Binding{annotationTy, var->location};
-                addConstraint(scope, var->location, SubtypeConstraint{loopVar, annotationTy});
-            }
-            else
-                loopScope->bindings[var] = Binding{loopVar, var->location};
-
-            DefId def = dfg->getDef(var);
+            loopScope->bindings[var] = Binding{loopVar, var->location};
             loopScope->lvalueTypes[def] = loopVar;
         }
     }
@@ -2561,85 +2559,95 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
 
-    ClassDeclRecord* classDeclRecord = classDeclRecords.find(statClass->name);
+    auto* classDeclRecordPtr = classDeclRecords.find(statClass->name);
     // TODO CLI-199124: This is unpopulated in fragment autocomplete.
-    if (classDeclRecord == nullptr)
+    if (classDeclRecordPtr == nullptr)
         return ControlFlow::None;
 
-    DenseHashSet<AstName> methodNames{AstName{""}};
+    auto classDeclRecord = classDeclRecordPtr->get();
 
     for (const auto& member : statClass->members)
     {
-        if (auto method = member.get_if<AstClassMethod>())
-        {
-            // Duplicate method names are reported elsewhere
-            if (methodNames.contains(method->functionName))
-                continue;
-
-
-            const ExternType* class_ = get<ExternType>(classDeclRecord->ty);
-            LUAU_ASSERT(class_);
-            LUAU_ASSERT(class_->metatable.has_value());
-            const TableType* metatable = get<TableType>(follow(*class_->metatable));
-            LUAU_ASSERT(metatable);
-            Property maybeFunctionProp;
-            auto instanceProp = class_->props.find(method->functionName.value);
-            auto metaInstanceProp = metatable->props.find(method->functionName.value);
-            if (instanceProp != class_->props.end())
-            {
-                maybeFunctionProp = instanceProp->second;
-            }
-            else if (metaInstanceProp != metatable->props.end())
-            {
-                maybeFunctionProp = metaInstanceProp->second;
-            }
-            LUAU_ASSERT(maybeFunctionProp.isReadOnly());
-            TypeId functionType = *maybeFunctionProp.readTy;
-
-            FunctionSignature sig =
-                checkFunctionSignature(scope, classDeclRecord, method->function, /* expectedType */ std::nullopt, method->function->location);
-
-            Checkpoint start = checkpoint(this);
-            checkFunctionBody(sig.bodyScope, method->function);
-            Checkpoint end = checkpoint(this);
-
-            NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
-            std::unique_ptr<Constraint> c =
-                std::make_unique<Constraint>(constraintScope, method->function->location, GeneralizationConstraint{functionType, sig.signature});
-
-            propagateDeprecatedAttributeToConstraint(c->c, method->function);
-
-            if (FFlag::LuauConstraintGraph)
-            {
-                addAllAsDependenciesAndChainReturns(start, end, this, NotNull{c.get()});
-            }
-            else
-            {
-                Constraint* previous = nullptr;
-                forEachConstraint(
-                    start,
-                    end,
-                    this,
-                    [&c, &previous](const ConstraintPtr& constraint)
+        Luau::visit(
+            overloaded{
+                [&](const AstClassProperty& classProp)
+                {
+                    auto entry = classDeclRecord->memberTypes.find(classProp.name);
+                    if (entry == nullptr)
                     {
-                        c->DEPRECATED_dependencies.emplace_back(constraint.get());
-                        if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
-                        {
-                            if (previous)
-                            {
-                                constraint->DEPRECATED_dependencies.emplace_back(previous);
-                            }
-
-                            previous = constraint.get();
-                        }
+                        LUAU_ASSERT(!"Unexpected missing class property type");
+                        return;
                     }
-                );
-            }
 
-            getMutable<BlockedType>(functionType)->setOwner(addConstraint(scope, std::move(c)));
+                    auto blockedTy = follow(*entry);
+                    if (!is<BlockedType>(blockedTy))
+                        return;
 
-            methodNames.insert(method->functionName);
-        }
+                    auto target = classProp.ty ? resolveType(scope, classProp.ty, false) : builtinTypes->anyType;
+                    emplaceType<BoundType>(asMutable(blockedTy), target);
+                },
+                [&](const AstClassMethod& method)
+                {
+                    auto entry = classDeclRecord->memberTypes.find(method.functionName);
+                    if (entry == nullptr)
+                    {
+                        LUAU_ASSERT(!"Unexpected missing class method type");
+                        return;
+                    }
+
+                    auto functionType = follow(*entry);
+
+                    // TODO: This might have strange behavior if you ever
+                    // copy a method.
+                    if (!is<BlockedType>(functionType))
+                        return;
+
+                    FunctionSignature sig =
+                        checkFunctionSignature(scope, classDeclRecord, method.function, /* expectedType */ std::nullopt, method.function->location);
+
+                    Checkpoint start = checkpoint(this);
+                    checkFunctionBody(sig.bodyScope, method.function);
+                    Checkpoint end = checkpoint(this);
+
+                    NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
+                    std::unique_ptr<Constraint> c = std::make_unique<Constraint>(
+                        constraintScope, method.function->location, GeneralizationConstraint{functionType, sig.signature}
+                    );
+
+                    propagateDeprecatedAttributeToConstraint(c->c, method.function);
+
+                    if (FFlag::LuauConstraintGraph)
+                    {
+                        addAllAsDependenciesAndChainReturns(start, end, this, NotNull{c.get()});
+                    }
+                    else
+                    {
+                        Constraint* previous = nullptr;
+                        forEachConstraint(
+                            start,
+                            end,
+                            this,
+                            [&c, &previous](const ConstraintPtr& constraint)
+                            {
+                                c->DEPRECATED_dependencies.emplace_back(constraint.get());
+                                if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+                                {
+                                    if (previous)
+                                    {
+                                        constraint->DEPRECATED_dependencies.emplace_back(previous);
+                                    }
+
+                                    previous = constraint.get();
+                                }
+                            }
+                        );
+                    }
+
+                    getMutable<BlockedType>(functionType)->setOwner(addConstraint(scope, std::move(c)));
+                }
+            },
+            member
+        );
     }
 
     return ControlFlow::None;
@@ -2954,7 +2962,7 @@ InferencePack ConstraintGenerator::checkExprCall(
     TypePackId argPack = addTypePack(std::move(args), argTail);
     FunctionType ftv(TypeLevel{}, argPack, rets, std::nullopt, call->self);
 
-    auto [explicitTypeIds, explicitTypePackIds] = FFlag::LuauExplicitTypeInstantiationSupport && call->typeArguments.size
+    auto [explicitTypeIds, explicitTypePackIds] = call->typeArguments.size
                                                       ? resolveTypeArguments(scope, call->typeArguments)
                                                       : std::pair<std::vector<TypeId>, std::vector<TypePackId>>();
 
@@ -3145,8 +3153,16 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantStrin
     LUAU_ASSERT(ft);
     ft->lowerBound = arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}});
     ft->upperBound = builtinTypes->stringType;
-
-    addConstraint(scope, string->location, PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->stringType});
+    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+    {
+        ft->primitiveType = builtinTypes->stringType;
+        if (expectedType)
+            addConstraint(scope, string->location, SubtypeConstraint{freeTy, *expectedType});
+    }
+    else
+    {
+        addConstraint(scope, string->location, DEPRECATED_PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->stringType});
+    }
     return Inference{freeTy};
 }
 
@@ -3175,8 +3191,16 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantBool*
     LUAU_ASSERT(ft);
     ft->lowerBound = singletonType;
     ft->upperBound = builtinTypes->booleanType;
-
-    addConstraint(scope, boolExpr->location, PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->booleanType});
+    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+    {
+        ft->primitiveType = builtinTypes->booleanType;
+        if (expectedType)
+            addConstraint(scope, boolExpr->location, SubtypeConstraint{freeTy, *expectedType});
+    }
+    else
+    {
+        addConstraint(scope, boolExpr->location, DEPRECATED_PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->booleanType});
+    }
     return Inference{freeTy};
 }
 
@@ -3550,9 +3574,6 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprInterpString*
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprInstantiate* explicitTypeInstantiation)
 {
-    if (!FFlag::LuauExplicitTypeInstantiationSupport)
-        return check(scope, explicitTypeInstantiation->expr);
-
     TypeId functionType = check(scope, explicitTypeInstantiation->expr, std::nullopt).ty;
 
     auto [explicitTypeIds, explicitTypePackIds] = resolveTypeArguments(scope, explicitTypeInstantiation->typeArguments);
@@ -3575,8 +3596,6 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> ConstraintGenerator::res
     const AstArray<AstTypeOrPack>& typeArguments
 )
 {
-    LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSupport);
-
     std::vector<TypeId> resolvedTypeArguments;
     std::vector<TypePackId> resolvedTypePackArguments;
 
@@ -4140,7 +4159,14 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
         if (FFlag::DebugLuauUserDefinedClasses)
         {
             if (hasExplicitSelf && i == 0)
+            {
+                // It is forbidden to put a type annotation on the self
+                // parameter of a class method, but we still need to populate
+                // astResolvedTypes for TC2.
+                if (AstType* annotation = fn->args.data[0]->annotation)
+                    resolveType(signatureScope, annotation, /* inTypeArguments */ false, /* replaceErrorWithFresh */ true, Polarity::Negative);
                 continue;
+            }
         }
 
         AstLocal* local = fn->args.data[i];

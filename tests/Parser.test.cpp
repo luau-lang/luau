@@ -17,14 +17,12 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeLengthLimit)
 LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_DYNAMIC_FASTFLAG(DebugLuauReportReturnTypeVariadicWithTypeSuffix)
-LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauCstExprGroup)
-LUAU_FASTFLAG(LuauCstTypeGroup)
 LUAU_FASTFLAG(LuauTypeNegationSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -2079,7 +2077,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_class_declarations_unaffected_by_global_flag")
     ScopedFastFlag sff{FFlag::LuauAllowGlobalDeclarationToBeCalledClass, true};
 
     AstStatBlock* stat = parseEx(R"(
-        declare class Foo
+        declare extern type Foo with
             prop: number
         end
     )")
@@ -2095,268 +2093,283 @@ TEST_CASE_FIXTURE(Fixture, "parse_class_declarations_unaffected_by_global_flag")
 TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
 {
     AstStatBlock* stat = parseEx(R"(
+        declare extern type Foo with
+            prop: number
+            function method(self, foo: number): string
+        end
+
+        declare extern type Bar extends Foo with
+            prop2: string
+        end
+    )")
+                             .root;
+
+    REQUIRE_EQ(stat->body.size, 2);
+
+    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
+    REQUIRE(declaredExternType);
+    CHECK(declaredExternType->name == "Foo");
+    CHECK(!declaredExternType->superName);
+
+    REQUIRE_EQ(declaredExternType->props.size, 2);
+
+    AstDeclaredExternTypeProperty& prop = declaredExternType->props.data[0];
+    CHECK(prop.name == "prop");
+    CHECK(prop.nameLocation == Location({2, 12}, {2, 16}));
+    CHECK(prop.ty->is<AstTypeReference>());
+    CHECK(prop.location == Location({2, 12}, {2, 24}));
+
+    AstDeclaredExternTypeProperty& method = declaredExternType->props.data[1];
+    CHECK(method.name == "method");
+    CHECK(method.nameLocation == Location({3, 21}, {3, 27}));
+    CHECK(method.ty->is<AstTypeFunction>());
+    CHECK(method.location == Location({3, 12}, {3, 54}));
+    CHECK(method.isMethod);
+
+    AstStatDeclareExternType* subclass = stat->body.data[1]->as<AstStatDeclareExternType>();
+    REQUIRE(subclass);
+    REQUIRE(subclass->superName);
+    CHECK(subclass->name == "Bar");
+    CHECK(*subclass->superName == "Foo");
+
+    REQUIRE_EQ(subclass->props.size, 1);
+    AstDeclaredExternTypeProperty& prop2 = subclass->props.data[0];
+    CHECK(prop2.name == "prop2");
+    CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
+    CHECK(prop2.ty->is<AstTypeReference>());
+    CHECK(prop2.location == Location({7, 12}, {7, 25}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations")
+{
+    AstStatBlock* stat = parseEx(R"(
+        declare extern type Foo with
+            prop: number
+            function method(self, foo: number): string
+        end
+
+        declare extern type Bar extends Foo with
+            prop2: string
+        end
+    )")
+                             .root;
+
+    REQUIRE_EQ(stat->body.size, 2);
+
+    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
+    REQUIRE(declaredExternType);
+    CHECK(declaredExternType->name == "Foo");
+    CHECK(!declaredExternType->superName);
+
+    REQUIRE_EQ(declaredExternType->props.size, 2);
+
+    AstDeclaredExternTypeProperty& prop = declaredExternType->props.data[0];
+    CHECK(prop.name == "prop");
+    CHECK(prop.nameLocation == Location({2, 12}, {2, 16}));
+    CHECK(prop.ty->is<AstTypeReference>());
+    CHECK(prop.location == Location({2, 12}, {2, 24}));
+
+    AstDeclaredExternTypeProperty& method = declaredExternType->props.data[1];
+    CHECK(method.name == "method");
+    CHECK(method.nameLocation == Location({3, 21}, {3, 27}));
+    CHECK(method.ty->is<AstTypeFunction>());
+    CHECK(method.location == Location({3, 12}, {3, 54}));
+    CHECK(method.isMethod);
+
+    AstStatDeclareExternType* subclass = stat->body.data[1]->as<AstStatDeclareExternType>();
+    REQUIRE(subclass);
+    REQUIRE(subclass->superName);
+    CHECK(subclass->name == "Bar");
+    CHECK(*subclass->superName == "Foo");
+
+    REQUIRE_EQ(subclass->props.size, 1);
+    AstDeclaredExternTypeProperty& prop2 = subclass->props.data[0];
+    CHECK(prop2.name == "prop2");
+    CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
+    CHECK(prop2.ty->is<AstTypeReference>());
+    CHECK(prop2.location == Location({7, 12}, {7, 25}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations_missing_with")
+{
+    ParseResult result = tryParse(R"(
+        declare extern type Foo
+            prop: number
+            function method(self, foo: number): string
+        end
+
+        declare extern type Bar extends Foo
+            prop2: string
+        end
+    )");
+
+    REQUIRE_EQ(result.errors.size(), 2);
+    CHECK("Expected `with` keyword before listing properties of the external type, but got prop instead" == result.errors[0].getMessage());
+    CHECK("Expected `with` keyword before listing properties of the external type, but got prop2 instead" == result.errors[1].getMessage());
+
+    AstStatBlock* stat = result.root;
+
+    REQUIRE_EQ(stat->body.size, 2);
+
+    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
+    REQUIRE(declaredExternType);
+    CHECK(declaredExternType->name == "Foo");
+    CHECK(!declaredExternType->superName);
+
+    REQUIRE_EQ(declaredExternType->props.size, 2);
+
+    AstDeclaredExternTypeProperty& prop = declaredExternType->props.data[0];
+    CHECK(prop.name == "prop");
+    CHECK(prop.nameLocation == Location({2, 12}, {2, 16}));
+    CHECK(prop.ty->is<AstTypeReference>());
+    CHECK(prop.location == Location({2, 12}, {2, 24}));
+
+    AstDeclaredExternTypeProperty& method = declaredExternType->props.data[1];
+    CHECK(method.name == "method");
+    CHECK(method.nameLocation == Location({3, 21}, {3, 27}));
+    CHECK(method.ty->is<AstTypeFunction>());
+    CHECK(method.location == Location({3, 12}, {3, 54}));
+    CHECK(method.isMethod);
+
+    AstStatDeclareExternType* subclass = stat->body.data[1]->as<AstStatDeclareExternType>();
+    REQUIRE(subclass);
+    REQUIRE(subclass->superName);
+    CHECK(subclass->name == "Bar");
+    CHECK(*subclass->superName == "Foo");
+
+    REQUIRE_EQ(subclass->props.size, 1);
+    AstDeclaredExternTypeProperty& prop2 = subclass->props.data[0];
+    CHECK(prop2.name == "prop2");
+    CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
+    CHECK(prop2.ty->is<AstTypeReference>());
+    CHECK(prop2.location == Location({7, 12}, {7, 25}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations")
+{
+    AstStatBlock* stat = parseEx(R"(
+        declare extern type Foo with
+            prop: number
+            function method(self, foo: number): string
+        end
+
+        declare extern type Bar extends Foo with
+            prop2: string
+        end
+    )")
+                             .root;
+
+    REQUIRE_EQ(stat->body.size, 2);
+
+    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
+    REQUIRE(declaredExternType);
+    CHECK(declaredExternType->name == "Foo");
+    CHECK(!declaredExternType->superName);
+
+    REQUIRE_EQ(declaredExternType->props.size, 2);
+
+    AstDeclaredExternTypeProperty& prop = declaredExternType->props.data[0];
+    CHECK(prop.name == "prop");
+    CHECK(prop.nameLocation == Location({2, 12}, {2, 16}));
+    CHECK(prop.ty->is<AstTypeReference>());
+    CHECK(prop.location == Location({2, 12}, {2, 24}));
+
+    AstDeclaredExternTypeProperty& method = declaredExternType->props.data[1];
+    CHECK(method.name == "method");
+    CHECK(method.nameLocation == Location({3, 21}, {3, 27}));
+    CHECK(method.ty->is<AstTypeFunction>());
+    CHECK(method.location == Location({3, 12}, {3, 54}));
+    CHECK(method.isMethod);
+
+    AstStatDeclareExternType* subclass = stat->body.data[1]->as<AstStatDeclareExternType>();
+    REQUIRE(subclass);
+    REQUIRE(subclass->superName);
+    CHECK(subclass->name == "Bar");
+    CHECK(*subclass->superName == "Foo");
+
+    REQUIRE_EQ(subclass->props.size, 1);
+    AstDeclaredExternTypeProperty& prop2 = subclass->props.data[0];
+    CHECK(prop2.name == "prop2");
+    CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
+    CHECK(prop2.ty->is<AstTypeReference>());
+    CHECK(prop2.location == Location({7, 12}, {7, 25}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations_missing_with")
+{
+    ParseResult result = tryParse(R"(
+        declare extern type Foo
+            prop: number
+            function method(self, foo: number): string
+        end
+
+        declare extern type Bar extends Foo
+            prop2: string
+        end
+    )");
+
+    REQUIRE_EQ(result.errors.size(), 2);
+    CHECK("Expected `with` keyword before listing properties of the external type, but got prop instead" == result.errors[0].getMessage());
+    CHECK("Expected `with` keyword before listing properties of the external type, but got prop2 instead" == result.errors[1].getMessage());
+
+    AstStatBlock* stat = result.root;
+
+    REQUIRE_EQ(stat->body.size, 2);
+
+    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
+    REQUIRE(declaredExternType);
+    CHECK(declaredExternType->name == "Foo");
+    CHECK(!declaredExternType->superName);
+
+    REQUIRE_EQ(declaredExternType->props.size, 2);
+
+    AstDeclaredExternTypeProperty& prop = declaredExternType->props.data[0];
+    CHECK(prop.name == "prop");
+    CHECK(prop.nameLocation == Location({2, 12}, {2, 16}));
+    CHECK(prop.ty->is<AstTypeReference>());
+    CHECK(prop.location == Location({2, 12}, {2, 24}));
+
+    AstDeclaredExternTypeProperty& method = declaredExternType->props.data[1];
+    CHECK(method.name == "method");
+    CHECK(method.nameLocation == Location({3, 21}, {3, 27}));
+    CHECK(method.ty->is<AstTypeFunction>());
+    CHECK(method.location == Location({3, 12}, {3, 54}));
+    CHECK(method.isMethod);
+
+    AstStatDeclareExternType* subclass = stat->body.data[1]->as<AstStatDeclareExternType>();
+    REQUIRE(subclass);
+    REQUIRE(subclass->superName);
+    CHECK(subclass->name == "Bar");
+    CHECK(*subclass->superName == "Foo");
+
+    REQUIRE_EQ(subclass->props.size, 1);
+    AstDeclaredExternTypeProperty& prop2 = subclass->props.data[0];
+    CHECK(prop2.name == "prop2");
+    CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
+    CHECK(prop2.ty->is<AstTypeReference>());
+    CHECK(prop2.location == Location({7, 12}, {7, 25}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "deprecated_declare_class_syntax_is_rejected")
+{
+    // With LuauDisallowExternClassInTypeDefinitions on (default for tests via Fixture),
+    // `class` is no longer recognized as an extern-type keyword and is parsed as a global
+    // variable name, so the parser then expects `:` for the type annotation.
+    matchParseError(
+        R"(
         declare class Foo
             prop: number
-            function method(self, foo: number): string
         end
-
-        declare class Bar extends Foo
-            prop2: string
-        end
-    )")
-                             .root;
-
-    REQUIRE_EQ(stat->body.size, 2);
-
-    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
-    REQUIRE(declaredExternType);
-    CHECK(declaredExternType->name == "Foo");
-    CHECK(!declaredExternType->superName);
-
-    REQUIRE_EQ(declaredExternType->props.size, 2);
-
-    AstDeclaredExternTypeProperty& prop = declaredExternType->props.data[0];
-    CHECK(prop.name == "prop");
-    CHECK(prop.nameLocation == Location({2, 12}, {2, 16}));
-    CHECK(prop.ty->is<AstTypeReference>());
-    CHECK(prop.location == Location({2, 12}, {2, 24}));
-
-    AstDeclaredExternTypeProperty& method = declaredExternType->props.data[1];
-    CHECK(method.name == "method");
-    CHECK(method.nameLocation == Location({3, 21}, {3, 27}));
-    CHECK(method.ty->is<AstTypeFunction>());
-    CHECK(method.location == Location({3, 12}, {3, 54}));
-    CHECK(method.isMethod);
-
-    AstStatDeclareExternType* subclass = stat->body.data[1]->as<AstStatDeclareExternType>();
-    REQUIRE(subclass);
-    REQUIRE(subclass->superName);
-    CHECK(subclass->name == "Bar");
-    CHECK(*subclass->superName == "Foo");
-
-    REQUIRE_EQ(subclass->props.size, 1);
-    AstDeclaredExternTypeProperty& prop2 = subclass->props.data[0];
-    CHECK(prop2.name == "prop2");
-    CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
-    CHECK(prop2.ty->is<AstTypeReference>());
-    CHECK(prop2.location == Location({7, 12}, {7, 25}));
-}
-
-TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations")
-{
-    AstStatBlock* stat = parseEx(R"(
-        declare extern type Foo with
-            prop: number
-            function method(self, foo: number): string
-        end
-
-        declare extern type Bar extends Foo with
-            prop2: string
-        end
-    )")
-                             .root;
-
-    REQUIRE_EQ(stat->body.size, 2);
-
-    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
-    REQUIRE(declaredExternType);
-    CHECK(declaredExternType->name == "Foo");
-    CHECK(!declaredExternType->superName);
-
-    REQUIRE_EQ(declaredExternType->props.size, 2);
-
-    AstDeclaredExternTypeProperty& prop = declaredExternType->props.data[0];
-    CHECK(prop.name == "prop");
-    CHECK(prop.nameLocation == Location({2, 12}, {2, 16}));
-    CHECK(prop.ty->is<AstTypeReference>());
-    CHECK(prop.location == Location({2, 12}, {2, 24}));
-
-    AstDeclaredExternTypeProperty& method = declaredExternType->props.data[1];
-    CHECK(method.name == "method");
-    CHECK(method.nameLocation == Location({3, 21}, {3, 27}));
-    CHECK(method.ty->is<AstTypeFunction>());
-    CHECK(method.location == Location({3, 12}, {3, 54}));
-    CHECK(method.isMethod);
-
-    AstStatDeclareExternType* subclass = stat->body.data[1]->as<AstStatDeclareExternType>();
-    REQUIRE(subclass);
-    REQUIRE(subclass->superName);
-    CHECK(subclass->name == "Bar");
-    CHECK(*subclass->superName == "Foo");
-
-    REQUIRE_EQ(subclass->props.size, 1);
-    AstDeclaredExternTypeProperty& prop2 = subclass->props.data[0];
-    CHECK(prop2.name == "prop2");
-    CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
-    CHECK(prop2.ty->is<AstTypeReference>());
-    CHECK(prop2.location == Location({7, 12}, {7, 25}));
-}
-
-TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations_missing_with")
-{
-    ParseResult result = tryParse(R"(
-        declare extern type Foo
-            prop: number
-            function method(self, foo: number): string
-        end
-
-        declare extern type Bar extends Foo
-            prop2: string
-        end
-    )");
-
-    REQUIRE_EQ(result.errors.size(), 2);
-    CHECK("Expected `with` keyword before listing properties of the external type, but got prop instead" == result.errors[0].getMessage());
-    CHECK("Expected `with` keyword before listing properties of the external type, but got prop2 instead" == result.errors[1].getMessage());
-
-    AstStatBlock* stat = result.root;
-
-    REQUIRE_EQ(stat->body.size, 2);
-
-    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
-    REQUIRE(declaredExternType);
-    CHECK(declaredExternType->name == "Foo");
-    CHECK(!declaredExternType->superName);
-
-    REQUIRE_EQ(declaredExternType->props.size, 2);
-
-    AstDeclaredExternTypeProperty& prop = declaredExternType->props.data[0];
-    CHECK(prop.name == "prop");
-    CHECK(prop.nameLocation == Location({2, 12}, {2, 16}));
-    CHECK(prop.ty->is<AstTypeReference>());
-    CHECK(prop.location == Location({2, 12}, {2, 24}));
-
-    AstDeclaredExternTypeProperty& method = declaredExternType->props.data[1];
-    CHECK(method.name == "method");
-    CHECK(method.nameLocation == Location({3, 21}, {3, 27}));
-    CHECK(method.ty->is<AstTypeFunction>());
-    CHECK(method.location == Location({3, 12}, {3, 54}));
-    CHECK(method.isMethod);
-
-    AstStatDeclareExternType* subclass = stat->body.data[1]->as<AstStatDeclareExternType>();
-    REQUIRE(subclass);
-    REQUIRE(subclass->superName);
-    CHECK(subclass->name == "Bar");
-    CHECK(*subclass->superName == "Foo");
-
-    REQUIRE_EQ(subclass->props.size, 1);
-    AstDeclaredExternTypeProperty& prop2 = subclass->props.data[0];
-    CHECK(prop2.name == "prop2");
-    CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
-    CHECK(prop2.ty->is<AstTypeReference>());
-    CHECK(prop2.location == Location({7, 12}, {7, 25}));
-}
-
-TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations")
-{
-    AstStatBlock* stat = parseEx(R"(
-        declare extern type Foo with
-            prop: number
-            function method(self, foo: number): string
-        end
-
-        declare extern type Bar extends Foo with
-            prop2: string
-        end
-    )")
-                             .root;
-
-    REQUIRE_EQ(stat->body.size, 2);
-
-    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
-    REQUIRE(declaredExternType);
-    CHECK(declaredExternType->name == "Foo");
-    CHECK(!declaredExternType->superName);
-
-    REQUIRE_EQ(declaredExternType->props.size, 2);
-
-    AstDeclaredExternTypeProperty& prop = declaredExternType->props.data[0];
-    CHECK(prop.name == "prop");
-    CHECK(prop.nameLocation == Location({2, 12}, {2, 16}));
-    CHECK(prop.ty->is<AstTypeReference>());
-    CHECK(prop.location == Location({2, 12}, {2, 24}));
-
-    AstDeclaredExternTypeProperty& method = declaredExternType->props.data[1];
-    CHECK(method.name == "method");
-    CHECK(method.nameLocation == Location({3, 21}, {3, 27}));
-    CHECK(method.ty->is<AstTypeFunction>());
-    CHECK(method.location == Location({3, 12}, {3, 54}));
-    CHECK(method.isMethod);
-
-    AstStatDeclareExternType* subclass = stat->body.data[1]->as<AstStatDeclareExternType>();
-    REQUIRE(subclass);
-    REQUIRE(subclass->superName);
-    CHECK(subclass->name == "Bar");
-    CHECK(*subclass->superName == "Foo");
-
-    REQUIRE_EQ(subclass->props.size, 1);
-    AstDeclaredExternTypeProperty& prop2 = subclass->props.data[0];
-    CHECK(prop2.name == "prop2");
-    CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
-    CHECK(prop2.ty->is<AstTypeReference>());
-    CHECK(prop2.location == Location({7, 12}, {7, 25}));
-}
-
-TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations_missing_with")
-{
-    ParseResult result = tryParse(R"(
-        declare extern type Foo
-            prop: number
-            function method(self, foo: number): string
-        end
-
-        declare extern type Bar extends Foo
-            prop2: string
-        end
-    )");
-
-    REQUIRE_EQ(result.errors.size(), 2);
-    CHECK("Expected `with` keyword before listing properties of the external type, but got prop instead" == result.errors[0].getMessage());
-    CHECK("Expected `with` keyword before listing properties of the external type, but got prop2 instead" == result.errors[1].getMessage());
-
-    AstStatBlock* stat = result.root;
-
-    REQUIRE_EQ(stat->body.size, 2);
-
-    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
-    REQUIRE(declaredExternType);
-    CHECK(declaredExternType->name == "Foo");
-    CHECK(!declaredExternType->superName);
-
-    REQUIRE_EQ(declaredExternType->props.size, 2);
-
-    AstDeclaredExternTypeProperty& prop = declaredExternType->props.data[0];
-    CHECK(prop.name == "prop");
-    CHECK(prop.nameLocation == Location({2, 12}, {2, 16}));
-    CHECK(prop.ty->is<AstTypeReference>());
-    CHECK(prop.location == Location({2, 12}, {2, 24}));
-
-    AstDeclaredExternTypeProperty& method = declaredExternType->props.data[1];
-    CHECK(method.name == "method");
-    CHECK(method.nameLocation == Location({3, 21}, {3, 27}));
-    CHECK(method.ty->is<AstTypeFunction>());
-    CHECK(method.location == Location({3, 12}, {3, 54}));
-    CHECK(method.isMethod);
-
-    AstStatDeclareExternType* subclass = stat->body.data[1]->as<AstStatDeclareExternType>();
-    REQUIRE(subclass);
-    REQUIRE(subclass->superName);
-    CHECK(subclass->name == "Bar");
-    CHECK(*subclass->superName == "Foo");
-
-    REQUIRE_EQ(subclass->props.size, 1);
-    AstDeclaredExternTypeProperty& prop2 = subclass->props.data[0];
-    CHECK(prop2.name == "prop2");
-    CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
-    CHECK(prop2.ty->is<AstTypeReference>());
-    CHECK(prop2.location == Location({7, 12}, {7, 25}));
+        )",
+        "Expected ':' when parsing global variable declaration, got 'Foo'"
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_method_properties")
 {
     const ParseResult p1 = matchParseError(
         R"(
-        declare class Foo
+        declare extern type Foo with
             -- method's first parameter must be 'self'
             function method(foo: number)
             function method2(self)
@@ -2374,7 +2387,7 @@ TEST_CASE_FIXTURE(Fixture, "class_method_properties")
 
     const ParseResult p2 = matchParseError(
         R"(
-        declare class Foo
+        declare extern type Foo with
             function method(self, foo)
             function method2()
         end
@@ -2393,7 +2406,7 @@ TEST_CASE_FIXTURE(Fixture, "class_method_properties")
 TEST_CASE_FIXTURE(Fixture, "class_indexer")
 {
     AstStatBlock* stat = parseEx(R"(
-        declare class Foo
+        declare extern type Foo with
             prop: boolean
             [string]: number
         end
@@ -2412,7 +2425,7 @@ TEST_CASE_FIXTURE(Fixture, "class_indexer")
 
     const ParseResult p1 = matchParseError(
         R"(
-        declare class Foo
+        declare extern type Foo with
             [string]: number
             -- can only have one indexer
             [number]: number
@@ -2477,7 +2490,7 @@ TEST_CASE_FIXTURE(Fixture, "variadic_definition_parsing")
 {
     AstStatBlock* stat = parseEx(R"(
         declare function foo(...: string): ...string
-        declare class Foo
+        declare extern type Foo with
             function a(self, ...: string): ...string
         end
     )")
@@ -2486,14 +2499,14 @@ TEST_CASE_FIXTURE(Fixture, "variadic_definition_parsing")
     REQUIRE(stat != nullptr);
 
     matchParseError("declare function foo(...)", "All declaration parameters must be annotated");
-    matchParseError("declare class Foo function a(self, ...) end", "All declaration parameters aside from 'self' must be annotated");
+    matchParseError("declare extern type Foo with function a(self, ...) end", "All declaration parameters aside from 'self' must be annotated");
 }
 
 TEST_CASE_FIXTURE(Fixture, "missing_declaration_prop")
 {
     matchParseError(
         R"(
-        declare class Foo
+        declare extern type Foo with
             a: number,
         end
     )",
@@ -3055,7 +3068,6 @@ TEST_CASE_FIXTURE(Fixture, "do_end_block_with_cst")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const")
 {
-    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         const f = 42
     )");
@@ -3075,7 +3087,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_const")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_multi_initialize")
 {
-    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         const a, b = 42, 32
 
@@ -3089,7 +3100,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_multi_initialize")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_function")
 {
-    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         const function f() return 42 end
     )");
@@ -3099,7 +3109,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_function")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_function_with_attr")
 {
-    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         @deprecated
         const function f() return 42 end
@@ -3110,7 +3119,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_function_with_attr")
 
 TEST_CASE_FIXTURE(Fixture, "parse_local_const")
 {
-    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         local const
     )");
@@ -3120,7 +3128,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_local_const")
 
 TEST_CASE_FIXTURE(Fixture, "parse_const_call")
 {
-    ScopedFastFlag sff{FFlag::LuauConst2, true};
     AstStatBlock* stat = parse(R"(
         local const = function(t) return t end
         const { a = "a" }
@@ -3131,8 +3138,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_const_call")
 
 TEST_CASE_FIXTURE(Fixture, "error_const_not_initialized")
 {
-    ScopedFastFlag sff{FFlag::LuauConst2, true};
-
     matchParseError("const c", "Missing initializer in const declaration");
 
     matchParseError("const a, b = nil", "Missing initializer in const declaration");
@@ -3145,7 +3150,7 @@ TEST_CASE_FIXTURE(Fixture, "error_const_not_initialized")
 TEST_CASE_FIXTURE(Fixture, "error_const_reassignment")
 {
     // LuauExportValueSyntax flag to get better error message change
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
 
     matchParseError("const a = 42; a = 43", "Variable 'a' is constant and may not be reassigned");
 
@@ -3160,15 +3165,13 @@ TEST_CASE_FIXTURE(Fixture, "error_const_reassignment")
 
 TEST_CASE_FIXTURE(Fixture, "error_const_function_reassignment")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
 
     matchParseError("const function a() return 42 end; a = 43", "Variable 'a' is constant and may not be reassigned");
 }
 
 TEST_CASE_FIXTURE(Fixture, "const_shadow")
 {
-    ScopedFastFlag sff{FFlag::LuauConst2, true};
-
     AstStatBlock* stat = parse(R"(
         const a = 42
         const a = 43
@@ -3419,7 +3422,6 @@ end
 TEST_CASE_FIXTURE(Fixture, "reassigned_class")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-    ScopedFastFlag constFlag{FFlag::LuauConst2, true};
     ScopedFastFlag exportFlag{FFlag::LuauExportValueSyntax, true};
 
     matchParseError(
@@ -3838,8 +3840,6 @@ TEST_CASE_FIXTURE(Fixture, "expr_group_with_cst")
 
 TEST_CASE_FIXTURE(Fixture, "type_group_with_cst")
 {
-    ScopedFastFlag _{FFlag::LuauCstTypeGroup, true};
-
     ParseOptions parseOptions;
     parseOptions.storeCstData = true;
 
@@ -4943,7 +4943,7 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "parse_attribute_on_export_function_stat")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
 
     AstStatBlock* stat = parse(R"(
 @checked
@@ -5019,10 +5019,8 @@ if a<0 then a = 0 end)");
         pr1.errors,
         1,
         Location(Position(2, 0), Position(2, 2)),
-        FFlag::LuauConst2
-            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
-              "'if' instead"
-            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'if' instead"
+        "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+        "'if' instead"
     );
 
     ParseResult pr2 = tryParse(R"(
@@ -5036,10 +5034,8 @@ end)");
         pr2.errors,
         1,
         Location(Position(3, 0), Position(3, 5)),
-        FFlag::LuauConst2
-            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
-              "'while' instead"
-            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'while' instead"
+        "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+        "'while' instead"
     );
 
     ParseResult pr3 = tryParse(R"(
@@ -5054,10 +5050,8 @@ end)");
         pr3.errors,
         1,
         Location(Position(2, 0), Position(2, 2)),
-        FFlag::LuauConst2
-            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
-              "'do' instead"
-            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'do' instead"
+        "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+        "'do' instead"
     );
 
     ParseResult pr4 = tryParse(R"(
@@ -5068,10 +5062,8 @@ for i=1,10 do print(i) end
         pr4.errors,
         1,
         Location(Position(2, 0), Position(2, 3)),
-        FFlag::LuauConst2
-            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
-              "'for' instead"
-            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'for' instead"
+        "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+        "'for' instead"
     );
 
     ParseResult pr5 = tryParse(R"(
@@ -5084,10 +5076,8 @@ until line ~= ""
         pr5.errors,
         1,
         Location(Position(2, 0), Position(2, 6)),
-        FFlag::LuauConst2
-            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
-              "'repeat' instead"
-            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'repeat' instead"
+        "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+        "'repeat' instead"
     );
 
 
@@ -5099,7 +5089,7 @@ local x = 10
         pr6.errors, 1, Location(Position(2, 6), Position(2, 7)), "Expected 'function' after local declaration with attribute, but got 'x' instead"
     );
 
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
 
     ParseResult pr7 = tryParse(R"(
 @checked
@@ -5123,10 +5113,8 @@ end
         pr8.errors,
         1,
         Location(Position(3, 31), Position(3, 36)),
-        FFlag::LuauConst2
-            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
-              "'break' instead"
-            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'break' instead"
+        "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+        "'break' instead"
     );
 
 
@@ -5137,10 +5125,8 @@ function foo1 () @checked return 'a' end
         pr9.errors,
         1,
         Location(Position(1, 26), Position(1, 32)),
-        FFlag::LuauConst2
-            ? "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
-              "'return' instead"
-            : "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'return' instead"
+        "Expected 'function', 'local function', 'const function', 'declare function' or a function type declaration after attribute, but got "
+        "'return' instead"
     );
 }
 
@@ -5238,7 +5224,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_parse_attributes_on_non_function_type_declarati
 
     ParseResult pr2 = tryParse(
         R"(
-@checked declare class Foo
+@checked declare extern type Foo with
     prop: number
     function method(self, foo: number): string
 end)",
@@ -5246,7 +5232,7 @@ end)",
     );
 
     checkFirstErrorForAttributes(
-        pr2.errors, 1, Location(Position(1, 17), Position(1, 22)), "Expected a function type declaration after attribute, but got 'class' instead"
+        pr2.errors, 1, Location(Position(1, 17), Position(1, 23)), "Expected a function type declaration after attribute, but got 'extern' instead"
     );
 
     ParseResult pr3 = tryParse(
@@ -5372,7 +5358,7 @@ TEST_CASE_FIXTURE(Fixture, "recover_from_bad_table_type")
     opts.allowDeclarationSyntax = true;
     const auto result = tryParse(
         R"(
-        declare class Widget
+        declare extern type Widget with
             state: {string: function(string, Widget)}
         end
     )",
@@ -5598,7 +5584,7 @@ TEST_CASE_FIXTURE(Fixture, "explicit_type_instantiation_errors")
 
 TEST_CASE_FIXTURE(Fixture, "export_value_rfc")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
 
     AstStatBlock* block = parse(R"(
 export local version = "1.0.0"
@@ -5717,7 +5703,7 @@ return {
 
 TEST_CASE_FIXTURE(Fixture, "export_value_parse_failures")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}, {FFlag::DebugLuauUserDefinedClasses, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauUserDefinedClasses, true}};
 
     auto expectParseError = [&](const std::string& source)
     {
@@ -5832,7 +5818,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "export_value_parse_edge_cases")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
 
     AstStatBlock* contextualKeywordUses = parse(R"(
 export = 5

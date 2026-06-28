@@ -383,6 +383,8 @@ typedef struct Proto
     FeedbackVectorSlot* feedbackvec;
     uint32_t feedbackvecsize;
     uint32_t funid;
+    Proto* optimized;
+    Proto* deoptimized;
 } Proto;
 // clang-format on
 
@@ -436,7 +438,6 @@ typedef struct Closure
     uint8_t stacksize;
     uint8_t preload;
 
-    uint64_t usage; // only valid for Luau functions
     GCObject* gclist;
     struct LuaTable* env;
 

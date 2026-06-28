@@ -12,8 +12,6 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
-LUAU_FASTFLAGVARIABLE(LuauVisitCallTypeArgsInDfg)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauTypeNegationSyntax)
 
@@ -984,17 +982,14 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
 {
     visitExpr(c->func);
 
-    if (FFlag::LuauVisitCallTypeArgsInDfg && FFlag::LuauExplicitTypeInstantiationSupport)
+    for (const AstTypeOrPack& typeOrPack : c->typeArguments)
     {
-        for (const AstTypeOrPack& typeOrPack : c->typeArguments)
+        if (typeOrPack.type)
+            visitType(typeOrPack.type);
+        else
         {
-            if (typeOrPack.type)
-                visitType(typeOrPack.type);
-            else
-            {
-                LUAU_ASSERT(typeOrPack.typePack);
-                visitTypePack(typeOrPack.typePack);
-            }
+            LUAU_ASSERT(typeOrPack.typePack);
+            visitTypePack(typeOrPack.typePack);
         }
     }
 
@@ -1184,19 +1179,16 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInterpString* i)
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprInstantiate* i)
 {
-    if (FFlag::LuauExplicitTypeInstantiationSupport)
+    for (const AstTypeOrPack& typeOrPack : i->typeArguments)
     {
-        for (const AstTypeOrPack& typeOrPack : i->typeArguments)
+        if (typeOrPack.type)
         {
-            if (typeOrPack.type)
-            {
-                visitType(typeOrPack.type);
-            }
-            else
-            {
-                LUAU_ASSERT(typeOrPack.typePack);
-                visitTypePack(typeOrPack.typePack);
-            }
+            visitType(typeOrPack.type);
+        }
+        else
+        {
+            LUAU_ASSERT(typeOrPack.typePack);
+            visitTypePack(typeOrPack.typePack);
         }
     }
 

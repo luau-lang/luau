@@ -82,8 +82,8 @@ struct IrRegAllocX64
 
     uint32_t findInstructionWithFurthestNextUse(const std::array<uint32_t, 16>& regInstUsers) const;
 
-    bool isExtraSpillSlot(unsigned slot) const;
-    int getExtraSpillAddressOffset(unsigned slot) const;
+    bool isExtraSpillSlot_DEPRECATED(unsigned slot) const;
+    int getExtraSpillAddressOffset_DEPRECATED(unsigned slot) const;
 
     uint32_t getAllocToken() const
     {

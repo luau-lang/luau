@@ -97,6 +97,11 @@ struct FreeType
     TypeId upperBound = nullptr;
 
     Polarity polarity = Polarity::Unknown;
+
+    // If set, this free type was created for a primitive literal (string or boolean).
+    // When generalized, it will be resolved to its lower-bound singleton if the upper
+    // bound was narrowed, or to this primitive type otherwise.
+    std::optional<TypeId> primitiveType;
 };
 
 struct GenericType

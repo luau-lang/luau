@@ -34,6 +34,8 @@ LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauInstantiationUsesGenericPolarityFollow)
 LUAU_FASTFLAG(LuauRefineNilFromTableIndexerResultType)
 LUAU_FASTFLAG(LuauInstantiationUsesPolarity)
+LUAU_FASTFLAG(LuauCollapseDirectBoundCycles)
+LUAU_FASTFLAG(LuauDontBindOptionalGenericToNil)
 
 using namespace Luau;
 
@@ -2273,7 +2275,7 @@ end
 TEST_CASE_FIXTURE(Fixture, "self_bound_due_to_compound_assign")
 {
     loadDefinition(R"(
-        declare class Camera
+        declare extern type Camera with
             CameraType: string
             CFrame: number
         end
@@ -2973,6 +2975,59 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_instantiate_iter_function")
         for _, _ in setmetatable({}, { __iter = iterfunc }) do
         end
     )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_and_unpack_generic_order_independence")
+{
+    ScopedFastFlag sff{FFlag::LuauCollapseDirectBoundCycles, true};
+
+    CheckResult result = check(R"(
+        local tbl = {}
+        for i=0, 3 do
+            table.insert(tbl, i)
+        end
+        return table.unpack(tbl)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+// The fuzzer reported this ICE because exports were returning errors rather than just reporting them
+// By returning errors, this resulted in the ConstraintGenerator expecting there to be a DefId that was dropped by the DFG when handling AstStatError
+TEST_CASE_FIXTURE(Fixture, "fuzzer_export_no_ice")
+{
+
+    CHECK_NOTHROW(check(R"(
+        while true do
+            export local _
+        end
+        do
+            export local _
+            _ = _
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_P_inference_with_optional_param_does_not_leak_nil")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauDontBindOptionalGenericToNil, true},
+    };
+
+    // Width subtyping: passing a table that lacks an optional field to a component
+    // that declares it as optional should be fine.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function createElement<P>(component: (P) -> any, props: P?): any
+            return nil
+        end
+
+        local function MyComponent(props: { x: number, y: number? })
+            return nil
+        end
+
+        createElement(MyComponent, { x = 1 })
+    )"));
 }
 
 TEST_SUITE_END();

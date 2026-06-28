@@ -51,6 +51,39 @@ public:
     const int classIndex;
 };
 
+class CstAttr : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstAttr)
+
+    explicit CstAttr(bool hasAt);
+
+    bool hasAt; // false when inside an attribute list, ie @[native checked]
+};
+
+class CstParametrizedAttr : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstParametrizedAttr)
+
+    explicit CstParametrizedAttr(Position openParenPosition, Position closeParenPosition, AstArray<Position> argsCommaPositions);
+
+    Position openParenPosition; // for `@x(args)` form
+    Position closeParenPosition;
+
+    // Commas inside the `(a, b, c)` arg list
+    AstArray<Position> argsCommaPositions;
+};
+
+struct CstAttrList
+{
+    explicit CstAttrList(Position atBracketPosition, Position closeBracketPosition, AstArray<Position> commaPositions);
+
+    Position atBracketPosition;
+    Position closeBracketPosition;
+    AstArray<Position> commaPositions;
+};
+
 class CstExprGroup : public CstNode
 {
 public:
@@ -86,7 +119,7 @@ class CstExprConstantString : public CstNode
 public:
     LUAU_CST_RTTI(CstExprConstantString)
 
-    enum QuoteStyle
+    enum class QuoteStyle
     {
         QuotedSingle,
         QuotedDouble,
@@ -144,6 +177,7 @@ public:
 
     CstExprFunction();
 
+    AstArray<CstAttrList*> attrLists = {};
     Position functionKeywordPosition = Position::missing();
     Position openGenericsPosition = Position::missing();
     AstArray<Position> genericsCommaPositions;
@@ -159,7 +193,7 @@ class CstExprTable : public CstNode
 public:
     LUAU_CST_RTTI(CstExprTable)
 
-    enum Separator
+    enum class Separator
     {
         Comma,
         Semicolon,
@@ -272,8 +306,6 @@ public:
 
     CstStatLocal(AstArray<Position> varsAnnotationColonPositions, AstArray<Position> varsCommaPositions, AstArray<Position> valuesCommaPositions);
 
-    // if the StatLocal is being exported, this is the position of `const` or `local`
-    Position declarationKeywordPosition;
     AstArray<Position> varsAnnotationColonPositions;
     AstArray<Position> varsCommaPositions;
     AstArray<Position> valuesCommaPositions;
@@ -332,7 +364,9 @@ public:
     LUAU_CST_RTTI(CstStatFunction)
 
     explicit CstStatFunction(Position functionKeywordPosition);
+    explicit CstStatFunction(AstArray<CstAttrList*> attrLists, Position functionKeywordPosition);
 
+    AstArray<CstAttrList*> attrLists;
     Position functionKeywordPosition;
 };
 
@@ -342,7 +376,9 @@ public:
     LUAU_CST_RTTI(CstStatLocalFunction)
 
     explicit CstStatLocalFunction(Position localKeywordPosition, Position functionKeywordPosition);
+    explicit CstStatLocalFunction(AstArray<CstAttrList*> attrLists, Position localKeywordPosition, Position functionKeywordPosition);
 
+    AstArray<CstAttrList*> attrLists;
     Position localKeywordPosition;
     Position functionKeywordPosition;
 };
@@ -424,7 +460,7 @@ public:
 
     struct Item
     {
-        enum struct Kind
+        enum class Kind
         {
             Indexer,
             Property,
