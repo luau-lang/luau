@@ -19,7 +19,6 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 
@@ -206,7 +205,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_cyclically_dependent_scr
 
 TEST_CASE_FIXTURE(FrontendFixture, "export_value_modules_have_typed_require_surface")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}, {FFlag::LuauExportValueTypecheck, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportValueTypecheck, true}};
 
     fileResolver.source["game/ModuleA"] = R"(
         --!strict

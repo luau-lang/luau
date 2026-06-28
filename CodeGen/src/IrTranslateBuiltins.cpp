@@ -9,7 +9,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerArg3Fix)
 LUAU_FASTFLAG(LuauCodegenInteger2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufferInteger)
 
@@ -1395,14 +1394,11 @@ static BuiltinImplResult translateBuiltinInt64MinMax(
     builtinCheckInt64(build, build.vmReg(arg), pcpos);
     builtinCheckInt64(build, args, pcpos);
 
-    if (FFlag::LuauCodegenIntegerArg3Fix)
-    {
-        if (nparams >= 3)
-            builtinCheckInt64(build, arg3, pcpos);
+    if (nparams >= 3)
+        builtinCheckInt64(build, arg3, pcpos);
 
-        for (int i = 4; i <= nparams; ++i)
-            builtinCheckInt64(build, build.vmReg(vmRegOp(args) + (i - 2)), pcpos);
-    }
+    for (int i = 4; i <= nparams; ++i)
+        builtinCheckInt64(build, build.vmReg(vmRegOp(args) + (i - 2)), pcpos);
 
     IrOp va = builtinLoadInt64(build, build.vmReg(arg));
     IrOp vb = builtinLoadInt64(build, args);
@@ -1412,18 +1408,15 @@ static BuiltinImplResult translateBuiltinInt64MinMax(
     // vb < va ? vb : va
     IrOp selectOp = build.inst(IrCmd::SELECT_INT64, va, vb, vb, va, cond);
 
-    if (FFlag::LuauCodegenIntegerArg3Fix && nparams >= 3)
+    if (nparams >= 3)
     {
         IrOp vc = builtinLoadInt64(build, arg3);
 
         selectOp = build.inst(IrCmd::SELECT_INT64, vc, selectOp, selectOp, vc, cond);
     }
 
-    for (int i = (FFlag::LuauCodegenIntegerArg3Fix ? 4 : 3); i <= nparams; ++i)
+    for (int i = 4; i <= nparams; ++i)
     {
-        if (!FFlag::LuauCodegenIntegerArg3Fix)
-            builtinCheckInt64(build, build.vmReg(vmRegOp(args) + (i - 2)), pcpos);
-
         IrOp vc = builtinLoadInt64(build, build.vmReg(vmRegOp(args) + (i - 2)));
 
         selectOp = build.inst(IrCmd::SELECT_INT64, vc, selectOp, selectOp, vc, cond);
@@ -1687,11 +1680,11 @@ static BuiltinImplResult translateBuiltinInt64Clamp(IrBuilder& build, int nparam
 
     builtinCheckInt64(build, build.vmReg(arg), pcpos);
     builtinCheckInt64(build, args, pcpos);
-    builtinCheckInt64(build, FFlag::LuauCodegenIntegerArg3Fix ? arg3 : build.vmReg(vmRegOp(args) + 1), pcpos);
+    builtinCheckInt64(build, arg3, pcpos);
 
     IrOp val = builtinLoadInt64(build, build.vmReg(arg));
     IrOp mi = builtinLoadInt64(build, args);
-    IrOp mx = builtinLoadInt64(build, FFlag::LuauCodegenIntegerArg3Fix ? arg3 : build.vmReg(vmRegOp(args) + 1));
+    IrOp mx = builtinLoadInt64(build, arg3);
 
     // guard: min <= max
     build.inst(IrCmd::CHECK_CMP_INT64, mi, mx, build.cond(IrCondition::LessEqual), build.vmExit(pcpos));

@@ -15,7 +15,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
+LUAU_FASTFLAG(LuauDoNotExportBrokenTypeFunction)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -241,11 +241,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mul_function_with_union_of_multiplicatives")
         return;
 
     loadDefinition(R"(
-        declare class Vec2
+        declare extern type Vec2 with
             function __mul(self, rhs: number): Vec2
         end
 
-        declare class Vec3
+        declare extern type Vec3 with
             function __mul(self, rhs: number): Vec3
         end
     )");
@@ -264,7 +264,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mul_function_with_union_of_multiplicatives_2
         return;
 
     loadDefinition(R"(
-        declare class Vec3
+        declare extern type Vec3 with
             function __mul(self, rhs: number): Vec3
             function __mul(self, rhs: Vec3): Vec3
         end
@@ -776,19 +776,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exceeded_distributivity_limits")
     ScopedFastInt sfi{DFInt::LuauTypeFamilyApplicationCartesianProductLimit, 10};
 
     loadDefinition(R"(
-        declare class A
+        declare extern type A with
             function __mul(self, rhs: unknown): A
         end
 
-        declare class B
+        declare extern type B with
             function __mul(self, rhs: unknown): B
         end
 
-        declare class C
+        declare extern type C with
             function __mul(self, rhs: unknown): C
         end
 
-        declare class D
+        declare extern type D with
             function __mul(self, rhs: unknown): D
         end
     )");
@@ -811,19 +811,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "didnt_quite_exceed_distributivity_limits")
     ScopedFastInt sfi{DFInt::LuauTypeFamilyApplicationCartesianProductLimit, 20};
 
     loadDefinition(R"(
-        declare class A
+        declare extern type A with
             function __mul(self, rhs: unknown): A
         end
 
-        declare class B
+        declare extern type B with
             function __mul(self, rhs: unknown): B
         end
 
-        declare class C
+        declare extern type C with
             function __mul(self, rhs: unknown): C
         end
 
-        declare class D
+        declare extern type D with
             function __mul(self, rhs: unknown): D
         end
     )");
@@ -841,19 +841,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_equivalence_with_distributivity")
         return;
 
     loadDefinition(R"(
-        declare class A
+        declare extern type A with
             function __mul(self, rhs: unknown): A
         end
 
-        declare class B
+        declare extern type B with
             function __mul(self, rhs: unknown): B
         end
 
-        declare class C
+        declare extern type C with
             function __mul(self, rhs: unknown): C
         end
 
-        declare class D
+        declare extern type D with
             function __mul(self, rhs: unknown): D
         end
     )");
@@ -1726,7 +1726,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_should_not_assert_on_empty_string_prop
         return;
 
     loadDefinition(R"(
-        declare class Foobar
+        declare extern type Foobar with
             one: boolean
             [""]: number
         end
@@ -1768,8 +1768,16 @@ struct TFFixture
 
     BuiltinTypeFunctions builtinTypeFunctions;
 
-    TypeFunctionContext
-        tfc_{arena, getBuiltins(), NotNull{globalScope.get()}, NotNull{&normalizer}, NotNull{&runtime}, NotNull{&ice}, NotNull{&limits}, NotNull{&subtyping}};
+    TypeFunctionContext tfc_{
+        arena,
+        getBuiltins(),
+        NotNull{globalScope.get()},
+        NotNull{&normalizer},
+        NotNull{&runtime},
+        NotNull{&ice},
+        NotNull{&limits},
+        NotNull{&subtyping}
+    };
 
     NotNull<TypeFunctionContext> tfc{&tfc_};
 };
@@ -2012,7 +2020,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2114_type_instantiation_on_type_function
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExplicitTypeInstantiationSupport, true},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -2036,7 +2043,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2144_type_instantiation_on_type_function
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExplicitTypeInstantiationSupport, true},
     };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
@@ -2078,6 +2084,33 @@ TEST_CASE_FIXTURE(TFFixture, "reduce_cyclic_add")
     CHECK(res.errors.size() == 0);
     CHECK(res.irreducibleTypes.size() == 0);
     CHECK(res.blockedTypes.size() == 0);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_type")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag _{FFlag::LuauDoNotExportBrokenTypeFunction, true};
+
+    fileResolver.source["game/A"] = R"(
+        local function get(x: string, y: unknown)
+            return x .. y
+        end
+
+        return { get = get }
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_ERROR_COUNT(3, aResult);
+
+    CheckResult bResult = check(R"(
+local Test = require(game.A);
+local x = Test.get("hello", "world")
+    )");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    CHECK(toString(requireType("x")) == "*error-type*");
 }
 
 TEST_SUITE_END();

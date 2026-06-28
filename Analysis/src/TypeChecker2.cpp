@@ -34,13 +34,8 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
-LUAU_FASTFLAG(LuauExplicitTypeInstantiationSupport)
-
-LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
-LUAU_FASTFLAGVARIABLE(LuauLValueCompoundAssignmentVisitLhs)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
-LUAU_FASTFLAG(LuauBidirectionalInferenceBetterUnionHandling)
 LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
 
@@ -499,7 +494,9 @@ TypeId TypeChecker2::checkForTypeFunctionInhabitance(TypeId instance, Location l
         return instance;
     seenTypeFunctionInstances.insert(instance);
 
-    TypeFunctionContext context{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, subtyping};
+    TypeFunctionContext context{
+        NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, subtyping
+    };
 
     ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true).errors;
     if (!isErrorSuppressing(location, instance))
@@ -1593,12 +1590,9 @@ void TypeChecker2::visitCall(AstExprCall* call)
         return;
     }
 
-    if (FFlag::LuauExplicitTypeInstantiationSupport)
+    if (call->typeArguments.size)
     {
-        if (call->typeArguments.size)
-        {
-            checkTypeInstantiation(call, fnTy, call->location, call->typeArguments);
-        }
+        checkTypeInstantiation(call, fnTy, call->location, call->typeArguments);
     }
 
     if (selectedOverloadTy)
@@ -1824,7 +1818,6 @@ void TypeChecker2::visitCall(AstExprCall* call)
             reportError(CannotCallNonFunction{fnTy}, call->func->location);
         return;
     }
-
 }
 
 void TypeChecker2::visit(AstExprCall* call)
@@ -2298,12 +2291,9 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         expr->op != AstExprBinary::CompareNe)
         inContext.emplace(&typeContext, TypeContext::Default);
 
-    if (FFlag::LuauLValueCompoundAssignmentVisitLhs)
-    {
-        // In compound assignments, the left side is both read-from and written-to, so we have to visit it in both contexts.
-        if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
-            visit(expr->left, ValueContext::LValue);
-    }
+    // In compound assignments, the left side is both read-from and written-to, so we have to visit it in both contexts.
+    if (overrideKey && overrideKey->is<AstStatCompoundAssign>())
+        visit(expr->left, ValueContext::LValue);
 
     visit(expr->left, ValueContext::RValue);
     visit(expr->right, ValueContext::RValue);
@@ -2696,13 +2686,12 @@ void TypeChecker2::visit(AstExprIfElse* expr)
 void TypeChecker2::visit(AstExprInstantiate* explicitTypeInstantiation)
 {
     visit(explicitTypeInstantiation->expr, ValueContext::RValue);
-    if (FFlag::LuauExplicitTypeInstantiationSupport)
-        checkTypeInstantiation(
-            explicitTypeInstantiation->expr,
-            lookupType(explicitTypeInstantiation->expr),
-            explicitTypeInstantiation->location,
-            explicitTypeInstantiation->typeArguments
-        );
+    checkTypeInstantiation(
+        explicitTypeInstantiation->expr,
+        lookupType(explicitTypeInstantiation->expr),
+        explicitTypeInstantiation->location,
+        explicitTypeInstantiation->typeArguments
+    );
 }
 
 void TypeChecker2::visit(AstExprInterpString* interpString)
@@ -3240,18 +3229,8 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     {
         if (auto utv = get<UnionType>(expectedType))
         {
-            if (FFlag::LuauBidirectionalInferenceBetterUnionHandling)
-            {
-                if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes))
-                    return testLiteralOrAstTypeIsSubtype(expr, *tt);
-            }
-            else
-            {
-                std::vector<TypeId> parts{begin(utv), end(utv)};
-                std::optional<TypeId> tt = extractMatchingTableType_DEPRECATED(parts, exprType, builtinTypes);
-                if (tt)
-                    return testPotentialLiteralIsSubtype(expr, *tt);
-            }
+            if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes))
+                return testLiteralOrAstTypeIsSubtype(expr, *tt);
         }
 
         if (auto itv = get<IntersectionType>(expectedType))
@@ -3322,7 +3301,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
                 }
             }
         }
-        else if (item.kind == AstExprTable::Item::List)
+        else if (item.kind == AstExprTable::Item::Kind::List)
         {
             if (!isArrayLike)
             {
@@ -3336,7 +3315,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
                 isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType);
             }
         }
-        else if (item.kind == AstExprTable::Item::General && expectedTableType->indexer)
+        else if (item.kind == AstExprTable::Item::Kind::General && expectedTableType->indexer)
         {
             module->astExpectedTypes[item.key] = expectedTableType->indexer->indexType;
             module->astExpectedTypes[item.value] = expectedTableType->indexer->indexResultType;
@@ -3534,7 +3513,7 @@ PropertyTypes TypeChecker2::lookupProp(
 
     // TODO: the subsequent code here is basically proof that this broader approach to doing indexing isn't quite right.
     // we _should_ be leveraging one unified implementation of indexing here, shared with e.g. the `index` type function.
-    if (normValid && FFlag::LuauExternTypesNormalizeWithShapes)
+    if (normValid)
     {
         // each individual extern type consists of a collection of extern types in a normal form, and a collection of table types describing the
         // shapes further. extern types and tables are both open to extension in general, and therefore, we need to consider the possibility that a
@@ -3907,8 +3886,6 @@ void TypeChecker2::checkTypeInstantiation(
     const AstArray<AstTypeOrPack>& typeArguments
 )
 {
-    LUAU_ASSERT(FFlag::LuauExplicitTypeInstantiationSupport);
-
     const FunctionType* ftv = get<FunctionType>(follow(fnType));
     if (!ftv)
     {

@@ -213,7 +213,7 @@ class AstAttr : public AstNode
 public:
     LUAU_RTTI(AstAttr)
 
-    enum Type
+    enum class Type
     {
         Checked,
         Native,
@@ -377,7 +377,7 @@ class AstExprConstantString : public AstExpr
 public:
     LUAU_RTTI(AstExprConstantString)
 
-    enum QuoteStyle
+    enum class QuoteStyle
     {
         // A string created using double quotes or an interpolated string,
         // as in:
@@ -563,7 +563,7 @@ public:
 
     struct Item
     {
-        enum Kind
+        enum class Kind
         {
             List,    // foo, in which case key is a nullptr
             Record,  // foo=bar, in which case key is a AstExprConstantString
@@ -590,7 +590,7 @@ class AstExprUnary : public AstExpr
 public:
     LUAU_RTTI(AstExprUnary)
 
-    enum Op
+    enum class Op
     {
         Not,
         Minus,
@@ -850,6 +850,8 @@ public:
     bool isConst = false;
     bool isExported = false;
 
+    // if the StatLocal is being exported, this is the location of `const` or `local`
+    std::optional<Location> keywordLocation;
     std::optional<Location> equalsSignLocation;
 };
 
@@ -955,13 +957,21 @@ class AstStatLocalFunction : public AstStat
 public:
     LUAU_RTTI(AstStatLocalFunction)
 
-    AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func, bool isConst = false);
+    AstStatLocalFunction(
+        const Location& location,
+        AstLocal* name,
+        AstExprFunction* func,
+        bool isConst,
+        Position constKeywordBegin
+    );
 
     void visit(AstVisitor* visitor) override;
 
     AstLocal* name;
     AstExprFunction* func;
     bool isConst;
+    // Position of the `const` keyword; Position::missing() when isConst is false.
+    Position constKeywordBegin;
 };
 
 class AstStatTypeAlias : public AstStat

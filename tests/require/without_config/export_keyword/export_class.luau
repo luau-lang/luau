@@ -22,3 +22,11 @@ export class Point
         return self.x * other.x + self.y * other.y
     end
 end
+
+export class FactoryFactory
+    function make()
+        -- if exported classes are improperly handled, we try to grab the export table upvalue here
+        -- however, these functions are at top level, so there is no upvalue to grab
+        return FactoryFactory {}
+    end
+end

@@ -38,3 +38,11 @@ export local fw
 function fw()
     return "forward"
 end
+
+export local f = math.max
+
+local function inner(...)
+    return f(...)
+end
+
+assert(inner("3", 7) == 7)

@@ -423,11 +423,11 @@ std::string toString(AstExprUnary::Op op)
 {
     switch (op)
     {
-    case AstExprUnary::Minus:
+    case AstExprUnary::Op::Minus:
         return "-";
-    case AstExprUnary::Not:
+    case AstExprUnary::Op::Not:
         return "not";
-    case AstExprUnary::Len:
+    case AstExprUnary::Op::Len:
         return "#";
     default:
         LUAU_ASSERT(false);
@@ -864,11 +864,18 @@ void AstStatFunction::visit(AstVisitor* visitor)
     }
 }
 
-AstStatLocalFunction::AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func, bool isConst)
+AstStatLocalFunction::AstStatLocalFunction(
+    const Location& location,
+    AstLocal* name,
+    AstExprFunction* func,
+    bool isConst,
+    Position constKeywordBegin
+)
     : AstStat(ClassIndex(), location)
     , name(name)
     , func(func)
     , isConst(isConst)
+    , constKeywordBegin(constKeywordBegin)
 {
 }
 

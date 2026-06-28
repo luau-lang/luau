@@ -148,6 +148,9 @@ typedef struct luarequire_Configuration
     // number of results placed on the stack. Returning -1 directs the requiring
     // thread to yield. In this case, this thread should be resumed with the
     // module result pushed onto its stack.
+    //
+    // When this callback is invoked, the module's require table is at stack index 6.
+    // Pass it as the first argument (...) to the module chunk to support cyclic requires.
     int (*load)(lua_State* L, void* ctx, const char* path, const char* chunkname, const char* loadname);
 } luarequire_Configuration;
 

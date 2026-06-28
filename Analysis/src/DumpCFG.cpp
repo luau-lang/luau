@@ -110,9 +110,9 @@ static std::string dumpRefinement(const CFGRefinement::Refinement& r)
                 std::string lhs = dumpDef(p.ptr);
                 if (p.type)
                 {
-                    const char* guard = p.isTypeof ? "typeof" : "type";
+                    std::string guard = p.isTypeof ? "typeof" : "type";
                     const char* cmp = p.sense ? "==" : "~=";
-                    return lhs + " " + guard + " " + cmp + " \"" + *p.type + "\"";
+                    return guard + "(" + lhs + ") " + cmp + " \"" + *p.type + "\"";
                 }
                 return lhs + (p.sense ? " truthy" : " falsy");
             },

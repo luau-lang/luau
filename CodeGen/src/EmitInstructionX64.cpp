@@ -12,9 +12,7 @@
 
 #include "lstate.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodeGenCallWrapperEmitInst)
-LUAU_FASTFLAG(LuauCodegenSuggestArgumentRegisterX64)
-LUAU_FASTFLAG(LuauClosureUsageCounter)
+LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
 {
@@ -25,38 +23,17 @@ namespace X64
 
 void emitInstCall(IrRegAllocX64& regs, AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int nparams, int nresults)
 {
-    if (FFlag::LuauCodeGenCallWrapperEmitInst)
-    {
-        IrCallWrapperX64 callWrapper(regs, build);
+    IrCallWrapperX64 callWrapper(regs, build);
 
-        callWrapper.addArgument(SizeX64::qword, rState);
-        callWrapper.addArgument(SizeX64::qword, luauRegAddress(ra));
-        if (nparams == LUA_MULTRET)
-            callWrapper.addArgument(SizeX64::qword, qword[rState + offsetof(lua_State, top)]);
-        else
-            callWrapper.addArgument(SizeX64::qword, luauRegAddress(ra + 1 + nparams));
-
-        callWrapper.addArgument(SizeX64::dword, nresults);
-        callWrapper.call(qword[rNativeContext + offsetof(NativeContext, callProlog)]);
-    }
+    callWrapper.addArgument(SizeX64::qword, rState);
+    callWrapper.addArgument(SizeX64::qword, luauRegAddress(ra));
+    if (nparams == LUA_MULTRET)
+        callWrapper.addArgument(SizeX64::qword, qword[rState + offsetof(lua_State, top)]);
     else
-    {
-        RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
-        RegisterX64 rArg2 = (build.abi == ABIX64::Windows) ? rdx : rsi;
-        RegisterX64 rArg3 = (build.abi == ABIX64::Windows) ? r8 : rdx;
-        RegisterX64 rArg4 = (build.abi == ABIX64::Windows) ? r9 : rcx;
+        callWrapper.addArgument(SizeX64::qword, luauRegAddress(ra + 1 + nparams));
 
-        build.mov(rArg1, rState);
-        build.lea(rArg2, luauRegAddress(ra));
-
-        if (nparams == LUA_MULTRET)
-            build.mov(rArg3, qword[rState + offsetof(lua_State, top)]);
-        else
-            build.lea(rArg3, luauRegAddress(ra + 1 + nparams));
-
-        build.mov(dwordReg(rArg4), nresults);
-        build.call(qword[rNativeContext + offsetof(NativeContext, callProlog)]);
-    }
+    callWrapper.addArgument(SizeX64::dword, nresults);
+    callWrapper.call(qword[rNativeContext + offsetof(NativeContext, callProlog)]);
     RegisterX64 ccl = rax; // Returned from callProlog
 
     emitUpdateBase(build);
@@ -72,12 +49,16 @@ void emitInstCall(IrRegAllocX64& regs, AssemblyBuilderX64& build, ModuleHelpers&
         RegisterX64 argi = rsi;
         RegisterX64 argend = rdi;
 
-        build.mov(proto, qword[ccl + offsetof(Closure, l.p)]);
+        if (!FFlag::LuauCIProto)
+            build.mov(proto, qword[ccl + offsetof(Closure, l.p)]);
 
         // Switch current Closure
         build.mov(sClosure, ccl); // Last use of 'ccl'
 
         build.mov(ci, qword[rState + offsetof(lua_State, ci)]);
+
+        if (FFlag::LuauCIProto)
+            build.mov(proto, qword[ci + offsetof(CallInfo, p)]);
 
         Label fillnil, exitfillnil;
 
@@ -138,19 +119,10 @@ void emitInstCall(IrRegAllocX64& regs, AssemblyBuilderX64& build, ModuleHelpers&
 
     {
         // results = ccl->c.f(L);
-        if (FFlag::LuauCodeGenCallWrapperEmitInst)
-        {
-            regs.takeReg(ccl, kInvalidInstIdx); // ccl = rax, returned from callProlog, have to take ownership so the wrapper can free it
-            IrCallWrapperX64 callWrapper(regs, build);
-            callWrapper.addArgument(SizeX64::qword, rState);
-            callWrapper.call(qword[ccl + offsetof(Closure, c.f)]); // Last use of 'ccl'
-        }
-        else
-        {
-            RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
-            build.mov(rArg1, rState);
-            build.call(qword[ccl + offsetof(Closure, c.f)]); // Last use of 'ccl'
-        }
+        regs.takeReg(ccl, kInvalidInstIdx); // ccl = rax, returned from callProlog, have to take ownership so the wrapper can free it
+        IrCallWrapperX64 callWrapper(regs, build);
+        callWrapper.addArgument(SizeX64::qword, rState);
+        callWrapper.call(qword[ccl + offsetof(Closure, c.f)]); // Last use of 'ccl'
         RegisterX64 results = eax;
 
         build.test(results, results);                            // test here will set SF=1 for a negative number and it always sets OF to 0
@@ -159,27 +131,12 @@ void emitInstCall(IrRegAllocX64& regs, AssemblyBuilderX64& build, ModuleHelpers&
         // We have special handling for small number of expected results below
         if (nresults != 0 && nresults != 1)
         {
-            if (FFlag::LuauCodeGenCallWrapperEmitInst)
-            {
-                regs.takeReg(results, kInvalidInstIdx); // results = eax, returned from c.f, have to take ownership so the wrapper can free it
-                IrCallWrapperX64 callWrapper(regs, build);
-                callWrapper.addArgument(SizeX64::qword, rState);
-                callWrapper.addArgument(SizeX64::dword, nresults);
-                callWrapper.addArgument(SizeX64::dword, results);
-                callWrapper.call(qword[rNativeContext + offsetof(NativeContext, callEpilogC)]);
-            }
-            else
-            {
-                RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
-                RegisterX64 rArg2 = (build.abi == ABIX64::Windows) ? rdx : rsi;
-                RegisterX64 rArg3 = (build.abi == ABIX64::Windows) ? r8 : rdx;
-
-                build.mov(rArg1, rState);
-                build.mov(dwordReg(rArg2), nresults);
-                build.mov(dwordReg(rArg3), results);
-                build.call(qword[rNativeContext + offsetof(NativeContext, callEpilogC)]);
-            }
-
+            regs.takeReg(results, kInvalidInstIdx); // results = eax, returned from c.f, have to take ownership so the wrapper can free it
+            IrCallWrapperX64 callWrapper(regs, build);
+            callWrapper.addArgument(SizeX64::qword, rState);
+            callWrapper.addArgument(SizeX64::dword, nresults);
+            callWrapper.addArgument(SizeX64::dword, results);
+            callWrapper.call(qword[rNativeContext + offsetof(NativeContext, callEpilogC)]);
             emitUpdateBase(build);
             return;
         }
@@ -342,32 +299,16 @@ void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int
         build.cmp(dword[table + offsetof(LuaTable, sizearray)], last);
         build.jcc(ConditionX64::NotBelow, skipResize);
 
-        if (FFlag::LuauCodeGenCallWrapperEmitInst)
-        {
-            if (count == LUA_MULTRET)
-                regs.takeReg(last.base, kInvalidInstIdx); // last = edx, preloaded above, have to take ownership so the wrapper can free it
-            IrCallWrapperX64 callWrapper(regs, build);
-            callWrapper.addArgument(SizeX64::qword, rState);
-            callWrapper.addArgument(SizeX64::qword, table);
-            callWrapper.addArgument(SizeX64::dword, last);
-            callWrapper.call(qword[rNativeContext + offsetof(NativeContext, luaH_resizearray)]);
-            // InstCallWrapperX64 freed table's register (rax) as a consumed source
-            // we need to retake it so that the subsequent build.mov reload and callBarrierTableFast can track ownership correctly
-            table = regs.takeReg(rax, kInvalidInstIdx);
-        }
-        else
-        {
-            RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
-            RegisterX64 rArg2 = (build.abi == ABIX64::Windows) ? rdx : rsi;
-            RegisterX64 rArg3 = (build.abi == ABIX64::Windows) ? r8 : rdx;
-
-            // Argument setup reordered to avoid conflicts
-            CODEGEN_ASSERT(rArg3 != table);
-            build.mov(dwordReg(rArg3), last);
-            build.mov(rArg2, table);
-            build.mov(rArg1, rState);
-            build.call(qword[rNativeContext + offsetof(NativeContext, luaH_resizearray)]);
-        }
+        if (count == LUA_MULTRET)
+            regs.takeReg(last.base, kInvalidInstIdx); // last = edx, preloaded above, have to take ownership so the wrapper can free it
+        IrCallWrapperX64 callWrapper(regs, build);
+        callWrapper.addArgument(SizeX64::qword, rState);
+        callWrapper.addArgument(SizeX64::qword, table);
+        callWrapper.addArgument(SizeX64::dword, last);
+        callWrapper.call(qword[rNativeContext + offsetof(NativeContext, luaH_resizearray)]);
+        // InstCallWrapperX64 freed table's register (rax) as a consumed source
+        // we need to retake it so that the subsequent build.mov reload and callBarrierTableFast can track ownership correctly
+        table = regs.takeReg(rax, kInvalidInstIdx);
         build.mov(table, luauRegValue(ra)); // Reload clobbered register value
 
         build.setLabel(skipResize);
@@ -431,18 +372,8 @@ void emitInstForGLoop(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, in
     // This is a fast-path for builtin table iteration, tag check for 'ra' has to be performed before emitting this instruction
 
     // Registers are chosen in this way to simplify fallback code for the node part
-    RegisterX64 table{};
-    RegisterX64 index{};
-    if (FFlag::LuauCodegenSuggestArgumentRegisterX64)
-    {
-        table = IrCallWrapperX64::suggestArgumentRegister<1>(SizeX64::qword, build);
-        index = IrCallWrapperX64::suggestArgumentRegister<2>(SizeX64::qword, build);
-    }
-    else
-    {
-        table = (build.abi == ABIX64::Windows) ? rdx : rsi;
-        index = (build.abi == ABIX64::Windows) ? r8 : rdx;
-    }
+    RegisterX64 table = IrCallWrapperX64::suggestArgumentRegister<1>(SizeX64::qword, build);
+    RegisterX64 index = IrCallWrapperX64::suggestArgumentRegister<2>(SizeX64::qword, build);
 
     RegisterX64 elemPtr = rax;
 
@@ -495,28 +426,14 @@ void emitInstForGLoop(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, in
 
     build.setLabel(skipArray);
 
-    if (FFlag::LuauCodeGenCallWrapperEmitInst)
-    {
-        regs.takeReg(table, kInvalidInstIdx); // table/index are preloaded above, have to take ownership so the wrapper can free them
-        regs.takeReg(index, kInvalidInstIdx);
-        IrCallWrapperX64 callWrapper(regs, build);
-        callWrapper.addArgument(SizeX64::qword, rState);
-        callWrapper.addArgument(SizeX64::qword, table);
-        callWrapper.addArgument(SizeX64::qword, index);
-        callWrapper.addArgument(SizeX64::qword, luauRegAddress(ra));
-        callWrapper.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNodeIter)]);
-    }
-    else
-    {
-        RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
-        RegisterX64 rArg4 = (build.abi == ABIX64::Windows) ? r9 : rcx;
-
-        // Call helper to assign next node value or to signal loop exit
-        build.mov(rArg1, rState);
-        // rArg2 and rArg3 are already set
-        build.lea(rArg4, luauRegAddress(ra));
-        build.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNodeIter)]);
-    }
+    regs.takeReg(table, kInvalidInstIdx); // table/index are preloaded above, have to take ownership so the wrapper can free them
+    regs.takeReg(index, kInvalidInstIdx);
+    IrCallWrapperX64 callWrapper(regs, build);
+    callWrapper.addArgument(SizeX64::qword, rState);
+    callWrapper.addArgument(SizeX64::qword, table);
+    callWrapper.addArgument(SizeX64::qword, index);
+    callWrapper.addArgument(SizeX64::qword, luauRegAddress(ra));
+    callWrapper.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNodeIter)]);
     build.test(al, al);
     build.jcc(ConditionX64::NotZero, loopRepeat);
 }
