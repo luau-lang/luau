@@ -71,7 +71,7 @@
 #define LUA_IDSIZE 256
 #endif
 
-// LUA_MINSTACK is the guaranteed number of Lua stack slots available to a C function
+// LUA_MINSTACK is the initial number of reserved stack slots for a C function
 #ifndef LUA_MINSTACK
 #define LUA_MINSTACK 20
 #endif

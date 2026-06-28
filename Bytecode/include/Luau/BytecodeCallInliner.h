@@ -24,6 +24,7 @@ struct CallInliner
     BcCallFB<VmConst> call;
     std::vector<BcOp> callParams;
     Reg targetReg;
+    uint32_t callerFbVecSize;
 
     uint32_t callerBlocksSizeBeforeInline = 0;
     uint32_t callerInstSizeBeforeInline = 0;
@@ -35,12 +36,13 @@ struct CallInliner
     std::unordered_set<BcOp, BcOpHash> callProjections;
     std::unordered_map<BcOp, std::vector<BcOp>, BcOpHash> varArgMoves;
 
-    CallInliner(BcFunction<VmConst>& caller, BcFunction<VmConst>& target, BcOp callOp)
+    CallInliner(BcFunction<VmConst>& caller, BcFunction<VmConst>& target, BcOp callOp, uint32_t callerFbVecSize)
         : caller(caller)
         , target(target)
         , call(caller.template as<BcCallFB<VmConst>>(callOp))
         , callParams(call.params())
         , targetReg(call.getOutReg())
+        , callerFbVecSize(callerFbVecSize)
     {
     }
 
@@ -123,6 +125,10 @@ struct CallInliner
         move.setSrc(namecall.Table());
         move.setOutReg(tableReg);
         move.appendTo(prevBlock.op);
+
+        // GETTABLEKS can clobber original source register of NAMECALL and put a function closure there
+        // But MOVE target already has a table at this point.
+        namecall.setTable(move.op());
 
         BcGetTableKS getTableKS = BcGetTableKS<VmConst>::create(caller);
         getTableKS.setSource(move.op());
@@ -245,7 +251,16 @@ struct CallInliner
             else
             {
                 BcRef<BcPhi> phi = caller.phi(returnOps[idx]);
-                phi->ops.push_back(op);
+                bool exists = false;
+                for (auto phiOp : phi->ops)
+                    if (phiOp == op)
+                    {
+                        exists = true;
+                        break;
+                    }
+
+                if (!exists)
+                    phi->ops.push_back(op);
             }
         }
     }
@@ -507,6 +522,7 @@ struct CallInliner
 
             callerInst->op = targetInst->op;
             callerInst->block = mapBlockOp(targetInst->block);
+            callerInst->line = call->line;
 
             if (target.is_vararg && isMultiConsumer(target, targetInst) && isGetVarArg(targetInst->ops.back()))
             {
@@ -531,6 +547,20 @@ struct CallInliner
             }
             if (auto it = target.regs.find(targetInsnOp); it != target.regs.end())
                 caller.regs[callerInsnOp] = mapToCallerReg(it->second);
+            // Instructions with special migration handling.
+            switch (callerInst->op)
+            {
+            case LOP_CALLFB:
+            {
+                // Feedback slots are concatenated in optimized version: caller's slots + target's slots.
+                // So all target's slot should be increased by caller's slots count.
+                BcCallFB<VmConst> fbcall = BcCallFB<VmConst>::from(caller, callerInst);
+                fbcall.setFbSlot(fbcall.FbSlot() + callerFbVecSize);
+                break;
+            }
+            default:
+                break;
+            }
         }
     }
 
@@ -595,17 +625,18 @@ struct CallInliner
         BcOp inlineEntryBlock = mapBlockOp(target.entryBlock);
         size_t callParamSize = callParams.size();
         callParams.resize(target.numparams);
-        for (Reg param = target.numparams - 1; param >= callParamSize; param--)
+        for (Reg param = target.numparams; param > callParamSize; param--)
         {
             BcLoadNil<VmConst> loadNil = BcLoadNil<VmConst>::create(caller);
-            loadNil.setOutReg(targetReg + 1 + param);
+            loadNil.setOutReg(targetReg + param);
             loadNil.prependTo(inlineEntryBlock);
-            callParams[param] = loadNil.op();
+            callParams[param - 1] = loadNil.op();
         }
     }
 
     bool inlineTarget(uint32_t targetProtoId)
     {
+        LUAU_ASSERT(validate());
         uint32_t newMaxStackSize = static_cast<uint32_t>(caller.maxstacksize) + static_cast<uint32_t>(target.maxstacksize);
 
         if (target.is_vararg)
@@ -634,6 +665,9 @@ struct CallInliner
         }
 
         appendCmpProto(prevBlock, targetOp, targetProtoId);
+
+        // Seal FB slot of inlined call.
+        call.setFbSlot(-1);
 
         allocateGraphEntitiesForTarget();
 
@@ -671,8 +705,25 @@ struct CallInliner
 
         dropPrepVarArgsInInlinedPath();
 
-        LUAU_ASSERT(validateCfg());
+        LUAU_ASSERT(validate());
 
+        return true;
+    }
+
+    bool validate() const
+    {
+        if (!validateCfg())
+            return false;
+        if (!validatePhis())
+            return false;
+        return true;
+    }
+
+    bool validatePhis() const
+    {
+        for (BcPhi& phi : caller.phis)
+            for (BcOp op : phi.ops)
+                LUAU_ASSERT(op.kind == BcOpKind::Inst || op.kind == BcOpKind::VmReg || op.kind == BcOpKind::Proj || op.kind == BcOpKind::Phi);
         return true;
     }
 
@@ -728,9 +779,9 @@ struct CallInliner
 };
 
 template<typename VmConst>
-bool inlineCall(BcFunction<VmConst>& caller, BcFunction<VmConst>& target, BcOp callOp, uint32_t targetProtoId)
+bool inlineCall(BcFunction<VmConst>& caller, BcFunction<VmConst>& target, BcOp callOp, uint32_t targetProtoId, uint32_t callerFbVecSize = 0)
 {
-    CallInliner<VmConst> inliner(caller, target, callOp);
+    CallInliner<VmConst> inliner(caller, target, callOp, callerFbVecSize);
     return inliner.inlineTarget(targetProtoId);
 }
 

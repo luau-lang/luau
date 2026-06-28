@@ -3,6 +3,8 @@
 
 #include "doctest.h"
 
+#include <memory>
+
 /** So... why are we picking a very specific number to fill the DenseHash(Map|Set)?
  *
  * That's because that's the count that happens to trigger a specific bug.
@@ -15,6 +17,58 @@
  */
 
 TEST_SUITE_BEGIN("DenseHashTests");
+
+TEST_CASE("support_default_initialized_densehash_for_pointer_t")
+{
+
+    struct Test
+    {
+        explicit Test(int a)
+            : a(a)
+        {
+        }
+        int a;
+    };
+    std::shared_ptr<Test> ta = std::make_shared<Test>(1);
+    std::shared_ptr<Test> tb = std::make_shared<Test>(2);
+    {
+        Luau::DenseHashSet<Test*> set;
+        set.insert(ta.get());
+        CHECK(set.contains(ta.get()));
+    }
+
+    {
+        Luau::DenseHashMap<Test*, int> map;
+        map[ta.get()] = 1;
+        auto kv = map.find(ta.get());
+        CHECK(kv != nullptr);
+        CHECK(*kv == 1);
+    }
+
+    {
+        Luau::DenseHashMap<Test*, Luau::DenseHashSet<Test*>> nested;
+        Luau::DenseHashSet<Test*> empty;
+        empty.insert(tb.get());
+        nested.try_insert(ta.get(), std::move(empty));
+        auto first = nested.find(ta.get());
+        CHECK(first != nullptr);
+        auto second = *first->find(tb.get());
+        CHECK(second != nullptr);
+        CHECK(second->a == 2);
+    }
+
+    {
+        Luau::DenseHashMap<Test*, Luau::DenseHashMap<Test*, int>> nested;
+        Luau::DenseHashMap<Test*, int> inner;
+        inner[tb.get()] = 42;
+        nested.try_insert(ta.get(), std::move(inner));
+        auto first = nested.find(ta.get());
+        CHECK(first != nullptr);
+        int* val = first->find(tb.get());
+        CHECK(val != nullptr);
+        CHECK(*val == 42);
+    }
+}
 
 TEST_CASE("overwriting_an_existing_field_when_full_shouldnt_rehash")
 {

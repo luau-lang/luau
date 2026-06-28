@@ -24,7 +24,6 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauUseNativeStackGuard)
 LUAU_FASTINT(LuauGenericCounterMaxSteps)
 LUAU_FASTINT(LuauSubtypingIterationLimit)
 LUAU_FASTINT(LuauStackGuardThreshold)
@@ -504,7 +503,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterati
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
-    ScopedFastInt sfi{FInt::LuauSubtypingIterationLimit, 100};
+    ScopedFastInt sfis[] = {
+        {FInt::LuauSubtypingIterationLimit, 100},
+        {FInt::LuauTypeInferIterationLimit, 100},
+    };
 
     CheckResult result = check(R"(
         local function l0<A...>()
@@ -527,7 +529,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "native_stack_guard_prevents_stack_overflows"
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauUseNativeStackGuard, true},
     };
 
     ScopedFastInt sffs[] = {

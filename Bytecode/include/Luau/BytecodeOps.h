@@ -299,6 +299,19 @@ struct BcSetList : public BcInstHelper<VmConst, BcSetList<VmConst>>
     }
 };
 
+template<typename VmConst = BcVmConst>
+struct BcGetImport : public BcInstHelper<VmConst, BcGetImport<VmConst>>
+{
+    static const LuauOpcode opcode = LOP_GETIMPORT;
+    VM_CONST(Import, 0)
+    INT_IMM(PathLength, 1)
+    static const uint32_t kPathStartInput = 2;
+    std::vector<BcOp> importPath()
+    {
+        return this->sliceInputs(kPathStartInput);
+    }
+};
+
 #undef INT_IMM
 #undef BC_OP
 

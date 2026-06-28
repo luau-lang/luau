@@ -8,7 +8,10 @@
 
 #include "lstate.h"
 
+LUAU_FASTFLAG(DebugCodegenLimitRegs)
+
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
+LUAU_FASTFLAGVARIABLE(LuauCodegenNoEcbData)
 
 namespace Luau
 {
@@ -26,7 +29,7 @@ IrRegAllocX64::IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function, Lo
     : build(build)
     , function(function)
     , stats(stats)
-    , usableXmmRegCount(getXmmRegisterCount(build.abi))
+    , usableXmmRegCount(FFlag::DebugCodegenLimitRegs ? kLimitedSimdRegCount : getXmmRegisterCount(build.abi))
 {
     freeGprMap.fill(true);
     gprInstUsers.fill(kInvalidInstIdx);
@@ -53,13 +56,30 @@ RegisterX64 IrRegAllocX64::allocReg(SizeX64 size, uint32_t instIdx)
     }
     else
     {
-        for (RegisterX64 reg : kGprAllocOrder)
+        if (FFlag::DebugCodegenLimitRegs)
         {
-            if (freeGprMap[reg.index])
+            for (size_t i = 0; i < kLimitedGprRegCount; ++i)
             {
-                freeGprMap[reg.index] = false;
-                gprInstUsers[reg.index] = instIdx;
-                return RegisterX64{size, reg.index};
+                RegisterX64 reg = kGprAllocOrder[i];
+
+                if (freeGprMap[reg.index])
+                {
+                    freeGprMap[reg.index] = false;
+                    gprInstUsers[reg.index] = instIdx;
+                    return RegisterX64{size, reg.index};
+                }
+            }
+        }
+        else
+        {
+            for (RegisterX64 reg : kGprAllocOrder)
+            {
+                if (freeGprMap[reg.index])
+                {
+                    freeGprMap[reg.index] = false;
+                    gprInstUsers[reg.index] = instIdx;
+                    return RegisterX64{size, reg.index};
+                }
             }
         }
     }
@@ -333,9 +353,9 @@ void IrRegAllocX64::preserve(IrInst& inst)
     {
         unsigned i = findSpillStackSlot(spill.valueKind);
 
-        if (isExtraSpillSlot(i))
+        if (!FFlag::LuauCodegenNoEcbData && isExtraSpillSlot_DEPRECATED(i))
         {
-            int extraOffset = getExtraSpillAddressOffset(i);
+            int extraOffset = getExtraSpillAddressOffset_DEPRECATED(i);
 
             // Tricky situation, no registers left, but need a register to calculate an address
             // We will try to take r11 unless it's actually the register being spilled
@@ -455,9 +475,9 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
 
             if (spill.stackSlot != kNoStackSlot)
             {
-                if (isExtraSpillSlot(spill.stackSlot))
+                if (!FFlag::LuauCodegenNoEcbData && isExtraSpillSlot_DEPRECATED(spill.stackSlot))
                 {
-                    int extraOffset = getExtraSpillAddressOffset(spill.stackSlot);
+                    int extraOffset = getExtraSpillAddressOffset_DEPRECATED(spill.stackSlot);
 
                     // Need to calculate an address, but everything might be taken
                     if (reg.size == SizeX64::xmmword)
@@ -522,7 +542,7 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
                 CODEGEN_ASSERT(!"value kind not supported for restore");
             }
 
-            if (spill.stackSlot != kNoStackSlot && isExtraSpillSlot(spill.stackSlot))
+            if (spill.stackSlot != kNoStackSlot && (!FFlag::LuauCodegenNoEcbData && isExtraSpillSlot_DEPRECATED(spill.stackSlot)))
             {
                 if (reg.size == SizeX64::xmmword)
                     build.mov(emergencyTemp, qword[sTemporarySlot + 0]);
@@ -585,17 +605,20 @@ unsigned IrRegAllocX64::findSpillStackSlot(IrValueKind valueKind)
     else
     {
         unsigned numHalves = kValueDwordSize[int(valueKind)];
-        unsigned boundary = kSpillSlots * 2;
+        unsigned boundary = kSpillSlots_DEPRECATED * 2;
 
         // Find a free stack slot. Four consecutive slots might be required for 16 byte TValues, so '- 3' is used
         // For 8 and 16 byte types we search in steps of 2 to return slot indices aligned by 2
         for (unsigned i = 0; i < unsigned(usedSpillSlotHalfs.size() - 3); i += 2)
         {
-            // Prevent large value from allocating at stack/extra spill storage boundary
-            if (i < boundary && i + numHalves > boundary)
+            if (!FFlag::LuauCodegenNoEcbData)
             {
-                i = boundary - 2;
-                continue;
+                // Prevent large value from allocating at stack/extra spill storage boundary
+                if (i < boundary && i + numHalves > boundary)
+                {
+                    i = boundary - 2;
+                    continue;
+                }
             }
 
             if (usedSpillSlotHalfs.test(i) || usedSpillSlotHalfs.test(i + 1))
@@ -681,18 +704,20 @@ uint32_t IrRegAllocX64::findInstructionWithFurthestNextUse(const std::array<uint
     return furthestUseTarget;
 }
 
-bool IrRegAllocX64::isExtraSpillSlot(unsigned slot) const
+bool IrRegAllocX64::isExtraSpillSlot_DEPRECATED(unsigned slot) const
 {
+    CODEGEN_ASSERT(!FFlag::LuauCodegenNoEcbData);
     CODEGEN_ASSERT(slot != kNoStackSlot);
 
-    return slot >= kSpillSlots * 2;
+    return slot >= kSpillSlots_DEPRECATED * 2;
 }
 
-int IrRegAllocX64::getExtraSpillAddressOffset(unsigned slot) const
+int IrRegAllocX64::getExtraSpillAddressOffset_DEPRECATED(unsigned slot) const
 {
-    CODEGEN_ASSERT(isExtraSpillSlot(slot));
+    CODEGEN_ASSERT(!FFlag::LuauCodegenNoEcbData);
+    CODEGEN_ASSERT(isExtraSpillSlot_DEPRECATED(slot));
 
-    return (slot - kSpillSlots * 2) * 4;
+    return (slot - kSpillSlots_DEPRECATED * 2) * 4;
 }
 
 void IrRegAllocX64::assertFree(RegisterX64 reg) const

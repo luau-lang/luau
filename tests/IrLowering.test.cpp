@@ -20,8 +20,6 @@ LUAU_FASTFLAG(LuauCompileTypeAliases)
 LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauCodegenInteger2)
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAG(LuauCodegenIntegerFastcall2k)
-LUAU_FASTFLAG(LuauCodegenIntegerArg3Fix)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAG(LuauCodegenLoadPropagateOrigin)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
@@ -8069,7 +8067,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "IntegerMultiargValidate2")
     ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
     ScopedFastFlag luauCodegenInteger2{FFlag::LuauCodegenInteger2, true};
     ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
-    ScopedFastFlag luauCodegenIntegerArg3Fix{FFlag::LuauCodegenIntegerArg3Fix, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -8103,7 +8100,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "IntegerMultiargValidate3")
     ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
     ScopedFastFlag luauCodegenInteger2{FFlag::LuauCodegenInteger2, true};
     ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
-    ScopedFastFlag luauCodegenIntegerArg3Fix{FFlag::LuauCodegenIntegerArg3Fix, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -8186,7 +8182,6 @@ end
 TEST_CASE_FIXTURE(LoweringFixture, "NumberFastcallWrongConst")
 {
     ScopedFastFlag luauCodegenInteger2{FFlag::LuauCodegenInteger2, true};
-    ScopedFastFlag luauCodegenIntegerFastcall2k{FFlag::LuauCodegenIntegerFastcall2k, true};
     ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
 
     // Check that this compiles with no assertions
@@ -8239,7 +8234,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "IntegerFastcallConstant")
 {
     ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
     ScopedFastFlag luauCodegenInteger2{FFlag::LuauCodegenInteger2, true};
-    ScopedFastFlag luauCodegenIntegerFastcall2k{FFlag::LuauCodegenIntegerFastcall2k, true};
     ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
 
     CHECK_EQ(

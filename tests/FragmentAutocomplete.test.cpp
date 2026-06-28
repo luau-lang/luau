@@ -25,6 +25,7 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(LuauBetterReverseDependencyTracking)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauAutocompleteStringSingletonIntersection)
+LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 
@@ -329,7 +330,7 @@ struct FragmentAutocompleteBuiltinsFixture : FragmentAutocompleteFixtureImpl<Bui
         Luau::unfreeze(f.globals.globalTypes);
         Luau::unfreeze(f.globalsForAutocomplete.globalTypes);
         const std::string fakeVecDecl = R"(
-declare class FakeVec
+declare extern type FakeVec with
     function dot(self, x: FakeVec) : FakeVec
     zero : FakeVec
 end
@@ -1391,7 +1392,7 @@ abc("bar")
     CHECK_EQ(Position{1, 4}, asString->location.begin);
     CHECK_EQ(Position{1, 9}, asString->location.end);
     CHECK_EQ("foo", std::string{asString->value.data});
-    CHECK_EQ(AstExprConstantString::QuotedSimple, asString->quoteStyle);
+    CHECK_EQ(AstExprConstantString::QuoteStyle::QuotedSimple, asString->quoteStyle);
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "can_parse_multi_line_fragment_override")
@@ -1603,6 +1604,34 @@ tbl.
     CHECK_EQ(1, fragment.result->acResults.entryMap.size());
     CHECK(fragment.result->acResults.entryMap.count("abc"));
     CHECK_EQ(AutocompleteContext::Property, fragment.result->acResults.context);
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "autocomplete_props_through_metatable_typed_metatable")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteMetatableInheritance, true};
+
+    const std::string source = R"(
+local Base = { baseProp = 5 }
+local Meta = setmetatable({ __index = Base }, {})
+local obj = setmetatable({}, Meta)
+)";
+    const std::string updated = R"(
+local Base = { baseProp = 5 }
+local Meta = setmetatable({ __index = Base }, {})
+local obj = setmetatable({}, Meta)
+obj. @1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("baseProp"));
+        }
+    );
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "typecheck_fragment_handles_unusable_module")

@@ -11,7 +11,7 @@
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauFunctionCallsAreNotNilable)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 using namespace Luau;
 
@@ -789,6 +789,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
     };
 
     CheckResult result = check(R"(
@@ -813,18 +814,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_
     {
         CHECK("nil & string" == toString(requireTypeAtPosition({4, 24})));  // type(v) == "nil"
         CHECK("string & ~nil" == toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
-
-        CHECK("nil & string" == toString(requireTypeAtPosition({10, 24})));  // equivalent to type(v) == "nil"
-        CHECK("string & ~nil" == toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
     }
     else
     {
         CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
         CHECK_EQ("string", toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
-
-        CHECK_EQ("nil", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
-        CHECK_EQ("string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
     }
+
+    CHECK_EQ("nil", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
+    CHECK_EQ("string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_not_to_be_string")
@@ -1677,7 +1675,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_optional_properties_sh
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauExternTypesNormalizeWithShapes)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("WeldConstraint & { read Part1: ~(false?) }", toString(requireTypeAtPosition({3, 15})));
     else
         CHECK_EQ("WeldConstraint", toString(requireTypeAtPosition({3, 15})));
@@ -2909,10 +2907,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_from_and_should_not_refine_to_ne
 
     LUAU_REQUIRE_NO_ERRORS(results);
 
-    if (FFlag::LuauExternTypesNormalizeWithShapes)
-        CHECK_EQ("(Config & { read KeyboardEnabled: false? }) | (Config & { read MouseEnabled: false? })", toString(requireTypeAtPosition({6, 24})));
-    else
-        CHECK_EQ("Config", toString(requireTypeAtPosition({6, 24})));
+    CHECK_EQ("(Config & { read KeyboardEnabled: false? }) | (Config & { read MouseEnabled: false? })", toString(requireTypeAtPosition({6, 24})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")
@@ -2926,15 +2921,16 @@ TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")
             if not isBasePart then
                 isCharacter = instance:FindFirstChildOfClass("Humanoid") and instance:FindFirstChild("HumanoidRootPart")
             end
-            -- A verison of `SimplifyConstraint` mucked up the fact that this
-            -- is `boolean | and<unknown, unknown>`, and claimed it was only
-            -- `boolean`.
             return isCharacter
         end
     )");
 
+    // NOTE: This should have *no* errors but due to a constraint cycle
+    // between the `and` type function and the subtype constraint of the
+    // return type, we end up sometimes being unable to reduce this properly.
+
     LUAU_REQUIRE_ERROR_COUNT(1, results);
-    REQUIRE(get<TypeMismatch>(results.errors[0]));
+    CHECK(get<TypeMismatch>(results.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "len_operator_in_if_is_just_a_proposition")

@@ -55,6 +55,16 @@ target_sources(Luau.Bytecode PRIVATE
     Bytecode/src/BytecodeGraphSerializer.h
 )
 
+# Luau.Inliner Sources
+target_sources(Luau.Inliner PRIVATE
+    Inliner/include/Luau/JitInliner.h
+    Inliner/include/luajitinliner.h
+
+    Inliner/src/JitInliner.cpp
+    Inliner/src/luajitinliner.cpp
+    Inliner/src/RuntimeBytecodeBuilder.h
+)
+
 # Luau.Compiler Sources
 target_sources(Luau.Compiler PRIVATE
     Compiler/include/Luau/Compiler.h

@@ -14,8 +14,8 @@
 using namespace Luau;
 using std::nullopt;
 
-LUAU_FASTFLAG(LuauExternTypesNormalizeWithShapes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -604,6 +604,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "callable_extern_types")
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 {
+    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
     // Test reading from an index
     {
         CheckResult result = check(R"(
@@ -675,14 +676,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 
         if (!FFlag::DebugLuauForceOldSolver)
         {
-            // clang-format off
-            const std::string expected =
-                "Expected this to be 'number | string', but got 'boolean';\n"
-                "this is because\n"
-                "\t* the 1st component of the union is `string`, and `boolean` is not a subtype of `string`\n"
-                "\t* the 2nd component of the union is `number`, and `boolean` is not a subtype of `number`\n"
-            ;
-            // clang-format on
+            const std::string expected = "Expected this to be 'number | string', but got 'boolean'" ;
             CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
         }
         else
@@ -698,14 +692,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 
         if (!FFlag::DebugLuauForceOldSolver)
         {
-            // clang-format off
-            const std::string expected =
-                "Expected this to be 'number | string', but got 'boolean';\n"
-                "this is because\n"
-                "\t * the 1st component of the union is `string`, and `boolean` is not a subtype of `string`\n"
-                "\t * the 2nd component of the union is `number`, and `boolean` is not a subtype of `number`\n"
-            ;
-            // clang-format on
+            const std::string expected = "Expected this to be 'number | string', but got 'boolean'";
             CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
         }
         else
@@ -869,13 +856,13 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "cyclic_tables_are_assumed_to_be_compatible
      *
      * Our builtins are essentially defined like so:
      *
-     * declare class BaseClass
+     * declare extern type BaseClass with
      *     BaseField: number
      *     function BaseMethod(self, number): ()
      *     read Touched: Connection
      * end
      *
-     * declare class Connection
+     * declare extern type Connection with
      *     Connect: (Connection, (BaseClass) -> ()) -> ()
      * end
      *
@@ -1196,7 +1183,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_1")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExternTypesNormalizeWithShapes, true},
     };
 
     loadDefinition(R"(
@@ -1227,7 +1213,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_2")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExternTypesNormalizeWithShapes, true},
     };
 
     loadDefinition(R"(
