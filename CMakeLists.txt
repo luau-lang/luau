@@ -150,6 +150,7 @@ else()
     list(APPEND LUAU_OPTIONS -Wall) # All warnings
     list(APPEND LUAU_OPTIONS -Wimplicit-fallthrough)
     list(APPEND LUAU_OPTIONS -Wsign-compare) # This looks to be included in -Wall for GCC but not clang
+    list(APPEND LUAU_OPTIONS -Wno-missing-field-initializers) # Intentional in struct initializers across the codebase
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")

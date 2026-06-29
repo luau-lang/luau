@@ -103,6 +103,7 @@ LUAU_CONFORMANCE_SOURCE_DIR = "\"$(realpath .)/tests/conformance\""
 
 # common flags
 CXXFLAGS=-g -Wall
+CXXFLAGS+=-Wno-missing-field-initializers
 LDFLAGS=
 
 # some gcc versions treat var in `if (type var = val)` as unused
