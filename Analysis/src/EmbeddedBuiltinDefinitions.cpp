@@ -7,6 +7,7 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeUseTaggedUnion)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 namespace Luau
 {
@@ -429,108 +430,108 @@ std::string getBuiltinDefinitionSource()
 
 static constexpr const char* kBuiltinDefinitionTypeMethodSrc = R"BUILTIN_SRC(
 
-type singletontype = type & { tag: "singleton" }
-type negationtype = type & { tag: "negation" }
+type singletontype = type & { read tag: "singleton" }
+type negationtype = type & { read tag: "negation" }
 
-type intersectiontype = type & { tag: "intersection" }
-type uniontype = type & { tag: "union" }
+type intersectiontype = type & { read tag: "intersection" }
+type uniontype = type & { read tag: "union" }
 
-type functiontype = type & { tag: "function" }
-type tabletype = type & { tag: "table" }
+type functiontype = type & { read tag: "function" }
+type tabletype = type & { read tag: "table" }
 
-type generictype = type & { tag: "generic" }
-type externtype = type & { tag: "extern" }
+type generictype = type & { read tag: "generic" }
+type externtype = type & { read tag: "extern" }
 
 type typedatadiscriminant =
   | {
-        tag: "never" | "nil" | "unknown" | "any"
+        read tag: "never" | "nil" | "unknown" | "any"
               | "boolean" | "number" | "integer" | "string" | "buffer"
+              | "thread"
     }
   | {
-        tag: "singleton",
+        read tag: "singleton",
 
-        value: (self: singletontype) -> nil | boolean | string,
+        read value: (self: singletontype) -> nil | boolean | string,
     }
   | {
-        tag: "generic",
+        read tag: "generic",
 
-        name: (self: generictype) -> string?,
-        ispack: (self: generictype) -> boolean,
+        read name: (self: generictype) -> string?,
+        read ispack: (self: generictype) -> boolean,
     }
   | {
-        tag: "table",
+        read tag: "table",
 
-        setproperty: (self: tabletype, key: singletontype, value: type?) -> (),
-        setreadproperty: (self: tabletype, key: singletontype, value: type?) -> (),
-        setwriteproperty: (self: tabletype, key: singletontype, value: type?) -> (),
+        read setproperty: (self: tabletype, key: singletontype, value: type?) -> (),
+        read setreadproperty: (self: tabletype, key: singletontype, value: type?) -> (),
+        read setwriteproperty: (self: tabletype, key: singletontype, value: type?) -> (),
 
-        readproperty: (self: tabletype, key: singletontype) -> type?,
-        writeproperty: (self: tabletype, key: singletontype) -> type?,
+        read readproperty: (self: tabletype, key: singletontype) -> type?,
+        read writeproperty: (self: tabletype, key: singletontype) -> type?,
 
-        properties: (self: tabletype) -> { [singletontype]: { read: type?, write: type? } },
+        read properties: (self: tabletype) -> { [singletontype]: { read: type?, write: type? } },
 
-        setindexer: (self: tabletype, index: type, result: type) -> (),
-        setreadindexer: (self: tabletype, index: type, result: type) -> (),
-        setwriteindexer: (self: tabletype, index: type, result: type) -> (),
+        read setindexer: (self: tabletype, index: type, result: type) -> (),
+        read setreadindexer: (self: tabletype, index: type, result: type) -> (),
+        read setwriteindexer: (self: tabletype, index: type, result: type) -> (),
 
-        indexer: (self: tabletype) -> { index: type, readresult: type, writeresult: type }?,
-        readindexer: (self: tabletype) -> { index: type, result: type }?,
-        writeindexer: (self: tabletype) -> { index: type, result: type }?,
+        read indexer: (self: tabletype) -> { index: type, readresult: type, writeresult: type }?,
+        read readindexer: (self: tabletype) -> { index: type, result: type }?,
+        read writeindexer: (self: tabletype) -> { index: type, result: type }?,
 
-        setmetatable: (self: tabletype, metatable: tabletype) -> (),
-        metatable: (self: tabletype) -> tabletype?,
+        read setmetatable: (self: tabletype, metatable: tabletype) -> (),
+        read metatable: (self: tabletype) -> tabletype?,
     }
   | {
-        tag: "function",
+        read tag: "function",
 
-        setparameters: (self: functiontype, head: { type }?, tail: type?) -> (),
-        parameters: (self: functiontype) -> { head: { type }?, tail: type? },
+        read setparameters: (self: functiontype, head: { type }?, tail: type?) -> (),
+        read parameters: (self: functiontype) -> { head: { type }?, tail: type? },
 
-        setreturns: (self: functiontype, head: { type }?, tail: type?) -> (),
-        returns: (self: functiontype) -> { head: { type }?, tail: type? },
+        read setreturns: (self: functiontype, head: { type }?, tail: type?) -> (),
+        read returns: (self: functiontype) -> { head: { type }?, tail: type? },
 
-        setgenerics: (self: functiontype, generics: { generictype }?) -> (),
-        generics: (self: functiontype) -> { generictype },
+        read setgenerics: (self: functiontype, generics: { generictype }?) -> (),
+        read generics: (self: functiontype) -> { generictype },
     }
   | {
-        tag: "negation",
+        read tag: "negation",
 
-        inner: (self: negationtype) -> type,
+        read inner: (self: negationtype) -> type,
     }
   | {
-        tag: "union",
+        read tag: "union",
 
-        components: (self: uniontype) -> { type },
+        read components: (self: uniontype) -> { type },
     }
   | {
-        tag: "intersection",
+        read tag: "intersection",
 
-        components: (self: intersectiontype) -> {type},
+        read components: (self: intersectiontype) -> {type},
     }
   | {
-        tag: "extern",
+        read tag: "extern",
 
-        properties: (self: externtype) -> { [singletontype]: { read: type, write: type? } },
+        read properties: (self: externtype) -> { [singletontype]: { read: type, write: type? } },
 
-        indexer: (self: externtype) -> { index: type, readresult: type, writeresult: type }?,
-        readindexer: (self: externtype) -> { index: type, result: type }?,
-        writeindexer: (self: externtype) -> { index: type, result: type }?,
+        read indexer: (self: externtype) -> { index: type, readresult: type, writeresult: type }?,
+        read readindexer: (self: externtype) -> { index: type, result: type }?,
+        read writeindexer: (self: externtype) -> { index: type, result: type }?,
 
-        readparent: (self: externtype) -> externtype?,
-        writeparent: (self: externtype) -> externtype?,
+        read readparent: (self: externtype) -> externtype?,
+        read writeparent: (self: externtype) -> externtype?,
 
-        metatable: (self: externtype) -> tabletype?,
+        read metatable: (self: externtype) -> tabletype?,
     }
 
 type typedata = typedatadiscriminant & {
-    is: (self: type, tag: index<typedatadiscriminant, "tag">) -> boolean,
-    issubtypeof: (self: type, super: type) -> boolean,
+    read is: (self: type, tag: index<typedatadiscriminant, "tag">) -> boolean,
+    read issubtypeof: (self: type, super: type) -> boolean,
 }
 
 export type type = setmetatable<typedata, {
-    __eq: (self: type, other: type) -> boolean,
+    read __eq: (self: type, other: type) -> boolean,
 }>
-
 
 )BUILTIN_SRC";
 
@@ -590,107 +591,107 @@ export type type = {
 
 static constexpr const char* kBuiltinDefinitionTypeMethodSrc_NOISSUBTYPEOF = R"BUILTIN_SRC(
 
-type singletontype = type & { tag: "singleton" }
-type negationtype = type & { tag: "negation" }
+type singletontype = type & { read tag: "singleton" }
+type negationtype = type & { read tag: "negation" }
 
-type intersectiontype = type & { tag: "intersection" }
-type uniontype = type & { tag: "union" }
+type intersectiontype = type & { read tag: "intersection" }
+type uniontype = type & { read tag: "union" }
 
-type functiontype = type & { tag: "function" }
-type tabletype = type & { tag: "table" }
+type functiontype = type & { read tag: "function" }
+type tabletype = type & { read tag: "table" }
 
-type generictype = type & { tag: "generic" }
-type externtype = type & { tag: "extern" }
+type generictype = type & { read tag: "generic" }
+type externtype = type & { read tag: "extern" }
 
 type typedatadiscriminant =
   | {
-        tag: "never" | "nil" | "unknown" | "any"
+        read tag: "never" | "nil" | "unknown" | "any"
               | "boolean" | "number" | "integer" | "string" | "buffer"
+              | "thread"
     }
   | {
-        tag: "singleton",
+        read tag: "singleton",
 
-        value: (self: singletontype) -> nil | boolean | string,
+        read value: (self: singletontype) -> nil | boolean | string,
     }
   | {
-        tag: "generic",
+        read tag: "generic",
 
-        name: (self: generictype) -> string?,
-        ispack: (self: generictype) -> boolean,
+        read name: (self: generictype) -> string?,
+        read ispack: (self: generictype) -> boolean,
     }
   | {
-        tag: "table",
+        read tag: "table",
 
-        setproperty: (self: tabletype, key: singletontype, value: type?) -> (),
-        setreadproperty: (self: tabletype, key: singletontype, value: type?) -> (),
-        setwriteproperty: (self: tabletype, key: singletontype, value: type?) -> (),
+        read setproperty: (self: tabletype, key: singletontype, value: type?) -> (),
+        read setreadproperty: (self: tabletype, key: singletontype, value: type?) -> (),
+        read setwriteproperty: (self: tabletype, key: singletontype, value: type?) -> (),
 
-        readproperty: (self: tabletype, key: singletontype) -> type?,
-        writeproperty: (self: tabletype, key: singletontype) -> type?,
+        read readproperty: (self: tabletype, key: singletontype) -> type?,
+        read writeproperty: (self: tabletype, key: singletontype) -> type?,
 
-        properties: (self: tabletype) -> { [singletontype]: { read: type?, write: type? } },
+        read properties: (self: tabletype) -> { [singletontype]: { read: type?, write: type? } },
 
-        setindexer: (self: tabletype, index: type, result: type) -> (),
-        setreadindexer: (self: tabletype, index: type, result: type) -> (),
-        setwriteindexer: (self: tabletype, index: type, result: type) -> (),
+        read setindexer: (self: tabletype, index: type, result: type) -> (),
+        read setreadindexer: (self: tabletype, index: type, result: type) -> (),
+        read setwriteindexer: (self: tabletype, index: type, result: type) -> (),
 
-        indexer: (self: tabletype) -> { index: type, readresult: type, writeresult: type }?,
-        readindexer: (self: tabletype) -> { index: type, result: type }?,
-        writeindexer: (self: tabletype) -> { index: type, result: type }?,
+        read indexer: (self: tabletype) -> { index: type, readresult: type, writeresult: type }?,
+        read readindexer: (self: tabletype) -> { index: type, result: type }?,
+        read writeindexer: (self: tabletype) -> { index: type, result: type }?,
 
-        setmetatable: (self: tabletype, metatable: tabletype) -> (),
-        metatable: (self: tabletype) -> tabletype?,
+        read setmetatable: (self: tabletype, metatable: tabletype) -> (),
+        read metatable: (self: tabletype) -> tabletype?,
     }
   | {
-        tag: "function",
+        read tag: "function",
 
-        setparameters: (self: functiontype, head: { type }?, tail: type?) -> (),
-        parameters: (self: functiontype) -> { head: { type }?, tail: type? },
+        read setparameters: (self: functiontype, head: { type }?, tail: type?) -> (),
+        read parameters: (self: functiontype) -> { head: { type }?, tail: type? },
 
-        setreturns: (self: functiontype, head: { type }?, tail: type?) -> (),
-        returns: (self: functiontype) -> { head: { type }?, tail: type? },
+        read setreturns: (self: functiontype, head: { type }?, tail: type?) -> (),
+        read returns: (self: functiontype) -> { head: { type }?, tail: type? },
 
-        setgenerics: (self: functiontype, generics: { generictype }?) -> (),
-        generics: (self: functiontype) -> { generictype },
+        read setgenerics: (self: functiontype, generics: { generictype }?) -> (),
+        read generics: (self: functiontype) -> { generictype },
     }
   | {
-        tag: "negation",
+        read tag: "negation",
 
-        inner: (self: negationtype) -> type,
+        read inner: (self: negationtype) -> type,
     }
   | {
-        tag: "union",
+        read tag: "union",
 
-        components: (self: uniontype) -> { type },
+        read components: (self: uniontype) -> { type },
     }
   | {
-        tag: "intersection",
+        read tag: "intersection",
 
-        components: (self: intersectiontype) -> {type},
+        read components: (self: intersectiontype) -> {type},
     }
   | {
-        tag: "extern",
+        read tag: "extern",
 
-        properties: (self: externtype) -> { [singletontype]: { read: type, write: type? } },
+        read properties: (self: externtype) -> { [singletontype]: { read: type, write: type? } },
 
-        indexer: (self: externtype) -> { index: type, readresult: type, writeresult: type }?,
-        readindexer: (self: externtype) -> { index: type, result: type }?,
-        writeindexer: (self: externtype) -> { index: type, result: type }?,
+        read indexer: (self: externtype) -> { index: type, readresult: type, writeresult: type }?,
+        read readindexer: (self: externtype) -> { index: type, result: type }?,
+        read writeindexer: (self: externtype) -> { index: type, result: type }?,
 
-        readparent: (self: externtype) -> externtype?,
-        writeparent: (self: externtype) -> externtype?,
+        read readparent: (self: externtype) -> externtype?,
+        read writeparent: (self: externtype) -> externtype?,
 
-        metatable: (self: externtype) -> tabletype?,
+        read metatable: (self: externtype) -> tabletype?,
     }
 
 type typedata = typedatadiscriminant & {
-    is: (self: type, tag: index<typedatadiscriminant, "tag">) -> boolean,
+    read is: (self: type, tag: index<typedatadiscriminant, "tag">) -> boolean,
 }
 
 export type type = setmetatable<typedata, {
-    __eq: (self: type, other: type) -> boolean,
+    read __eq: (self: type, other: type) -> boolean,
 }>
-
 
 )BUILTIN_SRC";
 
@@ -749,6 +750,33 @@ export type type = {
 
 static constexpr const char* kBuiltinDefinitionTypesLibSrc = R"BUILTIN_SRC(
 
+type discriminated<tag> = type & { read tag: tag }
+
+declare types: {
+    unknown: discriminated<"unknown">,
+    never: discriminated<"never">,
+    any: discriminated<"any">,
+    boolean: discriminated<"boolean">,
+    number: discriminated<"number">,
+    string: discriminated<"string">,
+    thread: discriminated<"thread">,
+    buffer: discriminated<"buffer">,
+    integer: discriminated<"integer">,
+
+    singleton: @checked (arg: string | boolean | nil) -> discriminated<"singleton">,
+    optional: @checked (arg: type) -> discriminated<"union">,
+    generic: @checked (name: string, ispack: boolean?) -> discriminated<"generic">,
+    negationof: @checked (arg: type) -> discriminated<"negation">,
+    unionof: @checked (...type) -> discriminated<"union">,
+    intersectionof: @checked (...type) -> discriminated<"intersection">,
+    newtable: @checked (props: {[type]: type} | {[type]: { read: type?, write: type? } }?, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> discriminated<"table">,
+    newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> discriminated<"function">,
+    copy: @checked (arg: type) -> type,
+}
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionTypesLibSrc_NOUNION = R"BUILTIN_SRC(
+
 declare types: {
     unknown: type,
     never: type,
@@ -774,6 +802,32 @@ declare types: {
 
 static constexpr const char* kBuiltinDefinitionTypesLibSrc_NOINTEGER = R"BUILTIN_SRC(
 
+type discriminated<tag> = type & { read tag: tag }
+
+declare types: {
+    unknown: discriminated<"unknown">,
+    never: discriminated<"never">,
+    any: discriminated<"any">,
+    boolean: discriminated<"boolean">,
+    number: discriminated<"number">,
+    string: discriminated<"string">,
+    thread: discriminated<"thread">,
+    buffer: discriminated<"buffer">,
+
+    singleton: @checked (arg: string | boolean | nil) -> discriminated<"singleton">,
+    optional: @checked (arg: type) -> discriminated<"union">,
+    generic: @checked (name: string, ispack: boolean?) -> discriminated<"generic">,
+    negationof: @checked (arg: type) -> discriminated<"negation">,
+    unionof: @checked (...type) -> discriminated<"union">,
+    intersectionof: @checked (...type) -> discriminated<"intersection">,
+    newtable: @checked (props: {[type]: type} | {[type]: { read: type?, write: type? } }?, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> discriminated<"table">,
+    newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> discriminated<"function">,
+    copy: @checked (arg: type) -> type,
+}
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionTypesLibSrc_DEPRECATED = R"BUILTIN_SRC(
+
 declare types: {
     unknown: type,
     never: type,
@@ -796,23 +850,27 @@ declare types: {
 }
 )BUILTIN_SRC";
 
-std::string getTypeFunctionDefinitionSource()
+std::string getTypeFunctionDefinitionSource(bool isNewSolver)
 {
     std::string result;
 
-    if (FFlag::LuauUdtfTypeIsSubtypeOf && FFlag::LuauUdtfTypeUseTaggedUnion)
+    if (FFlag::LuauUdtfTypeIsSubtypeOf && FFlag::LuauUdtfTypeUseTaggedUnion && isNewSolver)
         result += kBuiltinDefinitionTypeMethodSrc;
     else if (FFlag::LuauUdtfTypeIsSubtypeOf)
         result += kBuiltinDefinitionTypeMethodSrc_NOUNION;
-    else if (FFlag::LuauUdtfTypeUseTaggedUnion)
+    else if (FFlag::LuauUdtfTypeUseTaggedUnion && isNewSolver)
         result += kBuiltinDefinitionTypeMethodSrc_NOISSUBTYPEOF;
     else
         result += kBuiltinDefinitionTypeMethodSrc_DEPRECATED;
 
-    if (FFlag::LuauIntegerType2)
+    if (FFlag::LuauIntegerType2 && FFlag::LuauUdtfTypeUseTaggedUnion && isNewSolver)
         result += kBuiltinDefinitionTypesLibSrc;
-    else
+    else if (FFlag::LuauIntegerType2)
+        result += kBuiltinDefinitionTypesLibSrc_NOUNION;
+    else if (FFlag::LuauUdtfTypeUseTaggedUnion && isNewSolver)
         result += kBuiltinDefinitionTypesLibSrc_NOINTEGER;
+    else
+        result += kBuiltinDefinitionTypesLibSrc_DEPRECATED;
 
     return result;
 }

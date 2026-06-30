@@ -313,7 +313,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_boolsingleton_methods_work")
     CheckResult result = check(R"(
         type function getboolsingleton()
             local ty = types.singleton(true)
-            if ty:is("singleton") and ty:value() then
+            if ty.tag == "singleton" and ty:value() then
                 return ty
             end
             -- this should never be returned
@@ -347,7 +347,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_strsingleton_methods_work")
     CheckResult result = check(R"(
         type function getstrsingleton()
             local ty = types.singleton("hungry hippo")
-            if ty:is("singleton") and ty:value() == "hungry hippo" then
+            if ty.tag == "singleton" and ty:value() == "hungry hippo" then
                 return ty
             end
             -- this should never be returned
@@ -422,7 +422,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_union_methods_work")
     CheckResult result = check(R"(
         type function getunion()
             local ty = types.unionof(types.string, types.number, types.boolean)
-            if ty:is("union") then
+            if ty.tag == "union" then
                 -- creating a copy of `ty`
                 local arr = {}
                 for _, value in ty:components() do
@@ -588,7 +588,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_methods_work")
             tbl2:setproperty(types.singleton("boolean"), types.boolean) -- {boolean: boolean}
             tbl2:setproperty(types.singleton("string"), types.string) -- {boolean: boolean, string: string}
             local ty = types.intersectionof(tbl1, tbl2)
-            if ty:is("intersection") then
+            if ty.tag == "intersection" then
                 -- creating a copy of `ty`
                 local arr = {}
                 for index, value in ty:components() do
@@ -643,6 +643,7 @@ type function pass(t)
 end
 
 type function fail(t)
+    assert(t.tag == "negation")
     return t:inner()
 end
 
@@ -791,7 +792,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_function_methods_work")
             local ty = types.newfunction(nil, nil) -- () -> ()
             ty:setparameters({types.string, types.number}, nil) -- (string, number) -> ()
             ty:setreturns(nil, types.boolean) -- (string, number) -> (...boolean)
-            if ty:is("function") then
+            if ty.tag == "function" then
                 -- creating a copy of `ty` parameters
                 local arr: {type} = {}
                 local args = ty:parameters().head
@@ -869,6 +870,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "write_of_readonly_is_nil")
 
     CheckResult result = check(R"(
         type function getclass(arg)
+            assert(arg.tag == "table")
+
             local props = arg:properties()
             local table = types.newtable(props)
             local singleton = types.singleton("BaseMethod")
@@ -937,7 +940,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_copy_works")
             local copy = types.copy(metaty)
             -- mutate the table
             ty:setproperty(types.singleton("string"), nil) -- {[number]: boolean}
-            if copy:is("table") and copy:metatable() then
+            if copy.tag == "table" and copy:metatable() then
                 return copy -- { {  }, @metatable { [number]: boolean, string: number } }
             end
             -- this should never be returned
@@ -3454,7 +3457,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_refine_all")
         type function foo(ty: type)
             type singletontype = type & { tag: "singleton" }
             type tabletype = type & { tag: "table" }
-            type externtype = tag & { tag: "extern" }
+            type externtype = type & { tag: "extern" }
 
             if ty.tag == "never" or ty.tag == "nil" or ty.tag == "unknown"
                 or ty.tag == "any" or ty.tag == "boolean" or ty.tag == "number"
@@ -3492,13 +3495,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_refine_all")
                 ty:setreadproperty(types.singleton(true), types.buffer)
                 ty:setwriteproperty(types.singleton(true), types.singleton("bye"))
 
-                local readproperty: type? = ty:readproperty("hello")
-                local writeproperty: type? = ty:writeproperty("bye")
+                local readproperty: type? = ty:readproperty(types.singleton("hello"))
+                local writeproperty: type? = ty:writeproperty(types.singleton("bye"))
 
                 local properties: { [singletontype]: { read: type?, write: type? } } = ty:properties()
 
                 ty:setindexer(types.number, types.string)
-                ty:setreadindexer(types.boolean, types.vector)
+                ty:setreadindexer(types.boolean, types.never)
                 ty:setwriteindexer(types.buffer, types.singleton(nil))
 
                 local indexer: { index: type, readresult: type, writeresult: type }? = ty:indexer()
@@ -3540,7 +3543,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_refine_all")
                 unreachable(ty.tag)
             end
 
-            return types.nil
+            return types.singleton(nil)
         end
 
         local x: foo<"hello">
