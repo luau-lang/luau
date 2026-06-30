@@ -311,7 +311,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_boolsingleton_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getboolsingleton()
+        type function getboolsingleton(): type
             local ty = types.singleton(true)
             if ty.tag == "singleton" and ty:value() then
                 return ty
@@ -345,7 +345,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_strsingleton_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getstrsingleton()
+        type function getstrsingleton(): type
             local ty = types.singleton("hungry hippo")
             if ty.tag == "singleton" and ty:value() == "hungry hippo" then
                 return ty
@@ -643,8 +643,7 @@ type function pass(t)
 end
 
 type function fail(t)
-    assert(t.tag == "negation")
-    return t:inner()
+    return (t :: any):inner()
 end
 
 local function ok(idx: pass<number>): number return idx end
@@ -870,7 +869,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "write_of_readonly_is_nil")
 
     CheckResult result = check(R"(
         type function getclass(arg)
-            assert(arg.tag == "table")
+            arg = arg :: (type & { read tag: "table" })
 
             local props = arg:properties()
             local table = types.newtable(props)
@@ -928,7 +927,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_copy_works")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getcopy()
+        type function getcopy(): type
             local indexer = {
                 index = types.number,
                 readresult = types.boolean,
