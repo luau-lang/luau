@@ -3460,7 +3460,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_refine_all")
                 or ty.tag == "any" or ty.tag == "boolean" or ty.tag == "number"
                 or ty.tag == "integer" or ty.tag == "string" or ty.tag == "buffer"
             then
-                -- :)
+                -- :3
 
             elseif ty.tag == "singleton" then
                 local value = ty:value()
