@@ -46,7 +46,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_nil_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getnil()
+        type function getnil(): type
             local ty = types.singleton(nil)
             if ty:is("nil") then
                 return ty
@@ -80,7 +80,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_unknown_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getunknown()
+        type function getunknown(): type
             local ty = types.unknown
             if ty:is("unknown") then
                 return ty
@@ -114,7 +114,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_never_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getnever()
+        type function getnever(): type
             local ty = types.never
             if ty:is("never") then
                 return ty
@@ -148,7 +148,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_any_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getany()
+        type function getany(): type
             local ty = types.any
             if ty:is("any") then
                 return ty
@@ -1067,7 +1067,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_overrides_eq_metamethod")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function hello()
+        type function hello(): type
             local p1 = types.string
             local p2 = types.string
             local t1 = types.newtable(nil, nil, nil)
@@ -1512,6 +1512,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "implicit_export")
 
     fileResolver.source["game/A"] = R"(
 type function concat(a: type, b: type)
+    assert(a.tag == "singleton")
+    assert(b.tag == "singleton")
+
     local as = a:value()
     local bs = b:value()
     assert(typeof(as) == "string")
@@ -1566,6 +1569,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export")
 
     fileResolver.source["game/A"] = R"(
 export type function concat(a: type, b: type)
+    assert(a.tag == "singleton")
+    assert(b.tag == "singleton")
     local as = a:value()
     local bs = b:value()
     assert(typeof(as) == "string")
@@ -2874,6 +2879,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_can_mutate_cloned_type_aliase
 
         type function create_table_with_key()
             local tbl = types.copy(myType)
+            assert(tbl.tag == "table")
+
             tbl:setproperty(types.singleton "key", types.optional(types.number))
             return tbl
         end

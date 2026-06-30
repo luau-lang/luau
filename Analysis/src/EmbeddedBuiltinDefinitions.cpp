@@ -769,8 +769,12 @@ declare types: {
     negationof: @checked (arg: type) -> discriminated<"negation">,
     unionof: @checked (...type) -> discriminated<"union">,
     intersectionof: @checked (...type) -> discriminated<"intersection">,
-    newtable: @checked (props: {[type]: type} | {[type]: { read: type?, write: type? } }?, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> discriminated<"table">,
-    newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> discriminated<"function">,
+    newtable: @checked (
+        props: {read [discriminated<"singleton">]: type} | {read [discriminated<"singleton">]: { read read: type?, read write: type? } }?,
+        indexer: { read index: type, read readresult: type, read writeresult: type }?,
+        metatable: type?
+    ) -> discriminated<"table">,
+    newfunction: @checked (parameters: { read head: {read type}?, tail: type? }?, returns: { read head: {read type}?, tail: type? }?, generics: {read type}?) -> discriminated<"function">,
     copy: @checked (arg: type) -> type,
 }
 )BUILTIN_SRC";
@@ -820,8 +824,12 @@ declare types: {
     negationof: @checked (arg: type) -> discriminated<"negation">,
     unionof: @checked (...type) -> discriminated<"union">,
     intersectionof: @checked (...type) -> discriminated<"intersection">,
-    newtable: @checked (props: {[type]: type} | {[type]: { read: type?, write: type? } }?, indexer: { index: type, readresult: type, writeresult: type }?, metatable: type?) -> discriminated<"table">,
-    newfunction: @checked (parameters: { head: {type}?, tail: type? }?, returns: { head: {type}?, tail: type? }?, generics: {type}?) -> discriminated<"function">,
+    newtable: @checked (
+        props: {read [discriminated<"singleton">]: type} | {read [discriminated<"singleton">]: { read read: type?, read write: type? } }?,
+        indexer: { read index: type, read readresult: type, read writeresult: type }?,
+        metatable: type?
+    ) -> discriminated<"table">,
+    newfunction: @checked (parameters: { read head: {read type}?, tail: type? }?, returns: { read head: {read type}?, tail: type? }?, generics: {read type}?) -> discriminated<"function">,
     copy: @checked (arg: type) -> type,
 }
 )BUILTIN_SRC";
