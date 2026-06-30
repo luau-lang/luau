@@ -5,6 +5,7 @@
 #include "ClassFixture.h"
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 using namespace Luau;
@@ -21,6 +22,7 @@ LUAU_FASTFLAG(LuauTypeFunctionTableIndexerIsReadOnly)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
+LUAU_FASTFLAG(LuauUdtfTypeUseTaggedUnion)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3437,6 +3439,112 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_table_indexer")
     CHECK(toString(requireType("a")) == "false");
     CHECK(toString(requireType("b")) == "false");
     CHECK(toString(requireType("c")) == "true");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_refine_all")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauUdtfTypeUseTaggedUnion, true};
+
+    CheckResult results = check(R"(
+        type function unreachable(x: never)
+            error(`Got { x } in condition annotated as 'unreachable'`)
+        end
+
+        type function foo(ty: type)
+            type singletontype = type & { tag: "singleton" }
+            type tabletype = type & { tag: "table" }
+            type externtype = tag & { tag: "extern" }
+
+            if ty.tag == "never" or ty.tag == "nil" or ty.tag == "unknown"
+                or ty.tag == "any" or ty.tag == "boolean" or ty.tag == "number"
+                or ty.tag == "integer" or ty.tag == "string" or ty.tag == "buffer"
+            then
+                -- :)
+
+            elseif ty.tag == "singleton" then
+                local value = ty:value()
+
+                if value == nil then
+                elseif typeof(value) == "boolean" then
+                elseif typeof(value) == "string" then
+                else
+                    unreachable(value)
+                end
+
+            elseif ty.tag == "generic" then
+                local name = ty:name()
+                local ispack = ty:ispack()
+
+                if name == nil then
+                elseif typeof(name) == "string" then
+                else
+                    unreachable(name)
+                end
+
+                if typeof(ispack) == "boolean" then
+                else
+                    unreachable(ispack)
+                end
+
+            elseif ty.tag == "table" then
+                ty:setproperty(types.singleton("hello"), types.boolean)
+                ty:setreadproperty(types.singleton(true), types.buffer)
+                ty:setwriteproperty(types.singleton(true), types.singleton("bye"))
+
+                local readproperty: type? = ty:readproperty("hello")
+                local writeproperty: type? = ty:writeproperty("bye")
+
+                local properties: { [singletontype]: { read: type?, write: type? } } = ty:properties()
+
+                ty:setindexer(types.number, types.string)
+                ty:setreadindexer(types.boolean, types.vector)
+                ty:setwriteindexer(types.buffer, types.singleton(nil))
+
+                local indexer: { index: type, readresult: type, writeresult: type }? = ty:indexer()
+                local readindexer: { index: type, result: type }? = ty:readindexer()
+                local writeindexer: { index: type, result: type }? = ty:writeindexer()
+
+                ty:setmetatable(ty)
+                local metatable: tabletype? = ty:metatable()
+
+            elseif ty.tag == "function" then
+                ty:setparameters({} :: { type }?, types.buffer :: type?)
+                local parameters: { head: { type }?, tail: type? } = ty:parameters()
+
+                ty:setreturns({} :: { type }?, types.never :: type?)
+                local returns: { head: { type }?, tail: type? } = ty:returns()
+
+                ty:setgenerics({} :: { type & { tag: "generic" } }?)
+                local generics: { type & { tag: "generic" } } = ty:generics()
+
+            elseif ty.tag == "negation" then
+                local inner: type = ty:inner()
+
+            elseif ty.tag == "union" or ty.tag == "intersection" then
+                local components: { type } = ty:components()
+
+            elseif ty.tag == "extern" then
+                local properties: { [singletontype]: { read: type?, write: type? } } = ty:properties()
+
+                local indexer: { index: type, readresult: type, writeresult: type }? = ty:indexer()
+                local readindexer: { index: type, result: type }? = ty:readindexer()
+                local writeindexer: { index: type, result: type }? = ty:writeindexer()
+
+                local readparent: externtype? = ty:readparent()
+                local writeparent: externtype? = ty:writeparent()
+
+                local metatable: tabletype? = ty:metatable()
+
+            else
+                unreachable(ty.tag)
+            end
+
+            return types.nil
+        end
+
+        local x: foo<"hello">
+    )");
 }
 
 TEST_SUITE_END();
