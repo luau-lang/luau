@@ -120,7 +120,7 @@ int luaL_newmetatable(lua_State* L, const char* tname)
     return 1;
 }
 
-void* luaL_checkudata(lua_State* L, int ud, const char* tname)
+void* luaL_testudata(lua_State* L, int ud, const char* tname)
 {
     void* p = lua_touserdata(L, ud);
     if (p != NULL)
@@ -135,6 +135,15 @@ void* luaL_checkudata(lua_State* L, int ud, const char* tname)
             }
         }
     }
+    return NULL; // else return NULL
+}
+
+void* luaL_checkudata(lua_State* L, int ud, const char* tname)
+{
+    void* p = luaL_testudata(L, ud, tname);
+    if (p != NULL)
+        return p;
+
     luaL_typeerrorL(L, ud, tname); // else error
 }
 
