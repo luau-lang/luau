@@ -182,7 +182,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_boolean_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getboolean()
+        type function getboolean(): type
             local ty = types.boolean
             if ty:is("boolean") then
                 return ty
@@ -216,7 +216,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_number_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getnumber()
+        type function getnumber(): type
             local ty = types.number
             if ty:is("number") then
                 return ty
@@ -235,7 +235,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "thread_and_buffer_types")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
-        type function work_with_thread(x)
+        type function work_with_thread(x): type
             if x:is("thread") then
                 return types.thread
             end
@@ -246,7 +246,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "thread_and_buffer_types")
     )"));
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
-        type function work_with_buffer(x)
+        type function work_with_buffer(x): type
             if x:is("buffer") then
                 return types.buffer
             end
@@ -277,7 +277,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_string_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getstring()
+        type function getstring(): type
             local ty = types.string
             if ty:is("string") then
                 return ty
@@ -313,7 +313,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_boolsingleton_methods_work")
     CheckResult result = check(R"(
         type function getboolsingleton(): type
             local ty = types.singleton(true)
-            if ty.tag == "singleton" and ty:value() then
+            if ty:is("singleton") and ty:value() then
                 return ty
             end
             -- this should never be returned
@@ -347,7 +347,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_strsingleton_methods_work")
     CheckResult result = check(R"(
         type function getstrsingleton(): type
             local ty = types.singleton("hungry hippo")
-            if ty.tag == "singleton" and ty:value() == "hungry hippo" then
+            if ty:is("singleton") and ty:value() == "hungry hippo" then
                 return ty
             end
             -- this should never be returned
@@ -420,9 +420,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_union_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getunion()
+        type function getunion(): type
             local ty = types.unionof(types.string, types.number, types.boolean)
-            if ty.tag == "union" then
+            if ty:is("union") then
                 -- creating a copy of `ty`
                 local arr = {}
                 for _, value in ty:components() do
@@ -580,7 +580,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_methods_work")
         return;
 
     CheckResult result = check(R"(
-        type function getintersection()
+        type function getintersection(): type
             local tbl1 = types.newtable(nil, nil, nil)
             tbl1:setproperty(types.singleton("boolean"), types.boolean) -- {boolean: boolean}
             tbl1:setproperty(types.singleton("number"), types.number) -- {boolean: boolean, number: number}
@@ -588,7 +588,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_intersection_methods_work")
             tbl2:setproperty(types.singleton("boolean"), types.boolean) -- {boolean: boolean}
             tbl2:setproperty(types.singleton("string"), types.string) -- {boolean: boolean, string: string}
             local ty = types.intersectionof(tbl1, tbl2)
-            if ty.tag == "intersection" then
+            if ty:is("intersection") then
                 -- creating a copy of `ty`
                 local arr = {}
                 for index, value in ty:components() do
@@ -614,7 +614,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_negation_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getnegation()
+        type function getnegation(): type
             local ty = types.negationof(types.string)
             if ty:is("negation") then
                 return ty
@@ -678,6 +678,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_can_do_readonly_or_writeonly_types")
 {
+    if (!FFlag::LuauUdtfTypeUseTaggedUnion || !FFlag::LuauReadOnlyIndexers)
+        return;
+
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -689,7 +692,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_can_do_readonly_or_writeonly_t
         local function ok(idx: gettable<>): never return idx end
     )");
 
-    // FIXME(CLI-178738): The first error should not exist, only the one described above.
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[1]);
     REQUIRE(tm);
@@ -701,7 +703,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function gettable()
+        type function gettable(): type
             local indexer = {
                 index = types.number,
                 readresult = types.boolean,
@@ -739,7 +741,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_metatable_methods_work")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getmetatable()
+        type function getmetatable(): type
             local indexer = {
                 index = types.number,
                 readresult = types.boolean,
@@ -750,7 +752,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_metatable_methods_work")
             local metatbl = types.newtable(nil, nil, ty) -- { {  }, @metatable { [number]: boolean, string: number } }
             metatbl:setmetatable(types.newtable(nil, indexer, nil)) -- { {  }, @metatable { [number]: boolean } }
             local ret = metatbl:metatable()
-            if metatbl:is("table") and metatbl:metatable() then
+            if metatbl:is("table") and ret then
                 return ret -- { @metatable { [number]: boolean } }
             end
             -- this should never be returned
@@ -787,11 +789,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_function_methods_work")
         return;
 
     CheckResult result = check(R"(
-        type function getfunction()
+        type function getfunction(): type
             local ty = types.newfunction(nil, nil) -- () -> ()
             ty:setparameters({types.string, types.number}, nil) -- (string, number) -> ()
             ty:setreturns(nil, types.boolean) -- (string, number) -> (...boolean)
-            if ty.tag == "function" then
+            if ty:is("function") then
                 -- creating a copy of `ty` parameters
                 local arr: {type} = {}
                 local args = ty:parameters().head
@@ -868,8 +870,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "write_of_readonly_is_nil")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function getclass(arg)
-            arg = arg :: (type & { read tag: "table" })
+        type function getclass(arg): type
+            assert(arg.tag == "extern")
 
             local props = arg:properties()
             local table = types.newtable(props)
@@ -896,7 +898,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_check_mutability")
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        type function checkmut()
+        type function checkmut(): type
             local indexer = {
                 index = types.number,
                 readresult = types.boolean,
@@ -1807,12 +1809,12 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_generic_api_3")
     CheckResult result = check(R"(
 type function pass()
     local T = types.generic("T")
-    assert(T.tag == "generic")
+    assert(T:is("generic"))
     assert(T:name() == "T")
     assert(T:ispack() == false)
 
     local Us, Vs = types.generic("U", true), types.generic("V", true)
-    assert(Us.tag == "generic")
+    assert(Us:is("generic"))
     assert(Us:name() == "U")
     assert(Us:ispack() == true)
 
@@ -2897,7 +2899,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss2164_table_subtyping_bug")
 
     CheckResult results = check(R"(
         export type function tblpartial(tbl: type)
-            assert(tbl:is("table"), "tblpartial can only be applied to tables")
+            assert(tbl.tag == "table", "tblpartial can only be applied to tables")
             local new = types.newtable()
 
             for k, v in tbl:properties() do
@@ -3102,7 +3104,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_areequal_stack_overflow_on_deep_types")
     ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
 
     CheckResult result = check(R"(
-        type function deep_eq()
+        type function deep_eq(): type
             local depth = 50000
             local function build()
                 local t = types.newtable()
@@ -3132,6 +3134,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setmetatable_wrong_error_tag")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+    ScopedFastFlag useTaggedUnino(FFlag::LuauUdtfTypeUseTaggedUnion, true);
+    ScopedFastFlag readOnlyIndexers{FFlag::LuauReadOnlyIndexers, true};
 
     CheckResult result = check(R"(
         type function foo()
@@ -3143,10 +3147,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setmetatable_wrong_error_tag")
         local x: foo<> = nil
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
     CHECK(
         "'foo' type function errored at runtime: [string \"foo\"]:4: type.setmetatable: expected the argument to be a table, but got number "
-        "instead" == toString(result.errors[0])
+        "instead" == toString(result.errors[1])
     );
 }
 
@@ -3453,7 +3457,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_table_indexer")
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_refine_all")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag sff{FFlag::LuauUdtfTypeUseTaggedUnion, true};
+    ScopedFastFlag useTaggedUnion{FFlag::LuauUdtfTypeUseTaggedUnion, true};
 
     CheckResult results = check(R"(
         type function unreachable(x: never)
