@@ -622,24 +622,6 @@ void* lua_touserdatatagged(lua_State* L, int idx, int tag)
     return (ttisuserdata(o) && uvalue(o)->tag == tag) ? uvalue(o)->data : NULL;
 }
 
-void* lua_touserdatanamed(lua_State* L, int idx, const char* tname)
-{
-    void* p = lua_touserdata(L, idx);
-    if (p != NULL)
-    { // value is a userdata?
-        if (lua_getmetatable(L, idx))
-        {                                              // does it have a metatable?
-            lua_getfield(L, LUA_REGISTRYINDEX, tname); // get correct metatable
-            if (lua_rawequal(L, -1, -2))
-            {                  // does it have the correct mt?
-                lua_pop(L, 2); // remove both metatables
-                return p;
-            }
-        }
-    }
-    return NULL; // else return NULL
-}
-
 int lua_userdatatag(lua_State* L, int idx)
 {
     StkId o = index2addr(L, idx);

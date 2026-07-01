@@ -120,11 +120,29 @@ int luaL_newmetatable(lua_State* L, const char* tname)
     return 1;
 }
 
+void* luaL_testudata(lua_State* L, int ud, const char* tname)
+{
+    void* p = lua_touserdata(L, ud);
+    if (p != NULL)
+    { // value is a userdata?
+        if (lua_getmetatable(L, ud))
+        {                                              // does it have a metatable?
+            lua_getfield(L, LUA_REGISTRYINDEX, tname); // get correct metatable
+            if (lua_rawequal(L, -1, -2))
+            {                  // does it have the correct mt?
+                lua_pop(L, 2); // remove both metatables
+                return p;
+            }
+        }
+    }
+    return NULL; // else return NULL
+}
+
 void* luaL_checkudata(lua_State* L, int ud, const char* tname)
 {
-    void* udata = lua_touserdatanamed(L, ud, tname);
-    if (udata != NULL)
-        return udata;
+    void* p = luaL_testudata(L, ud, tname);
+    if (p != NULL)
+        return p;
 
     luaL_typeerrorL(L, ud, tname); // else error
 }
