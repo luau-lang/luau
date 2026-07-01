@@ -123,7 +123,7 @@ int luaL_newmetatable(lua_State* L, const char* tname)
 void* luaL_checkudata(lua_State* L, int ud, const char* tname)
 {
     void* udata = lua_touserdatanamed(L, ud, tname);
-    if (udata)
+    if (udata != NULL)
         return udata;
 
     luaL_typeerrorL(L, ud, tname); // else error
