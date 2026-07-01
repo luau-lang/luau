@@ -373,43 +373,18 @@ struct BytecodeGraphParser
     void addImmInput(BcInst& inst, bool value)
     {
         BcOp op{BcOpKind::Imm, 0};
-        size_t i = 0;
-        for (; i < func.immediates.size(); i++)
-        {
-            BcImm& imm = func.immediates[i];
-            if (imm.kind == BcImmKind::Boolean && imm.valueBoolean == value)
-            {
-                op.index = i;
-                break;
-            }
-        }
-        if (i == func.immediates.size())
-        {
-            func.immediates.push_back({BcImmKind::Boolean, {value}});
-            op.index = i;
-        }
+        func.immediates.push_back({BcImmKind::Boolean});
+        func.immediates.back().valueBoolean = value;
+        op.index = func.immediates.size() - 1;
         inst.ops.push_back(op);
     }
 
     void addImmInput(BcInst& inst, int32_t value)
     {
         BcOp op{BcOpKind::Imm, 0};
-        size_t i = 0;
-        for (; i < func.immediates.size(); i++)
-        {
-            BcImm& imm = func.immediates[i];
-            if (imm.kind == BcImmKind::Int && imm.valueInt == value)
-            {
-                op.index = i;
-                break;
-            }
-        }
-        if (i == func.immediates.size())
-        {
-            func.immediates.push_back({BcImmKind::Int});
-            func.immediates.back().valueInt = value;
-            op.index = i;
-        }
+        func.immediates.push_back({BcImmKind::Int});
+        func.immediates.back().valueInt = value;
+        op.index = func.immediates.size() - 1;
         inst.ops.push_back(op);
     }
 
@@ -649,7 +624,10 @@ struct BytecodeGraphParser
             case LOP_GETIMPORT:
             {
                 addVmConstInput(node, LUAU_INSN_D(insn));
-                addImmInput(node, aux);
+                int32_t componentsCount = aux >> 30;
+                addImmInput(node, componentsCount);
+                for (int32_t i = 0; i < componentsCount; i++)
+                    addVmConstInput(node, (aux >> (20 - 10 * i)) & 0x3FF);
                 addProducer(LUAU_INSN_A(insn), nodeOp);
                 break;
             }

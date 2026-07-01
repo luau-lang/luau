@@ -30,7 +30,11 @@ LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionRobustness)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeIsSubtypeOf)
+<<<<<<< udtf-chunkname
 LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
+=======
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionTableIndexerIsReadOnly)
+>>>>>>> master
 
 namespace Luau
 {
@@ -1839,7 +1843,7 @@ static int isSubtypeOf(lua_State* L)
 
     SubtypingResult result = ctx->subtyping->isSubtype(subTy, superTy, ctx->scope);
 
-    lua_pushboolean(L, result.isSubtype);
+    lua_pushboolean(L, static_cast<int>(result.isSubtype));
     return 1;
 }
 
@@ -2073,7 +2077,6 @@ void registerTypeUserData(lua_State* L)
 static int unsupportedFunction(lua_State* L)
 {
     luaL_errorL(L, "this function is not supported in type functions");
-    return 0;
 }
 
 static int print(lua_State* L)
@@ -2851,7 +2854,13 @@ private:
         }
 
         if (t1->indexer.has_value())
-            t2->indexer = TypeFunctionTableIndexer(shallowClone(t1->indexer->keyType), shallowClone(t1->indexer->valueType));
+        {
+            t2->indexer = TypeFunctionTableIndexer(
+                shallowClone(t1->indexer->keyType),
+                shallowClone(t1->indexer->valueType),
+                FFlag::LuauTypeFunctionTableIndexerIsReadOnly ? t1->indexer->isReadOnly : false
+            );
+        }
 
         if (t1->metatable.has_value())
             t2->metatable = shallowClone(*t1->metatable);

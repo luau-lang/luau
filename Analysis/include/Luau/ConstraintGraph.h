@@ -165,7 +165,7 @@ struct ConstraintGraph
      * HACK: Used for `PrimitiveTypeConstraint` to check whether the free type
      * it "controls" has other outstanding dependencies.
      */
-    bool hasStrictlyMoreThanOneDependency(ConstraintVertex vertex);
+    bool DEPRECATED_hasStrictlyMoreThanOneDependency(ConstraintVertex vertex);
 
     /**
      * Find all of the reference counted types that are reachable from `target`

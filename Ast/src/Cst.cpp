@@ -4,12 +4,36 @@
 #include "Luau/Common.h"
 
 LUAU_FASTFLAG(LuauCstExprGroup)
-LUAU_FASTFLAG(LuauCstTypeGroup)
+LUAU_FASTFLAG(LuauCstAttr)
 
 namespace Luau
 {
 
 int gCstRttiIndex = 0;
+
+CstAttr::CstAttr(bool hasAt)
+    : CstNode(CstClassIndex())
+    , hasAt(hasAt)
+{
+    LUAU_ASSERT(FFlag::LuauCstAttr);
+}
+
+CstParametrizedAttr::CstParametrizedAttr(Position openParenPosition, Position closeParenPosition, AstArray<Position> argsCommaPositions)
+    : CstNode(CstClassIndex())
+    , openParenPosition(openParenPosition)
+    , closeParenPosition(closeParenPosition)
+    , argsCommaPositions(argsCommaPositions)
+{
+    LUAU_ASSERT(FFlag::LuauCstAttr);
+}
+
+CstAttrList::CstAttrList(Position atBracketPosition, Position closeBracketPosition, AstArray<Position> commaPositions)
+    : atBracketPosition(atBracketPosition)
+    , closeBracketPosition(closeBracketPosition)
+    , commaPositions(commaPositions)
+{
+    LUAU_ASSERT(FFlag::LuauCstAttr);
+}
 
 CstExprGroup::CstExprGroup(Position closePosition)
     : CstNode(CstClassIndex())
@@ -166,15 +190,34 @@ CstStatCompoundAssign::CstStatCompoundAssign(Position opPosition)
 
 CstStatFunction::CstStatFunction(Position functionKeywordPosition)
     : CstNode(CstClassIndex())
+    , attrLists({})
     , functionKeywordPosition(functionKeywordPosition)
 {
 }
 
+CstStatFunction::CstStatFunction(AstArray<CstAttrList*> attrLists, Position functionKeywordPosition)
+    : CstNode(CstClassIndex())
+    , attrLists(attrLists)
+    , functionKeywordPosition(functionKeywordPosition)
+{
+    LUAU_ASSERT(FFlag::LuauCstAttr);
+}
+
 CstStatLocalFunction::CstStatLocalFunction(Position localKeywordPosition, Position functionKeywordPosition)
     : CstNode(CstClassIndex())
+    , attrLists({})
     , localKeywordPosition(localKeywordPosition)
     , functionKeywordPosition(functionKeywordPosition)
 {
+}
+
+CstStatLocalFunction::CstStatLocalFunction(AstArray<CstAttrList*> attrLists, Position localKeywordPosition, Position functionKeywordPosition)
+    : CstNode(CstClassIndex())
+    , attrLists(attrLists)
+    , localKeywordPosition(localKeywordPosition)
+    , functionKeywordPosition(functionKeywordPosition)
+{
+    LUAU_ASSERT(FFlag::LuauCstAttr);
 }
 
 CstGenericType::CstGenericType(Position defaultEqualsPosition)
@@ -290,7 +333,6 @@ CstTypeGroup::CstTypeGroup(Position closePosition)
     : CstNode(CstClassIndex())
     , closePosition(closePosition)
 {
-    LUAU_ASSERT(FFlag::LuauCstTypeGroup);
 }
 
 CstTypePackExplicit::CstTypePackExplicit()

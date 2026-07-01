@@ -595,7 +595,7 @@ TEST_CASE_FIXTURE(Fixture, "modify_captured_table_field")
 TEST_CASE_FIXTURE(Fixture, "oss_1561")
 {
     loadDefinition(R"(
-        declare class Vector3
+        declare extern type Vector3 with
             X: number
             Y: number
             Z: number

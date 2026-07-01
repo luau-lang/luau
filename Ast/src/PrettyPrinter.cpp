@@ -12,11 +12,10 @@
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAG(LuauConst2)
 
 LUAU_FASTFLAGVARIABLE(LuauErrorTolerantPrettyPrinting)
 LUAU_FASTFLAG(LuauCstExprGroup)
-LUAU_FASTFLAG(LuauCstTypeGroup)
+LUAU_FASTFLAG(LuauCstAttr)
 
 namespace
 {
@@ -633,11 +632,28 @@ struct Printer
         }
         else if (const auto& a = expr.as<AstExprFunction>())
         {
-            for (const auto& attribute : a->attributes)
-                visualizeAttribute(*attribute);
+            if (FFlag::LuauCstAttr)
+            {
+                if (const CstExprFunction* cstNode = lookupCstNode<CstExprFunction>(a))
+                {
+                    visualizeAttributes(a->attributes, &cstNode->attrLists);
+                    if (cstNode->functionKeywordPosition.hasValue())
+                        advance(cstNode->functionKeywordPosition);
+                }
+                else
+                {
+                    for (const auto& attribute : a->attributes)
+                        visualizeAttribute(*attribute);
+                }
+            }
+            else
+            {
+                for (const auto& attribute : a->attributes)
+                    visualizeAttribute(*attribute);
 
-            if (const auto cstNode = lookupCstNode<CstExprFunction>(a); cstNode && cstNode->functionKeywordPosition.hasValue())
-                advance(cstNode->functionKeywordPosition);
+                if (const auto cstNode = lookupCstNode<CstExprFunction>(a); cstNode && cstNode->functionKeywordPosition.hasValue())
+                    advance(cstNode->functionKeywordPosition);
+            }
 
             writer.keyword("function");
             visualizeFunctionBody(*a);
@@ -985,7 +1001,7 @@ struct Printer
         else if (const auto& a = program.as<AstStatLocal>())
         {
             const auto cstNode = lookupCstNode<CstStatLocal>(a);
-            if (FFlag::LuauExportValueSyntax && FFlag::LuauConst2 && a->isExported)
+            if (FFlag::LuauExportValueSyntax && a->isExported)
             {
                 writer.keyword("export");
 
@@ -994,7 +1010,7 @@ struct Printer
 
                 writer.keyword(a->isConst ? "const" : "local");
             }
-            else if (FFlag::LuauConst2 && a->isConst)
+            else if (a->isConst)
             {
                 writer.keyword("const");
             }
@@ -1189,29 +1205,47 @@ struct Printer
         }
         else if (const auto& a = program.as<AstStatFunction>())
         {
-            for (const auto& attribute : a->func->attributes)
-                visualizeAttribute(*attribute);
-            if (const auto cstNode = lookupCstNode<CstStatFunction>(a))
-                advance(cstNode->functionKeywordPosition);
+            if (FFlag::LuauCstAttr)
+            {
+                if (const CstStatFunction* cstNode = lookupCstNode<CstStatFunction>(a))
+                {
+                    visualizeAttributes(a->func->attributes, &cstNode->attrLists);
+                    advance(cstNode->functionKeywordPosition);
+                }
+                else
+                    visualizeAttributes(a->func->attributes, nullptr);
+            }
+            else
+            {
+                for (const auto& attribute : a->func->attributes)
+                    visualizeAttribute(*attribute);
+                if (const auto cstNode = lookupCstNode<CstStatFunction>(a))
+                    advance(cstNode->functionKeywordPosition);
+            }
             writer.keyword("function");
             visualize(*a->name);
             visualizeFunctionBody(*a->func);
         }
         else if (const auto& a = program.as<AstStatLocalFunction>())
         {
-            for (const auto& attribute : a->func->attributes)
-                visualizeAttribute(*attribute);
-
             const auto cstNode = lookupCstNode<CstStatLocalFunction>(a);
+
+            if (FFlag::LuauCstAttr && cstNode)
+                visualizeAttributes(a->func->attributes, &cstNode->attrLists);
+            else
+            {
+                for (const auto& attribute : a->func->attributes)
+                    visualizeAttribute(*attribute);
+            }
 
             if (cstNode)
                 advance(cstNode->localKeywordPosition);
 
-            if (FFlag::LuauExportValueSyntax && FFlag::LuauConst2 && a->name->isExported)
+            if (FFlag::LuauExportValueSyntax && a->name->isExported)
             {
                 writer.keyword("export");
             }
-            else if (FFlag::LuauConst2 && a->name->isConst)
+            else if (a->name->isConst)
             {
                 writer.keyword("const");
             }
@@ -1601,8 +1635,96 @@ struct Printer
     void visualizeAttribute(AstAttr& attribute)
     {
         advance(attribute.location.begin);
-        writer.symbol("@");
-        writer.identifier(attribute.name.value);
+        if (FFlag::LuauCstAttr)
+        {
+            if (const CstAttr* cstNode = lookupCstNode<CstAttr>(&attribute))
+            {
+                if (cstNode->hasAt)
+                    writer.symbol("@");
+                writer.identifier(attribute.name.value);
+            }
+            else if (const CstParametrizedAttr* cstParamNode = lookupCstNode<CstParametrizedAttr>(&attribute))
+            {
+                writer.identifier(attribute.name.value);
+
+                maybeAdvanceAndWrite(cstParamNode->openParenPosition, "(");
+
+                const size_t commaPositionSize = cstParamNode->argsCommaPositions.size;
+
+                for (size_t i = 0; i < attribute.args.size; ++i)
+                {
+                    visualize(*attribute.args.data[i]);
+                    if (i < commaPositionSize)
+                        maybeAdvanceAndWrite(cstParamNode->argsCommaPositions.data[i], ",");
+                }
+
+                maybeAdvanceAndWrite(cstParamNode->closeParenPosition, ")");
+            }
+            else
+            {
+                writer.symbol("@");
+                writer.identifier(attribute.name.value);
+            }
+        }
+        else
+        {
+            writer.symbol("@");
+            writer.identifier(attribute.name.value);
+        }
+    }
+
+    void visualizeAttributes(const AstArray<AstAttr*>& attributes, const AstArray<CstAttrList*>* attrLists)
+    {
+        LUAU_ASSERT(FFlag::LuauCstAttr);
+
+        if (attrLists == nullptr)
+        {
+            for (const auto& attribute : attributes)
+                visualizeAttribute(*attribute);
+            return;
+        }
+
+        auto currentAttribute = attributes.begin();
+        auto currentAttrList = attrLists->begin();
+
+        const auto attributesEnd = attributes.end();
+        const auto attrListsEnd = attrLists->end();
+
+        while (currentAttribute != attributesEnd || currentAttrList != attrListsEnd)
+        {
+            if (currentAttrList == attrListsEnd || (*currentAttribute)->location.begin < (*currentAttrList)->atBracketPosition)
+            {
+                visualizeAttribute(**currentAttribute);
+                ++currentAttribute;
+            }
+            else
+            {
+                const CstAttrList* cstAttrList = *currentAttrList;
+                // Start of attribute list
+                advance(cstAttrList->atBracketPosition);
+                writer.symbol("@[");
+
+                for (const Position& commaPosition : cstAttrList->commaPositions)
+                {
+                    LUAU_ASSERT(currentAttribute != attributesEnd);
+                    LUAU_ASSERT((*currentAttribute)->location.begin < commaPosition);
+
+                    visualizeAttribute(**currentAttribute);
+                    ++currentAttribute;
+
+                    advance(commaPosition);
+                    writer.symbol(",");
+                }
+
+                LUAU_ASSERT(currentAttribute != attributesEnd);
+                visualizeAttribute(**currentAttribute);
+                ++currentAttribute;
+
+                maybeAdvanceAndWrite(cstAttrList->closeBracketPosition, "]");
+
+                ++currentAttrList;
+            }
+        }
     }
 
     void visualizeTypeAnnotation(AstType& typeAnnotation)
@@ -1957,16 +2079,8 @@ struct Printer
 
             visualizeTypeAnnotation(*a->type);
 
-            if (FFlag::LuauCstTypeGroup)
-            {
-                if (const CstTypeGroup* cstNode = lookupCstNode<CstTypeGroup>(a))
-                    maybeAdvanceAndWrite(cstNode->closePosition, ")");
-                else
-                {
-                    advanceBefore(a->location.end, 1);
-                    writer.symbol(")");
-                }
-            }
+            if (const CstTypeGroup* cstNode = lookupCstNode<CstTypeGroup>(a))
+                maybeAdvanceAndWrite(cstNode->closePosition, ")");
             else
             {
                 advanceBefore(a->location.end, 1);

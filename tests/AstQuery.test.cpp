@@ -83,7 +83,7 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_fn")
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "class_method")
 {
     loadDefinition(R"(
-        declare class Foo
+        declare extern type Foo with
             function bar(self, x: string): number
         end
 
@@ -106,7 +106,7 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "class_method")
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_class_method")
 {
     loadDefinition(R"(
-        declare class Foo
+        declare extern type Foo with
             function bar(self, x: string): number
             function bar(self, x: number): string
         end
@@ -179,11 +179,11 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "string_metatable_method")
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "parent_class_method")
 {
     loadDefinition(R"(
-        declare class Foo
+        declare extern type Foo with
             function bar(self, x: string): number
         end
 
-        declare class Bar extends Foo
+        declare extern type Bar extends Foo with
             function notbar(self, x: string): number
         end
     )");

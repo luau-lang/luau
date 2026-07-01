@@ -271,7 +271,18 @@ struct BytecodeGraphSerializer
         case LOP_GETIMPORT:
         {
             bcb.emitAD(LOP_GETIMPORT, getRegister(insnOp), getVmConstInputD(insn, 0));
-            bcb.emitAux(getImmImport(insn, 1));
+            uint32_t componentsCount = getImmInt(insn, 1);
+            LUAU_ASSERT(componentsCount > 0 && componentsCount <= 3);
+            LUAU_ASSERT(insn.ops.size() - 2 == componentsCount);
+            uint32_t aux = componentsCount << 30;
+            for (uint32_t i = 0; i < componentsCount; i++)
+            {
+                uint32_t componentId = getVmConstInputRaw(insn, 2 + i);
+                if (componentId > 0x3FF)
+                    error = true;
+                aux |= componentId << (20 - 10 * i);
+            }
+            bcb.emitAux(aux);
             break;
         }
 
