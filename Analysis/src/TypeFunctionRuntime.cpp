@@ -30,11 +30,8 @@ LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionRobustness)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeIsSubtypeOf)
-<<<<<<< udtf-chunkname
-LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
-=======
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionTableIndexerIsReadOnly)
->>>>>>> master
+LUAU_FASTFLAGVARIABLE(LuauUdtfTerseChunkNames)
 
 namespace Luau
 {
