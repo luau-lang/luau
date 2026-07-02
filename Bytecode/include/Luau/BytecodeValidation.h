@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <algorithm>
+
 namespace Luau
 {
 
