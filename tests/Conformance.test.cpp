@@ -518,12 +518,7 @@ Vec2* lua_vec2_push(lua_State* L)
 
 Vec2* lua_vec2_get(lua_State* L, int idx)
 {
-    Vec2* a = (Vec2*)lua_touserdatatagged(L, idx, kTagVec2);
-
-    if (a)
-        return a;
-
-    luaL_typeerror(L, idx, "vec2");
+    return (Vec2*)luaL_checkudatatagged(L, idx, kTagVec2);
 }
 
 static int lua_vec2(lua_State* L)
@@ -670,12 +665,7 @@ Vertex* lua_vertex_push(lua_State* L)
 
 Vertex* lua_vertex_get(lua_State* L, int idx)
 {
-    Vertex* a = (Vertex*)lua_touserdatatagged(L, idx, kTagVertex);
-
-    if (a)
-        return a;
-
-    luaL_typeerror(L, idx, "vertex");
+    return (Vertex*)luaL_checkudatatagged(L, idx, kTagVertex);
 }
 
 static int lua_vertex(lua_State* L)
@@ -3787,10 +3777,7 @@ TEST_CASE("Userdata")
                 L,
                 [](lua_State* L)
                 {
-                    void* p = lua_touserdatatagged(L, 1, kInt64Tag);
-                    if (!p)
-                        luaL_typeerror(L, 1, "int64");
-
+                    void* p = luaL_checkudatatagged(L, 1, kInt64Tag);
                     const char* name = luaL_checkstring(L, 2);
 
                     if (strcmp(name, "value") == 0)
@@ -3810,10 +3797,7 @@ TEST_CASE("Userdata")
                 L,
                 [](lua_State* L)
                 {
-                    void* p = lua_touserdatatagged(L, 1, kInt64Tag);
-                    if (!p)
-                        luaL_typeerror(L, 1, "int64");
-
+                    void* p = luaL_checkudatatagged(L, 1, kInt64Tag);
                     const char* name = luaL_checkstring(L, 2);
 
                     if (strcmp(name, "value") == 0)
@@ -3979,6 +3963,9 @@ TEST_CASE("Userdata")
                 nullptr
             );
             lua_setfield(L, -2, "__tostring");
+
+            lua_pushliteral(L, "int64");
+            lua_setfield(L, -2, "__type");
 
             // ctor
             lua_pushcfunction(

@@ -368,18 +368,12 @@ void deallocTypeUserData(lua_State* L, void* data)
 
 bool isTypeUserData(lua_State* L, int idx)
 {
-    if (!lua_isuserdata(L, idx))
-        return false;
-
     return lua_touserdatatagged(L, idx, kTypeUserdataTag) != nullptr;
 }
 
 TypeFunctionTypeId getTypeUserData(lua_State* L, int idx)
 {
-    if (auto typ = static_cast<TypeFunctionTypeId*>(lua_touserdatatagged(L, idx, kTypeUserdataTag)))
-        return *typ;
-
-    luaL_typeerrorL(L, idx, "type");
+    return *static_cast<TypeFunctionTypeId*>(luaL_checkudatatagged(L, idx, kTypeUserdataTag));
 }
 
 std::optional<TypeFunctionTypeId> optionalTypeUserData(lua_State* L, int idx)

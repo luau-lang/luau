@@ -8,6 +8,7 @@
 #include "lapi.h"
 #include "lgc.h"
 #include "lnumutils.h"
+#include "ltable.h"
 
 #include <string.h>
 
@@ -135,6 +136,18 @@ void* luaL_checkudata(lua_State* L, int ud, const char* tname)
             }
         }
     }
+    luaL_typeerrorL(L, ud, tname); // else error
+}
+
+void* luaL_checkudatatagged(lua_State* L, int ud, int tag)
+{
+    void* p = lua_touserdatatagged(L, ud, tag);
+    if (p != NULL)
+        return p;
+
+    const TValue* type = luaH_getstr(L->global->udatamt[tag], L->global->tmname[TM_TYPE]);
+    const char* tname = ttisstring(type) ? getstr(tsvalue(type)) : "userdata";
+
     luaL_typeerrorL(L, ud, tname); // else error
 }
 
