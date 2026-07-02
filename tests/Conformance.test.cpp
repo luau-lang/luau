@@ -786,6 +786,9 @@ void setupUserdataHelpers(lua_State* L)
     lua_pushvalue(L, -1);
     lua_setuserdatametatable(L, kTagVec2);
 
+    lua_pushliteral(L, "vec2");
+    lua_setfield(L, -2, "__type");
+
     lua_pushcfunction(L, lua_vec2_index, nullptr);
     lua_setfield(L, -2, "__index");
 
@@ -905,6 +908,9 @@ void setupUserdataHelpers(lua_State* L)
 
     lua_pushvalue(L, -1);
     lua_setuserdatametatable(L, kTagVertex);
+
+    lua_pushliteral(L, "vertex");
+    lua_setfield(L, -2, "__type");
 
     lua_pushcfunction(L, lua_vertex_index, nullptr);
     lua_setfield(L, -2, "__index");
@@ -3772,6 +3778,9 @@ TEST_CASE("Userdata")
             // create metatable with all the metamethods
             luaL_newmetatable(L, "int64");
 
+            lua_pushliteral(L, "int64");
+            lua_setfield(L, -2, "__type");
+
             // __index
             lua_pushcfunction(
                 L,
@@ -3963,9 +3972,6 @@ TEST_CASE("Userdata")
                 nullptr
             );
             lua_setfield(L, -2, "__tostring");
-
-            lua_pushliteral(L, "int64");
-            lua_setfield(L, -2, "__type");
 
             // ctor
             lua_pushcfunction(

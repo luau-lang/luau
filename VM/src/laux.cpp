@@ -145,8 +145,13 @@ void* luaL_checkudatatagged(lua_State* L, int ud, int tag)
     if (p != NULL)
         return p;
 
-    const TValue* type = luaH_getstr(L->global->udatamt[tag], L->global->tmname[TM_TYPE]);
-    const char* tname = ttisstring(type) ? getstr(tsvalue(type)) : "userdata";
+    const char* tname = "userdata";
+
+    if (LuaTable* mt = L->global->udatamt[tag])
+    {
+        const TValue* type = luaH_getstr(mt, L->global->tmname[TM_TYPE]);
+        tname = ttisstring(type) ? getstr(tsvalue(type)) : "userdata";
+    }
 
     luaL_typeerrorL(L, ud, tname); // else error
 }
