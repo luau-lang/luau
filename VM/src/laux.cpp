@@ -8,7 +8,6 @@
 #include "lapi.h"
 #include "lgc.h"
 #include "lnumutils.h"
-#include "ltable.h"
 
 #include <string.h>
 
@@ -145,14 +144,7 @@ void* luaL_checkudatatagged(lua_State* L, int ud, int tag)
     if (p != NULL)
         return p;
 
-    const char* tname = "userdata";
-
-    if (LuaTable* mt = L->global->udatamt[tag])
-    {
-        const TValue* type = luaH_getstr(mt, L->global->tmname[TM_TYPE]);
-        tname = ttisstring(type) ? getstr(tsvalue(type)) : "userdata";
-    }
-
+    const char* tname = lua_getuserdataname(L, ud);
     luaL_typeerrorL(L, ud, tname); // else error
 }
 
