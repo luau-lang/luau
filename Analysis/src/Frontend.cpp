@@ -1511,6 +1511,8 @@ ModulePtr check(
     TypeFunctionRuntime typeFunctionRuntime{iceHandler, NotNull{&limits}};
 
     typeFunctionRuntime.allowEvaluation = true;
+    
+    Subtyping subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler};
 
     std::unique_ptr<ConstraintGraph> cgraph;
     if (FFlag::LuauConstraintGraph)
