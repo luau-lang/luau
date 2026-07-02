@@ -156,6 +156,11 @@ public:
         return functions[id].data;
     }
 
+    uint32_t getFunctionCount() const
+    {
+        return static_cast<uint32_t>(functions.size());
+    }
+
     std::vector<std::string_view> getStringTable();
 
     void annotateInstruction(std::string& result, uint32_t fid, uint32_t instpos) const;
@@ -351,7 +356,7 @@ protected:
 
     std::string dumpCurrentFunction(std::vector<int>& dumpinstoffs) const;
     virtual void dumpConstant(std::string& result, int k, bool detailed) const;
-    void dumpInstruction(const uint32_t* opcode, std::string& output, int targetLabel) const;
+    void dumpInstruction(const uint32_t* opcode, std::string& result, int targetLabel) const;
 
     int calcLinesSpan() const;
     void fillBaselineInfo(int span, int* baseline, size_t baselineSize) const;
