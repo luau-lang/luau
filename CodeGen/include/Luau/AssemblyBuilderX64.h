@@ -172,7 +172,7 @@ public:
     void vmovaps(OperandX64 dst, OperandX64 src);
     void vmovupd(OperandX64 dst, OperandX64 src);
     void vmovups(OperandX64 dst, OperandX64 src);
-    void vmovq(OperandX64 lhs, OperandX64 rhs);
+    void vmovq(OperandX64 dst, OperandX64 src);
 
     void vmaxps(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vmaxsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);

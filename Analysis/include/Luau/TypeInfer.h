@@ -75,8 +75,8 @@ struct TypeChecker
 
     std::vector<std::pair<Location, ScopePtr>> getScopes() const;
 
-    ControlFlow check(const ScopePtr& scope, const AstStat& statement);
-    ControlFlow check(const ScopePtr& scope, const AstStatBlock& statement);
+    ControlFlow check(const ScopePtr& scope, const AstStat& program);
+    ControlFlow check(const ScopePtr& scope, const AstStatBlock& block);
     ControlFlow check(const ScopePtr& scope, const AstStatIf& statement);
     ControlFlow check(const ScopePtr& scope, const AstStatWhile& statement);
     ControlFlow check(const ScopePtr& scope, const AstStatRepeat& statement);
@@ -84,20 +84,20 @@ struct TypeChecker
     ControlFlow check(const ScopePtr& scope, const AstStatAssign& assign);
     ControlFlow check(const ScopePtr& scope, const AstStatCompoundAssign& assign);
     ControlFlow check(const ScopePtr& scope, const AstStatLocal& local);
-    ControlFlow check(const ScopePtr& scope, const AstStatFor& local);
+    ControlFlow check(const ScopePtr& scope, const AstStatFor& expr);
     ControlFlow check(const ScopePtr& scope, const AstStatForIn& forin);
     ControlFlow check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatFunction& function);
     ControlFlow check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatLocalFunction& function);
     ControlFlow check(const ScopePtr& scope, const AstStatTypeAlias& typealias);
     ControlFlow check(const ScopePtr& scope, const AstStatTypeFunction& typefunction);
     ControlFlow check(const ScopePtr& scope, const AstStatDeclareExternType& declaredExternType);
-    ControlFlow check(const ScopePtr& scope, const AstStatDeclareFunction& declaredFunction);
+    ControlFlow check(const ScopePtr& scope, const AstStatDeclareFunction& global);
 
     void prototype(const ScopePtr& scope, const AstStatTypeAlias& typealias, int subLevel = 0);
     void prototype(const ScopePtr& scope, const AstStatDeclareExternType& declaredExternType);
 
-    ControlFlow checkBlock(const ScopePtr& scope, const AstStatBlock& statement);
-    ControlFlow checkBlockWithoutRecursionCheck(const ScopePtr& scope, const AstStatBlock& statement);
+    ControlFlow checkBlock(const ScopePtr& scope, const AstStatBlock& block);
+    ControlFlow checkBlockWithoutRecursionCheck(const ScopePtr& scope, const AstStatBlock& block);
     void checkBlockTypeAliases(const ScopePtr& scope, std::vector<AstStat*>& sorted);
 
     WithPredicate<TypeId> checkExpr(
@@ -134,7 +134,7 @@ struct TypeChecker
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprError& expr);
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprIfElse& expr, std::optional<TypeId> expectedType = std::nullopt);
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprInterpString& expr);
-    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprInstantiate& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprInstantiate& explicitTypeInstantiation);
 
     TypeId checkExprTable(
         const ScopePtr& scope,
@@ -168,8 +168,8 @@ struct TypeChecker
         const ScopePtr& scope,
         const AstExpr& funName,
         Unifier& state,
-        TypePackId paramPack,
         TypePackId argPack,
+        TypePackId paramPack,
         const std::vector<Location>& argLocations
     );
 
@@ -224,7 +224,7 @@ struct TypeChecker
         const Location& location,
         const AstArray<AstExpr*>& exprs,
         bool substituteFreeForNil = false,
-        const std::vector<bool>& lhsAnnotations = {},
+        const std::vector<bool>& annotatedTypeArguments = {},
         const std::vector<std::optional<TypeId>>& expectedTypes = {}
     );
 
@@ -317,7 +317,7 @@ public:
     TypeId anyify(const ScopePtr& scope, TypeId ty, Location location);
     TypePackId anyify(const ScopePtr& scope, TypePackId ty, Location location);
 
-    TypePackId anyifyModuleReturnTypePackGenerics(TypePackId ty);
+    TypePackId anyifyModuleReturnTypePackGenerics(TypePackId tp);
 
     void reportError(const TypeError& error);
     void reportError(const Location& location, TypeErrorData error);
@@ -382,7 +382,7 @@ private:
 
     TypeId addTV(Type&& tv);
 
-    TypePackId addTypePack(TypePackVar&& tp);
+    TypePackId addTypePack(TypePackVar&& tv);
     TypePackId addTypePack(TypePack&& tp);
 
     TypePackId addTypePack(const std::vector<TypeId>& ty);
@@ -442,7 +442,7 @@ public:
      * The return vector is always of the exact requested length.  In the event that the pack's length does
      * not match up, excess TypeIds will be ErrorTypes.
      */
-    std::vector<TypeId> unTypePack(const ScopePtr& scope, TypePackId pack, size_t expectedLength, const Location& location);
+    std::vector<TypeId> unTypePack(const ScopePtr& scope, TypePackId tp, size_t expectedLength, const Location& location);
 
     const ScopePtr& globalScope;
 

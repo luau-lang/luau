@@ -19,7 +19,6 @@
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/TypeFwd.h"
-#include "Luau/Subtyping.h"
 
 #include <utility>
 #include <vector>

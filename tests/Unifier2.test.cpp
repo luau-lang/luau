@@ -13,7 +13,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 
 struct Unifier2Fixture
 {

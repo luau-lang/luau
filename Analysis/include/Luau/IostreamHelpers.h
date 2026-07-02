@@ -12,11 +12,11 @@
 namespace Luau
 {
 
-std::ostream& operator<<(std::ostream& lhs, const Position& position);
-std::ostream& operator<<(std::ostream& lhs, const Location& location);
-std::ostream& operator<<(std::ostream& lhs, const AstName& name);
+std::ostream& operator<<(std::ostream& stream, const Position& position);
+std::ostream& operator<<(std::ostream& stream, const Location& location);
+std::ostream& operator<<(std::ostream& stream, const AstName& name);
 
-std::ostream& operator<<(std::ostream& lhs, const TypeError& error);
+std::ostream& operator<<(std::ostream& stream, const TypeError& error);
 std::ostream& operator<<(std::ostream& lhs, const TypeMismatch& error);
 std::ostream& operator<<(std::ostream& lhs, const UnknownSymbol& error);
 std::ostream& operator<<(std::ostream& lhs, const UnknownProperty& error);
@@ -44,19 +44,19 @@ std::ostream& operator<<(std::ostream& lhs, const OptionalValueAccess& error);
 std::ostream& operator<<(std::ostream& lhs, const MissingUnionProperty& error);
 std::ostream& operator<<(std::ostream& lhs, const TypesAreUnrelated& error);
 
-std::ostream& operator<<(std::ostream& lhs, const TableState& tv);
-std::ostream& operator<<(std::ostream& lhs, const Type& tv);
-std::ostream& operator<<(std::ostream& lhs, const TypePackVar& tv);
+std::ostream& operator<<(std::ostream& stream, const TableState& tv);
+std::ostream& operator<<(std::ostream& stream, const Type& tv);
+std::ostream& operator<<(std::ostream& stream, const TypePackVar& tv);
 
-std::ostream& operator<<(std::ostream& lhs, const TypeErrorData& ted);
+std::ostream& operator<<(std::ostream& stream, const TypeErrorData& data);
 
-std::ostream& operator<<(std::ostream& lhs, TypeId ty);
-std::ostream& operator<<(std::ostream& lhs, TypePackId tp);
+std::ostream& operator<<(std::ostream& stream, TypeId ty);
+std::ostream& operator<<(std::ostream& stream, TypePackId tp);
 
 namespace TypePath
 {
 
-std::ostream& operator<<(std::ostream& lhs, const Path& path);
+std::ostream& operator<<(std::ostream& stream, const Path& path);
 
 }; // namespace TypePath
 

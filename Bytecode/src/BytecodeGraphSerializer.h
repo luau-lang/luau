@@ -69,11 +69,14 @@ struct BytecodeGraphSerializer
         {
             BcPhi& phi = func.phiOp(op);
             LUAU_ASSERT(phi.ops.size() > 0);
+            // Parser-built phis record their register at creation in `makePhi`
+            // Loop-carried phis form operand cycles, as a nested loop's inner and outer accumulator phis are mutual operands, so recursing through
+            // phi.ops to derive the register would not terminate, so we should use the recorded register instead
+            // Return-value merges, inserted by the inliner, have no recorded register but are acyclic, so they resolve through their first operand
+            if (auto it = func.regs.find(op); it != func.regs.end())
+                return it->second;
             LUAU_ASSERT(phi.ops[0] != op);
-            Reg res = getRegister(phi.ops[0]);
-            for (auto phiOp : phi.ops)
-                LUAU_ASSERT(res == getRegister(phiOp));
-            return res;
+            return getRegister(phi.ops[0]);
         }
         case BcOpKind::Inst:
         {
@@ -92,6 +95,7 @@ struct BytecodeGraphSerializer
         default:
             LUAU_UNREACHABLE();
         }
+        LUAU_UNREACHABLE();
         return 0;
     }
 
@@ -566,7 +570,8 @@ struct BytecodeGraphSerializer
             BcOp blockOp = schedule[i];
             BcBlock& block = func.blockOp(blockOp);
             std::optional<BcOp> fallthrough = getFallthrough(block);
-            if (fallthrough && *fallthrough != func.exitBlock && (i + 1 >= schedule.size() || *fallthrough != schedule[i + 1]))
+            if (fallthrough && *fallthrough != func.exitBlock && !(func.blockOp(*fallthrough).flags & BcBlockFlag::Dead) &&
+                (i + 1 >= schedule.size() || *fallthrough != schedule[i + 1]))
             {
                 BcJump jump = BcJump<VmConst>::create(func);
                 jump.setTarget(*fallthrough);

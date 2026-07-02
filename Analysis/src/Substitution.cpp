@@ -11,7 +11,7 @@
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
-LUAU_FASTFLAG(LuauUserDefinedClasses)
+
 namespace Luau
 {
 
