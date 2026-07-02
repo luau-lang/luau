@@ -31,6 +31,7 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteConst)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteExport)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionArglistSuggestion)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords_DEPRECATED =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -453,7 +454,9 @@ static void autocompleteProps(
     {
         autocompleteProps(module, typeArena, builtinTypes, rootTy, mt->table, indexType, nodes, result, seen);
 
-        if (auto mtable = get<TableType>(follow(mt->metatable)))
+        const TableType* mtable =
+            FFlag::LuauAutocompleteMetatableInheritance ? getTableType(follow(mt->metatable)) : get<TableType>(follow(mt->metatable));
+        if (mtable)
             fillMetatableProps(mtable);
     }
     else if (auto i = get<IntersectionType>(ty))

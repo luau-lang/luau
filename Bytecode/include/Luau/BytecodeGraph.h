@@ -224,6 +224,7 @@ struct BcInst
 
     // Operands
     BcOps ops;
+    std::vector<BcOp> uses;
 
     uint32_t lastUse = 0;
     uint32_t useCount = 0;
@@ -318,6 +319,7 @@ struct BcBlock
     uint8_t flags = 0;
     uint32_t useCount = 0;
 
+    std::list<BcOp> phis;
     std::list<BcOp> ops;
     BcEdges successors;
     BcEdges predecessors;
@@ -338,6 +340,7 @@ struct BcBlock
 struct BcPhi
 {
     BcOps ops;
+    std::vector<BcOp> uses;
 };
 
 struct BcProj
@@ -559,13 +562,33 @@ struct BcFunction
         LUAU_ASSERT(op.kind == BcOpKind::VmConst);
         return {constants, op};
     }
+
+    void recordUse(BcOp usedOp, BcOp user)
+    {
+        if (usedOp.kind == BcOpKind::Inst)
+            this->instOp(usedOp).uses.push_back(user);
+        else if (usedOp.kind == BcOpKind::Phi)
+            this->phiOp(usedOp).uses.push_back(user);
+    }
+
+    void addUse(BcRef<BcInst> instUser, BcOp usedOp)
+    {
+        instUser->ops.push_back(usedOp);
+        recordUse(usedOp, instUser.op);
+    }
+
+    void addUse(BcRef<BcPhi> phiUser, BcOp usedOp)
+    {
+        phiUser->ops.push_back(usedOp);
+        recordUse(usedOp, phiUser.op);
+    }
 };
 
 using CompTimeBcFunction = BcFunction<BcVmConst>;
 
 std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std::vector<std::string_view>& strings);
-std::string toFunctionBytecode(CompTimeBcFunction& func);
-std::string toFunctionBytecode(BytecodeBuilder& builder, CompTimeBcFunction& func);
+std::string toFunctionBytecode(CompTimeBcFunction& fn);
+std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn);
 
 } // namespace Bytecode
 } // namespace Luau

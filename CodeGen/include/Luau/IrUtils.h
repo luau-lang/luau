@@ -240,7 +240,7 @@ bool compare(double a, double b, IrCondition cond);
 // Perform constant folding on instruction at index
 // For most instructions, successful folding results in a IrCmd::SUBSTITUTE
 // But it can also be successful on conditional control-flow, replacing it with an unconditional IrCmd::JUMP
-void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint32_t instIdx);
+void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint32_t index);
 
 uint32_t getNativeContextOffset(int bfid);
 

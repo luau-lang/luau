@@ -32,6 +32,8 @@ LUAU_FASTFLAG(LuauCyclicRequireShortCircuit)
 #include <TargetConditionals.h>
 #if TARGET_OS_IPHONE
 #include <CoreFoundation/CoreFoundation.h>
+#include <cstdlib>
+#include <unistd.h>
 
 std::optional<std::string> getResourcePath0()
 {
@@ -115,6 +117,12 @@ public:
                 // we need relative path so we subtract cwd0 from cwd
                 luauDirRel = "./" + _res.substr(_cwd.length());
             }
+        }
+        if (const char* repoRoot = std::getenv("TEST_SOURCE_ROOT"))
+        {
+            (void)chdir(repoRoot);
+            cwd = getCurrentWorkingDirectory();
+            luauDirRel = ".";
         }
 #else
         std::optional<std::string> cwd = getCurrentWorkingDirectory();

@@ -7,7 +7,9 @@
 #include "Luau/Config.h"
 #include "Luau/ConstraintGenerator.h"
 #include "Luau/ConstraintSolver.h"
+#include "Luau/ControlFlowGraph.h"
 #include "Luau/DataFlowGraph.h"
+#include "Luau/DumpCFG.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/ExpectedTypeVisitor.h"
 #include "Luau/FileResolver.h"
@@ -20,6 +22,7 @@
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeInfer.h"
+#include "Luau/TypeStateMap.h"
 #include "Luau/VisitType.h"
 
 #include <algorithm>
@@ -32,7 +35,6 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
-LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
@@ -46,6 +48,9 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauExportValueTypecheck)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(DebugLuauLogCFG)
+LUAU_FASTFLAG(DebugLuauDumpCFGJson)
 
 namespace Luau
 {
@@ -1513,6 +1518,20 @@ ModulePtr check(
     if (FFlag::LuauConstraintGraph)
         cgraph = std::make_unique<ConstraintGraph>(builtinTypes);
 
+    CFG::CFGAllocator cfgAllocator;
+    std::unique_ptr<CFG::ControlFlowGraph> cfg;
+    std::unique_ptr<CFG::TypeStateMap> state;
+    if (FFlag::DebugLuauCFG && mode != Mode::Definition)
+    {
+        cfg = CFG::CFGBuilder::makeCFG(NotNull{&cfgAllocator}, sourceModule.root);
+        if (FFlag::DebugLuauLogCFG)
+            printf("%s", dumpCFG(*cfg).c_str());
+        if (FFlag::DebugLuauDumpCFGJson)
+            printf("%s\n", dumpCFGJson(*cfg).c_str());
+        state = std::make_unique<CFG::TypeStateMap>(NotNull{&module->internalTypes}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
+        state->computeTypes();
+    }
+
     ConstraintGenerator cg{
         module,
         NotNull{&normalizer},
@@ -1527,6 +1546,7 @@ ModulePtr check(
         NotNull{&dfg},
         requireCycles,
         FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
+        FFlag::DebugLuauCFG ? state.get() : nullptr
     };
 
     ConstraintSet constraintSet = cg.run(sourceModule.root);

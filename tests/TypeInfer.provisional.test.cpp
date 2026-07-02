@@ -20,6 +20,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
+LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
@@ -1431,7 +1432,9 @@ TEST_CASE_FIXTURE(Fixture, "indexing_union_of_indexers")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typechecking")
 {
-    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
 
     CheckResult result = check(R"(
         type dog = { name: string }

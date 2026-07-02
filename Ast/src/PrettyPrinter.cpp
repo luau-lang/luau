@@ -13,8 +13,6 @@
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 
-LUAU_FASTFLAGVARIABLE(LuauErrorTolerantPrettyPrinting)
-LUAU_FASTFLAG(LuauCstExprGroup)
 LUAU_FASTFLAG(LuauCstAttr)
 
 namespace
@@ -474,16 +472,8 @@ struct Printer
 
             visualize(*a->expr);
 
-            if (FFlag::LuauCstExprGroup)
-            {
-                if (const auto cstNode = lookupCstNode<CstExprGroup>(a))
-                    maybeAdvanceAndWrite(cstNode->closePosition, ")");
-                else
-                {
-                    advanceBefore(a->location.end, 1);
-                    writer.symbol(")");
-                }
-            }
+            if (const auto cstNode = lookupCstNode<CstExprGroup>(a))
+                maybeAdvanceAndWrite(cstNode->closePosition, ")");
             else
             {
                 advanceBefore(a->location.end, 1);
@@ -2209,7 +2199,7 @@ PrettyPrintResult prettyPrint(std::string_view source, ParseOptions options, boo
     auto names = AstNameTable{allocator};
     ParseResult parseResult = Parser::parse(source.data(), source.size(), names, allocator, std::move(options));
 
-    if (FFlag::LuauErrorTolerantPrettyPrinting ? !parseResult.errors.empty() && !ignoreParseErrors : !parseResult.errors.empty())
+    if (!parseResult.errors.empty() && !ignoreParseErrors)
     {
         // PrettyPrintResult keeps track of only a single error
         const ParseError& error = parseResult.errors.front();

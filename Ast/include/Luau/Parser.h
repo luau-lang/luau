@@ -157,7 +157,7 @@ private:
     Location getAttributeStartLocation(
         const AstArray<AstAttr*>& attributes,
         const TempVector<CstAttrList*>* cstAttrLists,
-        const Location& startLocation
+        const Location& defaultLocation
     );
 
     // attrlist = '@[' parattr {',' parattr} ']'
