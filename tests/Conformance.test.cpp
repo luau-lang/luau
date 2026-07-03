@@ -49,6 +49,12 @@ void luaC_validate(lua_State* L);
 // internal functions, declared in lvm.h - not exposed via lua.h
 void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
+#if LUA_VECTOR_SIZE == 4
+#define lua_pushvector3(L, x, y, z) lua_pushvector(L, x, y, z, 0.0)
+#else
+#define lua_pushvector3(L, x, y, z) lua_pushvector(L, x, y, z)
+#endif
+
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauResumeRestoreCcalls)
@@ -713,13 +719,13 @@ static int lua_vertex_index(lua_State* L)
 
     if (strcmp(name, "pos") == 0)
     {
-        lua_pushvector(L, v->pos[0], v->pos[1], v->pos[2]);
+        lua_pushvector3(L, v->pos[0], v->pos[1], v->pos[2]);
         return 1;
     }
 
     if (strcmp(name, "normal") == 0)
     {
-        lua_pushvector(L, v->normal[0], v->normal[1], v->normal[2]);
+        lua_pushvector3(L, v->normal[0], v->normal[1], v->normal[2]);
         return 1;
     }
 
@@ -1082,10 +1088,10 @@ static void vertexDirectIndex(lua_State* L, void* data, int atom, uint16_t* cach
     switch (DirectSlot(*cachedslot))
     {
     case DirectSlot::Pos:
-        lua_pushvector(L, self->pos[0], self->pos[1], self->pos[2]);
+        lua_pushvector3(L, self->pos[0], self->pos[1], self->pos[2]);
         break;
     case DirectSlot::Normal:
-        lua_pushvector(L, self->normal[0], self->normal[1], self->normal[2]);
+        lua_pushvector3(L, self->normal[0], self->normal[1], self->normal[2]);
         break;
     case DirectSlot::UV:
     {
@@ -1274,8 +1280,6 @@ TEST_CASE("Integers")
         }
     }
 }
-
-
 
 TEST_CASE("Tables")
 {

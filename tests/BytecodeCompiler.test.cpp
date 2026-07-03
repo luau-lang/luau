@@ -1,10 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/BytecodeGraph.h"
+#include "Luau/BytecodeValidation.h"
 #include "Luau/BytecodeWire.h"
 #include "Luau/Compiler.h"
 #include "Luau/Parser.h"
 
+#include <algorithm>
 #include <optional>
 
 #include "Fixture.h"
@@ -247,6 +249,8 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "from_function_bytecode")
     REQUIRE_EQ(fn->numparams, 2);
     REQUIRE_EQ(fn->constants.size(), 2);
 
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
+
     // CFG Blocks
     REQUIRE_EQ(fn->blocks.size(), 4);
     BcBlock& entry = fn->blockOp(fn->entryBlock);
@@ -276,6 +280,22 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "from_function_bytecode")
         REQUIRE_EQ(fn->constants[0].kind, BcVmConstKind::Number);
         REQUIRE_EQ(fn->constants[0].valueNumber, 0);
 
+        // The lone use of the entry `local extra = 0` is the merge phi for R2 at condFalse,
+        // which joins it with condTrue's `extra = 1`. That phi in turn feeds only the first ADD.
+        REQUIRE_EQ(loadK.uses.size(), 1);
+        BcOp extraPhiOp = loadK.uses[0];
+        REQUIRE_EQ(extraPhiOp.kind, BcOpKind::Phi);
+        BcPhi& extraPhi = fn->phiOp(extraPhiOp);
+        BcOp condTrueLoadKOp = getOp(condTrue, 0);
+        REQUIRE_EQ(extraPhi.ops.size(), 2);
+        REQUIRE_EQ(std::count(extraPhi.ops.begin(), extraPhi.ops.end(), loadKOp), 1);
+        REQUIRE_EQ(std::count(extraPhi.ops.begin(), extraPhi.ops.end(), condTrueLoadKOp), 1);
+
+        BcOp firstAddOp = getOp(condFalse, 0);
+        REQUIRE_EQ(extraPhi.uses.size(), 1);
+        REQUIRE(hasUse(*fn, extraPhiOp, firstAddOp));
+        REQUIRE_EQ(fn->instOp(firstAddOp).ops[0], extraPhiOp);
+
         BcInst& jumpIfNotLt = fn->instOp(*it);
         REQUIRE_EQ(jumpIfNotLt.op, LOP_JUMPIFNOTLT);
         REQUIRE_EQ(jumpIfNotLt.ops.size(), 3);
@@ -292,6 +312,7 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "repeat_until_loop")
         function fn()
             local var = 0
             repeat var += 1 until var < 10
+            --return var
         end
     )");
 
@@ -309,6 +330,9 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "repeat_until_loop")
         L1: RETURN R0 0
         // Block 5 (exit)
     */
+
+    REQUIRE(fn);
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
     // CFG Blocks
     REQUIRE_EQ(fn->blocks.size(), 5);
@@ -330,13 +354,28 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "repeat_until_loop")
         BcOp varInitOp = getOp(entry, 0);
         BcOp loadKOneOp = getOp(loopBody, 0);
         BcOp addVarOp = getOp(loopBody, 1);
+        BcOp jumpIfLtOp = getOp(loopBody, 3);
         BcInst& addVar = fn->instOp(addVarOp);
         REQUIRE_EQ(addVar.ops.size(), 2);
         REQUIRE_EQ(addVar.ops[0].kind, BcOpKind::Phi);
-        BcPhi& addVarPhi = fn->phiOp(addVar.ops[0]);
+        BcOp addVarPhiOp = addVar.ops[0];
+        BcPhi& addVarPhi = fn->phiOp(addVarPhiOp);
         REQUIRE_EQ(addVarPhi.ops[0], varInitOp);
         REQUIRE_EQ(addVarPhi.ops[1], addVarOp);
         REQUIRE_EQ(addVar.ops[1], loadKOneOp);
+
+        // the loop-header phi for `var` feeds exactly the ADD
+        REQUIRE_EQ(addVarPhi.uses.size(), 1);
+        REQUIRE(hasUse(*fn, addVarPhiOp, addVarOp));
+
+        // the ADD result is consumed twice: by the phi over the back-edge and by the until-condition JUMPIFLT
+        REQUIRE_EQ(fn->instOp(jumpIfLtOp).op, LOP_JUMPIFLT);
+        REQUIRE(hasUse(*fn, addVarOp, addVarPhiOp));
+        REQUIRE(hasUse(*fn, addVarOp, jumpIfLtOp));
+
+        // both LOADK defs list their single consumer
+        REQUIRE(hasUse(*fn, varInitOp, addVarPhiOp));
+        REQUIRE(hasUse(*fn, loadKOneOp, addVarOp));
     }
 }
 
@@ -377,6 +416,8 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "for_loop_and_backward_input")
         L2: RETURN R0 0
         // Block 6 (exit)
     */
+
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
     // CFG Blocks
     REQUIRE_EQ(fn->blocks.size(), 6);
@@ -468,6 +509,8 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "nested_loops")
         // Block 8 (exit)
     */
 
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
+
     // CFG Blocks
     REQUIRE_EQ(fn->blocks.size(), 8);
     BcBlock& entry = fn->blockOp(fn->entryBlock);
@@ -532,6 +575,8 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_fixed")
 
     // CFG Blocks
     BcBlock& entry = fn->blockOp(fn->entryBlock);
+
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
     // Instructions
     REQUIRE(checkOps(*fn, entry.ops, {LOP_GETGLOBAL, LOP_CALLFB, LOP_MOVE, LOP_MOVE, LOP_RETURN}));
@@ -598,6 +643,8 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_variadic")
         // Block 4 (exit)
     */
 
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
+
     // CFG Blocks
     REQUIRE_EQ(fn->blocks.size(), 4);
     BcBlock& entry = fn->blockOp(fn->entryBlock);
@@ -655,6 +702,8 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "variadic_function")
     REQUIRE_EQ(fn->blocks.size(), 2);
     BcBlock& entry = fn->blockOp(fn->entryBlock);
 
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
+
     // Instructions
     REQUIRE(checkOps(
         *fn,
@@ -706,6 +755,7 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "variadic_function")
     }
 }
 
+
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "tables_strings_and_fastcall")
 {
     auto fn = buildBytecode(
@@ -742,6 +792,8 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "tables_strings_and_fastcall")
     REQUIRE_EQ(fn->blocks.size(), 2);
     BcBlock& entry = fn->blockOp(fn->entryBlock);
 
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
+
     // Instructions
     REQUIRE(checkOps(
         *fn,
@@ -763,6 +815,101 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "tables_strings_and_fastcall")
     ));
     {
     }
+}
+
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "def_use_chains")
+{
+    auto fn = buildBytecode(R"(
+        local function fn(a, b, c)
+            local s = a + b
+            local x = s + c
+            local y = s + a
+            return x + y
+        end
+    )");
+
+    /*
+        // Block 1 (entry)
+        ADD R3 R0 R1   ; s = a + b
+        ADD R4 R3 R2   ; x = s + c
+        ADD R5 R3 R0   ; y = s + a
+        ADD R4 R4 R5   ; r = x + y
+        RETURN R4 1
+        // Block 2 (exit)
+    */
+
+    REQUIRE(fn);
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
+
+    REQUIRE_EQ(fn->blocks.size(), 2);
+    BcBlock& entry = fn->blockOp(fn->entryBlock);
+    REQUIRE(checkOps(*fn, entry.ops, {LOP_ADD, LOP_ADD, LOP_ADD, LOP_ADD, LOP_RETURN}));
+
+    BcOp sOp = getOp(entry, 0);
+    BcOp xOp = getOp(entry, 1);
+    BcOp yOp = getOp(entry, 2);
+    BcOp rOp = getOp(entry, 3);
+    BcOp retOp = getOp(entry, 4);
+
+    // `s` flows only into the two ADDs that read it, once each, as their first operand
+    BcInst& s = fn->instOp(sOp);
+    REQUIRE_EQ(s.uses.size(), 2);
+    REQUIRE_EQ(countUses(*fn, sOp, xOp), 1);
+    REQUIRE_EQ(countUses(*fn, sOp, yOp), 1);
+    REQUIRE_EQ(fn->instOp(xOp).ops[0], sOp);
+    REQUIRE_EQ(fn->instOp(yOp).ops[0], sOp);
+
+    // x and y are each consumed exactly once, by the final ADD
+    BcInst& r = fn->instOp(rOp);
+    REQUIRE_EQ(r.ops.size(), 2);
+    REQUIRE_EQ(r.ops[0], xOp);
+    REQUIRE_EQ(r.ops[1], yOp);
+    REQUIRE_EQ(countUses(*fn, xOp, rOp), 1);
+    REQUIRE_EQ(countUses(*fn, yOp, rOp), 1);
+    REQUIRE_EQ(fn->instOp(xOp).uses.size(), 1);
+    REQUIRE_EQ(fn->instOp(yOp).uses.size(), 1);
+
+    // the final ADD is consumed only by the RETURN
+    BcInst& ret = fn->instOp(retOp);
+    REQUIRE_EQ(ret.op, LOP_RETURN);
+    REQUIRE_EQ(ret.ops.back(), rOp);
+    REQUIRE_EQ(r.uses.size(), 1);
+    REQUIRE(hasUse(*fn, rOp, retOp));
+}
+
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "loop_invariant_inst_phi_collapse")
+{
+    auto fn = buildBytecode(R"(
+        local function fn(a, b)
+            local s = a + b
+            local acc = 0
+            repeat acc += s until acc < 100
+            return acc
+        end
+    )");
+
+    REQUIRE(fn);
+    REQUIRE_EQ(verifyUseConsistency(*fn), true);
+
+    BcBlock& entry = fn->blockOp(fn->entryBlock);
+    BcOp sOp = getOp(entry, 0);
+    BcInst& s = fn->instOp(sOp);
+    REQUIRE_EQ(s.op, LOP_ADD);
+
+    int consumers = 0;
+    for (BcBlock& block : fn->blocks)
+    {
+        if ((block.flags & BcBlockFlag::Dead) != 0)
+            continue;
+        for (BcOp instOp : block.ops)
+            for (BcOp operand : fn->instOp(instOp).ops)
+                if (operand == sOp)
+                {
+                    REQUIRE(hasUse(*fn, sOp, instOp));
+                    consumers++;
+                }
+    }
+    REQUIRE_FALSE(consumers == 0);
 }
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "bytecode_roundtrip")

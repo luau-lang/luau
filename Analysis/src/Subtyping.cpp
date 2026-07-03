@@ -29,6 +29,8 @@ LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_FASTFLAGVARIABLE(LuauSubtypeUnionsTogether)
 LUAU_FASTFLAGVARIABLE(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAGVARIABLE(LuauDontBindOptionalGenericToNil)
+LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 
 namespace Luau
 {
@@ -946,7 +948,9 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = isCovariantWith(env, p, scope);
     else if (auto p = get2<TableType, TableType>(subTy, superTy))
     {
-        const bool forceCovariantTest = uniqueTypes != nullptr && uniqueTypes->contains(subTy);
+        const bool forceCovariantTest = FFlag::LuauBidirectionalInferenceSimplifyTables
+            ? false
+            : uniqueTypes != nullptr && uniqueTypes->contains(subTy);
         result = isCovariantWith(env, p.first, p.second, forceCovariantTest, scope);
         if (result.isSubtype && !p.first->indexer && p.second->indexer && p.first->state != TableState::Sealed)
         {
@@ -1978,6 +1982,9 @@ SubtypingResult Subtyping::isCovariantWith(
 {
     SubtypingResult result{true};
 
+    // Either this flag is off or `forceCovariantTest` is false.
+    LUAU_ASSERT(!FFlag::LuauBidirectionalInferenceSimplifyTables || !forceCovariantTest);
+
     if (subTable->props.empty() && !subTable->indexer && subTable->state == TableState::Sealed && superTable->indexer)
     {
         // While it is certainly the case that {} </: {T}, the story is a little bit different for {| |} <: {T}
@@ -2071,7 +2078,20 @@ SubtypingResult Subtyping::isCovariantWith(
         }
         else if (FFlag::LuauSubtypingMissingPropertiesAsNil)
         {
-            SubtypingResult result = isCovariantWith(env, Property::readonly(builtinTypes->nilType), superProp, name, forceCovariantTest, scope);
+            SubtypingResult result;
+
+            if (FFlag::LuauImproveUniqueTableWidthSubtyping)
+            {
+                if (forceCovariantTest)
+                    result = isCovariantWith(env, Property::rw(builtinTypes->nilType), superProp, name, forceCovariantTest, scope);
+                else
+                    result = isCovariantWith(env, Property::readonly(builtinTypes->nilType), superProp, name, forceCovariantTest, scope);
+            }
+            else
+            {
+                result = isCovariantWith(env, Property::readonly(builtinTypes->nilType), superProp, name, forceCovariantTest, scope);
+            }
+
             // We must ignore the actual reasoning from here because the subtype doesn't have a property to traverse into later.
             // If there is a type error, we want to point at this spot as being responsible for it!
             result.reasoning.clear();
