@@ -74,6 +74,8 @@ local n = tonumber(arg and arg[1]) or 8
 local sum, flips = fannkuch(n)
 print(sum, "\nPfannkuchen(", n, ") = ", flips, "\n")
 
+assert(n ~= 8 or (sum == 1616 and flips == 22))
+
 end
 
 bench.runCode(test, "fannkuchen-redux")

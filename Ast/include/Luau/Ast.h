@@ -696,7 +696,7 @@ class AstExprInstantiate : public AstExpr
 public:
     LUAU_RTTI(AstExprInstantiate)
 
-    AstExprInstantiate(const Location& location, AstExpr* expr, AstArray<AstTypeOrPack> typePack);
+    AstExprInstantiate(const Location& location, AstExpr* expr, AstArray<AstTypeOrPack> types);
 
     void visit(AstVisitor* visitor) override;
 
@@ -957,13 +957,21 @@ class AstStatLocalFunction : public AstStat
 public:
     LUAU_RTTI(AstStatLocalFunction)
 
-    AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func, bool isConst = false);
+    AstStatLocalFunction(
+        const Location& location,
+        AstLocal* name,
+        AstExprFunction* func,
+        bool isConst,
+        Position constKeywordBegin
+    );
 
     void visit(AstVisitor* visitor) override;
 
     AstLocal* name;
     AstExprFunction* func;
     bool isConst;
+    // Position of the `const` keyword; Position::missing() when isConst is false.
+    Position constKeywordBegin;
 };
 
 class AstStatTypeAlias : public AstStat

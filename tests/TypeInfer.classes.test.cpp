@@ -14,7 +14,6 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass);
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
-LUAU_FASTFLAG(LuauConst2)
 
 namespace
 {
@@ -313,7 +312,7 @@ end
 
 TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class")
 {
-    ScopedFastFlag _[3]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportValueTypecheck, true}};
+    ScopedFastFlag _[2]{{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportValueTypecheck, true}};
 
     fileResolver.source["game/A"] = R"(
         export class Point
@@ -336,7 +335,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class")
 
 TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class_but_not_a_class")
 {
-    ScopedFastFlag _[3]{{FFlag::LuauConst2, true}, {FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportValueTypecheck, true}};
+    ScopedFastFlag _[2]{{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportValueTypecheck, true}};
 
     fileResolver.source["game/A"] = R"(
         export class Point

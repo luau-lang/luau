@@ -137,7 +137,9 @@ struct FunctionCheckConstraint
 // then FreeType is replaced by its lower bound
 //
 // else FreeType is replaced by PrimitiveType
-struct PrimitiveTypeConstraint
+//
+// Clip with LuauRemovePrimitiveTypeConstraint
+struct DEPRECATED_PrimitiveTypeConstraint
 {
     TypeId freeType;
 
@@ -324,7 +326,7 @@ using ConstraintV = Variant<
     TypeAliasExpansionConstraint,
     FunctionCallConstraint,
     FunctionCheckConstraint,
-    PrimitiveTypeConstraint,
+    DEPRECATED_PrimitiveTypeConstraint,
     HasPropConstraint,
     HasIndexerConstraint,
     AssignPropConstraint,

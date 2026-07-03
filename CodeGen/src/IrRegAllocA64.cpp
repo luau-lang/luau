@@ -11,6 +11,8 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
+LUAU_FASTFLAGVARIABLE(DebugCodegenLimitRegs)
+
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAG(LuauCodegenNoEcbData)
 
@@ -121,6 +123,20 @@ IrRegAllocA64::IrRegAllocA64(
 
         for (int i = p.first.index; i <= p.second.index; ++i)
             set.base |= 1u << i;
+    }
+
+    if (FFlag::DebugCodegenLimitRegs)
+    {
+        auto setRegisterLimit = [](Set& set, int limit)
+        {
+            uint32_t low = set.base;
+            for (int i = 0; i < limit && low != 0; ++i)
+                low &= low - 1; // Clear the lowest set bit in the mask
+            set.base &= ~low; // All the registers we cleared are the ones we can use
+        };
+
+        setRegisterLimit(gpr, kLimitedGprRegCount);
+        setRegisterLimit(simd, kLimitedSimdRegCount);
     }
 
     gpr.free = gpr.base;

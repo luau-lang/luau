@@ -6,7 +6,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauVisitCallTypeArgsInDfg)
+LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
 
@@ -80,6 +80,8 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_correct")
 
 TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
 {
+    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
+
     SUBCASE_BOTH_SOLVERS()
     {
         CheckResult result = check(R"(
@@ -94,17 +96,7 @@ TEST_CASE_FIXTURE(Fixture, "as_stmt_incorrect")
         if (!FFlag::DebugLuauForceOldSolver)
         {
             LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-            // clang-format off
-            std::string expected =
-                "Expected this to be 'boolean | number', but got 'string';\n"
-                "this is because\n"
-                "\t * the 1st component of the union is `number`, and `string` is not a subtype of `number`\n"
-                "\t * the 2nd component of the union is `boolean`, and `string` is not a subtype of `boolean`"
-            ;
-            // clang-format on
-
-            CHECK_LONG_STRINGS_EQ(expected, toString(result.errors.at(0)));
+            CHECK_EQ("Expected this to be 'boolean | number', but got 'string'", toString(result.errors.at(0)));
         }
         else
         {
@@ -536,10 +528,6 @@ TEST_CASE_FIXTURE(Fixture, "replacing_generic_with_generic")
 
 TEST_CASE_FIXTURE(Fixture, "typeof_in_method_call_type_args_no_crash")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauVisitCallTypeArgsInDfg, true},
-    };
-
     CheckResult result = check(R"(
         local t = {}
         function t:f<T, U>() end
@@ -560,9 +548,6 @@ TEST_CASE_FIXTURE(Fixture, "typeof_in_method_call_type_args_no_crash")
 
 TEST_CASE_FIXTURE(Fixture, "typeof_local_in_type_pack_no_crash")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauVisitCallTypeArgsInDfg, true},
-    };
 
     CheckResult result = check(R"(
         local t = {}

@@ -14,7 +14,6 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauDirectFieldGet)
-LUAU_FASTFLAG(LuauClosureUsageCounter)
 
 /*
 ** Main thread combines a thread state and the global state
@@ -42,6 +41,7 @@ static void stack_init(lua_State* L1, lua_State* L)
     L1->stack_last = stack + (L1->stacksize - EXTRA_STACK);
     // initialize first ci
     L1->ci->func = L1->top;
+    L1->ci->p = nullptr;
     setnilvalue(L1->top++); // `function' entry for this `ci'
     L1->base = L1->ci->base = L1->top;
     L1->ci->top = L1->top + LUA_MINSTACK;
@@ -136,15 +136,6 @@ void luaE_freethread(lua_State* L, lua_State* L1, lua_Page* page)
     luaM_freegco(L, L1, sizeof(lua_State), L1->memcat, page);
 }
 
-void cleanupcistack(lua_State* L)
-{
-    for (CallInfo* lastci = L->ci; lastci != L->base_ci; lastci--)
-    {
-        LUAU_ASSERT(clvalue(lastci->func)->usage > 0);
-        clvalue(lastci->func)->usage--;
-    }
-}
-
 void lua_resetthread(lua_State* L)
 {
     api_check(L, !L->isactive);
@@ -152,11 +143,10 @@ void lua_resetthread(lua_State* L)
 
     // close upvalues before clearing anything
     luaF_close(L, L->stack);
-    if (FFlag::LuauClosureUsageCounter)
-        cleanupcistack(L);
 
     // clear call frames
     CallInfo* ci = L->base_ci;
+    ci->p = nullptr;
     ci->func = L->stack;
     ci->base = ci->func + 1;
     ci->top = ci->base + LUA_MINSTACK;

@@ -182,14 +182,16 @@ T* getMutable(TypeFunctionTypePackId tv)
 
 struct TypeFunctionTableIndexer
 {
-    TypeFunctionTableIndexer(TypeFunctionTypeId keyType, TypeFunctionTypeId valueType)
+    TypeFunctionTableIndexer(TypeFunctionTypeId keyType, TypeFunctionTypeId valueType, bool isReadOnly = false)
         : keyType(keyType)
         , valueType(valueType)
+        , isReadOnly(isReadOnly)
     {
     }
 
     TypeFunctionTypeId keyType;
     TypeFunctionTypeId valueType;
+    bool isReadOnly = false;
 };
 
 struct TypeFunctionProperty

@@ -11,8 +11,6 @@
 
 #include "lstate.h"
 
-LUAU_FASTFLAG(LuauCodegenFreeBlocks)
-LUAU_FASTFLAGVARIABLE(LuauCodegenSuggestArgumentRegisterX64)
 
 /* An overview of native environment stack setup that we are making in the entry function:
  * Each line is 8 bytes, stack grows downwards.
@@ -75,24 +73,10 @@ static EntryLocations buildEntryFunction(AssemblyBuilderX64& build, UnwindBuilde
     locations.start = build.setLabel();
     unwind.startFunction();
 
-    RegisterX64 rArg1{};
-    RegisterX64 rArg2{};
-    RegisterX64 rArg3{};
-    RegisterX64 rArg4{};
-    if (FFlag::LuauCodegenSuggestArgumentRegisterX64)
-    {
-        rArg1 = IrCallWrapperX64::suggestArgumentRegister<0>(SizeX64::qword, build);
-        rArg2 = IrCallWrapperX64::suggestArgumentRegister<1>(SizeX64::qword, build);
-        rArg3 = IrCallWrapperX64::suggestArgumentRegister<2>(SizeX64::qword, build);
-        rArg4 = IrCallWrapperX64::suggestArgumentRegister<3>(SizeX64::qword, build);
-    }
-    else
-    {
-        rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
-        rArg2 = (build.abi == ABIX64::Windows) ? rdx : rsi;
-        rArg3 = (build.abi == ABIX64::Windows) ? r8 : rdx;
-        rArg4 = (build.abi == ABIX64::Windows) ? r9 : rcx;
-    }
+    RegisterX64 rArg1 = IrCallWrapperX64::suggestArgumentRegister<0>(SizeX64::qword, build);
+    RegisterX64 rArg2 = IrCallWrapperX64::suggestArgumentRegister<1>(SizeX64::qword, build);
+    RegisterX64 rArg3 = IrCallWrapperX64::suggestArgumentRegister<2>(SizeX64::qword, build);
+    RegisterX64 rArg4 = IrCallWrapperX64::suggestArgumentRegister<3>(SizeX64::qword, build);
 
     // Save common non-volatile registers
     if (build.abi == ABIX64::SystemV)
@@ -219,33 +203,13 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
 
     CODEGEN_ASSERT(build.data.empty());
 
-    uint8_t* codeStart = nullptr;
+    codeGenContext.gateAllocationData =
+        codeGenContext.codeAllocator.allocate(build.data.data(), int(build.data.size()), build.code.data(), int(build.code.size()));
 
-    if (FFlag::LuauCodegenFreeBlocks)
-    {
-        codeGenContext.gateAllocationData =
-            codeGenContext.codeAllocator.allocate(build.data.data(), int(build.data.size()), build.code.data(), int(build.code.size()));
+    if (!codeGenContext.gateAllocationData.start)
+        return false;
 
-        if (!codeGenContext.gateAllocationData.start)
-            return false;
-
-        codeStart = codeGenContext.gateAllocationData.codeStart;
-    }
-    else
-    {
-        if (!codeGenContext.codeAllocator.allocate_DEPRECATED(
-                build.data.data(),
-                int(build.data.size()),
-                build.code.data(),
-                int(build.code.size()),
-                codeGenContext.gateData_DEPRECATED,
-                codeGenContext.gateDataSize_DEPRECATED,
-                codeStart
-            ))
-        {
-            return false;
-        }
-    }
+    uint8_t* codeStart = codeGenContext.gateAllocationData.codeStart;
 
     // Set the offset at the beginning so that functions in new blocks will not overlay the locations
     // specified by the unwind information of the entry function

@@ -19,9 +19,11 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver);
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
+LUAU_FASTFLAG(LuauDontBindOptionalGenericToNil)
+LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 
 namespace
 {
@@ -206,7 +208,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_cyclically_dependent_scr
 
 TEST_CASE_FIXTURE(FrontendFixture, "export_value_modules_have_typed_require_surface")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}, {FFlag::LuauExportValueTypecheck, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportValueTypecheck, true}};
 
     fileResolver.source["game/ModuleA"] = R"(
         --!strict
@@ -1914,6 +1916,45 @@ TEST_CASE_FIXTURE(FrontendFixture, "parse_types")
 
     CHECK_THROWS_AS(parseType("number, boolean?) -> string"), InternalCompilerError);
     CHECK_THROWS_AS(parseType("{size: number?"), InternalCompilerError);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "generic_P_widening_with_cross_module_recursive_type")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDontBindOptionalGenericToNil, true},
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+    };
+
+    // Module A: exports a recursive type and a component that uses it.
+    fileResolver.source["game/Gui/Modules/A"] = R"(
+        --!strict
+        type Element = { key: (number | string)?, props: any?, ref: any, type: any }
+        type NodeArray = { (NodeArray | boolean | number | string | Element | { [string]: (NodeArray | boolean | number | string | Element)?, UNIQUE_TAG: any? })? }
+        export type Node = string | number | boolean | Element | NodeArray | { [string]: (NodeArray | boolean | number | string | Element)?, UNIQUE_TAG: any? }
+        export type BaseProps = { tag: string?, children: Node? }
+        export type ExtraProps = { size: number? }
+        local function View(props: BaseProps & ExtraProps)
+            return nil
+        end
+        return View
+    )";
+
+    // Module B: imports and calls createElement.
+    fileResolver.source["game/Gui/Modules/B"] = R"(
+        --!strict
+        local Modules = game:GetService('Gui').Modules
+        local View = require(Modules.A)
+        local function createElement<P>(component: (P) -> any, props: P?): any
+            return nil
+        end
+        local _x = createElement(View, { tag = "hello" })
+    )";
+
+    CheckResult result = getFrontend().check("game/Gui/Modules/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

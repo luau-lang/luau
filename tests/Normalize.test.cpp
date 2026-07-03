@@ -12,8 +12,6 @@
 #include <memory>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTINT(LuauNormalizeIntersectionLimit)
-LUAU_FASTINT(LuauNormalizeUnionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 

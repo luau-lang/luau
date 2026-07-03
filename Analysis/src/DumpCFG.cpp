@@ -8,7 +8,7 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogCFG)
 LUAU_FASTFLAGVARIABLE(DebugLuauDumpCFGJson)
-using namespace CFG;
+using namespace Luau::CFG;
 
 namespace Luau
 {
@@ -28,18 +28,18 @@ static std::string dumpDef(Definition* def)
 // Walks an expression tree, printing locals as their resolved definition versions.
 struct ExprPrinter : AstVisitor
 {
-    const DenseHashMap<AstExpr*, Definition*>& useDefs;
+    NotNull<const ControlFlowGraph> cfg;
     std::string result;
 
-    explicit ExprPrinter(const DenseHashMap<AstExpr*, Definition*>& useDefs)
-        : useDefs(useDefs)
+    explicit ExprPrinter(NotNull<const ControlFlowGraph> cfg)
+        : cfg(cfg)
     {
     }
 
     bool visit(AstExprLocal* node) override
     {
-        if (auto* def = useDefs.find(node))
-            result += dumpDef(*def);
+        if (Definition* def = cfg->getUseDef(node))
+            result += dumpDef(def);
         else
             result += getLocalName(node->local) + "?";
         return false;
@@ -94,43 +94,11 @@ struct ExprPrinter : AstVisitor
     }
 };
 
-static std::string dumpExpr(AstExpr* expr, const DenseHashMap<AstExpr*, Definition*>& useDefs)
+static std::string dumpExpr(AstExpr* expr, NotNull<const ControlFlowGraph> cfg)
 {
-    ExprPrinter printer(useDefs);
+    ExprPrinter printer(cfg);
     expr->visit(&printer);
     return printer.result;
-}
-
-static std::string dumpRefinement(const CFGRefinement::Refinement& r)
-{
-    return Luau::visit(
-        overloaded{
-            [](const CFGRefinement::Proposition& p) -> std::string
-            {
-                std::string lhs = dumpDef(p.ptr);
-                if (p.type)
-                {
-                    std::string guard = p.isTypeof ? "typeof" : "type";
-                    const char* cmp = p.sense ? "==" : "~=";
-                    return guard + "(" + lhs + ") " + cmp + " \"" + *p.type + "\"";
-                }
-                return lhs + (p.sense ? " truthy" : " falsy");
-            },
-            [](const CFGRefinement::Conjunction& c) -> std::string
-            {
-                return "(" + dumpRefinement(*c.lhs) + " && " + dumpRefinement(*c.rhs) + ")";
-            },
-            [](const CFGRefinement::Disjunction& d) -> std::string
-            {
-                return "(" + dumpRefinement(*d.lhs) + " || " + dumpRefinement(*d.rhs) + ")";
-            },
-            [](const CFGRefinement::Negation& n) -> std::string
-            {
-                return "!(" + dumpRefinement(*n.refinement) + ")";
-            },
-        },
-        r
-    );
 }
 
 static AstExpr* findRhsExpr(Symbol sym, AstStatLocal* source)
@@ -172,7 +140,7 @@ static AstExpr* findRhsExpr(Symbol sym, AstStatAssign* source)
     return nullptr;
 }
 
-static std::string dumpInstruction(const Instruction* inst, const DenseHashMap<AstExpr*, Definition*>& useDefs)
+static std::string dumpInstruction(const Instruction* inst, NotNull<const ControlFlowGraph> cfg)
 {
     return Luau::visit(
         overloaded{
@@ -180,14 +148,14 @@ static std::string dumpInstruction(const Instruction* inst, const DenseHashMap<A
             {
                 std::string result = "local " + dumpDef(decl.def);
                 if (AstExpr* rhs = findRhsExpr(decl.def->sym, decl.source))
-                    result += " = " + dumpExpr(rhs, useDefs);
+                    result += " = " + dumpExpr(rhs, cfg);
                 return result;
             },
             [&](const Assign& assign) -> std::string
             {
                 std::string result = dumpDef(assign.def);
                 if (AstExpr* rhs = findRhsExpr(assign.def->sym, assign.source))
-                    result += " = " + dumpExpr(rhs, useDefs);
+                    result += " = " + dumpExpr(rhs, cfg);
                 return result;
             },
             [](const Join& join) -> std::string
@@ -204,19 +172,36 @@ static std::string dumpInstruction(const Instruction* inst, const DenseHashMap<A
             },
             [](const Refine& flow) -> std::string
             {
-                return dumpDef(flow.definition) + " = refine(" + dumpRefinement(*flow.prop) + ")";
+                std::string rhs;
+                if (flow.type)
+                {
+                    const char* guard = flow.isTypeof ? "typeof" : "type";
+                    const char* cmp = flow.sense ? "==" : "~=";
+                    rhs = std::string(guard) + "(" + dumpDef(flow.toRefine) + ") " + cmp + " \"" + *flow.type + "\"";
+                }
+                else
+                {
+                    rhs = dumpDef(flow.toRefine) + " " + (flow.sense ? "truthy" : "falsy");
+                }
+                return dumpDef(flow.definition) + " = refine(" + rhs + ")";
+            },
+            [](const Dead&) -> std::string
+            {
+                return "<dead>";
             },
         },
         *inst
     );
 }
 
-static std::string dumpBlock(const Block& block, const DenseHashMap<AstExpr*, Definition*>& useDefs)
+static std::string dumpBlock(const Block& block, NotNull<const ControlFlowGraph> cfg)
 {
     std::string result;
     for (const Instruction* inst : block.getInstructions())
     {
-        result += "  " + dumpInstruction(inst, useDefs) + "\n";
+        if (inst->get_if<Dead>())
+            continue;
+        result += "  " + dumpInstruction(inst, cfg) + "\n";
     }
     return result;
 }
@@ -268,7 +253,7 @@ std::string dumpCFG(const ControlFlowGraph& cfg)
         }
 
         result << ":\n";
-        result << dumpBlock(*block, cfg.useDefs);
+        result << dumpBlock(*block, NotNull{&cfg});
     }
     return result.str();
 }
@@ -416,7 +401,7 @@ std::string dumpCFGJson(const ControlFlowGraph& cfg)
             if (j > 0)
                 out += ',';
             out += "{\"id\":" + std::to_string(nextInstrId++);
-            out += ",\"opcode\":\"" + jsonEscape(dumpInstruction(instructions[j], cfg.useDefs)) + "\"";
+            out += ",\"opcode\":\"" + jsonEscape(dumpInstruction(instructions[j], NotNull{&cfg})) + "\"";
             out += ",\"attributes\":[],\"inputs\":[],\"uses\":[],\"memInputs\":[],\"type\":\"\"}";
         }
         out += "]}";

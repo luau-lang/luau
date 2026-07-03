@@ -102,6 +102,23 @@ protected:
         if (inputIdx >= inst->ops.size())
             inst->ops.resize(inputIdx + 1);
         inst->ops[inputIdx] = op;
+
+        if (op.kind == BcOpKind::Inst)
+        {
+            BcRef<BcInst> opInst = graph.inst(op);
+            if (std::find(opInst->uses.begin(), opInst->uses.end(), inst.op) == opInst->uses.end())
+            {
+                opInst->uses.push_back(inst.op);
+            }
+        }
+        else if (op.kind == BcOpKind::Phi)
+        {
+            BcRef<BcPhi> opPhi = graph.phi(op);
+            if (std::find(opPhi->uses.begin(), opPhi->uses.end(), inst.op) == opPhi->uses.end())
+            {
+                opPhi->uses.push_back(inst.op);
+            }
+        }
     }
 
     BcRef<VmConst> getVmConst(uint32_t inputIdx)
@@ -296,6 +313,19 @@ struct BcSetList : public BcInstHelper<VmConst, BcSetList<VmConst>>
     std::vector<BcOp> params()
     {
         return this->sliceInputs(kParamStartInput);
+    }
+};
+
+template<typename VmConst = BcVmConst>
+struct BcGetImport : public BcInstHelper<VmConst, BcGetImport<VmConst>>
+{
+    static const LuauOpcode opcode = LOP_GETIMPORT;
+    VM_CONST(Import, 0)
+    INT_IMM(PathLength, 1)
+    static const uint32_t kPathStartInput = 2;
+    std::vector<BcOp> importPath()
+    {
+        return this->sliceInputs(kPathStartInput);
     }
 };
 

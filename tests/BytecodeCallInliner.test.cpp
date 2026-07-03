@@ -2,6 +2,7 @@
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeWire.h"
+#include "Luau/BytecodeValidation.h"
 #include "Luau/BytecodeCallInliner.h"
 #include "Luau/Compiler.h"
 #include "Luau/Parser.h"
@@ -56,6 +57,7 @@ struct BytecodeInlinerFixture
         auto res = compileAndInline(src, callIdx);
 
         REQUIRE(res);
+        REQUIRE_EQ(verifyUseConsistency(res->second), true);
 
         BytecodeBuilder bcb;
         bcb.setDumpFlags(BytecodeBuilder::Dump_Code);
@@ -83,6 +85,35 @@ struct BytecodeInlinerFixture
             return {{*inlinee, *caller}};
         }
         return {};
+    }
+
+    std::vector<CompTimeBcFunction> buildGraphs(std::string_view src, int optimizationLevel = 1)
+    {
+        Allocator allocator;
+        AstNameTable names(allocator);
+        ParseResult result = Parser::parse(src.data(), src.size(), names, allocator, ParseOptions{});
+        REQUIRE(result.errors.empty());
+
+        BytecodeBuilder bcb;
+        bcb.setDumpFlags(BytecodeBuilder::Dump_Code);
+        CompileOptions opts;
+        opts.optimizationLevel = optimizationLevel;
+        compileOrThrow(bcb, result, names, opts);
+
+        strings = extractStringTable(bcb);
+        std::vector<std::string_view> table;
+        table.reserve(strings.size());
+        for (std::string& s : strings)
+            table.push_back(s);
+
+        std::vector<CompTimeBcFunction> graphs;
+        for (uint32_t fi = 0; fi < bcb.getFunctionCount(); fi++)
+        {
+            std::optional<CompTimeBcFunction> fn = Bytecode::fromFunctionBytecode(bcb.getFunctionData(fi), table);
+            REQUIRE(fn);
+            graphs.push_back(std::move(*fn));
+        }
+        return graphs;
     }
 
     std::optional<BytecodeRes> getFunctionBytecode(std::string_view src, int optimizationLevel = 0)
@@ -184,7 +215,7 @@ CMPPROTO R1 #0 L0
 ADD R4 R2 R3
 MOVE R1 R4
 JUMP L1
-L0: CALLFB R1 2 1 [0]
+L0: CALLFB R1 2 1 [-1]
 L1: LOADK R3 K1 [2]
 ADD R2 R1 R3
 RETURN R2 1
@@ -234,7 +265,7 @@ LOADK R5 K1 [42]
 L0: ADD R4 R2 R5
 MOVE R1 R4
 JUMP L2
-L1: CALLFB R1 1 1 [0]
+L1: CALLFB R1 1 1 [-1]
 L2: LOADK R3 K0 [2]
 ADD R2 R1 R3
 RETURN R2 1
@@ -275,7 +306,7 @@ CMPPROTO R0 #0 L0
 MOVE R0 R1
 LOADNIL R1
 RETURN R1 1
-L0: CALLFB R0 1 2 [0]
+L0: CALLFB R0 1 2 [-1]
 RETURN R1 1
 )"
     );
@@ -335,8 +366,8 @@ GETTABLEKS R6 R3 K0 ['v']
 ADD R5 R6 R4
 MOVE R2 R5
 JUMP L1
-L0: NAMECALL R2 R1 K1 ['inlinee']
-CALLFB R2 2 1 [0]
+L0: NAMECALL R2 R3 K1 ['inlinee']
+CALLFB R2 2 1 [-1]
 L1: LOADK R4 K5 [2]
 ADD R3 R2 R4
 RETURN R3 1
@@ -392,7 +423,7 @@ JUMP L2
 L0: ADD R4 R2 R3
 MOVE R1 R4
 JUMP L2
-L1: CALLFB R1 2 1 [0]
+L1: CALLFB R1 2 1 [-1]
 L2: LOADK R3 K1 [2]
 ADD R2 R1 R3
 RETURN R2 1
@@ -451,7 +482,7 @@ LOADK R5 K3 [12]
 MOVE R1 R4
 MOVE R2 R5
 JUMP L2
-L1: CALLFB R1 2 1 [0]
+L1: CALLFB R1 2 1 [-1]
 L2: LOADK R3 K1 [2]
 ADD R2 R1 R3
 RETURN R2 1
@@ -531,7 +562,7 @@ JUMP L2
 L0: ADD R7 R5 R6
 MOVE R1 R7
 JUMP L2
-L1: CALLFB R1 2 1 [0]
+L1: CALLFB R1 2 1 [-1]
 L2: LOADK R3 K1 [2]
 ADD R2 R1 R3
 RETURN R2 1
@@ -579,7 +610,7 @@ MOVE R5 R3
 ADD R6 R2 R5
 MOVE R1 R6
 JUMP L1
-L0: CALLFB R1 2 1 [0]
+L0: CALLFB R1 2 1 [-1]
 L1: LOADK R3 K1 [2]
 ADD R2 R1 R3
 RETURN R2 1
@@ -633,7 +664,7 @@ ADD R9 R10 R6
 ADD R8 R9 R7
 MOVE R1 R8
 JUMP L1
-L0: CALLFB R1 2 1 [0]
+L0: CALLFB R1 2 1 [-1]
 L1: LOADK R3 K1 [2]
 ADD R2 R1 R3
 RETURN R2 1
@@ -694,7 +725,7 @@ LOADK R6 K5 [3]
 GETTABLE R5 R4 R6
 MOVE R0 R5
 RETURN R0 1
-L0: CALLFB R0 3 1 [0]
+L0: CALLFB R0 3 1 [-1]
 RETURN R0 1
 )"
     );
@@ -752,7 +783,7 @@ LOADK R7 K4 [3]
 GETTABLE R6 R5 R7
 MOVE R0 R6
 RETURN R0 1
-L0: CALLFB R0 3 1 [0]
+L0: CALLFB R0 3 1 [-1]
 RETURN R0 1
 )"
     );
@@ -820,7 +851,7 @@ FORNLOOP R7 L1
 L2: FORNLOOP R4 L0
 L3: MOVE R1 R3
 RETURN R1 1
-L4: CALLFB R1 1 1 [0]
+L4: CALLFB R1 1 1 [-1]
 RETURN R1 1
 )"
     );
@@ -877,12 +908,96 @@ LOADK R8 K1 [1]
 ADD R7 R6 R8
 MOVE R5 R7
 JUMP L2
-L1: CALLFB R5 1 1 [0]
+L1: CALLFB R5 1 1 [-1]
 L2: ADD R1 R1 R5
 FORNLOOP R2 L0
 L3: RETURN R1 1
 )"
     );
+}
+
+// Regression for the SCCP loop-exit phi fix
+// A register defined inside a loop and used several blocks downstream of the loop exit must resolve through a loop-exit phi, not the pre-loop LOADNIL
+// Without the phi, SCCP sees a constant nil for `y` and folds `if not y` the wrong way
+// In the cdx benchmark this caused infinite recursion
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "graph_builds_loop_exit_phi_for_downstream_use")
+{
+    // `y` is initialized to nil before the loop, reassigned inside it, and tested only after several intervening blocks (`local z`, `if flag`), so
+    // the use is downstream of the loop exit rather than in an immediate successor
+    std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
+        function treeInsertLike(root, key, flag)
+            local y = nil
+            local x = root
+            while x do
+                y = x
+                local cmp = key - x.k
+                if cmp < 0 then
+                    x = x.left
+                elseif cmp > 0 then
+                    x = x.right
+                else
+                    return "found"
+                end
+            end
+            local z = { k = key }
+            if flag then
+                z.tag = 1
+            else
+                z.tag = 2
+            end
+            if not y then
+                return "root"
+            else
+                return "child"
+            end
+        end
+    )");
+
+    // pick the one that actually contains a loop
+    CompTimeBcFunction* loopFn = nullptr;
+    BcOp header;
+    for (CompTimeBcFunction& fn : graphs)
+    {
+        for (uint32_t bi = 0; bi < fn.blocks.size() && !loopFn; bi++)
+        {
+            for (const BcBlockEdge& e : fn.blocks[bi].predecessors)
+            {
+                if (e.kind == BcBlockEdgeKind::Loop)
+                {
+                    loopFn = &fn;
+                    header = BcOp{BcOpKind::Block, bi};
+                    break;
+                }
+            }
+        }
+    }
+    REQUIRE(loopFn != nullptr);
+
+    auto isLoadNil = [&](BcOp op)
+    {
+        return op.kind == BcOpKind::Inst && loopFn->instOp(op).op == LOP_LOADNIL;
+    };
+
+    // the exit phi for `y` (LOADNIL merged with the in-loop MOVE) is anchored in the loop header
+    bool headerHasExitPhi = false;
+    for (BcOp phiOp : loopFn->blockOp(header).phis) // NOLINT
+    {
+        BcPhi& phi = loopFn->phiOp(phiOp);
+        if (phi.ops.size() >= 2 && std::any_of(phi.ops.begin(), phi.ops.end(), isLoadNil))
+            headerHasExitPhi = true;
+    }
+    CHECK(headerHasExitPhi);
+
+    // the only LOADNIL is `y = nil`, and should not exist after the fix
+    for (uint32_t bi = 0; bi < loopFn->blocks.size(); bi++)
+        for (BcOp instOp : loopFn->blocks[bi].ops)
+        {
+            BcInst& inst = loopFn->instOp(instOp);
+            if (inst.op != LOP_JUMPIF && inst.op != LOP_JUMPIFNOT)
+                continue;
+            for (BcOp in : inst.ops)
+                CHECK_FALSE(isLoadNil(in));
+        }
 }
 
 TEST_SUITE_END();

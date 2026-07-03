@@ -10,6 +10,7 @@
 
 LUAU_FASTFLAG(LuauCodegenDseRestoreHints)
 LUAU_FASTFLAG(LuauCodegenForwardRematerialize)
+LUAU_FASTFLAG(LuauCodegenVmExitSync)
 
 using namespace Luau::CodeGen;
 
@@ -337,6 +338,90 @@ bb_0:
  vmovups     xmmword ptr [rdi+010h],xmm0
  add         rdi,20h
  mov         ecx,2
+ jmp         .L7
+
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(IrAssemblyFixture, "DseHintCorruptsTagOnPartialValueKill")
+{
+    ScopedFastFlag luauCodegenDseRestoreHints{FFlag::LuauCodegenDseRestoreHints, true};
+    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+    build.beginBlock(entry);
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(1)), build.constTag(tnumber), build.vmExit(0));
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(2)), build.constTag(tnumber), build.vmExit(0));
+
+    IrOp r1Val = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
+    IrOp r2Val = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(2));
+    IrOp computed = build.inst(IrCmd::ADD_NUM, r1Val, r2Val);
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), computed);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber)); // Will be removed as redundant
+
+    build.inst(IrCmd::INTERRUPT, build.constUint(0)); // Trigger a spill
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(3), computed);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.constTag(tnumber));
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(4)), build.constTag(tnumber), build.vmExit(0));
+    IrOp newVal = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(4));
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), newVal);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber)); // Will be removed as redundant
+
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(3));
+    updateUseCounts(build.function);
+
+    // With no established tag+value store after redundant tag store removal, there should be no DSE hint used for R1 spill
+    CHECK_EQ(
+        "\n" + lower(),
+        R"(
+; align 32 using ud2
+bb_0:
+.L11:
+  CHECK_TAG R1, tnumber, exit(0)
+ cmp         dword ptr [r14+01Ch],3
+ jne         .L12
+  CHECK_TAG R2, tnumber, exit(0)
+ cmp         dword ptr [r14+02Ch],3
+ jne         .L12
+  %4 = LOAD_DOUBLE R1
+ vmovsd      xmm0,qword ptr [r14+010h]
+  %6 = ADD_NUM %4, R2
+ vaddsd      xmm0,xmm0,qword ptr [r14+020h]
+  INTERRUPT 0u
+ vmovsd      qword ptr [rsp+048h],xmm0
+ mov         rax,qword ptr [r15+<offset>]
+ cmp         qword ptr [rax+<offset>],0
+ jne         .L13
+.L14:
+  STORE_DOUBLE R3, %6
+ vmovsd      xmm0,qword ptr [rsp+048h]
+ vmovsd      qword ptr [r14+030h],xmm0
+  STORE_TAG R3, tnumber
+ mov         dword ptr [r14+03Ch],3
+  CHECK_TAG R4, tnumber, bb_exit_1
+   ; exit sync: R1, {%6}
+ cmp         dword ptr [r14+04Ch],3
+ jne         .L15
+  %14 = LOAD_DOUBLE R4
+ vmovsd      xmm0,qword ptr [r14+040h]
+  STORE_DOUBLE R1, %14
+ vmovsd      qword ptr [r14+010h],xmm0
+  RETURN R1, 3i
+ lea         rdi,[r14-010h]
+ vmovups     xmm0,xmmword ptr [r14+010h]
+ vmovups     xmmword ptr [rdi],xmm0
+ vmovups     xmm0,xmmword ptr [r14+020h]
+ vmovups     xmmword ptr [rdi+010h],xmm0
+ vmovups     xmm0,xmmword ptr [r14+030h]
+ vmovups     xmmword ptr [rdi+020h],xmm0
+ add         rdi,30h
+ mov         ecx,3
  jmp         .L7
 
 )"

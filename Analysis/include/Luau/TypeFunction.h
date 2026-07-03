@@ -4,10 +4,10 @@
 #include "Luau/Constraint.h"
 #include "Luau/Error.h"
 #include "Luau/NotNull.h"
+#include "Luau/Subtyping.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFunctionRuntime.h"
 #include "Luau/TypeFwd.h"
-#include "Luau/Subtyping.h"
 
 #include <functional>
 #include <string>
