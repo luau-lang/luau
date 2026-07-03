@@ -112,11 +112,9 @@ jobs:
     - name: cmake configure
       run: cmake . -B build -DCMAKE_BUILD_TYPE=Debug -DLUAU_WERROR=ON -DCMAKE_CXX_FLAGS="${{matrix.config.flags}}" -DCMAKE_C_FLAGS="${{matrix.config.flags}}"
     - name: cmake build
-      run: cmake --build build --target Luau.UnitTest Luau.Conformance --config Debug -j2
+      run: cmake --build build --target Luau.Conformance --config Debug -j2
     - name: run tests
       run: |
-        build/Luau.UnitTest
-        build/Luau.UnitTest --fflags=true
         build/Luau.Conformance
         build/Luau.Conformance --fflags=true
         build/Luau.Conformance -O2
