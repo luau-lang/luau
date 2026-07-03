@@ -8,7 +8,7 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterUnionHandling)
+LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceSimplifyTables)
 
 namespace Luau
 {
@@ -230,9 +230,9 @@ void ExpectedTypeVisitor::applyExpectedType(TypeId expectedType, const AstExpr* 
             {
                 if (auto exprType = astTypes->find(expr))
                 {
-                    if (FFlag::LuauBidirectionalInferenceBetterUnionHandling)
+                    if (FFlag::LuauBidirectionalInferenceSimplifyTables)
                     {
-                        if (auto tt = extractMatchingTableType(utv, *exprType, builtinTypes))
+                        if (auto tt = extractMatchingTableType(utv, *exprType, builtinTypes, arena))
                         {
                             applyExpectedType(*tt, expr);
                             return;
@@ -240,8 +240,7 @@ void ExpectedTypeVisitor::applyExpectedType(TypeId expectedType, const AstExpr* 
                     }
                     else
                     {
-                        std::vector<TypeId> parts{begin(utv), end(utv)};
-                        if (auto tt = extractMatchingTableType_DEPRECATED(parts, *exprType, builtinTypes))
+                        if (auto tt = extractMatchingTableType_DEPRECATED(utv, *exprType, builtinTypes))
                         {
                             applyExpectedType(*tt, expr);
                             return;

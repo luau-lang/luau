@@ -2037,7 +2037,7 @@ print(Hooty:tooty(2.0))
 
     {
         loadDefinition(R"(
-declare class Foo
+declare extern type Foo with
    @[deprecated{use = 'foo', reason = 'baz'}]
    function bar(self, value: number) : number
 end
@@ -2102,7 +2102,7 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeMethodDeclaration")
     // @deprecated works on table type declarations
 
     loadDefinition(R"(
-declare class Foo
+declare extern type Foo with
    @deprecated
    function bar(self, value: number) : number
 end

@@ -55,6 +55,16 @@ target_sources(Luau.Bytecode PRIVATE
     Bytecode/src/BytecodeGraphSerializer.h
 )
 
+# Luau.Inliner Sources
+target_sources(Luau.Inliner PRIVATE
+    Inliner/include/Luau/JitInliner.h
+    Inliner/include/luajitinliner.h
+
+    Inliner/src/JitInliner.cpp
+    Inliner/src/luajitinliner.cpp
+    Inliner/src/RuntimeBytecodeBuilder.h
+)
+
 # Luau.Compiler Sources
 target_sources(Luau.Compiler PRIVATE
     Compiler/include/Luau/Compiler.h
@@ -207,6 +217,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/ControlFlow.h
     Analysis/include/Luau/ControlFlowGraph.h
     Analysis/include/Luau/DumpCFG.h
+    Analysis/include/Luau/TypeStateMap.h
     Analysis/include/Luau/DataFlowGraph.h
     Analysis/include/Luau/DcrLogger.h
     Analysis/include/Luau/Def.h
@@ -296,6 +307,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/ConstraintSolver.cpp
     Analysis/src/ControlFlowGraph.cpp
     Analysis/src/DumpCFG.cpp
+    Analysis/src/TypeStateMap.cpp
     Analysis/src/DataFlowGraph.cpp
     Analysis/src/DcrLogger.cpp
     Analysis/src/Def.cpp

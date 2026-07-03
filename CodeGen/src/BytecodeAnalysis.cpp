@@ -11,8 +11,6 @@
 #include <algorithm>
 #include <array>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenRegTag2)
-
 namespace Luau
 {
 namespace CodeGen
@@ -759,9 +757,6 @@ void buildBytecodeBlocks(IrFunction& function, const std::vector<uint8_t>& jumpT
 
 uint8_t getRegTag(std::array<uint8_t, 256>& regTags, BytecodeTypeInfo& bcTypeInfo, uint8_t reg, int pc)
 {
-    if (!FFlag::LuauCodegenRegTag2)
-        return regTags[reg];
-
     // Prefer the declared type from static analysis
     // otherwise fall back to the computed type from a previous instruction
     auto typeInfo = findRegType(bcTypeInfo, reg, pc);
@@ -816,18 +811,6 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
         {
             const Instruction* pc = &proto->code[i];
             LuauOpcode op = LuauOpcode(LUAU_INSN_OP(*pc));
-
-            // Assign known register types from local type information
-            if (!FFlag::LuauCodegenRegTag2)
-            {
-                // TODO: this is an expensive walk for each instruction
-                // TODO: it's best to lookup when register is actually used in the instruction
-                for (BytecodeRegTypeInfo& el : bcTypeInfo.regTypes)
-                {
-                    if (el.type != LBC_TYPE_ANY && i >= el.startpc && i < el.endpc)
-                        regTags[el.reg] = el.type;
-                }
-            }
 
             BytecodeTypes& bcType = function.bcTypes[i];
 

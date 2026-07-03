@@ -7,6 +7,7 @@
 #include <ostream>
 
 LUAU_FASTFLAG(DebugLuauLogSolver)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 namespace Luau
 {
@@ -287,16 +288,20 @@ ConstraintGraph::UnblockedTypes ConstraintGraph::unblockConstraint(NotNull<const
 bool ConstraintGraph::hasUnsolvedDependencies(ConstraintVertex vertex)
 {
     auto deps = findDependencyList(vertex);
-    if (auto c = vertex.get_if<const Constraint*>())
+    if (!FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
     {
-        if (auto ptc = (*c)->c.get_if<PrimitiveTypeConstraint>()) 
-            return deps->size() > 1;
+        if (auto c = vertex.get_if<const Constraint*>())
+        {
+            if (auto ptc = (*c)->c.get_if<DEPRECATED_PrimitiveTypeConstraint>())
+                return deps->size() > 1;
+        }
     }
     return deps->size() > 0;
 }
 
-bool ConstraintGraph::hasStrictlyMoreThanOneDependency(ConstraintVertex vertex)
+bool ConstraintGraph::DEPRECATED_hasStrictlyMoreThanOneDependency(ConstraintVertex vertex)
 {
+    LUAU_ASSERT(!FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier);
     auto deps = findDependencyList(vertex);
     return deps->size() > 1;
 }

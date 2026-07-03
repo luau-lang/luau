@@ -250,7 +250,7 @@ public:
 
 private:
     // Instruction archetypes
-    void place0(const char* name, uint32_t word);
+    void place0(const char* name, uint32_t op);
     void placeSR3(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, int shift = 0, int N = 0);
     void placeSR2(const char* name, RegisterA64 dst, RegisterA64 src, uint8_t op, uint8_t op2 = 0);
     void placeR3(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, uint8_t op2);
@@ -263,9 +263,9 @@ private:
     void placeBCR(const char* name, Label& label, uint8_t op, RegisterA64 cond);
     void placeBR(const char* name, RegisterA64 src, uint32_t op);
     void placeBTR(const char* name, Label& label, uint8_t op, RegisterA64 cond, uint8_t bit);
-    void placeADR(const char* name, RegisterA64 src, uint8_t op);
-    void placeADR(const char* name, RegisterA64 src, uint8_t op, Label& label);
-    void placeP(const char* name, RegisterA64 dst1, RegisterA64 dst2, AddressA64 src, uint8_t op, uint8_t opc, int sizelog);
+    void placeADR(const char* name, RegisterA64 dst, uint8_t op);
+    void placeADR(const char* name, RegisterA64 dst, uint8_t op, Label& label);
+    void placeP(const char* name, RegisterA64 src1, RegisterA64 src2, AddressA64 dst, uint8_t op, uint8_t opc, int sizelog);
     void placeCS(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t op, uint8_t opc, int invert = 0);
     void placeFCMP(const char* name, RegisterA64 src1, RegisterA64 src2, uint8_t op, uint8_t opc);
     void placeFMOV(const char* name, RegisterA64 dst, double src, uint32_t op);

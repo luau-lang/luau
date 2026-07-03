@@ -8,6 +8,8 @@
 
 #include "lstate.h"
 
+LUAU_FASTFLAG(DebugCodegenLimitRegs)
+
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAGVARIABLE(LuauCodegenNoEcbData)
 
@@ -27,7 +29,7 @@ IrRegAllocX64::IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function, Lo
     : build(build)
     , function(function)
     , stats(stats)
-    , usableXmmRegCount(getXmmRegisterCount(build.abi))
+    , usableXmmRegCount(FFlag::DebugCodegenLimitRegs ? kLimitedSimdRegCount : getXmmRegisterCount(build.abi))
 {
     freeGprMap.fill(true);
     gprInstUsers.fill(kInvalidInstIdx);
@@ -54,13 +56,30 @@ RegisterX64 IrRegAllocX64::allocReg(SizeX64 size, uint32_t instIdx)
     }
     else
     {
-        for (RegisterX64 reg : kGprAllocOrder)
+        if (FFlag::DebugCodegenLimitRegs)
         {
-            if (freeGprMap[reg.index])
+            for (size_t i = 0; i < kLimitedGprRegCount; ++i)
             {
-                freeGprMap[reg.index] = false;
-                gprInstUsers[reg.index] = instIdx;
-                return RegisterX64{size, reg.index};
+                RegisterX64 reg = kGprAllocOrder[i];
+
+                if (freeGprMap[reg.index])
+                {
+                    freeGprMap[reg.index] = false;
+                    gprInstUsers[reg.index] = instIdx;
+                    return RegisterX64{size, reg.index};
+                }
+            }
+        }
+        else
+        {
+            for (RegisterX64 reg : kGprAllocOrder)
+            {
+                if (freeGprMap[reg.index])
+                {
+                    freeGprMap[reg.index] = false;
+                    gprInstUsers[reg.index] = instIdx;
+                    return RegisterX64{size, reg.index};
+                }
             }
         }
     }

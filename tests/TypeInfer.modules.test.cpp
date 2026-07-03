@@ -17,8 +17,8 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
-LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTINT(LuauSolverConstraintLimit)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 using namespace Luau;
 
@@ -866,6 +866,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "internal_type_errors_are_only_reported_once"
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauMagicTypes, true},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
     };
 
     fileResolver.source["game/A"] = R"(
@@ -873,8 +874,10 @@ return function(): { X: _luau_blocked_type, Y: _luau_blocked_type } return nil :
     )";
 
     CheckResult result = getFrontend().check("game/A");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(get<InternalError>(result.errors[0]));
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    // We always fail to solve all constraints here because we have an un-owned blocked type.
+    CHECK(get<ConstraintSolvingIncompleteError>(result.errors[0]));
+    CHECK(get<InternalError>(result.errors[1]));
     CHECK("(...any) -> { X: *error-type*, Y: *error-type* }" == toString(getFrontend().moduleResolver.getModule("game/A")->returnType));
 }
 
@@ -883,6 +886,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 5};
+    ScopedFastFlag _{FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true};
 
     fileResolver.source["game/A"] = R"(
         type Array<T> = {T}
@@ -901,10 +905,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
 
     CheckResult result = getFrontend().check("game/B");
     // This is going to have a _ton_ of errors
-    LUAU_REQUIRE_ERRORS(result);
     LUAU_CHECK_ERROR(result, CodeTooComplex);
     LUAU_CHECK_ERROR(result, ConstraintSolvingIncompleteError);
-    LUAU_CHECK_ERROR(result, InternalError);
     LUAU_CHECK_ERROR(result, CannotExtendTable);
 }
 
@@ -960,8 +962,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
 // exported modules
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_basic")
 {
-    ScopedFastFlag _[4]{
-        {FFlag::LuauConst2, true},
+    ScopedFastFlag _[3]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueTypecheck, true}
@@ -999,8 +1000,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_basic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_mutual_recursive_functions")
 {
-    ScopedFastFlag _[4]{
-        {FFlag::LuauConst2, true},
+    ScopedFastFlag _[3]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueTypecheck, true}
@@ -1040,8 +1040,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_mutual_recursive_functions")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_unassigned_local_stays_nil")
 {
-    ScopedFastFlag _[4]{
-        {FFlag::LuauConst2, true},
+    ScopedFastFlag _[3]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueTypecheck, true}
@@ -1076,8 +1075,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_unassigned_local_stays_nil")
 // maintain consistency with exported_module_unassigned_local_stays_nil
 TEST_CASE_FIXTURE(BuiltinsFixture, "returned_module_unassigned_local_stays_nil")
 {
-    ScopedFastFlag _[4]{
-        {FFlag::LuauConst2, true},
+    ScopedFastFlag _[3]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueTypecheck, true}
@@ -1112,8 +1110,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "returned_module_unassigned_local_stays_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_function")
 {
-    ScopedFastFlag _[4]{
-        {FFlag::LuauConst2, true},
+    ScopedFastFlag _[3]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueTypecheck, true}
@@ -1157,8 +1154,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_function")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_multret")
 {
-    ScopedFastFlag _[4]{
-        {FFlag::LuauConst2, true},
+    ScopedFastFlag _[3]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueTypecheck, true}
@@ -1196,8 +1192,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_multret")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_partial_multret")
 {
-    ScopedFastFlag _[4]{
-        {FFlag::LuauConst2, true},
+    ScopedFastFlag _[3]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueTypecheck, true}
@@ -1238,7 +1233,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "export_class")
     ScopedFastFlag sff[] = {
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::LuauExportValueTypecheck, true},
-        {FFlag::LuauConst2, true},
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true}
     };

@@ -19,6 +19,7 @@
 LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAG(LuauYieldIter2)
+LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
 {
@@ -750,11 +751,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // guard against dividend == INT64_MIN && divisor == -1 (signed overflow)
         // if that occurs, we must return 0
         Label skip, done;
+        ScopedRegX64 tmpMin{regs, SizeX64::qword};
 
         build.cmp(tempB.reg, -1);
         build.jcc(ConditionX64::NotEqual, skip);
 
-        ScopedRegX64 tmpMin{regs, SizeX64::qword};
         build.mov(rdx, 0);
         build.mov64(tmpMin.reg, INT64_MIN);
         build.cmp(tempA.reg, tmpMin.reg);
@@ -902,11 +903,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // guard against dividend == INT64_MIN && divisor == -1 (signed overflow)
         // if that occurs, we must return 0
         Label skip, done;
+        ScopedRegX64 tmpMin{regs, SizeX64::qword};
 
         build.cmp(tempB.reg, -1);
         build.jcc(ConditionX64::NotEqual, skip);
 
-        ScopedRegX64 tmpMin{regs, SizeX64::qword};
         build.mov(inst.regX64, 0);
         build.mov64(tmpMin.reg, INT64_MIN);
         build.cmp(tempA.reg, tmpMin.reg);
@@ -2877,8 +2878,16 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::NEWCLOSURE:
     {
         ScopedRegX64 tmp2{regs, SizeX64::qword};
-        build.mov(tmp2.reg, sClosure);
-        build.mov(tmp2.reg, qword[tmp2.reg + offsetof(Closure, l.p)]);
+        if (FFlag::LuauCIProto)
+        {
+            build.mov(tmp2.reg, qword[rState + offsetof(lua_State, ci)]);
+            build.mov(tmp2.reg, qword[tmp2.reg + offsetof(CallInfo, p)]);
+        }
+        else
+        {
+            build.mov(tmp2.reg, sClosure);
+            build.mov(tmp2.reg, qword[tmp2.reg + offsetof(Closure, l.p)]);
+        }
         build.mov(tmp2.reg, qword[tmp2.reg + offsetof(Proto, p)]);
         build.mov(tmp2.reg, qword[tmp2.reg + sizeof(Proto*) * uintOp(OP_C(inst))]);
 
@@ -3303,11 +3312,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // guard against dividend == INT64_MIN && divisor == -1 (signed overflow)
         {
             Label skip;
+            ScopedRegX64 tmpMin{regs, SizeX64::qword};
 
             build.cmp(tmpB.reg, -1);
             build.jcc(ConditionX64::NotEqual, skip);
 
-            ScopedRegX64 tmpMin{regs, SizeX64::qword};
             build.mov64(tmpMin.reg, INT64_MIN);
             build.cmp(tmpA.reg, tmpMin.reg);
             jumpOrAbortOnUndef(ConditionX64::Equal, OP_C(inst), index, next);

@@ -293,14 +293,9 @@ bool fastIsSubtype(TypeId subTy, TypeId superTy);
  * @param exprType Type of the expression to match
  * @return An element of `tables` that best matches `exprType`.
  */
-std::optional<TypeId> extractMatchingTableType_DEPRECATED(std::vector<TypeId>& tables, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
+std::optional<TypeId> extractMatchingTableType_DEPRECATED(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
 
-/**
- * @param tables A list of potential table parts of a union
- * @param exprType Type of the expression to match
- * @return An element of `tables` that best matches `exprType`.
- */
-std::optional<TypeId> extractMatchingTableType(const UnionType* utv, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
+std::optional<TypeId> extractMatchingTableType(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
 
 /**
  * @param item A member of a table in an AST
