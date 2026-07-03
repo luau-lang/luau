@@ -41,7 +41,7 @@ struct MagicSelect final : MagicFunction
         const class AstExprCall&,
         WithPredicate<TypePackId>
     ) override;
-    bool infer(const MagicFunctionCallContext& ctx) override;
+    bool infer(const MagicFunctionCallContext& context) override;
 };
 
 struct MagicSetMetatable final : MagicFunction
@@ -74,7 +74,7 @@ struct MagicPack final : MagicFunction
         const class AstExprCall&,
         WithPredicate<TypePackId>
     ) override;
-    bool infer(const MagicFunctionCallContext& ctx) override;
+    bool infer(const MagicFunctionCallContext& context) override;
 };
 
 struct MagicClone final : MagicFunction
@@ -85,7 +85,7 @@ struct MagicClone final : MagicFunction
         const class AstExprCall&,
         WithPredicate<TypePackId>
     ) override;
-    bool infer(const MagicFunctionCallContext& ctx) override;
+    bool infer(const MagicFunctionCallContext& context) override;
 };
 
 struct MagicFreeze final : MagicFunction
@@ -96,7 +96,7 @@ struct MagicFreeze final : MagicFunction
         const class AstExprCall&,
         WithPredicate<TypePackId>
     ) override;
-    bool infer(const MagicFunctionCallContext& ctx) override;
+    bool infer(const MagicFunctionCallContext& context) override;
     bool typeCheck(const MagicFunctionTypeCheckContext& ctx) override;
 };
 
@@ -108,8 +108,8 @@ struct MagicFormat final : MagicFunction
         const class AstExprCall&,
         WithPredicate<TypePackId>
     ) override;
-    bool infer(const MagicFunctionCallContext& ctx) override;
-    bool typeCheck(const MagicFunctionTypeCheckContext& ctx) override;
+    bool infer(const MagicFunctionCallContext& context) override;
+    bool typeCheck(const MagicFunctionTypeCheckContext& context) override;
 };
 
 struct MagicMatch final : MagicFunction
@@ -120,7 +120,7 @@ struct MagicMatch final : MagicFunction
         const class AstExprCall&,
         WithPredicate<TypePackId>
     ) override;
-    bool infer(const MagicFunctionCallContext& ctx) override;
+    bool infer(const MagicFunctionCallContext& context) override;
 };
 
 struct MagicGmatch final : MagicFunction
@@ -131,7 +131,7 @@ struct MagicGmatch final : MagicFunction
         const class AstExprCall&,
         WithPredicate<TypePackId>
     ) override;
-    bool infer(const MagicFunctionCallContext& ctx) override;
+    bool infer(const MagicFunctionCallContext& context) override;
 };
 
 struct MagicFind final : MagicFunction
@@ -142,7 +142,7 @@ struct MagicFind final : MagicFunction
         const class AstExprCall&,
         WithPredicate<TypePackId>
     ) override;
-    bool infer(const MagicFunctionCallContext& ctx) override;
+    bool infer(const MagicFunctionCallContext& context) override;
 };
 
 struct MagicPcall final : MagicFunction

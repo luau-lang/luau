@@ -22,7 +22,6 @@ LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
-LUAU_FASTFLAG(LuauCstExprGroup)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -3810,8 +3809,6 @@ TEST_CASE_FIXTURE(Fixture, "export_class")
 
 TEST_CASE_FIXTURE(Fixture, "expr_group_with_cst")
 {
-    ScopedFastFlag _{FFlag::LuauCstExprGroup, true};
-
     ParseOptions parseOptions;
     parseOptions.storeCstData = true;
 

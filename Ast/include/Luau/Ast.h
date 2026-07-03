@@ -696,7 +696,7 @@ class AstExprInstantiate : public AstExpr
 public:
     LUAU_RTTI(AstExprInstantiate)
 
-    AstExprInstantiate(const Location& location, AstExpr* expr, AstArray<AstTypeOrPack> typePack);
+    AstExprInstantiate(const Location& location, AstExpr* expr, AstArray<AstTypeOrPack> types);
 
     void visit(AstVisitor* visitor) override;
 
