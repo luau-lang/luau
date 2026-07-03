@@ -3,9 +3,11 @@
 
 #include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeUtils.h"
+#include "Luau/Common.h"
 
-#include <unordered_set>
 #include <algorithm>
+#include <optional>
+#include <utility>
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -17,12 +19,6 @@ namespace Bytecode
 template<typename VmConst>
 struct BytecodeGraphParser
 {
-    struct LoopInfo
-    {
-        BcOp entry;
-        BcOp exit;
-    };
-
     struct BlockProducers
     {
         std::unordered_map<Reg, BcOp> own;
@@ -30,6 +26,16 @@ struct BytecodeGraphParser
         BcOp multiReturn;
         Reg multiReturnStart;
         int invalidAfter = 255;
+        // incomplete phi construction state:
+        // - a block is sealed once all its predecessors have been emitted
+        // - reads that cross a not-yet-emitted predecessor (a back-edge)
+        //   create an operand-less phi in incompletePhis until the block is sealed and the operands can be filled
+        // - incomplete phis are filled in with operands that all occupy the same register, after all preds have been emitted
+        //
+        // this enables loop phis to be created without a separate pass (Braun "Simple and Efficient Construction of Static Single Assignment Form")
+        bool sealed = false;
+        uint32_t unsealedPreds = 0;
+        std::unordered_map<Reg, BcOp> incompletePhis;
     };
 
     using Producers = std::vector<BlockProducers>;
@@ -38,6 +44,7 @@ struct BytecodeGraphParser
     std::unordered_map<uint32_t, BcOp> blockByPC;
     Producers producers;
     BcOp currentBlock;
+    std::unordered_map<BcOp, BcOp, BcOpHash> phiBlock;
 
     BytecodeGraphParser(BcFunction<VmConst>& func)
         : func(func)
@@ -130,163 +137,182 @@ struct BytecodeGraphParser
         return instructionCount;
     }
 
-    std::optional<BcOp> findProducer(BcOp block, Reg reg, std::unordered_set<BcOp, BcOpHash>& visited)
+    BcOp makePhi(BcOp block, Reg reg)
     {
-        visited.insert(block);
-        LUAU_ASSERT(block.index < producers.size());
-        BlockProducers& blockProducers = producers.at(block.index);
-        if (static_cast<int>(reg) > blockProducers.invalidAfter)
+        BcOp phiOp = func.addPhi();
+        func.regs[phiOp] = reg;
+        func.blockOp(block).phis.push_back(phiOp);
+        phiBlock[phiOp] = block;
+        return phiOp;
+    }
+
+    std::optional<BcOp> readVariable(BcOp block, Reg reg)
+    {
+        BlockProducers& bp = producers.at(block.index);
+        if (static_cast<int>(reg) > bp.invalidAfter)
             return {};
-
-        if (auto local = blockProducers.own.find(reg); local != blockProducers.own.end())
+        if (auto it = bp.own.find(reg); it != bp.own.end())
+            return it->second;
+        if (auto it = bp.cached.find(reg); it != bp.cached.end())
+            return it->second;
+        if (bp.multiReturn.kind != BcOpKind::None && reg >= bp.multiReturnStart)
         {
-            return {local->second};
+            // cache the projection so repeated reads (and phi operands across edges) share identity,
+            // which keeps tryRemoveTrivialPhi able to recognize equal operands
+            BcOp proj = func.addProj(bp.multiReturn, reg - bp.multiReturnStart);
+            bp.cached[reg] = proj;
+            return proj;
+        }
+        return readVariableRecursive(block, reg);
+    }
+
+    BcOp readVariableRecursive(BcOp block, Reg reg)
+    {
+        BlockProducers& bp = producers.at(block.index);
+        BcEdges& preds = func.blockOp(block).predecessors;
+
+        if (!bp.sealed)
+        {
+            // predecessors not all emitted yet, so we create an incomplete phi to fill on seal
+            BcOp phiOp = makePhi(block, reg);
+            bp.incompletePhis[reg] = phiOp;
+            bp.cached[reg] = phiOp;
+            return phiOp;
         }
 
-        if (auto cached = blockProducers.cached.find(reg); cached != blockProducers.cached.end())
+        if (preds.empty())
+            return BcOp{BcOpKind::VmReg, reg}; // undefined (entry/unreachable)
+
+        if (preds.size() == 1)
         {
-            return {cached->second};
+            // No phi needed, as a single-predecessor block can never a loop header so this can only cycle inside a fully-unreachable single-pred loop
+            // we cache anyway so if we have a re-entry, we just resolve to undef, rather than recursing forever
+            bp.cached[reg] = BcOp{BcOpKind::VmReg, reg};
+            BcOp val = readVariable(preds[0].target, reg).value_or(BcOp{BcOpKind::VmReg, reg});
+            producers.at(block.index).cached[reg] = val;
+            return val;
         }
 
-        if (blockProducers.multiReturn.kind != BcOpKind::None && reg >= blockProducers.multiReturnStart)
-            return func.addProj(blockProducers.multiReturn, reg - blockProducers.multiReturnStart);
+        // multiple predecessors: create the phi and cache it *before* filling so a back-edge read
+        // that recurses back into this block resolves to the phi instead of looping forever
+        BcOp phiOp = makePhi(block, reg);
+        bp.cached[reg] = phiOp;
+        BcOp val = addPhiOperands(reg, phiOp, block);
+        producers.at(block.index).cached[reg] = val;
+        return val;
+    }
 
-        std::unordered_set<BcOp, BcOpHash> results;
-        BcBlock& bl = func.blockOp(block);
-        for (auto [ctrl, pred] : bl.predecessors)
+    BcOp addPhiOperands(Reg reg, BcOp phiOp, BcOp block)
+    {
+        LUAU_ASSERT(phiOp.kind == BcOpKind::Phi);
+
+        BcRef<BcPhi> phi = func.phi(phiOp);
+
+        // include every predecessor edge, back-edges included
+        for (auto& [_, pred] : func.blockOp(block).predecessors)
         {
-            if (ctrl == BcBlockEdgeKind::Loop || visited.count(pred) > 0)
-                continue;
-            LUAU_ASSERT(block != pred);
-            if (std::optional<BcOp> op = findProducer(pred, reg, visited))
+            if (std::optional<BcOp> v = readVariable(pred, reg))
             {
-                if (op->kind == BcOpKind::Phi)
-                    for (BcOp& proj : func.phiOp(*op).ops)
-                        results.insert(proj);
-                else
-                    results.insert(*op);
+                func.addUse(phi, *v);
             }
         }
-        if (results.size() == 0)
-            return {};
-        BcOp res;
-        if (results.size() == 1)
-            res = *results.begin();
-        else
-        {
-            res = func.addPhi();
-            BcPhi& phi = func.phiOp(res);
-            for (auto op : results)
-                phi.ops.push_back(op);
-        }
-        blockProducers.cached[reg] = res;
-        return res;
+        return tryRemoveTrivialPhi(phiOp);
     }
 
-    std::optional<BcOp> findProducer(BcOp block, Reg reg)
+    // collapse a phi whose operands (ignoring self-references) are a single distinct value
+    // NOTE: a self-referential loop phi left in place would make the serializer's getRegister recurse forever
+    BcOp tryRemoveTrivialPhi(BcOp phiOp)
     {
-        std::unordered_set<BcOp, BcOpHash> visited;
-        return findProducer(block, reg, visited);
-    }
-
-    bool hasProducerBefore(BcOp rangeStart, BcOp rangeEnd, BcOp startOp, Reg reg, bool checkCached, std::unordered_set<BcOp, BcOpHash>& visited)
-    {
-        LUAU_ASSERT(startOp.kind == BcOpKind::Inst);
-        visited.insert(rangeEnd);
-        LUAU_ASSERT(rangeEnd.index < producers.size());
-        BlockProducers& blockProducers = producers.at(rangeEnd.index);
-        if (static_cast<int>(reg) > blockProducers.invalidAfter)
-            return false;
-        BcBlock& bl = func.blockOp(rangeEnd);
-        if (blockProducers.multiReturn.kind != BcOpKind::None && reg >= blockProducers.multiReturnStart)
-            return true;
-        if (checkCached)
+        std::optional<BcOp> trivialValue = std::nullopt;
+        for (BcOp op : func.phiOp(phiOp).ops)
         {
-            if (blockProducers.own.count(reg) > 0)
-                return true;
-        }
-        else
-            for (auto op : bl.ops)
-            {
-                // We have reached the end of range.
-                if (op == startOp)
-                    break;
-                auto opReg = func.regs.find(op);
-                if (opReg != func.regs.end() && opReg->second == reg)
-                    return true;
-            }
-        if (rangeEnd == rangeStart)
-            return false;
-        for (auto [ctrl, pred] : bl.predecessors)
-        {
-            if (ctrl == BcBlockEdgeKind::Loop || visited.count(pred) > 0)
+            if (op == phiOp || (trivialValue.has_value() && op == *trivialValue))
                 continue;
-            if (hasProducerBefore(rangeStart, pred, startOp, reg, true, visited))
-                return true;
+
+            if (trivialValue.has_value())
+                return phiOp; // two distinct values, we cannot eliminate this
+
+            trivialValue = op;
         }
-        return false;
-    }
 
-    bool hasProducerBefore(BcOp rangeStart, BcOp rangeEnd, BcOp startOp, Reg reg)
-    {
-        std::unordered_set<BcOp, BcOpHash> visited;
-        return hasProducerBefore(rangeStart, rangeEnd, startOp, reg, false, visited);
-    }
+        Reg reg = static_cast<Reg>(func.regs.at(phiOp));
+        if (!trivialValue.has_value())
+            trivialValue = BcOp{BcOpKind::VmReg, reg}; // unreachable or undefined, so we collapse to an VmReg read
 
-    std::optional<BcOp> findForwardProducerInRange(BcOp rangeStart, BcOp rangeEnd, BcOp startOp, Reg reg, std::unordered_set<BcOp, BcOpHash>& visited)
-    {
-        LUAU_ASSERT(startOp.kind == BcOpKind::Inst);
-        visited.insert(rangeEnd);
-        LUAU_ASSERT(rangeEnd.index < producers.size());
-        BlockProducers& blockProducers = producers.at(rangeEnd.index);
-        if (static_cast<int>(reg) > blockProducers.invalidAfter)
-            return {};
-        BcBlock& bl = func.blockOp(rangeEnd);
+        BcRef<BcPhi> phiRef = func.phi(phiOp);
+        std::vector<BcOp> users = std::move(phiRef->uses);
 
-        if (auto local = blockProducers.own.find(reg); local != blockProducers.own.end())
-            return {local->second};
-
-        if (rangeStart == rangeEnd)
-            return {};
-
-        if (blockProducers.multiReturn.kind != BcOpKind::None && reg >= blockProducers.multiReturnStart)
-            return blockProducers.multiReturn;
-
-        std::unordered_set<BcOp, BcOpHash> results;
-        for (auto [ctrl, pred] : bl.predecessors)
+        // we need to now update users to point to the new trivial value
+        for (BcOp user : users)
         {
-            if (ctrl == BcBlockEdgeKind::Loop || visited.count(pred) > 0)
+            if (user == phiOp)
                 continue;
-            LUAU_ASSERT(rangeEnd != pred);
-            if (std::optional<BcOp> op = findForwardProducerInRange(rangeStart, pred, startOp, reg, visited))
+
+            BcOps& userOps = (user.kind == BcOpKind::Phi) ? func.phiOp(user).ops : func.instOp(user).ops;
+            for (BcOp& op : userOps)
+                if (op == phiOp)
+                {
+                    op = *trivialValue;
+
+                    // re-record the reverse edge on whichever def now owns this operand
+                    func.recordUse(*trivialValue, user);
+                }
+        }
+
+        // remove the collapsed phi from its block
+        if (auto bit = phiBlock.find(phiOp); bit != phiBlock.end())
+        {
+            func.blockOp(bit->second).phis.remove(phiOp);
+            BlockProducers& bp = producers.at(bit->second.index);
+            if (auto cit = bp.cached.find(reg); cit != bp.cached.end() && cit->second == phiOp)
+                cit->second = *trivialValue;
+            phiBlock.erase(bit);
+        }
+
+        for (BcOp user : users)
+            if (user.kind == BcOpKind::Phi && user != phiOp)
+                tryRemoveTrivialPhi(user);
+
+        return *trivialValue;
+    }
+
+    void sealBlock(BcOp block)
+    {
+        BlockProducers& bp = producers.at(block.index);
+        if (bp.sealed)
+            return;
+        // mark sealed first so reads triggered while filling use the normal (non-incomplete) path
+        bp.sealed = true;
+        std::vector<std::pair<Reg, BcOp>> pending(bp.incompletePhis.begin(), bp.incompletePhis.end());
+        bp.incompletePhis.clear();
+        for (auto& [reg, phiOp] : pending)
+        {
+            BcOp val = addPhiOperands(reg, phiOp, block);
+            BlockProducers& cur = producers.at(block.index);
+            if (auto cit = cur.cached.find(reg); cit != cur.cached.end() && cit->second == phiOp)
+                cit->second = val;
+        }
+    }
+
+    void finalizeBlock(BcOp block)
+    {
+        for (auto& [_, succ] : func.blockOp(block).successors)
+        {
+            BlockProducers& sp = producers.at(succ.index);
+            if (sp.unsealedPreds > 0)
             {
-                if (op->kind == BcOpKind::Phi)
-                    for (BcOp& proj : func.phiOp(*op).ops)
-                        results.insert(proj);
-                else
-                    results.insert(*op);
+                --sp.unsealedPreds;
+                if (sp.unsealedPreds == 0)
+                    sealBlock(succ);
             }
         }
-        if (results.size() == 0)
-            return {};
-        BcOp res;
-        if (results.size() == 1)
-            res = *results.begin();
-        else
-        {
-            res = func.addPhi();
-            BcPhi& phi = func.phiOp(res);
-            for (auto op : results)
-                phi.ops.push_back(op);
-        }
-
-        return res;
     }
 
-    std::optional<BcOp> findForwardProducerInRange(BcOp rangeStart, BcOp rangeEnd, BcOp startOp, Reg reg)
+    void sealAllRemaining()
     {
-        std::unordered_set<BcOp, BcOpHash> visited;
-        return findForwardProducerInRange(rangeStart, rangeEnd, startOp, reg, visited);
+        for (uint32_t b = 0; b < func.blocks.size(); b++)
+            if (!producers.at(b).sealed)
+                sealBlock(BcOp{BcOpKind::Block, b});
     }
 
     std::vector<BcOp> findProducersUpToTop(BcOp block, Reg reg)
@@ -300,7 +326,7 @@ struct BytecodeGraphParser
         res.reserve(blockProducers.multiReturnStart - reg + 1);
         for (; reg < blockProducers.multiReturnStart; reg++)
         {
-            auto staticRegOp = findProducer(block, reg);
+            auto staticRegOp = readVariable(block, reg);
             LUAU_ASSERT(staticRegOp);
             res.push_back(*staticRegOp);
         }
@@ -370,93 +396,73 @@ struct BytecodeGraphParser
         }
     }
 
-    void addImmInput(BcInst& inst, bool value)
+    void addImmInput(BcRef<BcInst> inst, bool value)
     {
         BcOp op{BcOpKind::Imm, 0};
         func.immediates.push_back({BcImmKind::Boolean});
         func.immediates.back().valueBoolean = value;
         op.index = func.immediates.size() - 1;
-        inst.ops.push_back(op);
+        func.addUse(inst, op);
     }
 
-    void addImmInput(BcInst& inst, int32_t value)
+    void addImmInput(BcRef<BcInst> inst, int32_t value)
     {
         BcOp op{BcOpKind::Imm, 0};
         func.immediates.push_back({BcImmKind::Int});
         func.immediates.back().valueInt = value;
         op.index = func.immediates.size() - 1;
-        inst.ops.push_back(op);
+        func.addUse(inst, op);
     }
 
-    void addImmInput(BcInst& inst, uint32_t value)
+    void addImmInput(BcRef<BcInst> inst, uint32_t value)
     {
         BcOp op{BcOpKind::Imm, 0};
         func.immediates.push_back({BcImmKind::Import});
         func.immediates.back().valueImport = value;
         op.index = func.immediates.size() - 1;
-        inst.ops.push_back(op);
+        func.addUse(inst, op);
     }
 
-    void addVmConstInput(BcInst& inst, uint32_t idx)
+    void addVmConstInput(BcRef<BcInst> inst, uint32_t idx)
     {
         LUAU_ASSERT(idx < func.constants.size());
-        inst.ops.push_back(BcOp{BcOpKind::VmConst, idx});
+        func.addUse(inst, BcOp{BcOpKind::VmConst, idx});
     }
 
-    void addUpvalInput(BcInst& inst, uint32_t idx)
+    void addUpvalInput(BcRef<BcInst> inst, uint32_t idx)
     {
         LUAU_ASSERT(idx < func.nups);
-        inst.ops.push_back(BcOp{BcOpKind::VmUpvalue, idx});
+        func.addUse(inst, BcOp{BcOpKind::VmUpvalue, idx});
     }
 
-    void addProtoInput(BcInst& inst, uint32_t idx)
+    void addProtoInput(BcRef<BcInst> inst, uint32_t idx)
     {
-        inst.ops.push_back(BcOp{BcOpKind::VmProto, idx});
+        func.addUse(inst, BcOp{BcOpKind::VmProto, idx});
     }
 
-    void addVmRegInput(BcInst& inst, Reg reg)
+    void addVmRegInput(BcRef<BcInst> inst, Reg reg)
     {
-        std::optional<BcOp> source = findProducer(currentBlock, reg);
+        std::optional<BcOp> source = readVariable(currentBlock, reg);
         if (!source && isUnreachable(currentBlock))
         {
-            inst.ops.push_back(BcOp{BcOpKind::VmReg, reg});
+            func.addUse(inst, BcOp{BcOpKind::VmReg, reg});
             return;
         }
         LUAU_ASSERT(source);
-        inst.ops.push_back(*source);
+        func.addUse(inst, *source);
     }
 
-    void addJumpInput(BcInst& inst, int target)
+    void addJumpInput(BcRef<BcInst> inst, int target)
     {
-        LUAU_ASSERT(!isFastCall(inst.op));
+        LUAU_ASSERT(!isFastCall(inst->op));
         if (target < 0)
         {
-            LUAU_ASSERT(inst.op == LOP_LOADB);
+            LUAU_ASSERT(inst->op == LOP_LOADB);
             return;
         }
         auto it = blockByPC.find(target);
         LUAU_ASSERT(it != blockByPC.end());
-        inst.ops.push_back(it->second);
-    }
-
-    BcOp addToPhi(BcOp op, BcOp proj)
-    {
-        if (op.kind == BcOpKind::Phi)
-        {
-            BcPhi& phi = func.phiOp(op);
-            for (auto p : phi.ops)
-                if (p == proj)
-                    return op;
-            phi.ops.push_back(proj);
-            return op;
-        }
-        else
-        {
-            BcOp res = func.addPhi();
-            BcPhi& phi = func.phiOp(res);
-            phi.ops = {op, proj};
-            return res;
-        }
+        func.addUse(inst, it->second);
     }
 
     static const uint32_t kMaxCFGBlocks = 1000;
@@ -467,8 +473,6 @@ struct BytecodeGraphParser
         if (blockByPC.size() > kMaxCFGBlocks)
             return false;
 
-        std::vector<LoopInfo> loops;
-
         producers.resize(func.blocks.size());
         pcs.resize(codesize);
 
@@ -476,6 +480,14 @@ struct BytecodeGraphParser
 
         for (Reg i = 0; i < func.numparams; i++)
             addProducer(i, {BcOpKind::VmReg, i});
+
+        // a block is sealable once all its predecessors are emitted; seed the counts from the CFG
+        // (already fully built by rebuildBlocks) and seal blocks with no predecessors immediately
+        for (BcBlock& block : func.blocks)
+            producers.at(func.getBlockIndex(block)).unsealedPreds = uint32_t(block.predecessors.size());
+        for (uint32_t blockIdx = 0; blockIdx < func.blocks.size(); blockIdx++)
+            if (producers.at(blockIdx).unsealedPreds == 0)
+                sealBlock(BcOp{BcOpKind::Block, blockIdx});
 
         // Create instructions.
         currentBlock = func.entryBlock;
@@ -489,17 +501,17 @@ struct BytecodeGraphParser
             uint32_t aux = (opLength > 1 && i + 1 < codesize) ? code[i + 1] : 0;
             BcOp nodeOp = func.addInst();
             func.blockOp(currentBlock).appendInstruction(nodeOp);
-            BcInst& node = func.instOp(nodeOp);
-            node.block = currentBlock;
+            BcRef<BcInst> node = func.inst(nodeOp);
+            node->block = currentBlock;
             if (i < lines.size())
-                node.line = lines[i];
-            node.op = op;
+                node->line = lines[i];
+            node->op = op;
 
             pcs[i] = nodeOp.index;
 
             auto parseJump = [&](LuauOpcode op, int jumpTarget) -> void
             {
-                node.op = op;
+                node->op = op;
                 switch (op)
                 {
                 case LOP_JUMPXEQKNIL:
@@ -618,7 +630,7 @@ struct BytecodeGraphParser
                 break;
 
             case LOP_CLOSEUPVALS:
-                node.ops.push_back(BcOp{BcOpKind::VmReg, LUAU_INSN_A(insn)});
+                func.addUse(node, BcOp{BcOpKind::VmReg, LUAU_INSN_A(insn)});
                 break;
 
             case LOP_GETIMPORT:
@@ -707,7 +719,9 @@ struct BytecodeGraphParser
                 {
                     // all arguments prepared before call in the same block
                     for (auto& inp : findProducersUpToTop(currentBlock, LUAU_INSN_A(insn) + 1))
-                        node.ops.push_back(inp);
+                    {
+                        func.addUse(node, inp);
+                    }
                 }
 
                 BlockProducers& blockProducers = producers[currentBlock.index];
@@ -727,9 +741,9 @@ struct BytecodeGraphParser
                     addVmRegInput(node, LUAU_INSN_A(insn) + i);
                 if (nresults < 0)
                     for (auto& inp : findProducersUpToTop(currentBlock, LUAU_INSN_A(insn)))
-                        node.ops.push_back(inp);
+                        func.addUse(node, inp);
                 if (nresults == 0)
-                    node.ops.push_back(BcOp{BcOpKind::VmReg, LUAU_INSN_A(insn)});
+                    func.addUse(node, BcOp{BcOpKind::VmReg, LUAU_INSN_A(insn)});
                 break;
             }
 
@@ -835,7 +849,7 @@ struct BytecodeGraphParser
                     addVmRegInput(node, LUAU_INSN_B(insn) + param);
                 if (count < 0)
                     for (auto inp : findProducersUpToTop(currentBlock, LUAU_INSN_B(insn)))
-                        node.ops.push_back(inp);
+                        func.addUse(node, inp);
                 break;
             }
 
@@ -909,7 +923,7 @@ struct BytecodeGraphParser
 
             case LOP_GETVARARGS:
             {
-                node.ops.push_back(BcOp{BcOpKind::VmReg, LUAU_INSN_A(insn)});
+                func.addUse(node, BcOp{BcOpKind::VmReg, LUAU_INSN_A(insn)});
                 int count = LUAU_INSN_B(insn) - 1;
                 addImmInput(node, static_cast<int32_t>(count));
                 func.regs[nodeOp] = LUAU_INSN_A(insn);
@@ -989,7 +1003,6 @@ struct BytecodeGraphParser
             case LOP_NEWCLASSMEMBER:
                 LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
                 addVmRegInput(node, LUAU_INSN_A(insn));
-                addVmRegInput(node, LUAU_INSN_C(insn));
                 addVmConstInput(node, aux);
                 break;
 
@@ -998,53 +1011,19 @@ struct BytecodeGraphParser
                 LUAU_UNREACHABLE();
             }
 
-            if (isLoopJump(op))
-            {
-                int target = getJumpTarget(insn, i);
-                LUAU_ASSERT(target >= 0 && blockByPC.count(target) > 0);
-                loops.push_back({blockByPC[target], currentBlock});
-            }
-
             i += opLength;
             if (blockByPC.count(i) > 0)
-                currentBlock = blockByPC[i];
-        }
-
-        for (auto& loop : loops)
-        {
-            std::unordered_set<BcOp, BcOpHash> visited;
-            std::vector<BcOp> queue;
-            queue.push_back(loop.exit);
-            while (queue.size() > 0)
             {
-                BcOp cur = queue.back();
-                queue.pop_back();
-                if (visited.count(cur) > 0)
-                    continue;
-                visited.insert(cur);
-                BcBlock& curBlock = func.blockOp(cur);
-
-                for (auto op : curBlock.ops)
-                    for (auto& inp : func.instOp(op).ops)
-                    {
-                        auto regIt = func.regs.find(inp);
-                        if (regIt == func.regs.end())
-                            continue;
-                        // try to find it in the same loop before
-                        if (hasProducerBefore(loop.entry, cur, op, regIt->second))
-                            continue;
-                        if (auto forwardInput = findForwardProducerInRange(cur, loop.exit, op, regIt->second))
-                        {
-                            inp = addToPhi(inp, *forwardInput);
-                            func.regs[inp] = regIt->second;
-                        }
-                    }
-
-                for (auto& [ctrl, pred] : curBlock.predecessors)
-                    if (ctrl != BcBlockEdgeKind::Loop && visited.count(pred) == 0)
-                        queue.push_back(pred);
+                // currentBlock is fully emitted: release it so its successors can seal once all their
+                // predecessors are emitted (a loop header seals here, after its back-edge source)
+                finalizeBlock(currentBlock);
+                currentBlock = blockByPC[i];
             }
         }
+
+        finalizeBlock(currentBlock);
+        sealAllRemaining(); // seal any block whose predecessors were never all emitted
+
         return true;
     }
 };

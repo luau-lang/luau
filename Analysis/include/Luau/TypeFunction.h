@@ -8,7 +8,6 @@
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFunctionRuntime.h"
 #include "Luau/TypeFwd.h"
-#include "Luau/Subtyping.h"
 
 #include <functional>
 #include <string>

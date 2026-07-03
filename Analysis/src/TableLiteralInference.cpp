@@ -16,6 +16,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceVariadics)
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterLambdaHandling)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 
 namespace Luau
 {
@@ -310,8 +311,16 @@ struct BidirectionalTypePusher
             {
                 if (auto utv = get<UnionType>(expectedType))
                 {
-                    if (auto tt = extractMatchingTableType(utv, exprType, solver->builtinTypes))
-                        (void)pushType(*tt, expr);
+                    if (FFlag::LuauBidirectionalInferenceSimplifyTables)
+                    {
+                        if (auto tt = extractMatchingTableType(utv, exprType, solver->builtinTypes, solver->arena))
+                            (void)pushType(*tt, expr);
+                    }
+                    else
+                    {
+                        if (auto tt = extractMatchingTableType_DEPRECATED(utv, exprType, solver->builtinTypes))
+                            (void)pushType(*tt, expr);
+                    }
                 }
                 else if (auto itv = get<IntersectionType>(expectedType))
                 {

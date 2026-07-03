@@ -582,7 +582,7 @@ bool fastIsSubtype(TypeId subTy, TypeId superTy)
  * world in which subtyping selects the correct union member here. We must use
  * mechanical heuristics.
  */
-std::optional<TypeId> extractMatchingTableType(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes)
+std::optional<TypeId> extractMatchingTableType_DEPRECATED(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes)
 {
     const TableType* exprTable = get<TableType>(follow(exprType));
     if (!exprTable)
@@ -602,6 +602,99 @@ std::optional<TypeId> extractMatchingTableType(const UnionType* expectedUnion, T
 
     for (TypeId ty : expectedUnion)
     {
+        if (auto tt = get<TableType>(ty))
+        {
+            bool isDisjoint = false;
+            // NOTE: We iterate over the expected properties for structural subtyping reasons,
+            // consider:
+            //
+            //  local t: { foo: number? } = {
+            //      foo = 42,
+            //      -- 10,000 properties not shown.
+            //  }
+            //
+            // Those 10k properties do not matter here.
+            for (const auto& [name, expectedProp] : tt->props)
+            {
+                // If the property from the expected type is not in the
+                // expression, skip it.
+                auto propInTableExpr = exprTable->props.find(name);
+                if (propInTableExpr == exprTable->props.end())
+                    continue;
+
+                // Also, if the expected type does not have a read component, skip this.
+                if (!expectedProp.readTy)
+                    continue;
+
+                const auto& [_, exprProp] = *propInTableExpr;
+
+                // If the expression property doesn't have a read type, then
+                // we cannot reasonably check this against the read type of
+                // the expected property.
+                if (!exprProp.readTy)
+                {
+                    // Also assert here: we should never encounter an inferred
+                    // write-only type from an expression.
+                    LUAU_ASSERT(!"Unexpected write-only property inside table literal.");
+                    continue;
+                }
+
+                const TypeId expectedPropType = follow(*expectedProp.readTy);
+                const TypeId exprPropType = follow(*exprProp.readTy);
+
+                if (relate(expectedPropType, exprPropType) == Relation::Disjoint)
+                {
+                    isDisjoint = true;
+                    break;
+                }
+
+                auto ft = get<FreeType>(exprPropType);
+                if (ft && relate(ft->lowerBound, expectedPropType) == Relation::Disjoint)
+                {
+                    isDisjoint = true;
+                    break;
+                }
+            }
+
+            if (!isDisjoint)
+                potentialTables.insert(ty);
+        }
+    }
+
+    if (potentialTables.size() == 1)
+        return {*potentialTables.begin()};
+
+    return std::nullopt;
+}
+
+std::optional<TypeId> extractMatchingTableType(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena)
+{
+    const TableType* exprTable = get<TableType>(follow(exprType));
+    if (!exprTable)
+        return std::nullopt;
+
+    // Try to filter out tables based on property names, for example
+    // if we are considering the type ...
+    //
+    //  { foo: number, bar: string } | { foo: number, baz: boolean }
+    //
+    // ... and the table in question looks like ...
+    //
+    //  { baz = true }
+    //
+    // ... the user probably intends the second definition.
+    TypeIds potentialTables;
+
+    for (TypeId ty : expectedUnion)
+    {
+        // NOTE: This probably should just be replaced with normalization.
+        if (auto itv = get<IntersectionType>(ty))
+        {
+            TypeIds parts;
+            parts.insert(begin(itv), end(itv));
+            ty = simplifyIntersection(builtinTypes, arena, std::move(parts)).result;
+        }
+
         if (auto tt = get<TableType>(ty))
         {
             bool isDisjoint = false;

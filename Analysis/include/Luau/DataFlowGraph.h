@@ -147,7 +147,7 @@ private:
 
     void join(DfgScope* p, DfgScope* a, DfgScope* b);
     void joinBindings(DfgScope* p, const DfgScope& a, const DfgScope& b);
-    void joinProps(DfgScope* p, const DfgScope& a, const DfgScope& b);
+    void joinProps(DfgScope* result, const DfgScope& a, const DfgScope& b);
 
     DefId lookup(Symbol symbol, Location location);
     DefId lookup(DefId def, const std::string& key, Location location);

@@ -17,12 +17,10 @@
 
 LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 
-LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
-LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauAutocompleteStringSingletonIntersection)
-LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauAutocompleteFunctionArglistSuggestion)
+LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 
 using namespace Luau;
 

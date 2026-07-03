@@ -751,11 +751,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // guard against dividend == INT64_MIN && divisor == -1 (signed overflow)
         // if that occurs, we must return 0
         Label skip, done;
+        ScopedRegX64 tmpMin{regs, SizeX64::qword};
 
         build.cmp(tempB.reg, -1);
         build.jcc(ConditionX64::NotEqual, skip);
 
-        ScopedRegX64 tmpMin{regs, SizeX64::qword};
         build.mov(rdx, 0);
         build.mov64(tmpMin.reg, INT64_MIN);
         build.cmp(tempA.reg, tmpMin.reg);
@@ -903,11 +903,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // guard against dividend == INT64_MIN && divisor == -1 (signed overflow)
         // if that occurs, we must return 0
         Label skip, done;
+        ScopedRegX64 tmpMin{regs, SizeX64::qword};
 
         build.cmp(tempB.reg, -1);
         build.jcc(ConditionX64::NotEqual, skip);
 
-        ScopedRegX64 tmpMin{regs, SizeX64::qword};
         build.mov(inst.regX64, 0);
         build.mov64(tmpMin.reg, INT64_MIN);
         build.cmp(tempA.reg, tmpMin.reg);
@@ -3312,11 +3312,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // guard against dividend == INT64_MIN && divisor == -1 (signed overflow)
         {
             Label skip;
+            ScopedRegX64 tmpMin{regs, SizeX64::qword};
 
             build.cmp(tmpB.reg, -1);
             build.jcc(ConditionX64::NotEqual, skip);
 
-            ScopedRegX64 tmpMin{regs, SizeX64::qword};
             build.mov64(tmpMin.reg, INT64_MIN);
             build.cmp(tmpA.reg, tmpMin.reg);
             jumpOrAbortOnUndef(ConditionX64::Equal, OP_C(inst), index, next);
