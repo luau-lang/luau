@@ -219,7 +219,7 @@ private:
      * and [shiftReferences].
      */
     void copyDependenciesToReachableTypes(
-        std::optional<ConstraintVertex> originalSource,
+        std::optional<ConstraintVertex> originalVertex,
         NotNull<ConstraintList> source,
         TypeIds mutatedTypes,
         TypePackIds mutatedTypePacks

@@ -7,7 +7,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauConstJustReportErrorForUnderfill)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 
 TEST_SUITE_BEGIN("ConstDeclarations");
@@ -42,8 +41,6 @@ TEST_CASE_FIXTURE(Fixture, "empty_domain_is_ok")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        // This test used to throw a compiler exception, this flag fixes it.
-        {FFlag::LuauConstJustReportErrorForUnderfill, true},
     };
 
     CheckResult results = check(R"(
@@ -87,7 +84,6 @@ TEST_CASE_FIXTURE(Fixture, "const_extra_lvalues_are_nil_and_syntax_error_from_un
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauConstJustReportErrorForUnderfill, true},
     };
 
     CheckResult results = check(R"(
@@ -107,8 +103,6 @@ TEST_CASE_FIXTURE(Fixture, "const_syntax_error_in_annotation")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        // This test used to throw a compiler exception, this flag fixes it.
-        {FFlag::LuauConstJustReportErrorForUnderfill, true},
     };
 
     std::ignore = check(R"(

@@ -7,15 +7,14 @@
 #include "Luau/Symbol.h"
 #include "Luau/TypedAllocator.h"
 #include "Luau/Variant.h"
+#include "Luau/Set.h"
 
 #include <memory>
 #include <optional>
 #include <unordered_set>
 #include <utility>
 
-using namespace Luau;
-
-namespace CFG
+namespace Luau::CFG
 {
 
 // The control flow graph is a layer over the existing AST that models
@@ -31,11 +30,27 @@ struct Declare;
 struct Assign;
 struct Join;
 struct Refine;
-using Instruction = Variant<Declare, Assign, Join, Refine>;
+struct Dead;
+using Instruction = Variant<Declare, Assign, Join, Refine, Dead>;
 
 using BlockId = NotNull<Block>;
 using DefId = NotNull<Definition>;
 using InstrId = NotNull<Instruction>;
+
+using LValue = Variant<Symbol, AstExpr*>;
+
+struct LValueHash
+{
+    size_t operator()(const LValue& lvalue) const
+    {
+        size_t seed = std::hash<int>()(lvalue.index());
+        if (auto* sym = lvalue.get_if<Symbol>())
+            hashCombine(seed, std::hash<Symbol>()(*sym));
+        else if (auto* expr = lvalue.get_if<AstExpr*>())
+            hashCombine(seed, DenseHashPointer()(*expr));
+        return seed;
+    }
+};
 
 namespace CFGRefinement
 {
@@ -169,6 +184,10 @@ struct Assign
     AstStatAssign* source;
 };
 
+struct Dead
+{
+};
+
 // phi nodes - When multiple control flow paths hit this point, this denotes that
 // a definition is influenced by multiple distinct control flow paths.
 struct Join
@@ -186,14 +205,20 @@ struct Join
 // the RefinementArena (lives inside a Refinement variant slot).
 struct Refine
 {
-    Refine(DefId definition, NotNull<const CFGRefinement::Refinement> prop)
+    Refine(DefId definition, const CFGRefinement::Proposition& prop)
         : definition(definition)
-        , prop(prop)
+        , toRefine(prop.ptr)
+        , type(prop.type)
+        , isTypeof(prop.isTypeof)
+        , sense(prop.sense)
     {
     }
 
     DefId definition;
-    NotNull<const CFGRefinement::Refinement> prop;
+    DefId toRefine;
+    std::optional<std::string> type;
+    bool isTypeof;
+    bool sense;
 };
 
 enum class BlockKind
@@ -261,16 +286,27 @@ struct ControlFlowGraph
     {
     }
 
-    // Maps each use of a local variable (AstExprLocal*) to the Definition*
-    // that was live at that point in the program.
-    // what 'Definition' am I referencing
-    DenseHashMap<AstExpr*, Definition*> useDefs{nullptr};
+    Definition* getUseDef(AstExpr* expr) const;
+    Definition* getLhsDef(const LValue& lv) const;
+    Definition* resolve(Definition* def) const;
 
     std::vector<BlockId> blocks;
     size_t entryIdx = 0;
 
+    const std::vector<BlockId>& rpo() const
+    {
+        return rpoOrder;
+    }
+
 private:
+    DenseHashMap<AstExpr*, Definition*> useDefs{nullptr};
+    DenseHashMap<LValue, Definition*, LValueHash> lhsDefs{LValue{}};
+    DenseHashMap<Definition*, Definition*> forwards{nullptr};
+
     BlockId newBlock(BlockKind kind, std::string debugName = "");
+    void computeRPO();
+
+    std::vector<BlockId> rpoOrder;
     NotNull<CFGAllocator> allocator;
     friend struct CFGBuilder;
 };
@@ -288,8 +324,12 @@ private:
     void lower(AstStatAssign* assn);
     void lower(AstStatIf* statIf);
     void lower(AstStatWhile* statWhile);
+    void lower(AstStatExpr* stat);
     void lowerExpr(AstExpr* expression);
     void lowerExpr(AstExprLocal* local);
+    void lowerExpr(AstExprCall* call);
+
+    bool tryLowerAssertion(AstExprCall* call);
 
     // Returns a refinement tree describing the truthy interpretation of `condition`,
     // or nullopt if no refinement can be extracted. Records use->def for any reads.
@@ -304,16 +344,15 @@ private:
 
     // Allocates an Instruction of type T and appends it to `block`.
     template<typename T, typename... Args>
-    NotNull<T> emit(Block* block, Args&&... args)
+    InstrId emit(Block* block, Args&&... args)
     {
         InstrId inst = allocator->newInstruction<T>(std::forward<Args>(args)...);
+        recordUses(inst);
         block->instructions.emplace_back(inst);
-        return NotNull{inst->template get_if<T>()};
+        return inst;
     }
 
-    // Emits an incomplete phi for `sym` in `block` with a fresh def. Operands are
-    // filled when `block` is sealed (see fillJoinOperands).
-    Join* emitJoin(Block* block, Symbol sym);
+    std::pair<InstrId, NotNull<Join>> emitJoin(Block* block, Symbol sym);
 
     // Mints a fresh SymDef with a monotonically increasing version per symbol.
     DefId newDefinition(Symbol sym);
@@ -327,11 +366,12 @@ private:
 
     // Reads `sym` from each predecessor of `block` to populate `j->operands`,
     // then attempts to trim if the join collapses to a single def.
+    DefId fillJoinOperands(Block* block, InstrId instr, Join* j);
 
-    void fillJoinOperands(Block* block, Join* j);
+    DefId trimTrivialJoin(InstrId inst, Join* j);
 
-    // TODO CLI-203195: collapse phis whose operands all reduce to a single def.
-    void trimTrivialJoin(Join* j);
+    // Registers which defs `inst` consumes into the usingInstructions map.
+    void recordUses(InstrId inst);
 
     // Returns the next version index for `sym`; first call returns 0.
     size_t nextVersionIndex(Symbol sym);
@@ -368,8 +408,11 @@ private:
     NotNull<CFGAllocator> allocator;
     NotNull<Block> currentBlock;
     DenseHashSet<Block*> sealedBlocks{nullptr};
-    DenseHashMap<Block*, std::unordered_set<Join*>> incompleteJoins{nullptr};
+    DenseHashMap<Block*, DenseHashSet<Instruction*>> incompleteJoins;
     DenseHashMap<Symbol, size_t> versionCounter{Symbol{}};
+
+    // Maps defs to the Instructions that use them
+    DenseHashMap<Definition*, Set<Instruction*>> usingInstructions;
 };
 
-} // namespace CFG
+} // namespace Luau::CFG

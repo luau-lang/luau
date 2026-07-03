@@ -4,12 +4,13 @@
 #include "Luau/AstUtils.h"
 #include "Luau/Common.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 
-namespace CFG
+namespace Luau::CFG
 {
 
 namespace CFGRefinement
@@ -123,6 +124,57 @@ BlockId ControlFlowGraph::newBlock(BlockKind kind, std::string debugName)
     return blocks.emplace_back(b);
 }
 
+void ControlFlowGraph::computeRPO()
+{
+    std::vector<Block*> stack;
+    DenseHashSet<Block*> visited{nullptr};
+
+    stack.push_back(blocks[0]);
+    while (!stack.empty())
+    {
+        auto& curr = stack.back();
+        visited.insert(curr);
+        bool added = false;
+        for (auto succ : curr->getSuccessors())
+        {
+            if (!visited.contains(succ))
+            {
+                stack.emplace_back(succ);
+                added = true;
+            }
+        }
+        if (added)
+            continue;
+
+        rpoOrder.emplace_back(curr);
+        stack.pop_back();
+    }
+
+    std::reverse(rpoOrder.begin(), rpoOrder.end());
+}
+
+Definition* ControlFlowGraph::resolve(Definition* def) const
+{
+    // It's possible that we could do path compression here as an easy optimization.
+    while (auto* fwd = forwards.find(def))
+        def = *fwd;
+    return def;
+}
+
+Definition* ControlFlowGraph::getUseDef(AstExpr* expr) const
+{
+    if (auto* def = useDefs.find(expr))
+        return resolve(*def);
+    return nullptr;
+}
+
+Definition* ControlFlowGraph::getLhsDef(const LValue& lv) const
+{
+    if (auto* def = lhsDefs.find(lv))
+        return resolve(*def);
+    return nullptr;
+}
+
 
 CFGBuilder::CFGBuilder(NotNull<CFGAllocator> allocator)
     : cfg(std::make_unique<ControlFlowGraph>(allocator))
@@ -137,6 +189,7 @@ std::unique_ptr<ControlFlowGraph> CFGBuilder::makeCFG(NotNull<CFGAllocator> allo
     CFGBuilder builder(allocator);
     builder.lower(block);
     auto cfg = std::move(builder.cfg);
+    cfg->computeRPO();
     if (FFlag::DebugLuauFreezeArena)
         allocator->freeze();
     return cfg;
@@ -161,10 +214,18 @@ void CFGBuilder::seal(Block* b)
     auto joinsToFill = incompleteJoins.find(b);
     if (joinsToFill != nullptr)
     {
-        for (auto j : *joinsToFill)
+        for (auto inst : *joinsToFill)
         {
-            fillJoinOperands(b, j);
+            // If you're sealing a block and filling the arguments to joins,
+            // it's possible for other instructions to get recursively re-written, including other joins.
+            // In this case, we should check if the incomplete instruction is still a join
+            if (auto join = inst->get_if<Join>())
+            {
+                DefId resolved = fillJoinOperands(b, NotNull{inst}, join);
+                b->setReachingDefinition(resolved->sym, resolved);
+            }
         }
+        incompleteJoins[b] = DenseHashSet<Instruction*>{};
     }
     sealedBlocks.insert(b);
 }
@@ -181,10 +242,40 @@ void CFGBuilder::lower(AstStat* statement)
         lower(statIf);
     else if (auto statWhile = statement->as<AstStatWhile>())
         lower(statWhile);
+    else if (auto expr = statement->as<AstStatExpr>())
+        lower(expr);
     else
     {
         LUAU_ASSERT(!"Unhandled statement");
     }
+}
+
+void CFGBuilder::lower(AstStatExpr* stat)
+{
+    lowerExpr(stat->expr);
+}
+
+bool CFGBuilder::tryLowerAssertion(AstExprCall* call)
+{
+    if (call->args.size == 0)
+        return false;
+
+    auto global = call->func->as<AstExprGlobal>();
+    if (!global || global->name != "assert")
+        return false;
+
+    AstExpr* cond = call->args.data[0];
+    for (size_t i = 0; i < call->args.size; i++)
+    {
+        lowerExpr(call->args.data[i]);
+        if (i == 0)
+        {
+            if (auto ref = resolveCondition(cond))
+                emitRefineInstruction(currentBlock, *ref);
+        }
+    }
+
+    return true;
 }
 
 void CFGBuilder::lower(AstStatBlock* statement)
@@ -207,6 +298,7 @@ void CFGBuilder::lower(AstStatLocal* local)
         DefId def = newDefinition(sym);
         emit<Declare>(currentBlock, def, local);
         currentBlock->setReachingDefinition(sym, def);
+        cfg->lhsDefs[LValue{sym}] = def.get();
     }
 }
 
@@ -234,6 +326,7 @@ void CFGBuilder::lower(AstStatAssign* assn)
             DefId def = newDefinition(*sym);
             emit<Assign>(currentBlock, def, assn);
             currentBlock->setReachingDefinition(*sym, def);
+            cfg->lhsDefs[LValue{target}] = def.get();
         }
         else
         {
@@ -255,13 +348,16 @@ DefId CFGBuilder::newDefinition(Symbol sym)
     return allocator->newDefinition(sym, nextVersionIndex(sym));
 }
 
-Join* CFGBuilder::emitJoin(Block* block, Symbol sym)
+std::pair<InstrId, NotNull<Join>> CFGBuilder::emitJoin(Block* block, Symbol sym)
 {
     DefId def = newDefinition(sym);
-    NotNull<Join> j = emit<Join>(block, def);
+    InstrId jInstr = emit<Join>(block, def);
+    Join* j = jInstr->get_if<Join>();
+    LUAU_ASSERT(j);
+
     block->setReachingDefinition(sym, def);
-    incompleteJoins[block].insert(j);
-    return j;
+    incompleteJoins[block].insert(jInstr);
+    return {jInstr, NotNull{j}};
 }
 
 void CFGBuilder::lower(AstStatIf* statIf)
@@ -352,10 +448,16 @@ void CFGBuilder::lowerExpr(AstExpr* expr)
     }
     else if (auto binop = expr->as<AstExprBinary>())
     {
-        LUAU_ASSERT(binop->left);
-        LUAU_ASSERT(binop->right);
         lowerExpr(binop->left);
         lowerExpr(binop->right);
+    }
+    else if (auto call = expr->as<AstExprCall>())
+    {
+        lowerExpr(call);
+    }
+    else if (auto group = expr->as<AstExprGroup>())
+    {
+        lowerExpr(group->expr);
     }
 }
 
@@ -363,6 +465,15 @@ void CFGBuilder::lowerExpr(AstExprLocal* local)
 {
     DefId def = readVariable(currentBlock, Symbol(local->local));
     cfg->useDefs[local] = def;
+}
+
+void CFGBuilder::lowerExpr(AstExprCall* call)
+{
+    if (tryLowerAssertion(call))
+        return;
+    lowerExpr(call->func);
+    for (size_t i = 0; i < call->args.size; i++)
+        lowerExpr(call->args.data[i]);
 }
 
 std::optional<CFGRefinement::RefinementId> CFGBuilder::resolveCondition(AstExpr* condition)
@@ -430,12 +541,12 @@ void CFGBuilder::emitRefineInstruction(Block* block, CFGRefinement::RefinementId
     // I've chosen to elide this terminator in favor of just emitting the fresh def + refinement
     // explicitly into the block. A consequence of this is that this representation will mint a
     // empty block with only refinement information, but this just makes it easier to handle phi emission.
-    Luau::visit(
+    visit(
         overloaded{
             [&](const CFGRefinement::Proposition& prop)
             {
                 DefId refined = newDefinition(prop.ptr->sym);
-                emit<Refine>(block, refined, refinement);
+                emit<Refine>(block, refined, prop);
                 block->setReachingDefinition(prop.ptr->sym, refined);
             },
             [&](const CFGRefinement::Conjunction& conj)
@@ -468,24 +579,26 @@ DefId CFGBuilder::readVariable(BlockId block, Symbol sym)
 
     if (!isSealed(block))
     {
-        Join* j = emitJoin(block, sym);
-        return j->definition;
+        auto p = emitJoin(block, sym);
+        return p.second->definition;
     }
     else if (block->getPredecessors().size() == 1)
     {
-        auto def = readVariable(block->getPredecessors()[0], sym);
+        auto def = readVariable(block->getPredecessors().front(), sym);
         block->setReachingDefinition(sym, def);
         return def;
     }
     else
     {
-        Join* j = emitJoin(block, sym);
-        fillJoinOperands(block, j);
-        return j->definition;
+        auto [inst, join] = emitJoin(block, sym);
+        block->setReachingDefinition(sym, join->definition);
+        auto d = fillJoinOperands(block, inst, join);
+        block->setReachingDefinition(d->sym, d);
+        return d;
     }
 }
 
-void CFGBuilder::fillJoinOperands(Block* block, Join* j)
+DefId CFGBuilder::fillJoinOperands(Block* block, InstrId instr, Join* j)
 {
     for (BlockId pred : block->getPredecessors())
     {
@@ -493,13 +606,68 @@ void CFGBuilder::fillJoinOperands(Block* block, Join* j)
         j->operands.emplace_back(def);
     }
 
-    trimTrivialJoin(j);
+    recordUses(instr);
+    return trimTrivialJoin(instr, j);
 }
 
 
-void CFGBuilder::trimTrivialJoin(Join* j)
+DefId CFGBuilder::trimTrivialJoin(InstrId inst, Join* j)
 {
-    // TODO: CLI-203195: Implement trimming of trivial join nodes
+    LUAU_ASSERT(j);
+    auto curr = j->definition;
+    // Tracks the duplicated or unreachable phi nodes
+    Definition* same = nullptr;
+    // Phis have two operands (by construction)
+    for (auto& op : j->operands)
+    {
+        if (op == same || op == curr)
+            continue;
+        if (same != nullptr)
+            return curr;
+        same = op;
+    }
+
+    Set<Instruction*> tmp_;
+    Set<Instruction*>& usingInsts = tmp_;
+    if (Set<Instruction*>* uses = usingInstructions.find(curr))
+        usingInsts = *uses;
+    usingInsts.erase(inst);
+
+    if (same == nullptr)
+        return curr;
+
+    inst->emplace<Dead>();
+    // The current join is trivial, so we can replace it with the single op that isn't itself
+    cfg->forwards[curr.get()] = same;
+
+    for (auto& usingInst : usingInsts)
+    {
+        if (Join* j = usingInst->get_if<Join>())
+            trimTrivialJoin(NotNull{usingInst}, j);
+    }
+
+    return NotNull{same};
+}
+
+void CFGBuilder::recordUses(InstrId inst)
+{
+    visit(
+        overloaded{
+            [&](const Declare&) {},
+            [&](const Assign&) {},
+            [&](const Dead&) {},
+            [&](const Join& join)
+            {
+                for (auto& op : join.operands)
+                    usingInstructions[op].insert(inst);
+            },
+            [&](const Refine& refine)
+            {
+                usingInstructions[refine.toRefine.get()].insert(inst);
+            },
+        },
+        *inst.get()
+    );
 }
 
 size_t CFGBuilder::nextVersionIndex(Symbol sym)
@@ -515,4 +683,4 @@ size_t CFGBuilder::nextVersionIndex(Symbol sym)
     return *ref;
 }
 
-} // namespace CFG
+} // namespace Luau::CFG
