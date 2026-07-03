@@ -13,7 +13,6 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
 LUAU_FASTFLAG(LuauTypeNegationSupport)
 
-LUAU_FASTFLAG(LuauUserDefinedClasses)
 namespace Luau
 {
 

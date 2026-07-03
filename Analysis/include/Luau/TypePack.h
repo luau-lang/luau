@@ -157,8 +157,8 @@ struct TypePackIterator
     using iterator_category = std::input_iterator_tag;
 
     TypePackIterator() = default;
-    explicit TypePackIterator(TypePackId tp);
-    TypePackIterator(TypePackId tp, const TxnLog* log);
+    explicit TypePackIterator(TypePackId typePack);
+    TypePackIterator(TypePackId typePack, const TxnLog* log);
 
     TypePackIterator& operator++();
     TypePackIterator operator++(int);

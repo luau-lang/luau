@@ -58,7 +58,7 @@ LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockLimit, 32'768) // 32 K
 // Current value is based on some member variables being limited to 16 bits
 LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockInstructionLimit, 65'536) // 64 K
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenInteger2)
+LUAU_FASTFLAGVARIABLE(LuauCodegenInteger3)
 LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau

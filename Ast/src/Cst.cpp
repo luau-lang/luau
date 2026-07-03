@@ -3,7 +3,6 @@
 #include "Luau/Cst.h"
 #include "Luau/Common.h"
 
-LUAU_FASTFLAG(LuauCstExprGroup)
 LUAU_FASTFLAG(LuauCstAttr)
 
 namespace Luau
@@ -39,7 +38,6 @@ CstExprGroup::CstExprGroup(Position closePosition)
     : CstNode(CstClassIndex())
     , closePosition(closePosition)
 {
-    LUAU_ASSERT(FFlag::LuauCstExprGroup);
 }
 
 CstExprConstantNumber::CstExprConstantNumber(const AstArray<char>& value)

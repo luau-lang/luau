@@ -35,7 +35,7 @@ struct StateDot
     bool canDuplicatePrimitive(TypeId ty);
 
     void visitChildren(TypeId ty, int index);
-    void visitChildren(TypePackId ty, int index);
+    void visitChildren(TypePackId tp, int index);
 
     void visitChild(TypeId ty, int parentIndex, const char* linkName = nullptr);
     void visitChild(TypePackId tp, int parentIndex, const char* linkName = nullptr);
