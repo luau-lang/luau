@@ -38,6 +38,8 @@ LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
+LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -3180,7 +3182,34 @@ bool TypeChecker2::testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedT
 {
     NotNull<Scope> scope{findInnermostScope(expr->location)};
     auto exprTy = lookupType(expr);
-    SubtypingResult r = subtyping->isSubtype(exprTy, expectedType, scope);
+
+    SubtypingResult r;
+
+    if (FFlag::LuauImproveUniqueTableWidthSubtyping && !FFlag::LuauBidirectionalInferenceSimplifyTables)
+    {
+        DenseHashSet<TypeId> uniqueTypes{nullptr};
+        findUniqueTypes(NotNull{&uniqueTypes}, std::vector{expr}, NotNull{&module->astTypes});
+
+        // We create a separate `Subtyping` instance here because, in this
+        // particular context, we have knowledge that any table literals are
+        // unique references to their types.  Because we know that no other
+        // references to those values can exist, we can safely test those table
+        // types covariantly.
+        //
+        // These same TypeIds must _not_ be considered to be unique references
+        // if they occur in any other context, and so we need to separate the
+        // caches.
+
+        Subtyping st{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, typeFunctionRuntime, ice};
+        st.uniqueTypes = &uniqueTypes;
+
+        r = st.isSubtype(exprTy, expectedType, scope);
+    }
+    else
+    {
+        r = subtyping->isSubtype(exprTy, expectedType, scope);
+    }
+
     if (r.isSubtype)
         return true;
 
@@ -3229,8 +3258,16 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     {
         if (auto utv = get<UnionType>(expectedType))
         {
-            if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes))
-                return testLiteralOrAstTypeIsSubtype(expr, *tt);
+            if (FFlag::LuauBidirectionalInferenceSimplifyTables)
+            {
+                if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes, NotNull{&module->internalTypes}))
+                    return testLiteralOrAstTypeIsSubtype(expr, *tt);
+            }
+            else
+            {
+                if (auto tt = extractMatchingTableType_DEPRECATED(utv, exprType, builtinTypes))
+                    return testLiteralOrAstTypeIsSubtype(expr, *tt);
+            }
         }
 
         if (auto itv = get<IntersectionType>(expectedType))

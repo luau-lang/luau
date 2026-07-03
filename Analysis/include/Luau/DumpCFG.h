@@ -2,12 +2,12 @@
 #pragma once
 
 #include <string>
-namespace CFG
+
+namespace Luau::CFG
 {
 struct Block;
 struct ControlFlowGraph;
-}; // namespace CFG
-
+} // namespace Luau::CFG
 
 namespace Luau
 {

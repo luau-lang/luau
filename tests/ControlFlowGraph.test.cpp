@@ -7,6 +7,7 @@
 
 #include "ScopedFlags.h"
 #include "doctest.h"
+#include "Fixture.h"
 
 #include <string>
 
@@ -21,9 +22,10 @@
 LUAU_FASTFLAG(DebugLuauLogCFG)
 LUAU_FASTFLAG(DebugLuauDumpCFGJson)
 LUAU_FASTFLAG(DebugLuauFreezeArena)
+LUAU_FASTFLAG(DebugLuauCFG)
 
 using namespace Luau;
-using namespace CFG;
+using namespace Luau::CFG;
 namespace
 {
 
@@ -87,20 +89,17 @@ void checkRefine(
 )
 {
     CHECK(r->definition->versionedName() == def);
-    auto* prop = r->prop->get_if<CFGRefinement::Proposition>();
-    REQUIRE(prop != nullptr);
-    REQUIRE(prop->ptr != nullptr);
-    CHECK(prop->ptr->versionedName() == source);
-    CHECK(prop->sense == sense);
+    CHECK(r->toRefine->versionedName() == source);
+    CHECK(r->sense == sense);
     if (type)
     {
-        REQUIRE(prop->type.has_value());
-        CHECK(*prop->type == *type);
-        CHECK(prop->isTypeof == isTypeof);
+        REQUIRE(r->type.has_value());
+        CHECK(*r->type == *type);
+        CHECK(r->isTypeof == isTypeof);
     }
     else
     {
-        CHECK(!prop->type.has_value());
+        CHECK(!r->type.has_value());
     }
 }
 
@@ -142,9 +141,9 @@ struct CFGFixture
         REQUIRE(node != nullptr);
         AstExpr* expr = node->asExpr();
         REQUIRE(expr != nullptr);
-        auto* def = cfg.useDefs.find(expr);
+        Definition* def = cfg.getUseDef(expr);
         REQUIRE(def != nullptr);
-        return *def;
+        return def;
     }
 };
 
@@ -321,6 +320,80 @@ TEST_CASE_FIXTURE(CFGFixture, "while_loop")
     CHECK(requireInst<Declare>(exit, 1)->def->versionedName() == "y-0");
 }
 
+TEST_CASE_FIXTURE(CFGFixture, "call_expression_records_uses")
+{
+    auto cfg = build(R"(
+        local f = nil
+        local x = 1
+        local y = f(x)
+    )");
+
+    REQUIRE(cfg->blocks.size() == 1);
+    // f and x are read on the RHS of `local y = f(x)`
+    CHECK_REACHING_DEF(Position(3, 18), "f-0");
+    CHECK_REACHING_DEF(Position(3, 20), "x-0");
+}
+
+TEST_CASE_FIXTURE(CFGFixture, "grouped_expression_records_use")
+{
+    auto cfg = build(R"(
+        local x = 1
+        local y = (x)
+    )");
+
+    REQUIRE(cfg->blocks.size() == 1);
+    CHECK_REACHING_DEF(Position(2, 19), "x-0");
+}
+
+TEST_CASE_FIXTURE(CFGFixture, "trivial_phi_if_else_unmodified")
+{
+    auto cfg = build(R"(
+        local x = 1
+        if true then
+            local y = 2
+        else
+            local z = 3
+        end
+        local w = x
+    )");
+
+    // x is never modified on either branch, so the phi at the merge is trivial.
+    // The read of x in `local w = x` should resolve directly to x-0.
+    CHECK_REACHING_DEF(Position(7, 18), "x-0");
+}
+
+TEST_CASE_FIXTURE(CFGFixture, "trivial_phi_while_loop_unmodified")
+{
+    auto cfg = build(R"(
+        local x = 1
+        while true do
+            local y = x
+        end
+    )");
+
+    // x is never modified in the loop body, so the loop header phi is trivial.
+    // The read of x inside the loop should resolve directly to x-0.
+    CHECK_REACHING_DEF(Position(3, 22), "x-0");
+}
+
+TEST_CASE_FIXTURE(CFGFixture, "nontrivial_phi_one_branch_modifies")
+{
+    auto cfg = build(R"(
+        local x = 1
+        if true then
+            x = 2
+        end
+        local w = x
+    )");
+
+    // x is modified in the then branch (x-1) but not else (x-0).
+    // The phi is non-trivial — the read should resolve to the phi's def, not x-0.
+    Block* merge = cfg->blocks[3];
+    auto* phi = requireInst<Join>(merge, 0);
+    checkJoin(phi, "x-2", {"x-1", "x-0"});
+    CHECK_REACHING_DEF(Position(5, 18), "x-2");
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("CFGRefinement");
@@ -457,4 +530,184 @@ TEST_CASE_FIXTURE(CFGFixture, "conjunction_emits_flow_per_side")
     // Falsy side of conjunction is a disjunction (~x \/ ~y) which doesn't decompose yet
 }
 
+TEST_SUITE_END();
+
+TEST_SUITE_BEGIN("CFGTypeCheckTest");
+
+TEST_CASE_FIXTURE(Fixture, "is_truthy_constraint")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauCFG, true};
+    CheckResult result = check(R"(
+local v : string?
+if v then
+    local s = v
+else
+    local s = v
+end
+)");
+    CHECK_EQ("string", toString(requireTypeAtPosition({3, 14})));
+    CHECK_EQ("nil", toString(requireTypeAtPosition({5, 14})));
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "invert_is_truthy_constraint")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauCFG, true};
+    CheckResult result = check(R"(
+local v : string?
+if not v then
+    local s = v
+else
+    local s = v
+end
+)");
+    CHECK_EQ("nil", toString(requireTypeAtPosition({3, 14})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 14})));
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parenthesized_expressions_are_followed_through")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauCFG, true};
+    CheckResult result = check(R"(
+local v : string?
+if (not v) then
+    local s = v
+else
+    local s = v
+end
+)");
+    CHECK_EQ("nil", toString(requireTypeAtPosition({3, 14})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 14})));
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "and_constraint")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauCFG, true};
+    CheckResult result = check(R"(
+local a : string?
+local b : number?
+if a and b then
+    local x = a
+    local y = b
+else
+    local x = a
+    local y = b
+end
+)");
+    CHECK_EQ("string", toString(requireTypeAtPosition({4, 14})));
+    CHECK_EQ("number", toString(requireTypeAtPosition({5, 14})));
+    CHECK_EQ("string?", toString(requireTypeAtPosition({7, 14})));
+    CHECK_EQ("number?", toString(requireTypeAtPosition({8, 14})));
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "not_and_constraint")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauCFG, true};
+    CheckResult result = check(R"(
+local a : string?
+local b : number?
+if not (a and b) then
+    local x = a
+    local y = b
+else
+    local x = a
+    local y = b
+end
+)");
+    CHECK_EQ("string?", toString(requireTypeAtPosition({4, 14})));
+    CHECK_EQ("number?", toString(requireTypeAtPosition({5, 14})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({7, 14})));
+    CHECK_EQ("number", toString(requireTypeAtPosition({8, 14})));
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "is_truthy_while_loop")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauCFG, true};
+    CheckResult result = check(R"(
+local v : string?
+while v do
+    local s = v
+end
+)");
+    CHECK_EQ("string", toString(requireTypeAtPosition({3, 14})));
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "invert_is_truthy_while_loop")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauCFG, true};
+    CheckResult result = check(R"(
+local v : string?
+while not v do
+    local s = v
+end
+)");
+    CHECK_EQ("nil", toString(requireTypeAtPosition({3, 14})));
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_truthy")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauCFG, true};
+    CheckResult result = check(R"(
+local foo : string?
+assert(foo)
+local bar : string = foo
+)");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_truthy_then_type_guard")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauCFG, true};
+    CheckResult result = check(R"(
+local a : (number | string)?
+assert(a)
+local b = a
+assert(type(a) == "number")
+local c = a
+)");
+    CHECK_EQ("number | string", toString(requireTypeAtPosition({3, 10})));
+    CHECK_EQ("number", toString(requireTypeAtPosition({5, 10})));
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+// Begin - stuff we aren't able to infer with the existing type inference system
+TEST_CASE_FIXTURE(Fixture, "interesting_refinement")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::DebugLuauCFG, true};
+    CheckResult result = check(R"(
+local x : number?
+if not x then
+    x = 0
+end
+local y = x + 4
+)");
+    CHECK_EQ("number", toString(requireTypeAtPosition({5, 10})));
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "while_back_edge")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::DebugLuauCFG, true};
+    CheckResult result = check(R"(
+local x = 42
+local e = 0
+while e > 1 do
+  local y = x
+  x = "foo"
+end
+)");
+
+    CHECK_EQ("number | string", toString(requireTypeAtPosition({4, 12})));
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+// End - stuff we aren't able to infer with the existing type inference system
 TEST_SUITE_END();

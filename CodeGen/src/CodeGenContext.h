@@ -77,7 +77,7 @@ public:
     [[nodiscard]] ModuleBindResult bindModule(
         const std::optional<ModuleId>& moduleId,
         const std::vector<Proto*>& moduleProtos,
-        std::vector<NativeProtoExecDataPtr> nativeExecDatas,
+        std::vector<NativeProtoExecDataPtr> nativeProtos,
         const uint8_t* data,
         size_t dataSize,
         const uint8_t* code,
@@ -101,7 +101,7 @@ public:
     [[nodiscard]] ModuleBindResult bindModule(
         const std::optional<ModuleId>& moduleId,
         const std::vector<Proto*>& moduleProtos,
-        std::vector<NativeProtoExecDataPtr> nativeExecDatas,
+        std::vector<NativeProtoExecDataPtr> nativeProtos,
         const uint8_t* data,
         size_t dataSize,
         const uint8_t* code,

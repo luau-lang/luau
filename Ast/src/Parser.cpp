@@ -26,10 +26,8 @@ LUAU_FASTFLAGVARIABLE(LuauExportValueSyntax)
 LUAU_FLAGVERSION(LuauExportValueSyntax, 3)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
-LUAU_FASTFLAGVARIABLE(LuauConstJustReportErrorForUnderfill)
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauAllowGlobalDeclarationToBeCalledClass)
-LUAU_FASTFLAGVARIABLE(LuauCstExprGroup)
 LUAU_FASTFLAGVARIABLE(LuauDisallowExternClassInTypeDefinitions)
 LUAU_FASTFLAGVARIABLE(LuauTableEntriesDontNeedToMatchIndent)
 LUAU_FASTFLAGVARIABLE(LuauCstAttr)
@@ -1430,43 +1428,26 @@ AstStat* Parser::parseLocal(
 
         Location end = values.empty() ? lexer.previousLocation() : values.back()->location;
 
-        if (FFlag::LuauConstJustReportErrorForUnderfill)
+        AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation, isConst);
+        if (options.storeCstData)
         {
-            AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation, isConst);
-            if (options.storeCstData)
-            {
-                cstNodeMap[node] =
-                    allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
-            }
-
-            // It is a syntax error when a const declaration *definitely* does
-            // not have enough values, for example:
-            //
-            //  const foo
-            //  const bar, baz = 42
-            //
-            // Both error as there's probably user error (`foo` and `baz` can
-            // only ever be `nil`). We report an error but return the
-            // declaration as-is, as it's still reasonable syntactically.
-            if (isConst && !isEnoughValues(values, vars.size()))
-                report(node->location, "Missing initializer in const declaration");
-
-            return node;
+            cstNodeMap[node] =
+                allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
         }
-        else
-        {
-            if (isConst && !isEnoughValues(values, vars.size()))
-                return reportStatError(Location(start, end), {}, {}, "Missing initializer in const declaration");
 
-            AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation, isConst);
-            if (options.storeCstData)
-            {
-                cstNodeMap[node] =
-                    allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
-            }
+        // It is a syntax error when a const declaration *definitely* does
+        // not have enough values, for example:
+        //
+        //  const foo
+        //  const bar, baz = 42
+        //
+        // Both error as there's probably user error (`foo` and `baz` can
+        // only ever be `nil`). We report an error but return the
+        // declaration as-is, as it's still reasonable syntactically.
+        if (isConst && !isEnoughValues(values, vars.size()))
+            report(node->location, "Missing initializer in const declaration");
 
-            return node;
-        }
+        return node;
     }
 }
 
@@ -3764,7 +3745,7 @@ AstExpr* Parser::parsePrefixExpr()
 
         AstExpr* exprGroup = allocator.alloc<AstExprGroup>(Location(start, end), expr);
 
-        if (FFlag::LuauCstExprGroup && options.storeCstData)
+        if (options.storeCstData)
             cstNodeMap[exprGroup] = allocator.alloc<CstExprGroup>(closeParenFound ? lexer.previousLocation().begin : Position::missing());
 
         return exprGroup;

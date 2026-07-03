@@ -23,9 +23,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
-LUAU_FASTFLAGVARIABLE(LuauCodegenLinearSetupEntryState3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLoadPropagateOrigin)
-LUAU_FASTFLAGVARIABLE(LuauCodegenExtraTableOpts)
 LUAU_FASTFLAGVARIABLE(LuauCodegenRecordAllBlockExitInfo)
 
 namespace Luau
@@ -44,11 +42,6 @@ struct RegisterInfo
     // Used to quickly invalidate links between SSA values and register memory
     // It's a bit imprecise where value and tag both always invalidate together
     uint32_t version = 0;
-
-    // TODO: Remove with LuauCodegenExtraTableOpts
-    bool knownNotReadonly_DEPRECATED = false;
-    bool knownNoMetatable_DEPRECATED = false;
-    int knownTableArraySize_DEPRECATED = -1;
 };
 
 // Load instructions are linked to target register to carry knowledge about the target
@@ -204,14 +197,6 @@ struct ConstPropState
             if (info->value != value)
             {
                 info->value = value;
-
-                if (!FFlag::LuauCodegenExtraTableOpts)
-                {
-                    info->knownNotReadonly_DEPRECATED = false;
-                    info->knownNoMetatable_DEPRECATED = false;
-                    info->knownTableArraySize_DEPRECATED = -1;
-                }
-
                 info->version++;
             }
         }
@@ -227,13 +212,6 @@ struct ConstPropState
         if (invalidateValue)
         {
             reg.value = {};
-
-            if (!FFlag::LuauCodegenExtraTableOpts)
-            {
-                reg.knownNotReadonly_DEPRECATED = false;
-                reg.knownNoMetatable_DEPRECATED = false;
-                reg.knownTableArraySize_DEPRECATED = -1;
-            }
         }
 
         reg.version++;
@@ -306,8 +284,7 @@ struct ConstPropState
         // While other map clears already prevent instValue keys from matching again, this saves memory and map size
         instValue.clear();
 
-        if (FFlag::LuauCodegenExtraTableOpts)
-            loadEnvIdx = kInvalidInstIdx;
+        loadEnvIdx = kInvalidInstIdx;
     }
 
     // If table memory has changed, we can't reuse previously computed and validated table slot lookups
@@ -339,32 +316,15 @@ struct ConstPropState
 
     void invalidateHeap()
     {
-        if (FFlag::LuauCodegenExtraTableOpts)
-        {
-            instNotReadonly.clear();
-            instNoMetatable.clear();
-            instArraySize.clear();
-        }
-        else
-        {
-            for (int i = 0; i <= maxReg; ++i)
-                invalidateHeap(regs[i]);
-        }
+        instNotReadonly.clear();
+        instNoMetatable.clear();
+        instArraySize.clear();
 
         invalidateHeapTableData();
 
         // Buffer length checks are not invalidated since buffer size is immutable
 
         bufferLoadStoreInfo.clear();
-    }
-
-    void invalidateHeap(RegisterInfo& reg)
-    {
-        CODEGEN_ASSERT(!FFlag::LuauCodegenExtraTableOpts);
-
-        reg.knownNotReadonly_DEPRECATED = false;
-        reg.knownNoMetatable_DEPRECATED = false;
-        reg.knownTableArraySize_DEPRECATED = -1;
     }
 
     void invalidateUserCall()
@@ -384,24 +344,9 @@ struct ConstPropState
 
     void invalidateTableArraySize()
     {
-        if (FFlag::LuauCodegenExtraTableOpts)
-        {
-            instArraySize.clear();
-        }
-        else
-        {
-            for (int i = 0; i <= maxReg; ++i)
-                invalidateTableArraySize(regs[i]);
-        }
+        instArraySize.clear();
 
         invalidateHeapTableData();
-    }
-
-    void invalidateTableArraySize(RegisterInfo& reg)
-    {
-        CODEGEN_ASSERT(!FFlag::LuauCodegenExtraTableOpts);
-
-        reg.knownTableArraySize_DEPRECATED = -1;
     }
 
     void createRegLink(uint32_t instIdx, IrOp regOp)
@@ -1360,14 +1305,11 @@ struct ConstPropState
         instTag.clear();
         instValue.clear();
 
-        if (FFlag::LuauCodegenExtraTableOpts)
-        {
-            loadEnvIdx = kInvalidInstIdx;
+        loadEnvIdx = kInvalidInstIdx;
 
-            instNotReadonly.clear();
-            instNoMetatable.clear();
-            instArraySize.clear();
-        }
+        instNotReadonly.clear();
+        instNoMetatable.clear();
+        instArraySize.clear();
 
         invalidateValuePropagation();
         invalidateHeapTableData();
@@ -1777,7 +1719,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                         state.instTag[index] = function.tagOp(OP_B(prev));
                         state.instValue[index] = OP_C(prev);
                     }
-                    else if (FFlag::LuauCodegenExtraTableOpts && prev.cmd == IrCmd::STORE_TVALUE)
+                    else if (prev.cmd == IrCmd::STORE_TVALUE)
                     {
                         // For safety, check that the operand of the previous store is still alive (store was not removed or replaced)
                         if (auto arg = function.asInstOp(OP_B(prev)); arg && arg->useCount != 0)
@@ -1817,7 +1759,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                         state.instTag[index] = function.tagOp(OP_B(prev));
                         state.instValue[index] = OP_C(prev);
                     }
-                    else if (FFlag::LuauCodegenExtraTableOpts && prev.cmd == IrCmd::STORE_TVALUE)
+                    else if (prev.cmd == IrCmd::STORE_TVALUE)
                     {
                         // For safety, check that the operand of the previous store is still alive (store was not removed or replaced)
                         if (auto arg = function.asInstOp(OP_B(prev)); arg && arg->useCount != 0)
@@ -1893,22 +1835,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.invalidateValue(OP_A(inst));
 
             if (OP_B(inst).kind == IrOpKind::Inst)
-            {
                 state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_POINTER);
-
-                if (!FFlag::LuauCodegenExtraTableOpts)
-                {
-                    if (IrInst* instOp = function.asInstOp(OP_B(inst)); instOp && instOp->cmd == IrCmd::NEW_TABLE)
-                    {
-                        if (RegisterInfo* info = state.tryGetRegisterInfo(OP_A(inst)))
-                        {
-                            info->knownNotReadonly_DEPRECATED = true;
-                            info->knownNoMetatable_DEPRECATED = true;
-                            info->knownTableArraySize_DEPRECATED = function.uintOp(OP_A(instOp));
-                        }
-                    }
-                }
-            }
         }
         break;
     case IrCmd::STORE_DOUBLE:
@@ -2099,10 +2026,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             {
                 state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_TVALUE);
             }
-            else if (FFlag::LuauCodegenExtraTableOpts)
+            else if (IrInst* target = function.asInstOp(OP_A(inst)))
             {
-                if (IrInst* target = function.asInstOp(OP_A(inst)))
-                    state.forwardTableStoreToLoad(*target, OPT_OP_C(inst), index);
+                state.forwardTableStoreToLoad(*target, OPT_OP_C(inst), index);
             }
         }
         break;
@@ -2315,26 +2241,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         // It is possible to check if current tag in state is truthy or not, but this case almost never comes up
         break;
     case IrCmd::CHECK_READONLY:
-        if (FFlag::LuauCodegenExtraTableOpts)
+        if (OP_A(inst).kind == IrOpKind::Inst)
         {
-            if (OP_A(inst).kind == IrOpKind::Inst)
-            {
-                if (state.instNotReadonly.contains(OP_A(inst).index))
-                {
-                    if (FFlag::DebugLuauAbortingChecks)
-                        replace(function, OP_B(inst), build.undef());
-                    else
-                        kill(function, inst);
-                }
-                else
-                {
-                    state.instNotReadonly.insert(OP_A(inst).index);
-                }
-            }
-        }
-        else if (RegisterInfo* info = state.tryGetRegisterInfo(OP_A(inst)))
-        {
-            if (info->knownNotReadonly_DEPRECATED)
+            if (state.instNotReadonly.contains(OP_A(inst).index))
             {
                 if (FFlag::DebugLuauAbortingChecks)
                     replace(function, OP_B(inst), build.undef());
@@ -2343,31 +2252,14 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
             else
             {
-                info->knownNotReadonly_DEPRECATED = true;
+                state.instNotReadonly.insert(OP_A(inst).index);
             }
         }
         break;
     case IrCmd::CHECK_NO_METATABLE:
-        if (FFlag::LuauCodegenExtraTableOpts)
+        if (OP_A(inst).kind == IrOpKind::Inst)
         {
-            if (OP_A(inst).kind == IrOpKind::Inst)
-            {
-                if (state.instNoMetatable.contains(OP_A(inst).index))
-                {
-                    if (FFlag::DebugLuauAbortingChecks)
-                        replace(function, OP_B(inst), build.undef());
-                    else
-                        kill(function, inst);
-                }
-                else
-                {
-                    state.instNoMetatable.insert(OP_A(inst).index);
-                }
-            }
-        }
-        else if (RegisterInfo* info = state.tryGetRegisterInfo(OP_A(inst)))
-        {
-            if (info->knownNoMetatable_DEPRECATED)
+            if (state.instNoMetatable.contains(OP_A(inst).index))
             {
                 if (FFlag::DebugLuauAbortingChecks)
                     replace(function, OP_B(inst), build.undef());
@@ -2376,7 +2268,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
             else
             {
-                info->knownNoMetatable_DEPRECATED = true;
+                state.instNoMetatable.insert(OP_A(inst).index);
             }
         }
         break;
@@ -2616,13 +2508,10 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::NOP:
         break;
     case IrCmd::LOAD_ENV:
-        if (FFlag::LuauCodegenExtraTableOpts)
-        {
-            if (state.loadEnvIdx != kInvalidInstIdx)
-                substitute(function, inst, IrOp{IrOpKind::Inst, state.loadEnvIdx});
-            else
-                state.loadEnvIdx = index;
-        }
+        if (state.loadEnvIdx != kInvalidInstIdx)
+            substitute(function, inst, IrOp{IrOpKind::Inst, state.loadEnvIdx});
+        else
+            state.loadEnvIdx = index;
         break;
     case IrCmd::GET_ARR_ADDR:
         for (uint32_t prevIdx : state.getArrAddrCache)
@@ -2897,12 +2786,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::STRING_LEN:
         break;
     case IrCmd::NEW_TABLE:
-        if (FFlag::LuauCodegenExtraTableOpts)
-        {
-            state.instNotReadonly.insert(index);
-            state.instNoMetatable.insert(index);
-            state.instArraySize[index] = int(function.uintOp(OP_A(inst)));
-        }
+        state.instNotReadonly.insert(index);
+        state.instNoMetatable.insert(index);
+        state.instArraySize[index] = int(function.uintOp(OP_A(inst)));
         break;
     case IrCmd::DUP_TABLE:
         break;
@@ -3125,30 +3011,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             break;
         }
 
-        if (FFlag::LuauCodegenExtraTableOpts && arrayIndex && OP_A(inst).kind == IrOpKind::Inst)
+        if (arrayIndex && OP_A(inst).kind == IrOpKind::Inst)
         {
             if (const int* knownArraySize = state.instArraySize.find(OP_A(inst).index); knownArraySize && *knownArraySize >= 0)
             {
                 if (unsigned(*arrayIndex) < unsigned(*knownArraySize))
-                {
-                    if (FFlag::DebugLuauAbortingChecks)
-                        replace(function, OP_C(inst), build.undef());
-                    else
-                        kill(function, inst);
-                }
-                else
-                {
-                    replace(function, block, index, {IrCmd::JUMP, {OP_C(inst)}});
-                }
-
-                break;
-            }
-        }
-        else if (RegisterInfo* info = state.tryGetRegisterInfo(OP_A(inst)); info && arrayIndex)
-        {
-            if (info->knownTableArraySize_DEPRECATED >= 0)
-            {
-                if (unsigned(*arrayIndex) < unsigned(info->knownTableArraySize_DEPRECATED))
                 {
                     if (FFlag::DebugLuauAbortingChecks)
                         replace(function, OP_C(inst), build.undef());
@@ -3335,18 +3202,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         // While interrupt can observe state and yield/error, interrupt handlers must never change state
         break;
     case IrCmd::SETLIST:
-        if (FFlag::LuauCodegenExtraTableOpts)
+        // Find array size information through the pointer stored in the 'B' VM register
+        if (uint32_t* loadIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_POINTER, OP_B(inst)))
         {
-            // Find array size information through the pointer stored in the 'B' VM register
-            if (uint32_t* loadIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_POINTER, OP_B(inst)))
-            {
-                if (const int* knownArraySize = state.instArraySize.find(*loadIdx); knownArraySize && *knownArraySize >= 0)
-                    replace(function, OP_F(inst), build.constUint(*knownArraySize));
-            }
-        }
-        else if (RegisterInfo* info = state.tryGetRegisterInfo(OP_B(inst)); info && info->knownTableArraySize_DEPRECATED >= 0)
-        {
-            replace(function, OP_F(inst), build.constUint(info->knownTableArraySize_DEPRECATED));
+            if (const int* knownArraySize = state.instArraySize.find(*loadIdx); knownArraySize && *knownArraySize >= 0)
+                replace(function, OP_F(inst), build.constUint(*knownArraySize));
         }
 
         // TODO: this can be relaxed when x64 emitInstSetList becomes aware of register allocator
@@ -3669,34 +3529,21 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     // Initialize state with the knowledge of our current block
     state.clear();
 
-    if (FFlag::LuauCodegenLinearSetupEntryState3)
-        setupBlockEntryState(build, function, startingBlock, state);
+    setupBlockEntryState(build, function, startingBlock, state);
 
     constPropInBlock(build, startingBlock, state);
 
-    if (FFlag::LuauCodegenLinearSetupEntryState3)
+    // Verify that target hasn't changed
+    if (startingBlock.finish != termInstIdx || OP_A(function.instructions[termInstIdx]).index != targetBlockIdx)
     {
-        // Verify that target hasn't changed
-        if (startingBlock.finish != termInstIdx || OP_A(function.instructions[termInstIdx]).index != targetBlockIdx)
-        {
-            // If the block changed, it means original constant propagation pass did not reach a fixed point
-            return;
-        }
+        // If the block changed, it means original constant propagation pass did not reach a fixed point
+        return;
+    }
 
-        // Check that the start of the linear block path is still held by multiple predecessors
-        // We will be replacing blocks later and if use count is 1 it will kill the chain before linearization is complete
-        if (function.blocks[targetBlockIdx].useCount == 1)
-            return;
-    }
-    else
-    {
-        // Verify that target hasn't changed
-        if (OP_A(function.instructions[startingBlock.finish]).index != targetBlockIdx)
-        {
-            CODEGEN_ASSERT(!"Running same optimization pass on the linear chain head block changed the jump target");
-            return;
-        }
-    }
+    // Check that the start of the linear block path is still held by multiple predecessors
+    // We will be replacing blocks later and if use count is 1 it will kill the chain before linearization is complete
+    if (function.blocks[targetBlockIdx].useCount == 1)
+        return;
 
     // Note: using startingBlock after this line is unsafe as the reference may be reallocated by build.block() below
     const uint32_t startingSortKey = startingBlock.sortkey;
