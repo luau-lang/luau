@@ -532,7 +532,7 @@ static int createSingleton(lua_State* L)
         return 1;
     }
 
-    luaL_error(L, "types.singleton: can't create singleton from `%s` type", lua_typename(L, 1));
+    luaL_error(L, "types.singleton: can't create singleton from a %s", luaL_typename(L, 1));
 }
 
 // Luau: `types.generic(name: string, ispack: boolean?) -> type
