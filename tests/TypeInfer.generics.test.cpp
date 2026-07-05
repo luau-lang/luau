@@ -2215,7 +2215,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generic_pack_and_variadic_mismatch_error")
 
     CHECK_EQ(toString(res.errors[0]), "Unknown type 'DT'");
     CHECK_EQ(toString(res.errors[1]), "Expected this to be '...V', but got 'T...'; the former is a variadic, "
-        "and the latter is a generic pack; consider changing the generic to 'T', and the variadic parameter to  '...: T'.");
+        "and the latter is a generic pack; consider changing the generic to 'T', and the variadic parameter to  '...: T'");
     CHECK_EQ(toString(res.errors[2]), "Expected this to be"
         "\n\t'<DT...>(string, DT...) -> number'"
         "\nbut got"
