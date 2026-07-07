@@ -3532,7 +3532,7 @@ private:
     {
         *negated = false;
         if (const auto* unary = cond->as<AstExprUnary>())
-            if (unary-> op == AstExprUnary::Not)
+            if (unary-> op == AstExprUnary::Op::Not)
             {
                 *negated = true;
                 cond = unary->expr;
