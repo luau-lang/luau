@@ -3445,18 +3445,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
     ScopedFastFlag fixErrorMessage{FFlag::LuauUdtfCreateSingletonFixErrorMessage, true};
 
     CheckResult results = check(R"(
-        type function single()
-            -- try to create a singleton from a non-singleton-able type
-            return types.singleton({} :: any)
+        type alias = {}
+        type function meow()
+            return types.singleton(alias :: any)
         end
 
-        local _x: single<>
+        type test = meow<>
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, results);
     CHECK_EQ(
         toString(results.errors[0]),
-        "'single' type function errored at runtime: [string \"single\"]:4: types.singleton: can't create a singleton from a table"
+        "'meow' type function errored at runtime: [string \"meow\"]:4: types.singleton: can't create a singleton from a type"
     );
 }
 
