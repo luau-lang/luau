@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
 LUAU_FASTFLAG(LuauTypeFunctionTableIndexerIsReadOnly)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3436,6 +3437,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_table_indexer")
     CHECK(toString(requireType("a")) == "false");
     CHECK(toString(requireType("b")) == "false");
     CHECK(toString(requireType("c")) == "true");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag fixErrorMessage{FFlag::LuauUdtfCreateSingletonFixErrorMessage, true};
+
+    CheckResult results = check(R"(
+        type function single()
+            -- try to create a singleton from a non-singleton-able type
+            return types.singleton({} :: any)
+        end
+
+        local _x: single<>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    CHECK_EQ(
+        toString(results.errors[0]),
+        "'single' type function errored at runtime: [string \"single\"]:4: types.singleton: can't create a singleton from a table"
+    );
 }
 
 TEST_SUITE_END();
