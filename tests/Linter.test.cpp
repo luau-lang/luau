@@ -899,7 +899,7 @@ type InputData = {
 TEST_CASE_FIXTURE(Fixture, "BreakFromInfiniteLoopMakesStatementReachable")
 {
     LintResult result = lint(R"(
-local bar = ...
+local bar = false
 
 repeat
     if bar then
@@ -2276,7 +2276,7 @@ _ = if true then 1 elseif true then 2 else 3
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsExpr")
 {
-    LintResult result = lint(R"(
+    LintResult result = lint(R"(--!nolint MisleadingCondition
 local correct, opaque = ...
 
 if correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls", `string {opaque}`)}) then
