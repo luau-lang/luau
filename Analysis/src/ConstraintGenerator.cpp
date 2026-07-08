@@ -2828,9 +2828,112 @@ InferencePack ConstraintGenerator::checkExprCall(
 )
 {
     std::vector<AstExpr*> exprArgs;
+    AstArray<AstExpr*> callArgs = call->args;
+    std::vector<AstExpr*> loweredArgs;
+    std::vector<std::unique_ptr<AstExprConstantNil>> nilArgs;
 
     std::vector<RefinementId> returnRefinements;
     std::vector<std::optional<TypeId>> discriminantTypes;
+
+    bool hasNamedArguments = false;
+    for (const std::optional<AstArgumentName>& name : call->argNames)
+    {
+        if (name)
+        {
+            hasNamedArguments = true;
+            break;
+        }
+    }
+
+    if (hasNamedArguments)
+    {
+        TypeId functionType = follow(fnType);
+        if (const IntersectionType* it = get<IntersectionType>(functionType); it && it->parts.size() == 1)
+            functionType = follow(it->parts[0]);
+
+        if (const FunctionType* ftv = get<FunctionType>(functionType))
+        {
+            auto [argsHead, argsTail] = flatten(ftv->argTypes);
+            size_t selfOffset = call->self ? 1 : 0;
+            size_t parameterCount = argsHead.size() > selfOffset ? argsHead.size() - selfOffset : 0;
+            loweredArgs.assign(parameterCount, nullptr);
+
+            std::vector<bool> assigned(parameterCount, false);
+            bool valid = true;
+            bool seenNamed = false;
+            size_t positional = 0;
+
+            for (size_t i = 0; i < call->args.size && valid; ++i)
+            {
+                AstExpr* arg = call->args.data[i];
+                std::optional<AstArgumentName> name = call->argNames.size > i ? call->argNames.data[i] : std::nullopt;
+
+                if (!name)
+                {
+                    if (seenNamed)
+                    {
+                        valid = false;
+                        break;
+                    }
+
+                    while (positional < assigned.size() && assigned[positional])
+                        ++positional;
+
+                    if (positional < parameterCount)
+                    {
+                        loweredArgs[positional] = arg;
+                        assigned[positional] = true;
+                        ++positional;
+                    }
+                    else
+                    {
+                        loweredArgs.push_back(arg);
+                    }
+
+                    continue;
+                }
+
+                seenNamed = true;
+                size_t parameter = parameterCount;
+
+                for (size_t j = 0; j < parameterCount; ++j)
+                {
+                    size_t nameIndex = j + selfOffset;
+                    if (nameIndex < ftv->argNames.size() && ftv->argNames[nameIndex] && ftv->argNames[nameIndex]->name == name->first.value)
+                    {
+                        parameter = j;
+                        break;
+                    }
+                }
+
+                if (parameter == parameterCount || assigned[parameter])
+                {
+                    valid = false;
+                    break;
+                }
+
+                loweredArgs[parameter] = arg;
+                assigned[parameter] = true;
+            }
+
+            if (valid)
+            {
+                while (!loweredArgs.empty() && loweredArgs.back() == nullptr)
+                    loweredArgs.pop_back();
+
+                for (AstExpr*& arg : loweredArgs)
+                {
+                    if (!arg)
+                    {
+                        nilArgs.push_back(std::make_unique<AstExprConstantNil>(call->location));
+                        arg = nilArgs.back().get();
+                    }
+                }
+
+                callArgs = AstArray<AstExpr*>{loweredArgs.data(), loweredArgs.size()};
+            }
+        }
+    }
 
     if (call->self)
     {
@@ -2850,7 +2953,7 @@ InferencePack ConstraintGenerator::checkExprCall(
             discriminantTypes.emplace_back(std::nullopt);
     }
 
-    for (AstExpr* arg : call->args)
+    for (AstExpr* arg : callArgs)
     {
         exprArgs.push_back(arg);
 
@@ -4278,6 +4381,27 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
         argNames.emplace_back(FunctionArgument{local->name.value, local->location});
 
         signatureScope->bindings[local] = Binding{argTy, local->location};
+        if (local->defaultValues.size > 0)
+        {
+            if (const AstTypeUnion* unionAnnotation =
+                    local->defaultValues.size > 1 && local->annotation ? local->annotation->as<AstTypeUnion>() : nullptr)
+            {
+                for (size_t defaultIndex = 0; defaultIndex < local->defaultValues.size; ++defaultIndex)
+                {
+                    TypeId defaultTy = defaultIndex < unionAnnotation->types.size
+                                           ? resolveType(signatureScope, unionAnnotation->types.data[defaultIndex], false, true, Polarity::Negative)
+                                           : argTy;
+                    check(signatureScope, local->defaultValues.data[defaultIndex], defaultTy);
+                }
+            }
+            else
+            {
+                for (AstExpr* defaultValue : local->defaultValues)
+                    check(signatureScope, defaultValue, argTy);
+            }
+        }
+        else if (local->defaultValue)
+            check(signatureScope, local->defaultValue, argTy);
 
         DefId def = dfg->getDef(local);
         signatureScope->lvalueTypes[def] = argTy;
@@ -4357,6 +4481,15 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
     }
 
     // TODO: Preserve argument names in the function's type.
+
+    for (size_t i = FFlag::DebugLuauUserDefinedClasses && hasExplicitSelf ? 1 : 0; i < fn->args.size; ++i)
+    {
+        if (fn->args.data[i]->defaultValue)
+        {
+            size_t argIndex = fn->self ? i + 1 : i;
+            argTypes[argIndex] = makeUnion(signatureScope, fn->args.data[i]->location, argTypes[argIndex], builtinTypes->nilType);
+        }
+    }
 
     FunctionType actualFunction{TypeLevel{}, arena->addTypePack(std::move(argTypes), varargPack), returnType};
     actualFunction.generics = std::move(genericTypes);

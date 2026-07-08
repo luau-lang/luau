@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <memory>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauTypeInferRecursionLimit, 165)
@@ -4025,7 +4026,26 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
         }
 
         funScope->bindings[local] = {argType, local->location};
-        argTypes.push_back(argType);
+        if (local->defaultValues.size > 0)
+        {
+            if (const AstTypeUnion* unionAnnotation =
+                    local->defaultValues.size > 1 && local->annotation ? local->annotation->as<AstTypeUnion>() : nullptr)
+            {
+                for (size_t defaultIndex = 0; defaultIndex < local->defaultValues.size; ++defaultIndex)
+                {
+                    TypeId defaultType = defaultIndex < unionAnnotation->types.size ? resolveType(funScope, *unionAnnotation->types.data[defaultIndex]) : argType;
+                    checkExpr(funScope, *local->defaultValues.data[defaultIndex], defaultType);
+                }
+            }
+            else
+            {
+                for (AstExpr* defaultValue : local->defaultValues)
+                    checkExpr(funScope, *defaultValue, argType);
+            }
+        }
+        else if (local->defaultValue)
+            checkExpr(funScope, *local->defaultValue, argType);
+        argTypes.push_back(local->defaultValue ? unionOfTypes(argType, nilType, funScope, local->location, false) : argType);
 
         if (expectedArgsCurr != expectedArgsEnd)
             ++expectedArgsCurr;
@@ -4527,9 +4547,109 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
 
         std::vector<TypeId> overloads = flattenIntersection(actualFunctionType);
 
-        std::vector<std::optional<TypeId>> expectedTypes = getExpectedTypesForCall(overloads, expr.args.size, expr.self);
+        AstArray<AstExpr*> callArgs = expr.args;
+        std::vector<AstExpr*> loweredArgs;
+        std::vector<std::unique_ptr<AstExprConstantNil>> nilArgs;
 
-        WithPredicate<TypePackId> argListResult = checkExprList(scope, expr.location, expr.args, false, {}, expectedTypes);
+        bool hasNamedArguments = false;
+        for (const std::optional<AstArgumentName>& name : expr.argNames)
+        {
+            if (name)
+            {
+                hasNamedArguments = true;
+                break;
+            }
+        }
+
+        if (hasNamedArguments && overloads.size() == 1)
+        {
+            if (const FunctionType* ftv = get<FunctionType>(follow(overloads[0])))
+            {
+                auto [argsHead, argsTail] = flatten(ftv->argTypes);
+                size_t selfOffset = expr.self ? 1 : 0;
+                size_t parameterCount = argsHead.size() > selfOffset ? argsHead.size() - selfOffset : 0;
+                loweredArgs.assign(parameterCount, nullptr);
+
+                std::vector<bool> assigned(parameterCount, false);
+                bool valid = true;
+                bool seenNamed = false;
+                size_t positional = 0;
+
+                for (size_t i = 0; i < expr.args.size && valid; ++i)
+                {
+                    AstExpr* arg = expr.args.data[i];
+                    std::optional<AstArgumentName> name = expr.argNames.size > i ? expr.argNames.data[i] : std::nullopt;
+
+                    if (!name)
+                    {
+                        if (seenNamed)
+                        {
+                            valid = false;
+                            break;
+                        }
+
+                        while (positional < assigned.size() && assigned[positional])
+                            ++positional;
+
+                        if (positional < parameterCount)
+                        {
+                            loweredArgs[positional] = arg;
+                            assigned[positional] = true;
+                            ++positional;
+                        }
+                        else
+                        {
+                            loweredArgs.push_back(arg);
+                        }
+
+                        continue;
+                    }
+
+                    seenNamed = true;
+                    size_t parameter = parameterCount;
+
+                    for (size_t j = 0; j < parameterCount; ++j)
+                    {
+                        size_t nameIndex = j + selfOffset;
+                        if (nameIndex < ftv->argNames.size() && ftv->argNames[nameIndex] && ftv->argNames[nameIndex]->name == name->first.value)
+                        {
+                            parameter = j;
+                            break;
+                        }
+                    }
+
+                    if (parameter == parameterCount || assigned[parameter])
+                    {
+                        valid = false;
+                        break;
+                    }
+
+                    loweredArgs[parameter] = arg;
+                    assigned[parameter] = true;
+                }
+
+                if (valid)
+                {
+                    while (!loweredArgs.empty() && loweredArgs.back() == nullptr)
+                        loweredArgs.pop_back();
+
+                    for (AstExpr*& arg : loweredArgs)
+                    {
+                        if (!arg)
+                        {
+                            nilArgs.push_back(std::make_unique<AstExprConstantNil>(expr.location));
+                            arg = nilArgs.back().get();
+                        }
+                    }
+
+                    callArgs = AstArray<AstExpr*>{loweredArgs.data(), loweredArgs.size()};
+                }
+            }
+        }
+
+        std::vector<std::optional<TypeId>> expectedTypes = getExpectedTypesForCall(overloads, callArgs.size, expr.self);
+
+        WithPredicate<TypePackId> argListResult = checkExprList(scope, expr.location, callArgs, false, {}, expectedTypes);
         TypePackId argPack = argListResult.type;
 
         if (get<ErrorTypePack>(argPack))
@@ -4545,10 +4665,10 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
         LUAU_ASSERT(args);
 
         std::vector<Location> argLocations;
-        argLocations.reserve(expr.args.size + 1);
+        argLocations.reserve(callArgs.size + 1);
         if (expr.self)
             argLocations.push_back(expr.func->as<AstExprIndexName>()->expr->location);
-        for (AstExpr* arg : expr.args)
+        for (AstExpr* arg : callArgs)
             argLocations.push_back(arg->location);
 
         std::vector<OverloadErrorEntry> errors; // errors encountered for each overload

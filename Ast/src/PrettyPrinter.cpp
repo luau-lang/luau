@@ -583,10 +583,17 @@ struct Printer
                 writer.symbol("(");
 
             CommaSeparatorInserter comma(writer, cstNode ? cstNode->commaPositions.begin() : nullptr);
-            for (const auto& arg : a->args)
+            for (size_t i = 0; i < a->args.size; ++i)
             {
                 comma();
-                visualize(*arg);
+                if (a->argNames.size > i && a->argNames.data[i])
+                {
+                    const AstArgumentName& name = *a->argNames.data[i];
+                    advance(name.second.begin);
+                    writer.identifier(name.first.value);
+                    writer.symbol("=");
+                }
+                visualize(*a->args.data[i]);
             }
 
             if (cstNode)
@@ -1504,6 +1511,22 @@ struct Printer
                     writer.symbol(":");
 
                 visualizeTypeAnnotation(*local->annotation);
+            }
+
+            if (local->defaultValues.size > 0)
+            {
+                writer.symbol("=");
+                for (size_t defaultIndex = 0; defaultIndex < local->defaultValues.size; ++defaultIndex)
+                {
+                    if (defaultIndex > 0)
+                        writer.symbol("|");
+                    visualize(*local->defaultValues.data[defaultIndex]);
+                }
+            }
+            else if (local->defaultValue)
+            {
+                writer.symbol("=");
+                visualize(*local->defaultValue);
             }
         }
 

@@ -226,6 +226,32 @@ assert((function () return nil end)(4) == nil)
 assert((function () local a; return a end)(4) == nil)
 assert((function (a) return a end)() == nil)
 
+do
+  local function defaults(x: number = 10, y: number = 20, z: number = 30)
+    return x, y, z
+  end
+
+  local x, y, z = defaults()
+  assert(x == 10 and y == 20 and z == 30)
+
+  x, y, z = defaults(1, nil, 3)
+  assert(x == 1 and y == 20 and z == 3)
+
+  x, y, z = defaults(z = 5)
+  assert(x == 10 and y == 20 and z == 5)
+
+  x, y, z = defaults(1, z = 5)
+  assert(x == 1 and y == 20 and z == 5)
+
+  local function unionDefault(value: number | string = 10 | "fallback")
+    return value
+  end
+
+  assert(unionDefault() == 10)
+  assert(unionDefault(nil) == 10)
+  assert(unionDefault("set") == "set")
+end
+
  -- test for a bug in clobbering stack variables 
  -- this call to print will clobber x and y if the call to f is not properly setup
 local function clobber()

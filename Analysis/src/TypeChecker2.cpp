@@ -28,6 +28,7 @@
 #include "Luau/VisitType.h"
 
 #include <algorithm>
+#include <memory>
 #include <sstream>
 
 #include "Luau/Simplify.h"
@@ -1565,7 +1566,6 @@ void TypeChecker2::visitCall(AstExprCall* call)
     TypePack args;
     std::vector<AstExpr*> argExprs;
     NotNull<Scope> scope{findInnermostScope(call->location)};
-    argExprs.reserve(call->args.size + 1);
 
     TypeId* originalCallTy = module->astOriginalCallTypes.find(call->func);
     TypeId* selectedOverloadTy = module->astOverloadResolvedTypes.find(call);
@@ -1617,6 +1617,109 @@ void TypeChecker2::visitCall(AstExprCall* call)
         }
     }
 
+    AstArray<AstExpr*> callArgs = call->args;
+    std::vector<AstExpr*> loweredArgs;
+    std::vector<std::unique_ptr<AstExprConstantNil>> nilArgs;
+
+    bool hasNamedArguments = false;
+    for (const std::optional<AstArgumentName>& name : call->argNames)
+    {
+        if (name)
+        {
+            hasNamedArguments = true;
+            break;
+        }
+    }
+
+    if (hasNamedArguments)
+    {
+        TypeId namedFnTy = follow(fnTy);
+        if (const FunctionType* fty = get<FunctionType>(namedFnTy))
+        {
+            auto [argsHead, argsTail] = flatten(fty->argTypes);
+            size_t selfOffset = call->self ? 1 : 0;
+            size_t parameterCount = argsHead.size() > selfOffset ? argsHead.size() - selfOffset : 0;
+            loweredArgs.assign(parameterCount, nullptr);
+
+            std::vector<bool> assigned(parameterCount, false);
+            bool valid = true;
+            bool seenNamed = false;
+            size_t positional = 0;
+
+            for (size_t i = 0; i < call->args.size && valid; ++i)
+            {
+                AstExpr* arg = call->args.data[i];
+                std::optional<AstArgumentName> name = call->argNames.size > i ? call->argNames.data[i] : std::nullopt;
+
+                if (!name)
+                {
+                    if (seenNamed)
+                    {
+                        valid = false;
+                        break;
+                    }
+
+                    while (positional < assigned.size() && assigned[positional])
+                        ++positional;
+
+                    if (positional < parameterCount)
+                    {
+                        loweredArgs[positional] = arg;
+                        assigned[positional] = true;
+                        ++positional;
+                    }
+                    else
+                    {
+                        loweredArgs.push_back(arg);
+                    }
+
+                    continue;
+                }
+
+                seenNamed = true;
+                size_t parameter = parameterCount;
+
+                for (size_t j = 0; j < parameterCount; ++j)
+                {
+                    size_t nameIndex = j + selfOffset;
+                    if (nameIndex < fty->argNames.size() && fty->argNames[nameIndex] && fty->argNames[nameIndex]->name == name->first.value)
+                    {
+                        parameter = j;
+                        break;
+                    }
+                }
+
+                if (parameter == parameterCount || assigned[parameter])
+                {
+                    valid = false;
+                    break;
+                }
+
+                loweredArgs[parameter] = arg;
+                assigned[parameter] = true;
+            }
+
+            if (valid)
+            {
+                while (!loweredArgs.empty() && loweredArgs.back() == nullptr)
+                    loweredArgs.pop_back();
+
+                for (AstExpr*& arg : loweredArgs)
+                {
+                    if (!arg)
+                    {
+                        nilArgs.push_back(std::make_unique<AstExprConstantNil>(call->location));
+                        arg = nilArgs.back().get();
+                    }
+                }
+
+                callArgs = AstArray<AstExpr*>{loweredArgs.data(), loweredArgs.size()};
+            }
+        }
+    }
+
+    argExprs.reserve(callArgs.size + 1);
+
     if (call->self)
     {
         AstExprIndexName* indexExpr = call->func->as<AstExprIndexName>();
@@ -1632,18 +1735,18 @@ void TypeChecker2::visitCall(AstExprCall* call)
 
     // FIXME: Similar to bidirectional inference prior, this does not support
     // overloaded functions nor generic typeArguments (yet).
-    if (auto fty = get<FunctionType>(fnTy); fty && fty->generics.empty() && fty->genericPacks.empty() && call->args.size > 0)
+    if (auto fty = get<FunctionType>(fnTy); fty && fty->generics.empty() && fty->genericPacks.empty() && callArgs.size > 0)
     {
         size_t selfOffset = call->self ? 1 : 0;
 
-        std::vector<TypeId> paramsHead = extendTypePack(module->internalTypes, builtinTypes, fty->argTypes, call->args.size + selfOffset).head;
+        std::vector<TypeId> paramsHead = extendTypePack(module->internalTypes, builtinTypes, fty->argTypes, callArgs.size + selfOffset).head;
 
-        for (size_t idx = 0; idx < call->args.size; ++idx)
+        for (size_t idx = 0; idx < callArgs.size; ++idx)
         {
-            AstExpr* argExpr = call->args.data[idx];
+            AstExpr* argExpr = callArgs.data[idx];
 
             // The last argument might be an ordinary value, but it can also be an entire pack.
-            if (idx == call->args.size - 1)
+            if (idx == callArgs.size - 1)
             {
                 if (TypePackId* lastArgPack = module->astTypePacks.find(argExpr))
                 {
@@ -1667,14 +1770,14 @@ void TypeChecker2::visitCall(AstExprCall* call)
     }
     else
     {
-        for (size_t i = 0; i < call->args.size; ++i)
+        for (size_t i = 0; i < callArgs.size; ++i)
         {
-            AstExpr* arg = call->args.data[i];
+            AstExpr* arg = callArgs.data[i];
             argExprs.push_back(arg);
             TypeId* argTy = module->astTypes.find(arg);
             if (argTy)
                 args.head.push_back(*argTy);
-            else if (i == call->args.size - 1)
+            else if (i == callArgs.size - 1)
             {
                 if (auto argTail = module->astTypePacks.find(arg))
                 {
@@ -2068,14 +2171,37 @@ void TypeChecker2::visit(AstExprFunction* fn)
 
             TypeId inferredArgTy = *argIt;
 
+            TypeId annotatedArgTy = nullptr;
+
             if (arg->annotation)
             {
                 // we need to typecheck any argument annotations themselves.
                 visit(arg->annotation);
 
-                TypeId annotatedArgTy = lookupAnnotation(arg->annotation);
+                annotatedArgTy = lookupAnnotation(arg->annotation);
 
                 testIsSubtype(inferredArgTy, annotatedArgTy, arg->location);
+            }
+
+            if (arg->defaultValues.size > 0)
+            {
+                const AstTypeUnion* unionAnnotation =
+                    arg->defaultValues.size > 1 && arg->annotation ? arg->annotation->as<AstTypeUnion>() : nullptr;
+                for (size_t defaultIndex = 0; defaultIndex < arg->defaultValues.size; ++defaultIndex)
+                {
+                    AstExpr* defaultValue = arg->defaultValues.data[defaultIndex];
+                    TypeId defaultTy = unionAnnotation && defaultIndex < unionAnnotation->types.size
+                                           ? lookupAnnotation(unionAnnotation->types.data[defaultIndex])
+                                           : annotatedArgTy ? annotatedArgTy
+                                                            : inferredArgTy;
+                    visit(defaultValue, ValueContext::RValue);
+                    testIsSubtype(lookupType(defaultValue), defaultTy, defaultValue->location);
+                }
+            }
+            else if (arg->defaultValue)
+            {
+                visit(arg->defaultValue, ValueContext::RValue);
+                testIsSubtype(lookupType(arg->defaultValue), annotatedArgTy ? annotatedArgTy : inferredArgTy, arg->defaultValue->location);
             }
 
             // Some Luau constructs can result in an argument type being

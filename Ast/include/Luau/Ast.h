@@ -67,39 +67,6 @@ class AstTypePack;
 class AstAttr;
 class AstExprTable;
 
-struct AstLocal
-{
-    AstName name;
-    Location location;
-    AstLocal* shadow;
-    size_t functionDepth;
-    size_t loopDepth;
-    bool isConst;
-    // exported is only a property set after construction
-    bool isExported = false;
-
-    AstType* annotation;
-
-    AstLocal(
-        const AstName& name,
-        const Location& location,
-        AstLocal* shadow,
-        size_t functionDepth,
-        size_t loopDepth,
-        AstType* annotation,
-        bool isConst = false
-    )
-        : name(name)
-        , location(location)
-        , shadow(shadow)
-        , functionDepth(functionDepth)
-        , loopDepth(loopDepth)
-        , isConst(isConst)
-        , annotation(annotation)
-    {
-    }
-};
-
 template<typename T>
 struct AstArray
 {
@@ -124,6 +91,45 @@ struct AstArray
     std::reverse_iterator<const T*> rend() const
     {
         return std::make_reverse_iterator(begin());
+    }
+};
+
+struct AstLocal
+{
+    AstName name;
+    Location location;
+    AstLocal* shadow;
+    size_t functionDepth;
+    size_t loopDepth;
+    bool isConst;
+    // exported is only a property set after construction
+    bool isExported = false;
+
+    AstType* annotation;
+    AstExpr* defaultValue;
+    AstArray<AstExpr*> defaultValues;
+
+    AstLocal(
+        const AstName& name,
+        const Location& location,
+        AstLocal* shadow,
+        size_t functionDepth,
+        size_t loopDepth,
+        AstType* annotation,
+        AstExpr* defaultValue = nullptr,
+        const AstArray<AstExpr*>& defaultValues = {},
+        bool isConst = false
+    )
+        : name(name)
+        , location(location)
+        , shadow(shadow)
+        , functionDepth(functionDepth)
+        , loopDepth(loopDepth)
+        , isConst(isConst)
+        , annotation(annotation)
+        , defaultValue(defaultValue)
+        , defaultValues(defaultValues)
+    {
     }
 };
 
@@ -458,7 +464,8 @@ public:
         const AstArray<AstExpr*>& args,
         bool self,
         const AstArray<AstTypeOrPack>& explicitTypes,
-        const Location& argLocation
+        const Location& argLocation,
+        const AstArray<std::optional<AstArgumentName>>& argNames = {}
     );
 
     void visit(AstVisitor* visitor) override;
@@ -469,6 +476,7 @@ public:
     // which is then called.
     AstArray<AstTypeOrPack> typeArguments;
     AstArray<AstExpr*> args;
+    AstArray<std::optional<AstArgumentName>> argNames;
     bool self;
     Location argLocation;
 };

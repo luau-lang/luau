@@ -239,12 +239,14 @@ AstExprCall::AstExprCall(
     const AstArray<AstExpr*>& args,
     bool self,
     const AstArray<AstTypeOrPack>& explicitTypes,
-    const Location& argLocation
+    const Location& argLocation,
+    const AstArray<std::optional<AstArgumentName>>& argNames
 )
     : AstExpr(ClassIndex(), location)
     , func(func)
     , typeArguments(explicitTypes)
     , args(args)
+    , argNames(argNames)
     , self(self)
     , argLocation(argLocation)
 {
@@ -341,6 +343,13 @@ void AstExprFunction::visit(AstVisitor* visitor)
         {
             if (arg->annotation)
                 arg->annotation->visit(visitor);
+            if (arg->defaultValues.size > 0)
+            {
+                for (AstExpr* defaultValue : arg->defaultValues)
+                    defaultValue->visit(visitor);
+            }
+            else if (arg->defaultValue)
+                arg->defaultValue->visit(visitor);
         }
 
         if (varargAnnotation)

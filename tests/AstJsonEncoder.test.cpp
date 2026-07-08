@@ -95,7 +95,7 @@ TEST_CASE("basic_escaping")
 
 TEST_CASE("encode_AstStatBlock")
 {
-    AstLocal astlocal{AstName{"a_local"}, Location(), nullptr, 0, 0, nullptr, false};
+    AstLocal astlocal{AstName{"a_local"}, Location(), nullptr, 0, 0, nullptr};
     AstLocal* astlocalarray[] = {&astlocal};
 
     AstArray<AstLocal*> vars{astlocalarray, 1};
@@ -201,7 +201,7 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstExprInterpString")
 
 TEST_CASE("encode_AstExprLocal")
 {
-    AstLocal local{AstName{"foo"}, Location{}, nullptr, 0, 0, nullptr, false};
+    AstLocal local{AstName{"foo"}, Location{}, nullptr, 0, 0, nullptr};
     AstExprLocal exprLocal{Location{}, &local, false};
 
     CHECK(

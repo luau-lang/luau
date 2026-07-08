@@ -240,6 +240,10 @@ struct AstJsonEncoder : public AstVisitor
             write("luauType", local->annotation);
         else
             write("luauType", nullptr);
+        if (local->defaultValue)
+            write("defaultValue", local->defaultValue);
+        if (local->defaultValues.size > 0)
+            write("defaultValues", local->defaultValues);
         write("name", local->name);
         write("isConst", local->isConst);
         writeType("AstLocal");
@@ -397,6 +401,8 @@ struct AstJsonEncoder : public AstVisitor
             {
                 PROP(func);
                 PROP(args);
+                if (node->argNames.size > 0)
+                    PROP(argNames);
                 PROP(self);
                 PROP(argLocation);
             }

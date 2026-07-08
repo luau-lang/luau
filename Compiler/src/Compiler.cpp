@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <memory>
 
 #include <math.h>
 
@@ -135,7 +136,7 @@ struct Compiler
         , exprTypes(nullptr)
         , builtinTypes(options.vectorType)
         , names(names)
-        , exportTableLocal(names.getOrAdd("__EXP"), Location(), nullptr, 0, 0, nullptr, true)
+        , exportTableLocal(names.getOrAdd("__EXP"), Location(), nullptr, 0, 0, nullptr, nullptr, {}, true)
     {
         // preallocate some buffers that are very likely to grow anyway; this works around std::vector's inefficient growth policy for small arrays
         localStack.reserve(16);
@@ -318,6 +319,107 @@ struct Compiler
             return node->as<AstExprFunction>();
     }
 
+    bool hasNamedArguments(AstExprCall* expr)
+    {
+        for (const std::optional<AstArgumentName>& name : expr->argNames)
+        {
+            if (name)
+                return true;
+        }
+
+        return false;
+    }
+
+    bool hasDefaultArguments(AstExprFunction* func)
+    {
+        for (AstLocal* arg : func->args)
+        {
+            if (arg->defaultValue)
+                return true;
+        }
+
+        return false;
+    }
+
+    AstExprCall lowerNamedCall(
+        AstExprCall* expr,
+        AstExprFunction* func,
+        std::vector<AstExpr*>& loweredArgs,
+        std::vector<std::unique_ptr<AstExprConstantNil>>& nilArgs
+    )
+    {
+        loweredArgs.assign(func->args.size, nullptr);
+
+        std::vector<bool> assigned(func->args.size, false);
+        bool seenNamed = false;
+        size_t positional = 0;
+
+        for (size_t i = 0; i < expr->args.size; ++i)
+        {
+            AstExpr* arg = expr->args.data[i];
+            std::optional<AstArgumentName> name = expr->argNames.size > i ? expr->argNames.data[i] : std::nullopt;
+
+            if (!name)
+            {
+                if (seenNamed)
+                    CompileError::raise(arg->location, "Positional arguments cannot follow named arguments");
+
+                while (positional < assigned.size() && assigned[positional])
+                    ++positional;
+
+                if (positional < func->args.size)
+                {
+                    loweredArgs[positional] = arg;
+                    assigned[positional] = true;
+                    ++positional;
+                }
+                else
+                {
+                    loweredArgs.push_back(arg);
+                }
+
+                continue;
+            }
+
+            seenNamed = true;
+            size_t parameter = func->args.size;
+
+            for (size_t j = 0; j < func->args.size; ++j)
+            {
+                if (func->args.data[j]->name == name->first)
+                {
+                    parameter = j;
+                    break;
+                }
+            }
+
+            if (parameter == func->args.size)
+                CompileError::raise(name->second, "Unknown named argument '%s'", name->first.value);
+            if (assigned[parameter])
+                CompileError::raise(name->second, "Duplicate argument for parameter '%s'", name->first.value);
+
+            loweredArgs[parameter] = arg;
+            assigned[parameter] = true;
+        }
+
+        while (!loweredArgs.empty() && loweredArgs.back() == nullptr)
+            loweredArgs.pop_back();
+
+        for (AstExpr*& arg : loweredArgs)
+        {
+            if (!arg)
+            {
+                nilArgs.push_back(std::make_unique<AstExprConstantNil>(expr->location));
+                arg = nilArgs.back().get();
+            }
+        }
+
+        AstExprCall lowered = *expr;
+        lowered.args = AstArray<AstExpr*>{loweredArgs.data(), loweredArgs.size()};
+        lowered.argNames = AstArray<std::optional<AstArgumentName>>{};
+        return lowered;
+    }
+
     void compileExportTable()
     {
         LUAU_ASSERT(!exportedLocals.empty() || !exportedClasses.empty());
@@ -381,6 +483,27 @@ struct Compiler
         bytecode.emitABC(LOP_RETURN, freezeReg, 2, 0);
     }
 
+    void compileDefaultArguments(AstExprFunction* func)
+    {
+        for (AstLocal* local : func->args)
+        {
+            if (!local->defaultValue)
+                continue;
+
+            int reg = getLocalReg(local);
+            LUAU_ASSERT(reg >= 0);
+
+            size_t skipLabel = bytecode.emitLabel();
+            bytecode.emitAD(LOP_JUMPXEQKNIL, uint8_t(reg), 0);
+            bytecode.emitAux(0x80000000);
+
+            compileExprTemp(local->defaultValue, uint8_t(reg));
+
+            size_t endLabel = bytecode.emitLabel();
+            patchJump(func, skipLabel, endLabel);
+        }
+    }
+
     uint32_t compileFunction(AstExprFunction* func, uint8_t& protoflags)
     {
         LUAU_TIMETRACE_SCOPE("Compiler::compileFunction", "Compiler");
@@ -412,6 +535,7 @@ struct Compiler
             pushLocal(func->args.data[i], uint8_t(args + self + i), kDefaultAllocPc);
 
         argCount = localStack.size();
+        compileDefaultArguments(func);
 
         AstStatBlock* stat = func->body;
 
@@ -522,7 +646,7 @@ struct Compiler
         f.upvals = upvals;
 
         // record information for inlining
-        if (options.optimizationLevel >= 2 && !func->vararg && !func->self && !getfenvUsed && !setfenvUsed)
+        if (options.optimizationLevel >= 2 && !func->vararg && !func->self && !getfenvUsed && !setfenvUsed && !hasDefaultArguments(func))
         {
             if (FFlag::DebugLuauNoInline && func->hasAttribute(AstAttr::Type::DebugNoinline))
             {
@@ -1153,6 +1277,18 @@ struct Compiler
         LUAU_ASSERT(!targetTop || unsigned(target + targetCount) == regTop);
 
         setDebugLine(expr); // normally compileExpr sets up line info, but compileExprCall can be called directly
+
+        if (hasNamedArguments(expr))
+        {
+            AstExprFunction* func = getFunctionExpr(expr->func);
+            if (!func)
+                CompileError::raise(expr->location, "Named arguments require a statically known function");
+
+            std::vector<AstExpr*> loweredArgs;
+            std::vector<std::unique_ptr<AstExprConstantNil>> nilArgs;
+            AstExprCall lowered = lowerNamedCall(expr, func, loweredArgs, nilArgs);
+            return compileExprCall(&lowered, target, targetCount, targetTop, multRet);
+        }
 
         // try inlining the function
         if (options.optimizationLevel >= 2 && !expr->self)

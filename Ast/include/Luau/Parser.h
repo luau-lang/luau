@@ -234,9 +234,8 @@ private:
 
     // explist ::= {exp `,'} exp
     void parseExprList(TempVector<AstExpr*>& result, TempVector<Position>* commaPositions = nullptr);
-
-    // binding ::= Name [`:` Type]
-    Binding parseBinding(bool isConst = false);
+    // binding ::= Name [`:` Type] [`=' expr]
+    Binding parseBinding(bool isConst = false, bool allowDefault = false);
     AstArray<Position> extractAnnotationColonPositions(const TempVector<Binding>& bindings);
 
     // bindinglist ::= (binding | `...') {`,' bindinglist}
@@ -247,7 +246,8 @@ private:
         AstArray<Position>* commaPositions = nullptr,
         Position* initialCommaPosition = nullptr,
         Position* varargAnnotationColonPosition = nullptr,
-        bool isConst = false
+        bool isConst = false,
+        bool allowDefault = false
     );
 
     AstType* parseOptionalType();
@@ -506,12 +506,23 @@ private:
     {
         Name name;
         AstType* annotation;
+        AstExpr* defaultValue;
+        AstArray<AstExpr*> defaultValues;
         Position colonPosition;
         bool isConst;
 
-        explicit Binding(const Name& name, AstType* annotation = nullptr, Position colonPosition = {0, 0}, bool isConst = false)
+        explicit Binding(
+            const Name& name,
+            AstType* annotation = nullptr,
+            AstExpr* defaultValue = nullptr,
+            AstArray<AstExpr*> defaultValues = {},
+            Position colonPosition = {0, 0},
+            bool isConst = false
+        )
             : name(name)
             , annotation(annotation)
+            , defaultValue(defaultValue)
+            , defaultValues(defaultValues)
             , colonPosition(colonPosition)
             , isConst(isConst)
         {

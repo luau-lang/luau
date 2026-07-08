@@ -45,8 +45,8 @@ TEST_CASE("equality_and_hashing_of_locals")
     std::string s2 = "name";
 
     // These two names point to distinct memory areas.
-    AstLocal one{AstName{s1.data()}, Location(), nullptr, 0, 0, nullptr, false};
-    AstLocal two{AstName{s2.data()}, Location(), &one, 0, 0, nullptr, false};
+    AstLocal one{AstName{s1.data()}, Location(), nullptr, 0, 0, nullptr};
+    AstLocal two{AstName{s2.data()}, Location(), &one, 0, 0, nullptr};
 
     Symbol n1{&one};
     Symbol n2{&two};
@@ -74,7 +74,7 @@ TEST_CASE("equality_of_empty_symbols")
     std::string s2 = "name";
 
     AstName one{s1.data()};
-    AstLocal two{AstName{s2.data()}, Location(), nullptr, 0, 0, nullptr, false};
+    AstLocal two{AstName{s2.data()}, Location(), nullptr, 0, 0, nullptr};
 
     Symbol global{one};
     Symbol local{&two};

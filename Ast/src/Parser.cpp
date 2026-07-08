@@ -6,6 +6,7 @@
 #include "Luau/TimeTrace.h"
 
 #include <algorithm>
+#include <memory>
 
 #include <errno.h>
 #include <limits.h>
@@ -1568,7 +1569,7 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
     // We save the locals here as part of error recovery later.
     auto savedLocals = saveLocals();
 
-    AstLocal* nameLocal = pushLocal(Binding(*name, nullptr, {0, 0}, true));
+    AstLocal* nameLocal = pushLocal(Binding(*name, nullptr, nullptr, {}, {0, 0}, true));
 
     TempVector<AstClassMember> declarations(scratchClassDeclarations);
 
@@ -2330,9 +2331,18 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
     {
         if (cstNode)
             std::tie(vararg, varargLocation, varargAnnotation) =
-                parseBindingList(args, /* allowDot3= */ true, &cstNode->argsCommaPositions, nullptr, &cstNode->varargAnnotationColonPosition);
+                parseBindingList(
+                    args,
+                    /* allowDot3= */ true,
+                    &cstNode->argsCommaPositions,
+                    nullptr,
+                    &cstNode->varargAnnotationColonPosition,
+                    /* isConst= */ false,
+                    /* allowDefault= */ true
+                );
         else
-            std::tie(vararg, varargLocation, varargAnnotation) = parseBindingList(args, /* allowDot3= */ true);
+            std::tie(vararg, varargLocation, varargAnnotation) =
+                parseBindingList(args, /* allowDot3= */ true, nullptr, nullptr, nullptr, /* isConst= */ false, /* allowDefault= */ true);
     }
 
     std::optional<Location> argLocation;
@@ -2350,7 +2360,7 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
 
     if (localName)
     {
-        funLocal = pushLocal(Binding(*localName, nullptr, {0, 0}, isConst));
+        funLocal = pushLocal(Binding(*localName, nullptr, nullptr, {}, {0, 0}, isConst));
     }
 
     unsigned int localsBegin = saveLocals();
@@ -2420,7 +2430,7 @@ void Parser::parseExprList(TempVector<AstExpr*>& result, TempVector<Position>* c
     }
 }
 
-Parser::Binding Parser::parseBinding(bool isConst)
+Parser::Binding Parser::parseBinding(bool isConst, bool allowDefault)
 {
     std::optional<Name> name = parseNameOpt("variable name");
 
@@ -2430,11 +2440,29 @@ Parser::Binding Parser::parseBinding(bool isConst)
 
     Position colonPosition = lexer.current().type == ':' ? lexer.current().location.begin : Position::missing();
     AstType* annotation = parseOptionalType();
+    AstExpr* defaultValue = nullptr;
+    AstArray<AstExpr*> defaultValues;
+
+    if (allowDefault && lexer.current().type == '=')
+    {
+        nextLexeme();
+        TempVector<AstExpr*> values(scratchExpr);
+        values.push_back(parseExpr());
+
+        while (lexer.current().type == '|')
+        {
+            nextLexeme();
+            values.push_back(parseExpr());
+        }
+
+        defaultValue = values.front();
+        defaultValues = copy(values);
+    }
 
     if (options.storeCstData)
-        return Binding(*name, annotation, colonPosition, isConst);
+        return Binding(*name, annotation, defaultValue, defaultValues, colonPosition, isConst);
     else
-        return Binding(*name, annotation, Position::missing(), isConst);
+        return Binding(*name, annotation, defaultValue, defaultValues, Position::missing(), isConst);
 }
 
 AstArray<Position> Parser::extractAnnotationColonPositions(const TempVector<Binding>& bindings)
@@ -2452,7 +2480,8 @@ LUAU_NOINLINE std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(
     AstArray<Position>* commaPositions,
     Position* initialCommaPosition,
     Position* varargAnnotationColonPosition,
-    bool isConst
+    bool isConst,
+    bool allowDefault
 )
 {
     TempVector<Position> localCommaPositions(scratchPosition);
@@ -2483,7 +2512,7 @@ LUAU_NOINLINE std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(
             return {true, varargLocation, tailAnnotation};
         }
 
-        result.push_back(parseBinding(isConst));
+        result.push_back(parseBinding(isConst, allowDefault));
 
         if (lexer.current().type != ',')
             break;
@@ -4166,10 +4195,47 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
         nextLexeme();
 
         TempVector<AstExpr*> args(scratchExpr);
+        std::unique_ptr<TempVector<std::optional<AstArgumentName>>> argNames;
         TempVector<Position> commaPositions(scratchPosition);
 
         if (lexer.current().type != ')')
-            parseExprList(args, options.storeCstData ? &commaPositions : nullptr);
+        {
+            while (true)
+            {
+                if (lexer.current().type == Lexeme::Name && lexer.lookahead().type == '=')
+                {
+                    if (!argNames)
+                    {
+                        argNames = std::make_unique<TempVector<std::optional<AstArgumentName>>>(scratchOptArgName);
+                        for (size_t i = 0; i < args.size(); ++i)
+                            argNames->push_back(std::nullopt);
+                    }
+
+                    Name name = parseName("argument name");
+                    expectAndConsume('=', "named argument");
+                    argNames->push_back(AstArgumentName{name.name, name.location});
+                    args.push_back(parseExpr());
+                }
+                else
+                {
+                    if (argNames)
+                        argNames->push_back(std::nullopt);
+                    args.push_back(parseExpr());
+                }
+
+                if (lexer.current().type != ',')
+                    break;
+                if (options.storeCstData)
+                    commaPositions.push_back(lexer.current().location.begin);
+                nextLexeme();
+
+                if (lexer.current().type == ')')
+                {
+                    report(lexer.current().location, "Expected expression after ',' but got ')' instead");
+                    break;
+                }
+            }
+        }
 
         Location end = lexer.current().location;
         Position argEnd = end.end;
@@ -4177,7 +4243,13 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
         bool closingParenFound = expectMatchAndConsume(')', matchParen);
 
         AstExprCall* node = allocator.alloc<AstExprCall>(
-            Location(func->location, end), func, copy(args), self, AstArray<AstTypeOrPack>{}, Location(argStart, argEnd)
+            Location(func->location, end),
+            func,
+            copy(args),
+            self,
+            AstArray<AstTypeOrPack>{},
+            Location(argStart, argEnd),
+            argNames ? copy(*argNames) : AstArray<std::optional<AstArgumentName>>{}
         );
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstExprCall>(
@@ -5023,7 +5095,15 @@ AstLocal* Parser::pushLocal(const Binding& binding)
     AstLocal*& local = localMap[name.name];
 
     local = allocator.alloc<AstLocal>(
-        name.name, name.location, /* shadow= */ local, functionStack.size() - 1, functionStack.back().loopDepth, binding.annotation, binding.isConst
+        name.name,
+        name.location,
+        /* shadow= */ local,
+        functionStack.size() - 1,
+        functionStack.back().loopDepth,
+        binding.annotation,
+        binding.defaultValue,
+        binding.defaultValues,
+        binding.isConst
     );
 
     localStack.push_back(local);

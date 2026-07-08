@@ -5869,5 +5869,41 @@ TEST_CASE_FIXTURE(Fixture, "extern_read_write_attributes")
     CHECK_EQ(declaredExternType->props.data[3].access, AstTableAccess::ReadWrite);
 }
 
+TEST_CASE_FIXTURE(Fixture, "default_parameters_and_named_call_arguments")
+{
+    ParseResult result = tryParse(R"(
+local function example(x: number = 0, y: number = 1, z: number = 2, w: number | string = 4 | "fallback")
+end
+
+example(0, z = 3, w = "set")
+    )");
+
+    REQUIRE(result.errors.empty());
+    REQUIRE_EQ(result.root->body.size, 2);
+
+    AstStatLocalFunction* localFunction = result.root->body.data[0]->as<AstStatLocalFunction>();
+    REQUIRE(localFunction);
+    REQUIRE_EQ(localFunction->func->args.size, 4);
+    CHECK(localFunction->func->args.data[0]->defaultValue->is<AstExprConstantNumber>());
+    CHECK(localFunction->func->args.data[1]->defaultValue->is<AstExprConstantNumber>());
+    CHECK(localFunction->func->args.data[2]->defaultValue->is<AstExprConstantNumber>());
+    REQUIRE_EQ(localFunction->func->args.data[3]->defaultValues.size, 2);
+    CHECK(localFunction->func->args.data[3]->defaultValues.data[0]->is<AstExprConstantNumber>());
+    CHECK(localFunction->func->args.data[3]->defaultValues.data[1]->is<AstExprConstantString>());
+
+    AstStatExpr* callStat = result.root->body.data[1]->as<AstStatExpr>();
+    REQUIRE(callStat);
+
+    AstExprCall* call = callStat->expr->as<AstExprCall>();
+    REQUIRE(call);
+    REQUIRE_EQ(call->args.size, 3);
+    REQUIRE_EQ(call->argNames.size, 3);
+    CHECK(!call->argNames.data[0]);
+    REQUIRE(call->argNames.data[1]);
+    CHECK(call->argNames.data[1]->first == "z");
+    REQUIRE(call->argNames.data[2]);
+    CHECK(call->argNames.data[2]->first == "w");
+}
+
 // TODO unit tests for various parse errors.
 TEST_SUITE_END();
