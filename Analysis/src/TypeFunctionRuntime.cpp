@@ -14,6 +14,7 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/TypeFunctionRuntimeBuilder.h"
 #include "Luau/RecursionCounter.h"
+#include "Luau/ToString.h"
 
 #include "lua.h"
 #include "lualib.h"
@@ -31,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionRobustness)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeIsSubtypeOf)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionTableIndexerIsReadOnly)
+LUAU_FASTFLAGVARIABLE(LuauUdtfTypeToStringMetamethod)
 
 namespace Luau
 {
@@ -1874,6 +1876,20 @@ static int isEqualToType(lua_State* L)
     return 1;
 }
 
+// Luau: `tostring(self) -> string`,
+// or other cases where the `__tostring` metamethod is invoked
+static int typeToString(lua_State* L)
+{
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+
+    TypeFunctionRuntimeBuilderState* runtimeBuilder = Luau::getTypeFunctionRuntime(L)->runtimeBuilder;
+    TypeId selfTy = Luau::deserialize(self, runtimeBuilder);
+    std::string asString = Luau::toString(selfTy);
+
+    lua_pushlstring(L, asString.data(), asString.size());
+    return 1;
+}
+
 void registerTypesLibrary(lua_State* L)
 {
     luaL_Reg fields[] = {
@@ -2042,6 +2058,12 @@ void registerTypeUserData(lua_State* L)
 
     lua_pushcfunction(L, isEqualToType, "__eq");
     lua_setfield(L, -2, "__eq");
+
+    if (FFlag::LuauUdtfTypeToStringMetamethod)
+    {
+        lua_pushcfunction(L, typeToString, "__tostring");
+        lua_setfield(L, -2, "__tostring");
+    }
 
     // Indexing will be a dynamic function because some type fields are dynamic
     lua_newtable(L);
