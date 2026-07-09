@@ -40,6 +40,11 @@ struct SubtypingReasoning
     // The path, relative to the _root supertype_, where subtyping failed.
     Path superPath;
     SubtypingVariance variance = SubtypingVariance::Covariant;
+    // Set when the failure is due to a property modifier mismatch (e.g. the
+    // sub property is read-only or write-only but the super property requires
+    // read-write). In this case the leaf types at the path ends are the same,
+    // so a plain "X is not a subtype of X" message would be misleading.
+    bool isPropertyModifierViolation = false;
 
     bool operator==(const SubtypingReasoning& other) const;
 };
@@ -137,6 +142,7 @@ struct SubtypingResult
     SubtypingResult& withSuperPath(TypePath::Path path);
     SubtypingResult& withErrors(ErrorVec& err);
     SubtypingResult& withError(TypeError err);
+    SubtypingResult& withPropertyModifierViolation();
 
     SubtypingResult& withAssumedConstraint(ConstraintV constraint);
 
@@ -199,6 +205,8 @@ struct SubtypingEnvironment
 
     int iterationCount = 0;
 };
+
+struct TypeFunctionRuntime;
 
 struct Subtyping
 {
@@ -276,6 +284,7 @@ private:
     template<typename SubTy, typename SuperTy>
     SubtypingResult isInvariantWith(SubtypingEnvironment& env, const TryPair<const SubTy*, const SuperTy*>& pair, NotNull<Scope>);
 
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const UnionType* subUnion, const UnionType* superUnion, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const UnionType* superUnion, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const UnionType* subUnion, TypeId superTy, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const IntersectionType* superIntersection, NotNull<Scope> scope);
@@ -304,6 +313,7 @@ private:
         bool forceCovariantTest,
         NotNull<Scope> scope
     );
+
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const MetatableType* superMt, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const TableType* superTable, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(

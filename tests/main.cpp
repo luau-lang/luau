@@ -48,6 +48,9 @@ bool codegen = false;
 // Something to seed a pseudorandom number generator with
 std::optional<unsigned> randomSeed;
 
+// Run conformance tests with JIT bytecode inliner
+bool jitInliner = false;
+
 static bool skipFastFlag(const char* flagName)
 {
     if (strncmp(flagName, "Test", 4) == 0)
@@ -400,13 +403,27 @@ int main(int argc, char** argv)
         codegen = true;
     }
 
-    int level = -1;
-    if (doctest::parseIntOption(argc, argv, "-O", doctest::option_int, level))
+    if (doctest::parseFlag(argc, argv, "--jit-inliner"))
     {
-        if (level < 0 || level > 2)
+        jitInliner = true;
+    }
+
+    doctest::String optlevel;
+    if (doctest::parseOption(argc, argv, "-O", &optlevel))
+    {
+        try
+        {
+            int level = std::stoi(optlevel.c_str());
+
+            if (level < 0 || level > 2)
+                fprintf(stderr, "Optimization level must be between 0 and 2 inclusive\n");
+            else
+                optimizationLevel = level;
+        }
+        catch (...)
+        {
             fprintf(stderr, "Optimization level must be between 0 and 2 inclusive\n");
-        else
-            optimizationLevel = level;
+        }
     }
 
     int rseed = -1;

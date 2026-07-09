@@ -12,13 +12,8 @@
 #include <memory>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTINT(LuauNormalizeIntersectionLimit)
-LUAU_FASTINT(LuauNormalizeUnionLimit)
-LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
 
 using namespace Luau;
 
@@ -710,7 +705,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_function_and_top_function")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negated_function_is_anything_except_a_function")
 {
-    if (FFlag::LuauIntegerType)
+    if (FFlag::LuauIntegerType2)
     {
         CHECK("(boolean | buffer | integer | number | string | table | thread | userdata)?" == toString(normal(R"(
         Not<fun>
@@ -744,7 +739,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "trivial_intersection_inhabited")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "bare_negated_boolean")
 {
-    if (FFlag::LuauIntegerType)
+    if (FFlag::LuauIntegerType2)
     {
         CHECK("(buffer | function | integer | number | string | table | thread | userdata)?" == toString(normal(R"(
             Not<boolean>
@@ -917,7 +912,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_extern_types")
     createSomeExternTypes(getFrontend());
     CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
 
-    if (FFlag::LuauIntegerType)
+    if (FFlag::LuauIntegerType2)
     {
         CHECK("((userdata & ~Child) | boolean | buffer | function | integer | number | string | table | thread)?" == toString(normal("Not<Child>")));
         CHECK("never" == toString(normal("Not<Parent> & Child")));
@@ -970,7 +965,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "top_table_type")
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_tables")
 {
     CHECK(nullptr == toNormalizedType("Not<{}>", !FFlag::DebugLuauForceOldSolver ? 1 : 0));
-    if (FFlag::LuauIntegerType)
+    if (FFlag::LuauIntegerType2)
         CHECK("(boolean | buffer | function | integer | number | string | thread | userdata)?" == toString(normal("Not<tbl>")));
     else
         CHECK("(boolean | buffer | function | number | string | thread | userdata)?" == toString(normal("Not<tbl>")));
@@ -1274,12 +1269,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_flatten_type_pack_cycle")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     LUAU_REQUIRE_ERRORS(check(R"(
 function _(_).readu32<t0...>()

@@ -18,10 +18,8 @@
 #include <algorithm>
 #include <string>
 
-LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
-
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauIntegerType2)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -41,8 +39,6 @@ LUAU_FASTFLAG(LuauIntegerType)
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
-
-LUAU_FASTFLAGVARIABLE(LuauToStringIgnoresSyntheticName)
 
 namespace Luau
 {
@@ -184,8 +180,7 @@ struct StringifierState
         , result(result)
         , exhaustive(opts.exhaustive)
     {
-        if (FFlag::LuauToStringIgnoresSyntheticName)
-            ignoreSyntheticName = opts.ignoreSyntheticName;
+        ignoreSyntheticName = opts.ignoreSyntheticName;
 
         for (const auto& [_, v] : opts.nameMap.types)
             usedNames.insert(v);
@@ -616,7 +611,7 @@ struct TypeStringifier
             state.emit("table");
             return;
         case PrimitiveType::Integer:
-            if (FFlag::LuauIntegerType)
+            if (FFlag::LuauIntegerType2)
             {
                 state.emit("integer");
                 return;
@@ -719,12 +714,9 @@ struct TypeStringifier
         if (ttv.boundTo)
             return stringify(*ttv.boundTo);
 
-        bool showName = !state.exhaustive;
-        if (FFlag::LuauEnableDenseTableAlias)
-        {
-            // if hide table alias expansions are enabled and there is a name found for the table, use it
-            showName = !state.exhaustive || state.opts.hideTableAliasExpansions;
-        }
+        // if hide table alias expansions are enabled and there is a name found for the table, use it
+        bool showName = !state.exhaustive || state.opts.hideTableAliasExpansions;
+
         if (showName)
         {
             if (ttv.name)
@@ -750,20 +742,7 @@ struct TypeStringifier
             }
         }
 
-        if (FFlag::LuauToStringIgnoresSyntheticName)
-        {
-            if (!state.exhaustive && !state.ignoreSyntheticName)
-            {
-                if (ttv.syntheticName)
-                {
-                    state.result.invalid = true;
-                    state.emitAndRecordSpan(*ttv.syntheticName, ty);
-                    stringify(ttv.instantiatedTypeParams, ttv.instantiatedTypePackParams);
-                    return;
-                }
-            }
-        }
-        else if (!state.exhaustive)
+        if (!state.exhaustive && !state.ignoreSyntheticName)
         {
             if (ttv.syntheticName)
             {
@@ -810,6 +789,8 @@ struct TypeStringifier
         if (ttv.indexer && ttv.props.empty() && isNumber(ttv.indexer->indexType))
         {
             state.emit("{");
+            if (ttv.indexer->isReadOnly)
+                state.emit("read ");
             stringify(ttv.indexer->indexResultType);
             state.emit("}");
 
@@ -824,6 +805,8 @@ struct TypeStringifier
         if (ttv.indexer)
         {
             state.newline();
+            if (ttv.indexer->isReadOnly)
+                state.emit("read ");
             state.emit("[");
             stringify(ttv.indexer->indexType);
             state.emit("]: ");
@@ -1472,8 +1455,6 @@ static void tableTypeToStringDetailed(
     TypeStringifier& tvs
 )
 {
-    LUAU_ASSERT(FFlag::LuauToStringIgnoresSyntheticName);
-
     if (ignoreSyntheticName == IgnoreSyntheticName::No && ttv->syntheticName)
         result.invalid = true;
 
@@ -1523,57 +1504,25 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 
     if (!opts.exhaustive)
     {
-        if (FFlag::LuauToStringIgnoresSyntheticName)
+        if (state.ignoreSyntheticName)
         {
-            if (state.ignoreSyntheticName)
+            if (auto ttv = get<TableType>(ty); ttv && ttv->name)
             {
-                if (auto ttv = get<TableType>(ty); ttv && ttv->name)
-                {
-                    tableTypeToStringDetailed(ty, ttv, IgnoreSyntheticName::Yes, result, opts.scope, *ttv->name, tvs);
+                tableTypeToStringDetailed(ty, ttv, IgnoreSyntheticName::Yes, result, opts.scope, *ttv->name, tvs);
 
-                    return result;
-                }
-            }
-            else if (auto ttv = get<TableType>(ty); ttv && (ttv->name || ttv->syntheticName))
-            {
-                tableTypeToStringDetailed(ty, ttv, IgnoreSyntheticName::No, result, opts.scope, ttv->name ? *ttv->name : *ttv->syntheticName, tvs);
-
-                return result;
-            }
-            else if (auto mtv = get<MetatableType>(ty); mtv && mtv->syntheticName)
-            {
-                result.invalid = true;
-                result.name = *mtv->syntheticName;
                 return result;
             }
         }
         else if (auto ttv = get<TableType>(ty); ttv && (ttv->name || ttv->syntheticName))
         {
-            if (ttv->syntheticName)
-                result.invalid = true;
-
-            // If scope is provided, add module name and check visibility
-            if (ttv->name && opts.scope)
-            {
-                auto [success, moduleName] = canUseTypeNameInScope(opts.scope, *ttv->name);
-
-                if (!success)
-                    result.invalid = true;
-
-                if (moduleName)
-                    result.name = format("%s.", moduleName->c_str());
-            }
-
-            state.emitAndRecordSpan(ttv->name ? *ttv->name : *ttv->syntheticName, ty);
-
-            tvs.stringify(ttv->instantiatedTypeParams, ttv->instantiatedTypePackParams);
+            tableTypeToStringDetailed(ty, ttv, IgnoreSyntheticName::No, result, opts.scope, ttv->name ? *ttv->name : *ttv->syntheticName, tvs);
 
             return result;
         }
         else if (auto mtv = get<MetatableType>(ty); mtv && mtv->syntheticName)
         {
             result.invalid = true;
-            state.emitAndRecordSpan(*mtv->syntheticName, ty);
+            result.name = *mtv->syntheticName;
             return result;
         }
     }
@@ -2060,7 +2009,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             return "function_check " + tos(c.fn) + " " + tos(c.argsPack);
         }
-        else if constexpr (std::is_same_v<T, PrimitiveTypeConstraint>)
+        else if constexpr (std::is_same_v<T, DEPRECATED_PrimitiveTypeConstraint>)
         {
             if (c.expectedType)
                 return "prim " + tos(c.freeType) + "[expected: " + tos(*c.expectedType) + "] as " + tos(c.primitiveType);

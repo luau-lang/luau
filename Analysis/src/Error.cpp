@@ -17,8 +17,7 @@
 #include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
-
-LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
+LUAU_FASTFLAGVARIABLE(LuauTweakAccessViolationReporting)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -195,12 +194,7 @@ struct ErrorConverter
         if (get<TableType>(t))
             return "Key '" + e.key + "' not found in table '" + Luau::toString(t) + "'";
         else if (get<ExternType>(t))
-        {
-            if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
-                return "Key '" + e.key + "' not found in external type '" + Luau::toString(t) + "'";
-            else
-                return "Key '" + e.key + "' not found in class '" + Luau::toString(t) + "'";
-        }
+            return "Key '" + e.key + "' not found in external type '" + Luau::toString(t) + "'";
         else
             return "Type '" + Luau::toString(e.table) + "' does not have key '" + e.key + "'";
     }
@@ -372,12 +366,7 @@ struct ErrorConverter
 
         TypeId t = follow(e.table);
         if (get<ExternType>(t))
-        {
-            if (FFlag::LuauTypeCheckerUdtfRenameClassToExtern)
-                s += "external type";
-            else
-                s += "class";
-        }
+            s += "external type";
         else
             s += "table";
 
@@ -787,12 +776,27 @@ struct ErrorConverter
     std::string operator()(const PropertyAccessViolation& e) const
     {
         const std::string stringKey = isIdentifier(e.key) ? e.key : "\"" + e.key + "\"";
-        switch (e.context)
+        if (FFlag::LuauTweakAccessViolationReporting)
         {
-        case PropertyAccessViolation::CannotRead:
-            return "Property " + stringKey + " of table '" + toString(e.table) + "' is write-only";
-        case PropertyAccessViolation::CannotWrite:
-            return "Property " + stringKey + " of table '" + toString(e.table) + "' is read-only";
+            const std::string kind = getTableType(e.table) ? "table" : "type";
+
+            switch (e.context)
+            {
+            case PropertyAccessViolation::CannotRead:
+                return "Property " + stringKey + " of " + kind + " '" + toString(e.table) + "' is write-only";
+            case PropertyAccessViolation::CannotWrite:
+                return "Property " + stringKey + " of " + kind + " '" + toString(e.table) + "' is read-only";
+            }
+        }
+        else
+        {
+            switch (e.context)
+            {
+            case PropertyAccessViolation::CannotRead:
+                return "Property " + stringKey + " of table '" + toString(e.table) + "' is write-only";
+            case PropertyAccessViolation::CannotWrite:
+                return "Property " + stringKey + " of table '" + toString(e.table) + "' is read-only";
+            }
         }
 
         LUAU_UNREACHABLE();

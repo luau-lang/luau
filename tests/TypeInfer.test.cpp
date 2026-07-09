@@ -18,7 +18,6 @@
 LUAU_DYNAMIC_FASTINT(LuauConstraintGeneratorRecursionLimit)
 LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 
-LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTINT(LuauCheckRecursionLimit)
@@ -26,21 +25,15 @@ LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauMorePreciseErrorSuppression)
-LUAU_FASTFLAG(LuauDfgAllowUpdatesInLoops)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
-LUAU_FASTFLAG(LuauMissingFollowMappedGenericPacks)
-LUAU_FASTFLAG(LuauTryToOptimizeSetTypeUnification)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauFollowInExplicitInstantiation)
-LUAU_FASTFLAG(LuauKeepExplicitMapForGlobalTypes2)
-LUAU_FASTFLAG(LuauFollowGenericBeforeCheckingIfMapped)
-LUAU_FASTFLAG(LuauTypeFunctionsAddFreeTypePackWithPositivePolarity)
-LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
-LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
-LUAU_FASTFLAG(LuauUnifier2HandleMismatchedPacks2)
-LUAU_FASTFLAG(LuauCaptureRecursiveCallsForTablesAndGlobals2)
-LUAU_FASTFLAG(LuauSubtypingReplaceBounds)
+LUAU_FASTFLAG(LuauRefineNilFromTableIndexerResultType)
+LUAU_FASTFLAG(LuauInstantiationUsesPolarity)
+LUAU_FASTFLAG(LuauCollapseDirectBoundCycles)
+LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
+LUAU_FASTFLAG(LuauDontBindOptionalGenericToNil)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 
 using namespace Luau;
 
@@ -420,12 +413,24 @@ TEST_CASE_FIXTURE(Fixture, "check_block_recursion_limit")
 #elif defined(_DEBUG) || defined(_NOOPT)
     int limit = 350;
 #else
-    int limit = 600;
+    // NOTE: This was lowered from 600 after some extra stack space added by
+    // adding handling Luau classes to the parser and old type solver.
+    int limit = 595;
 #endif
 
-    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
+    // This is the recursion limit for the parser and compiler. Both are able
+    // to handle *much* larger ASTs than the new or old solvers, so we set the
+    // limit to be double the "limit" variable.
+    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit * 2};
+
+    // This is the recursion limit for the old solver.
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
+
+    // This is the recursion limit for the entry point to the new solver.
     ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, limit - 100};
+
+    // This is the recursion limit for subtyping, an often deeply recursive
+    // subsystem in the new solver.
     ScopedFastInt luauSubtypingRecursionLimit{DFInt::LuauSubtypingRecursionLimit, limit - 100};
 
     CheckResult result = check(rep("do ", limit) + "local a = 1" + rep(" end", limit));
@@ -443,9 +448,19 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 #else
     int limit = 500;
 #endif
-    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
+    // This is the recursion limit for the parser and compiler. Both are able
+    // to handle *much* larger ASTs than the new or old solvers, so we set the
+    // limit to be double the "limit" variable.
+    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit * 2};
+
+    // This is the recursion limit for the old solver.
     ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
+
+    // This is the recursion limit for the entry point to the new solver.
     ScopedFastInt luauConstraintGeneratorRecursionLimit{DFInt::LuauConstraintGeneratorRecursionLimit, limit - 100};
+
+    // This is the recursion limit for subtyping, an often deeply recursive
+    // subsystem in the new solver.
     ScopedFastInt luauSubtypingRecursionLimit{DFInt::LuauSubtypingRecursionLimit, limit - 100};
 
     CheckResult result = check(R"(("foo"))" + rep(":lower()", limit));
@@ -1225,23 +1240,12 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
     validateErrors(result.errors);
     REQUIRE_MESSAGE(!result.errors.empty(), getErrors(result));
 
-    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauMorePreciseErrorSuppression)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         REQUIRE(3 == result.errors.size());
         CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
         CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
         CHECK(Location{{3, 22}, {3, 41}} == result.errors[2].location);
-
-        for (const TypeError& e : result.errors)
-            CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(e));
-    }
-    else if (!FFlag::DebugLuauForceOldSolver)
-    {
-        REQUIRE(4 == result.errors.size());
-        CHECK(Location{{2, 22}, {2, 42}} == result.errors[0].location);
-        CHECK(Location{{3, 22}, {3, 42}} == result.errors[1].location);
-        CHECK(Location{{3, 45}, {3, 46}} == result.errors[2].location);
-        CHECK(Location{{3, 22}, {3, 41}} == result.errors[3].location);
 
         for (const TypeError& e : result.errors)
             CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(e));
@@ -2269,7 +2273,7 @@ end
 TEST_CASE_FIXTURE(Fixture, "self_bound_due_to_compound_assign")
 {
     loadDefinition(R"(
-        declare class Camera
+        declare extern type Camera with
             CameraType: string
             CFrame: number
         end
@@ -2768,10 +2772,71 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_instantiation2")
     )"));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_table_with_optional_indexer_values")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        type Bar = {x: number}
+        type Foo = {[string]: Bar?}
+
+        function printAllClassNames(foo: Foo)
+            for _, value in foo do
+                print(value.x)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_local_table_with_optional_indexer_values")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        type TypeA = {Value: any}
+
+        local list = {} :: {[string]: TypeA?}
+
+        for index, a in list do
+            a.Value = 1
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+// https://github.com/luau-lang/luau/issues/2236
+TEST_CASE_FIXTURE(BuiltinsFixture, "2236_iterate_over_table_with_values_as_optional_types")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local t: { number? } = {}
+
+        for _, v in t do
+            local x: number = v
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_function_call")
 {
-    ScopedFastFlag _{FFlag::LuauFollowInExplicitInstantiation, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         do end
         _ = if _ then true elseif _ then if _ then _ elseif _ then 2 .. {} elseif _._ then l0 else _ elseif _ then if ... then _ elseif {} then `` elseif _ then {_G=_,}
@@ -2781,8 +2846,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_function_call")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_avoid_emplacing_blocked_types_you_dont_own")
 {
-    ScopedFastFlag _{FFlag::LuauKeepExplicitMapForGlobalTypes2, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         if if _ then _ else nil then
             local l0 = require(module0)
@@ -2814,8 +2877,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_avoid_emplacing_blocked_types_you_don
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_attach_polarity_to_ret_free_type")
 {
-    ScopedFastFlag _{FFlag::LuauTypeFunctionsAddFreeTypePackWithPositivePolarity, true};
-
     // When we dispatch constraints in *just* the right order, we end up
     // evaluating the type of `1 // setmetatable({}, FOO)` before we
     // generalize the type of the lambda passed to `__idiv`. We end up
@@ -2831,8 +2892,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_attach_polarity_to_ret_free_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_checking_generic_mapping")
 {
-    ScopedFastFlag _{FFlag::LuauFollowGenericBeforeCheckingIfMapped, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         function _<U...,M...>(l0,l0,l0,l0,)
             l0(_(rshift),_()(_(if _ then _),))
@@ -2856,12 +2915,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_checking_generic_ma
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_allow_failing_to_bind_generic")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
-        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
-    };
-
-    LUAU_REQUIRE_ERRORS(check(R"(  
+    LUAU_REQUIRE_ERRORS(check(R"(
         function test(arg1, arg2)
             local fun1 = test(test)
             local fun2 = test(test())
@@ -2874,12 +2928,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_allow_failing_to_bind_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_bind_generic_sigsegv")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauUnifier2HandleMismatchedPacks2, true},
-        {FFlag::LuauCaptureRecursiveCallsForTablesAndGlobals2, true},
-        {FFlag::LuauSubtypingReplaceBounds, true},
-    };
-
     LUAU_REQUIRE_ERRORS(check(R"(
         function test(arg1, arg2)
             local fun = test()
@@ -2894,15 +2942,146 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_bind_generic_sigsegv")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_global_type_inference")
 {
-    ScopedFastFlag _{FFlag::LuauKeepExplicitMapForGlobalTypes2, true};
-
     LUAU_REQUIRE_ERRORS(check(R"(
         A = A
         A = A
         function A()
         end
     )"));
+}
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_instantiate_iter_function")
+{
+    ScopedFastFlag _{FFlag::LuauInstantiationUsesPolarity, true};
+    // We do not care about the results of type checking this
+    // snippet, only that it does not trip an assertion.
+    //
+    // We use polarity to track how we generalize free types.
+    // For example, free types with positive polarity will
+    // default generalize to their lower bounds. We assert
+    // that the polarity is never "Unknown" (the default).
+    //
+    // This test exercises a case we were getting wrong: when
+    // iterating over a table with a generic __iter metamethod,
+    // we did not correctly instantiate the generics with free
+    // types of the corresponding polarity, and would trip the
+    // aforementioned assertion.
+    std::ignore = check(R"(
+        function iterfunc(l0)
+            return l0()
+        end
+        for _, _ in setmetatable({}, { __iter = iterfunc }) do
+        end
+    )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_and_unpack_generic_order_independence")
+{
+    ScopedFastFlag sff{FFlag::LuauCollapseDirectBoundCycles, true};
+
+    CheckResult result = check(R"(
+        local tbl = {}
+        for i=0, 3 do
+            table.insert(tbl, i)
+        end
+        return table.unpack(tbl)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+// The fuzzer reported this ICE because exports were returning errors rather than just reporting them
+// By returning errors, this resulted in the ConstraintGenerator expecting there to be a DefId that was dropped by the DFG when handling AstStatError
+TEST_CASE_FIXTURE(Fixture, "fuzzer_export_no_ice")
+{
+
+    CHECK_NOTHROW(check(R"(
+        while true do
+            export local _
+        end
+        do
+            export local _
+            _ = _
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_P_inference_with_optional_param_does_not_leak_nil")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauDontBindOptionalGenericToNil, true},
+    };
+
+    // Width subtyping: passing a table that lacks an optional field to a component
+    // that declares it as optional should be fine.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function createElement<P>(component: (P) -> any, props: P?): any
+            return nil
+        end
+
+        local function MyComponent(props: { x: number, y: number? })
+            return nil
+        end
+
+        createElement(MyComponent, { x = 1 })
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_P_with_intersection_props_and_partial_table")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDontBindOptionalGenericToNil, true},
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+    };
+
+    // When a component's props are an intersection of table types with optional
+    // fields, passing a table with only a subset of those fields should work.
+    // { tag: string } should satisfy { tag: string? } & { b1: number? }
+    // because both fields in the intersection are optional.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type BaseProps = { tag: string? }
+        type ExtraProps = { b1: number? }
+
+        local function Image(props: BaseProps & ExtraProps)
+            return nil
+        end
+
+        local function createElement<P>(component: (P) -> any, props: P?): any
+            return nil
+        end
+
+        local _x = createElement(Image, { tag = "test" })
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_P_widening_with_recursive_optional_field")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDontBindOptionalGenericToNil, true},
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+    };
+
+    // When a component has a recursive optional field (like React's children),
+    // widening the table literal should not cause the bounds check to fail.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Node = string | number | { [string]: Node }
+        type BaseProps = { tag: string?, children: Node? }
+        type ExtraProps = { size: number? }
+        local function View(props: BaseProps & ExtraProps)
+            return nil
+        end
+        local function createElement<P>(component: (P) -> any, props: P?): any
+            return nil
+        end
+        local _x = createElement(View, { tag = "hello" })
+    )"));
 }
 
 TEST_SUITE_END();

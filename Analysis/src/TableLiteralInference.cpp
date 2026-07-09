@@ -6,6 +6,7 @@
 #include "Luau/Common.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/HashUtil.h"
+#include "Luau/IterativeTypeVisitor.h"
 #include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Type.h"
@@ -13,11 +14,96 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
+LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceVariadics)
+LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterLambdaHandling)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+
 namespace Luau
 {
 
 namespace
 {
+
+struct FindFunctionTypeIn : IterativeTypeVisitor
+{
+    int numberOfLambdaParameters;
+    const FunctionType* candidate = nullptr;
+    bool ambiguous = false;
+
+    explicit FindFunctionTypeIn(int numberOfLambdaParameters)
+        : IterativeTypeVisitor("FindFunctionTypeIn", true, true)
+        , numberOfLambdaParameters(numberOfLambdaParameters)
+    {
+    }
+
+    bool visit(TypeId) override
+    {
+        return false;
+    }
+
+    bool visit(TypeId, const UnionType&) override
+    {
+        return true;
+    }
+
+    bool visit(TypeId, const IntersectionType&) override
+    {
+        return true;
+    }
+
+    bool visit(TypeId ty, const FunctionType& ftv) override
+    {
+        // This logic is a little clowny.
+        //
+        // For bidirectional inference we're trying to _guess_ what the user
+        // is intending so that we can give decent results. For functions, we
+        // will error if the user doesn't provide exactly the correct number of
+        // arguments. However, consider:
+        //
+        //  local f: (ReallyComplexTableType, boolean) -> () = function (tbl)
+        //      tbl.|
+        //  end
+        //
+        // ... the user would probably prefer to have autocomplete here while
+        // they're writing the function, even if we'll eventually error. Or,
+        // the user may be in nonstrict mode.
+        //
+        // On top of that we have to do a bunch of `int` casting here.
+        if (FFlag::LuauBidirectionalInferenceBetterLambdaHandling)
+        {
+            if (candidate == nullptr)
+            {
+                candidate = get<FunctionType>(ty);
+                ambiguous = false;
+                return false;
+            }
+
+            int candidateDistance = std::abs(int(size(candidate->argTypes)) - numberOfLambdaParameters);
+            int thisDistance = std::abs(int(size(ftv.argTypes)) - numberOfLambdaParameters);
+
+            if (thisDistance < candidateDistance)
+            {
+                candidate = get<FunctionType>(ty);
+                ambiguous = false;
+            }
+            else if (thisDistance == candidateDistance)
+            {
+                ambiguous = true;
+            }
+
+        }
+        else
+        {
+            if (candidate == nullptr ||
+                std::abs(int(size(candidate->argTypes)) - numberOfLambdaParameters) > std::abs(int(size(ftv.argTypes)) - numberOfLambdaParameters))
+            {
+                candidate = get<FunctionType>(ty);
+                return false;
+            }
+        }
+        return false;
+    }
+};
 
 struct BidirectionalTypePusher
 {
@@ -159,23 +245,58 @@ struct BidirectionalTypePusher
         if (auto exprLambda = expr->as<AstExprFunction>())
         {
             const auto lambdaTy = get<FunctionType>(exprType);
-            const auto expectedLambdaTy = get<FunctionType>(stripNil(solver->builtinTypes, *solver->arena, expectedType));
+
+            FindFunctionTypeIn ffti{int(exprLambda->args.size)};
+            ffti.run(expectedType);
+            const FunctionType* expectedLambdaTy = ffti.candidate;
+
             if (lambdaTy && expectedLambdaTy)
             {
-                const auto& [lambdaArgTys, _lambdaTail] = flatten(lambdaTy->argTypes);
-                const auto& [expectedLambdaArgTys, _expectedLambdaTail] = flatten(expectedLambdaTy->argTypes);
-
-                auto limit = std::min({lambdaArgTys.size(), expectedLambdaArgTys.size(), exprLambda->args.size});
-                for (size_t argIndex = 0; argIndex < limit; argIndex++)
+                if (FFlag::LuauBidirectionalInferenceVariadics)
                 {
-                    if (!exprLambda->args.data[argIndex]->annotation && get<FreeType>(follow(lambdaArgTys[argIndex])) &&
-                        !containsGeneric(expectedLambdaArgTys[argIndex], NotNull{genericTypesAndPacks}))
-                        solver->bind(NotNull{constraint}, lambdaArgTys[argIndex], expectedLambdaArgTys[argIndex]);
+                    const auto& [lambdaArgTys, _lambdaTail] = flatten(lambdaTy->argTypes);
+                    const auto& [expectedLambdaArgTys, _expectedLambdaTail] =
+                        extendTypePack(*solver->arena, solver->builtinTypes, expectedLambdaTy->argTypes, exprLambda->args.size);
+
+                    auto limit = std::min({lambdaArgTys.size(), expectedLambdaArgTys.size(), exprLambda->args.size});
+                    for (size_t argIndex = 0; argIndex < limit; argIndex++)
+                    {
+                        if (!exprLambda->args.data[argIndex]->annotation && get<FreeType>(follow(lambdaArgTys[argIndex])) &&
+                            !containsGeneric(expectedLambdaArgTys[argIndex], NotNull{genericTypesAndPacks}))
+                            solver->bind(NotNull{constraint}, lambdaArgTys[argIndex], expectedLambdaArgTys[argIndex]);
+                    }
+
+                }
+                else
+                {
+
+                    const auto& [lambdaArgTys, _lambdaTail] = flatten(lambdaTy->argTypes);
+                    const auto& [expectedLambdaArgTys, _expectedLambdaTail] = flatten(expectedLambdaTy->argTypes);
+
+                    auto limit = std::min({lambdaArgTys.size(), expectedLambdaArgTys.size(), exprLambda->args.size});
+                    for (size_t argIndex = 0; argIndex < limit; argIndex++)
+                    {
+                        if (!exprLambda->args.data[argIndex]->annotation && get<FreeType>(follow(lambdaArgTys[argIndex])) &&
+                            !containsGeneric(expectedLambdaArgTys[argIndex], NotNull{genericTypesAndPacks}))
+                            solver->bind(NotNull{constraint}, lambdaArgTys[argIndex], expectedLambdaArgTys[argIndex]);
+                    }
                 }
 
-                if (!exprLambda->returnAnnotation && get<FreeTypePack>(follow(lambdaTy->retTypes)) &&
-                    !containsGeneric(expectedLambdaTy->retTypes, NotNull{genericTypesAndPacks}))
-                    solver->bind(NotNull{constraint}, lambdaTy->retTypes, expectedLambdaTy->retTypes);
+                if (FFlag::LuauBidirectionalInferenceBetterLambdaHandling)
+                {
+                    // When multiple union arms have the same arg count, it's
+                    // ambiguous. Don't bind the return type so the solver can infer
+                    // it from the body.
+                    if (!ffti.ambiguous && !exprLambda->returnAnnotation && get<FreeTypePack>(follow(lambdaTy->retTypes)) &&
+                        !containsGeneric(expectedLambdaTy->retTypes, NotNull{genericTypesAndPacks}))
+                        solver->bind(NotNull{constraint}, lambdaTy->retTypes, expectedLambdaTy->retTypes);
+                }
+                else
+                {
+                    if (!exprLambda->returnAnnotation && get<FreeTypePack>(follow(lambdaTy->retTypes)) &&
+                        !containsGeneric(expectedLambdaTy->retTypes, NotNull{genericTypesAndPacks}))
+                        solver->bind(NotNull{constraint}, lambdaTy->retTypes, expectedLambdaTy->retTypes);
+                }
             }
         }
 
@@ -190,12 +311,16 @@ struct BidirectionalTypePusher
             {
                 if (auto utv = get<UnionType>(expectedType))
                 {
-                    std::vector<TypeId> parts{begin(utv), end(utv)};
-
-                    std::optional<TypeId> tt = extractMatchingTableType(parts, exprType, solver->builtinTypes);
-
-                    if (tt)
-                        (void)pushType(*tt, expr);
+                    if (FFlag::LuauBidirectionalInferenceSimplifyTables)
+                    {
+                        if (auto tt = extractMatchingTableType(utv, exprType, solver->builtinTypes, solver->arena))
+                            (void)pushType(*tt, expr);
+                    }
+                    else
+                    {
+                        if (auto tt = extractMatchingTableType_DEPRECATED(utv, exprType, solver->builtinTypes))
+                            (void)pushType(*tt, expr);
+                    }
                 }
                 else if (auto itv = get<IntersectionType>(expectedType))
                 {
@@ -252,7 +377,7 @@ struct BidirectionalTypePusher
                     //
                     // NOTE: We also do nothing for write properties.
                 }
-                else if (item.kind == AstExprTable::Item::List)
+                else if (item.kind == AstExprTable::Item::Kind::List)
                 {
                     if (expectedTableTy->indexer)
                     {
@@ -260,7 +385,7 @@ struct BidirectionalTypePusher
                         (void)pushType(expectedTableTy->indexer->indexResultType, item.value);
                     }
                 }
-                else if (item.kind == AstExprTable::Item::General)
+                else if (item.kind == AstExprTable::Item::Kind::General)
                 {
 
                     // We have { ..., [blocked] : somePropExpr, ...}

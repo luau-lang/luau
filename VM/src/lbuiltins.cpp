@@ -25,7 +25,7 @@
 #endif
 #endif
 
-LUAU_FASTFLAG(LuauIntegerType)
+LUAU_FASTFLAG(LuauCIProto)
 
 // luauF functions implement FASTCALL instruction that performs a direct execution of some builtin functions from the VM
 // The rule of thumb is that FASTCALL functions can not call user code, yield, fail, or reallocate stack.
@@ -1139,7 +1139,7 @@ static int luauF_select(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
 {
     if (nparams == 1 && nresults == 1)
     {
-        int n = cast_int(L->base - L->ci->func) - clvalue(L->ci->func)->l.p->numparams - 1;
+        int n = cast_int(L->base - L->ci->func) - (FFlag::LuauCIProto ? L->ci->p : clvalue(L->ci->func)->l.p)->numparams - 1;
 
         if (ttisnumber(arg0))
         {
@@ -1323,16 +1323,15 @@ static int luauF_tostring(lua_State* L, StkId res, TValue* arg0, int nresults, S
             return 1;
         }
         case LUA_TINTEGER:
-            if (FFlag::LuauIntegerType)
-            {
-                if (luaC_needsGC(L))
-                    return -1; // we can't call luaC_checkGC so fall back to C implementation
+        {
+            if (luaC_needsGC(L))
+                return -1; // we can't call luaC_checkGC so fall back to C implementation
 
-                char s[LUAI_MAXINT2STR];
-                char* e = luai_int2str(s, lvalue(arg0));
-                setsvalue(L, res, luaS_newlstr(L, s, e - s));
-                return 1;
-            }
+            char s[LUAI_MAXINT2STR];
+            char* e = luai_int2str(s, lvalue(arg0));
+            setsvalue(L, res, luaS_newlstr(L, s, e - s));
+            return 1;
+        }
         }
 
         // fall back to generic C implementation
@@ -2456,6 +2455,45 @@ static int luauF_integercreate(lua_State* L, StkId res, TValue* arg0, int nresul
     return -1;
 }
 
+static int luauF_bufferreadlong(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+#if !defined(LUAU_BIG_ENDIAN)
+    if (nparams >= 2 && nresults <= 1 && ttisbuffer(arg0) && ttisnumber(args))
+    {
+        int offset;
+        luai_num2int(offset, nvalue(args));
+        if (checkoutofbounds(offset, bufvalue(arg0)->len, sizeof(int64_t)))
+            return -1;
+
+        int64_t val;
+        memcpy(&val, (char*)bufvalue(arg0)->data + unsigned(offset), sizeof(int64_t));
+        setlvalue(res, val);
+        return 1;
+    }
+#endif
+
+    return -1;
+}
+
+static int luauF_bufferwritelong(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+#if !defined(LUAU_BIG_ENDIAN)
+    if (nparams >= 3 && nresults <= 0 && ttisbuffer(arg0) && ttisnumber(args) && ttisinteger(args + 1))
+    {
+        int offset;
+        luai_num2int(offset, nvalue(args));
+        if (checkoutofbounds(offset, bufvalue(arg0)->len, sizeof(int64_t)))
+            return -1;
+
+        int64_t val = lvalue(args + 1);
+        memcpy((char*)bufvalue(arg0)->data + unsigned(offset), &val, sizeof(int64_t));
+        return 0;
+    }
+#endif
+
+    return -1;
+}
+
 static int luauF_missing(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     return -1;
@@ -2696,6 +2734,9 @@ const luau_FastFunction luauF_table[256] = {
     luauF_integercountrz,
     luauF_integercountlz,
     luauF_integerbswap,
+
+    luauF_bufferreadlong,
+    luauF_bufferwritelong,
 
 // When adding builtins, add them above this line; what follows is 64 "dummy" entries with luauF_missing fallback.
 // This is important so that older versions of the runtime that don't support newer builtins automatically fall back via luauF_missing.

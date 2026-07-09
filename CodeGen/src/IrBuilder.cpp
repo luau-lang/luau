@@ -12,8 +12,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
-LUAU_FASTFLAG(LuauCodegenSetBlockEntryState3)
+LUAU_FASTFLAG(LuauCallFeedback)
 
 namespace Luau
 {
@@ -41,11 +40,10 @@ static bool hasTypedParameters(const BytecodeTypeInfo& typeInfo)
 
 static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 {
-    const BytecodeTypeInfo& typeInfo = FFlag::LuauCodegenSetBlockEntryState3 ? build.function.bcOriginalTypeInfo : build.function.bcTypeInfo;
+    const BytecodeTypeInfo& typeInfo = build.function.bcOriginalTypeInfo;
     CODEGEN_ASSERT(hasTypedParameters(typeInfo));
 
-    if (FFlag::LuauCodegenSetBlockEntryState3)
-        build.function.blockOp(entry).flags |= kBlockFlagEntryArgCheck;
+    build.function.blockOp(entry).flags |= kBlockFlagEntryArgCheck;
 
     for (size_t i = 0; i < typeInfo.argumentTypes.size(); i++)
     {
@@ -69,8 +67,7 @@ static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 
             build.beginBlock(fallbackCheck);
 
-            if (FFlag::LuauCodegenSetBlockEntryState3)
-                build.function.blockOp(fallbackCheck).flags |= kBlockFlagEntryArgCheck;
+            build.function.blockOp(fallbackCheck).flags |= kBlockFlagEntryArgCheck;
         }
 
         switch (tag)
@@ -126,8 +123,7 @@ static void buildArgumentTypeChecks(IrBuilder& build, IrOp entry)
 
             build.beginBlock(nextCheck);
 
-            if (FFlag::LuauCodegenSetBlockEntryState3)
-                build.function.blockOp(nextCheck).flags |= kBlockFlagEntryArgCheck;
+            build.function.blockOp(nextCheck).flags |= kBlockFlagEntryArgCheck;
         }
     }
 
@@ -189,18 +185,11 @@ void IrBuilder::buildFunctionIr(Proto* proto)
         // Begin new block at this instruction if it was in the bytecode or requested during translation
         if (instIndexToBlock[i] != kNoAssociatedBlockIndex)
         {
-            if (FFlag::LuauCodegenBlockSafeEnv)
-            {
-                IrOp block = blockAtInst(i);
+            IrOp block = blockAtInst(i);
 
-                beginBlock(block);
+            beginBlock(block);
 
-                function.blockOp(block).startpc = uint32_t(i);
-            }
-            else
-            {
-                beginBlock(blockAtInst(i));
-            }
+            function.blockOp(block).startpc = uint32_t(i);
         }
 
         // Numeric for loops require additional processing to maintain loop stack
@@ -337,8 +326,12 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstSetGlobal(*this, pc, i);
         break;
     case LOP_CALL:
+    case LOP_CALLFB:
         inst(IrCmd::INTERRUPT, constUint(i));
-        inst(IrCmd::SET_SAVEDPC, constUint(i + 1));
+        if (FFlag::LuauCallFeedback)
+            inst(IrCmd::SET_SAVEDPC, constUint(i + getOpLength(op)));
+        else
+            inst(IrCmd::SET_SAVEDPC, constUint(i + 1));
 
         inst(IrCmd::CALL, vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1), constInt(LUAU_INSN_C(*pc) - 1));
 
@@ -363,9 +356,11 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstSetTable(*this, pc, i);
         break;
     case LOP_GETTABLEKS:
+    case LOP_GETUDATAKS:
         translateInstGetTableKS(*this, pc, i);
         break;
     case LOP_SETTABLEKS:
+    case LOP_SETUDATAKS:
         translateInstSetTableKS(*this, pc, i);
         break;
     case LOP_GETTABLEN:
@@ -638,8 +633,20 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstCapture(*this, pc, i);
         break;
     case LOP_NAMECALL:
+    case LOP_NAMECALLUDATA:
         if (translateInstNamecall(*this, pc, i))
-            cmdSkipTarget = i + 3;
+        {
+            if (FFlag::LuauCallFeedback)
+            {
+                static const int namecall = getOpLength(static_cast<LuauOpcode>(LOP_NAMECALL));
+                int callOp = LUAU_INSN_OP(*(pc + namecall));
+                LUAU_ASSERT(callOp == LOP_CALL || callOp == LOP_CALLFB);
+                int call = getOpLength(static_cast<LuauOpcode>(callOp));
+                cmdSkipTarget = i + namecall + call;
+            }
+            else
+                cmdSkipTarget = i + 3;
+        }
         break;
     case LOP_PREPVARARGS:
         inst(IrCmd::FALLBACK_PREPVARARGS, constUint(i), constInt(LUAU_INSN_A(*pc)));
@@ -660,6 +667,16 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         inst(IrCmd::FALLBACK_FORGPREP, constUint(i), vmReg(LUAU_INSN_A(*pc)), loopStart);
         break;
     }
+    // We do not support classes in NCG at the moment, so if we see a class
+    // operation then unconditionally exit to the VM.
+    case LOP_NEWCLASSMEMBER:
+        inst(IrCmd::JUMP, vmExit(i));
+        break;
+
+    case LOP_CMPPROTO:
+        translateInstCmpProto(*this, pc, i);
+        break;
+
     default:
         CODEGEN_ASSERT(!"Unknown instruction");
     }
@@ -799,6 +816,14 @@ IrOp IrBuilder::constInt(int value)
     return constAny(constant, uint64_t(value));
 }
 
+IrOp IrBuilder::constInt64(int64_t value)
+{
+    IrConst constant;
+    constant.kind = IrConstKind::Int64;
+    constant.valueInt64 = value;
+    return constAny(constant, uint64_t(value));
+}
+
 IrOp IrBuilder::constUint(unsigned value)
 {
     IrConst constant;
@@ -909,7 +934,7 @@ IrOp IrBuilder::inst(IrCmd cmd, std::initializer_list<IrOp> ops)
         inTerminatedBlock = true;
     }
 
-    if (FFlag::LuauCodegenBlockSafeEnv && canInvalidateSafeEnv(cmd))
+    if (canInvalidateSafeEnv(cmd))
     {
         // Mark that block has instruction with this flag
         function.blocks[activeBlockIdx].flags |= kBlockFlagSafeEnvClear;
@@ -931,7 +956,7 @@ IrOp IrBuilder::inst(IrCmd cmd, const IrOps& ops)
         inTerminatedBlock = true;
     }
 
-    if (FFlag::LuauCodegenBlockSafeEnv && canInvalidateSafeEnv(cmd))
+    if (canInvalidateSafeEnv(cmd))
     {
         // Mark that block has instruction with this flag
         function.blocks[activeBlockIdx].flags |= kBlockFlagSafeEnvClear;

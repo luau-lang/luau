@@ -23,6 +23,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTINTVARIABLE(LuauNonStrictTypeCheckerRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(LuauAddRecursionCounterToNonStrictTypeChecker)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
@@ -234,7 +235,7 @@ struct NonStrictTypeChecker
         if (noTypeFunctionErrors.find(instance))
             return instance;
 
-        TypeFunctionContext context{arena, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits};
+        TypeFunctionContext context{arena, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, NotNull{&subtyping}};
         ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true).errors;
 
         if (errors.empty())
@@ -300,6 +301,8 @@ struct NonStrictTypeChecker
         else if (auto s = stat->as<AstStatDeclareGlobal>())
             return visit(s);
         else if (auto s = stat->as<AstStatDeclareExternType>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatClass>())
             return visit(s);
         else if (auto s = stat->as<AstStatError>())
             return visit(s);
@@ -497,6 +500,21 @@ struct NonStrictTypeChecker
 
         for (auto prop : declClass->props)
             visit(prop.ty);
+
+        return {};
+    }
+
+    NonStrictContext visit(AstStatClass* declClass)
+    {
+        for (auto prop : declClass->members)
+        {
+            if (auto property = get_if<AstClassProperty>(&prop))
+                visit(property->ty);
+            else if (auto method = get_if<AstClassMethod>(&prop))
+                visit(method->function);
+            else
+                LUAU_ASSERT(!"Unknown class field");
+        }
 
         return {};
     }
@@ -1207,7 +1225,10 @@ struct NonStrictTypeChecker
                 SubtypingResult r = subtyping.isSubtype(actualType, *contextTy, scope);
                 if (r.normalizationTooComplex)
                     reportError(NormalizationTooComplex{}, fragment->location);
-                if (r.isSubtype)
+                // If this subtype test passed and we did not see an error
+                // suppressing bit, then return this as the type that will
+                // error at runtime.
+                if (r.isSubtype && !r.isErrorSuppressing)
                     return {actualType};
             }
         }

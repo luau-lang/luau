@@ -12,9 +12,14 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
+LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauTypeCheckerUdtfRenameClassToExtern)
-LUAU_FASTFLAG(LuauUdtfReserveStack)
+LUAU_FASTFLAG(LuauTypeFunctionRobustness)
+LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
+LUAU_FASTFLAG(LuauTypeFunctionTableIndexerIsReadOnly)
+LUAU_FASTFLAG(LuauReadOnlyIndexers)
+LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2810,7 +2815,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "externs_are_extern")
 {
-    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTypeCheckerUdtfRenameClassToExtern, true}};
+    ScopedFastFlag _ = {FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare extern type Bar with
@@ -2901,7 +2906,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss2164_table_subtyping_bug")
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_many_arguments")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag fix{FFlag::LuauUdtfReserveStack, true};
 
     CheckResult result = check(R"(
 type function many(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, aa, ab, ac, ad, ae, af, ag, ah, ai, aj, ak)
@@ -2930,6 +2934,508 @@ type function test(t: type) return t end
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]) == "Type functions do not currently support types of the form 'index<D, L>'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_identity_preserves_parameter_names")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag serializeArgNames{FFlag::LuauTypeFunctionSerializeArgNames, true};
+
+    CheckResult result = check(R"(
+type function identity(t)
+    return t
+end
+
+type baz = string
+type foo = (foo: number, bar: baz) -> baz
+type bar = identity<foo>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    std::optional<TypeId> barTy = lookupType("bar");
+    REQUIRE(barTy);
+
+    const FunctionType* ftv = get<FunctionType>(follow(*barTy));
+    REQUIRE(ftv);
+    REQUIRE(ftv->argNames.size() == 2);
+
+    REQUIRE(ftv->argNames[0].has_value());
+    CHECK(ftv->argNames[0]->name == "foo");
+
+    REQUIRE(ftv->argNames[1].has_value());
+    CHECK(ftv->argNames[1]->name == "bar");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_serialize_iteration_limit_null_deref")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+    ScopedFastInt luauTypeFunctionSerdeIterationLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
+
+    CheckResult result = check(R"(
+        type function pass(arg)
+            return arg
+        end
+
+        type Complex = {
+            a: number,
+            b: string,
+            c: boolean,
+            d: nil,
+            e: buffer,
+            f: thread,
+            g: (number, string) -> (boolean, nil),
+        }
+
+        local function ok(idx: pass<Complex>): Complex return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK("Complexity limit reached when passing a type to a type function" == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_alias_call_serialize_null_deref")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+    ScopedFastInt luauTypeFunctionSerdeIterationLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
+
+    CheckResult result = check(R"(
+        type Big<T> = {
+            a: T,
+            b: string,
+            c: boolean,
+            d: nil,
+            e: buffer,
+            f: thread,
+            g: (T, string) -> (boolean, nil),
+        }
+
+        type function apply(arg)
+            return Big(arg)
+        end
+
+        local function ok(idx: apply<number>): Big<number> return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(
+        "'apply' type function errored at runtime: [string \"apply\"]:13: Complexity limit reached when passing a type to a type alias" ==
+        toString(result.errors[0])
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_env_alias_serialize_null_deref")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+    ScopedFastInt luauTypeFunctionSerdeIterationLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
+
+    CheckResult result = check(R"(
+        type Alias = {
+            a: number,
+            b: string,
+            c: boolean,
+            d: nil,
+            e: buffer,
+            f: thread,
+            g: (number, string) -> (boolean, nil),
+        }
+
+        type function use_alias()
+            return Alias
+        end
+
+        local function ok(idx: use_alias<>): Alias return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK("'use_alias' type function: returned a non-type value" == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_deep_copy_iteration_limit_null_deref")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+    ScopedFastInt serdeLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
+
+    CheckResult result = check(R"(
+        type function copy_complex(arg)
+            local t = types.newtable()
+            t:setproperty(types.singleton("a"), types.number)
+            t:setproperty(types.singleton("b"), types.string)
+            t:setproperty(types.singleton("c"), types.boolean)
+            t:setproperty(types.singleton("d"), types.buffer)
+            t:setproperty(types.singleton("e"), types.thread)
+            t:setproperty(types.singleton("f"), types.newtable())
+            t:setproperty(types.singleton("g"), types.newfunction())
+            local c = types.copy(t)
+            return c
+        end
+
+        local function ok(idx: copy_complex<number>): number return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(
+        "'copy_complex' type function errored at runtime: [string \"copy_complex\"]:11: types.copy: complexity limit reached during type copy" ==
+        toString(result.errors[0])
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_areequal_stack_overflow_on_deep_types")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+
+    CheckResult result = check(R"(
+        type function deep_eq()
+            local depth = 50000
+            local function build()
+                local t = types.newtable()
+                for i = 1, depth do
+                    local outer = types.newtable()
+                    outer:setproperty(types.singleton("x"), t)
+                    t = outer
+                end
+                return t
+            end
+            local a = build()
+            local b = build()
+            if a == b then
+                return types.boolean
+            end
+            return types.string
+        end
+
+        local x: deep_eq<> = true
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK("'deep_eq' type function errored at runtime: Internal recursion counter limit exceeded in areEqual" == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setmetatable_wrong_error_tag")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+
+    CheckResult result = check(R"(
+        type function foo()
+            local t = types.newtable()
+            t:setmetatable(types.number)
+            return t
+        end
+
+        local x: foo<> = nil
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(
+        "'foo' type function errored at runtime: [string \"foo\"]:4: type.setmetatable: expected the argument to be a table, but got number "
+        "instead" == toString(result.errors[0])
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_cloner_missing_integer_crashes_copy")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
+
+    CheckResult result = check(R"(
+        type function copy_int(arg)
+            local c = types.copy(arg)
+            return c
+        end
+
+        local function ok(idx: copy_int<integer>): integer return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setgenerics_wrong_argcount_check")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
+
+    CheckResult result = check(R"(
+        type function extra_arg()
+            local f = types.newfunction()
+            local g = types.generic("T")
+            f:setgenerics({g}, "extra")
+            return f
+        end
+
+        local x: extra_arg<> = nil
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK("Argument count mismatch. Function expects 1 to 2 arguments, but 3 are specified" == toString(result.errors[0]));
+    CHECK(
+        "'extra_arg' type function errored at runtime: [string \"extra_arg\"]:5: type.setgenerics: expected 2 arguments, but got 3" ==
+        toString(result.errors[1])
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauUdtfTypeIsSubtypeOf, true};
+
+    CheckResult results = check(R"(
+        type function checksubtype(a, b)
+            if not a:issubtypeof(b) then
+                error("Not a subtype!")
+            end
+            return a
+        end
+
+        local x: checksubtype<nil, nil>                          -- T
+        local y: checksubtype<nil, string?>                      -- T
+        local z: checksubtype<"Hello", string>                   -- T
+        local x1: checksubtype<add<number, number>, number | vector> -- T
+        local w: checksubtype<string | vector | number, number>  -- F
+        local a: checksubtype<boolean, number>                   -- F
+        local b: checksubtype<false, nil>                        -- F
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, results);
+
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[0]));
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[1]));
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[2]));
+
+    CHECK_EQ(results.errors[0].location.begin.line, 12);
+    CHECK_EQ(results.errors[1].location.begin.line, 13);
+    CHECK_EQ(results.errors[2].location.begin.line, 14);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_top_and_bottom")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauUdtfTypeIsSubtypeOf, true};
+
+    CheckResult results = check(R"(
+        type function issub(a, b)
+            return types.singleton(a:issubtypeof(b))
+        end
+
+        local a: issub<never, number>
+        local b: issub<never, string>
+        local c: issub<never, never>
+        local d: issub<number, unknown>
+        local e: issub<string, unknown>
+        local f: issub<unknown, unknown>
+        local g: issub<never, unknown>
+        local h: issub<unknown, number>
+        local i: issub<number, never>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+
+    CHECK(toString(requireType("a")) == "true");
+    CHECK(toString(requireType("b")) == "true");
+    CHECK(toString(requireType("c")) == "true");
+    CHECK(toString(requireType("d")) == "true");
+    CHECK(toString(requireType("e")) == "true");
+    CHECK(toString(requireType("f")) == "true");
+    CHECK(toString(requireType("g")) == "true");
+    CHECK(toString(requireType("h")) == "false");
+    CHECK(toString(requireType("i")) == "false");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_any")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauUdtfTypeIsSubtypeOf, true};
+
+    CheckResult results = check(R"(
+        type function issub(a, b)
+            return types.singleton(a:issubtypeof(b))
+        end
+
+        local a: issub<any, number>
+        local b: issub<number, any>
+        local c: issub<any, any>
+        -- This is a special case: any <: unknown
+        local d: issub<any, unknown>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+
+    CHECK(toString(requireType("a")) == "false");
+    CHECK(toString(requireType("b")) == "true");
+    CHECK(toString(requireType("c")) == "true");
+    CHECK(toString(requireType("d")) == "true");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_table_structural")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauUdtfTypeIsSubtypeOf, true};
+
+    CheckResult results = check(R"(
+        type function issub(a, b)
+            return types.singleton(a:issubtypeof(b))
+        end
+
+        type Wide = { a: number, b: string }
+        type Narrow = { a: number }
+        type Different = { a: string }
+        type TablesSubtypeInvariantly = { a: string | number }
+        type ReadNum1 = { read a: number }
+        type ReadNumOrStr = { read a: number | string }
+
+        local a: issub<Wide, Narrow>
+        local b: issub<Narrow, Wide>
+        local c: issub<Wide, Wide>
+        local d: issub<Wide, Different>
+        local e: issub<Narrow, TablesSubtypeInvariantly>
+        local f: issub<ReadNum1, ReadNumOrStr>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+
+    CHECK(toString(requireType("a")) == "true");
+    CHECK(toString(requireType("b")) == "false");
+    CHECK(toString(requireType("c")) == "true");
+    CHECK(toString(requireType("d")) == "false");
+    CHECK(toString(requireType("e")) == "false");
+    CHECK(toString(requireType("f")) == "true");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_function")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauUdtfTypeIsSubtypeOf, true};
+
+    CheckResult results = check(R"(
+        type function issub(a, b)
+            return types.singleton(a:issubtypeof(b))
+        end
+
+        type F1 = (number) -> string
+        type F2 = (number) -> string
+        type F3 = (unknown) -> string
+        type F4 = (number) -> unknown
+
+        local a: issub<F1, F2>
+        local b: issub<F3, F1>
+        local c: issub<F1, F3>
+        local d: issub<F1, F4>
+        local e: issub<F4, F1>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+
+    CHECK(toString(requireType("a")) == "true");
+    CHECK(toString(requireType("b")) == "true");
+    CHECK(toString(requireType("c")) == "false");
+    CHECK(toString(requireType("d")) == "true");
+    CHECK(toString(requireType("e")) == "false");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_union")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauUdtfTypeIsSubtypeOf, true};
+
+    CheckResult results = check(R"(
+        type function issub(a, b)
+            return types.singleton(a:issubtypeof(b))
+        end
+
+        local a: issub<number, number | string>
+        local b: issub<number | string, number | string | boolean>
+        local c: issub<number | string, number>
+        local d: issub<number | string, number | string>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+
+    CHECK(toString(requireType("a")) == "true");
+    CHECK(toString(requireType("b")) == "true");
+    CHECK(toString(requireType("c")) == "false");
+    CHECK(toString(requireType("d")) == "true");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_intersection")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauUdtfTypeIsSubtypeOf, true};
+
+    CheckResult results = check(R"(
+        type function issub(a, b)
+            return types.singleton(a:issubtypeof(b))
+        end
+
+        type A = { a: number }
+        type B = { b: string }
+
+        local a: issub<A & B, A>
+        local b: issub<A & B, B>
+        local c: issub<A, A & B>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+
+    CHECK(toString(requireType("a")) == "true");
+    CHECK(toString(requireType("b")) == "true");
+    CHECK(toString(requireType("c")) == "false");
+}
+
+TEST_CASE_FIXTURE(ExternTypeFixture, "issubtypeof_extern_type_hierarchy")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauUdtfTypeIsSubtypeOf, true};
+
+    CheckResult results = check(R"(
+        type function issub(a, b)
+            return types.singleton(a:issubtypeof(b))
+        end
+
+        local a: issub<ChildClass, BaseClass>
+        local b: issub<BaseClass, ChildClass>
+        local c: issub<BaseClass, BaseClass>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+
+    CHECK(toString(requireType("a")) == "true");
+    CHECK(toString(requireType("b")) == "false");
+    CHECK(toString(requireType("c")) == "true");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_table_indexer")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauUdtfTypeIsSubtypeOf, true}, {FFlag::LuauTypeFunctionTableIndexerIsReadOnly, true}, {FFlag::LuauReadOnlyIndexers, true}
+    };
+
+    CheckResult results = check(R"(
+        type function issub(a, b)
+            return types.singleton(a:issubtypeof(b))
+        end
+
+        type Arr = { [number]: string }
+        type Map = { [string]: number }
+        type NumStrArray = { [number]: string | number }
+        type ReadArr = { read [number]: string }
+        type ReadNumStrArray = { read [number]: string | number }
+
+        local a: issub<Arr, Map>
+        local b: issub<{ [number]: string }, NumStrArray>
+        local c: issub<ReadArr, ReadNumStrArray>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+
+    CHECK(toString(requireType("a")) == "false");
+    CHECK(toString(requireType("b")) == "false");
+    CHECK(toString(requireType("c")) == "true");
 }
 
 TEST_SUITE_END();

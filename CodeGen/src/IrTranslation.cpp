@@ -12,9 +12,7 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAG(LuauCodegenBlockSafeEnv)
-LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
-LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
+LUAU_FASTFLAG(LuauCodegenInteger3)
 
 namespace Luau
 {
@@ -106,6 +104,11 @@ static void translateInstLoadConstant(IrBuilder& build, int ra, int k)
     {
         build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(protok.value.b));
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
+    }
+    else if (FFlag::LuauCodegenInteger3 && protok.tt == LUA_TINTEGER)
+    {
+        build.inst(IrCmd::STORE_INT64, build.vmReg(ra), build.constInt64(protok.value.l));
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TINTEGER));
     }
     else if (protok.tt == LUA_TNUMBER)
     {
@@ -244,6 +247,49 @@ void translateInstJumpIfEqShortcut(IrBuilder& build, const Instruction* pc, int 
             IrCmd::CMP_SPLIT_TVALUE,
             build.constTag(LUA_TNUMBER),
             build.constTag(LUA_TNUMBER),
+            va,
+            vb,
+            build.cond(not_ ? IrCondition::NotEqual : IrCondition::Equal)
+        );
+
+        build.inst(IrCmd::STORE_INT, build.vmReg(rr), result);
+        build.inst(IrCmd::STORE_TAG, build.vmReg(rr), build.constTag(LUA_TBOOLEAN));
+        build.inst(IrCmd::JUMP, next);
+
+        // If we don't need a fallback, we are done
+        if (fallback.kind == IrOpKind::None)
+            return;
+
+        // Otherwise, start the fallback block
+        // Note that if the number fast-path is not taken at all code that would have been in the fallback is actually the main path
+        build.beginBlock(fallback);
+    }
+    else if (FFlag::LuauCodegenInteger3 && isExpectedOrUnknownBytecodeType(bcTypes.a, LBC_TYPE_INTEGER) &&
+             isExpectedOrUnknownBytecodeType(bcTypes.b, LBC_TYPE_INTEGER))
+    {
+        IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
+        build.inst(
+            IrCmd::CHECK_TAG,
+            ta,
+            build.constTag(LUA_TINTEGER),
+            bcTypes.a == LBC_TYPE_INTEGER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
+        );
+
+        IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
+        build.inst(
+            IrCmd::CHECK_TAG,
+            tb,
+            build.constTag(LUA_TINTEGER),
+            bcTypes.b == LBC_TYPE_INTEGER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
+        );
+
+        IrOp va = build.inst(IrCmd::LOAD_INT64, build.vmReg(ra));
+        IrOp vb = build.inst(IrCmd::LOAD_INT64, build.vmReg(rb));
+
+        IrOp result = build.inst(
+            IrCmd::CMP_SPLIT_TVALUE,
+            build.constTag(LUA_TINTEGER),
+            build.constTag(LUA_TINTEGER),
             va,
             vb,
             build.cond(not_ ? IrCondition::NotEqual : IrCondition::Equal)
@@ -991,6 +1037,8 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
         if (protok.tt == LUA_TNUMBER)
             builtinArgs = build.constDouble(protok.value.n);
+        else if (FFlag::LuauCodegenInteger3 && protok.tt == LUA_TINTEGER)
+            builtinArgs = build.constInt64(protok.value.l);
     }
 
     IrOp builtinArg3 = customParams ? customArg3 : build.vmReg(ra + 3);
@@ -998,10 +1046,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
     IrOp fallback = build.fallbackBlock(pcpos);
 
     // In unsafe environment, instead of retrying fastcall at 'pcpos' we side-exit directly to fallback sequence
-    if (FFlag::LuauCodegenBlockSafeEnv)
-        build.checkSafeEnv(pcpos + getOpLength(opcode));
-    else
-        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos + getOpLength(opcode)));
+    build.checkSafeEnv(pcpos + getOpLength(opcode));
 
     BuiltinImplResult br = translateBuiltin(
         build, LuauBuiltinFunction(bfid), ra, arg, builtinArgs, builtinArg3, nparams, nresults, fallback, pcpos + getOpLength(opcode)
@@ -1013,7 +1058,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
         if (nresults == LUA_MULTRET)
             build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(ra), build.constInt(br.actualResultCount));
-        else if (FFlag::LuauCodegenMarkDeadRegisters2)
+        else
             build.inst(IrCmd::MARK_DEAD, build.vmReg(ra + 1), build.constInt(-1));
 
         if (br.type != BuiltinImplType::UsesFallback)
@@ -1174,11 +1219,8 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
     {
         double stepN = build.function.doubleOp(stepK);
 
-        if (FFlag::LuauCodegenDseOnCondJump)
-        {
-            // Constant step optimization removes all the uses of the step register, but it has potential uses if a VM exit is taken
-            build.inst(IrCmd::MARK_USED, build.vmReg(ra + 1), build.constInt(1));
-        }
+        // Constant step optimization removes all the uses of the step register, but it has potential uses if a VM exit is taken
+        build.inst(IrCmd::MARK_USED, build.vmReg(ra + 1), build.constInt(1));
 
         // Condition to continue the loop: step > 0 ? idx <= limit : limit <= idx
         if (stepN > 0)
@@ -1200,10 +1242,7 @@ void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpo
     IrOp fallback = build.fallbackBlock(pcpos);
 
     // fast-path: pairs/next
-    if (FFlag::LuauCodegenBlockSafeEnv)
-        build.checkSafeEnv(pcpos);
-    else
-        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+    build.checkSafeEnv(pcpos);
 
     IrOp tagB = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 1));
     build.inst(IrCmd::CHECK_TAG, tagB, build.constTag(LUA_TTABLE), fallback);
@@ -1232,10 +1271,7 @@ void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcp
     IrOp finish = build.block(IrBlockKind::Internal);
 
     // fast-path: ipairs/inext
-    if (FFlag::LuauCodegenBlockSafeEnv)
-        build.checkSafeEnv(pcpos);
-    else
-        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+    build.checkSafeEnv(pcpos);
 
     IrOp tagB = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 1));
     build.inst(IrCmd::CHECK_TAG, tagB, build.constTag(LUA_TTABLE), fallback);
@@ -1496,10 +1532,7 @@ void translateInstGetImport(IrBuilder& build, const Instruction* pc, int pcpos)
     int k = LUAU_INSN_D(*pc);
     uint32_t aux = pc[1];
 
-    if (FFlag::LuauCodegenBlockSafeEnv)
-        build.checkSafeEnv(pcpos);
-    else
-        build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos));
+    build.checkSafeEnv(pcpos);
 
     build.inst(IrCmd::GET_CACHED_IMPORT, build.vmReg(ra), build.vmConst(k), build.constImport(aux), build.constUint(pcpos + 1));
 }
@@ -1508,7 +1541,9 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
-    uint32_t aux = pc[1];
+
+    // TODO: we keep the table access lowering for speculative userdata access instructions until a later date
+    uint32_t aux = LUAU_INSN_OP(*pc) == LOP_GETUDATAKS ? LUAU_INSN_AUX_KV16(pc[1]) : pc[1];
 
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
@@ -1600,7 +1635,9 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
-    uint32_t aux = pc[1];
+
+    // TODO: we keep the table access lowering for speculative userdata access instructions until a later date
+    uint32_t aux = LUAU_INSN_OP(*pc) == LOP_SETUDATAKS ? LUAU_INSN_AUX_KV16(pc[1]) : pc[1];
 
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
@@ -1724,7 +1761,9 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
-    uint32_t aux = pc[1];
+
+    // TODO: we keep the table access lowering for speculative userdata access instructions until a later date
+    uint32_t aux = LUAU_INSN_OP(*pc) == LOP_NAMECALLUDATA ? LUAU_INSN_AUX_KV16(pc[1]) : pc[1];
 
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
@@ -1735,7 +1774,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
         if (build.hostHooks.vectorNamecall)
         {
             Instruction call = pc[2];
-            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALLFB || LUAU_INSN_OP(call) == LOP_CALL);
 
             int callra = LUAU_INSN_A(call);
             int nparams = LUAU_INSN_B(call) - 1;
@@ -1759,7 +1798,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
         if (build.hostHooks.userdataNamecall)
         {
             Instruction call = pc[2];
-            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALLFB || LUAU_INSN_OP(call) == LOP_CALL);
 
             int callra = LUAU_INSN_A(call);
             int nparams = LUAU_INSN_B(call) - 1;
@@ -1911,6 +1950,29 @@ void translateInstNewClosure(IrBuilder& build, const Instruction* pc, int pcpos)
     }
 
     build.inst(IrCmd::CHECK_GC);
+}
+
+void translateInstCmpProto(IrBuilder& build, const Instruction* pc, int pcpos)
+{
+    int ra = LUAU_INSN_A(*pc);
+    uint32_t aux = pc[1];
+
+    IrOp target = build.blockAtInst(pcpos + 1 + LUAU_INSN_D(*pc));
+    IrOp next = build.blockAtInst(pcpos + 2);
+    IrOp checkFunId = build.block(IrBlockKind::Internal);
+
+    IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
+    build.inst(IrCmd::JUMP_EQ_TAG, ta, build.constTag(LUA_TFUNCTION), checkFunId, target);
+
+    build.beginBlock(checkFunId);
+    IrOp ccl = build.inst(IrCmd::LOAD_POINTER, build.vmReg(ra));
+    IrOp vb = build.constUint(aux);
+
+    build.inst(IrCmd::JUMP_CMP_PROTOID, ccl, vb, next, target);
+
+    // Fallthrough in original bytecode is implicit, so we start next internal block here
+    if (build.isInternalBlock(next))
+        build.beginBlock(next);
 }
 
 } // namespace CodeGen

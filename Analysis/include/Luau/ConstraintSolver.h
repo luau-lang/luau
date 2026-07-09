@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Luau/Constraint.h"
+#include "Luau/ConstraintGraph.h"
 #include "Luau/ConstraintSet.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/DenseHash.h"
@@ -10,15 +11,14 @@
 #include "Luau/Location.h"
 #include "Luau/Module.h"
 #include "Luau/Normalize.h"
-#include "Luau/OrderedSet.h"
 #include "Luau/Substitution.h"
+#include "Luau/Subtyping.h"
 #include "Luau/SubtypingVariance.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/TypeFwd.h"
-#include "Luau/Variant.h"
 
 #include <utility>
 #include <vector>
@@ -31,15 +31,6 @@ enum class ValueContext;
 struct DcrLogger;
 
 class AstExpr;
-
-// TypeId, TypePackId, or Constraint*. It is impossible to know which, but we
-// never dereference this pointer.
-using BlockedConstraintId = Variant<TypeId, TypePackId, const Constraint*>;
-
-struct HashBlockedConstraintId
-{
-    size_t operator()(const BlockedConstraintId& bci) const;
-};
 
 struct SubtypeConstraintRecord
 {
@@ -124,24 +115,22 @@ struct ConstraintSolver
     // A constraint can be both blocked and unsolved, for instance.
     std::vector<NotNull<const Constraint>> unsolvedConstraints;
 
+    // Clip with LuauConstraintGraph
     // A mapping of constraint pointer to how many things the constraint is
     // blocked on. Can be empty or 0 for constraints that are not blocked on
     // anything.
-    std::unordered_map<NotNull<const Constraint>, size_t> blockedConstraints;
+    std::unordered_map<NotNull<const Constraint>, size_t> DEPRECATED_blockedConstraints;
+
+    // Clip with LuauConstraintGraph
     // A mapping of type/pack pointers to the constraints they block.
-    std::unordered_map<BlockedConstraintId, DenseHashSet<const Constraint*>, HashBlockedConstraintId> blocked;
+    std::unordered_map<BlockedConstraintId, DenseHashSet<const Constraint*>, HashBlockedConstraintId> DEPRECATED_blocked;
+
     // Memoized instantiations of type aliases.
     DenseHashMap<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases{{}};
     // Breadcrumbs for where a free type's upper bound was expanded. We use
     // these to provide more helpful error messages when a free type is solved
     // as never unexpectedly.
     DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors{nullptr};
-
-    // A mapping from free types to the number of unresolved constraints that mention them.
-    DenseHashMap<TypeId, size_t> DEPRECATED_unresolvedConstraints{{}};
-
-    std::unordered_map<NotNull<const Constraint>, TypeIds> DEPRECATED_maybeMutatedFreeTypes;
-    std::unordered_map<TypeId, OrderedSet<const Constraint*>> DEPRECATED_mutatedFreeTypeToConstraint;
 
     /**
      * A mapping from reference counted types (blocked types, free types,
@@ -152,15 +141,16 @@ struct ConstraintSolver
      * unordered_map, but DenseHashMaps require that their elements are
      * trivially constructable.
      */
-    std::unordered_map<TypeId, Set<const Constraint*>> typeToConstraintSet;
+    std::unordered_map<TypeId, Set<const Constraint*>> DEPRECATED_typeToConstraintSet;
 
 
+    // Clip with LuauConstraintGraph
     /**
      * A mapping from constraints to the types that they mutate. We
      * use this set to keep track of what constraints to remove
      * from the values in the typeToConstraintSet.
      */
-    DenseHashMap<const Constraint*, TypeIds> constraintToMutatedTypes{nullptr};
+    DenseHashMap<const Constraint*, TypeIds> DEPRECATED_constraintToMutatedTypes{nullptr};
 
     // Irreducible/uninhabited type functions or type pack functions.
     DenseHashSet<const void*> uninhabitedTypeFunctions{{}};
@@ -191,7 +181,9 @@ struct ConstraintSolver
         DcrLogger* logger,
         NotNull<const DataFlowGraph> dfg,
         TypeCheckLimits limits,
-        ConstraintSet constraintSet
+        ConstraintSet constraintSet,
+        ConstraintGraph* cgraph,
+        NotNull<Subtyping> subtyping
     );
 
     // TODO CLI-169086: Replace all uses of this constructor with the ConstraintSet constructor, above.
@@ -206,7 +198,9 @@ struct ConstraintSolver
         std::vector<RequireCycle> requireCycles,
         DcrLogger* logger,
         NotNull<const DataFlowGraph> dfg,
-        TypeCheckLimits limits
+        TypeCheckLimits limits,
+        ConstraintGraph* cgraph,
+        NotNull<Subtyping> subtyping
     );
 
     // Randomize the order in which to dispatch constraints
@@ -233,11 +227,13 @@ private:
 
     void generalizeOneType(TypeId ty);
 
+    // Clip with LuauRemoveConstraintSolverEmplace
     template<typename T, typename... Args>
-    void emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args);
+    void DEPRECATED_emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args);
 
+    // Clip with LuauRemoveConstraintSolverEmplace
     template<typename T, typename... Args>
-    void emplace(NotNull<const Constraint> constraint, TypePackId tp, Args&&... args);
+    void DEPRECATED_emplace(NotNull<const Constraint> constraint, TypePackId tp, Args&&... args);
 
 public:
     /** Attempt to dispatch a constraint.  Returns true if it was successful. If
@@ -254,7 +250,8 @@ public:
     bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint, bool force);
-    bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
+    // Clip with LuauRemovePrimitiveTypeConstraint
+    bool DEPRECATED_tryDispatch(const DEPRECATED_PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const TypeInstantiationConstraint& c, NotNull<const Constraint> constraint);
 
@@ -347,21 +344,11 @@ public:
      */
     void inheritBlocks(NotNull<const Constraint> source, NotNull<const Constraint> addition);
 
-    // Traverse the type.  If any pending types are found, block the constraint
-    // on them.
-    //
-    // Returns false if a type blocks the constraint.
-    //
-    // FIXME: This use of a boolean for the return result is an appalling
-    // interface.
-    bool blockOnPendingTypes(TypeId target, NotNull<const Constraint> constraint);
-    bool blockOnPendingTypes(TypePackId targetPack, NotNull<const Constraint> constraint);
+    // Clip with LuauConstraintGraph
+    void DEPRECATED_unblock(NotNull<const Constraint> progressed);
 
-    void unblock(NotNull<const Constraint> progressed);
     void unblock(TypeId ty, Location location);
     void unblock(TypePackId progressed, Location location);
-    void unblock(const std::vector<TypeId>& types, Location location);
-    void unblock(const std::vector<TypePackId>& packs, Location location);
 
     /**
      * @returns true if the TypeId is in a blocked state.
@@ -373,11 +360,12 @@ public:
      */
     bool isBlocked(TypePackId tp) const;
 
+    // Clip with LuauConstraintGraph
     /**
      * Returns whether the constraint is blocked on anything.
      * @param constraint the constraint to check.
      */
-    bool isBlocked(NotNull<const Constraint> constraint) const;
+    bool DEPRECATED_isBlocked(NotNull<const Constraint> constraint) const;
 
     /** Pushes a new solver constraint to the solver.
      * @param cv the body of the constraint.
@@ -398,6 +386,7 @@ public:
     void reportError(TypeErrorData&& data, const Location& location);
     void reportError(TypeError e);
 
+    // Clip with LuauConstraintGraph
     /**
      * Shifts the count of references from `source` to `target`. This should be paired
      * with any instance of binding a free type in order to maintain accurate refcounts.
@@ -405,7 +394,7 @@ public:
      * @param source the free type which is being bound
      * @param target the type which the free type is being bound to
      */
-    void shiftReferences(TypeId source, TypeId target);
+    void DEPRECATED_shiftReferences(TypeId source, TypeId target);
 
     /**
      * Bind a type variable to another type.
@@ -443,6 +432,7 @@ public:
     template<typename TID>
     bool unify(NotNull<const Constraint> constraint, TID subTy, TID superTy);
 
+    // Clip with LuauConstraintGraph
     /**
      * Marks a constraint as being blocked on a type or type pack. The constraint
      * solver will not attempt to dispatch blocked constraints until their
@@ -450,15 +440,16 @@ public:
      * @param target the type or type pack pointer that the constraint is blocked on.
      * @param constraint the constraint to block.
      **/
-    bool block_(BlockedConstraintId target, NotNull<const Constraint> constraint);
+    bool DEPRECATED_block_(BlockedConstraintId target, NotNull<const Constraint> constraint);
 
+    // Clip with LuauConstraintGraph
     /**
      * Informs the solver that progress has been made on a type or type pack. The
      * solver will wake up all constraints that are blocked on the type or type pack,
      * and will resume attempting to dispatch them.
      * @param progressed the type or type pack pointer that has progressed.
      **/
-    void unblock_(BlockedConstraintId progressed);
+    void DEPRECATED_unblock_(BlockedConstraintId progressed);
 
     /**
      * Reproduces any constraints necessary for new types that are copied when applying a substitution.
@@ -487,6 +478,11 @@ public:
     void throwUserCancelError() const;
 
     ToStringOptions opts;
+
+    // Make non-optional with LuauConstraintGraph
+    ConstraintGraph* cgraph;
+
+    NotNull<Subtyping> subtyping;
 
     void fillInDiscriminantTypes(NotNull<const Constraint> constraint, const std::vector<std::optional<TypeId>>& discriminantTypes);
 };

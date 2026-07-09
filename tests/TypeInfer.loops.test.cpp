@@ -16,7 +16,6 @@
 using namespace Luau;
 
 
-LUAU_FASTFLAG(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
@@ -272,8 +271,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators_dcr")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_check")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         local function range(l, h): () -> number
             return function()
@@ -286,10 +283,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_ch
         end
     )");
 
-    if (FFlag::LuauPropagateTypeAnnotationsInForInLoops)
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-    else
-        LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
@@ -856,8 +850,8 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_nonstrict")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_nil")
 {
-    // CLI-116499 Free types persisting until typechecking time.
-    if (true || FFlag::DebugLuauForceOldSolver)
+#if 0 // CLI-116499 Free types persisting until typechecking time.
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -868,12 +862,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_nil")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]) == "Type 'nil' could not be converted into '{- [a]: b -}'");
+#endif
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_not_enough_returns")
 {
-    // CLI-116500
-    if (true || FFlag::DebugLuauForceOldSolver)
+#if 0 // CLI-116500
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -889,12 +884,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_not_enough_returns")
                                 GenericError{"__iter must return at least one value"},
                             }
     );
+#endif
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok")
 {
-    // CLI-116500
-    if (true || FFlag::DebugLuauForceOldSolver)
+#if 0 // CLI-116500
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -906,12 +902,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(0, result);
+#endif
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok_with_inference")
 {
-    // CLI-116500
-    if (true || FFlag::DebugLuauForceOldSolver)
+#if 0 // CLI-116500
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -929,6 +926,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok_with_inference")
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK(toString(requireType("a")) == "number");
     CHECK(toString(requireType("b")) == "string");
+#endif
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string")
@@ -1534,8 +1532,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_for_loop_should_propagate")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): any
@@ -1555,8 +1551,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_for_loop_should_propagate")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_types_in_for_loop_should_propagate")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): {[number]: string}
@@ -1576,8 +1570,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_types_in_for_loop_should_propagate"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "incorrect_type_annotation_types_in_loop_should_propagate_with_errors")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): any
@@ -1599,8 +1591,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "incorrect_type_annotation_types_in_loop_shou
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_to_function_expressions")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): any
@@ -1624,8 +1614,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_to_function_ex
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_inside_lambdas")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): any

@@ -8,7 +8,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauLinterVectorPrimitive)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 
 using namespace Luau;
@@ -642,24 +641,11 @@ local _o02 = type(game) == "vector"
 local _o03 = typeof(game) == "Part"
 )");
 
-    if (FFlag::LuauLinterVectorPrimitive)
-    {
-        REQUIRE(2 == result.warnings.size());
-        CHECK_EQ(result.warnings[0].location.begin.line, 2);
-        CHECK_EQ(result.warnings[0].text, "Unknown type 'Part' (expected primitive type)");
-        CHECK_EQ(result.warnings[1].location.begin.line, 3);
-        CHECK_EQ(result.warnings[1].text, "Unknown type 'Bar'");
-    }
-    else
-    {
-        REQUIRE(3 == result.warnings.size());
-        CHECK_EQ(result.warnings[0].location.begin.line, 2);
-        CHECK_EQ(result.warnings[0].text, "Unknown type 'Part' (expected primitive type)");
-        CHECK_EQ(result.warnings[1].location.begin.line, 3);
-        CHECK_EQ(result.warnings[1].text, "Unknown type 'Bar'");
-        CHECK_EQ(result.warnings[2].location.begin.line, 4);
-        CHECK_EQ(result.warnings[2].text, "Unknown type 'vector' (expected primitive or userdata type)");
-    }
+    REQUIRE(2 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].location.begin.line, 2);
+    CHECK_EQ(result.warnings[0].text, "Unknown type 'Part' (expected primitive type)");
+    CHECK_EQ(result.warnings[1].location.begin.line, 3);
+    CHECK_EQ(result.warnings[1].text, "Unknown type 'Bar'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "ForRangeTable")
@@ -2067,7 +2053,7 @@ print(Hooty:tooty(2.0))
 
     {
         loadDefinition(R"(
-declare class Foo
+declare extern type Foo with
    @[deprecated{use = 'foo', reason = 'baz'}]
    function bar(self, value: number) : number
 end
@@ -2132,7 +2118,7 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeMethodDeclaration")
     // @deprecated works on table type declarations
 
     loadDefinition(R"(
-declare class Foo
+declare extern type Foo with
    @deprecated
    function bar(self, value: number) : number
 end

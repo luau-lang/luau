@@ -4,7 +4,8 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauUseConstraintSetsToTrackFreeTypes)
+LUAU_FASTFLAGVARIABLE(LuauConstraintGraph)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 namespace Luau
 {
@@ -16,68 +17,70 @@ Constraint::Constraint(NotNull<Scope> scope, const Location& location, Constrain
 {
 }
 
-struct ReferenceCountInitializer : TypeOnceVisitor
+ReferenceCountInitializer::ReferenceCountInitializer(NotNull<TypeIds> mutatedTypes, NotNull<TypePackIds> mutatedTypePacks)
+    : TypeOnceVisitor("ReferenceCountInitializer", /* skipBoundTypes */ true)
+    , mutatedTypes(mutatedTypes)
+    , mutatedTypePacks(mutatedTypePacks.get())
 {
-    NotNull<TypeIds> mutatedTypes;
-    TypePackIds* mutatedTypePacks;
-    bool traverseIntoTypeFunctions = true;
+}
 
-    explicit ReferenceCountInitializer(NotNull<TypeIds> mutatedTypes)
-        : TypeOnceVisitor("ReferenceCountInitializer", /* skipBoundTypes */ true)
-        , mutatedTypes(mutatedTypes)
-        , mutatedTypePacks(nullptr)
-    {
-        LUAU_ASSERT(!FFlag::LuauUseConstraintSetsToTrackFreeTypes);
-    }
+bool ReferenceCountInitializer::visit(TypeId ty, const FreeType&)
+{
+    mutatedTypes->insert(ty);
+    return false;
+}
 
-    explicit ReferenceCountInitializer(
-        NotNull<TypeIds> mutatedTypes,
-        NotNull<TypePackIds> mutatedTypePacks
-    )
-        : TypeOnceVisitor("ReferenceCountInitializer", /* skipBoundTypes */ true)
-        , mutatedTypes(mutatedTypes)
-        , mutatedTypePacks(mutatedTypePacks.get())
-    {
-        LUAU_ASSERT(FFlag::LuauUseConstraintSetsToTrackFreeTypes);
-    }
+bool ReferenceCountInitializer::visit(TypeId ty, const BlockedType&)
+{
+    mutatedTypes->insert(ty);
+    return false;
+}
 
-    bool visit(TypeId ty, const FreeType&) override
-    {
+bool ReferenceCountInitializer::visit(TypeId ty, const PendingExpansionType&)
+{
+    mutatedTypes->insert(ty);
+    return false;
+}
+
+bool ReferenceCountInitializer::visit(TypeId ty, const TableType& tt)
+{
+    if (tt.state == TableState::Unsealed || tt.state == TableState::Free)
         mutatedTypes->insert(ty);
-        return false;
-    }
 
-    bool visit(TypeId ty, const BlockedType&) override
+    return true;
+}
+
+bool ReferenceCountInitializer::visit(TypeId ty, const ExternType&)
+{
+    // ExternTypes never contain free types.
+    return false;
+}
+
+bool ReferenceCountInitializer::visit(TypeId, const TypeFunctionInstanceType& tfit)
+{
+    return tfit.function->canReduceGenerics;
+}
+
+
+bool ReferenceCountInitializer::visit(TypePackId tp, const BlockedTypePack&)
+{
+    if (FFlag::LuauConstraintGraph)
     {
-        mutatedTypes->insert(ty);
-        return false;
+        LUAU_ASSERT(mutatedTypePacks);
+        mutatedTypePacks->insert(tp);
     }
+    return true;
+}
 
-    bool visit(TypeId ty, const PendingExpansionType&) override
+bool ReferenceCountInitializer::visit(TypePackId tp, const FreeTypePack&)
+{
+    if (FFlag::LuauConstraintGraph)
     {
-        mutatedTypes->insert(ty);
-        return false;
+        LUAU_ASSERT(mutatedTypePacks);
+        mutatedTypePacks->insert(tp);
     }
-
-    bool visit(TypeId ty, const TableType& tt) override
-    {
-        if (tt.state == TableState::Unsealed || tt.state == TableState::Free)
-            mutatedTypes->insert(ty);
-
-        return true;
-    }
-
-    bool visit(TypeId ty, const ExternType&) override
-    {
-        // ExternTypes never contain free types.
-        return false;
-    }
-
-    bool visit(TypeId, const TypeFunctionInstanceType& tfit) override
-    {
-        return tfit.function->canReduceGenerics;
-    }
-};
+    return true;
+}
 
 bool isReferenceCountedType(const TypeId typ)
 {
@@ -88,109 +91,8 @@ bool isReferenceCountedType(const TypeId typ)
     return get<FreeType>(typ) || get<BlockedType>(typ) || get<PendingExpansionType>(typ);
 }
 
-TypeIds Constraint::DEPRECATED_getMaybeMutatedFreeTypes() const
-{
-    LUAU_ASSERT(!FFlag::LuauUseConstraintSetsToTrackFreeTypes);
-    // For the purpose of this function and reference counting in general, we are only considering
-    // mutations that affect the _bounds_ of the free type, and not something that may bind the free
-    // type itself to a new type. As such, `ReduceConstraint` and `GeneralizationConstraint` have no
-    // contribution to the output set here.
-
-    TypeIds types;
-    ReferenceCountInitializer rci{NotNull{&types}};
-
-    if (auto ec = get<EqualityConstraint>(*this))
-    {
-        rci.traverse(ec->resultType);
-        rci.traverse(ec->assignmentType);
-    }
-    else if (auto sc = get<SubtypeConstraint>(*this))
-    {
-        rci.traverse(sc->subType);
-        rci.traverse(sc->superType);
-    }
-    else if (auto psc = get<PackSubtypeConstraint>(*this))
-    {
-        rci.traverse(psc->subPack);
-        rci.traverse(psc->superPack);
-    }
-    else if (auto itc = get<IterableConstraint>(*this))
-    {
-        for (TypeId ty : itc->variables)
-            rci.traverse(ty);
-        // `IterableConstraints` should not mutate `iterator`.
-    }
-    else if (auto nc = get<NameConstraint>(*this))
-    {
-        rci.traverse(nc->namedType);
-    }
-    else if (auto taec = get<TypeAliasExpansionConstraint>(*this))
-    {
-        rci.traverse(taec->target);
-    }
-    else if (auto fchc = get<FunctionCheckConstraint>(*this))
-    {
-        rci.traverse(fchc->argsPack);
-    }
-    else if (auto fcc = get<FunctionCallConstraint>(*this))
-    {
-        rci.traverseIntoTypeFunctions = false;
-        rci.traverse(fcc->fn);
-        rci.traverse(fcc->argsPack);
-        rci.traverseIntoTypeFunctions = true;
-    }
-    else if (auto ptc = get<PrimitiveTypeConstraint>(*this))
-    {
-        rci.traverse(ptc->freeType);
-    }
-    else if (auto hpc = get<HasPropConstraint>(*this))
-    {
-        rci.traverse(hpc->resultType);
-        rci.traverse(hpc->subjectType);
-    }
-    else if (auto hic = get<HasIndexerConstraint>(*this))
-    {
-        rci.traverse(hic->subjectType);
-        rci.traverse(hic->resultType);
-        // `HasIndexerConstraint` should not mutate `indexType`.
-    }
-    else if (auto apc = get<AssignPropConstraint>(*this))
-    {
-        rci.traverse(apc->lhsType);
-        rci.traverse(apc->rhsType);
-    }
-    else if (auto aic = get<AssignIndexConstraint>(*this))
-    {
-        rci.traverse(aic->lhsType);
-        rci.traverse(aic->indexType);
-        rci.traverse(aic->rhsType);
-    }
-    else if (auto uc = get<UnpackConstraint>(*this))
-    {
-        for (TypeId ty : uc->resultPack)
-            rci.traverse(ty);
-        // `UnpackConstraint` should not mutate `sourcePack`.
-    }
-    else if (auto rpc = get<ReducePackConstraint>(*this))
-    {
-        rci.traverse(rpc->tp);
-    }
-    else if (auto pftc = get<PushFunctionTypeConstraint>(*this))
-    {
-        rci.traverse(pftc->functionType);
-    }
-    else if (auto ptc = get<PushTypeConstraint>(*this))
-    {
-        rci.traverse(ptc->targetType);
-    }
-
-    return types;
-}
-
 std::pair<TypeIds, TypePackIds> Constraint::getMaybeMutatedTypes() const
 {
-    LUAU_ASSERT(FFlag::LuauUseConstraintSetsToTrackFreeTypes);
-
     // For the purpose of this function and reference counting in general, we are only considering
     // mutations that affect the _bounds_ of the free type, and not something that may bind the free
     // type itself to a new type. As such, `ReduceConstraint` and `GeneralizationConstraint` have no
@@ -244,7 +146,7 @@ std::pair<TypeIds, TypePackIds> Constraint::getMaybeMutatedTypes() const
         rci.traverse(fcc->argsPack);
         rci.traverseIntoTypeFunctions = true;
     }
-    else if (auto ptc = get<PrimitiveTypeConstraint>(*this))
+    else if (auto ptc = get<DEPRECATED_PrimitiveTypeConstraint>(*this); !FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier && ptc)
     {
         rci.traverse(ptc->freeType);
     }
@@ -306,7 +208,7 @@ std::pair<TypeIds, TypePackIds> Constraint::getMaybeMutatedTypes() const
         rci.traverse(ptc->targetType);
     }
 
-    return { std::move(types), std::move(typePacks) };
+    return {std::move(types), std::move(typePacks)};
 }
 
 } // namespace Luau

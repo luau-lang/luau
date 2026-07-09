@@ -65,8 +65,6 @@ private:
         UpperBounds& upperBoundContributors
     ) const;
 
-    OccursCheckResult occursCheck(TypePackId needle, TypePackId haystack) const;
-
     bool canBeUnified(TypeId ty) const;
 };
 
