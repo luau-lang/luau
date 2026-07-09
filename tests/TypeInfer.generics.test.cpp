@@ -9,14 +9,8 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauIntersectNotNil)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauUnifyWithSubtyping2)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
-LUAU_FASTFLAG(LuauForwardPolarityForFunctionTypes)
-LUAU_FASTFLAG(LuauGeneralizationMoreAwareOfBounds3)
-LUAU_FASTFLAG(LuauRelateHandlesCoincidentTables)
+LUAU_FASTFLAG(LuauInstantiateFunctionTypeBeforePush)
 
 using namespace Luau;
 
@@ -1458,13 +1452,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument_3")
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded_pt_1")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauForwardPolarityForFunctionTypes, true},
-        {FFlag::LuauGeneralizationMoreAwareOfBounds3, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
-    };
-
     CheckResult result = check(R"(
         local g12: (<T>(T, (T) -> T) -> T) & (<T>(T, T, (T, T) -> T) -> T)
 
@@ -1489,12 +1476,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded_
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_overloaded_pt_2")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRelateHandlesCoincidentTables, true},
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
-    };
-
     CheckResult result = check(R"(
         local g12: (<T>(T, (T) -> T) -> T) & (<T>(T, T, (T, T) -> T) -> T)
 
@@ -1519,9 +1500,9 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_overloaded_pt_2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
 {
-    ScopedFastFlag _{FFlag::LuauUnifyWithSubtyping2, true};
-
     CheckResult result;
+
+    ScopedFastFlag _{FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true};
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -1540,7 +1521,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
             ) -- type binders are not inferred
         )");
 
-        CHECK("number" == toString(requireType("b")));
+        // FIXME: When we solve for `T` for `sum` on line 4, we effectively
+        // end up with `number | add<number, number>` and don't know we need
+        // to simplify it later.
+        CHECK("number | number" == toString(requireType("b")));
         CHECK("<T>(T, T, (T, T) -> T) -> T" == toString(requireType("sum")));
         CHECK("<T>(T, T, (T, T) -> T) -> T" == toString(requireTypeAtPosition({7, 29})));
     }
@@ -2022,11 +2006,6 @@ local u: U = t
 
 TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
-    };
-
     CheckResult res = check(R"(
         local func: <T>(T, (T) -> ()) -> () = nil :: any
         local foobar: (number) -> () = nil :: any
@@ -2039,11 +2018,6 @@ TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error")
 
 TEST_CASE_FIXTURE(Fixture, "ensure_that_invalid_generic_instantiations_error_1")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauReplacerRespectsReboundGenerics, true},
-        {FFlag::LuauOverloadGetsInstantiated, true},
-    };
-
     CheckResult res = check(R"(
         --!strict
 
@@ -2182,6 +2156,40 @@ TEST_CASE_FIXTURE(Fixture, "id_function_do_not_leak_generic")
     )"));
 
     CHECK_EQ("(unknown) -> ()", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pushing")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauInstantiateFunctionTypeBeforePush, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        export type Parent = {
+            Func1:<P...> (self: Parent, value: boolean, P...) -> (Parent?),
+            Func2: (self: Parent, value: boolean) -> (Parent?),
+        }
+
+        export type Child = {
+            Parent: Parent,
+            Func: (self: Child) -> (Child?),
+        }
+
+        local Parent = {} :: Parent
+        local Child = {} :: Child
+
+        function Parent:Func1(value, ...)
+            if value then return self else return nil end
+        end
+
+        function Parent:Func2(value)
+            if value then return self else return nil end
+        end
+
+        function Child:Func()
+            if math.random() > 0.5 then return self else return nil end
+        end
+    )"));
 }
 
 TEST_SUITE_END();

@@ -7,9 +7,6 @@
 
 #include <optional>
 
-LUAU_FASTFLAG(LuauCodegenMarkDeadRegisters2)
-LUAU_FASTFLAG(LuauCodegenDseOnCondJump)
-
 namespace Luau
 {
 namespace CodeGen
@@ -23,6 +20,8 @@ bool isJumpD(LuauOpcode op);
 bool isSkipC(LuauOpcode op);
 bool isFastCall(LuauOpcode op);
 int getJumpTarget(uint32_t insn, uint32_t pc);
+IrValueKind getCmdValueKind(IrCmd cmd);
+IrValueKind getConstValueKind(const IrConst& constant);
 
 inline bool isBlockTerminator(IrCmd cmd)
 {
@@ -43,6 +42,7 @@ inline bool isBlockTerminator(IrCmd cmd)
     case IrCmd::FORGLOOP_FALLBACK:
     case IrCmd::FORGPREP_XNEXT_FALLBACK:
     case IrCmd::FALLBACK_FORGPREP:
+    case IrCmd::JUMP_CMP_PROTOID:
         return true;
     default:
         break;
@@ -69,7 +69,10 @@ inline bool isNonTerminatingJump(IrCmd cmd)
     case IrCmd::CHECK_NODE_VALUE:
     case IrCmd::CHECK_BUFFER_LEN:
     case IrCmd::CHECK_USERDATA_TAG:
+    case IrCmd::CHECK_CMP_NUM:
     case IrCmd::CHECK_CMP_INT:
+    case IrCmd::CHECK_CMP_INT64:
+    case IrCmd::CHECK_DIV_INT64:
         return true;
     default:
         break;
@@ -80,120 +83,7 @@ inline bool isNonTerminatingJump(IrCmd cmd)
 
 inline bool hasResult(IrCmd cmd)
 {
-    switch (cmd)
-    {
-    case IrCmd::LOAD_TAG:
-    case IrCmd::LOAD_POINTER:
-    case IrCmd::LOAD_DOUBLE:
-    case IrCmd::LOAD_INT:
-    case IrCmd::LOAD_FLOAT:
-    case IrCmd::LOAD_TVALUE:
-    case IrCmd::LOAD_ENV:
-    case IrCmd::GET_ARR_ADDR:
-    case IrCmd::GET_SLOT_NODE_ADDR:
-    case IrCmd::GET_HASH_NODE_ADDR:
-    case IrCmd::GET_CLOSURE_UPVAL_ADDR:
-    case IrCmd::ADD_INT:
-    case IrCmd::SUB_INT:
-    case IrCmd::SEXTI8_INT:
-    case IrCmd::SEXTI16_INT:
-    case IrCmd::ADD_NUM:
-    case IrCmd::SUB_NUM:
-    case IrCmd::MUL_NUM:
-    case IrCmd::DIV_NUM:
-    case IrCmd::IDIV_NUM:
-    case IrCmd::MOD_NUM:
-    case IrCmd::MIN_NUM:
-    case IrCmd::MAX_NUM:
-    case IrCmd::UNM_NUM:
-    case IrCmd::FLOOR_NUM:
-    case IrCmd::CEIL_NUM:
-    case IrCmd::ROUND_NUM:
-    case IrCmd::SQRT_NUM:
-    case IrCmd::ABS_NUM:
-    case IrCmd::SIGN_NUM:
-    case IrCmd::ADD_FLOAT:
-    case IrCmd::SUB_FLOAT:
-    case IrCmd::MUL_FLOAT:
-    case IrCmd::DIV_FLOAT:
-    case IrCmd::MIN_FLOAT:
-    case IrCmd::MAX_FLOAT:
-    case IrCmd::UNM_FLOAT:
-    case IrCmd::FLOOR_FLOAT:
-    case IrCmd::CEIL_FLOAT:
-    case IrCmd::SQRT_FLOAT:
-    case IrCmd::ABS_FLOAT:
-    case IrCmd::SIGN_FLOAT:
-    case IrCmd::SELECT_NUM:
-    case IrCmd::SELECT_IF_TRUTHY:
-    case IrCmd::ADD_VEC:
-    case IrCmd::SUB_VEC:
-    case IrCmd::MUL_VEC:
-    case IrCmd::DIV_VEC:
-    case IrCmd::IDIV_VEC:
-    case IrCmd::UNM_VEC:
-    case IrCmd::MIN_VEC:
-    case IrCmd::MAX_VEC:
-    case IrCmd::FLOOR_VEC:
-    case IrCmd::CEIL_VEC:
-    case IrCmd::ABS_VEC:
-    case IrCmd::DOT_VEC:
-    case IrCmd::EXTRACT_VEC:
-    case IrCmd::NOT_ANY:
-    case IrCmd::CMP_ANY:
-    case IrCmd::CMP_INT:
-    case IrCmd::CMP_TAG:
-    case IrCmd::CMP_SPLIT_TVALUE:
-    case IrCmd::TABLE_LEN:
-    case IrCmd::TABLE_SETNUM:
-    case IrCmd::STRING_LEN:
-    case IrCmd::NEW_TABLE:
-    case IrCmd::DUP_TABLE:
-    case IrCmd::TRY_NUM_TO_INDEX:
-    case IrCmd::TRY_CALL_FASTGETTM:
-    case IrCmd::NEW_USERDATA:
-    case IrCmd::INT_TO_NUM:
-    case IrCmd::UINT_TO_NUM:
-    case IrCmd::UINT_TO_FLOAT:
-    case IrCmd::NUM_TO_INT:
-    case IrCmd::NUM_TO_UINT:
-    case IrCmd::FLOAT_TO_NUM:
-    case IrCmd::NUM_TO_FLOAT:
-    case IrCmd::FLOAT_TO_VEC:
-    case IrCmd::TAG_VECTOR:
-    case IrCmd::TRUNCATE_UINT:
-    case IrCmd::SUBSTITUTE:
-    case IrCmd::INVOKE_FASTCALL:
-    case IrCmd::BITAND_UINT:
-    case IrCmd::BITXOR_UINT:
-    case IrCmd::BITOR_UINT:
-    case IrCmd::BITNOT_UINT:
-    case IrCmd::BITLSHIFT_UINT:
-    case IrCmd::BITRSHIFT_UINT:
-    case IrCmd::BITARSHIFT_UINT:
-    case IrCmd::BITLROTATE_UINT:
-    case IrCmd::BITRROTATE_UINT:
-    case IrCmd::BITCOUNTLZ_UINT:
-    case IrCmd::BITCOUNTRZ_UINT:
-    case IrCmd::INVOKE_LIBM:
-    case IrCmd::GET_TYPE:
-    case IrCmd::GET_TYPEOF:
-    case IrCmd::NEWCLOSURE:
-    case IrCmd::FINDUPVAL:
-    case IrCmd::BUFFER_READI8:
-    case IrCmd::BUFFER_READU8:
-    case IrCmd::BUFFER_READI16:
-    case IrCmd::BUFFER_READU16:
-    case IrCmd::BUFFER_READI32:
-    case IrCmd::BUFFER_READF32:
-    case IrCmd::BUFFER_READF64:
-    case IrCmd::GET_UPVALUE:
-        return true;
-    default:
-        break;
-    }
-
-    return false;
+    return getCmdValueKind(cmd) != IrValueKind::None;
 }
 
 inline bool canInvalidateSafeEnv(IrCmd cmd)
@@ -225,10 +115,7 @@ inline bool canInvalidateSafeEnv(IrCmd cmd)
 inline bool isPseudo(IrCmd cmd)
 {
     // Instructions that are used for internal needs and are not a part of final lowering
-    if (FFlag::LuauCodegenMarkDeadRegisters2 || FFlag::LuauCodegenDseOnCondJump)
-        return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE || cmd == IrCmd::MARK_USED || cmd == IrCmd::MARK_DEAD;
-    else
-        return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
+    return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE || cmd == IrCmd::MARK_USED || cmd == IrCmd::MARK_DEAD;
 }
 
 inline bool hasSideEffects(IrCmd cmd)
@@ -287,9 +174,6 @@ inline IrCondition getNegatedCondition(IrCondition cond)
         return IrCondition::Count;
     }
 }
-
-IrValueKind getCmdValueKind(IrCmd cmd);
-IrValueKind getConstValueKind(const IrConst& constant);
 
 template<typename F>
 void visitArguments(IrInst& inst, F&& func)
@@ -356,7 +240,7 @@ bool compare(double a, double b, IrCondition cond);
 // Perform constant folding on instruction at index
 // For most instructions, successful folding results in a IrCmd::SUBSTITUTE
 // But it can also be successful on conditional control-flow, replacing it with an unconditional IrCmd::JUMP
-void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint32_t instIdx);
+void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint32_t index);
 
 uint32_t getNativeContextOffset(int bfid);
 

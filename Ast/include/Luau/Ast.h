@@ -1,7 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Common.h"
 #include "Luau/Location.h"
+#include "Luau/Variant.h"
 
 #include <iterator>
 #include <optional>
@@ -10,6 +12,8 @@
 
 #include <string.h>
 #include <stdint.h>
+
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
@@ -71,6 +75,8 @@ struct AstLocal
     size_t functionDepth;
     size_t loopDepth;
     bool isConst;
+    // exported is only a property set after construction
+    bool isExported = false;
 
     AstType* annotation;
 
@@ -207,7 +213,7 @@ class AstAttr : public AstNode
 public:
     LUAU_RTTI(AstAttr)
 
-    enum Type
+    enum class Type
     {
         Checked,
         Native,
@@ -371,7 +377,7 @@ class AstExprConstantString : public AstExpr
 public:
     LUAU_RTTI(AstExprConstantString)
 
-    enum QuoteStyle
+    enum class QuoteStyle
     {
         // A string created using double quotes or an interpolated string,
         // as in:
@@ -557,7 +563,7 @@ public:
 
     struct Item
     {
-        enum Kind
+        enum class Kind
         {
             List,    // foo, in which case key is a nullptr
             Record,  // foo=bar, in which case key is a AstExprConstantString
@@ -584,7 +590,7 @@ class AstExprUnary : public AstExpr
 public:
     LUAU_RTTI(AstExprUnary)
 
-    enum Op
+    enum class Op
     {
         Not,
         Minus,
@@ -690,7 +696,7 @@ class AstExprInstantiate : public AstExpr
 public:
     LUAU_RTTI(AstExprInstantiate)
 
-    AstExprInstantiate(const Location& location, AstExpr* expr, AstArray<AstTypeOrPack> typePack);
+    AstExprInstantiate(const Location& location, AstExpr* expr, AstArray<AstTypeOrPack> types);
 
     void visit(AstVisitor* visitor) override;
 
@@ -832,7 +838,8 @@ public:
         const Location& location,
         const AstArray<AstLocal*>& vars,
         const AstArray<AstExpr*>& values,
-        const std::optional<Location>& equalsSignLocation
+        const std::optional<Location>& equalsSignLocation,
+        bool isConst = false
     );
 
     void visit(AstVisitor* visitor) override;
@@ -840,6 +847,11 @@ public:
     AstArray<AstLocal*> vars;
     AstArray<AstExpr*> values;
 
+    bool isConst = false;
+    bool isExported = false;
+
+    // if the StatLocal is being exported, this is the location of `const` or `local`
+    std::optional<Location> keywordLocation;
     std::optional<Location> equalsSignLocation;
 };
 
@@ -945,12 +957,21 @@ class AstStatLocalFunction : public AstStat
 public:
     LUAU_RTTI(AstStatLocalFunction)
 
-    AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func);
+    AstStatLocalFunction(
+        const Location& location,
+        AstLocal* name,
+        AstExprFunction* func,
+        bool isConst,
+        Position constKeywordBegin
+    );
 
     void visit(AstVisitor* visitor) override;
 
     AstLocal* name;
     AstExprFunction* func;
+    bool isConst;
+    // Position of the `const` keyword; Position::missing() when isConst is false.
+    Position constKeywordBegin;
 };
 
 class AstStatTypeAlias : public AstStat
@@ -1080,6 +1101,40 @@ struct AstDeclaredExternTypeProperty
     bool isMethod = false;
     Location location;
     AstTableAccess access = AstTableAccess::ReadWrite;
+};
+
+struct AstClassProperty
+{
+    Location qualifierLocation;
+    AstName name;
+    Location nameLocation;
+    std::optional<Location> typeColonLocation = std::nullopt;
+    AstType* ty = nullptr;
+};
+
+struct AstClassMethod
+{
+    std::optional<Location> qualifierLocation;
+    Location keywordLocation;
+    AstName functionName;
+    Location nameLocation;
+    AstExprFunction* function;
+};
+
+using AstClassMember = Variant<AstClassProperty, AstClassMethod>;
+
+class AstStatClass : public AstStat
+{
+public:
+    LUAU_RTTI(AstStatClass)
+
+    AstLocal* name;
+    AstArray<AstClassMember> members;
+    bool exported;
+
+    AstStatClass(const Location& location, AstLocal* name, AstArray<AstClassMember> members, bool exported);
+
+    void visit(AstVisitor* visitor) override;
 };
 
 struct AstTableIndexer
@@ -1575,6 +1630,11 @@ public:
     }
     virtual bool visit(class AstStatDeclareGlobal* node)
     {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatClass* node)
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
         return visit(static_cast<AstStat*>(node));
     }
     virtual bool visit(class AstStatDeclareExternType* node)

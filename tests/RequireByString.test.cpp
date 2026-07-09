@@ -23,10 +23,17 @@
 #include <utility>
 #include <vector>
 
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
+LUAU_FASTFLAG(LuauCyclicRequireShortCircuit)
+
 #if __APPLE__
 #include <TargetConditionals.h>
 #if TARGET_OS_IPHONE
 #include <CoreFoundation/CoreFoundation.h>
+#include <cstdlib>
+#include <unistd.h>
 
 std::optional<std::string> getResourcePath0()
 {
@@ -110,6 +117,12 @@ public:
                 // we need relative path so we subtract cwd0 from cwd
                 luauDirRel = "./" + _res.substr(_cwd.length());
             }
+        }
+        if (const char* repoRoot = std::getenv("TEST_SOURCE_ROOT"))
+        {
+            (void)chdir(repoRoot);
+            cwd = getCurrentWorkingDirectory();
+            luauDirRel = ".";
         }
 #else
         std::optional<std::string> cwd = getCurrentWorkingDirectory();
@@ -925,6 +938,370 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireChainedAliasesFailureDependOnInne
         runProtectedRequire(path);
         assertOutputContainsAll({"false", "error requiring module \"@dependoninner\": @passthroughinner is not a valid alias"});
     }
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicPath")
+{
+    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
+    // Both modules use the require table (...) as their require surface, so the
+    // cycle resolves consistently: each module's cached table is the one distributed
+    // to the other during loading.
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_requirer";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnAccess")
+{
+    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
+    // A requires B, B requires A (cycle hit), B then tries to read
+    // a field from A's incomplete require table. CyclicDependencyError is raised.
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_access_a";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"false", "Cannot access the exported field 'Tree'"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnMutation")
+{
+    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
+    // B requires A, A requires B (cycle hit), A then tries to write
+    // to B's incomplete require table. CyclicDependencyError is raised.
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_mutation_b";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"false", "Cannot set the exported field 'foo'"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnNonStringKey")
+{
+    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
+    // A requires B, B requires A (cycle hit), B then accesses A's incomplete require
+    // table using a table as the key. CyclicDependencyError is raised without crashing
+    // (verifies luaL_tolstring handles non-string keys instead of lua_tostring).
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_access_nonstringkey_a";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"false", "Cannot access the exported field"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicPlaceholderPrevMetatableRestored")
+{
+    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
+    // A sets a metatable (__index) on its placeholder before calling require(B).
+    // When B finishes, lua_requirecont restores the saved metatable instead of clearing it
+    // to nil. After both modules load, A's __index should still be active.
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_prev_mt_requirer";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyPlaceholderMetatableLocked")
+{
+    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
+
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_locked_mt_requirer";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_SUITE_END();
+
+TEST_SUITE_BEGIN("ExportValueTests");
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportValue")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_value";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportFunction")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_function";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportMixed")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_mixed";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportMutualRecursion")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_mutual_recursion";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportNestedTable")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_nested_table";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportShadowing")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_shadowing";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportTypeWithReturn")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_type_with_return";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportConstError")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/export_const_error";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"Variable 'foo' is constant and may not be reassigned"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportWithReturnError")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/export_with_return_error";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"Exporting values is not compatible with top-level return"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportInFunctionError")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/export_in_function_error";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"'export' may only be applied to top-level statements"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "ExportPostReturnMutationError")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path =
+        getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_post_return_mutation_error";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportInDoBlockError")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/export_in_do_block_error";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"'export' may only be applied to top-level statements"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportInForError")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/export_in_for_error";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"'export' may only be applied to top-level statements"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportInWhileError")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/export_in_while_error";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"'export' may only be applied to top-level statements"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportInRepeatError")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/export_in_repeat_error";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"'export' may only be applied to top-level statements"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportFrozen")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_frozen";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportFreezeShadowingIgnored")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_freeze_shadowing";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportFreezeLocalNilIgnored")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_freeze_local_nil_error";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportInternalCall")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_internal_call";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportMultiVar")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_multi_var";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportUpvalue")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_upvalue";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportInIfError")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/export_in_if_error";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"'export' may only be applied to top-level statements"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportInElseIfError")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/export_in_elseif_error";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"'export' may only be applied to top-level statements"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "ExportAsFunction")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/export_as_function";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "ExportCounter")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_counter_module";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportFunctionRebind")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_function_rebind";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportEdgeCases")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_edge_cases";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportFrozenMutate")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_frozen_mutate";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportForwardRebind")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_forward_rebind";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportMultiSwap")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_multi_swap";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportCompound")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_compound";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportAlias")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_alias";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportAlias2")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_alias2";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportMultiAssign")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_multi_assign";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportTrap")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_trap";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"true"});
+}
+
+TEST_CASE("RequireExportClass")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauUserDefinedClassesRuntime, true}
+    };
+
+    // we create a new fixture so the new lua_State has the class library
+    ReplWithPathFixture fixture;
+
+    std::string path =
+        fixture.getLuauDirectory(ReplWithPathFixture::PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_class";
+    fixture.runProtectedRequire(path);
+    fixture.assertOutputContainsAll({"true"});
 }
 
 TEST_SUITE_END();

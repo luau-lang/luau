@@ -13,7 +13,6 @@
 #include <climits>
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
-LUAU_FASTFLAGVARIABLE(LuauLinterVectorPrimitive)
 
 namespace Luau
 {
@@ -1178,7 +1177,7 @@ private:
     {
         Kind_Unknown,
         Kind_Primitive, // primitive type supported by VM - boolean/userdata/etc. No differentiation between types of userdata.
-        Kind_Vector,    // 'vector' but only used when type is used. Remove when `LuauLinterVectorPrimitive` is clipped
+        Kind_Vector,    // TODO: deprecated and not set, but read in 'visit'
         Kind_Userdata,  // custom userdata type
     };
 
@@ -1189,12 +1188,7 @@ private:
             return Kind_Primitive;
 
         if (name == "vector")
-        {
-            if (FFlag::LuauLinterVectorPrimitive)
-                return Kind_Primitive;
-            else
-                return Kind_Vector;
-        }
+            return Kind_Primitive;
 
         if (std::optional<TypeFun> maybeTy = context->scope->lookupType(name))
             return Kind_Userdata;
@@ -1286,7 +1280,7 @@ private:
             Location rangeLocation(node->from->location, node->to->location);
 
             // for i=#t,1 do
-            if (fu && fu->op == AstExprUnary::Len && tc && tc->value == 1.0)
+            if (fu && fu->op == AstExprUnary::Op::Len && tc && tc->value == 1.0)
                 emitWarning(
                     *context, LintWarning::Code_ForRange, rangeLocation, "For loop should iterate backwards; did you forget to specify -1 as step?"
                 );
@@ -1306,10 +1300,10 @@ private:
                     tc->value
                 );
             // for i=0,#t do
-            else if (fc && tu && fc->value == 0.0 && tu->op == AstExprUnary::Len)
+            else if (fc && tu && fc->value == 0.0 && tu->op == AstExprUnary::Op::Len)
                 emitWarning(*context, LintWarning::Code_ForRange, rangeLocation, "For loop starts at 0, but arrays start at 1");
             // for i=#t,0 do
-            else if (fu && fu->op == AstExprUnary::Len && tc && tc->value == 0.0)
+            else if (fu && fu->op == AstExprUnary::Op::Len && tc && tc->value == 0.0)
                 emitWarning(
                     *context,
                     LintWarning::Code_ForRange,
@@ -1916,7 +1910,7 @@ private:
         int count = 0;
 
         for (const AstExprTable::Item& item : node->items)
-            if (item.kind == AstExprTable::Item::List)
+            if (item.kind == AstExprTable::Item::Kind::List)
                 count++;
 
         DenseHashMap<AstArray<char>*, int, AstArrayPredicate, AstArrayPredicate> names(nullptr);
@@ -2615,7 +2609,7 @@ private:
 
     bool visit(AstExprUnary* node) override
     {
-        if (node->op == AstExprUnary::Len)
+        if (node->op == AstExprUnary::Op::Len)
             checkIndexer(node, node->expr, "#");
 
         return true;
@@ -2789,7 +2783,7 @@ private:
     bool isLength(AstExpr* expr, AstExpr* table)
     {
         AstExprUnary* n = expr->as<AstExprUnary>();
-        return n && n->op == AstExprUnary::Len && similar(n->expr, table);
+        return n && n->op == AstExprUnary::Op::Len && similar(n->expr, table);
     }
 
     size_t getReturnCount(TypeId ty)
@@ -3223,7 +3217,7 @@ private:
     {
         AstExprUnary* expr = node->as<AstExprUnary>();
 
-        return expr && expr->op == AstExprUnary::Not;
+        return expr && expr->op == AstExprUnary::Op::Not;
     }
 
     bool visit(AstExprBinary* node) override
@@ -3419,7 +3413,7 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
                 {
                     const char* level = hc.content.c_str() + notspace;
 
-                    if (strcmp(level, "0") && strcmp(level, "1") && strcmp(level, "2"))
+                    if (strcmp(level, "0") != 0 && strcmp(level, "1") != 0 && strcmp(level, "2") != 0)
                         emitWarning(
                             context,
                             LintWarning::Code_CommentDirective,

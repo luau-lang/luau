@@ -19,6 +19,8 @@ struct IrValueLocationTracking
     bool canBeRematerialized(IrCmd cmd);
     bool canRematerializeArguments(IrInst& inst);
 
+    void processStoreLocationHint(const StoreLocationHint* hint);
+
     void beforeInstLowering(IrInst& inst);
     void afterInstLowering(IrInst& inst, uint32_t instIdx);
 
@@ -29,6 +31,10 @@ struct IrValueLocationTracking
     IrFunction& function;
 
     std::array<uint32_t, 256> vmRegValue;
+
+    // When a rematerializable value is stored through a conversion (like NUM_TO_UINT) we record it here to
+    // invalidate both values when VM reg is invalidated
+    std::array<uint32_t, 256> vmRegDependent;
 
     // For range/full invalidations, we only want to visit a limited number of data that we have recorded
     int maxReg = 0;

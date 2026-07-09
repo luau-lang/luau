@@ -4,7 +4,6 @@
 #include "Luau/Scope.h"
 #include "Luau/Instantiation2.h"
 
-LUAU_FASTFLAG(LuauReplacerRespectsReboundGenerics)
 
 namespace Luau
 {
@@ -18,7 +17,6 @@ Replacer::Replacer(
     , replacements(replacements)
     , replacementPacks(replacementPacks)
 {
-    LUAU_ASSERT(FFlag::LuauReplacerRespectsReboundGenerics);
     LUAU_ASSERT(checkReplacementKeys());
 }
 
