@@ -62,6 +62,7 @@ LUALIB_API const char* luaL_typename(lua_State* L, int idx);
 
 // wrapper for making calls from yieldable C functions
 LUALIB_API int luaL_callyieldable(lua_State* L, int nargs, int nresults);
+LUALIB_API int luaL_pcallyieldable(lua_State* L, int nargs, int nresults, int errfunc);
 
 LUALIB_API void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level);
 
@@ -136,6 +137,9 @@ LUALIB_API int luaopen_buffer(lua_State* L);
 
 #define LUA_UTF8LIBNAME "utf8"
 LUALIB_API int luaopen_utf8(lua_State* L);
+
+#define LUA_CLASSLIBNAME "class"
+LUALIB_API int luaopen_class(lua_State* L);
 
 #define LUA_MATHLIBNAME "math"
 LUALIB_API int luaopen_math(lua_State* L);

@@ -21,6 +21,8 @@
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
+LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
+LUAU_FASTFLAG(LuauTypeFunctionTableIndexerIsReadOnly)
 
 namespace Luau
 {
@@ -416,7 +418,13 @@ private:
         }
 
         if (t1->indexer)
-            t2->indexer = TypeFunctionTableIndexer(shallowSerialize(t1->indexer->indexType), shallowSerialize(t1->indexer->indexResultType));
+        {
+            t2->indexer = TypeFunctionTableIndexer(
+                shallowSerialize(t1->indexer->indexType),
+                shallowSerialize(t1->indexer->indexResultType),
+                FFlag::LuauTypeFunctionTableIndexerIsReadOnly ? t1->indexer->isReadOnly : false
+            );
+        }
     }
 
     void serializeChildren(const MetatableType* m1, TypeFunctionTableType* m2)
@@ -440,6 +448,18 @@ private:
 
         f2->argTypes = shallowSerialize(f1->argTypes);
         f2->retTypes = shallowSerialize(f1->retTypes);
+
+        if (FFlag::LuauTypeFunctionSerializeArgNames)
+        {
+            f2->argNames.reserve(f1->argNames.size());
+            for (const auto& argName : f1->argNames)
+            {
+                if (argName)
+                    f2->argNames.emplace_back(argName->name);
+                else
+                    f2->argNames.emplace_back();
+            }
+        }
     }
 
     void serializeChildren(const ExternType* c1, TypeFunctionExternType* c2)
@@ -962,7 +982,13 @@ private:
         }
 
         if (t2->indexer.has_value())
-            t1->indexer = TableIndexer(shallowDeserialize(t2->indexer->keyType), shallowDeserialize(t2->indexer->valueType));
+        {
+            t1->indexer = TableIndexer(
+                shallowDeserialize(t2->indexer->keyType),
+                shallowDeserialize(t2->indexer->valueType),
+                FFlag::LuauTypeFunctionTableIndexerIsReadOnly ? t2->indexer->isReadOnly : false
+            );
+        }
     }
 
     void deserializeChildren(TypeFunctionTableType* m2, MetatableType* m1)
@@ -1046,6 +1072,18 @@ private:
 
         if (f2->retTypes)
             f1->retTypes = shallowDeserialize(f2->retTypes);
+
+        if (FFlag::LuauTypeFunctionSerializeArgNames)
+        {
+            f1->argNames.reserve(f2->argNames.size());
+            for (const auto& name : f2->argNames)
+            {
+                if (name)
+                    f1->argNames.emplace_back(FunctionArgument{*name, {}});
+                else
+                    f1->argNames.emplace_back();
+            }
+        }
     }
 
     void deserializeChildren(TypeFunctionExternType* c2, ExternType* c1)

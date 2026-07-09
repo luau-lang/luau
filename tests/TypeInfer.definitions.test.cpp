@@ -9,10 +9,7 @@
 
 using namespace Luau;
 
-
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauLValueCompoundAssignmentVisitLhs)
-LUAU_FASTFLAG(LuauExternReadWriteAttributes)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -117,13 +114,13 @@ TEST_CASE_FIXTURE(Fixture, "load_definition_file_errors_do_not_pollute_global_sc
 TEST_CASE_FIXTURE(Fixture, "definition_file_extern_types")
 {
     loadDefinition(R"(
-        declare class Foo
+        declare extern type Foo with
             X: number
 
             function inheritance(self): number
         end
 
-        declare class Bar extends Foo
+        declare extern type Bar extends Foo with
             Y: number
 
             function foo(self, x: number): number
@@ -159,7 +156,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
         getFrontend().globals,
         getFrontend().globals.globalScope,
         R"(
-        declare class A
+        declare extern type A with
             X: number
             X: string
         end
@@ -201,7 +198,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_extend_non_class")
         R"(
         type NotAClass = {}
 
-        declare class Foo extends NotAClass
+        declare extern type Foo extends NotAClass with
         end
     )",
         "@test",
@@ -225,10 +222,10 @@ TEST_CASE_FIXTURE(Fixture, "no_cyclic_defined_extern_types")
         getFrontend().globals,
         getFrontend().globals.globalScope,
         R"(
-        declare class Foo extends Bar
+        declare extern type Foo extends Bar with
         end
 
-        declare class Bar extends Foo
+        declare extern type Bar extends Foo with
         end
     )",
         "@test",
@@ -269,7 +266,7 @@ TEST_CASE_FIXTURE(Fixture, "declaring_generic_functions")
 TEST_CASE_FIXTURE(Fixture, "class_definition_function_prop")
 {
     loadDefinition(R"(
-        declare class Foo
+        declare extern type Foo with
             X: (number) -> string
         end
 
@@ -290,7 +287,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_function_prop")
 TEST_CASE_FIXTURE(Fixture, "definition_file_class_function_args")
 {
     loadDefinition(R"(
-        declare class Foo
+        declare extern type Foo with
             function foo1(self, x: number): number
             function foo2(self, x: number, y: string): number
 
@@ -324,7 +321,7 @@ TEST_CASE_FIXTURE(Fixture, "definitions_documentation_symbols")
 
         export type Foo = string | number
 
-        declare class Bar
+        declare extern type Bar with
             prop: string
         end
 
@@ -364,7 +361,7 @@ TEST_CASE_FIXTURE(Fixture, "definitions_documentation_symbols")
 TEST_CASE_FIXTURE(Fixture, "definitions_symbols_are_generated_for_recursively_referenced_types")
 {
     loadDefinition(R"(
-        declare class MyClass
+        declare extern type MyClass with
             function myMethod(self)
         end
 
@@ -407,7 +404,7 @@ TEST_CASE_FIXTURE(Fixture, "documentation_symbols_dont_attach_to_persistent_type
 TEST_CASE_FIXTURE(Fixture, "single_class_type_identity_in_global_types")
 {
     loadDefinition(R"(
-declare class Cls
+declare extern type Cls with
 end
 
 declare GetCls: () -> (Cls)
@@ -423,10 +420,10 @@ local s : Cls = GetCls()
 TEST_CASE_FIXTURE(Fixture, "class_definition_overload_metamethods")
 {
     loadDefinition(R"(
-        declare class Vector3
+        declare extern type Vector3 with
         end
 
-        declare class CFrame
+        declare extern type CFrame with
             function __mul(self, other: CFrame): CFrame
             function __mul(self, other: Vector3): Vector3
         end
@@ -449,7 +446,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_overload_metamethods")
 TEST_CASE_FIXTURE(Fixture, "class_definition_string_props")
 {
     loadDefinition(R"(
-        declare class Foo
+        declare extern type Foo with
             ["a property"]: string
         end
     )");
@@ -470,7 +467,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_malformed_string")
         getFrontend().globals,
         getFrontend().globals.globalScope,
         R"(
-        declare class Foo
+        declare extern type Foo with
             ["a\0property"]: string
         end
     )",
@@ -487,7 +484,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_malformed_string")
 TEST_CASE_FIXTURE(Fixture, "class_definition_indexer")
 {
     loadDefinition(R"(
-        declare class Foo
+        declare extern type Foo with
             [number]: string
         end
     )");
@@ -513,12 +510,12 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_indexer")
 TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_extern_types")
 {
     loadDefinition(R"(
-        declare class Channel
+        declare extern type Channel with
             Messages: { Message }
             OnMessage: (message: Message) -> ()
         end
 
-        declare class Message
+        declare extern type Message with
             Text: string
             Channel: Channel
         end
@@ -540,7 +537,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_extern_types")
 TEST_CASE_FIXTURE(Fixture, "definition_file_has_source_module_name_set")
 {
     LoadDefinitionFileResult result = loadDefinition(R"(
-        declare class Foo
+        declare extern type Foo with
         end
     )");
 
@@ -608,7 +605,7 @@ TEST_CASE_FIXTURE(Fixture, "vector3_overflow")
     ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 0};
 
     loadDefinition(R"(
-        declare class Vector3
+        declare extern type Vector3 with
             function __add(self, other: Vector3): Vector3
         end
     )");
@@ -631,11 +628,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "vector_readonly")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        { FFlag::LuauExternReadWriteAttributes, true },
-        { FFlag::LuauLValueCompoundAssignmentVisitLhs, true }
-    };
+    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     loadDefinition(R"(
         declare extern type vector with
@@ -666,11 +659,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "extern_writeonly_props")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        { FFlag::LuauExternReadWriteAttributes, true },
-        { FFlag::LuauLValueCompoundAssignmentVisitLhs, true }
-    };
+    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     loadDefinition(R"(
         declare extern type noread with
@@ -702,11 +691,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "extern_read_write_dual_attribute")
 {
-    ScopedFastFlag _[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        { FFlag::LuauExternReadWriteAttributes, true },
-        { FFlag::LuauLValueCompoundAssignmentVisitLhs, true }
-    };
+    ScopedFastFlag _[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     loadDefinition(R"(
         declare extern type dual_attribute with

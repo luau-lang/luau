@@ -77,6 +77,10 @@ inline ConditionA64 getInverseCondition(ConditionA64 cond)
         return ConditionA64::Less;
     case ConditionA64::LessEqual:
         return ConditionA64::GreaterEqual;
+    case ConditionA64::CarryClear: // UnsignedLess -> UnsignedGreater
+        return ConditionA64::UnsignedGreater;
+    case ConditionA64::CarrySet: // UnsignedGreaterEqual -> UnsignedLessEqual
+        return ConditionA64::UnsignedLessEqual;
     default:
         CODEGEN_ASSERT(!"invalid ConditionA64 value for getInverseCondition");
     }

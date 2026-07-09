@@ -423,11 +423,11 @@ std::string toString(AstExprUnary::Op op)
 {
     switch (op)
     {
-    case AstExprUnary::Minus:
+    case AstExprUnary::Op::Minus:
         return "-";
-    case AstExprUnary::Not:
+    case AstExprUnary::Op::Not:
         return "not";
-    case AstExprUnary::Len:
+    case AstExprUnary::Op::Len:
         return "#";
     default:
         LUAU_ASSERT(false);
@@ -710,11 +710,13 @@ AstStatLocal::AstStatLocal(
     const Location& location,
     const AstArray<AstLocal*>& vars,
     const AstArray<AstExpr*>& values,
-    const std::optional<Location>& equalsSignLocation
+    const std::optional<Location>& equalsSignLocation,
+    bool isConst
 )
     : AstStat(ClassIndex(), location)
     , vars(vars)
     , values(values)
+    , isConst(isConst)
     , equalsSignLocation(equalsSignLocation)
 {
 }
@@ -862,10 +864,18 @@ void AstStatFunction::visit(AstVisitor* visitor)
     }
 }
 
-AstStatLocalFunction::AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func)
+AstStatLocalFunction::AstStatLocalFunction(
+    const Location& location,
+    AstLocal* name,
+    AstExprFunction* func,
+    bool isConst,
+    Position constKeywordBegin
+)
     : AstStat(ClassIndex(), location)
     , name(name)
     , func(func)
+    , isConst(isConst)
+    , constKeywordBegin(constKeywordBegin)
 {
 }
 
@@ -973,6 +983,40 @@ AstStatDeclareFunction::AstStatDeclareFunction(
     , varargLocation(varargLocation)
     , retTypes(retTypes)
 {
+}
+
+AstStatClass::AstStatClass(const Location& location, AstLocal* name, AstArray<AstClassMember> members, bool exported)
+    : AstStat(ClassIndex(), location)
+    , name(name)
+    , members(members)
+    , exported(exported)
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+}
+
+void AstStatClass::visit(AstVisitor* visitor)
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    if (visitor->visit(this))
+    {
+        for (const auto& member : members)
+        {
+            Luau::visit(
+                overloaded{
+                    [&](const AstClassProperty& prop)
+                    {
+                        if (prop.ty)
+                            prop.ty->visit(visitor);
+                    },
+                    [&](const AstClassMethod& method)
+                    {
+                        method.function->visit(visitor);
+                    }
+                },
+                member
+            );
+        }
+    }
 }
 
 AstStatDeclareFunction::AstStatDeclareFunction(

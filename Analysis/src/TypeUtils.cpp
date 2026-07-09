@@ -562,88 +562,209 @@ bool fastIsSubtype(TypeId subTy, TypeId superTy)
     return r == Relation::Coincident || r == Relation::Superset;
 }
 
-std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, TypeId exprType, NotNull<BuiltinTypes> builtinTypes)
+/**
+ * There is a tension with how we encode tables and how we _want_ them to be
+ * typechecked. The classic example is:
+ *
+ * local tbl: { x: number? } = { x = 42 }
+ *
+ * Obviously, this _should_ work, but the type checker would tell us correctly
+ * that `{ x: number } </: { x: number? }`. This is what bidirectional
+ * inference is meant to resolve.
+ *
+ * However, because of this fact, we _cannot_ really use subtyping when trying
+ * to resolve bidirectional inference, otherwise we'd get a pretty poor UX when
+ * the user has written incorrect code. For example:
+ *
+ *  local tbl: { foo: number, bar: string } | { baz: string, quxx: boolean } = { foo = 42, | }
+ *
+ * For autocomplete at `|`, the user _wants_ `bar` to show up, but there's no
+ * world in which subtyping selects the correct union member here. We must use
+ * mechanical heuristics.
+ */
+std::optional<TypeId> extractMatchingTableType_DEPRECATED(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes)
 {
-    if (tables.empty())
-        return std::nullopt;
-
     const TableType* exprTable = get<TableType>(follow(exprType));
     if (!exprTable)
         return std::nullopt;
 
-    size_t tableCount = 0;
-    std::optional<TypeId> firstTable;
+    // Try to filter out tables based on property names, for example
+    // if we are considering the type ...
+    //
+    //  { foo: number, bar: string } | { foo: number, baz: boolean }
+    //
+    // ... and the table in question looks like ...
+    //
+    //  { baz = true }
+    //
+    // ... the user probably intends the second definition.
+    TypeIds potentialTables;
 
-    for (TypeId ty : tables)
+    for (TypeId ty : expectedUnion)
     {
-        ty = follow(ty);
         if (auto tt = get<TableType>(ty))
         {
-            // If the expected table has a key whose type is a string or boolean
-            // singleton and the corresponding exprType property does not match,
-            // then skip this table.
-
-            if (!firstTable)
-                firstTable = ty;
-            ++tableCount;
-
+            bool isDisjoint = false;
+            // NOTE: We iterate over the expected properties for structural subtyping reasons,
+            // consider:
+            //
+            //  local t: { foo: number? } = {
+            //      foo = 42,
+            //      -- 10,000 properties not shown.
+            //  }
+            //
+            // Those 10k properties do not matter here.
             for (const auto& [name, expectedProp] : tt->props)
             {
+                // If the property from the expected type is not in the
+                // expression, skip it.
+                auto propInTableExpr = exprTable->props.find(name);
+                if (propInTableExpr == exprTable->props.end())
+                    continue;
+
+                // Also, if the expected type does not have a read component, skip this.
                 if (!expectedProp.readTy)
                     continue;
 
-                const TypeId expectedType = follow(*expectedProp.readTy);
+                const auto& [_, exprProp] = *propInTableExpr;
 
-                auto st = get<SingletonType>(expectedType);
-                if (!st)
-                    continue;
-
-                auto it = exprTable->props.find(name);
-                if (it == exprTable->props.end())
-                    continue;
-
-                const auto& [_name, exprProp] = *it;
-
+                // If the expression property doesn't have a read type, then
+                // we cannot reasonably check this against the read type of
+                // the expected property.
                 if (!exprProp.readTy)
-                    continue;
-
-                const TypeId propType = follow(*exprProp.readTy);
-
-                const FreeType* ft = get<FreeType>(propType);
-
-                if (ft && get<SingletonType>(ft->lowerBound))
                 {
-                    if (fastIsSubtype(builtinTypes->booleanType, ft->upperBound) && fastIsSubtype(expectedType, builtinTypes->booleanType))
-                    {
-                        return ty;
-                    }
-
-                    if (fastIsSubtype(builtinTypes->stringType, ft->upperBound) && fastIsSubtype(expectedType, ft->lowerBound))
-                    {
-                        return ty;
-                    }
+                    // Also assert here: we should never encounter an inferred
+                    // write-only type from an expression.
+                    LUAU_ASSERT(!"Unexpected write-only property inside table literal.");
+                    continue;
                 }
 
-                if (fastIsSubtype(propType, expectedType))
-                    return ty;
+                const TypeId expectedPropType = follow(*expectedProp.readTy);
+                const TypeId exprPropType = follow(*exprProp.readTy);
+
+                if (relate(expectedPropType, exprPropType) == Relation::Disjoint)
+                {
+                    isDisjoint = true;
+                    break;
+                }
+
+                auto ft = get<FreeType>(exprPropType);
+                if (ft && relate(ft->lowerBound, expectedPropType) == Relation::Disjoint)
+                {
+                    isDisjoint = true;
+                    break;
+                }
             }
+
+            if (!isDisjoint)
+                potentialTables.insert(ty);
         }
     }
 
-    if (tableCount == 1)
+    if (potentialTables.size() == 1)
+        return {*potentialTables.begin()};
+
+    return std::nullopt;
+}
+
+std::optional<TypeId> extractMatchingTableType(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena)
+{
+    const TableType* exprTable = get<TableType>(follow(exprType));
+    if (!exprTable)
+        return std::nullopt;
+
+    // Try to filter out tables based on property names, for example
+    // if we are considering the type ...
+    //
+    //  { foo: number, bar: string } | { foo: number, baz: boolean }
+    //
+    // ... and the table in question looks like ...
+    //
+    //  { baz = true }
+    //
+    // ... the user probably intends the second definition.
+    TypeIds potentialTables;
+
+    for (TypeId ty : expectedUnion)
     {
-        LUAU_ASSERT(firstTable);
-        return firstTable;
+        // NOTE: This probably should just be replaced with normalization.
+        if (auto itv = get<IntersectionType>(ty))
+        {
+            TypeIds parts;
+            parts.insert(begin(itv), end(itv));
+            ty = simplifyIntersection(builtinTypes, arena, std::move(parts)).result;
+        }
+
+        if (auto tt = get<TableType>(ty))
+        {
+            bool isDisjoint = false;
+            // NOTE: We iterate over the expected properties for structural subtyping reasons,
+            // consider:
+            //
+            //  local t: { foo: number? } = {
+            //      foo = 42,
+            //      -- 10,000 properties not shown.
+            //  }
+            //
+            // Those 10k properties do not matter here.
+            for (const auto& [name, expectedProp] : tt->props)
+            {
+                // If the property from the expected type is not in the
+                // expression, skip it.
+                auto propInTableExpr = exprTable->props.find(name);
+                if (propInTableExpr == exprTable->props.end())
+                    continue;
+
+                // Also, if the expected type does not have a read component, skip this.
+                if (!expectedProp.readTy)
+                    continue;
+
+                const auto& [_, exprProp] = *propInTableExpr;
+
+                // If the expression property doesn't have a read type, then
+                // we cannot reasonably check this against the read type of
+                // the expected property.
+                if (!exprProp.readTy)
+                {
+                    // Also assert here: we should never encounter an inferred
+                    // write-only type from an expression.
+                    LUAU_ASSERT(!"Unexpected write-only property inside table literal.");
+                    continue;
+                }
+
+                const TypeId expectedPropType = follow(*expectedProp.readTy);
+                const TypeId exprPropType = follow(*exprProp.readTy);
+
+                if (relate(expectedPropType, exprPropType) == Relation::Disjoint)
+                {
+                    isDisjoint = true;
+                    break;
+                }
+
+                auto ft = get<FreeType>(exprPropType);
+                if (ft && relate(ft->lowerBound, expectedPropType) == Relation::Disjoint)
+                {
+                    isDisjoint = true;
+                    break;
+                }
+            }
+
+            if (!isDisjoint)
+                potentialTables.insert(ty);
+        }
     }
+
+    if (potentialTables.size() == 1)
+        return {*potentialTables.begin()};
 
     return std::nullopt;
 }
 
 bool isRecord(const AstExprTable::Item& item)
 {
-    if (item.kind == AstExprTable::Item::Record)
+    if (item.kind == AstExprTable::Item::Kind::Record)
         return true;
-    else if (item.kind == AstExprTable::Item::General && item.key->is<AstExprConstantString>())
+    else if (item.kind == AstExprTable::Item::Kind::General && item.key->is<AstExprConstantString>())
         return true;
     else
         return false;
@@ -835,38 +956,38 @@ TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, st
     return ub.build();
 }
 
-ContainsAnyGeneric::ContainsAnyGeneric()
+ContainsAnyGeneric_DEPRECATED::ContainsAnyGeneric_DEPRECATED()
     : TypeOnceVisitor("ContainsAnyGeneric", /* skipBoundTypes */ true)
 {
 }
 
-bool ContainsAnyGeneric::visit(TypeId ty, const ExternType&)
+bool ContainsAnyGeneric_DEPRECATED::visit(TypeId ty, const ExternType&)
 {
     return false;
 }
 
-bool ContainsAnyGeneric::visit(TypeId ty)
+bool ContainsAnyGeneric_DEPRECATED::visit(TypeId ty)
 {
     found = found || is<GenericType>(ty);
     return !found;
 }
 
-bool ContainsAnyGeneric::visit(TypePackId ty)
+bool ContainsAnyGeneric_DEPRECATED::visit(TypePackId ty)
 {
     found = found || is<GenericTypePack>(follow(ty));
     return !found;
 }
 
-bool ContainsAnyGeneric::hasAnyGeneric(TypeId ty)
+bool ContainsAnyGeneric_DEPRECATED::hasAnyGeneric(TypeId ty)
 {
-    ContainsAnyGeneric cg;
+    ContainsAnyGeneric_DEPRECATED cg;
     cg.traverse(ty);
     return cg.found;
 }
 
-bool ContainsAnyGeneric::hasAnyGeneric(TypePackId tp)
+bool ContainsAnyGeneric_DEPRECATED::hasAnyGeneric(TypePackId tp)
 {
-    ContainsAnyGeneric cg;
+    ContainsAnyGeneric_DEPRECATED cg;
     cg.traverse(tp);
     return cg.found;
 }
@@ -928,6 +1049,56 @@ bool isBlocked(TypeId ty)
         return tfit->state == TypeFunctionInstanceState::Unsolved;
 
     return is<BlockedType, PendingExpansionType>(ty);
+}
+
+std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty, DenseHashSet<TypeId>& seen)
+{
+    ty = follow(ty);
+    if (seen.contains(ty))
+        return std::nullopt;
+
+    seen.insert(ty);
+
+    if (auto ftv = get<FunctionType>(ty))
+        return {ftv->retTypes};
+
+    if (auto utv = get<UnionType>(ty); utv && begin(utv) != end(utv))
+        return getApproximateReturnTypeForFunctionCall(*begin(utv), seen);
+
+    return std::nullopt;
+}
+
+std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty)
+{
+    DenseHashSet<TypeId> seen{nullptr};
+    return getApproximateReturnTypeForFunctionCall(ty, seen);
+}
+
+OccursCheckResult occursCheck(TypePackId needle, TypePackId haystack)
+{
+    needle = follow(needle);
+    haystack = follow(haystack);
+
+    LUAU_ASSERT((is<FreeTypePack, BlockedTypePack>(needle)));
+
+    if (is<ErrorTypePack>(needle))
+        return OccursCheckResult::Pass;
+
+    while (!get<ErrorTypePack>(haystack))
+    {
+        if (needle == haystack)
+            return OccursCheckResult::Fail;
+
+        if (auto a = get<TypePack>(haystack); a && a->tail)
+        {
+            haystack = follow(*a->tail);
+            continue;
+        }
+
+        break;
+    }
+
+    return OccursCheckResult::Pass;
 }
 
 

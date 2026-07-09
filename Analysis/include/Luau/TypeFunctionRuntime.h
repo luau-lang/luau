@@ -159,6 +159,9 @@ struct TypeFunctionFunctionType
 
     TypeFunctionTypePackId argTypes;
     TypeFunctionTypePackId retTypes;
+
+    // Parallel to argTypes.head; nullopt entries mean the parameter has no name.
+    std::vector<std::optional<std::string>> argNames;
 };
 
 template<typename T>
@@ -179,14 +182,16 @@ T* getMutable(TypeFunctionTypePackId tv)
 
 struct TypeFunctionTableIndexer
 {
-    TypeFunctionTableIndexer(TypeFunctionTypeId keyType, TypeFunctionTypeId valueType)
+    TypeFunctionTableIndexer(TypeFunctionTypeId keyType, TypeFunctionTypeId valueType, bool isReadOnly = false)
         : keyType(keyType)
         , valueType(valueType)
+        , isReadOnly(isReadOnly)
     {
     }
 
     TypeFunctionTypeId keyType;
     TypeFunctionTypeId valueType;
+    bool isReadOnly = false;
 };
 
 struct TypeFunctionProperty

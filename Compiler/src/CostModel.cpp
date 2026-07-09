@@ -113,7 +113,7 @@ struct CostVisitor : AstVisitor
 
     Cost model(AstExpr* node)
     {
-        if (constants.contains(node))
+        if (const Constant* c = constants.find(node))
             return Cost(0, Cost::kLiteral);
 
         if (AstExprGroup* expr = node->as<AstExprGroup>())
@@ -145,7 +145,7 @@ struct CostVisitor : AstVisitor
             // thus we use a cheaper baseline, don't account for function, and assume constant/local copy is free
             const int* bfid = builtins.find(expr);
             bool builtin = bfid != nullptr && *bfid != LBF_NONE;
-            bool builtinShort = builtin && expr->args.size <= 2; // FASTCALL1/2
+            bool builtinShort = builtin && expr->args.size <= 3u; // FASTCALL1/2/3
 
             Cost cost = builtin ? 2 : 3;
 

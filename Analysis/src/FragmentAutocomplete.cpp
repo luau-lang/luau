@@ -30,7 +30,8 @@ LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauConstraintGraph)
 
 namespace Luau
 {
@@ -454,6 +455,44 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
                             {
                                 localStack.push_back(var);
                                 localMap[var->name] = var;
+                            }
+                        }
+                    }
+                    else if (auto classDecl = stat->as<AstStatClass>())
+                    {
+                        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+                        // We need to include the class name as part of the
+                        // locals so that within the fragment the class name
+                        // is defined.
+                        localStack.push_back(classDecl->name);
+                        localMap[classDecl->name->name] = classDecl->name;
+                        if (classDecl->location.containsClosed(cursorPos))
+                        {
+                            AstExprFunction* currentMethod = nullptr;
+                            for (const auto& decl : classDecl->members)
+                            {
+                                // CLI-199277: This looks a little weird, like we might end up
+                                // autocompleting class method arguments in a position like:
+                                //
+                                //  class Foobar
+                                //      function bazbing(alpha, beta, gamma)
+                                //      end
+                                //      | -- accidentally include args of bazbing here.
+                                //  end
+                                //
+                                if (auto method = decl.get_if<AstClassMethod>())
+                                {
+                                    if (method->function->body->location.begin < cursorPos)
+                                        currentMethod = method->function;
+                                }
+                            }
+                            if (currentMethod)
+                            {
+                                for (AstLocal* v : currentMethod->args)
+                                {
+                                    localStack.push_back(v);
+                                    localMap[v->name] = v;
+                                }
                             }
                         }
                     }
@@ -1122,6 +1161,10 @@ FragmentTypeCheckResult typecheckFragment_(
     /// User defined type functions runtime
     TypeFunctionRuntime typeFunctionRuntime(iceHandler, NotNull{&limits});
 
+    Subtyping subtyping{
+        frontend.builtinTypes, NotNull{&incrementalModule->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler
+    };
+
     typeFunctionRuntime.allowEvaluation = false;
 
     /// Create a DataFlowGraph just for the surrounding context
@@ -1140,6 +1183,11 @@ FragmentTypeCheckResult typecheckFragment_(
 
     FrontendModuleResolver& resolver = getModuleResolver(frontend, opts);
     std::shared_ptr<Scope> freshChildOfNearestScope = std::make_shared<Scope>(nullptr);
+
+    std::unique_ptr<ConstraintGraph> cgraph;
+    if (FFlag::LuauConstraintGraph)
+        cgraph = std::make_unique<ConstraintGraph>(frontend.builtinTypes);
+
     /// Contraint Generator
     ConstraintGenerator cg{
         incrementalModule,
@@ -1153,7 +1201,8 @@ FragmentTypeCheckResult typecheckFragment_(
         nullptr,
         nullptr,
         NotNull{&dfg},
-        {}
+        {},
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
     };
 
     CloneState cloneState{frontend.builtinTypes};
@@ -1200,7 +1249,9 @@ FragmentTypeCheckResult typecheckFragment_(
         {},
         nullptr,
         NotNull{&dfg},
-        std::move(limits)
+        std::move(limits),
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
+        NotNull{&subtyping}
     };
 
     try
@@ -1218,31 +1269,16 @@ FragmentTypeCheckResult typecheckFragment_(
 
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::ConstraintSolverEnd);
 
-    if (FFlag::LuauOverloadGetsInstantiated)
-    {
-        ExpectedTypeVisitor etv{
-            NotNull{&incrementalModule->astTypes},
-            NotNull{&incrementalModule->astExpectedTypes},
-            NotNull{&incrementalModule->astResolvedTypes},
-            NotNull{&incrementalModule->astOverloadResolvedTypes},
-            NotNull{&incrementalModule->internalTypes},
-            frontend.builtinTypes,
-            NotNull{freshChildOfNearestScope.get()}
-        };
-        root->visit(&etv);
-    }
-    else
-    {
-        ExpectedTypeVisitor etv{
-            NotNull{&incrementalModule->astTypes},
-            NotNull{&incrementalModule->astExpectedTypes},
-            NotNull{&incrementalModule->astResolvedTypes},
-            NotNull{&incrementalModule->internalTypes},
-            frontend.builtinTypes,
-            NotNull{freshChildOfNearestScope.get()}
-        };
-        root->visit(&etv);
-    }
+    ExpectedTypeVisitor etv{
+        NotNull{&incrementalModule->astTypes},
+        NotNull{&incrementalModule->astExpectedTypes},
+        NotNull{&incrementalModule->astResolvedTypes},
+        NotNull{&incrementalModule->astOverloadResolvedTypes},
+        NotNull{&incrementalModule->internalTypes},
+        frontend.builtinTypes,
+        NotNull{freshChildOfNearestScope.get()}
+    };
+    root->visit(&etv);
 
 
     // In frontend we would forbid internal types

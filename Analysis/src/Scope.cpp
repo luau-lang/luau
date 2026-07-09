@@ -239,6 +239,7 @@ void Scope::inheritRefinements(const ScopePtr& childScope)
     }
 }
 
+
 bool Scope::shouldWarnGlobal(std::string name) const
 {
     for (const Scope* current = this; current; current = current->parent.get())

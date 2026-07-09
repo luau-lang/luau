@@ -4,6 +4,7 @@
 #include "Luau/Constraint.h"
 #include "Luau/Error.h"
 #include "Luau/NotNull.h"
+#include "Luau/Subtyping.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFunctionRuntime.h"
 #include "Luau/TypeFwd.h"
@@ -35,6 +36,7 @@ struct TypeFunctionContext
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
     NotNull<InternalErrorReporter> ice;
     NotNull<TypeCheckLimits> limits;
+    NotNull<Subtyping> subtyping;
 
     // nullptr if the type function is being reduced outside of the constraint solver.
     ConstraintSolver* solver;
@@ -53,7 +55,7 @@ struct TypeFunctionContext
     //  union<number, number>
     std::vector<TypeId> freshInstances;
 
-    TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint);
+    TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint, NotNull<Subtyping> subtyping);
 
     TypeFunctionContext(
         NotNull<TypeArena> arena,
@@ -62,7 +64,8 @@ struct TypeFunctionContext
         NotNull<Normalizer> normalizer,
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<InternalErrorReporter> ice,
-        NotNull<TypeCheckLimits> limits
+        NotNull<TypeCheckLimits> limits,
+        NotNull<Subtyping> subtyping
     )
         : arena(arena)
         , builtins(builtins)
@@ -71,6 +74,7 @@ struct TypeFunctionContext
         , typeFunctionRuntime(typeFunctionRuntime)
         , ice(ice)
         , limits(limits)
+        , subtyping(subtyping)
         , solver(nullptr)
         , constraint(nullptr)
     {
@@ -114,11 +118,6 @@ struct TypeFunctionReductionResult
     std::optional<std::string> error;
     /// Messages printed out from user-defined type functions
     std::vector<std::string> messages;
-    // Clip this with LuauTypeFunctionsCaptureNestedInstances
-    /// Some type function reduction rules may _create_ type functions (e.g.
-    /// the numeric type functions can "distribute" over an inner union). If
-    /// any type functions were created this way, we must add them here.
-    std::vector<Ty> freshTypes_DEPRECATED;
 };
 
 template<typename T>

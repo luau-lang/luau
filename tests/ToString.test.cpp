@@ -12,7 +12,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("ToString");
@@ -33,6 +32,12 @@ TEST_CASE_FIXTURE(Fixture, "primitive")
     CHECK_EQ("number", toString(requireType("b")));
     CHECK_EQ("string", toString(requireType("c")));
     CHECK_EQ("boolean", toString(requireType("d")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "builtin_top_extern_types")
+{
+    CHECK_EQ("object", toString(getBuiltins()->objectType));
+    CHECK_EQ("class", toString(getBuiltins()->classType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "bound_types")

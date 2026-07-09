@@ -39,15 +39,16 @@ struct IrLoweringX64
     bool isFallthroughBlock(const IrBlock& target, const IrBlock& next);
     void jumpOrFallthrough(IrBlock& target, const IrBlock& next);
 
-    Label& getTargetLabel(IrOp op, Label& fresh);
-    void finalizeTargetLabel(IrOp op, Label& fresh);
+    Label& getTargetLabel(IrOp op, uint32_t index, Label& fresh);
+    void finalizeTargetLabel(IrOp op, uint32_t index, Label& fresh);
 
-    void jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, const IrBlock& next);
-    void jumpOrAbortOnUndef(IrOp target, const IrBlock& next);
+    void jumpOrAbortOnUndefNoFinalize(ConditionX64 cond, IrOp target, uint32_t index, const IrBlock& next, Label& fresh);
+    void jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, uint32_t index, const IrBlock& next);
+    void jumpOrAbortOnUndef(IrOp target, uint32_t index, const IrBlock& next);
 
     void storeFloat(OperandX64 dst, IrOp src);
     void storeDoubleAsFloat(OperandX64 dst, IrOp src);
-    void checkSafeEnv(IrOp target, const IrBlock& next);
+    void checkSafeEnv(IrOp target, uint32_t index, const IrBlock& next);
 
     void allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcpos);
     void incrementCounterAt(size_t offset);
@@ -57,6 +58,7 @@ struct IrLoweringX64
     OperandX64 memRegFloatOp(IrOp op);
     OperandX64 memRegUintOp(IrOp op);
     OperandX64 memRegIntOp(IrOp op);
+    OperandX64 memRegInt64Op(IrOp op);
     OperandX64 memRegTagOp(IrOp op);
     RegisterX64 regOp(IrOp op);
     OperandX64 bufferAddrOp(IrOp bufferOp, IrOp indexOp, uint8_t tag);
@@ -65,6 +67,7 @@ struct IrLoweringX64
     IrConst constOp(IrOp op) const;
     uint8_t tagOp(IrOp op) const;
     int intOp(IrOp op) const;
+    int64_t int64Op(IrOp op) const;
     unsigned uintOp(IrOp op) const;
     unsigned importOp(IrOp op) const;
     double doubleOp(IrOp op) const;
@@ -103,6 +106,9 @@ struct IrLoweringX64
 
     OperandX64 vectorAndMask = noreg;
     OperandX64 vectorOrMask = noreg;
+
+    uint32_t exitSyncAllocToken = 0;
+    uint32_t exitSyncInstIdx = kInvalidInstIdx;
 };
 
 } // namespace X64

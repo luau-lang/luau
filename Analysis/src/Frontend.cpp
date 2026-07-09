@@ -7,7 +7,9 @@
 #include "Luau/Config.h"
 #include "Luau/ConstraintGenerator.h"
 #include "Luau/ConstraintSolver.h"
+#include "Luau/ControlFlowGraph.h"
 #include "Luau/DataFlowGraph.h"
+#include "Luau/DumpCFG.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/ExpectedTypeVisitor.h"
 #include "Luau/FileResolver.h"
@@ -20,6 +22,7 @@
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeInfer.h"
+#include "Luau/TypeStateMap.h"
 #include "Luau/VisitType.h"
 
 #include <algorithm>
@@ -32,7 +35,6 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
-LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
@@ -41,9 +43,14 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
-LUAU_FASTFLAG(LuauOverloadGetsInstantiated)
+LUAU_FASTFLAG(LuauConstraintGraph)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAGVARIABLE(LuauExportValueTypecheck)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(DebugLuauLogCFG)
+LUAU_FASTFLAG(DebugLuauDumpCFGJson)
 
 namespace Luau
 {
@@ -1505,6 +1512,26 @@ ModulePtr check(
 
     typeFunctionRuntime.allowEvaluation = true;
 
+    Subtyping subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler};
+
+    std::unique_ptr<ConstraintGraph> cgraph;
+    if (FFlag::LuauConstraintGraph)
+        cgraph = std::make_unique<ConstraintGraph>(builtinTypes);
+
+    CFG::CFGAllocator cfgAllocator;
+    std::unique_ptr<CFG::ControlFlowGraph> cfg;
+    std::unique_ptr<CFG::TypeStateMap> state;
+    if (FFlag::DebugLuauCFG && mode != Mode::Definition)
+    {
+        cfg = CFG::CFGBuilder::makeCFG(NotNull{&cfgAllocator}, sourceModule.root);
+        if (FFlag::DebugLuauLogCFG)
+            printf("%s", dumpCFG(*cfg).c_str());
+        if (FFlag::DebugLuauDumpCFGJson)
+            printf("%s\n", dumpCFGJson(*cfg).c_str());
+        state = std::make_unique<CFG::TypeStateMap>(NotNull{&module->internalTypes}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
+        state->computeTypes();
+    }
+
     ConstraintGenerator cg{
         module,
         NotNull{&normalizer},
@@ -1517,7 +1544,9 @@ ModulePtr check(
         std::move(prepareModuleScope),
         logger.get(),
         NotNull{&dfg},
-        requireCycles
+        requireCycles,
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
+        FFlag::DebugLuauCFG ? state.get() : nullptr
     };
 
     ConstraintSet constraintSet = cg.run(sourceModule.root);
@@ -1533,8 +1562,11 @@ ModulePtr check(
         logger.get(),
         NotNull{&dfg},
         limits,
-        std::move(constraintSet)
+        std::move(constraintSet),
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
+        NotNull{&subtyping}
     };
+
 
     if (options.randomizeConstraintResolutionSeed)
         cs.randomize(*options.randomizeConstraintResolutionSeed);
@@ -1620,6 +1652,9 @@ ModulePtr check(
         {
             module->cancelled = true;
         }
+
+        if (FFlag::LuauExportValueSyntax && FFlag::LuauExportValueTypecheck && !module->timeout && !module->cancelled)
+            synthesizeExportReturn(builtinTypes, NotNull{module.get()});
     }
 
     // if the only error we're producing is one about constraint solving being incomplete, we can silence it.
@@ -1629,32 +1664,16 @@ ModulePtr check(
         !FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete)
         module->errors.clear();
 
-    if (FFlag::LuauOverloadGetsInstantiated)
-    {
-        ExpectedTypeVisitor etv{
-            NotNull{&module->astTypes},
-            NotNull{&module->astExpectedTypes},
-            NotNull{&module->astResolvedTypes},
-            NotNull{&module->astOverloadResolvedTypes},
-            NotNull{&module->internalTypes},
-            builtinTypes,
-            NotNull{parentScope.get()}
-        };
-        sourceModule.root->visit(&etv);
-    }
-    else
-    {
-
-        ExpectedTypeVisitor etv{
-            NotNull{&module->astTypes},
-            NotNull{&module->astExpectedTypes},
-            NotNull{&module->astResolvedTypes},
-            NotNull{&module->internalTypes},
-            builtinTypes,
-            NotNull{parentScope.get()}
-        };
-        sourceModule.root->visit(&etv);
-    }
+    ExpectedTypeVisitor etv{
+        NotNull{&module->astTypes},
+        NotNull{&module->astExpectedTypes},
+        NotNull{&module->astResolvedTypes},
+        NotNull{&module->astOverloadResolvedTypes},
+        NotNull{&module->internalTypes},
+        builtinTypes,
+        NotNull{parentScope.get()}
+    };
+    sourceModule.root->visit(&etv);
 
     // NOTE: This used to be done prior to cloning the public interface, but
     // we now replace "internal" types with `*error-type*`.
@@ -2088,6 +2107,10 @@ TypeId Frontend::parseType(
 
     DataFlowGraph dfg = DataFlowGraphBuilder::empty(NotNull{&module->defArena}, NotNull{&module->keyArena});
 
+    std::unique_ptr<ConstraintGraph> cgraph;
+    if (FFlag::LuauConstraintGraph)
+        cgraph = std::make_unique<ConstraintGraph>(builtinTypes);
+
     ConstraintGenerator cg{
         module,
         NotNull{&normalizer},
@@ -2100,7 +2123,8 @@ TypeId Frontend::parseType(
         nullptr,
         nullptr,
         NotNull{&dfg},
-        {}
+        {},
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr
     };
 
     TypeId t = cg.resolveType(globals.globalScope, parseResult.root, false);

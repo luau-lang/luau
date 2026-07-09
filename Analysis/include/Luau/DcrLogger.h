@@ -87,14 +87,25 @@ struct BoundarySnapshot
     DenseHashMap<const void*, std::string> typeStrings{nullptr};
 };
 
-struct StepSnapshot
+struct ConstraintStepSnapshot
 {
-    const Constraint* currentConstraint;
-    bool forced;
+    const Constraint* currentConstraint = nullptr;
+    bool forced = false;
     DenseHashMap<const Constraint*, ConstraintSnapshot> unsolvedConstraints{nullptr};
     ScopeSnapshot rootScope;
     DenseHashMap<const void*, std::string> typeStrings{nullptr};
 };
+
+struct GeneralizeStepSnapshot
+{
+    std::string before;
+    std::string after;
+    DenseHashMap<const Constraint*, ConstraintSnapshot> unsolvedConstraints{nullptr};
+    ScopeSnapshot rootScope;
+    DenseHashMap<const void*, std::string> typeStrings{nullptr};
+};
+
+using StepSnapshot = Variant<ConstraintStepSnapshot, GeneralizeStepSnapshot>;
 
 struct TypeSolveLog
 {
@@ -125,10 +136,15 @@ struct DcrLogger
     void popBlock(NotNull<const Constraint> block);
 
     void captureInitialSolverState(const Scope* rootScope, const std::vector<NotNull<const Constraint>>& unsolvedConstraints);
-    StepSnapshot prepareStepSnapshot(
+    ConstraintStepSnapshot prepareStepSnapshot(
         const Scope* rootScope,
         NotNull<const Constraint> current,
         bool force,
+        const std::vector<NotNull<const Constraint>>& unsolvedConstraints
+    );
+    GeneralizeStepSnapshot prepareGeneralizationSnapshot(
+        std::string before,
+        const Scope* rootScope,
         const std::vector<NotNull<const Constraint>>& unsolvedConstraints
     );
     void commitStepSnapshot(StepSnapshot snapshot);

@@ -8,6 +8,8 @@
 #include "lobject.h"
 #include "ltm.h"
 
+LUAU_FASTFLAG(LuauCodegenNoEcbData)
+
 // MS x64 ABI reminder:
 // Arguments: rcx, rdx, r8, r9 ('overlapped' with xmm0-xmm3)
 // Return: rax, xmm0
@@ -41,14 +43,13 @@ inline constexpr RegisterX64 rBase = r14;          // StkId base
 inline constexpr RegisterX64 rNativeContext = r13; // NativeContext* context
 inline constexpr RegisterX64 rConstants = r12;     // TValue* k
 
-inline constexpr unsigned kExtraLocals = 3;            // Number of 8 byte slots available for specialized local variables specified below
+inline constexpr unsigned kExtraLocals = 3; // Number of 8 byte slots available for specialized local variables specified below
+inline constexpr unsigned kSpillSlots = 23; // Number of 8 byte slots available for register allocator to spill data into
+static_assert((kExtraLocals + kSpillSlots) * 8 % 16 == 0, "locals have to preserve 16 byte alignment");
 inline constexpr unsigned kSpillSlots_DEPRECATED = 13; // Number of 8 byte slots available for register allocator to spill data into
-inline constexpr unsigned kSpillSlots_NEW = 12;        // TODO: re-adjust kExtraLocals/kSpillSlots to the new value
 static_assert((kExtraLocals + kSpillSlots_DEPRECATED) * 8 % 16 == 0, "locals have to preserve 16 byte alignment");
-static_assert(kSpillSlots_NEW <= kSpillSlots_DEPRECATED, "new spill slot allocation cannot exceed deprecated one");
-static_assert(kSpillSlots_NEW % 2 == 0, "spill slots have to be sized in 16 byte TValue chunks, for valid extra register spill-over");
-inline constexpr unsigned kExtraSpillSlots = 64;
-static_assert(kExtraSpillSlots * 8 <= LUA_EXECUTION_CALLBACK_STORAGE, "can't use more extra slots than Luau global state provides");
+inline constexpr unsigned kExtraSpillSlots_DEPRECATED = 64;
+static_assert(kExtraSpillSlots_DEPRECATED * 8 <= LUA_EXECUTION_CALLBACK_STORAGE, "can't use more extra slots than Luau global state provides");
 
 inline constexpr uint8_t kWindowsFirstNonVolXmmReg = 6;
 
@@ -64,7 +65,8 @@ inline uint8_t getXmmRegisterCount(ABIX64 abi)
 // Stack is separated into sections for different data. See CodeGenX64.cpp for layout overview
 inline constexpr unsigned kStackAlign = 8; // Bytes we need to align the stack for non-vol xmm register storage
 inline constexpr unsigned kStackLocalStorage = 8 * kExtraLocals;
-inline constexpr unsigned kStackSpillStorage = 8 * kSpillSlots_DEPRECATED;
+inline constexpr unsigned kStackSpillStorage = 8 * kSpillSlots;
+inline constexpr unsigned kStackSpillStorage_DEPRECATED = 8 * kSpillSlots_DEPRECATED;
 inline constexpr unsigned kStackExtraArgumentStorage = 2 * 8; // Bytes for 5th and 6th function call arguments used under Windows ABI
 inline constexpr unsigned kStackRegHomeStorage = 4 * 8;       // Register 'home' locations that can be used by callees under Windows ABI
 
@@ -87,7 +89,8 @@ inline constexpr unsigned kStackOffsetToSpillSlots = kStackOffsetToLocals + kSta
 
 inline unsigned getFullStackSize(ABIX64 abi, uint8_t xmmRegCount)
 {
-    return kStackOffsetToSpillSlots + kStackSpillStorage + getNonVolXmmStorageSize(abi, xmmRegCount) + kStackAlign;
+    return kStackOffsetToSpillSlots + (FFlag::LuauCodegenNoEcbData ? kStackSpillStorage : kStackSpillStorage_DEPRECATED) +
+           getNonVolXmmStorageSize(abi, xmmRegCount) + kStackAlign;
 }
 
 inline constexpr OperandX64 sClosure = qword[rsp + kStackOffsetToLocals + 0]; // Closure* cl
@@ -124,6 +127,11 @@ inline OperandX64 luauRegExtra(int ri)
 inline OperandX64 luauRegValueInt(int ri)
 {
     return dword[rBase + ri * sizeof(TValue) + offsetof(TValue, value)];
+}
+
+inline OperandX64 luauRegValueInt64(int ri)
+{
+    return qword[rBase + ri * sizeof(TValue) + offsetof(TValue, value.l)];
 }
 
 inline OperandX64 luauRegValueVector(int ri, int index)

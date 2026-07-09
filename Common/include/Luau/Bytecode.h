@@ -49,6 +49,9 @@
 // Version 6: Adds FASTCALL3. Currently supported.
 // Version 7: Adds LBC_CONSTANT_TABLE_WITH_CONSTANTS for DUPTABLE with pre-filled constant values. Currently supported.
 // Version 8: Adds LBC_CONSTANT_INTEGER for 64-bit integer constants. Currently supported.
+// Version 9: Adds atom-based userdata field access acceleration. Currently supported.
+// Version 10: Adds LBC_CONSTANT_CLASS_SHAPE and NEWCLASSMEMBER for use with Luau Classes. Experimental.
+// Version 11: Adds CALLFB, CMPPROTO and feedback vector description. Experimental.
 
 // # Bytecode type information history
 // Version 1: (from bytecode version 4) Type information for function signature. Currently supported.
@@ -421,6 +424,33 @@ enum LuauOpcode
     // C: constant table index (0..255)
     LOP_IDIVK,
 
+    // Atom-based userdata field access acceleration
+    // These are equivalent to their GETTABLEKS/SETTABLEKS/NAMECALL counterparts, except tailored towards userdata field accesses
+    // If the user has registered metamethods for a userdata tag, callbacks will be called by these instructions
+    LOP_GETUDATAKS,
+    LOP_SETUDATAKS,
+    LOP_NAMECALLUDATA,
+
+    // NEWCLASSMEMBER: register this method on a class object.
+    // A: target register of class
+    // B: reserved
+    // C: initial value of this member. currently must be a function.
+    // AUX: The name of this member as a constant string
+    LOP_NEWCLASSMEMBER,
+
+    // CALLFB: call specified function with collecting runtime stats in a feedback slot
+    // A: register where the function object lives, followed by arguments; results are placed starting from the same register
+    // B: argument count + 1, or 0 to preserve all arguments up to top (MULTRET)
+    // C: result count + 1, or 0 to preserve all values and adjust top (MULTRET)
+    // AUX: feedback slot id. 0xFFFFFFFF - sealed
+    LOP_CALLFB,
+
+    // CMPPROTO: check if a register contains a closure with a specified Luau function proto id
+    // A: closure register
+    // D: jump offset if proto doesn't match
+    // AUX: proto id
+    LOP_CMPPROTO,
+
     // Enum entry for number of opcodes, not a valid opcode by itself!
     LOP__COUNT
 };
@@ -457,13 +487,20 @@ enum LuauOpcode
 // Used in LOP_JUMPXEQK* instructions
 #define LUAU_INSN_AUX_NOT(aux) ((aux) >> 31)
 
+// Auxilary 16-bit constant index and 16-bit cachedslot
+// Used in LOP_GETUDATAKS, LOP_SETUDATAKS and LOP_NAMECALLUDATA
+#define LUAU_INSN_AUX_KV16(aux) ((aux) & 0xffffu)
+#define LUAU_INSN_AUX_SLOT(aux) ((aux) >> 16)
+
+#define LUAU_INSN_FBSLOT_SEALED 0xFFFFFFFF
+
 // Bytecode tags, used internally for bytecode encoded as a string
 enum LuauBytecodeTag
 {
     // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
     LBC_VERSION_MIN = 3,
-    LBC_VERSION_MAX = 8,
-    LBC_VERSION_TARGET = 6,
+    LBC_VERSION_MAX = 11,
+    LBC_VERSION_TARGET = 7,
     // Type encoding version
     LBC_TYPE_VERSION_MIN = 1,
     LBC_TYPE_VERSION_MAX = 3,
@@ -479,6 +516,10 @@ enum LuauBytecodeTag
     LBC_CONSTANT_VECTOR,
     LBC_CONSTANT_TABLE_WITH_CONSTANTS,
     LBC_CONSTANT_INTEGER,
+    LBC_CONSTANT_CLASS_SHAPE,
+
+    /** WARNING: This must always be last. */
+    LBC_CONSTANT__COUNT
 };
 
 // Type table tags
@@ -688,6 +729,10 @@ enum LuauBuiltinFunction
     LBF_INTEGER_COUNTRZ,
     LBF_INTEGER_COUNTLZ,
     LBF_INTEGER_BSWAP,
+
+    // buffer.readinteger / buffer.writeinteger (int64_t)
+    LBF_BUFFER_READINTEGER,
+    LBF_BUFFER_WRITEINTEGER,
 };
 
 // Capture type, used in LOP_CAPTURE
@@ -707,4 +752,11 @@ enum LuauProtoFlag
     LPF_NATIVE_COLD = 1 << 1,
     // used to tag main proto for modules that have at least one function with native attribute
     LPF_NATIVE_FUNCTION = 1 << 2,
+    // function can be inlined
+    LPF_INLINABLE = 1 << 3,
+};
+
+enum LuauFeedbackType
+{
+    LFT_CALLTARGET = 0
 };

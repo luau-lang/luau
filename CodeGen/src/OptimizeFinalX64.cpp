@@ -5,6 +5,8 @@
 
 #include <utility>
 
+LUAU_FASTFLAG(LuauCodegenVmExitSync)
+
 namespace Luau
 {
 namespace CodeGen
@@ -134,6 +136,10 @@ void optimizeMemoryOperandsX64(IrFunction& function)
     for (IrBlock& block : function.blocks)
     {
         if (block.kind == IrBlockKind::Dead)
+            continue;
+
+        // Inlining a load into its consumer inside the ExitSync block would will kill the operands listed in VM exit sync info argOps
+        if (FFlag::LuauCodegenVmExitSync && block.kind == IrBlockKind::ExitSync)
             continue;
 
         optimizeMemoryOperandsX64(function, block);

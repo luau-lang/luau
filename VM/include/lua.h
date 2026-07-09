@@ -84,14 +84,21 @@ enum lua_Type
     LUA_TUSERDATA,
     LUA_TTHREAD,
     LUA_TBUFFER,
+    LUA_TCLASS,
+    LUA_TOBJECT,
 
     // values below this line are used in GCObject tags but may never show up in TValue type tags
-    LUA_TPROTO,
-    LUA_TUPVAL,
+
+    // LUA_TDEADKEY is used in TKey to identify Luau table entries that have the value set to nil,
+    // so that we can remove the strong reference to the key.
     LUA_TDEADKEY,
 
+    // These values should never show up in TValue tag types.
+    LUA_TPROTO,
+    LUA_TUPVAL,
+
     // the count of TValue type tags
-    LUA_T_COUNT = LUA_TPROTO
+    LUA_T_COUNT = LUA_TDEADKEY
 };
 // clang-format on
 
@@ -331,10 +338,49 @@ typedef void (*lua_Destructor)(lua_State* L, void* userdata);
 LUA_API void lua_setuserdatadtor(lua_State* L, int tag, lua_Destructor dtor);
 LUA_API lua_Destructor lua_getuserdatadtor(lua_State* L, int tag);
 
-// alternative access for metatables already registered with luaL_newmetatable
+// alternative access for metatables already registered with luaL_newmetatable (remove this restriction with FFlagLuauUdataMetatablePinned)
 // used by lua_newuserdatataggedwithmetatable to create tagged userdata with the associated metatable assigned
 LUA_API void lua_setuserdatametatable(lua_State* L, int tag);
 LUA_API void lua_getuserdatametatable(lua_State* L, int tag);
+
+// NOTE: experimental API and is subject to breaking changes
+// registration of callbacks for direct userdata __index, __newindex and __namecall access with string keys assigned with an atom
+// cachedslot is initially 0 and can be set to a custom value to help with data lookup inside the userdata
+// IMPORTANT: cachedslot values are shared between all userdata, callbacks function of one userdata tag has to correctly handle values set by another
+typedef void (*lua_UserdataDirectAccess)(lua_State* L, void* data, int atom, uint16_t* cachedslot, int utag);
+typedef int (*lua_UserdataDirectNamecall)(lua_State* L, void* data, int atom, uint16_t* cachedslot, int utag);
+
+LUA_API int lua_registeruserdatadirectaccess(
+    lua_State* L,
+    int tag,
+    lua_UserdataDirectAccess get,
+    lua_UserdataDirectAccess set,
+    lua_UserdataDirectNamecall namecall
+);
+
+/*
+** Direct field API
+**
+** lua_registeruserdatadirectfieldget registers a per-field, per-userdata-type
+** handler that is invoked directly without allocating a Luau call frame.
+**
+** tag:   userdata tag (0..LUA_UTAG_LIMIT-1)
+** field: field name string (will be interned and pinned)
+** fn:    handler — receives raw userdata data pointer and result TValue slot
+*/
+typedef void (*lua_UserdataDirectFieldGet)(void* ud, void* result);
+LUA_API void lua_registeruserdatadirectfieldget(lua_State* L, int tag, const char* field, lua_UserdataDirectFieldGet fn);
+
+// Helpers for writing result values from a direct field handler.
+LUA_API void lua_userdatadirectfield_setnumber(void* result, double n);
+#if LUA_VECTOR_SIZE == 4
+LUA_API void lua_userdatadirectfield_setvector(void* result, float x, float y, float z, float w);
+#else
+LUA_API void lua_userdatadirectfield_setvector(void* result, float x, float y, float z);
+#endif
+LUA_API void lua_userdatadirectfield_setboolean(void* result, int b);
+LUA_API void lua_userdatadirectfield_setinteger64(void* result, int64_t n);
+LUA_API void lua_userdatadirectfield_setnil(void* result);
 
 LUA_API void lua_setlightuserdataname(lua_State* L, int tag, const char* name);
 LUA_API const char* lua_getlightuserdataname(lua_State* L, int tag);
@@ -384,6 +430,8 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_isbuffer(L, n) (lua_type(L, (n)) == LUA_TBUFFER)
 #define lua_isnone(L, n) (lua_type(L, (n)) == LUA_TNONE)
 #define lua_isnoneornil(L, n) (lua_type(L, (n)) <= LUA_TNIL)
+#define lua_isclass(L, n) (lua_type(L, (n)) == LUA_TCLASS)
+#define lua_isobject(L, n) (lua_type(L, (n)) == LUA_TOBJECT)
 
 #define lua_pushliteral(L, s) lua_pushlstring(L, "" s, (sizeof(s) / sizeof(char)) - 1)
 #define lua_pushcfunction(L, fn, debugname) lua_pushcclosurek(L, fn, debugname, 0, NULL)
