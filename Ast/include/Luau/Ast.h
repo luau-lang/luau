@@ -1204,7 +1204,7 @@ public:
     bool hasParameterList;
     std::optional<AstName> prefix;
     std::optional<Location> prefixLocation;
-    AstLocal* prefixLocal;
+    AstLocal* prefixLocal = nullptr;
     AstName name;
     Location nameLocation;
     AstArray<AstTypeOrPack> parameters;
