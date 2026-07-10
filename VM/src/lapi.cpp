@@ -1690,6 +1690,8 @@ void lua_getuserdatametatable(lua_State* L, int tag)
 
 const char* lua_getuserdataname(lua_State* L, int tag)
 {
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    
     const char* tname = "userdata";
 
     if (LuaTable* mt = L->global->udatamt[tag])

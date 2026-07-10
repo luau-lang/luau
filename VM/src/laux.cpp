@@ -144,7 +144,7 @@ void* luaL_checkudatatagged(lua_State* L, int ud, int tag)
     if (p != NULL)
         return p;
 
-    const char* tname = lua_getuserdataname(L, ud);
+    const char* tname = lua_getuserdataname(L, tag);
     luaL_typeerrorL(L, ud, tname); // else error
 }
 
