@@ -921,9 +921,6 @@ void setupUserdataHelpers(lua_State* L)
     lua_pushvalue(L, -1);
     lua_setuserdatametatable(L, kTagVertex);
 
-    lua_pushliteral(L, "vertex");
-    lua_setfield(L, -2, "__type");
-
     lua_pushcfunction(L, lua_vertex_index, nullptr);
     lua_setfield(L, -2, "__index");
 
