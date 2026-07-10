@@ -31,6 +31,7 @@ LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionRobustness)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeIsSubtypeOf)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionTableIndexerIsReadOnly)
+LUAU_FASTFLAGVARIABLE(LuauUdtfCreateSingletonFixErrorMessage)
 
 namespace Luau
 {
@@ -532,7 +533,10 @@ static int createSingleton(lua_State* L)
         return 1;
     }
 
-    luaL_error(L, "types.singleton: can't create singleton from `%s` type", lua_typename(L, 1));
+    if (FFlag::LuauUdtfCreateSingletonFixErrorMessage)
+        luaL_error(L, "types.singleton: can't create a singleton from a %s", luaL_typename(L, 1));
+    else
+        luaL_error(L, "types.singleton: can't create singleton from `%s` type", lua_typename(L, 1));
 }
 
 // Luau: `types.generic(name: string, ispack: boolean?) -> type
