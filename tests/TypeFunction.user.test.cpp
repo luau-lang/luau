@@ -20,6 +20,8 @@ LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
 LUAU_FASTFLAG(LuauTypeFunctionTableIndexerIsReadOnly)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
+LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3436,6 +3438,54 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_table_indexer")
     CHECK(toString(requireType("a")) == "false");
     CHECK(toString(requireType("b")) == "false");
     CHECK(toString(requireType("c")) == "true");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag tostringMetamethod{FFlag::LuauUdtfTypeToStringMetamethod, true};
+
+    CheckResult results = check(R"(
+        type function foo(ty)
+            error(tostring(ty))
+        end
+
+        type T<U> = {
+            read absoluteHina: true,
+            [number]: string,
+            t: T<U>
+        }
+
+        local x: foo<T<vector>>
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+
+    CHECK_EQ(
+        toString(results.errors[0]),
+        "'foo' type function errored at runtime: [string \"foo\"]:3: { [number]: string, read absoluteHina: true, t: t1 }"
+            " where t1 = { [number]: string, read absoluteHina: true, t: t1 }"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag fixErrorMessage{FFlag::LuauUdtfCreateSingletonFixErrorMessage, true};
+
+    CheckResult results = check(R"(
+        type alias = {}
+        type function meow()
+            return types.singleton(alias :: any)
+        end
+
+        type test = meow<>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    CHECK_EQ(
+        toString(results.errors[0]),
+        "'meow' type function errored at runtime: [string \"meow\"]:4: types.singleton: can't create a singleton from a type"
+    );
 }
 
 TEST_SUITE_END();
