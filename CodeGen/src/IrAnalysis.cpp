@@ -13,8 +13,6 @@
 
 #include <stddef.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenVmExitSync)
-
 namespace Luau
 {
 namespace CodeGen
@@ -90,7 +88,7 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
 
         VmExitSyncInfo* syncInfo = nullptr;
 
-        if (FFlag::LuauCodegenVmExitSync && block.kind == IrBlockKind::ExitSync)
+        if (block.kind == IrBlockKind::ExitSync)
         {
             if (const uint32_t* key = function.blockToVmExitMap.find(blockIndex))
                 syncInfo = function.vmExitInfo.find(*key);
@@ -106,35 +104,18 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
             CODEGEN_ASSERT(instIdx < function.instructions.size());
             IrInst& inst = instructions[instIdx];
 
-            if (FFlag::LuauCodegenVmExitSync)
+            if (isPseudo(inst.cmd))
+                continue;
+
+            for (IrOp& op : inst.ops)
             {
-                if (isPseudo(inst.cmd))
-                    continue;
-
-                for (IrOp& op : inst.ops)
+                if (syncInfo)
                 {
-                    if (syncInfo)
-                    {
-                        if (std::find(syncInfo->argOps.begin(), syncInfo->argOps.end(), op) != syncInfo->argOps.end())
-                            continue;
-                    }
-
-                    updateLastUseForOp(function, instIdx, op);
+                    if (std::find(syncInfo->argOps.begin(), syncInfo->argOps.end(), op) != syncInfo->argOps.end())
+                        continue;
                 }
-            }
-            else
-            {
-                auto checkOp = [&](IrOp op)
-                {
-                    if (op.kind == IrOpKind::Inst)
-                        instructions[op.index].lastUse = uint32_t(instIdx);
-                };
 
-                if (isPseudo(inst.cmd))
-                    continue;
-
-                for (IrOp& op : inst.ops)
-                    checkOp(op);
+                updateLastUseForOp(function, instIdx, op);
             }
         }
     }
@@ -195,19 +176,10 @@ uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t s
         if (isPseudo(inst.cmd))
             continue;
 
-        if (FFlag::LuauCodegenVmExitSync)
+        for (IrOp& op : inst.ops)
         {
-            for (IrOp& op : inst.ops)
-            {
-                if (isInstUseForOp(function, i, targetInstIdx, op, inVmExitSync))
-                    return i;
-            }
-        }
-        else
-        {
-            for (IrOp& op : inst.ops)
-                if (op.kind == IrOpKind::Inst && op.index == targetInstIdx)
-                    return i;
+            if (isInstUseForOp(function, i, targetInstIdx, op, inVmExitSync))
+                return i;
         }
     }
 
