@@ -105,15 +105,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "BuiltinGlobalWrite")
     LintResult result = lint(R"(
 math = {}
 
-function assert(x)
+function tostring(x)
 end
 
-assert(5)
+tostring(5)
 )");
 
     REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Built-in global 'math' is overwritten here; consider using a local or changing the name");
-    CHECK_EQ(result.warnings[1].text, "Built-in global 'assert' is overwritten here; consider using a local or changing the name");
+    CHECK_EQ(result.warnings[1].text, "Built-in global 'tostring' is overwritten here; consider using a local or changing the name");
 }
 
 TEST_CASE_FIXTURE(Fixture, "MultilineBlock")
