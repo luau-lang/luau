@@ -3578,6 +3578,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2125")
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         export type function CombineTableAndSetIndexer(a: type, b: type, c: type)
+            assert(a.tag == "table")
             local t = {}
 
             for key, value in a:properties() do

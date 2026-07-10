@@ -356,7 +356,6 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     if (frontend.getLuauSolverMode() == SolverMode::New)
         builtinTypes->typeFunctions->addToScope(NotNull{&arena}, NotNull{globals.globalScope.get()});
 
-
     LoadDefinitionFileResult loadResult = frontend.loadDefinitionFile(
         globals, globals.globalScope, getBuiltinDefinitionSource(), "@luau", /* captureComments */ false, typeCheckForAutocomplete
     );
@@ -568,7 +567,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     }
 
     LoadDefinitionFileResult typeFunctionLoadResult = frontend.loadDefinitionFile(
-        globals, globals.globalTypeFunctionScope, getTypeFunctionDefinitionSource(), "@luau", /* captureComments */ false, false
+        globals, globals.globalTypeFunctionScope, getTypeFunctionDefinitionSource(frontend.getLuauSolverMode() == SolverMode::New), "@luau", /* captureComments */ false, false
     );
     LUAU_ASSERT(typeFunctionLoadResult.success);
 

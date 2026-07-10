@@ -81,7 +81,7 @@ Property makeProperty(TypeId ty, std::optional<std::string> documentationSymbol 
 void assignPropDocumentationSymbols(TableType::Props& props, const std::string& baseName);
 
 std::string getBuiltinDefinitionSource();
-std::string getTypeFunctionDefinitionSource();
+std::string getTypeFunctionDefinitionSource(bool isNewSolver);
 
 void addGlobalBinding(GlobalTypes& globals, const std::string& name, TypeId ty, const std::string& packageName);
 void addGlobalBinding(GlobalTypes& globals, const std::string& name, Binding binding);

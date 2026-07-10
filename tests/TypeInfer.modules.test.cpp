@@ -885,6 +885,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
+    // Do not apply constraint limits to definition file
+    Frontend& frontend = getFrontend();
+
     ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 5};
     ScopedFastFlag _{FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true};
 
@@ -903,7 +906,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
         return {}
     )";
 
-    CheckResult result = getFrontend().check("game/B");
+    CheckResult result = frontend.check("game/B");
     // This is going to have a _ton_ of errors
     LUAU_CHECK_ERROR(result, CodeTooComplex);
     LUAU_CHECK_ERROR(result, ConstraintSolvingIncompleteError);
