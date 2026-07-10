@@ -1118,7 +1118,6 @@ int lua_setfenv(lua_State* L, int idx)
 
 void lua_setinlineuserdatadtor(lua_State* L, int idx, lua_InlineDestructor dtor)
 {
-    api_checknelems(L, 1);
     StkId o = index2addr(L, idx);
     api_checkvalidindex(L, o);
     api_check(L, ttisuserdata(o) && uvalue(o)->tag == UTAG_IDTOR);
