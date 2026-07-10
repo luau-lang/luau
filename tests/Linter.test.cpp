@@ -2580,6 +2580,8 @@ local _ = not str or true
 local _ = {} and true
 local _ = not {} and true
 local _ = foo() and true -- silent because it may be using foo() for side effects
+assert(num)
+assert(not num)
 
 -- don't warn about these
 if true then end
@@ -2590,9 +2592,12 @@ local _ = strNil or true
 local _ = not strNil or true
 local _ = numNil and true
 local _ = not numNil and true
+assert(true)
+assert(strNil)
+assert(false)
 )");
 
-    REQUIRE(8 == result.warnings.size());
+    REQUIRE(10 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, R"((num) is always true; did you mean (num ~= 0)?)");
     CHECK_EQ(result.warnings[1].text, R"((not num) is always false; did you mean (num == 0)?)");
     CHECK_EQ(result.warnings[2].text, R"((bit32.band(X, Y)) is always true; did you mean (bit32.btest(X, Y))?)");
@@ -2601,6 +2606,8 @@ local _ = not numNil and true
     CHECK_EQ(result.warnings[5].text, R"(The or expression always evaluates to the right side because (not str) is always false; did you mean (str == "")?)");
     CHECK_EQ(result.warnings[6].text, R"(The and expression always evaluates to the right side because (tbl) is always true; did you mean (next(tbl) ~= nil)?)");
     CHECK_EQ(result.warnings[7].text, R"(The and expression never evaluates the right side because (not tbl) is always false; did you mean (next(tbl) == nil)?)");
+    CHECK_EQ(result.warnings[8].text, R"((num) is always true; did you mean (num ~= 0)?)");
+    CHECK_EQ(result.warnings[9].text, R"((not num) is always false; did you mean (num == 0)?)");
 }
 
 TEST_SUITE_END();

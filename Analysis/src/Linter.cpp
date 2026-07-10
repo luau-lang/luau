@@ -3634,6 +3634,19 @@ private:
 
         return true;
     }
+
+    bool visit(AstExprCall* node) override
+    {
+        const char * msg;
+        bool negated;
+        if (const auto* global = node->func->as<AstExprGlobal>())
+            if (strcmp(global->name.value, "assert") == 0)
+                if (node->args.size >= 1)
+                    if (!checkCondition(node->args.data[0], &msg, &negated))
+                        emitWarning(*context, LintWarning::Code_MisleadingCondition, node->location, "%s", msg);
+
+        return true;
+    }
 };
 
 
