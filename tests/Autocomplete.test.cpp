@@ -18,7 +18,6 @@
 LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauAutocompleteStringSingletonIntersection)
 LUAU_FASTFLAG(LuauAutocompleteFunctionArglistSuggestion)
 LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 
@@ -5194,8 +5193,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_union_a
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_intersection_arg")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteStringSingletonIntersection, true};
-
     check(R"(
         local function foo(_: "Val1"&"Val1") end
         foo(@1)
@@ -5207,8 +5204,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_function_with_singleton_interse
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_intersection_variable")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteStringSingletonIntersection, true};
-
     check(R"(
         local _: "cat"&"cat" = "@1"
     )");
@@ -5220,8 +5215,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_intersection_variabl
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_intersection_multiple")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteStringSingletonIntersection, true};
-
     check(R"(
         local function C(_: "Example"&"Example") end
         C("@1")
@@ -5244,10 +5237,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_intersection_multipl
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons_in_intersection")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauAutocompleteStringSingletonIntersection, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
+    ScopedFastFlag sff = {FFlag::DebugLuauForceOldSolver, false};
 
     check(R"(
         local _: "foo"&"baz" = "@1"
@@ -5261,10 +5251,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons_in_intersection")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_disjoint_intersection_arg")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauAutocompleteStringSingletonIntersection, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
+    ScopedFastFlag sff = {FFlag::DebugLuauForceOldSolver, false};
 
     check(R"(
         local function f(_: "foo"&"baz") end
@@ -5285,10 +5272,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_disjoint_intersectio
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_string_singleton_keyof_intersection")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauAutocompleteStringSingletonIntersection, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
+    ScopedFastFlag sff = {FFlag::DebugLuauForceOldSolver, false};
 
     check(R"(
         local foo = {

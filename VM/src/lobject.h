@@ -385,6 +385,7 @@ typedef struct Proto
     uint32_t funid;
     Proto* optimized;
     Proto* deoptimized;
+    uint64_t cost;
 } Proto;
 // clang-format on
 
