@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
 LUAU_FASTFLAG(LuauTypeFunctionTableIndexerIsReadOnly)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
@@ -3463,6 +3464,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
         toString(results.errors[0]),
         "'foo' type function errored at runtime: [string \"foo\"]:3: { [number]: string, read absoluteHina: true, t: t1 }"
             " where t1 = { [number]: string, read absoluteHina: true, t: t1 }"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag fixErrorMessage{FFlag::LuauUdtfCreateSingletonFixErrorMessage, true};
+
+    CheckResult results = check(R"(
+        type alias = {}
+        type function meow()
+            return types.singleton(alias :: any)
+        end
+
+        type test = meow<>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    CHECK_EQ(
+        toString(results.errors[0]),
+        "'meow' type function errored at runtime: [string \"meow\"]:4: types.singleton: can't create a singleton from a type"
     );
 }
 
