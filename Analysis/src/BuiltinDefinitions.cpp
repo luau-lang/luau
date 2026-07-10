@@ -24,6 +24,8 @@
 #include <algorithm>
 #include <string_view>
 
+LUAU_FASTFLAGVARIABLE(LuauRawGetUseTypeFunction)
+
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
  * Some of them require richer generics than we have.  For instance, we do not yet have a way to talk
@@ -480,6 +482,18 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
             }
         );
         addGlobalBinding(globals, "assert", assertTy, "@luau");
+
+        if (FFlag::LuauRawGetUseTypeFunction)
+        {
+            // rawget : <T, K>(tab: T, key: K) -> rawget<T, K>
+            TypeId rawgetReturn = arena.addType(TypeFunctionInstanceType{builtinTypes->typeFunctions->rawgetFunc, {genericT, genericK}});
+            addGlobalBinding(
+                globals,
+                "rawget",
+                makeFunction(arena, std::nullopt, {genericT, genericK}, {}, {genericT, genericK}, {"tab", "k"}, {rawgetReturn}),
+                "@luau"
+            );
+        }
     }
 
     attachMagicFunction(getGlobalBinding(globals, "setmetatable"), std::make_shared<MagicSetMetatable>());
