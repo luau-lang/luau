@@ -14,6 +14,7 @@
 #include "Luau/Coverage.h"
 #include "Luau/FileUtils.h"
 #include "Luau/Flags.h"
+#include "Luau/JitInliner.h"
 #include "Luau/Profiler.h"
 #include "Luau/ReplRequirer.h"
 #include "Luau/Require.h"
@@ -50,6 +51,7 @@ constexpr int MaxTraversalLimit = 50;
 
 static bool codegen = false;
 static bool codegenCold = false;
+static bool jitInliner = false;
 static int program_argc = 0;
 char** program_argv = nullptr;
 
@@ -205,6 +207,9 @@ void setupState(lua_State* L)
 {
     if (codegen)
         Luau::CodeGen::create(L);
+
+    if (jitInliner)
+        Luau::JitInliner::setup(L);
 
     luaL_openlibs(L);
 
@@ -688,6 +693,7 @@ static void displayHelp(const char* argv0)
     printf("  --codegen-perf: execute code using native code generation and profile using perf (only on Linux)\n");
     printf("  --program-args,-a: declare start of arguments to be passed to the Luau program\n");
     printf("  --fflags=<flags>: comma-separated list of fast flags to enable/disable (--fflags=true,false,LuauFlag1=true,LuauFlag2=false).\n");
+    printf("  --jit-inliner: enable JIT bytecode inliner\n");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)
@@ -775,6 +781,10 @@ int replMain(int argc, char** argv)
         else if (strcmp(argv[i], "--timetrace") == 0)
         {
             FFlag::DebugLuauTimeTracing.value = true;
+        }
+        else if (strcmp(argv[i], "--jit-inliner") == 0)
+        {
+            jitInliner = true;
         }
         else if (strncmp(argv[i], "--fflags=", 9) == 0)
         {

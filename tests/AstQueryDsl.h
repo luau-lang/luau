@@ -36,8 +36,8 @@ struct FindNthOccurenceOf : public AstVisitor
     bool checkIt(AstNode* n);
 
     bool visit(AstNode* n) override;
-    bool visit(AstType* n) override;
-    bool visit(AstTypePack* n) override;
+    bool visit(AstType* t) override;
+    bool visit(AstTypePack* t) override;
 };
 
 /** DSL querying of the AST.

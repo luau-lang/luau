@@ -28,14 +28,10 @@ LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauCompileTypeAliases)
-LUAU_FASTFLAG(LuauCompilePropagateTableProps2)
-LUAU_FASTFLAG(LuauCompileFastcall3CostModel)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCompileNewTableMutationTracker)
-LUAU_FASTFLAG(LuauCompileFoldOptimize)
 LUAU_FASTFLAG(LuauCompileInlineTableFunctions)
 
 using namespace Luau;
@@ -4099,8 +4095,6 @@ local b = test(2)
 )"
     );
 
-    ScopedFastFlag luauCompileFastcall3CostModel{FFlag::LuauCompileFastcall3CostModel, true};
-
     CHECK_EQ(
         compileWithRemarks(R"(
 local b = buffer.create(128)
@@ -5179,8 +5173,6 @@ L1: RETURN R0 0
 
 TEST_CASE("TableConstantStringIndex")
 {
-    ScopedFastFlag sff{FFlag::LuauCompilePropagateTableProps2, true};
-
     CHECK_EQ(
         "\n" + compileFunction0(R"(
 local t = { a = 2 }
@@ -8719,9 +8711,7 @@ RETURN R0 0
 
 TEST_CASE("InlineTableFunction")
 {
-    ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
     ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-    ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
     ScopedFastFlag luauCompileInlineTableFunctions{FFlag::LuauCompileInlineTableFunctions, true};
 
     CHECK_EQ(
@@ -11313,9 +11303,7 @@ RETURN R1 1
 
 TEST_CASE("FoldConstTableProps")
 {
-    ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
     ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-    ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -11680,9 +11668,7 @@ RETURN R1 1
 
 TEST_CASE("FoldConstTablePropsOrAnd")
 {
-    ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
     ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-    ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
 
     // handle 'or'
     CHECK_EQ(
@@ -11754,9 +11740,7 @@ RETURN R1 1
 TEST_CASE("FoldConstTablePropsReturnLocal")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
     ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-    ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -11798,9 +11782,7 @@ RETURN R0 1
 
 TEST_CASE("FoldConstTablePropsReturnUpvalue")
 {
-    ScopedFastFlag luauCompilePropagateTableProps{FFlag::LuauCompilePropagateTableProps2, true};
     ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-    ScopedFastFlag luauCompileFoldOptimize{FFlag::LuauCompileFoldOptimize, true};
 
     // returning a table is an 'escape' if we also provide a separate way of observing the same table
     CHECK_EQ(
@@ -11883,7 +11865,7 @@ L0: RETURN R0 0
 
 TEST_CASE("ExportLocalBytecode")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
 
     // basic exported local: value is stored into the export table, then table is frozen and returned
     CHECK_EQ(
@@ -11934,7 +11916,7 @@ RETURN R2 1
 
 TEST_CASE("ExportSyntaxRegression")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauConst2, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
 
     // this used to ICE the compiler due to mishandling of export lookups, and StatIn expecting three allocated registers
     CHECK_NOTHROW(compileFunction0(R"(
@@ -11980,7 +11962,6 @@ TEST_CASE("ExportClass")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauExportValueSyntax, true},
-        {FFlag::LuauConst2, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
     };
 

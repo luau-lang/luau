@@ -126,6 +126,8 @@ function test()
     for i = 1, N do advance(bodies, nbody, 0.01) end
     local ts1 = os.clock()
 
+    assert(math.abs(energy(bodies, nbody) + 0.169089263) < 1e-6)
+
     return ts1 - ts0
 end
 

@@ -18,6 +18,9 @@ constexpr unsigned kTKeyTagMask = (1 << kTKeyTagBits) - 1;
 
 constexpr unsigned kOffsetOfInstructionC = 3;
 
+constexpr unsigned kLimitedGprRegCount = 7;
+constexpr unsigned kLimitedSimdRegCount = 6;
+
 // Leaf functions that are placed in every module to perform common instruction sequences
 struct ModuleHelpers
 {

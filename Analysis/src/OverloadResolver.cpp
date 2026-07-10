@@ -12,6 +12,8 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+
 namespace Luau
 {
 
@@ -502,7 +504,9 @@ void OverloadResolver::testFunction(
 
     TypeId prospectiveFunction = arena->addType(FunctionType{argsPack, builtinTypes->anyTypePack});
 
-    subtyping.uniqueTypes = uniqueTypes;
+    if (!FFlag::LuauBidirectionalInferenceSimplifyTables)
+        subtyping.uniqueTypes = uniqueTypes;
+
     SubtypingResult r = subtyping.isSubtype(fnTy, prospectiveFunction, scope);
 
     // Frustratingly, subtyping does not know about error suppression, so this

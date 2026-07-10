@@ -14,6 +14,7 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenDsePtrStoreTagCheck)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAGVARIABLE(LuauCodegenVmExitSyncFix)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDseRestoreHints)
+LUAU_FLAGVERSION(LuauCodegenDseRestoreHints, 2)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
@@ -169,9 +170,6 @@ struct RemoveDeadStoreState
     {
         if (regInfo.valueInstIdx != ~0u)
         {
-            if (FFlag::LuauCodegenDseRestoreHints)
-                recordHintBeforeKill(regInfo.valueInstIdx);
-
             kill(function, function.instructions[regInfo.valueInstIdx]);
 
             regInfo.valueInstIdx = ~0u;
@@ -703,8 +701,15 @@ static bool tryReplaceTagWithFullStore(
             }
         }
 
-        state.killTagStore(regInfo);
-        state.killValueStore(regInfo);
+        if (FFlag::LuauCodegenDseRestoreHints)
+        {
+            state.killTagAndValueStorePair(regInfo);
+        }
+        else
+        {
+            state.killTagStore(regInfo);
+            state.killValueStore(regInfo);
+        }
 
         regInfo.tvalueInstIdx = instIndex;
         regInfo.maybeGco = isGCO(tag);
@@ -783,8 +788,15 @@ static bool tryReplaceValueWithFullStore(
         CODEGEN_ASSERT(regInfo.knownTag == prevTag);
         replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, {targetOp, prevTagOp, valueOp}});
 
-        state.killTagStore(regInfo);
-        state.killValueStore(regInfo);
+        if (FFlag::LuauCodegenDseRestoreHints)
+        {
+            state.killTagAndValueStorePair(regInfo);
+        }
+        else
+        {
+            state.killTagStore(regInfo);
+            state.killValueStore(regInfo);
+        }
 
         regInfo.tvalueInstIdx = instIndex;
         return true;
@@ -866,8 +878,15 @@ static bool tryReplaceVectorValueWithFullStore(
 
         replace(function, OP_E(storeInst), prevTagOp);
 
-        state.killTagStore(regInfo);
-        state.killValueStore(regInfo);
+        if (FFlag::LuauCodegenDseRestoreHints)
+        {
+            state.killTagAndValueStorePair(regInfo);
+        }
+        else
+        {
+            state.killTagStore(regInfo);
+            state.killValueStore(regInfo);
+        }
 
         regInfo.tvalueInstIdx = instIndex;
         return true;

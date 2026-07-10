@@ -12,11 +12,7 @@
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAG(LuauConst2)
 
-LUAU_FASTFLAGVARIABLE(LuauErrorTolerantPrettyPrinting)
-LUAU_FASTFLAG(LuauCstExprGroup)
-LUAU_FASTFLAG(LuauCstTypeGroup)
 LUAU_FASTFLAG(LuauCstAttr)
 
 namespace
@@ -476,16 +472,8 @@ struct Printer
 
             visualize(*a->expr);
 
-            if (FFlag::LuauCstExprGroup)
-            {
-                if (const auto cstNode = lookupCstNode<CstExprGroup>(a))
-                    maybeAdvanceAndWrite(cstNode->closePosition, ")");
-                else
-                {
-                    advanceBefore(a->location.end, 1);
-                    writer.symbol(")");
-                }
-            }
+            if (const auto cstNode = lookupCstNode<CstExprGroup>(a))
+                maybeAdvanceAndWrite(cstNode->closePosition, ")");
             else
             {
                 advanceBefore(a->location.end, 1);
@@ -1003,7 +991,7 @@ struct Printer
         else if (const auto& a = program.as<AstStatLocal>())
         {
             const auto cstNode = lookupCstNode<CstStatLocal>(a);
-            if (FFlag::LuauExportValueSyntax && FFlag::LuauConst2 && a->isExported)
+            if (FFlag::LuauExportValueSyntax && a->isExported)
             {
                 writer.keyword("export");
 
@@ -1012,7 +1000,7 @@ struct Printer
 
                 writer.keyword(a->isConst ? "const" : "local");
             }
-            else if (FFlag::LuauConst2 && a->isConst)
+            else if (a->isConst)
             {
                 writer.keyword("const");
             }
@@ -1243,11 +1231,11 @@ struct Printer
             if (cstNode)
                 advance(cstNode->localKeywordPosition);
 
-            if (FFlag::LuauExportValueSyntax && FFlag::LuauConst2 && a->name->isExported)
+            if (FFlag::LuauExportValueSyntax && a->name->isExported)
             {
                 writer.keyword("export");
             }
-            else if (FFlag::LuauConst2 && a->name->isConst)
+            else if (a->name->isConst)
             {
                 writer.keyword("const");
             }
@@ -2081,16 +2069,8 @@ struct Printer
 
             visualizeTypeAnnotation(*a->type);
 
-            if (FFlag::LuauCstTypeGroup)
-            {
-                if (const CstTypeGroup* cstNode = lookupCstNode<CstTypeGroup>(a))
-                    maybeAdvanceAndWrite(cstNode->closePosition, ")");
-                else
-                {
-                    advanceBefore(a->location.end, 1);
-                    writer.symbol(")");
-                }
-            }
+            if (const CstTypeGroup* cstNode = lookupCstNode<CstTypeGroup>(a))
+                maybeAdvanceAndWrite(cstNode->closePosition, ")");
             else
             {
                 advanceBefore(a->location.end, 1);
@@ -2219,7 +2199,7 @@ PrettyPrintResult prettyPrint(std::string_view source, ParseOptions options, boo
     auto names = AstNameTable{allocator};
     ParseResult parseResult = Parser::parse(source.data(), source.size(), names, allocator, std::move(options));
 
-    if (FFlag::LuauErrorTolerantPrettyPrinting ? !parseResult.errors.empty() && !ignoreParseErrors : !parseResult.errors.empty())
+    if (!parseResult.errors.empty() && !ignoreParseErrors)
     {
         // PrettyPrintResult keeps track of only a single error
         const ParseError& error = parseResult.errors.front();
