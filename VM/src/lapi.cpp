@@ -1695,7 +1695,8 @@ const char* lua_getuserdataname(lua_State* L, int tag)
     if (LuaTable* mt = L->global->udatamt[tag])
     {
         const TValue* type = luaH_getstr(mt, L->global->tmname[TM_TYPE]);
-        tname = ttisstring(type) ? getstr(tsvalue(type)) : "userdata";
+        if (ttisstring(type))
+            tname = getstr(tsvalue(type));
     }
 
     return tname;

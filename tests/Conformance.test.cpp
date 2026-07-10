@@ -671,7 +671,13 @@ Vertex* lua_vertex_push(lua_State* L)
 
 Vertex* lua_vertex_get(lua_State* L, int idx)
 {
-    return (Vertex*)luaL_checkudatatagged(L, idx, kTagVertex);
+    // Intentionally not using `luaL_checkudatatagged` for coverage
+    Vertex* a = (Vertex*)lua_touserdatatagged(L, idx, kTagVertex);
+
+    if (a)
+        return a;
+
+    luaL_typeerror(L, idx, "vertex");
 }
 
 static int lua_vertex(lua_State* L)
