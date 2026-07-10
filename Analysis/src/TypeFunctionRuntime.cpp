@@ -1884,6 +1884,9 @@ static int typeToString(lua_State* L)
 
     TypeFunctionRuntimeBuilderState* runtimeBuilder = Luau::getTypeFunctionRuntime(L)->runtimeBuilder;
     TypeId selfTy = Luau::deserialize(self, runtimeBuilder);
+    if (FFlag::LuauTypeFunctionStructuredErrors ? !runtimeBuilder->errors.empty() : !runtimeBuilder->errors_DEPRECATED.empty())
+        luaL_error(L, "failed to deserialize the self type");
+
     std::string asString = Luau::toString(selfTy);
 
     lua_pushlstring(L, asString.data(), asString.size());
