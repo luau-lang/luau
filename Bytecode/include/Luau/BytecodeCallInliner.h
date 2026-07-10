@@ -3,6 +3,7 @@
 
 #include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeOps.h"
+#include "Luau/DenseHash.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -35,6 +36,10 @@ struct CallInliner
     std::vector<BcOp> returnOps;
     std::unordered_set<BcOp, BcOpHash> callProjections;
     std::unordered_map<BcOp, std::vector<BcOp>, BcOpHash> varArgMoves;
+    // memoizes target-phi -> caller-phi so a target phi referenced both in a block's phi list and as
+    // another phi's operand maps to a single caller phi. Without this, the operand reference would get
+    // its own unanchored duplicate that SCCP never visits (it only visits phis listed in a block)
+    DenseHashMap<BcOp, BcOp, BcOpHash> mappedPhis{BcOp()};
 
     CallInliner(BcFunction<VmConst>& caller, BcFunction<VmConst>& target, BcOp callOp, uint32_t callerFbVecSize)
         : caller(caller)
@@ -225,7 +230,7 @@ struct CallInliner
                 returnOps.resize(proj.index + 1);
                 BcOp phiOp = caller.addPhi();
                 BcRef<BcPhi> phi = caller.phi(phiOp);
-                phi->ops.push_back(projOp);
+                caller.addUse(phi, projOp);
                 callProjections.insert(projOp);
                 returnOps[proj.index] = phiOp;
             }
@@ -245,7 +250,7 @@ struct CallInliner
             {
                 BcOp phiOp = caller.addPhi();
                 BcRef<BcPhi> phi = caller.phi(phiOp);
-                phi->ops.push_back(returnOps[idx]);
+                caller.addUse(phi, returnOps[idx]);
                 returnOps[idx] = phiOp;
             }
             else
@@ -260,7 +265,7 @@ struct CallInliner
                     }
 
                 if (!exists)
-                    phi->ops.push_back(op);
+                    caller.addUse(phi, op);
             }
         }
     }
@@ -359,6 +364,12 @@ struct CallInliner
             for (auto& e : targetBlock.predecessors)
                 callerBlock.predecessors.push_back({e.kind, mapBlockOp(e.target)});
 
+            for (auto phiOp : targetBlock.phis)
+            {
+                BcOp callerPhiOp = mapToCallerOp(phiOp);
+                callerBlock.phis.push_back(callerPhiOp);
+            }
+
             for (auto op : targetBlock.ops)
             {
                 BcInst& inst = target.instOp(op);
@@ -399,14 +410,22 @@ struct CallInliner
         }
         case BcOpKind::Phi:
         {
-            BcRef<BcPhi> phi = caller.phi(caller.addPhi());
+            // memoize before recursing so a phi that (transitively) references itself, as loop-carried
+            // phis do, resolves to the same caller phi instead of recursing forever
+            if (auto it = mappedPhis.find(targetOp); it != nullptr)
+                return *it;
+
+            BcOp callerPhiOp = caller.addPhi();
+            mappedPhis[targetOp] = callerPhiOp;
             BcRef<BcPhi> targetPhi = target.phi(targetOp);
             for (uint32_t i = 0; i < targetPhi->ops.size(); i++)
             {
-                BcOp mapped = mapToCallerOp(targetPhi->ops[i]);
-                phi->ops.push_back(mapped);
+                BcOp targetPhiOp = targetPhi->ops[i];
+                BcOp mapped = mapToCallerOp(targetPhiOp);
+                BcRef<BcPhi> callerPhi = caller.phi(callerPhiOp);
+                caller.addUse(callerPhi, mapped);
             }
-            return phi.op;
+            return callerPhiOp;
         }
         case BcOpKind::Proj:
         {
@@ -529,13 +548,13 @@ struct CallInliner
                 for (BcOp inp : targetInst->ops)
                 {
                     if (inp != targetInst->ops.back())
-                        callerInst->ops.push_back(mapToCallerOp(inp));
+                        caller.addUse(callerInst, mapToCallerOp(inp));
                     else
                     {
                         LUAU_ASSERT(varArgMoves.count(inp) > 0);
                         std::vector<BcOp>& moves = varArgMoves[inp];
                         for (BcOp move : moves)
-                            callerInst->ops.push_back(move);
+                            caller.addUse(callerInst, move);
                     }
                 }
                 makeFixedConsumer(caller, callerInst);
@@ -543,7 +562,7 @@ struct CallInliner
             else
             {
                 for (BcOp inp : targetInst->ops)
-                    callerInst->ops.push_back(mapToCallerOp(inp));
+                    caller.addUse(callerInst, mapToCallerOp(inp));
             }
             if (auto it = target.regs.find(targetInsnOp); it != target.regs.end())
                 caller.regs[callerInsnOp] = mapToCallerReg(it->second);
@@ -564,7 +583,7 @@ struct CallInliner
         }
     }
 
-    void replaceCallUsagesInOps(BcOps& ops)
+    void replaceCallUsagesInOps(BcOp consumer, BcOps& ops)
     {
         // It is safe to assume the call instruction is always referred as a projection,
         // because inlining of only fixed return size calls are supported and parsers
@@ -576,18 +595,21 @@ struct CallInliner
             {
                 BcProj& proj = caller.projOp(*it);
                 LUAU_ASSERT(proj.index < returnOps.size());
+                // the projection operand is rewritten in place, so the `ops` edge already exists;
+                // only the return def's reverse `uses` edge needs to be recorded
                 op = returnOps[proj.index];
+                caller.recordUse(op, consumer);
             }
     }
 
     void replaceCallUsagesWithReturnPhis()
     {
         for (uint32_t i = 0; i < callerInstSizeBeforeInline; i++)
-            replaceCallUsagesInOps(caller.instructions[i].ops);
+            replaceCallUsagesInOps(BcOp{BcOpKind::Inst, i}, caller.instructions[i].ops);
 
         for (uint32_t i = 0; i < caller.phis.size(); i++)
             if (std::find(returnOps.begin(), returnOps.end(), BcOp{BcOpKind::Phi, i}) == returnOps.end())
-                replaceCallUsagesInOps(caller.phis[i].ops);
+                replaceCallUsagesInOps(BcOp{BcOpKind::Phi, i}, caller.phis[i].ops);
     }
 
     void dropPrepVarArgsInInlinedPath()
@@ -702,6 +724,10 @@ struct CallInliner
         migrateInstructions();
 
         replaceCallUsagesWithReturnPhis();
+
+        for (BcOp retOp : returnOps)
+            if (retOp.kind == BcOpKind::Phi)
+                nextBlock->phis.push_back(retOp);
 
         dropPrepVarArgsInInlinedPath();
 

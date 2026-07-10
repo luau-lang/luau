@@ -6,7 +6,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauVisitCallTypeArgsInDfg)
 LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
@@ -529,10 +528,6 @@ TEST_CASE_FIXTURE(Fixture, "replacing_generic_with_generic")
 
 TEST_CASE_FIXTURE(Fixture, "typeof_in_method_call_type_args_no_crash")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauVisitCallTypeArgsInDfg, true},
-    };
-
     CheckResult result = check(R"(
         local t = {}
         function t:f<T, U>() end
@@ -553,9 +548,6 @@ TEST_CASE_FIXTURE(Fixture, "typeof_in_method_call_type_args_no_crash")
 
 TEST_CASE_FIXTURE(Fixture, "typeof_local_in_type_pack_no_crash")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauVisitCallTypeArgsInDfg, true},
-    };
 
     CheckResult result = check(R"(
         local t = {}

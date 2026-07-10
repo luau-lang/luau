@@ -160,7 +160,9 @@ function test()
     init_indices()
     calculate_normals()
     compute_triangle_cones()
-    compute_tangent_space()
+    local checksum = compute_tangent_space()
+
+    assert(math.abs(checksum + 1323.4993) < 1e-2)
 end
 
 bench.runCode(test, "mesh-normal-vector")

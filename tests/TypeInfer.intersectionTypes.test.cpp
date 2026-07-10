@@ -1501,7 +1501,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "narrow_intersection_nevers")
     ScopedFastFlag sffs{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
-        declare class Player
+        declare extern type Player with
             Character: unknown
         end
     )");

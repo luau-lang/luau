@@ -8,6 +8,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 
 using namespace Luau;
 
@@ -1868,6 +1869,21 @@ end
         REQUIRE(1 == result.warnings.size());
         checkDeprecatedWarning(result.warnings[0], Position(12, 0), Position(12, 22), "Member 'deposit' is deprecated");
     }
+
+    // @deprecated works on anonymous functions assigned to locals
+    {
+        ScopedFastFlag sflag{FFlag::LuauDeprecatedAttributeOnAnonymousFunctions, true};
+
+        LintResult result = lint(R"(
+local foo = @deprecated function()
+end
+
+foo()
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(result.warnings[0], Position(4, 0), Position(4, 3), "Function 'foo' is deprecated");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeWithParams")
@@ -2037,7 +2053,7 @@ print(Hooty:tooty(2.0))
 
     {
         loadDefinition(R"(
-declare class Foo
+declare extern type Foo with
    @[deprecated{use = 'foo', reason = 'baz'}]
    function bar(self, value: number) : number
 end
@@ -2102,7 +2118,7 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeMethodDeclaration")
     // @deprecated works on table type declarations
 
     loadDefinition(R"(
-declare class Foo
+declare extern type Foo with
    @deprecated
    function bar(self, value: number) : number
 end

@@ -6,7 +6,7 @@
 #include "lmem.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauClosureUsageCounter)
+LUAU_FASTFLAG(LuauCIProto)
 LUAU_FASTINTVARIABLE(LuauInlineHitsThreshold, 3)
 
 Proto* luaF_newproto(lua_State* L)
@@ -58,6 +58,8 @@ Proto* luaF_newproto(lua_State* L)
     f->feedbackvec = NULL;
     f->feedbackvecsize = 0;
     f->funid = 0;
+    f->optimized = nullptr;
+    f->deoptimized = nullptr;
 
     return f;
 }
@@ -71,7 +73,6 @@ Closure* luaF_newLclosure(lua_State* L, int nelems, LuaTable* e, Proto* p)
     c->nupvalues = cast_byte(nelems);
     c->stacksize = p->maxstacksize;
     c->preload = 0;
-    c->usage = 0;
     c->l.p = p;
     for (int i = 0; i < nelems; ++i)
         setnilvalue(&c->l.uprefs[i]);
@@ -87,7 +88,6 @@ Closure* luaF_newCclosure(lua_State* L, int nelems, LuaTable* e)
     c->nupvalues = cast_byte(nelems);
     c->stacksize = LUA_MINSTACK;
     c->preload = 0;
-    c->usage = 0;
     c->c.f = NULL;
     c->c.cont = NULL;
     c->c.debugname = NULL;

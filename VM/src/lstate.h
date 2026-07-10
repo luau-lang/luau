@@ -59,6 +59,7 @@ typedef struct CallInfo
     StkId base;    // base for this function
     StkId func;    // function index in the stack
     StkId top;     // top for this function
+    Proto* p;
 
     union
     {

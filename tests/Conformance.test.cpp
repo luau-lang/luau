@@ -5,6 +5,7 @@
 #include "lualib.h"
 #include "luacode.h"
 #include "luacodegen.h"
+#include "luajitinliner.h"
 
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/DenseHash.h"
@@ -38,6 +39,7 @@
 
 extern bool verbose;
 extern bool codegen;
+extern bool jitInliner;
 extern int optimizationLevel;
 
 // internal functions, declared in lgc.h - not exposed via lua.h
@@ -46,6 +48,12 @@ void luaC_validate(lua_State* L);
 
 // internal functions, declared in lvm.h - not exposed via lua.h
 void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
+
+#if LUA_VECTOR_SIZE == 4
+#define lua_pushvector3(L, x, y, z) lua_pushvector(L, x, y, z, 0.0)
+#else
+#define lua_pushvector3(L, x, y, z) lua_pushvector(L, x, y, z)
+#endif
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
@@ -61,6 +69,7 @@ LUAU_FASTFLAG(LuauCustomYieldablePcalls)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauAutoStack)
 LUAU_FASTFLAG(LuauUdataMetatablePinned)
+LUAU_DYNAMIC_FASTFLAG(LuauGcTableStepFix)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -280,6 +289,9 @@ static StateRef runConformance(
 
     if (codegen && !skipCodegen && luau_codegen_supported())
         luau_codegen_create(L);
+
+    if (jitInliner)
+        luau_enable_jit_inliner(L);
 
     luaL_openlibs(L);
 
@@ -706,13 +718,13 @@ static int lua_vertex_index(lua_State* L)
 
     if (strcmp(name, "pos") == 0)
     {
-        lua_pushvector(L, v->pos[0], v->pos[1], v->pos[2]);
+        lua_pushvector3(L, v->pos[0], v->pos[1], v->pos[2]);
         return 1;
     }
 
     if (strcmp(name, "normal") == 0)
     {
-        lua_pushvector(L, v->normal[0], v->normal[1], v->normal[2]);
+        lua_pushvector3(L, v->normal[0], v->normal[1], v->normal[2]);
         return 1;
     }
 
@@ -1063,7 +1075,6 @@ static int vec2DirectNamecall(lua_State* L, void* data, int atom, uint16_t* cach
     default:
         luaL_error(L, "%s is not a valid method of vec2", lua_namecallatom(L, nullptr));
     }
-    return 0;
 }
 
 static void vertexDirectIndex(lua_State* L, void* data, int atom, uint16_t* cachedslot, int utag)
@@ -1076,10 +1087,10 @@ static void vertexDirectIndex(lua_State* L, void* data, int atom, uint16_t* cach
     switch (DirectSlot(*cachedslot))
     {
     case DirectSlot::Pos:
-        lua_pushvector(L, self->pos[0], self->pos[1], self->pos[2]);
+        lua_pushvector3(L, self->pos[0], self->pos[1], self->pos[2]);
         break;
     case DirectSlot::Normal:
-        lua_pushvector(L, self->normal[0], self->normal[1], self->normal[2]);
+        lua_pushvector3(L, self->normal[0], self->normal[1], self->normal[2]);
         break;
     case DirectSlot::UV:
     {
@@ -1147,7 +1158,6 @@ static int vertexDirectNamecall(lua_State* L, void* data, int atom, uint16_t* ca
     default:
         luaL_error(L, "%s is not a valid method of vertex", lua_namecallatom(L, nullptr));
     }
-    return 0;
 }
 
 static void setupNativeHelpers(lua_State* L)
@@ -1269,8 +1279,6 @@ TEST_CASE("Integers")
         }
     }
 }
-
-
 
 TEST_CASE("Tables")
 {
@@ -1397,6 +1405,8 @@ static void* blockableRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
 
 TEST_CASE("GC")
 {
+    ScopedFastFlag luauGcTableStepFix{DFFlag::LuauGcTableStepFix, true};
+
     runConformance(
         "gc.luau",
         [](lua_State* L)

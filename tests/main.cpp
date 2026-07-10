@@ -48,6 +48,9 @@ bool codegen = false;
 // Something to seed a pseudorandom number generator with
 std::optional<unsigned> randomSeed;
 
+// Run conformance tests with JIT bytecode inliner
+bool jitInliner = false;
+
 static bool skipFastFlag(const char* flagName)
 {
     if (strncmp(flagName, "Test", 4) == 0)
@@ -398,6 +401,11 @@ int main(int argc, char** argv)
     if (doctest::parseFlag(argc, argv, "--codegen"))
     {
         codegen = true;
+    }
+
+    if (doctest::parseFlag(argc, argv, "--jit-inliner"))
+    {
+        jitInliner = true;
     }
 
     doctest::String optlevel;

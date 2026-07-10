@@ -16,7 +16,6 @@
 using namespace Luau;
 
 
-LUAU_FASTFLAG(LuauPropagateTypeAnnotationsInForInLoops)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
@@ -272,8 +271,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators_dcr")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_check")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         local function range(l, h): () -> number
             return function()
@@ -286,10 +283,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_ch
         end
     )");
 
-    if (FFlag::LuauPropagateTypeAnnotationsInForInLoops)
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-    else
-        LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
@@ -1538,8 +1532,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_for_loop_should_propagate")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): any
@@ -1559,8 +1551,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "any_type_in_for_loop_should_propagate")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_types_in_for_loop_should_propagate")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): {[number]: string}
@@ -1580,8 +1570,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_types_in_for_loop_should_propagate"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "incorrect_type_annotation_types_in_loop_should_propagate_with_errors")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): any
@@ -1603,8 +1591,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "incorrect_type_annotation_types_in_loop_shou
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_to_function_expressions")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): any
@@ -1628,8 +1614,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_to_function_ex
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_inside_lambdas")
 {
-    ScopedFastFlag _{FFlag::LuauPropagateTypeAnnotationsInForInLoops, true};
-
     CheckResult result = check(R"(
         --!strict
         function my_iter(): any

@@ -12,7 +12,6 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauVisitCallTypeArgsInDfg)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
@@ -982,17 +981,14 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
 {
     visitExpr(c->func);
 
-    if (FFlag::LuauVisitCallTypeArgsInDfg)
+    for (const AstTypeOrPack& typeOrPack : c->typeArguments)
     {
-        for (const AstTypeOrPack& typeOrPack : c->typeArguments)
+        if (typeOrPack.type)
+            visitType(typeOrPack.type);
+        else
         {
-            if (typeOrPack.type)
-                visitType(typeOrPack.type);
-            else
-            {
-                LUAU_ASSERT(typeOrPack.typePack);
-                visitTypePack(typeOrPack.typePack);
-            }
+            LUAU_ASSERT(typeOrPack.typePack);
+            visitTypePack(typeOrPack.typePack);
         }
     }
 

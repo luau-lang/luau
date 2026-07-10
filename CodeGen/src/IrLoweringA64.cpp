@@ -15,6 +15,7 @@
 LUAU_FASTFLAGVARIABLE(LuauCodegenFixBufferLenCheck)
 LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAG(LuauYieldIter2)
+LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
 {
@@ -3080,7 +3081,13 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.mov(x0, rState);
         build.mov(w1, uintOp(OP_A(inst)));
 
-        build.ldr(x3, mem(rClosure, offsetof(Closure, l.p)));
+        if (FFlag::LuauCIProto)
+        {
+            build.ldr(x3, mem(rState, offsetof(lua_State, ci)));
+            build.ldr(x3, mem(x3, offsetof(CallInfo, p)));
+        }
+        else
+            build.ldr(x3, mem(rClosure, offsetof(Closure, l.p)));
         build.ldr(x3, mem(x3, offsetof(Proto, p)));
 
         unsigned protoIndex = uintOp(OP_C(inst)); // 0..32767

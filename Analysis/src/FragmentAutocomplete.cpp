@@ -1161,7 +1161,9 @@ FragmentTypeCheckResult typecheckFragment_(
     /// User defined type functions runtime
     TypeFunctionRuntime typeFunctionRuntime(iceHandler, NotNull{&limits});
 
-    Subtyping subtyping{frontend.builtinTypes, NotNull{&incrementalModule->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler};
+    Subtyping subtyping{
+        frontend.builtinTypes, NotNull{&incrementalModule->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler
+    };
 
     typeFunctionRuntime.allowEvaluation = false;
 

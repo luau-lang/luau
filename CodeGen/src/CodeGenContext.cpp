@@ -15,7 +15,7 @@
 
 LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
 LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
-LUAU_FASTFLAG(LuauCodegenFreeBlocks)
+LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
 {
@@ -170,8 +170,7 @@ BaseCodeGenContext::BaseCodeGenContext(size_t blockSize, size_t maxTotalSize, Al
 
 BaseCodeGenContext::~BaseCodeGenContext()
 {
-    if (FFlag::LuauCodegenFreeBlocks)
-        codeAllocator.deallocate(gateAllocationData);
+    codeAllocator.deallocate(gateAllocationData);
 }
 
 [[nodiscard]] bool BaseCodeGenContext::initHeaderFunctions()
@@ -218,46 +217,19 @@ StandaloneCodeGenContext::StandaloneCodeGenContext(
     size_t codeSize
 )
 {
-    if (FFlag::LuauCodegenFreeBlocks)
-    {
-        NativeModuleRef moduleRef = sharedAllocator.insertAnonymousNativeModule(std::move(nativeProtos), data, dataSize, code, codeSize);
+    NativeModuleRef moduleRef = sharedAllocator.insertAnonymousNativeModule(std::move(nativeProtos), data, dataSize, code, codeSize);
 
-        // If we did not get a NativeModule back, allocation failed:
-        if (moduleRef.empty())
-            return {CodeGenCompilationResult::AllocationFailed};
+    // If we did not get a NativeModule back, allocation failed:
+    if (moduleRef.empty())
+        return {CodeGenCompilationResult::AllocationFailed};
 
-        logPerfFunctions(moduleProtos, moduleRef->getModuleBaseAddress(), moduleRef->getNativeProtos());
+    logPerfFunctions(moduleProtos, moduleRef->getModuleBaseAddress(), moduleRef->getNativeProtos());
 
-        // Bind the native protos and acquire an owning reference for each:
-        const uint32_t protosBound = bindNativeProtos<false>(moduleProtos, moduleRef->getNativeProtos());
-        moduleRef->addRefs(protosBound);
+    // Bind the native protos and acquire an owning reference for each:
+    const uint32_t protosBound = bindNativeProtos<false>(moduleProtos, moduleRef->getNativeProtos());
+    moduleRef->addRefs(protosBound);
 
-        return {CodeGenCompilationResult::Success, protosBound};
-    }
-    else
-    {
-        uint8_t* nativeData = nullptr;
-        size_t sizeNativeData = 0;
-        uint8_t* codeStart = nullptr;
-        if (!codeAllocator.allocate_DEPRECATED(data, int(dataSize), code, int(codeSize), nativeData, sizeNativeData, codeStart))
-        {
-            return {CodeGenCompilationResult::AllocationFailed};
-        }
-
-        // Relocate the entry offsets to their final executable addresses:
-        for (const NativeProtoExecDataPtr& nativeProto : nativeProtos)
-        {
-            NativeProtoExecDataHeader& header = getNativeProtoExecDataHeader(nativeProto.get());
-
-            header.entryOffsetOrAddress = codeStart + reinterpret_cast<uintptr_t>(header.entryOffsetOrAddress);
-        }
-
-        logPerfFunctions(moduleProtos, codeStart, nativeProtos);
-
-        const uint32_t protosBound = bindNativeProtos<true>(moduleProtos, nativeProtos);
-
-        return {CodeGenCompilationResult::Success, protosBound};
-    }
+    return {CodeGenCompilationResult::Success, protosBound};
 }
 
 void StandaloneCodeGenContext::onCloseState() noexcept
@@ -269,10 +241,7 @@ void StandaloneCodeGenContext::onCloseState() noexcept
 
 void StandaloneCodeGenContext::onDestroyFunction(void* execdata) noexcept
 {
-    if (FFlag::LuauCodegenFreeBlocks)
-        getNativeProtoExecDataHeader(static_cast<const uint32_t*>(execdata)).nativeModule->release();
-    else
-        destroyNativeProtoExecData(static_cast<uint32_t*>(execdata));
+    getNativeProtoExecDataHeader(static_cast<const uint32_t*>(execdata)).nativeModule->release();
 }
 
 
@@ -763,7 +732,7 @@ void disableNativeExecutionForFunction(lua_State* L, const int level) noexcept
     const TValue* o = ci->func;
     CODEGEN_ASSERT(ttisfunction(o));
 
-    Proto* proto = clvalue(o)->l.p;
+    Proto* proto = FFlag::LuauCIProto ? ci->p : clvalue(o)->l.p;
     CODEGEN_ASSERT(proto);
 
     CODEGEN_ASSERT(proto->codeentry != proto->code);

@@ -15,7 +15,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauConst2)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauFixPropReadsOnMetatableTypes)
 LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
@@ -1105,7 +1104,6 @@ TEST_CASE_FIXTURE(Fixture, "prop_with_typeof_reassigned_class")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauConst2, true},
         {FFlag::LuauExportValueSyntax, true},
     };
 

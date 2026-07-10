@@ -4965,7 +4965,7 @@ WithPredicate<TypePackId> TypeChecker::checkExprList(
     const Location& location,
     const AstArray<AstExpr*>& exprs,
     bool substituteFreeForNil,
-    const std::vector<bool>& instantiateGenerics,
+    const std::vector<bool>& annotatedTypeArguments,
     const std::vector<std::optional<TypeId>>& expectedTypes
 )
 {
@@ -5036,7 +5036,7 @@ WithPredicate<TypePackId> TypeChecker::checkExprList(
 
             if (!FFlag::LuauInstantiateInSubtyping)
             {
-                if (instantiateGenerics.size() > i && instantiateGenerics[i])
+                if (annotatedTypeArguments.size() > i && annotatedTypeArguments[i])
                     actualType = instantiate(scope, actualType, expr->location);
             }
 
