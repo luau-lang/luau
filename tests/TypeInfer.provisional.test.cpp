@@ -96,8 +96,6 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau-polyfill.Array.filter")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     // This test exercises the fact that we should reduce sealed/unsealed/free tables
     // res is a unsealed table with type {((T & ~nil)?) & any}
     // Because we do not reduce it fully, we cannot unify it with `Array<T> = { [number] : T}

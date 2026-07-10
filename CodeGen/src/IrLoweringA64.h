@@ -26,7 +26,7 @@ namespace A64
 
 struct IrLoweringA64
 {
-    IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, IrFunction& function, LoweringStats* stats);
+    IrLoweringA64(LogBuilder* logger, AssemblyBuilderA64& build, ModuleHelpers& helpers, IrFunction& function, LoweringStats* stats);
 
     void lowerInst(IrInst& inst, uint32_t index, const IrBlock& next);
     void startBlock(const IrBlock& curr);
@@ -86,6 +86,7 @@ struct IrLoweringA64
         unsigned int pcpos;
     };
 
+    LogBuilder* logger = nullptr;
     AssemblyBuilderA64& build;
     ModuleHelpers& helpers;
 

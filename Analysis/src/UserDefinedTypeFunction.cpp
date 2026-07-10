@@ -15,7 +15,6 @@
 
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
-LUAU_FASTFLAG(LuauTypeFunctionRobustness)
 
 namespace Luau
 {
@@ -180,15 +179,6 @@ static int evaluateTypeAliasCall(lua_State* L)
 
     TypeFunctionTypeId serializedTy = serialize(follow(target), runtimeBuilder);
 
-    if (!FFlag::LuauTypeFunctionRobustness)
-    {
-        if (FFlag::LuauTypeFunctionSupportsFrozen)
-        {
-            FreezeTypeFunctionTypes freezer{};
-            freezer.run(serializedTy);
-        }
-    }
-
     if (FFlag::LuauTypeFunctionStructuredErrors)
     {
         if (!runtimeBuilder->errors.empty())
@@ -200,16 +190,13 @@ static int evaluateTypeAliasCall(lua_State* L)
             luaL_error(L, "%s", runtimeBuilder->errors_DEPRECATED.front().c_str());
     }
 
-    if (FFlag::LuauTypeFunctionRobustness)
-    {
-        if (!serializedTy)
-            luaL_error(L, "Complexity limit reached when passing a type to a type alias");
+    if (!serializedTy)
+        luaL_error(L, "Complexity limit reached when passing a type to a type alias");
 
-        if (FFlag::LuauTypeFunctionSupportsFrozen)
-        {
-            FreezeTypeFunctionTypes freezer{};
-            freezer.run(serializedTy);
-        }
+    if (FFlag::LuauTypeFunctionSupportsFrozen)
+    {
+        FreezeTypeFunctionTypes freezer{};
+        freezer.run(serializedTy);
     }
 
     allocTypeUserData(L, serializedTy->type, /* frozen */ true);
@@ -342,23 +329,9 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
                     TypeFunctionTypeId serializedTy = serialize(ty, runtimeBuilder.get());
 
-                    if (FFlag::LuauTypeFunctionRobustness)
-                    {
-                        // Only register aliases that are representable in type environment
-                        if (serializedTy &&
-                            (FFlag::LuauTypeFunctionStructuredErrors ? runtimeBuilder->errors.empty() : runtimeBuilder->errors_DEPRECATED.empty()))
-                        {
-                            if (FFlag::LuauTypeFunctionSupportsFrozen)
-                            {
-                                FreezeTypeFunctionTypes freezer{};
-                                freezer.run(serializedTy);
-                            }
-
-                            allocTypeUserData(L, serializedTy->type, /* frozen */ true);
-                            lua_setfield(L, -2, name.c_str());
-                        }
-                    }
-                    else
+                    // Only register aliases that are representable in type environment
+                    if (serializedTy &&
+                        (FFlag::LuauTypeFunctionStructuredErrors ? runtimeBuilder->errors.empty() : runtimeBuilder->errors_DEPRECATED.empty()))
                     {
                         if (FFlag::LuauTypeFunctionSupportsFrozen)
                         {
@@ -366,12 +339,8 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
                             freezer.run(serializedTy);
                         }
 
-                        // Only register aliases that are representable in type environment
-                        if (FFlag::LuauTypeFunctionStructuredErrors ? runtimeBuilder->errors.empty() : runtimeBuilder->errors_DEPRECATED.empty())
-                        {
-                            allocTypeUserData(L, serializedTy->type, /* frozen */ true);
-                            lua_setfield(L, -2, name.c_str());
-                        }
+                        allocTypeUserData(L, serializedTy->type, /* frozen */ true);
+                        lua_setfield(L, -2, name.c_str());
                     }
                 }
                 else
@@ -420,7 +389,7 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
                 return {std::nullopt, Reduction::Erroneous, {}, {}, runtimeBuilder->errors_DEPRECATED.front()};
         }
 
-        if (FFlag::LuauTypeFunctionRobustness && !serializedTy)
+        if (!serializedTy)
             return {std::nullopt, Reduction::Erroneous, {}, {}, "Complexity limit reached when passing a type to a type function"};
 
         allocTypeUserData(L, serializedTy->type);
