@@ -50,6 +50,8 @@ jobs:
         ./luau-tests -ts=Conformance --codegen --fflags=true
         ./luau-tests -ts=Conformance --codegen -O2
         ./luau-tests -ts=Conformance --codegen -O2 --fflags=true
+        ./luau-tests -ts=Conformance --codegen -O2 --fflags=true,DebugCodegenChaosA64=true
+        ./luau-tests -ts=Conformance --codegen -O2 --fflags=true,DebugCodegenLimitRegs=true
     - name: make cli
       run: |
          make -j2 config=sanitize werror=1 luau luau-analyze luau-compile # match config with tests to improve build time
@@ -65,7 +67,7 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: cmake configure
-      run: cmake . -A ${{matrix.arch}} -DLUAU_WERROR=ON -DLUAU_NATIVE=ON
+      run: cmake . -A ${{matrix.arch}} -DLUAU_WERROR=ON
     - name: cmake build
       run: cmake --build . --target Luau.UnitTest Luau.Conformance --config Debug
     - name: run tests
@@ -84,6 +86,7 @@ jobs:
         Debug/Luau.Conformance.exe --codegen --fflags=true
         Debug/Luau.Conformance.exe --codegen -O2
         Debug/Luau.Conformance.exe --codegen -O2 --fflags=true
+        Debug/Luau.Conformance.exe --codegen -O2 --fflags=true,DebugCodegenLimitRegs=true
     - name: cmake cli
       shell: bash # necessary for fail-fast
       run: |
@@ -91,6 +94,36 @@ jobs:
         Debug/luau tests/conformance/assert.luau
         Debug/luau-analyze tests/conformance/assert.luau
         Debug/luau-compile tests/conformance/assert.luau
+
+  configurations:
+    strategy:
+      matrix:
+        config:
+          - name: LongJmp
+            flags: "-DLUA_USE_LONGJMP=1"
+            codegen: true
+          - name: Vector4
+            flags: "-DLUA_VECTOR_SIZE=4"
+            codegen: false
+    name: run extra configuration (${{matrix.config.name}})
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: cmake configure
+      run: cmake . -B build -DCMAKE_BUILD_TYPE=Debug -DLUAU_WERROR=ON -DCMAKE_CXX_FLAGS="${{matrix.config.flags}}" -DCMAKE_C_FLAGS="${{matrix.config.flags}}"
+    - name: cmake build
+      run: cmake --build build --target Luau.Conformance --config Debug -j2
+    - name: run tests
+      run: |
+        build/Luau.Conformance
+        build/Luau.Conformance --fflags=true
+        build/Luau.Conformance -O2
+        build/Luau.Conformance -O2 --fflags=true
+    - name: run codegen tests
+      if: matrix.config.codegen
+      run: |
+        build/Luau.Conformance --codegen --fflags=true
+        build/Luau.Conformance --codegen -O2 --fflags=true
 
   coverage:
     runs-on: ubuntu-22.04
