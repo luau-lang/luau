@@ -48,6 +48,7 @@ LUAU_FASTFLAGVARIABLE(LuauTidyTypePrototyping)
 LUAU_FASTFLAG(LuauConstraintGraph)
 LUAU_FASTFLAGVARIABLE(LuauDoNotEmplaceAnnotatedType)
 LUAU_FASTFLAGVARIABLE(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAGVARIABLE(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAGVARIABLE(DebugLuauCFG)
 
 namespace Luau
@@ -3439,6 +3440,9 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprFunction* fun
             std::vector<TypeId>{},
         }
     );
+
+    if (FFlag::LuauDeprecatedAttributeOnAnonymousFunctions)
+        propagateDeprecatedAttributeToConstraint(gc->c, func);
 
     sig.signatureScope->interiorFreeTypes = std::move(interiorFreeTypes.back().types);
     sig.signatureScope->interiorFreeTypePacks = std::move(interiorFreeTypes.back().typePacks);
