@@ -2163,8 +2163,6 @@ local Test: {Table} = {
 
 TEST_CASE_FIXTURE(Fixture, "common_table_element_general")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         type Table = {
             a: number,
@@ -2284,9 +2282,6 @@ foo({
 
 TEST_CASE_FIXTURE(Fixture, "common_table_element_union_in_call_tail")
 {
-    // CLI-115239 - Bidirectional checking does not work for __call metamethods
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         type Foo = {x: number | string}
         local function foo(l: {Foo}, ...: {Foo}) end
@@ -2587,8 +2582,6 @@ Expected this to be exactly 'string', but got 'number')";
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
 --!strict
 type Super = { x : number }
