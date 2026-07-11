@@ -343,7 +343,7 @@ declare vector: {
 static const char* const kBuiltinDefinitionIntegerSrc = R"BUILTIN_SRC(
 
 declare integer: {
-    create: @checked (x: number) -> integer,
+    create: @checked (x: number) -> integer?,
     tonumber: @checked (x: integer) -> number,
     neg: @checked (value: integer) -> integer,
     add: @checked (x: integer, y: integer) -> integer,
@@ -381,7 +381,7 @@ declare integer: {
     countrz: @checked (x: integer) -> integer,
     countlz: @checked (x: integer) -> integer,
     bswap: @checked (x: integer) -> integer,
-    fromstring: @checked (str: string, base: number?) -> integer,
+    fromstring: @checked (str: string, base: number?) -> integer?,
     minsigned: integer,
     maxsigned: integer
 }
