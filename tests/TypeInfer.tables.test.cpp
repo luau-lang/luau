@@ -2658,7 +2658,7 @@ b()
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(toString(result.errors[0]), R"(Cannot call a value of type t1 where t1 = setmetatalbe<{|  |}, {| __call: t1 |}>)");
+    CHECK_EQ(toString(result.errors[0]), R"(Cannot call a value of type t1 where t1 = setmetatable<{|  |}, {| __call: t1 |}>)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_shouldn't_add_optional_properties_to_sealed_tables")
