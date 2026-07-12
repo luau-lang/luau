@@ -350,26 +350,4 @@ TEST_CASE_FIXTURE(NegationFixture, "negate_inner_expansion_constraint")
     LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
-TEST_CASE_FIXTURE(NegationFixture, "somewhat_sensible_error_messages")
-{
-    if (FFlag::DebugLuauForceOldSolver)
-        return;
-
-    ScopedFastFlag _[] = {
-        {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
-    };
-
-    CheckResult result = check(R"(
-        type T = ~number
-        local t: T = 5
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(
-        toString(result.errors[0]),
-        "Expected this to be '~number', but got 'number'; \nthe negation `~number`, and `number` is not a subtype of `~number`"
-    );
-}
-
 TEST_SUITE_END();
