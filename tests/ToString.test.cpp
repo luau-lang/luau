@@ -13,7 +13,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(DebugLuauToStringTruthyFalsy)
+LUAU_FASTFLAG(LuauToStringTruthyFalsy)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -1067,7 +1067,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::DebugLuauToStringTruthyFalsy, true},
+        {FFlag::LuauToStringTruthyFalsy, true},
     };
 
     CheckResult result = check(R"(
@@ -1088,7 +1088,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy_expanded")
 {
 	ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::DebugLuauToStringTruthyFalsy, true},
+        {FFlag::LuauToStringTruthyFalsy, true},
     };
 
     CheckResult result = check(R"(
@@ -1109,7 +1109,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy_no_parenthesis")
 {
 	ScopedFastFlag sffs[] = {
 		{FFlag::DebugLuauForceOldSolver, false},
-		{FFlag::DebugLuauToStringTruthyFalsy, true},
+		{FFlag::LuauToStringTruthyFalsy, true},
 	};
 
 	ToStringOptions opts;

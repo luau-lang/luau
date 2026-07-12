@@ -40,7 +40,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
-LUAU_FASTFLAGVARIABLE(DebugLuauToStringTruthyFalsy)
+LUAU_FASTFLAGVARIABLE(LuauToStringTruthyFalsy)
 
 namespace Luau
 {
@@ -897,7 +897,7 @@ struct TypeStringifier
 
         LUAU_ASSERT(uv.options.size() > 1);
 
-        if (FFlag::DebugLuauToStringTruthyFalsy && state.opts.useTruthyFalsy && isApproximatelyFalsyType(ty))
+        if (FFlag::LuauToStringTruthyFalsy && state.opts.useTruthyFalsy && isApproximatelyFalsyType(ty))
         {
             state.emit("falsy");
             return;
@@ -1025,7 +1025,7 @@ struct TypeStringifier
             size_t savedSpansSize = state.result.typeSpans.size();
 
             // soooo 'falsy' is technically a UnionType :(
-            bool isNonFalsyUnion = get<UnionType>(el) != nullptr && (FFlag::DebugLuauToStringTruthyFalsy && state.opts.useTruthyFalsy ? !isApproximatelyFalsyType(el) : true);
+            bool isNonFalsyUnion = get<UnionType>(el) != nullptr && (FFlag::LuauToStringTruthyFalsy && state.opts.useTruthyFalsy ? !isApproximatelyFalsyType(el) : true);
             bool needParens = !state.cycleNames.contains(el) && (isNonFalsyUnion || get<FunctionType>(el) != nullptr);
 
             if (needParens)
@@ -1127,7 +1127,7 @@ struct TypeStringifier
 
     void operator()(TypeId ty, const NegationType& ntv)
     {
-        if (FFlag::DebugLuauToStringTruthyFalsy && state.opts.useTruthyFalsy && isApproximatelyTruthyType(ty))
+        if (FFlag::LuauToStringTruthyFalsy && state.opts.useTruthyFalsy && isApproximatelyTruthyType(ty))
         {
             state.emit("truthy");
             return;
