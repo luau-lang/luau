@@ -1613,8 +1613,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lti_must_record_contributing_locations")
  */
 TEST_CASE_FIXTURE(BuiltinsFixture, "be_sure_to_use_active_txnlog_when_evaluating_a_variadic_overload")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         local function concat<T>(target: {T}, ...: {T} | T): {T}
             return (nil :: any) :: {T}

@@ -13,9 +13,9 @@
 #include "lgc.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenFixBufferLenCheck)
-LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAG(LuauYieldIter2)
 LUAU_FASTFLAG(LuauCIProto)
+LUAU_FASTFLAG(LuauCodegenSharedLog)
 
 namespace Luau
 {
@@ -287,8 +287,9 @@ static uint32_t getFloatBits(float value)
     return result;
 }
 
-IrLoweringA64::IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, IrFunction& function, LoweringStats* stats)
-    : build(build)
+IrLoweringA64::IrLoweringA64(LogBuilder* logger, AssemblyBuilderA64& build, ModuleHelpers& helpers, IrFunction& function, LoweringStats* stats)
+    : logger(logger)
+    , build(build)
     , helpers(helpers)
     , function(function)
     , stats(stats)
@@ -2492,19 +2493,16 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         CODEGEN_ASSERT(accessSize > 0 && accessSize <= int(AssemblyBuilderA64::kMaxImmediate));
 
         // For jumps to exit sync blocks to work, we need the same register allocation state at each potential taken branch
-        RegisterA64 regA = FFlag::LuauCodegenVmExitSync && OP_A(inst).kind == IrOpKind::Inst ? regOp(OP_A(inst)) : noreg;
-        RegisterA64 regB = FFlag::LuauCodegenVmExitSync && OP_B(inst).kind == IrOpKind::Inst ? regOp(OP_B(inst)) : noreg;
-        RegisterA64 regE = FFlag::LuauCodegenVmExitSync && OP_E(inst).kind != IrOpKind::Undef ? regOp(OP_E(inst)) : noreg;
-        RegisterA64 tempW1 = FFlag::LuauCodegenVmExitSync ? regs.allocTemp(KindA64::w) : noreg;
-        RegisterA64 tempW2 = FFlag::LuauCodegenVmExitSync ? regs.allocTemp(KindA64::w) : noreg;
-        RegisterA64 tempD = FFlag::LuauCodegenVmExitSync ? regs.allocTemp(KindA64::d) : noreg;
+        RegisterA64 regA = OP_A(inst).kind == IrOpKind::Inst ? regOp(OP_A(inst)) : noreg;
+        RegisterA64 regB = OP_B(inst).kind == IrOpKind::Inst ? regOp(OP_B(inst)) : noreg;
+        RegisterA64 regE = OP_E(inst).kind != IrOpKind::Undef ? regOp(OP_E(inst)) : noreg;
+        RegisterA64 tempW1 = regs.allocTemp(KindA64::w);
+        RegisterA64 tempW2 = regs.allocTemp(KindA64::w);
+        RegisterA64 tempD = regs.allocTemp(KindA64::d);
 
         // Validate that we don't allocate anything else in this multi-branch instruction lowering
-        if (FFlag::LuauCodegenVmExitSync)
-        {
-            exitSyncInstIdx = index;
-            exitSyncAllocToken = regs.getAllocToken();
-        }
+        exitSyncInstIdx = index;
+        exitSyncAllocToken = regs.getAllocToken();
 
         Label fresh; // used when guard aborts execution or jumps to a VM exit
         Label& target = getTargetLabel(OP_F(inst), index, fresh);
@@ -2517,23 +2515,23 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
             if ((build.features & Feature_JSCVT) != 0)
             {
-                RegisterA64 temp = FFlag::LuauCodegenVmExitSync ? tempW1 : regs.allocTemp(KindA64::w);
+                RegisterA64 temp = tempW1;
 
-                build.fjcvtzs(temp, FFlag::LuauCodegenVmExitSync ? regE : regOp(OP_E(inst))); // fjcvtzs sets PSTATE.Z (equal) iff conversion is exact
+                build.fjcvtzs(temp, regE); // fjcvtzs sets PSTATE.Z (equal) iff conversion is exact
                 build.b(ConditionA64::NotEqual, target);
             }
             else
             {
-                RegisterA64 temp = FFlag::LuauCodegenVmExitSync ? tempD : regs.allocTemp(KindA64::d);
+                RegisterA64 temp = tempD;
 
-                build.scvtf(temp, FFlag::LuauCodegenVmExitSync ? regB : regOp(OP_B(inst)));
-                build.fcmp(FFlag::LuauCodegenVmExitSync ? regE : regOp(OP_E(inst)), temp);
+                build.scvtf(temp, regB);
+                build.fcmp(regE, temp);
                 build.b(ConditionA64::NotEqual, target);
             }
         }
 
-        RegisterA64 temp = FFlag::LuauCodegenVmExitSync ? tempW1 : regs.allocTemp(KindA64::w);
-        build.ldr(temp, mem(FFlag::LuauCodegenVmExitSync ? regA : regOp(OP_A(inst)), offsetof(Buffer, len)));
+        RegisterA64 temp = tempW1;
+        build.ldr(temp, mem(regA, offsetof(Buffer, len)));
 
         if (OP_B(inst).kind == IrOpKind::Inst)
         {
@@ -2542,27 +2540,27 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             if (accessSize == 1 && minOffset == 0)
             {
                 // fails if offset >= len
-                build.cmp(temp, FFlag::LuauCodegenVmExitSync ? regB : regOp(OP_B(inst)));
+                build.cmp(temp, regB);
                 build.b(ConditionA64::UnsignedLessEqual, target);
             }
             else if (minOffset >= 0 && maxOffset <= int(AssemblyBuilderA64::kMaxImmediate))
             {
                 // fails if offset + size > len; we compute it as len - offset < size
                 RegisterA64 tempx = castReg(KindA64::x, temp);
-                build.sub(tempx, tempx, FFlag::LuauCodegenVmExitSync ? regB : regOp(OP_B(inst))); // implicit uxtw
+                build.sub(tempx, tempx, regB); // implicit uxtw
                 build.cmp(tempx, uint16_t(maxOffset));
                 build.b(ConditionA64::Less, target); // note: this is a signed 64-bit comparison so that out of bounds offset fails
             }
             else
             {
                 RegisterA64 tempx = castReg(KindA64::x, temp);
-                RegisterA64 temp2 = FFlag::LuauCodegenVmExitSync ? castReg(KindA64::x, tempW2) : regs.allocTemp(KindA64::x);
+                RegisterA64 temp2 = castReg(KindA64::x, tempW2);
 
                 // Get the base offset in 32 bits
                 if (minOffset >= 0)
-                    build.add(castReg(KindA64::w, temp2), FFlag::LuauCodegenVmExitSync ? regB : regOp(OP_B(inst)), uint16_t(minOffset));
+                    build.add(castReg(KindA64::w, temp2), regB, uint16_t(minOffset));
                 else
-                    build.sub(castReg(KindA64::w, temp2), FFlag::LuauCodegenVmExitSync ? regB : regOp(OP_B(inst)), uint16_t(-minOffset));
+                    build.sub(castReg(KindA64::w, temp2), regB, uint16_t(-minOffset));
 
                 // fail if uint64_t(uint32_t(offset + minOffset)) + accessSize > length
                 build.add(temp2, temp2, uint16_t(accessSize));
@@ -2588,7 +2586,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             }
             else
             {
-                RegisterA64 temp2 = FFlag::LuauCodegenVmExitSync ? tempW2 : regs.allocTemp(KindA64::w);
+                RegisterA64 temp2 = tempW2;
                 build.mov(temp2, offset + endOffset);
                 build.cmp(temp, temp2);
                 build.b(failCond, target);
@@ -3707,7 +3705,7 @@ void IrLoweringA64::startBlock(const IrBlock& curr)
             curr.kind == IrBlockKind::Fallback ? CodeGenCounter::FallbackBlockExecuted : CodeGenCounter::RegularBlockExecuted, curr.startpc
         );
 
-    if (FFlag::LuauCodegenVmExitSync && curr.kind == IrBlockKind::ExitSync)
+    if (curr.kind == IrBlockKind::ExitSync)
         regs.setupExitSyncEntry(function.getBlockIndex(curr));
 }
 
@@ -3726,7 +3724,9 @@ void IrLoweringA64::finishBlock(const IrBlock& curr, const IrBlock& next)
 
 void IrLoweringA64::finishFunction()
 {
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger && logger->options.includeAssembly)
+        logger->formatAppend("; interrupt handlers\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; interrupt handlers\n");
 
     for (InterruptHandler& handler : interruptHandlers)
@@ -3737,7 +3737,9 @@ void IrLoweringA64::finishFunction()
         build.b(helpers.interrupt);
     }
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger && logger->options.includeAssembly)
+        logger->formatAppend("; exit handlers\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; exit handlers\n");
 
     for (ExitHandler& handler : exitHandlers)
@@ -3813,7 +3815,7 @@ void IrLoweringA64::finalizeTargetLabel(IrOp op, uint32_t index, Label& fresh)
     {
         emitAbort(build, fresh);
     }
-    else if (FFlag::LuauCodegenVmExitSync && op.kind == IrOpKind::Block && blockOp(op).kind == IrBlockKind::ExitSync)
+    else if (op.kind == IrOpKind::Block && blockOp(op).kind == IrBlockKind::ExitSync)
     {
         // Multi-branch instructions must capture exitSyncAllocToken before the first branch to verify all sync exit branches have same state
         if (exitSyncInstIdx == index)
@@ -3849,7 +3851,9 @@ void IrLoweringA64::allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcp
     if (!function.recordCounters)
         return;
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger && logger->options.includeAssembly)
+        logger->formatAppend("; counter kind %u at pcpos %d\n", unsigned(kind), pcpos);
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; counter kind %u at pcpos %d\n", unsigned(kind), pcpos);
 
     // {uint32_t, uint32_t, uint64_t}

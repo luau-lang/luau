@@ -36,10 +36,6 @@ until _._
 
 TEST_CASE_FIXTURE(Fixture, "return_types_can_be_disjoint")
 {
-    // CLI-114134 We need egraphs to consistently reduce the cyclic union
-    // introduced by the increment here.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         local count = 0
         function most_of_the_natural_numbers(): number?
@@ -123,9 +119,6 @@ TEST_CASE_FIXTURE(Fixture, "optional_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "optional_arguments_table")
 {
-    // CLI-115588 - Bidirectional inference does not happen for assignments
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         local a:{a:string, b:string?}
         a = {a="ok"}

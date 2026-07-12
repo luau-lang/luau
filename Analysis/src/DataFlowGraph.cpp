@@ -13,6 +13,7 @@
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAGVARIABLE(LuauDoNotOverwriteAstDefs)
 LUAU_FASTFLAG(LuauTypeNegationSyntax)
 
 namespace Luau
@@ -952,9 +953,24 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExpr* e)
     };
 
     auto [def, key] = go();
-    graph.astDefs[e] = def;
-    if (key)
-        graph.astRefinementKeys[e] = key;
+
+    if (FFlag::LuauDoNotOverwriteAstDefs)
+    {
+        if (!graph.astDefs.contains(e))
+        {
+            graph.astDefs[e] = def;
+            LUAU_ASSERT(!graph.astRefinementKeys.contains(e));
+            if (key)
+                graph.astRefinementKeys[e] = key;
+        }
+    }
+    else
+    {
+        graph.astDefs[e] = def;
+        if (key)
+            graph.astRefinementKeys[e] = key;
+    }
+
     return {def, key};
 }
 
@@ -1019,9 +1035,23 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
         scopeStack.push_back(child);
 
         auto [def, key] = *result;
-        graph.astDefs[firstArg] = def;
-        if (key)
-            graph.astRefinementKeys[firstArg] = key;
+        
+        if (FFlag::LuauDoNotOverwriteAstDefs)
+        {
+            if (!graph.astDefs.contains(firstArg))
+            {
+                graph.astDefs[firstArg] = def;
+                LUAU_ASSERT(!graph.astRefinementKeys.contains(firstArg));
+                if (key)
+                    graph.astRefinementKeys[firstArg] = key;
+            }
+        }
+        else
+        {
+            graph.astDefs[firstArg] = def;
+            if (key)
+                graph.astRefinementKeys[firstArg] = key;
+        }
 
         visitLValue(firstArg, def);
     }
@@ -1225,7 +1255,15 @@ void DataFlowGraphBuilder::visitLValue(AstExpr* e, DefId incomingDef)
             handle->ice("Unknown AstExpr in DataFlowGraphBuilder::visitLValue");
     };
 
-    graph.astDefs[e] = go();
+    if (FFlag::LuauDoNotOverwriteAstDefs)
+    {
+        if (!graph.astDefs.contains(e))
+            graph.astDefs[e] = go();
+    }
+    else
+    {
+        graph.astDefs[e] = go();
+    }
 }
 
 DefId DataFlowGraphBuilder::visitLValue(AstExprLocal* l, DefId incomingDef)

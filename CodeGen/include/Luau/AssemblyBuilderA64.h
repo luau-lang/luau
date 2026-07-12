@@ -5,6 +5,7 @@
 #include "Luau/AddressA64.h"
 #include "Luau/ConditionA64.h"
 #include "Luau/Label.h"
+#include "Luau/LogBuilder.h"
 
 #include <string>
 #include <vector>
@@ -25,7 +26,7 @@ enum FeaturesA64
 class AssemblyBuilderA64
 {
 public:
-    explicit AssemblyBuilderA64(bool logText, unsigned int features = 0);
+    explicit AssemblyBuilderA64(LogBuilder* logger, bool logText_DEPRECATED, unsigned int features);
     ~AssemblyBuilderA64();
 
     // Moves
@@ -221,6 +222,7 @@ public:
         return label.location * 4;
     }
 
+    // Make private with FFlagLuauCodegenSharedLog removal
     void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
 
     // Code size is measured in 'code' array units - uint8_t on x64 and uint32_t on arm64
@@ -233,9 +235,12 @@ public:
     std::vector<uint8_t> data;
     std::vector<uint32_t> code;
 
+    // Remove with FFlagLuauCodegenSharedLog
     std::string text;
 
+    // Make private with FFlagLuauCodegenSharedLog removal
     const bool logText = false;
+
     const unsigned int features = 0;
 
     // Maximum immediate argument to functions like add/sub/cmp
@@ -315,6 +320,8 @@ private:
     LUAU_NOINLINE void log(Label label);
     LUAU_NOINLINE void log(RegisterA64 reg);
     LUAU_NOINLINE void log(AddressA64 addr);
+
+    LogBuilder* logger = nullptr;
 
     uint32_t nextLabel = 1;
     std::vector<Patch> pendingLabels;

@@ -512,10 +512,14 @@ struct Compiler
             protoflags |= LPF_NATIVE_FUNCTION;
 
         bool isInlinable = !hasMultiRet && !getfenvUsed && !setfenvUsed;
+        uint64_t costModel = 0;
         if (FFlag::LuauEmitCallFeedback && isInlinable && upvals.empty())
+        {
             protoflags |= LPF_INLINABLE;
+            costModel = modelCost(func->body, func->args.data, func->args.size, builtins, constants);
+        }
 
-        bytecode.endFunction(uint8_t(stackSize), uint8_t(upvals.size()), protoflags);
+        bytecode.endFunction(uint8_t(stackSize), uint8_t(upvals.size()), protoflags, costModel);
 
         Function& f = functions[func];
         f.id = fid;
@@ -533,7 +537,7 @@ struct Compiler
                 f.canInline = true;
             }
             f.stackSize = stackSize;
-            f.costModel = modelCost(func->body, func->args.data, func->args.size, builtins, constants);
+            f.costModel = costModel == 0 ? modelCost(func->body, func->args.data, func->args.size, builtins, constants) : costModel;
 
             // track functions that only ever return a single value so that we can convert multret calls to fixedret calls
             if (alwaysTerminates(func->body))
