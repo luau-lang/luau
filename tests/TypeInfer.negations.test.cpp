@@ -96,4 +96,21 @@ TEST_CASE_FIXTURE(NegationFixture, "subtype_path_is_valid_for_unions")
     );
 }
 
+TEST_CASE_FIXTURE(NegationFixture, "subtype_path_is_valid_for_intersections")
+{
+    ScopedFastFlag fixSubtypePath{FFlag::LuauNegationsFixSubtypePath, true};
+
+    CheckResult result = check(R"(
+        type T = Not<unknown & boolean>
+        local x: T = false
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(
+        "Expected this to be '~(boolean & unknown)', but got 'boolean'; \n"
+            "the negation `~(boolean & unknown)`, and `boolean` is not a subtype of `~(boolean & unknown)`",
+        toString(result.errors[0])
+    );
+}
+
 TEST_SUITE_END();
