@@ -888,6 +888,12 @@ struct TypeStringifier
 
     void operator()(TypeId ty, const UnionType& uv)
     {
+        if (FFlag::LuauToStringTruthyFalsy && state.opts.useTruthyFalsy && isApproximatelyFalsyType(ty))
+        {
+            state.emit("falsy");
+            return;
+        }
+
         if (state.hasSeen(&uv))
         {
             state.result.cycle = true;
@@ -896,12 +902,6 @@ struct TypeStringifier
         }
 
         LUAU_ASSERT(uv.options.size() > 1);
-
-        if (FFlag::LuauToStringTruthyFalsy && state.opts.useTruthyFalsy && isApproximatelyFalsyType(ty))
-        {
-            state.emit("falsy");
-            return;
-        }
 
         bool optional = false;
         bool hasNonNilDisjunct = false;
