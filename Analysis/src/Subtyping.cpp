@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(LuauDontBindOptionalGenericToNil)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauTypeNegationSupport)
+LUAU_FASTFLAGVARIABLE(LuauNegationsFixSubtypePath)
 
 namespace Luau
 {
@@ -1938,7 +1939,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
     else
         result = {false};
 
-    if (FFlag::LuauTypeNegationSupport && moved)
+    if (FFlag::LuauNegationsFixSubtypePath && moved)
         return result;
     else
         return result.withSuperComponent(TypePath::TypeField::Negated);

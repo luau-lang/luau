@@ -41,6 +41,7 @@ LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauTypeNegationSupport)
+LUAU_FASTFLAG(LuauNegationsFixSubtypePath)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -3072,7 +3073,7 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
             subLeafAsString = "()";
 
         std::string superLeafAsString = toString(superLeaf);
-        if (FFlag::LuauTypeNegationSupport && !reasoning.superPath.components.empty())
+        if (FFlag::LuauNegationsFixSubtypePath && !reasoning.superPath.components.empty())
         {
             // If we don't do this, we get "`number` is not a subtype of `number`" etc in our error messages
             if (const TypePath::TypeField* tf = get_if<TypePath::TypeField>(&reasoning.superPath.components.back()); tf && *tf == TypePath::TypeField::Negated)
