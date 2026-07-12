@@ -7,6 +7,7 @@
 #include "Luau/Common.h"
 #include "ScopedFlags.h"
 
+LUAU_FASTFLAG(LuauNegationsFixSubtypePath)
 LUAU_FASTFLAG(LuauTypeNegationSyntax)
 LUAU_FASTFLAG(LuauTypeNegationSupport)
 
@@ -117,7 +118,6 @@ end
 )");
     LUAU_REQUIRE_NO_ERRORS(result);
 }
-
 TEST_CASE_FIXTURE(NegationFixture, "compare_cofinite_strings_syntax")
 {
     if (FFlag::DebugLuauForceOldSolver)
@@ -135,6 +135,23 @@ TEST_CASE_FIXTURE(NegationFixture, "compare_cofinite_strings_syntax")
         end
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "subtype_path_is_valid_for_unions")
+{
+    ScopedFastFlag fixSubtypePath{FFlag::LuauNegationsFixSubtypePath, true};
+
+    CheckResult result = check(R"(
+        type T = Not<false?>
+        local x: T = false :: false
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(
+        "Expected this to be '~(false?)', but got 'false'; \n"
+            "the negation `~(false?)`, and `false` is not a subtype of `~(false?)`",
+        toString(result.errors[0])
+    );
 }
 
 TEST_CASE_FIXTURE(NegationFixture, "truthy_type")
