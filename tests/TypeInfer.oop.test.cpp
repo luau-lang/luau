@@ -396,9 +396,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "augmenting_an_unsealed_table_with_a_metatabl
     )");
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK("{ @metatable { number: number }, { method: (unknown) -> string } }" == toString(requireType("B"), {true}));
+        CHECK("setmetatable<{ method: (unknown) -> string }, { number: number }>" == toString(requireType("B"), {true}));
     else
-        CHECK("{ @metatable {| number: number |}, {| method: <a>(a) -> string |} }" == toString(requireType("B"), {true}));
+        CHECK("setmetatable<{| method: <a>(a) -> string |}, {| number: number |}>" == toString(requireType("B"), {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")
@@ -597,7 +597,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_metatable")
 
     TypeId clsType = clsBinding->typeId;
 
-    CHECK("{ @metatable cls, tbl }" == toString(clsType));
+    CHECK("setmetatable<tbl, cls>" == toString(clsType));
 }
 
 // https://luau.org/typecheck#adding-types-for-faux-object-oriented-programs
@@ -760,7 +760,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
     auto err = get<TypeMismatch>(results.errors[0]);
     REQUIRE(err);
     CHECK_EQ("{ const: number }", toString(err->wantedType));
-    CHECK_EQ("{ @metatable t1, {  } } where t1 = { __index: t1, const: number }", toString(err->givenType, {/* exhaustive */ true}));
+    CHECK_EQ("setmetatable<{  }, t1> where t1 = { __index: t1, const: number }", toString(err->givenType, {/* exhaustive */ true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
@@ -783,7 +783,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
     auto err = get<TypeMismatch>(results.errors[0]);
     REQUIRE(err);
     CHECK_EQ("{ read foo: string }", toString(err->wantedType, {/* exhaustive */ true}));
-    CHECK_EQ("{ @metatable { __index: { bar: boolean, foo: string } }, { foo: number } }", toString(err->givenType, {/* exhaustive */ true}));
+    CHECK_EQ("setmetatable<{ foo: number }, { __index: { bar: boolean, foo: string } }>", toString(err->givenType, {/* exhaustive */ true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assign_to_prop_of_intersection_of_metatables")

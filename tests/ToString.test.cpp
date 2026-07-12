@@ -145,7 +145,7 @@ TEST_CASE_FIXTURE(Fixture, "metatable")
     Type table{TypeVariant(TableType())};
     Type metatable{TypeVariant(TableType())};
     Type mtv{TypeVariant(MetatableType{&table, &metatable})};
-    CHECK_EQ("{ @metatable {|  |}, {|  |} }", toString(&mtv));
+    CHECK_EQ("setmetatable<{|  |}, {|  |}>", toString(&mtv));
 }
 
 TEST_CASE_FIXTURE(Fixture, "named_metatable")
@@ -204,7 +204,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
         CHECK(
             "t2 where "
             "t1 = { __index: t1, __mul: ((t2, number) -> t2) & ((t2, t2) -> t2), new: () -> t2 } ; "
-            "t2 = { @metatable t1, { x: number, y: number, z: number } }" == a
+            "t2 = setmetatable<{ x: number, y: number, z: number }, t1>" == a
         );
     }
     else
@@ -212,7 +212,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
         CHECK_EQ(
             "t2 where "
             "t1 = {| __index: t1, __mul: ((t2, number) -> t2) & ((t2, t2) -> t2), new: () -> t2 |} ; "
-            "t2 = { @metatable t1, { x: number, y: number, z: number } }",
+            "t2 = setmetatable<{ x: number, y: number, z: number }, t1>",
             a
         );
     }
