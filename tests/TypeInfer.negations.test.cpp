@@ -48,7 +48,7 @@ TEST_CASE_FIXTURE(NegationFixture, "negated_string_is_a_subtype_of_string_syntax
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
     };
 
     CheckResult result = check(R"(
@@ -78,7 +78,7 @@ TEST_CASE_FIXTURE(NegationFixture, "string_is_not_a_subtype_of_negated_string_sy
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
     };
 
     CheckResult result = check(R"(
@@ -125,7 +125,7 @@ TEST_CASE_FIXTURE(NegationFixture, "compare_cofinite_strings_syntax")
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
     };
 
     CheckResult result = check(R"(
@@ -161,7 +161,8 @@ TEST_CASE_FIXTURE(NegationFixture, "truthy_type")
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
+        {FFlag::LuauNegationsFixSubtypePath, true},
     };
 
     CheckResult result = check(R"(
@@ -184,7 +185,7 @@ TEST_CASE_FIXTURE(NegationFixture, "tight_binding")
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
     };
 
     CheckResult result = check(R"(
@@ -205,7 +206,7 @@ TEST_CASE_FIXTURE(NegationFixture, "string_singleton_negation")
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
     };
 
     CheckResult result = check(R"(
@@ -227,7 +228,7 @@ TEST_CASE_FIXTURE(NegationFixture, "exclusion_basis_is_unknown")
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
     };
 
     CheckResult result = check(R"(
@@ -248,7 +249,7 @@ TEST_CASE_FIXTURE(NegationFixture, "double_negation")
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
     };
 
     CheckResult result = check(R"(
@@ -273,7 +274,7 @@ TEST_CASE_FIXTURE(NegationFixture, "no_structural_negation")
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
     };
 
     CheckResult result = check(R"(
@@ -295,7 +296,7 @@ TEST_CASE_FIXTURE(NegationFixture, "no_generic_negation")
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
     };
 
     CheckResult result = check(R"(
@@ -316,7 +317,7 @@ TEST_CASE_FIXTURE(NegationFixture, "no_errortype_ice")
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
     };
 
     CheckResult result = check(R"(
@@ -336,7 +337,7 @@ TEST_CASE_FIXTURE(NegationFixture, "negate_inner_expansion_constraint")
 
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
-        {FFlag::LuauTypeNegationSupport, true}
+        {FFlag::LuauTypeNegationSupport, true},
     };
 
     CheckResult result = check(R"(
