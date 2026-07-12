@@ -14,6 +14,7 @@
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauToStringTruthyFalsy)
 
 using namespace Luau;
 
@@ -1111,8 +1112,9 @@ TEST_CASE_FIXTURE(NormalizeFixture, "truthy_table_property_and_optional_table_wi
 
 TEST_CASE_FIXTURE(NormalizeFixture, "free_type_and_not_truthy")
 {
-    ScopedFastFlag sff[] = {
+    ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false}, // Only because it affects the stringification of free types
+        {FFlag::LuauToStringTruthyFalsy, true},
     };
 
     TypeId freeTy = arena.freshType(getBuiltins(), getGlobalScope());
@@ -1125,7 +1127,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "free_type_and_not_truthy")
 
     TypeId result = typeFromNormal(*norm);
 
-    CHECK("'a & (false?)" == toString(result));
+    CHECK("'a & falsy" == toString(result));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "free_type_intersection_ordering")

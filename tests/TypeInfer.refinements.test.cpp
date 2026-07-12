@@ -12,6 +12,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauIndexingIntoErrorGivesError);
+LUAU_FASTFLAG(LuauToStringTruthyFalsy)
 
 using namespace Luau;
 
@@ -1035,6 +1036,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "either_number_or_string")
 
 TEST_CASE_FIXTURE(Fixture, "not_t_or_some_prop_of_t")
 {
+    ScopedFastFlag sff{FFlag::LuauToStringTruthyFalsy, true};
+
     CheckResult result = check(R"(
         local function f(t: {x: boolean}?)
             if not t or t.x then
@@ -1054,7 +1057,7 @@ TEST_CASE_FIXTURE(Fixture, "not_t_or_some_prop_of_t")
         // ... which we can't _quite_ refine into the type it ought to be:
         //
         //  { write x: boolean, read x: true } | nil
-        CHECK_EQ("({ read x: ~(false?) } & { x: boolean })?", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("({ read x: truthy } & { x: boolean })?", toString(requireTypeAtPosition({3, 28})));
     }
     else
         CHECK_EQ("{ x: boolean }?", toString(requireTypeAtPosition({3, 28})));
@@ -1663,6 +1666,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "isa_type_refinement_must_be_know
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_optional_properties_should_not_refine_extern_types_to_never")
 {
+    ScopedFastFlag sff{FFlag::LuauToStringTruthyFalsy, true};
 
     CheckResult result = check(R"(
         local weld: WeldConstraint = nil :: any
@@ -1676,7 +1680,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_optional_properties_sh
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("WeldConstraint & { read Part1: ~(false?) }", toString(requireTypeAtPosition({3, 15})));
+        CHECK_EQ("WeldConstraint & { read Part1: truthy }", toString(requireTypeAtPosition({3, 15})));
     else
         CHECK_EQ("WeldConstraint", toString(requireTypeAtPosition({3, 15})));
     CHECK_EQ("Vector3", toString(requireTypeAtPosition({6, 29})));
@@ -2566,6 +2570,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nonnil_refinement_on_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "truthy_refinement_on_generic")
 {
+    ScopedFastFlag sff{FFlag::LuauToStringTruthyFalsy, true};
     CheckResult result = check(R"(
         local function printOptional<T>(item: T?, printer: (T) -> string): string
             if item then
@@ -2578,7 +2583,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "truthy_refinement_on_generic")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("T & ~(false?)", toString(requireTypeAtPosition({3, 31})));
+        CHECK_EQ("T & truthy", toString(requireTypeAtPosition({3, 31})));
     else
         CHECK_EQ("T", toString(requireTypeAtPosition({3, 31})));
 }
@@ -2883,6 +2888,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_from_and_should_not_refine_to_ne
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauToStringTruthyFalsy, true},
     };
 
     loadDefinition(R"(
@@ -2906,7 +2912,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_from_and_should_not_refine_to_ne
 
     LUAU_REQUIRE_NO_ERRORS(results);
 
-    CHECK_EQ("(Config & { read KeyboardEnabled: false? }) | (Config & { read MouseEnabled: false? })", toString(requireTypeAtPosition({6, 24})));
+    CHECK_EQ("(Config & { read KeyboardEnabled: falsy }) | (Config & { read MouseEnabled: falsy })", toString(requireTypeAtPosition({6, 24})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")

@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauToStringTruthyFalsy)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
 
 namespace
@@ -482,10 +483,11 @@ TEST_CASE_FIXTURE(SimplifyFixture, "union")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "two_unions")
 {
+    ScopedFastFlag sff{FFlag::LuauToStringTruthyFalsy, true};
     ScopedFastInt sfi{DFInt::LuauSimplificationComplexityLimit, 10};
     TypeId t1 = arena->addType(UnionType{{numberTy, booleanTy, stringTy, nilTy, tableTy}});
 
-    CHECK("false?" == intersectStr(t1, falsyTy));
+    CHECK("falsy" == intersectStr(t1, falsyTy));
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "curious_union")
