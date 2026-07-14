@@ -2572,4 +2572,19 @@ a<<"hi">>("hi")
     REQUIRE(0 == result.warnings.size());
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "localshadow_global_types_library_fix_1564")
+{
+    LintResult result = lint(R"(
+type function test()
+    return types.any
+end
+
+local types = 123
+
+return types :: test<>
+)");
+
+    REQUIRE(0 == result.warnings.size());
+}
+
 TEST_SUITE_END();

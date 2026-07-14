@@ -781,6 +781,9 @@ private:
                 ; // there are many builtins with common names like 'table'; some of them are deprecated as well
             else if (global->firstRef)
             {
+                // accounting for type functions explicitly in this lint would be better but ya can't beat a 1 line fix
+                if (local->name == "types")
+                    return;
                 emitWarning(
                     *context,
                     LintWarning::Code_LocalShadow,
