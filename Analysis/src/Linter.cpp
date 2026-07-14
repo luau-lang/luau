@@ -3533,14 +3533,16 @@ private:
 
     struct Alias
     {
-        AstStat* definition = nullptr;
-        bool type_fun;
+        AstStat* declaration;
+        Location nameLocation;
+        unsigned int scopeDepth;
         bool referenced;
+        bool softReferenced;
         bool exported;
     };
 
     DenseHashMap<AstName, Alias> refs;
-    std::vector<AstName> typeFuncScopeStack;
+    std::vector<Alias*> typesEnvScopeStack;
 
     LintUnusedType()
         : refs(AstName())
@@ -3551,32 +3553,37 @@ private:
     {
         for (auto& pair : refs)
         {
-            AstStat* def = pair.second.definition;
-            if (!def)
-                continue;
-            if (pair.second.referenced)
-                continue;
-            if (pair.second.exported)
+            AstStat* declaration = pair.second.declaration;
+            if (!declaration || pair.second.referenced || pair.second.exported)
                 continue;
 
-            const char* name = pair.first.value;
+            const char* nameValue = pair.first.value;
 
-            if (name[0] == '_')
+            if (nameValue[0] == '_')
                 continue;
 
-            if (pair.second.type_fun)
-                emitWarning(
-                    *context,
-                    LintWarning::Code_TypeUnused,
-                    def->location,
-                    "Type Function '%s' is never used; prefix with '_' to silence",
-                    pair.first.value
-                );
+            const char* msg;
+            if (!declaration->is<AstStatTypeFunction>())
+                msg = "Type '%s' is never used; prefix with '_' to silence";
+            else if (!pair.second.softReferenced)
+                msg = "Type Function '%s' is never used; prefix with '_' to silence";
             else
-                emitWarning(
-                    *context, LintWarning::Code_TypeUnused, def->location, "Type '%s' is never used; prefix with '_' to silence", pair.first.value
-                );
+                msg = "Type Function '%s' is never used outside its own body; prefix with '_' to silence";
+
+            emitWarning(*context, LintWarning::Code_TypeUnused, pair.second.nameLocation, msg, nameValue);
         }
+    }
+
+    void scopePush(Alias& alias)
+    {
+        alias.scopeDepth++;
+        typesEnvScopeStack.push_back(&alias);
+    }
+    void scopePop()
+    {
+        Alias* scope = typesEnvScopeStack.back();
+        scope->scopeDepth--;
+        typesEnvScopeStack.pop_back();
     }
 
     bool visit(AstType* node) override
@@ -3591,22 +3598,22 @@ private:
     bool visit(AstStatTypeAlias* node) override
     {
         Alias& alias = refs[node->name];
-        alias.definition = node;
+        alias.declaration = node;
+        alias.nameLocation = node->nameLocation;
         alias.exported = node->exported;
 
         return true;
     }
-
     bool visit(AstStatTypeFunction* node) override
     {
         Alias& alias = refs[node->name];
-        alias.definition = node;
+        alias.declaration = node;
+        alias.nameLocation = node->nameLocation;
         alias.exported = node->exported;
-        alias.type_fun = true;
 
-        typeFuncScopeStack.push_back(node->name);
+        scopePush(alias);
         node->body->visit(this);
-        typeFuncScopeStack.pop_back();
+        scopePop();
 
         return false;
     }
@@ -3624,13 +3631,14 @@ private:
 
     bool visit(AstExprGlobal* node) override
     {
-        if (typeFuncScopeStack.empty())
+        if (typesEnvScopeStack.empty())
             return true;
 
-        if (bool typeFunRefingItself = std::find(typeFuncScopeStack.rbegin(), typeFuncScopeStack.rend(), node->name) != typeFuncScopeStack.rend())
-            return true;
-
-        refs[node->name].referenced = true;
+        Alias& alias = refs[node->name];
+        if (alias.scopeDepth > 0)
+            alias.softReferenced = true;
+        else
+            alias.referenced = true;
 
         return true;
     }
