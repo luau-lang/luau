@@ -21,6 +21,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauAutocompleteFunctionArglistSuggestion)
 LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
+LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 
 using namespace Luau;
 
@@ -5183,7 +5184,11 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_anonymous_function")
 {
-    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauCheckTypeForDeprecated, true},
+        {FFlag::LuauDeprecatedAttributeOnAnonymousFunctions, true}
+    };
+
     check(R"(
         local foo = \@deprecated function()
         end
