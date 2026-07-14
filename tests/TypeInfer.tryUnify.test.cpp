@@ -15,9 +15,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver);
 
 struct TryUnifyFixture : Fixture
 {
-    // Cannot use `TryUnifyFixture` under DCR.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     TypeArena arena;
     ScopePtr globalScope{new Scope{arena.addTypePack({TypeId{}})}};
     InternalErrorReporter iceHandler;

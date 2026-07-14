@@ -10,7 +10,6 @@
 
 LUAU_FASTFLAG(LuauCodegenDseRestoreHints)
 LUAU_FASTFLAG(LuauCodegenForwardRematerialize)
-LUAU_FASTFLAG(LuauCodegenVmExitSync)
 
 using namespace Luau::CodeGen;
 
@@ -347,7 +346,6 @@ bb_0:
 TEST_CASE_FIXTURE(IrAssemblyFixture, "DseHintCorruptsTagOnPartialValueKill")
 {
     ScopedFastFlag luauCodegenDseRestoreHints{FFlag::LuauCodegenDseRestoreHints, true};
-    ScopedFastFlag luauCodegenVmExitSync{FFlag::LuauCodegenVmExitSync, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);
     build.beginBlock(entry);
