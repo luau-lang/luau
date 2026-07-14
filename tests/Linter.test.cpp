@@ -2667,7 +2667,7 @@ type Mrrp = {}
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Type 'Mrrp' is never used; prefix with '_' to silence");
-    CHECK_EQ(result.warnings[0].location, Location(Position(1, 0), Position(1, 14)));
+    CHECK_EQ(result.warnings[0].location, Location(Position(1, 5), Position(1, 9)));
 }
 
 TEST_CASE_FIXTURE(Fixture, "unused_type_type_alias_reference_chain_unreferenced")
@@ -2680,7 +2680,7 @@ type Meow = Mrrp
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Type 'Meow' is never used; prefix with '_' to silence");
-    CHECK_EQ(result.warnings[0].location, Location(Position(2, 0), Position(2, 16)));
+    CHECK_EQ(result.warnings[0].location, Location(Position(2, 5), Position(2, 9)));
 }
 
 TEST_CASE_FIXTURE(Fixture, "unused_type_unreferenced_type_fun")
@@ -2694,7 +2694,7 @@ end
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Type Function 'Kya' is never used; prefix with '_' to silence");
-    CHECK_EQ(result.warnings[0].location, Location(Position(1, 0), Position(3, 3)));
+    CHECK_EQ(result.warnings[0].location, Location(Position(1, 14), Position(1, 17)));
 }
 
 TEST_CASE_FIXTURE(Fixture, "unused_type_recursive_type_fun")
@@ -2707,8 +2707,8 @@ end
 )");
 
     REQUIRE(1 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].text, "Type Function 'Kya' is never used; prefix with '_' to silence");
-    CHECK_EQ(result.warnings[0].location, Location(Position(1, 0), Position(3, 3)));
+    CHECK_EQ(result.warnings[0].text, "Type Function 'Kya' is never used outside its own body; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[0].location, Location(Position(1, 14), Position(1, 17)));
 }
 
 TEST_CASE_FIXTURE(Fixture, "unused_type_unrelated_global_reference")
@@ -2724,9 +2724,9 @@ return Purr or Hiss
 
     REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Type 'Purr' is never used; prefix with '_' to silence");
-    CHECK_EQ(result.warnings[0].location, Location(Position(1, 0), Position(1, 18)));
+    CHECK_EQ(result.warnings[0].location, Location(Position(1, 5), Position(1, 9)));
     CHECK_EQ(result.warnings[1].text, "Type Function 'Hiss' is never used; prefix with '_' to silence");
-    CHECK_EQ(result.warnings[1].location, Location(Position(2, 0), Position(4, 3)));
+    CHECK_EQ(result.warnings[1].location, Location(Position(2, 14), Position(2, 18)));
 }
 
 TEST_SUITE_END();
