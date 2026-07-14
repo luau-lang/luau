@@ -972,10 +972,12 @@ private:
 
     struct Global
     {
-        Location location;
-        std::optional<Location> function;
-        bool softUsed;
-        bool used;
+        unsigned int scopeDepth = 0;
+        bool func = false;
+        bool used = false;
+        bool softUsed = false;
+
+        Location nameLocation;
     };
 
     DenseHashMap<AstName, Global> globals;
@@ -989,49 +991,41 @@ private:
     {
         for (auto& g : globals)
         {
-            if (!g.second.function || g.second.used || g.first.value[0] == '_')
+            if (!g.second.func || g.second.used || g.first.value[0] == '_')
                 continue;
+
+            const char* msg;
             if (g.second.softUsed)
-                emitWarning(
-                    *context,
-                    LintWarning::Code_FunctionUnused,
-                    g.second.location,
-                    "Function '%s' is never used outside its own body; prefix with '_' to silence",
-                    g.first.value
-                );
+                msg = "Function '%s' is never used outside its own body; prefix with '_' to silence";
             else
-                emitWarning(
-                    *context,
-                    LintWarning::Code_FunctionUnused,
-                    g.second.location,
-                    "Function '%s' is never used; prefix with '_' to silence",
-                    g.first.value
-                );
+                msg = "Function '%s' is never used; prefix with '_' to silence";
+
+            emitWarning(*context, LintWarning::Code_FunctionUnused, g.second.nameLocation, msg, g.first.value);
         }
     }
 
     bool visit(AstStatFunction* node) override
     {
-        if (AstExprGlobal* expr = node->name->as<AstExprGlobal>())
-        {
-            Global& g = globals[expr->name];
+        AstExprGlobal* expr = node->name->as<AstExprGlobal>();
+        if (!expr)
+            return true;
 
-            g.function.emplace(node->location);
-            g.location = expr->location;
+        Global& g = globals[expr->name];
+        g.func = true;
+        g.nameLocation = expr->location;
 
-            node->func->visit(this);
+        g.scopeDepth++;
+        node->func->visit(this);
+        g.scopeDepth--;
 
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     bool visit(AstExprGlobal* node) override
     {
         Global& g = globals[node->name];
 
-        if (g.function && g.function.value().contains(node->location.begin))
+        if (g.func && g.scopeDepth > 0)
             g.softUsed = true;
         else
             g.used = true;
