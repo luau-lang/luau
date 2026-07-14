@@ -717,10 +717,10 @@ private:
     {
         AstNode* defined = nullptr;
         std::optional<Location> function;
-        bool import;
-        bool used;
-        bool softUsed;
-        bool arg;
+        bool import = false;
+        bool used = false;
+        bool softUsed = false;
+        bool arg = false;
     };
 
     struct Global
