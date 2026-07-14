@@ -861,12 +861,12 @@ struct TypeStringifier
             return;
         }
 
-        state.emit("{ @metatable ");
-        stringify(mtv.metatable);
+        state.emit("setmetatable<");
+        stringify(mtv.table);
         state.emit(",");
         state.newline();
-        stringify(mtv.table);
-        state.emit(" }");
+        stringify(mtv.metatable);
+        state.emit(">");
     }
 
     void operator()(TypeId ty, const ExternType& etv)

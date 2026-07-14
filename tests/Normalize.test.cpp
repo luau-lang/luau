@@ -844,7 +844,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_extern_types_with_intersect
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_metatables_where_the_metatable_is_top_or_bottom")
 {
-    CHECK("{ @metatable *error-type*, {  } }" == toString(normal("Mt<{}, any> & Mt<{}, err>")));
+    CHECK("setmetatable<{  }, *error-type*>" == toString(normal("Mt<{}, any> & Mt<{}, err>")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "recurring_intersection")

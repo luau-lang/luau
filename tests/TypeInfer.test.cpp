@@ -1886,7 +1886,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_infer_any_param")
     if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("(unknown) -> any", toString(requireType("check")));
     else
-        CHECK_EQ("({ @metatable any, {+  +} }) -> any", toString(requireType("check")));
+        CHECK_EQ("(setmetatable<{+  +}, any>) -> any", toString(requireType("check")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_pack_check_missing_follow")

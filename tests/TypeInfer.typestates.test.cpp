@@ -880,7 +880,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_depends_on_sub_expression")
 
     auto err = get<TypeMismatch>(result.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("{ @metatable { bar: number }, { foo: number } }", toString(err->wantedType, { /* exhaustive */ true}));
+    CHECK_EQ("setmetatable<{ foo: number }, { bar: number }>", toString(err->wantedType, {/* exhaustive */ true}));
     CHECK_EQ("{ foo: number }", toString(err->givenType, { /* exhaustive */ true}));
 }
 
