@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Linter.h"
 
+#include "Luau/Ast.h"
 #include "Luau/AstQuery.h"
 #include "Luau/Module.h"
 #include "Luau/Scope.h"
@@ -3514,6 +3515,127 @@ private:
     }
 };
 
+class LintUnusedType : AstVisitor
+{
+public:
+    LUAU_NOINLINE static void process(LintContext& context)
+    {
+        LintUnusedType pass;
+        pass.context = &context;
+
+        context.root->visit(&pass);
+
+        pass.report();
+    }
+
+private:
+    LintContext* context;
+
+    struct Alias
+    {
+        AstStat* definition = nullptr;
+        bool type_fun;
+        bool referenced;
+        bool exported;
+    };
+
+    DenseHashMap<AstName, Alias> refs;
+    std::vector<AstName> typeFuncScopeStack;
+
+    LintUnusedType()
+        : refs(AstName())
+    {
+    }
+
+    void report()
+    {
+        for (auto& pair : refs)
+        {
+            AstStat* def = pair.second.definition;
+            if (!def)
+                continue;
+            if (pair.second.referenced)
+                continue;
+            if (pair.second.exported)
+                continue;
+
+            const char* name = pair.first.value;
+
+            if (name[0] == '_')
+                continue;
+
+            if (pair.second.type_fun)
+                emitWarning(
+                    *context,
+                    LintWarning::Code_TypeUnused,
+                    def->location,
+                    "Type Function '%s' is never used; prefix with '_' to silence",
+                    pair.first.value
+                );
+            else
+                emitWarning(
+                    *context, LintWarning::Code_TypeUnused, def->location, "Type '%s' is never used; prefix with '_' to silence", pair.first.value
+                );
+        }
+    }
+
+    bool visit(AstType* node) override
+    {
+        return true;
+    }
+    bool visit(AstTypePack* node) override
+    {
+        return true;
+    }
+
+    bool visit(AstStatTypeAlias* node) override
+    {
+        Alias& alias = refs[node->name];
+        alias.definition = node;
+        alias.exported = node->exported;
+
+        return true;
+    }
+
+    bool visit(AstStatTypeFunction* node) override
+    {
+        Alias& alias = refs[node->name];
+        alias.definition = node;
+        alias.exported = node->exported;
+        alias.type_fun = true;
+
+        typeFuncScopeStack.push_back(node->name);
+        node->body->visit(this);
+        typeFuncScopeStack.pop_back();
+
+        return false;
+    }
+
+    bool visit(AstTypeReference* node) override
+    {
+        if (node->prefix)
+            return true;
+
+        Alias& alias = refs[node->name];
+        alias.referenced = true;
+
+        return true;
+    }
+
+    bool visit(AstExprGlobal* node) override
+    {
+        if (typeFuncScopeStack.empty())
+            return true;
+
+        if (bool typeFunRefingItself = std::find(typeFuncScopeStack.rbegin(), typeFuncScopeStack.rend(), node->name) != typeFuncScopeStack.rend())
+            return true;
+
+        refs[node->name].referenced = true;
+
+        return true;
+    }
+};
+
 std::vector<LintWarning> lint(
     AstStat* root,
     const AstNameTable& names,
@@ -3611,6 +3733,9 @@ std::vector<LintWarning> lint(
         if (hasNativeCommentDirective(hotcomments))
             LintRedundantNativeAttribute::process(context);
     }
+
+    if (context.warningEnabled(LintWarning::Code_TypeUnused))
+        LintUnusedType::process(context);
 
     std::sort(context.result.begin(), context.result.end(), WarningComparator());
 
