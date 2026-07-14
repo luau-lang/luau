@@ -5184,7 +5184,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_anonymous_function")
 {
-    ScopedFastFlag flags[] = {
+    ScopedFastFlag sffs[] = {
         {FFlag::LuauCheckTypeForDeprecated, true},
         {FFlag::LuauDeprecatedAttributeOnAnonymousFunctions, true}
     };
