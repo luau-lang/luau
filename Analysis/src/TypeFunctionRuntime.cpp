@@ -1117,7 +1117,11 @@ static int setTableReadIndexer(lua_State* L)
 
     int argumentCount = lua_gettop(L);
     if (argumentCount == 2 && get<TypeFunctionNeverType>(getTypeUserData(L, 2)))
-        luaL_error(L, "type.setreadindexer: expected 3 arguments, but got 2; the key was types.never, did you mean to do :setreadindexer(types.never, types.never)?");
+        luaL_error(
+            L,
+            "type.setreadindexer: expected 3 arguments, but got 2; the key was types.never, did you mean to do :setreadindexer(types.never, "
+            "types.never)?"
+        );
     if (argumentCount != 3)
         luaL_error(L, "type.setreadindexer: expected 3 arguments, but got %d", argumentCount);
 

@@ -3554,11 +3554,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_setreadindexer_errors_when_existing_rea
     LUAU_REQUIRE_ERROR_COUNT(2, results);
     CHECK_EQ(
         toString(results.errors[0]),
-        "'nyanya' type function errored at runtime: [string \"nyanya\"]:3: types.setreadindexer: the table has an existing read+write indexer, which luau does not support setreadindexer for yet"
+        "'nyanya' type function errored at runtime: [string \"nyanya\"]:3: types.setreadindexer: the table has an existing read+write indexer, which "
+        "luau does not support setreadindexer for yet"
     );
     CHECK_EQ(
         toString(results.errors[1]),
-        "'nyanya' type function errored at runtime: [string \"nyanya\"]:3: types.setreadindexer: the table has an existing read+write indexer, which luau does not support setreadindexer for yet"
+        "'nyanya' type function errored at runtime: [string \"nyanya\"]:3: types.setreadindexer: the table has an existing read+write indexer, which "
+        "luau does not support setreadindexer for yet"
     );
 }
 
