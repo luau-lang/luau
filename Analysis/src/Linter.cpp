@@ -827,7 +827,7 @@ private:
             msg = "Variable '%s' is never used; prefix with '_' to silence";
         }
 
-        emitWarning(*context, LintWarning::Code_FunctionUnused, local->location, msg, local->name.value);
+        emitWarning(*context, warning, local->location, msg, local->name.value);
     }
 
     bool isRequireCall(AstExpr* expr)
