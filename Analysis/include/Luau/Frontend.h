@@ -140,7 +140,7 @@ struct FrontendModuleResolver : ModuleResolver
     std::string getHumanReadableModuleName(const ModuleName& moduleName) const override;
 
     bool setModule(const ModuleName& moduleName, ModulePtr module);
-    void eraseModules(const std::vector<ModuleName>& names);
+    void eraseModule(const ModuleName& moduleName);
     void clearModules();
 
 

@@ -1995,12 +1995,11 @@ bool FrontendModuleResolver::setModule(const ModuleName& moduleName, ModulePtr m
     return replaced;
 }
 
-void FrontendModuleResolver::eraseModules(const std::vector<ModuleName>& names)
+void FrontendModuleResolver::eraseModule(const ModuleName& moduleName)
 {
     std::scoped_lock lock(moduleMutex);
 
-    for (const ModuleName& name : names)
-        modules.erase(name);
+    modules.erase(moduleName);
 }
 
 void FrontendModuleResolver::clearModules()
@@ -2099,10 +2098,9 @@ void Frontend::clearModules(const std::vector<ModuleName>& names)
         sourceNodes.erase(it);
         sourceModules.erase(name);
         requireTrace.erase(name);
+        moduleResolver.eraseModule(name);
+        moduleResolverForAutocomplete.eraseModule(name);
     }
-
-    moduleResolver.eraseModules(names);
-    moduleResolverForAutocomplete.eraseModules(names);
 }
 
 void Frontend::clearBuiltinEnvironments()
