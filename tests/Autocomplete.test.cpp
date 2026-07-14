@@ -5146,7 +5146,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_indexer_with_singleton_keys")
     CHECK_EQ(ac.entryMap.count("Val3"), 1);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_function")
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_function")
 {
     ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
     check(R"(
@@ -5164,7 +5164,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
     CHECK(entry.deprecated);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_local_function")
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_local_function")
 {
     ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
     check(R"(
@@ -5182,7 +5182,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
     CHECK(entry.deprecated);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_anonymous_function")
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_anonymous_function")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauCheckTypeForDeprecated, true},
@@ -5203,7 +5203,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
     CHECK(entry.deprecated);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_function_in_table")
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_function_in_table")
 {
     ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
     check(R"(
@@ -5223,7 +5223,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
     CHECK(entry.deprecated);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_global_function")
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_global_function")
 {
     ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
 
@@ -5243,7 +5243,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
     CHECK(entry.deprecated);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_extern_member_function")
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_extern_member_function")
 {
     ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
 
@@ -5266,7 +5266,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
     CHECK(entry.deprecated);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribute_defined_on_all_overloaded_extern_member_function")
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_overloaded_extern_member_function")
 {
     ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
 
@@ -5291,7 +5291,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_marked_as_deprecated_if_attribu
     CHECK(entry.deprecated);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_entry_not_marked_as_deprecated_if_attribute_defined_on_only_some_overloads_of_extern_member_function")
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_not_deprecated_on_overloaded_extern_member_function")
 {
     ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
 
