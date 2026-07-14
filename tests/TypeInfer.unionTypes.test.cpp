@@ -547,7 +547,7 @@ end
         CHECK_EQ(toString(result.errors[0]), R"(Expected this to be '{ w: number }', but got 'X | Y | Z'
 caused by:
   Not all union options are compatible.
-Table type 'X' not compatible with type '{ w: number }' because the former is missing field 'w')");
+required field 'w' not found in type 'X' from expected type '{ w: number }')");
     }
 }
 
@@ -582,13 +582,13 @@ local a: X? = { w = 4 }
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK("Table type '{ w: number }' not compatible with type 'X' because the former is missing field 'x'" == toString(result.errors[0]));
+        CHECK("required field 'x' not found in type '{ w: number }' from expected type 'X'" == toString(result.errors[0]));
     else
     {
         const std::string expected = R"(Expected this to be 'X?', but got 'a'
 caused by:
   None of the union options are compatible. For example:
-Table type 'a' not compatible with type 'X' because the former is missing field 'x')";
+required field 'x' not found in type 'a' from expected type 'X')";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
 }
@@ -1116,7 +1116,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2025")
 
         local baz: a? = bar.test
 
-        table.insert(foo, bar) 
+        table.insert(foo, bar)
     )"));
 }
 

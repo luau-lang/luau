@@ -938,15 +938,10 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
     // It could segfault, or you could see weird type names like the empty string or <VALUELESS BY EXCEPTION>
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK_EQ(
-            "Table type '{ count: string }' not compatible with type '{ Count: number }' because the former is missing field 'Count'",
-            toString(result.errors[0])
-        );
+        CHECK_EQ("required field 'Count' not found in type '{ count: string }' from expected type '{ Count: number }'", toString(result.errors[0]));
     }
     else
-        REQUIRE_EQ(
-            "Table type 'a' not compatible with type '{ Count: number }' because the former is missing field 'Count'", toString(result.errors[0])
-        );
+        REQUIRE_EQ("required field 'Count' not found in type 'a' from expected type '{ Count: number }'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "trace_requires_in_nonstrict_mode")
