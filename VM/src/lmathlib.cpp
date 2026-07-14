@@ -20,6 +20,7 @@
 #define PCG32_INC 105
 
 LUAU_FASTFLAGVARIABLE(FixMathNoisePrecision)
+LUAU_FASTFLAGVARIABLE(LuauMathAvg)
 
 static uint32_t pcg32_random(uint64_t* state)
 {
@@ -470,6 +471,21 @@ static int math_isfinite(lua_State* L)
     return 1;
 }
 
+static int math_avg(lua_State* L)
+{
+    int n = lua_gettop(L); // number of arguments
+    double avg = luaL_checknumber(L, 1);
+    int i;
+    for (i = 2; i <= n; i++)
+    {
+        double d = luaL_checknumber(L, i);
+        avg += d;
+    }
+    avg /= n;
+    lua_pushnumber(L, avg);
+    return 1;
+}
+
 static const luaL_Reg mathlib[] = {
     {"abs", math_abs},
     {"acos", math_acos},
@@ -523,6 +539,12 @@ int luaopen_math(lua_State* L)
     pcg32_seed(&L->global->rngstate, seed);
 
     luaL_register(L, LUA_MATHLIBNAME, mathlib);
+
+    if (FFlag::LuauMathAvg)
+    {
+        lua_pushcfunction(L, math_avg, "avg");
+        lua_setfield(L, -2, "avg");
+    }
 
     lua_pushnumber(L, LUAU_PI);
     lua_setfield(L, -2, "pi");

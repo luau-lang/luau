@@ -2494,6 +2494,29 @@ static int luauF_bufferwritelong(lua_State* L, StkId res, TValue* arg0, int nres
     return -1;
 }
 
+static int luauF_avg(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 2 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
+    {
+        double avg = nvalue(arg0);
+        avg += nvalue(args);
+
+        for (int i = 3; i <= nparams; ++i)
+        {
+            if (!ttisnumber(args + (i - 2)))
+                return -1;
+
+            avg += nvalue(args + (i - 2));
+        }
+
+        avg /= nparams;
+        setnvalue(res, avg);
+        return 1;
+    }
+
+    return -1;
+}
+
 static int luauF_missing(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     return -1;

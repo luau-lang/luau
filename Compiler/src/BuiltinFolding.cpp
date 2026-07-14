@@ -633,6 +633,23 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
             return cbool(isfinite(x));
         }
         break;
+
+    case LBF_MATH_AVG:
+        if (count >= 1 && args[0].type == Constant::Type_Number)
+        {
+            double sum = args[0].valueNumber;
+
+            for (size_t i = 1; i < count; ++i)
+            {
+                if (args[i].type != Constant::Type_Number)
+                    return cvar();
+
+                sum += args[i].valueNumber;
+            }
+
+            return cnum(sum / double(count));
+        }
+        break;
     }
 
     return cvar();

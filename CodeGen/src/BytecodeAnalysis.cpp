@@ -660,6 +660,12 @@ static void applyBuiltinCall(LuauBuiltinFunction bfid, BytecodeTypes& types)
         types.a = LBC_TYPE_NUMBER;
         types.result = LBC_TYPE_INTEGER;
         break;
+    case LBF_MATH_AVG:
+        types.result = LBC_TYPE_NUMBER;
+        types.a = LBC_TYPE_NUMBER;
+        types.b = LBC_TYPE_NUMBER;
+        types.c = LBC_TYPE_NUMBER; // We can mark optional arguments
+        break;
     }
 }
 

@@ -69,6 +69,9 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauAutoStack)
 LUAU_FASTFLAG(LuauUdataMetatablePinned)
 LUAU_DYNAMIC_FASTFLAG(LuauGcTableStepFix)
+LUAU_FASTFLAG(LuauMathAvg)
+LUAU_FASTFLAG(LuauCompileMathAvg)
+LUAU_FASTFLAG(LuauTypeCheckerMathAvg)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -1246,6 +1249,10 @@ TEST_CASE("Buffers")
 
 TEST_CASE("Math")
 {
+    ScopedFastFlag mathAvg[] = {
+        {FFlag::LuauMathAvg, true},
+        {FFlag::LuauCompileMathAvg, true},
+    };
     runConformance("math.luau");
 }
 
@@ -1949,6 +1956,11 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 TEST_CASE("Types")
 {
     ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
+    ScopedFastFlag mathAvg[] = {
+        {FFlag::LuauMathAvg, true},
+        {FFlag::LuauCompileMathAvg, true},
+        {FFlag::LuauTypeCheckerMathAvg, true},
+    };
 
     runConformance(
         "types.luau",

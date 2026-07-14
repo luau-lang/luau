@@ -455,6 +455,34 @@ assert(math.isfinite(noinline(-math.huge)) == false)
 assert(math.isfinite(noinline(0/0)) == false)
 assert(math.isfinite(noinline(123.45)))
 
+-- avg
+assert(math.avg(1) == 1)
+assert(math.avg(1, 2) == 1.5)
+assert(math.avg(2, 1) == 1.5)
+assert(math.avg(1, -1) == 0)
+assert(math.avg(1, 2, 3) == 2)
+assert(math.avg(1, 1, 1) == 1)
+
+local aa, ab, ac, ad
+
+assert(pcall(function()
+  aa = 1
+  ab = -1
+  ac = 2
+  ad = 3
+end) == true)
+
+-- avg without constand-folding
+assert(math.avg(aa) == 1)
+assert(math.avg(aa, ac) == 1.5)
+assert(math.avg(ac, aa) == 1.5)
+assert(math.avg(aa, ab) == 0)
+assert(math.avg(aa, ac, ad) == 2)
+assert(math.avg(aa, aa, aa) == 1)
+
+assert(math.avg(nan, 1) ~= math.avg(1, nan))
+assert(math.isnan(math.avg(inf, -inf)))
+
 -- test that fastcalls return correct number of results
 assert(select('#', math.floor(1.4)) == 1)
 assert(select('#', math.ceil(1.6)) == 1)
@@ -519,5 +547,6 @@ assert(math.lerp("1", "5", 0.5) == 3)
 assert(math.isnan("123.45") == false)
 assert(math.isinf("123.45") == false)
 assert(math.isfinite("123.45") == true)
+assert(math.avg("3", 4) == 3.5)
 
 return('OK')
