@@ -27,7 +27,7 @@ declare function type<T>(value: T): string
 declare function typeof<T>(value: T): string
 
 -- `assert` has a magic function attached that will give more detailed type information
-declare function assert<T>(value: T, errorMessage: string?): T
+declare function assert<T, Err...>(value: T, ...: Err...): (T, Err...)
 declare function error<T>(message: T, level: number?): never
 
 declare function tostring<T>(value: T): string
