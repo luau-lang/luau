@@ -3533,12 +3533,13 @@ private:
 
     struct Alias
     {
-        AstStat* declaration;
+        AstStat* declaration = nullptr;
+        unsigned int scopeDepth = 0;
+        bool referenced = false;
+        bool softReferenced = false;
+        bool exported = false;
+
         Location nameLocation;
-        unsigned int scopeDepth;
-        bool referenced;
-        bool softReferenced;
-        bool exported;
     };
 
     DenseHashMap<AstName, Alias> refs;
