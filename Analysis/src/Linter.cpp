@@ -2,6 +2,7 @@
 #include "Luau/Linter.h"
 
 #include "Luau/AstQuery.h"
+#include "Luau/LinterConfig.h"
 #include "Luau/Module.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
@@ -716,7 +717,8 @@ private:
     struct Local
     {
         AstNode* defined = nullptr;
-        std::optional<Location> function;
+        unsigned int scopeDepth = 0;
+        bool function = false;
         bool import = false;
         bool used = false;
         bool softUsed = false;
@@ -803,31 +805,29 @@ private:
         if (local->name.value[0] == '_')
             return;
 
+        const char* msg;
+        LintWarning::Code warning;
+
         if (info.function)
+        {
+            warning = LintWarning::Code_FunctionUnused;
             if (info.softUsed)
-                emitWarning(
-                    *context,
-                    LintWarning::Code_FunctionUnused,
-                    local->location,
-                    "Function '%s' is never used outside its own body; prefix with '_' to silence",
-                    local->name.value
-                );
+                msg = "Function '%s' is never used outside its own body; prefix with '_' to silence";
             else
-                emitWarning(
-                    *context,
-                    LintWarning::Code_FunctionUnused,
-                    local->location,
-                    "Function '%s' is never used; prefix with '_' to silence",
-                    local->name.value
-                );
+                msg = "Function '%s' is never used; prefix with '_' to silence";
+        }
         else if (info.import)
-            emitWarning(
-                *context, LintWarning::Code_ImportUnused, local->location, "Import '%s' is never used; prefix with '_' to silence", local->name.value
-            );
+        {
+            warning = LintWarning::Code_ImportUnused;
+            msg = "Import '%s' is never used; prefix with '_' to silence";
+        }
         else
-            emitWarning(
-                *context, LintWarning::Code_LocalUnused, local->location, "Variable '%s' is never used; prefix with '_' to silence", local->name.value
-            );
+        {
+            warning = LintWarning::Code_LocalUnused;
+            msg = "Variable '%s' is never used; prefix with '_' to silence";
+        }
+
+        emitWarning(*context, LintWarning::Code_FunctionUnused, local->location, msg, local->name.value);
     }
 
     bool isRequireCall(AstExpr* expr)
@@ -888,16 +888,20 @@ private:
         Local& l = locals[node->name];
 
         l.defined = node;
-        l.function.emplace(node->location);
+        l.function = true;
 
-        return true;
+        l.scopeDepth++;
+        node->func->visit(this);
+        l.scopeDepth--;
+
+        return false;
     }
 
     bool visit(AstExprLocal* node) override
     {
         Local& l = locals[node->local];
 
-        if (l.function && l.function.value().contains(node->location.begin))
+        if (l.function && l.scopeDepth > 0)
             l.softUsed = true;
         else
             l.used = true;
