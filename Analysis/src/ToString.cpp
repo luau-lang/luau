@@ -1025,7 +1025,8 @@ struct TypeStringifier
             size_t savedSpansSize = state.result.typeSpans.size();
 
             // soooo 'falsy' is technically a UnionType :(
-            bool isNonFalsyUnion = get<UnionType>(el) != nullptr && (FFlag::LuauToStringTruthyFalsy && state.opts.useTruthyFalsy ? !isApproximatelyFalsyType(el) : true);
+            bool isNonFalsyUnion =
+                get<UnionType>(el) != nullptr && (FFlag::LuauToStringTruthyFalsy && state.opts.useTruthyFalsy ? !isApproximatelyFalsyType(el) : true);
             bool needParens = !state.cycleNames.contains(el) && (isNonFalsyUnion || get<FunctionType>(el) != nullptr);
 
             if (needParens)

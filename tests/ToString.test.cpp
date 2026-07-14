@@ -1086,7 +1086,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy_expanded")
 {
-	ScopedFastFlag sffs[] = {
+    ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauToStringTruthyFalsy, true},
     };
@@ -1107,14 +1107,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy_expanded")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy_no_parenthesis")
 {
-	ScopedFastFlag sffs[] = {
-		{FFlag::DebugLuauForceOldSolver, false},
-		{FFlag::LuauToStringTruthyFalsy, true},
-	};
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauToStringTruthyFalsy, true},
+    };
 
-	ToStringOptions opts;
+    ToStringOptions opts;
 
-	CheckResult result = check(R"(
+    CheckResult result = check(R"(
 		type function negate(t: type)
 		    return types.negationof(t)
 		end
@@ -1122,10 +1122,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy_no_parenthesis")
 		type scratch = unknown & negate<false?>
 	)");
 
-	LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
-	CHECK_EQ(toString(requireTypeAlias("hiss")), "falsy & unknown");
-	CHECK_EQ(toString(requireTypeAlias("scratch")), "truthy & unknown");
+    CHECK_EQ(toString(requireTypeAlias("hiss")), "falsy & unknown");
+    CHECK_EQ(toString(requireTypeAlias("scratch")), "truthy & unknown");
 }
 
 TEST_SUITE_END();
