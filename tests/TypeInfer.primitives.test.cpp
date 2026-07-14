@@ -7,8 +7,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
-
 using namespace Luau;
 
 TEST_SUITE_BEGIN("TypeInferPrimitives");
@@ -55,7 +53,7 @@ TEST_CASE_FIXTURE(Fixture, "string_method")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*requireType("p"), *getBuiltins()->numberType);
+    CHECK("number" == toString(requireType("p")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_function_indirect")
@@ -67,7 +65,7 @@ TEST_CASE_FIXTURE(Fixture, "string_function_indirect")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*requireType("p"), *getBuiltins()->stringType);
+    CHECK("string" == toString(requireType("p")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_methods_of_number")
@@ -81,21 +79,15 @@ TEST_CASE_FIXTURE(Fixture, "check_methods_of_number")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK("Expected type table, got 'number' instead" == toString(result.errors[0]));
-        if (FFlag::LuauBetterTypeMismatchErrors)
-            CHECK("Expected this to be 'string', but got 'number'" == toString(result.errors[1]));
-        else
-            CHECK("Type 'number' could not be converted into 'string'" == toString(result.errors[1]));
+        CHECK("Expected this to be 'string', but got 'number'" == toString(result.errors[1]));
     }
     else
     {
         CHECK_EQ(toString(result.errors[0]), "Cannot add method to non-table type 'number'");
-        if (FFlag::LuauBetterTypeMismatchErrors)
-            CHECK("Expected this to be 'string', but got 'number'" == toString(result.errors[1]));
-        else
-            CHECK_EQ(toString(result.errors[1]), "Type 'number' could not be converted into 'string'");
+        CHECK("Expected this to be 'string', but got 'number'" == toString(result.errors[1]));
     }
 }
 

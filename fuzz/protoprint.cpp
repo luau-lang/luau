@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "luau.pb.h"
 
+#include <optional>
+
 static const std::string kNames[] = {
     "_G",
     "_VERSION",
@@ -196,6 +198,29 @@ static const std::string kNames[] = {
     "intersectionof",
     "newtable",
     "newfunction",
+    "integer",
+    "neg",
+    "add",
+    "sub",
+    "mul",
+    "div",
+    "rem",
+    "idiv",
+    "mod",
+    "udiv",
+    "urem",
+    "lt",
+    "le",
+    "gt",
+    "ge",
+    "ult",
+    "ule",
+    "ugt",
+    "uge",
+    "readinteger",
+    "writeinteger",
+    "mininteger",
+    "maxinteger",
 };
 
 static const std::string kTypes[] = {
@@ -204,6 +229,7 @@ static const std::string kTypes[] = {
     "buffer",
     "nil",
     "number",
+    "integer",
     "string",
     "thread",
     "vector",
@@ -222,6 +248,65 @@ static const std::string kBuiltinTypes[] = {
     "lt",  "le",  "eq",  "keyof", "rawkeyof", "index", "rawget", "setmetatable", "getmetatable",
 };
 
+static const std::string kValidClassMetamethods[] = {
+    "__call",
+    "__concat",
+    "__unm",
+    "__add",
+    "__sub",
+    "__mul",
+    "__div",
+    "__idiv",
+    "__mod",
+    "__pow",
+    "__tostring",
+    "__eq",
+    "__lt",
+    "__le",
+    "__len",
+    "__iter"
+};
+
+struct BuiltinLibrary
+{
+    const char* name;
+    const std::vector<std::string> methods;
+};
+
+static const BuiltinLibrary kBuiltinLibraries[] = {
+    {"math", {"abs",    "acos",       "asin",  "atan", "atan2", "ceil",  "clamp", "cos", "cosh", "deg",   "exp",   "floor",
+              "fmod",   "frexp",      "ldexp", "lerp", "log",   "log10", "max",   "min", "modf", "noise", "pow",   "rad",
+              "random", "randomseed", "round", "sign", "sin",   "sinh",  "sqrt",  "tan", "tanh", "isnan", "isinf", "isfinite"}},
+    {"bit32",
+     {"arshift",
+      "band",
+      "bnot",
+      "bor",
+      "btest",
+      "bxor",
+      "byteswap",
+      "countlz",
+      "countrz",
+      "extract",
+      "lrotate",
+      "lshift",
+      "replace",
+      "rrotate",
+      "rshift"}},
+    {"string", {"byte", "char", "find", "format", "gmatch", "gsub", "len", "lower", "match", "rep", "reverse", "split", "sub", "upper"}},
+    {"table", {"clear", "clone", "concat", "create", "find", "freeze", "insert", "isfrozen", "maxn", "move", "remove", "sort", "unpack"}},
+    {"buffer", {"create",  "fromstring", "len",     "tostring", "copy",       "fill",        "readi8",      "readu8",      "writei8",
+                "writeu8", "readi16",    "readu16", "writei16", "writeu16",   "readi32",     "readu32",     "writei32",    "writeu32",
+                "readf32", "writef32",   "readf64", "writef64", "readstring", "writestring", "readinteger", "writeinteger"}},
+    {"coroutine", {"close", "create", "isyieldable", "resume", "running", "status", "wrap", "yield"}},
+    {"os", {"clock", "date", "difftime", "time"}},
+    {"utf8", {"char", "codepoint", "codes", "len", "offset", "charpattern", "graphemes"}},
+    {"vector", {"create", "magnitude", "normalize", "cross", "dot", "floor", "ceil", "abs", "sign", "clamp", "min", "max", "lerp"}},
+    {"integer", {"add", "sub",  "mul",    "div",    "idiv",    "udiv",    "mod",     "rem",     "urem",    "neg",     "create",  "clamp", "min",
+                 "max", "band", "bor",    "bxor",   "bnot",    "btest",   "bswap",   "lt",      "le",      "gt",      "ge",      "ult",   "ule",
+                 "ugt", "uge",  "lshift", "rshift", "arshift", "lrotate", "rrotate", "countlz", "countrz", "extract", "tonumber"}},
+};
+
 struct ProtoToLuau
 {
     struct Function
@@ -230,9 +315,17 @@ struct ProtoToLuau
         bool vararg = false;
     };
 
-    std::string source;
+    struct Class
+    {
+        const luau::Local* name;
+        std::vector<const luau::Name*> props;
+    };
+
+    std::string source = "class _ end\n";
     std::vector<Function> functions;
+    std::vector<Class> classes;
     bool types = false;
+    int blockDepth = -1;
 
     ProtoToLuau()
     {
@@ -331,6 +424,8 @@ struct ProtoToLuau
             print(expr.bool_());
         else if (expr.has_number())
             print(expr.number());
+        else if (expr.has_integer())
+            print(expr.integer());
         else if (expr.has_string())
             print(expr.string());
         else if (expr.has_local())
@@ -357,6 +452,8 @@ struct ProtoToLuau
             print(expr.ifelse());
         else if (expr.has_interpstring())
             print(expr.interpstring());
+        else if (expr.has_builtin_ref())
+            print(expr.builtin_ref());
         else
             source += "_";
     }
@@ -375,6 +472,8 @@ struct ProtoToLuau
             print(expr.index_name());
         else if (expr.has_index_expr())
             print(expr.index_expr());
+        else if (expr.has_builtin_ref())
+            print(expr.builtin_ref());
         else
             source += "_";
     }
@@ -399,6 +498,11 @@ struct ProtoToLuau
     void print(const luau::ExprConstantNumber& expr)
     {
         source += std::to_string(expr.val());
+    }
+
+    void print(const luau::ExprConstantInteger& expr)
+    {
+        source += std::to_string(expr.val()) + "i";
     }
 
     void print(const luau::ExprConstantString& expr)
@@ -434,7 +538,7 @@ struct ProtoToLuau
             source += "_";
     }
 
-    void print(const luau::ExprCall& expr)
+    void print(const luau::ParenCall& expr)
     {
         if (expr.func().has_index_name())
             print(expr.func().index_name(), expr.self());
@@ -448,6 +552,26 @@ struct ProtoToLuau
             print(expr.args(i));
         }
         source += ')';
+    }
+
+    void print(const luau::ParenlessCall& expr)
+    {
+        print(expr.func());
+        source += ' ';
+        if (expr.has_string())
+            print(expr.string());
+        else if (expr.has_table())
+            print(expr.table());
+        else
+            source += "{ }";
+    }
+
+    void print(const luau::ExprCall& expr)
+    {
+        if (expr.has_paren())
+            print(expr.paren());
+        else
+            print(expr.parenless());
     }
 
     void print(const luau::ExprIndexName& expr, bool self = false)
@@ -642,6 +766,49 @@ struct ProtoToLuau
         source += "`";
     }
 
+    void print(const luau::ExprClassInst& expr, std::optional<size_t> classIndex = std::nullopt)
+    {
+        if (classes.size() == 0)
+            source += "_ { }";
+
+        size_t index = classIndex.value_or(size_t(expr.index()) % classes.size());
+        const Class& cls = classes[index];
+
+        print(*cls.name);
+
+        source += " { ";
+
+        const int generatedArgsSize = 1 + expr.otherargs_size();
+        for (int i = 0; i < int(cls.props.size()); ++i)
+        {
+            if (i != 0)
+                source += ", ";
+
+            ident(*cls.props[i]);
+
+            source += " = ";
+
+            int generatedArgIndex = i % generatedArgsSize;
+            if (generatedArgIndex == 0)
+                print(expr.firstarg());
+            else
+                print(expr.otherargs(generatedArgIndex - 1));
+        }
+
+        source += " }";
+    }
+
+    void print(const luau::ExprBuiltinRef& expr)
+    {
+        size_t libIndex = size_t(expr.library()) % std::size(kBuiltinLibraries);
+        const BuiltinLibrary& lib = kBuiltinLibraries[libIndex];
+        const auto& methods = lib.methods;
+        size_t methodIndex = size_t(expr.method()) % methods.size();
+        source += lib.name;
+        source += '.';
+        source += methods[methodIndex];
+    }
+
     void print(const luau::LValue& expr)
     {
         if (expr.has_local())
@@ -694,12 +861,15 @@ struct ProtoToLuau
             print(stat.require_into_local());
         else if (stat.has_type_function())
             print(stat.type_function());
+        else if (stat.has_class_())
+            print(stat.class_());
         else
             source += "do end\n";
     }
 
     void print(const luau::StatBlock& stat)
     {
+        blockDepth++;
         for (int i = 0; i < stat.body_size(); ++i)
         {
             if (stat.body(i).has_block())
@@ -708,6 +878,8 @@ struct ProtoToLuau
                 print(stat.body(i));
                 source += "end\n";
             }
+            else if (stat.body(i).has_class_() && blockDepth != 0)
+                continue; // Class declarations are only allowed at the top level
             else
             {
                 print(stat.body(i));
@@ -717,6 +889,7 @@ struct ProtoToLuau
                     break;
             }
         }
+        blockDepth--;
     }
 
     void print(const luau::StatIf& stat)
@@ -805,7 +978,13 @@ struct ProtoToLuau
 
     void print(const luau::StatLocal& stat)
     {
-        source += "local ";
+        if (stat.is_exported())
+            source += "export ";
+
+        if (stat.is_const())
+            source += "const ";
+        else
+            source += "local ";
 
         if (stat.vars_size() == 0)
             source += '_';
@@ -956,7 +1135,13 @@ struct ProtoToLuau
 
     void print(const luau::StatLocalFunction& stat)
     {
-        source += "local function ";
+        if (stat.is_exported())
+            source += "export function ";
+        else if (stat.is_const())
+            source += "const function ";
+        else
+            source += "local function ";
+
         print(stat.var());
         function(stat.func());
         source += '\n';
@@ -996,6 +1181,77 @@ struct ProtoToLuau
         source += "type function ";
         ident(stat.name());
         function(stat.func());
+        source += '\n';
+    }
+
+    void print(const luau::ClassProp& prop)
+    {
+        source += "public ";
+        ident(prop.name());
+
+        if (prop.has_type())
+        {
+            source += ':';
+            print(prop.type());
+        }
+    }
+
+    void print(const luau::ClassMetamethodName& metamethod)
+    {
+        size_t index = size_t(metamethod.index()) % std::size(kValidClassMetamethods);
+        source += kValidClassMetamethods[index];
+    }
+
+    void print(const luau::ClassMethod& method)
+    {
+        if (method.has_access())
+        {
+            // TODO: once we add more modifiers, add a helper to print access
+            if (method.access() == luau::Modifier::PUBLIC)
+                source += "public ";
+        }
+        source += "function ";
+
+        if (method.has_name())
+            ident(method.name());
+        else if (method.has_metamethod())
+            print(method.metamethod());
+
+        function(method.func());
+    }
+
+    void print(const luau::StatClass& stat)
+    {
+        if (stat.is_exported())
+            source += "export ";
+
+        source += "class ";
+        print(stat.name());
+        source += '\n';
+
+        std::vector<const luau::Name*> propNames;
+
+        for (size_t i = 0; i < stat.props_size(); ++i)
+        {
+            const luau::ClassProp& prop = stat.props(i);
+            propNames.emplace_back(&prop.name());
+            print(prop);
+            source += '\n';
+        }
+
+        for (size_t i = 0; i < stat.methods_size(); ++i)
+        {
+            print(stat.methods(i));
+            source += '\n';
+        }
+
+        source += "end\n";
+
+        classes.emplace_back(Class{&stat.name(), std::move(propNames)});
+
+        print(stat.local());
+        source += " = ";
+        print(stat.inst(), classes.size() - 1);
         source += '\n';
     }
 
@@ -1206,6 +1462,8 @@ struct ProtoToLuau
             print(lit.bool_());
         else if (lit.has_number())
             print(lit.number());
+        else if (lit.has_integer())
+            print(lit.integer());
         else if (lit.has_string())
             print(lit.string());
     }

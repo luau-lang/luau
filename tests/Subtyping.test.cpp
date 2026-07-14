@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/Ast.h"
 #include "Luau/Instantiation2.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePath.h"
@@ -16,7 +17,11 @@
 
 #include <initializer_list>
 
-LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauReadOnlyIndexers)
+LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
+LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 
 using namespace Luau;
 
@@ -66,11 +71,11 @@ struct SubtypeFixture : Fixture
     TypeArena arena;
     InternalErrorReporter iceReporter;
     UnifierSharedState sharedState{&ice};
-    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
+    Normalizer normalizer{&arena, getBuiltins(), NotNull{&sharedState}, !FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old};
     TypeCheckLimits limits;
     TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceReporter}, NotNull{&limits}};
 
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     ScopePtr rootScope{new Scope(getBuiltins()->emptyTypePack)};
     ScopePtr moduleScope{new Scope(rootScope)};
@@ -118,9 +123,9 @@ struct SubtypeFixture : Fixture
         return arena.addType(TableType{std::move(props), std::nullopt, {}, TableState::Sealed});
     }
 
-    TypeId idx(TypeId keyTy, TypeId valueTy)
+    TypeId idx(TypeId keyTy, TypeId valueTy, bool isReadOnly = false)
     {
-        return arena.addType(TableType{{}, TableIndexer{keyTy, valueTy}, {}, TableState::Sealed});
+        return arena.addType(TableType{{}, TableIndexer{keyTy, valueTy, isReadOnly}, {}, TableState::Sealed});
     }
 
     // `&`
@@ -157,6 +162,16 @@ struct SubtypeFixture : Fixture
         TypeId ty = cls(name);
         getMutable<ExternType>(ty)->props = std::move(props);
         return ty;
+    }
+
+    TypeId obj(const std::string& name, std::optional<TypeId> parent = std::nullopt)
+    {
+        return arena.addType(ExternType{name, {}, parent.value_or(getBuiltins()->objectType), std::nullopt, {}, nullptr, "", std::nullopt});
+    }
+
+    TypeId userDefinedCls(const std::string& name, std::optional<TypeId> parent = std::nullopt)
+    {
+        return arena.addType(ExternType{name, {}, parent.value_or(getBuiltins()->classType), std::nullopt, {}, nullptr, "", std::nullopt});
     }
 
     TypeId opt(TypeId ty)
@@ -840,28 +855,28 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{x: <T>(T) -> ()} <: {x: <U>(U) -> ()}")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: number } <: { read x: number }")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK_IS_SUBTYPE(tbl({{"x", getBuiltins()->numberType}}), tbl({{"x", Property::readonly(getBuiltins()->numberType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: number } <: { write x: number }")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK_IS_SUBTYPE(tbl({{"x", getBuiltins()->numberType}}), tbl({{"x", Property::writeonly(getBuiltins()->numberType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: \"hello\" } <: { read x: string }")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK_IS_SUBTYPE(tbl({{"x", helloType}}), tbl({{"x", Property::readonly(getBuiltins()->stringType)}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ x: string } <: { write x: string }")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CHECK_IS_SUBTYPE(tbl({{"x", getBuiltins()->stringType}}), tbl({{"x", Property::writeonly(getBuiltins()->stringType)}}));
 }
@@ -999,6 +1014,67 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Child & Root <: userdata")
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~Root <: userdata")
 {
     CHECK_IS_SUBTYPE(meet(childClass, negate(rootClass)), getBuiltins()->externType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "random extern type <!: object")
+{
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->externType, getBuiltins()->objectType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "object <!: class")
+{
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->objectType, getBuiltins()->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "class <!: object")
+{
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->classType, getBuiltins()->objectType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "extern(object) <: object")
+{
+    TypeId myObject = obj("MyObject");
+    CHECK_IS_SUBTYPE(myObject, getBuiltins()->objectType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "extern(class) <: class")
+{
+    TypeId myClass = userDefinedCls("MyClass");
+    CHECK_IS_SUBTYPE(myClass, getBuiltins()->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "multiple inheritance subclass object <: object")
+{
+    TypeId b = obj("B");
+    TypeId a = obj("A", b);
+    CHECK_IS_SUBTYPE(a, getBuiltins()->objectType);
+    CHECK_IS_SUBTYPE(b, getBuiltins()->objectType);
+    CHECK_IS_NOT_SUBTYPE(b, a);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "class A and B class subtypes")
+{
+    TypeId a = userDefinedCls("A");
+    TypeId b = userDefinedCls("B");
+    CHECK_IS_SUBTYPE(a, getBuiltins()->classType);
+    CHECK_IS_SUBTYPE(b, getBuiltins()->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "class A and B not subtypes of each other")
+{
+    TypeId a = userDefinedCls("A");
+    TypeId b = userDefinedCls("B");
+    CHECK_IS_NOT_SUBTYPE(a, b);
+    CHECK_IS_NOT_SUBTYPE(b, a);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Classes are subtypes of themselves")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+    TypeId a = userDefinedCls("A");
+    TypeId b = userDefinedCls("B");
+    CHECK_IS_SUBTYPE(a, a);
+    CHECK_IS_SUBTYPE(b, b);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: number")
@@ -1334,6 +1410,17 @@ TEST_IS_NOT_SUBTYPE(
     idx(getBuiltins()->numberType, join(getBuiltins()->stringType, getBuiltins()->numberType))
 );
 
+TEST_CASE_FIXTURE(SubtypeFixture, "{ read [number] : string } <: { read [number] : string | number }")
+{
+    ScopedFastFlag sff{FFlag::LuauReadOnlyIndexers, true};
+
+    CHECK_IS_SUBTYPE(
+        idx(getBuiltins()->numberType, getBuiltins()->stringType, true),
+        idx(getBuiltins()->numberType, join(getBuiltins()->stringType, getBuiltins()->numberType), true)
+    );
+}
+
+
 TEST_IS_NOT_SUBTYPE(tbl({{"X", getBuiltins()->numberType}}), idx(getBuiltins()->stringType, getBuiltins()->numberType));
 TEST_IS_SUBTYPE(idx(getBuiltins()->stringType, getBuiltins()->numberType), tbl({{"X", getBuiltins()->numberType}}));
 
@@ -1570,6 +1657,59 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_non_generics_in_function_generics")
     )");
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "unique_table_missing_optional_prop_is_subtype_of_intersection")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauImproveUniqueTableWidthSubtyping, true},
+        // Clip this test when this flag is clipped.
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, false},
+    };
+
+    // { tag: string } <: ({ b1: number? } & { tag: string? })?
+    // should succeed when the sub table is in uniqueTypes (it's a fresh literal),
+    // and fail when it is not.
+
+    TypeId subTy = tbl({
+        {"tag", Property::rw(getBuiltins()->stringType)},
+    });
+
+    TypeId baseProps = tbl({
+        {"tag", Property::rw(getBuiltins()->optionalStringType)},
+    });
+
+    TypeId extraProps = tbl({
+        {"b1", Property::rw(getBuiltins()->optionalNumberType)},
+    });
+
+    TypeId superTy = opt(meet(baseProps, extraProps));
+
+    // We must use separate caches because a type might be unique or not
+    // depending on the specific context in which the subtype test is being
+    // conducted.  We need to keep the caches separate.
+
+    // Without uniqueTypes: should NOT be a subtype (invariant check fails
+    // because the sub table is missing b1)
+    {
+        Subtyping st = mkSubtyping();
+        SubtypingResult result = st.isSubtype(subTy, superTy, NotNull{rootScope.get()});
+        CHECK(!result.isSubtype);
+    }
+
+    // With uniqueTypes containing subTy: should be a subtype (covariant check
+    // permits missing optional props on a unique/fresh table).
+    {
+        DenseHashSet<TypeId> uniqueTypes{nullptr};
+        uniqueTypes.insert(subTy);
+
+        Subtyping st = mkSubtyping();
+        st.uniqueTypes = &uniqueTypes;
+        SubtypingResult result = st.isSubtype(subTy, superTy, NotNull{rootScope.get()});
+        CHECK(result.isSubtype);
+    }
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("Subtyping.Subpaths");
@@ -1767,9 +1907,9 @@ TEST_CASE_FIXTURE(SubtypeFixture, "substitute_a_generic_for_a_negation")
     // <A, B>(x: A, y: B) -> (A & ~(false?)) | B
     // (~(false?), ~(false?)) -> (~(false?) & ~(false?)) | ~(false?)
 
-    TypeId aTy = arena.addType(GenericType{"A"});
+    TypeId aTy = arena.addType(GenericType{"A", Polarity::Mixed});
     getMutable<GenericType>(aTy)->scope = moduleScope.get();
-    TypeId bTy = arena.addType(GenericType{"B"});
+    TypeId bTy = arena.addType(GenericType{"B", Polarity::Mixed});
     getMutable<GenericType>(bTy)->scope = moduleScope.get();
 
     TypeId genericFunctionTy = arena.addType(
@@ -1812,12 +1952,34 @@ end
     LUAU_REQUIRE_NO_ERRORS(res);
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "table_test_is_suppressing_if_all_mismatches_are_suppressing")
+{
+    TypeId tableOne = parseType("{foo: any, bar: any}");
+    TypeId tableTwo = parseType("{foo: number, bar: string}");
+
+    SubtypingResult sr = subtyping.isSubtype(tableOne, tableTwo, NotNull{rootScope.get()});
+
+    CHECK(!sr.isSubtype);
+    CHECK(sr.isErrorSuppressing);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "table_test_is_non_suppressing_if_any_mismatches_are_non_suppressing")
+{
+    TypeId tableOne = parseType("{foo: any, bar: string, baz: any}");
+    TypeId tableTwo = parseType("{foo: number, bar: number, baz: boolaen}");
+
+    SubtypingResult sr = subtyping.isSubtype(tableOne, tableTwo, NotNull{rootScope.get()});
+
+    CHECK(!sr.isSubtype);
+    CHECK(!sr.isErrorSuppressing);
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "weird_cyclic_instantiation")
 {
     TypeArena arena;
     Scope scope(getBuiltins()->anyTypePack);
 
-    TypeId genericT = arena.addType(GenericType{"T"});
+    TypeId genericT = arena.addType(GenericType{"T", Polarity::Mixed});
 
     TypeId idTy = arena.addType(
         FunctionType{/* generics */ {genericT},

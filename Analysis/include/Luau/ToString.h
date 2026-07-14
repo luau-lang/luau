@@ -47,6 +47,7 @@ struct ToStringOptions
     bool hideFunctionSelfArgument = false;        // If true, `self: X` will be omitted from the function signature if the function has self
     bool hideTableAliasExpansions = false;        // If true, all table aliases will not be expanded
     bool useQuestionMarks = true;                 // If true, use a postfix ? for options, else write them out as unions that include nil.
+    bool ignoreSyntheticName = false;             // If true, ignore synthetic names on table types.
     size_t maxTableLength = size_t(FInt::LuauTableTypeMaximumStringifierLength); // Only applied to TableTypes
     size_t maxTypeLength = size_t(FInt::LuauTypeMaximumStringifierLength);
     size_t compositeTypesSingleLineLimit = 5; // The number of type elements permitted on a single line when printing type unions/intersections
@@ -55,9 +56,19 @@ struct ToStringOptions
     std::vector<std::string> namedFunctionOverrideArgNames; // If present, named function argument names will be overridden
 };
 
+struct ToStringSpan
+{
+    size_t startPos;
+    size_t endPos;
+    TypeId type;
+};
+
 struct ToStringResult
 {
     std::string name;
+
+    // Records which TypeId produced each substring of the output. Only recorded for named types
+    std::vector<ToStringSpan> typeSpans;
 
     bool invalid = false;
     bool error = false;
@@ -66,10 +77,10 @@ struct ToStringResult
 };
 
 ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts);
-ToStringResult toStringDetailed(TypePackId ty, ToStringOptions& opts);
+ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts);
 
 std::string toString(TypeId ty, ToStringOptions& opts);
-std::string toString(TypePackId ty, ToStringOptions& opts);
+std::string toString(TypePackId tp, ToStringOptions& opts);
 
 // These overloads are selected when a temporary ToStringOptions is passed. (eg
 // via an initializer list)
@@ -140,7 +151,7 @@ std::string dump(const std::optional<TypeId>& ty);
 std::string dump(TypePackId ty);
 std::string dump(const std::optional<TypePackId>& ty);
 std::string dump(const std::vector<TypeId>& types);
-std::string dump(const std::vector<TypePackId>& types);
+std::string dump(const std::vector<TypePackId>& typePacks);
 std::string dump(DenseHashMap<TypeId, TypeId>& types);
 std::string dump(DenseHashMap<TypePackId, TypePackId>& types);
 
@@ -148,7 +159,7 @@ std::string dump(const Constraint& c);
 
 std::string dump(const std::shared_ptr<Scope>& scope, const char* name);
 
-std::string generateName(size_t n);
+std::string generateName(size_t i);
 
 std::string toString(const Position& position);
 std::string toString(const Location& location, int offset = 0, bool useBegin = true);

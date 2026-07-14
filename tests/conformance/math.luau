@@ -421,18 +421,39 @@ assert(math.lerp(sq2, sq2, sq2 / 2) == sq2) -- consistent (fails for a*t + b*(1-
 
 assert(tostring(math.pow(-2, 0.5)) == "nan")
 
+-- math constants
+assert(math.pi * 2 == math.tau)
+assert(math.sqrt(2) == math.sqrt2)
+assert(math.exp(1) == math.e)
+assert(((1 + math.sqrt(5)) / 2) == math.phi)
+assert(math.nan ~= math.nan)
+assert(math.isnan(math.nan))
+
 -- isnan, isinf, isfinite
 assert(math.isnan(0/0))
 assert(math.isnan(10) == false)
 assert(math.isnan(math.huge) == false)
+assert(math.isnan(noinline(0/0)))
+assert(math.isnan(noinline(10)) == false)
+assert(math.isnan(noinline(math.huge)) == false)
+
 assert(math.isinf(math.huge))
 assert(math.isinf(-math.huge))
 assert(math.isinf(10) == false)
 assert(math.isinf(0/0) == false)
+assert(math.isinf(noinline(math.huge)))
+assert(math.isinf(noinline(-math.huge)))
+assert(math.isinf(noinline(10)) == false)
+assert(math.isinf(noinline(0/0)) == false)
+
 assert(math.isfinite(math.huge) == false)
 assert(math.isfinite(-math.huge) == false)
 assert(math.isfinite(0/0) == false)
 assert(math.isfinite(123.45))
+assert(math.isfinite(noinline(math.huge)) == false)
+assert(math.isfinite(noinline(-math.huge)) == false)
+assert(math.isfinite(noinline(0/0)) == false)
+assert(math.isfinite(noinline(123.45)))
 
 -- test that fastcalls return correct number of results
 assert(select('#', math.floor(1.4)) == 1)

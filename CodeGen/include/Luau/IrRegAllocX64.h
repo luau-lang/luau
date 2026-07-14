@@ -2,8 +2,10 @@
 #pragma once
 
 #include "Luau/AssemblyBuilderX64.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrData.h"
 #include "Luau/RegisterX64.h"
+#include "Luau/SmallVector.h"
 
 #include <array>
 #include <initializer_list>
@@ -34,6 +36,17 @@ struct IrSpillX64
     RegisterX64 originalLoc = noreg;
 };
 
+struct ExitSyncArgX64
+{
+    uint32_t instIdx;
+    RegisterX64 reg = noreg;
+    uint8_t stackSlot = kNoStackSlot;
+    RegisterX64 originalReg = noreg;
+    ValueRestoreLocation restoreLocation;
+};
+
+using ExitSyncArgsX64 = SmallVector<ExitSyncArgX64, 2>;
+
 struct IrRegAllocX64
 {
     IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function, LoweringStats* stats);
@@ -50,16 +63,15 @@ struct IrRegAllocX64
 
     bool isLastUseReg(const IrInst& target, uint32_t instIdx) const;
 
+    void recordAndFreeLastUse(uint32_t blockIdx, IrInst& target, uint32_t originInstIdx);
+
     bool shouldFreeGpr(RegisterX64 reg) const;
 
     unsigned findSpillStackSlot(IrValueKind valueKind);
 
-    // TODO: Remove with FFlagLuauCodegenChainedSpills
-    IrOp getRestoreOp_DEPRECATED(const IrInst& inst) const;
-    bool hasRestoreOp_DEPRECATED(const IrInst& inst) const;
-    OperandX64 getRestoreAddress_DEPRECATED(const IrInst& inst, IrOp restoreOp);
-
     OperandX64 getRestoreAddress(const IrInst& inst, ValueRestoreLocation restoreLocation);
+
+    void setupExitSyncEntry(uint32_t blockIdx);
 
     // Register used by instruction is about to be freed, have to find a way to restore value later
     void preserve(IrInst& inst);
@@ -69,6 +81,14 @@ struct IrRegAllocX64
     void preserveAndFreeInstValues();
 
     uint32_t findInstructionWithFurthestNextUse(const std::array<uint32_t, 16>& regInstUsers) const;
+
+    bool isExtraSpillSlot_DEPRECATED(unsigned slot) const;
+    int getExtraSpillAddressOffset_DEPRECATED(unsigned slot) const;
+
+    uint32_t getAllocToken() const
+    {
+        return allocActionCount;
+    }
 
     void assertFree(RegisterX64 reg) const;
     void assertAllFree() const;
@@ -86,12 +106,15 @@ struct IrRegAllocX64
     std::array<uint32_t, 16> xmmInstUsers;
     uint8_t usableXmmRegCount = 0;
 
-    std::bitset<256> usedSpillSlots_DEPRECATED;
     std::bitset<512> usedSpillSlotHalfs; // A bit for every stack slot split in 4 byte halfs
     unsigned maxUsedSlot = 0;            // Maximum number of 8 byte stack slots used
 
     unsigned nextSpillId = 1;
     std::vector<IrSpillX64> spills;
+
+    DenseHashMap<uint32_t, ExitSyncArgsX64> exitSyncArgs{~0u};
+
+    uint32_t allocActionCount = 0;
 };
 
 struct ScopedRegX64

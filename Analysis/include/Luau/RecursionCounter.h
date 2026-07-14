@@ -44,7 +44,6 @@ struct NonExceptionalRecursionLimiter : RecursionCounter
     bool isOk(int limit) const;
 
     NonExceptionalRecursionLimiter(int* count);
-
 };
 
 } // namespace Luau

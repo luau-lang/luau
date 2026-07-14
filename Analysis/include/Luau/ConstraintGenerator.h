@@ -3,8 +3,10 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Constraint.h"
+#include "Luau/ConstraintGraph.h"
 #include "Luau/ConstraintSet.h"
 #include "Luau/ControlFlow.h"
+#include "Luau/ControlFlowGraph.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/HashUtil.h"
 #include "Luau/InsertionOrderedMap.h"
@@ -13,9 +15,11 @@
 #include "Luau/NotNull.h"
 #include "Luau/Polarity.h"
 #include "Luau/Refinement.h"
+#include "Luau/Set.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeIds.h"
+#include "Luau/TypeStateMap.h"
 #include "Luau/TypeUtils.h"
 
 #include <memory>
@@ -61,6 +65,12 @@ struct InferencePack
 struct Checkpoint
 {
     size_t offset = 0;
+};
+
+struct ClassDeclRecord
+{
+    TypeId ty = nullptr;
+    DenseHashMap<AstName, TypeId> memberTypes{AstName{""}};
 };
 
 struct ConstraintGenerator
@@ -136,10 +146,14 @@ struct ConstraintGenerator
 
     DenseHashMap<AstExpr*, Inference> inferredExprCache{nullptr};
 
+    DenseHashMap<AstLocal*, std::unique_ptr<ClassDeclRecord>> classDeclRecords{nullptr};
+
     DcrLogger* logger;
 
     bool recursionLimitMet = false;
 
+    ConstraintGraph* cgraph = nullptr;
+    CFG::TypeStateMap* typestate = nullptr;
     ConstraintGenerator(
         ModulePtr module,
         NotNull<Normalizer> normalizer,
@@ -152,7 +166,9 @@ struct ConstraintGenerator
         std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
         DcrLogger* logger,
         NotNull<DataFlowGraph> dfg,
-        std::vector<RequireCycle> requireCycles
+        std::vector<RequireCycle> requireCycles,
+        ConstraintGraph* cgraph,
+        CFG::TypeStateMap* typestate = nullptr
     );
 
     ConstraintSet run(AstStatBlock* block);
@@ -177,6 +193,10 @@ private:
     std::vector<InteriorFreeTypes> interiorFreeTypes;
 
     std::vector<TypeId> unionsToSimplify;
+
+    Set<AstName> uninitializedGlobals{{}};
+
+    Polarity polarity = Polarity::None;
 
     DenseHashMap<std::pair<TypeId, std::string>, TypeId, PairHash<TypeId, std::string>> propIndexPairsSeen{{nullptr, ""}};
 
@@ -223,6 +243,9 @@ private:
      * @param cv the constraint variant to add.
      * @return the pointer to the inserted constraint
      */
+    TypeId resolveRHSType(const ScopePtr& scope, Location location, AstExpr* expr);
+    TypeId resolveLHSType(const ScopePtr& scope, Location location, const CFG::LValue& lv);
+
     NotNull<Constraint> addConstraint(const ScopePtr& scope, const Location& location, ConstraintV cv);
 
     /**
@@ -262,7 +285,7 @@ private:
     );
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
-    LUAU_NOINLINE void checkAliases(const ScopePtr& scope, AstStatBlock* block);
+    LUAU_NOINLINE void prototypeTypeDefinitions(const ScopePtr& scope, AstStatBlock* block);
 
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
 
@@ -282,8 +305,9 @@ private:
     ControlFlow visit(const ScopePtr& scope, AstStatTypeAlias* alias);
     ControlFlow visit(const ScopePtr& scope, AstStatTypeFunction* function);
     ControlFlow visit(const ScopePtr& scope, AstStatDeclareGlobal* declareGlobal);
-    ControlFlow visit(const ScopePtr& scope, AstStatDeclareExternType* declareExternType);
-    ControlFlow visit(const ScopePtr& scope, AstStatDeclareFunction* declareFunction);
+    ControlFlow visit(const ScopePtr& scope, AstStatDeclareExternType* declaredExternType);
+    ControlFlow visit(const ScopePtr& scope, AstStatDeclareFunction* global);
+    ControlFlow visit(const ScopePtr& scope, AstStatClass* statClass);
     ControlFlow visit(const ScopePtr& scope, AstStatError* error);
 
     InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes = {});
@@ -354,7 +378,7 @@ private:
     void visitLValue(const ScopePtr& scope, AstExpr* expr, TypeId rhsType);
     void visitLValue(const ScopePtr& scope, AstExprLocal* local, TypeId rhsType);
     void visitLValue(const ScopePtr& scope, AstExprGlobal* global, TypeId rhsType);
-    void visitLValue(const ScopePtr& scope, AstExprIndexName* indexName, TypeId rhsType);
+    void visitLValue(const ScopePtr& scope, AstExprIndexName* expr, TypeId rhsType);
     void visitLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr, TypeId rhsType);
 
     struct FunctionSignature
@@ -372,6 +396,7 @@ private:
 
     FunctionSignature checkFunctionSignature(
         const ScopePtr& parent,
+        ClassDeclRecord* enclosingClass,
         AstExprFunction* fn,
         std::optional<TypeId> expectedType = {},
         std::optional<Location> originalName = {}
@@ -397,7 +422,13 @@ public:
      * @param inTypeArguments whether we are resolving a type that's contained within type arguments, `<...>`.
      * @return the type of the AST annotation.
      **/
-    TypeId resolveType(const ScopePtr& scope, AstType* ty, bool inTypeArguments, bool replaceErrorWithFresh = false);
+    TypeId resolveType(
+        const ScopePtr& scope,
+        AstType* ty,
+        bool inTypeArguments,
+        bool replaceErrorWithFresh = false,
+        Polarity initialPolarity = Polarity::Positive
+    );
 
 private:
     // resolveType() is recursive, but we only want to invoke
@@ -412,9 +443,15 @@ private:
      * @param inTypeArguments whether we are resolving a type that's contained within type arguments, `<...>`.
      * @return the type pack of the AST annotation.
      **/
-    TypePackId resolveTypePack(const ScopePtr& scope, AstTypePack* tp, bool inTypeArguments, bool replaceErrorWithFresh = false);
+    TypePackId resolveTypePack(
+        const ScopePtr& scope,
+        AstTypePack* tp,
+        bool inTypeArguments,
+        bool replaceErrorWithFresh = false,
+        Polarity initialPolarity = Polarity::Positive
+    );
 
-    // Inner hepler for resolveTypePack
+    // Inner helper for resolveTypePack
     TypePackId resolveTypePack_(const ScopePtr& scope, AstTypePack* tp, bool inTypeArguments, bool replaceErrorWithFresh = false);
 
     /**
@@ -424,7 +461,15 @@ private:
      * @param inTypeArguments whether we are resolving a type that's contained within type arguments, `<...>`.
      * @return the type pack of the AST annotation.
      **/
-    TypePackId resolveTypePack(const ScopePtr& scope, const AstTypeList& list, bool inTypeArguments, bool replaceErrorWithFresh = false);
+    TypePackId resolveTypePack(
+        const ScopePtr& scope,
+        const AstTypeList& list,
+        bool inTypeArguments,
+        bool replaceErrorWithFresh = false,
+        Polarity initialPolarity = Polarity::Positive
+    );
+
+    TypePackId resolveTypePack_(const ScopePtr& scope, const AstTypeList& list, bool inTypeArguments, bool replaceErrorWithFresh);
 
     /**
      * Creates generic types given a list of AST definitions, resolving default

@@ -2,6 +2,7 @@
 #include "CodeGenX64.h"
 
 #include "Luau/AssemblyBuilderX64.h"
+#include "Luau/IrCallWrapperX64.h"
 #include "Luau/UnwindBuilder.h"
 
 #include "CodeGenContext.h"
@@ -9,6 +10,8 @@
 #include "EmitCommonX64.h"
 
 #include "lstate.h"
+
+LUAU_FASTFLAG(LuauCodegenSharedLog)
 
 /* An overview of native environment stack setup that we are making in the entry function:
  * Each line is 8 bytes, stack grows downwards.
@@ -71,10 +74,10 @@ static EntryLocations buildEntryFunction(AssemblyBuilderX64& build, UnwindBuilde
     locations.start = build.setLabel();
     unwind.startFunction();
 
-    RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
-    RegisterX64 rArg2 = (build.abi == ABIX64::Windows) ? rdx : rsi;
-    RegisterX64 rArg3 = (build.abi == ABIX64::Windows) ? r8 : rdx;
-    RegisterX64 rArg4 = (build.abi == ABIX64::Windows) ? r9 : rcx;
+    RegisterX64 rArg1 = IrCallWrapperX64::suggestArgumentRegister<0>(SizeX64::qword, build);
+    RegisterX64 rArg2 = IrCallWrapperX64::suggestArgumentRegister<1>(SizeX64::qword, build);
+    RegisterX64 rArg3 = IrCallWrapperX64::suggestArgumentRegister<2>(SizeX64::qword, build);
+    RegisterX64 rArg4 = IrCallWrapperX64::suggestArgumentRegister<3>(SizeX64::qword, build);
 
     // Save common non-volatile registers
     if (build.abi == ABIX64::SystemV)
@@ -188,7 +191,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderX64& build, UnwindBuilde
 
 bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
 {
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
     UnwindBuilder& unwind = *codeGenContext.unwindBuilder.get();
 
     unwind.startInfo(UnwindBuilder::X64);
@@ -201,19 +204,13 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
 
     CODEGEN_ASSERT(build.data.empty());
 
-    uint8_t* codeStart = nullptr;
-    if (!codeGenContext.codeAllocator.allocate(
-            build.data.data(),
-            int(build.data.size()),
-            build.code.data(),
-            int(build.code.size()),
-            codeGenContext.gateData,
-            codeGenContext.gateDataSize,
-            codeStart
-        ))
-    {
+    codeGenContext.gateAllocationData =
+        codeGenContext.codeAllocator.allocate(build.data.data(), int(build.data.size()), build.code.data(), int(build.code.size()));
+
+    if (!codeGenContext.gateAllocationData.start)
         return false;
-    }
+
+    uint8_t* codeStart = codeGenContext.gateAllocationData.codeStart;
 
     // Set the offset at the beginning so that functions in new blocks will not overlay the locations
     // specified by the unwind information of the entry function
@@ -225,34 +222,46 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
     return true;
 }
 
-void assembleHelpers(X64::AssemblyBuilderX64& build, ModuleHelpers& helpers)
+void assembleHelpers(LogBuilder* logger, X64::AssemblyBuilderX64& build, ModuleHelpers& helpers)
 {
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; updatePcAndContinueInVm\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; updatePcAndContinueInVm\n");
     build.setLabel(helpers.updatePcAndContinueInVm);
     emitUpdatePcForExit(build);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; exitContinueVmClearNativeFlag\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; exitContinueVmClearNativeFlag\n");
     build.setLabel(helpers.exitContinueVmClearNativeFlag);
     emitClearNativeFlag(build);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; exitContinueVm\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; exitContinueVm\n");
     build.setLabel(helpers.exitContinueVm);
     emitExit(build, /* continueInVm */ true);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; exitNoContinueVm\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; exitNoContinueVm\n");
     build.setLabel(helpers.exitNoContinueVm);
     emitExit(build, /* continueInVm */ false);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; interrupt\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; interrupt\n");
     build.setLabel(helpers.interrupt);
     emitInterrupt(build);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; return\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; return\n");
     build.setLabel(helpers.return_);
     emitReturn(build, helpers);

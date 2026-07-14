@@ -36,12 +36,12 @@ struct IrBuilder
 
     // Clones all instructions into the current block
     // Source block that is cloned cannot use values coming in from a predecessor
-    void clone_NEW(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator);
-    void clone_DEPRECATED(const IrBlock& source, bool removeCurrentTerminator);
+    void clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator);
 
     IrOp undef();
 
     IrOp constInt(int value);
+    IrOp constInt64(int64_t value);
     IrOp constUint(unsigned value);
     IrOp constImport(unsigned value);
     IrOp constDouble(double value);
@@ -50,6 +50,8 @@ struct IrBuilder
 
     IrOp cond(IrCondition cond);
 
+    IrOp inst(IrCmd cmd, const IrOps& ops);
+    IrOp inst(IrCmd cmd, std::initializer_list<IrOp> ops);
     IrOp inst(IrCmd cmd);
     IrOp inst(IrCmd cmd, IrOp a);
     IrOp inst(IrCmd cmd, IrOp a, IrOp b);
@@ -61,6 +63,7 @@ struct IrBuilder
 
     IrOp block(IrBlockKind kind); // Requested kind can be ignored if we are in an outlined sequence
     IrOp blockAtInst(uint32_t index);
+    IrOp fallbackBlock(uint32_t pcpos);
 
     IrOp vmReg(uint8_t index);
     IrOp vmConst(uint32_t index);

@@ -7,8 +7,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
-LUAU_FASTFLAG(LuauCodegenSplitFloat)
+LUAU_FASTFLAGVARIABLE(LuauCodegenSharedLog)
 
 namespace Luau
 {
@@ -68,9 +67,10 @@ static int getFmovImmFp32(float value)
     return dec == int(u >> 19) ? imm : -1;
 }
 
-AssemblyBuilderA64::AssemblyBuilderA64(bool logText, unsigned int features)
-    : logText(logText)
+AssemblyBuilderA64::AssemblyBuilderA64(LogBuilder* logger, bool logText_DEPRECATED, unsigned int features)
+    : logText(FFlag::LuauCodegenSharedLog ? logger != nullptr : logText_DEPRECATED)
     , features(features)
+    , logger(logger)
 {
     data.resize(4096);
     dataPos = data.size(); // data is filled backwards
@@ -162,6 +162,99 @@ void AssemblyBuilderA64::sub(RegisterA64 dst, RegisterA64 src1, uint16_t src2)
     placeI12("sub", dst, src1, src2, 0b10'10001);
 }
 
+// dst = UInt(src3) - (UInt(src1) * UInt(src2));
+void AssemblyBuilderA64::msub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, RegisterA64 src3)
+{
+    if (logText)
+    {
+        logAppend(" %-12s", "msub");
+        log(dst);
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append(",");
+        else
+            text.append(",");
+        log(src1);
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append(",");
+        else
+            text.append(",");
+        log(src2);
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append(",");
+        else
+            text.append(",");
+        log(src3);
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append("\n");
+        else
+            text.append("\n");
+    }
+
+    CODEGEN_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x);
+    CODEGEN_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind && dst.kind == src3.kind);
+
+    uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // MSUB: sf 00 11011 000 Rm 1 Ra Rn Rd
+    place(dst.index | (src1.index << 5) | (src3.index << 10) | (1 << 15) | (src2.index << 16) | (0b0011011000u << 21) | sf);
+    commit();
+}
+
+void AssemblyBuilderA64::mul(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+{
+    if (logText)
+        log("mul", dst, src1, src2);
+
+    CODEGEN_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x);
+    CODEGEN_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind);
+
+    uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // MUL is an alias for MADD with Ra=XZR: sf 00 11011 000 Rm 0 11111 Rn Rd
+    place(dst.index | (src1.index << 5) | (0b11111 << 10) | (src2.index << 16) | (0b0011011000u << 21) | sf);
+    commit();
+}
+
+void AssemblyBuilderA64::sdiv(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+{
+    if (logText)
+        log("sdiv", dst, src1, src2);
+
+    CODEGEN_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x);
+    CODEGEN_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind);
+
+    uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // SDIV: sf 00 11010 110 Rm 000011 Rn Rd
+    place(dst.index | (src1.index << 5) | (0b000011 << 10) | (src2.index << 16) | (0b0011010110u << 21) | sf);
+    commit();
+}
+
+void AssemblyBuilderA64::udiv(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+{
+    if (logText)
+        log("udiv", dst, src1, src2);
+
+    CODEGEN_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x);
+    CODEGEN_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind);
+
+    uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // UDIV: sf 00 11010 110 Rm 000010 Rn Rd
+    place(dst.index | (src1.index << 5) | (0b000010 << 10) | (src2.index << 16) | (0b0011010110u << 21) | sf);
+    commit();
+}
+
+void AssemblyBuilderA64::rem(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+{
+    // dst must hold the quotient from a preceding sdiv/udiv.
+    // dst != src1 because mul clobbers dst before sub reads src1.
+    CODEGEN_ASSERT(dst.index != src1.index);
+
+    // dst = src1 - (dst * src2);
+    msub(dst, dst, src2, src1);
+}
+
 void AssemblyBuilderA64::neg(RegisterA64 dst, RegisterA64 src)
 {
     placeSR2("neg", dst, src, 0b10'01011);
@@ -179,6 +272,83 @@ void AssemblyBuilderA64::cmp(RegisterA64 src1, uint16_t src2)
     RegisterA64 dst = src1.kind == KindA64::x ? xzr : wzr;
 
     placeI12("cmp", dst, src1, src2, 0b11'10001);
+}
+
+// nzcv is the flag bit specifier, an immediate in the range 0 to 15, giving the alternative state for the 4-bit NZCV condition flags
+void AssemblyBuilderA64::ccmp(RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t nzcv)
+{
+    if (logText)
+    {
+        logAppend(" %-12s", "ccmp");
+        log(src1);
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append(",");
+        else
+            text.append(",");
+        log(src2);
+        logAppend(",#%d,%s\n", nzcv, textForCondition[int(cond)] + 2);
+    }
+
+    CODEGEN_ASSERT(src1.kind == KindA64::w || src1.kind == KindA64::x);
+    CODEGEN_ASSERT(src2.kind == src1.kind);
+
+    uint32_t sf = (src1.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // ccmp: sf 11 11010010 Rm cond 00 Rn 0 nzcv
+    place((nzcv & 0x0F) | (src1.index << 5) | (codeForCondition[int(cond)] << 12) | (src2.index << 16) | (0b1111010010u << 21) | sf);
+    commit();
+}
+
+void AssemblyBuilderA64::ccmn(RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t nzcv)
+{
+    if (logText)
+    {
+        logAppend(" %-12s", "ccmn");
+        log(src1);
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append(",");
+        else
+            text.append(",");
+        log(src2);
+        logAppend(",#%d,%s\n", nzcv, textForCondition[int(cond)] + 2);
+    }
+
+    CODEGEN_ASSERT(src1.kind == KindA64::w || src1.kind == KindA64::x);
+    CODEGEN_ASSERT(src2.kind == src1.kind);
+
+    uint32_t sf = (src1.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // ccmn: sf 01 11010010 Rm cond 00 Rn 0 nzcv
+    place((nzcv & 0x0F) | (src1.index << 5) | (codeForCondition[int(cond)] << 12) | (src2.index << 16) | (0b0111010010u << 21) | sf);
+    commit();
+}
+
+// ccmn imm
+void AssemblyBuilderA64::ccmn(RegisterA64 src1, uint8_t src2, ConditionA64 cond, uint8_t nzcv)
+{
+    if (logText)
+    {
+        logAppend(" %-12s", "ccmn");
+        log(src1);
+        logAppend(",#%d,#%d,%s\n", src2, nzcv, textForCondition[int(cond)] + 2);
+    }
+
+    CODEGEN_ASSERT(src1.kind == KindA64::w || src1.kind == KindA64::x);
+    CODEGEN_ASSERT(src2 <= 31);
+
+    uint32_t sf = (src1.kind == KindA64::x) ? 0x80000000 : 0;
+
+    // ccmn: sf 01 11010010 imm5 cond 10 Rn 0 nzcv
+    place((nzcv & 0x0F) | (src1.index << 5) | (1 << 11) | (codeForCondition[int(cond)] << 12) | (src2 << 16) | (0b0111010010u << 21) | sf);
+    commit();
+}
+
+// cmn: adds a register value and an immediate value, updates condition flags, and discards the result
+void AssemblyBuilderA64::cmn(RegisterA64 src1, uint16_t src2)
+{
+    RegisterA64 dst = src1.kind == KindA64::x ? xzr : wzr;
+
+    placeI12("cmn", dst, src1, src2, 0b01'10001);
 }
 
 void AssemblyBuilderA64::csel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond)
@@ -582,30 +752,18 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, Label& label)
 
 void AssemblyBuilderA64::fmov(RegisterA64 dst, RegisterA64 src)
 {
-    if (FFlag::LuauCodegenUpvalueLoadProp || FFlag::LuauCodegenSplitFloat)
-    {
-        if (dst.kind == KindA64::d && src.kind == KindA64::d)
-            placeR1("fmov", dst, src, 0b00'11110'01'1'0000'00'10000);
-        else if (dst.kind == KindA64::d && src.kind == KindA64::x)
-            placeR1("fmov", dst, src, 0b00'11110'01'1'00'111'000000);
-        else if (dst.kind == KindA64::x && src.kind == KindA64::d)
-            placeR1("fmov", dst, src, 0b00'11110'01'1'00'110'000000);
-        else if (FFlag::LuauCodegenSplitFloat && dst.kind == KindA64::s && src.kind == KindA64::s)
-            placeR1("fmov", dst, src, 0b00'11110'00'1'0000'00'10000);
-        else if (FFlag::LuauCodegenSplitFloat && dst.kind == KindA64::s && src.kind == KindA64::w)
-            placeR1("fmov", dst, src, 0b00'11110'00'1'00'111'000000);
-        else
-            CODEGEN_ASSERT(!"Unsupported fmov kind");
-    }
+    if (dst.kind == KindA64::d && src.kind == KindA64::d)
+        placeR1("fmov", dst, src, 0b00'11110'01'1'0000'00'10000);
+    else if (dst.kind == KindA64::d && src.kind == KindA64::x)
+        placeR1("fmov", dst, src, 0b00'11110'01'1'00'111'000000);
+    else if (dst.kind == KindA64::x && src.kind == KindA64::d)
+        placeR1("fmov", dst, src, 0b00'11110'01'1'00'110'000000);
+    else if (dst.kind == KindA64::s && src.kind == KindA64::s)
+        placeR1("fmov", dst, src, 0b00'11110'00'1'0000'00'10000);
+    else if (dst.kind == KindA64::s && src.kind == KindA64::w)
+        placeR1("fmov", dst, src, 0b00'11110'00'1'00'111'000000);
     else
-    {
-        CODEGEN_ASSERT(dst.kind == KindA64::d && (src.kind == KindA64::d || src.kind == KindA64::x));
-
-        if (src.kind == KindA64::d)
-            placeR1("fmov", dst, src, 0b000'11110'01'1'0000'00'10000);
-        else
-            placeR1("fmov", dst, src, 0b000'11110'01'1'00'111'000000);
-    }
+        CODEGEN_ASSERT(!"Unsupported fmov kind");
 }
 
 void AssemblyBuilderA64::fmov(RegisterA64 dst, double src)
@@ -658,9 +816,15 @@ void AssemblyBuilderA64::fmov(RegisterA64 dst, float src)
 
 void AssemblyBuilderA64::fabs(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == src.kind);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s || dst.kind == KindA64::q);
 
-    placeR1("fabs", dst, src, 0b000'11110'01'1'0000'01'10000);
+    if (dst.kind == KindA64::q)
+        placeR1("fabs", dst, src, 0b010'01110'10'1'0000'01111'10);
+    else if (dst.kind == KindA64::d)
+        placeR1("fabs", dst, src, 0b000'11110'01'1'0000'01'10000);
+    else
+        placeR1("fabs", dst, src, 0b000'11110'00'1'0000'01'10000);
 }
 
 void AssemblyBuilderA64::faddp(RegisterA64 dst, RegisterA64 src)
@@ -802,9 +966,13 @@ void AssemblyBuilderA64::fneg(RegisterA64 dst, RegisterA64 src)
 
 void AssemblyBuilderA64::fsqrt(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == src.kind);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s);
 
-    placeR1("fsqrt", dst, src, 0b000'11110'01'1'0000'11'10000);
+    if (dst.kind == KindA64::d)
+        placeR1("fsqrt", dst, src, 0b000'11110'01'1'0000'11'10000);
+    else
+        placeR1("fsqrt", dst, src, 0b000'11110'00'1'0000'11'10000);
 }
 
 void AssemblyBuilderA64::fsub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
@@ -904,6 +1072,7 @@ void AssemblyBuilderA64::umov_4s(RegisterA64 dst, RegisterA64 src, uint8_t index
 
     commit();
 }
+
 void AssemblyBuilderA64::fcmeq_4s(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
 {
     if (logText)
@@ -911,6 +1080,19 @@ void AssemblyBuilderA64::fcmeq_4s(RegisterA64 dst, RegisterA64 src1, RegisterA64
 
     //                Q U      ESz Rm    Opcode Rn    Rd
     uint32_t op = 0b0'1'0'01110001'00000'111001'00000'00000;
+
+    place(dst.index | (src1.index << 5) | (src2.index << 16) | op);
+
+    commit();
+}
+
+void AssemblyBuilderA64::fcmgt_4s(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+{
+    if (logText)
+        logAppend(" %-12sv%d.4s,v%d.4s,v%d.4s\n", "fcmgt", dst.index, src1.index, src2.index);
+
+    //                Q U      ESz Rm    Opcode Rn    Rd
+    uint32_t op = 0b0'1'1'01110101'00000'111001'00000'00000;
 
     place(dst.index | (src1.index << 5) | (src2.index << 16) | op);
 
@@ -930,25 +1112,56 @@ void AssemblyBuilderA64::bit(RegisterA64 dst, RegisterA64 src, RegisterA64 mask)
     commit();
 }
 
+void AssemblyBuilderA64::bif(RegisterA64 dst, RegisterA64 src, RegisterA64 mask)
+{
+    if (logText)
+        logAppend(" %-12sv%d.16b,v%d.16b,v%d.16b\n", "bif", dst.index, src.index, mask.index);
+
+    //                Q U          Rm    Opcode Rn    Rd
+    uint32_t op = 0b0'1'1'01110111'00000'000111'00000'00000;
+
+    place(dst.index | (src.index << 5) | (mask.index << 16) | op);
+
+    commit();
+}
+
 void AssemblyBuilderA64::frinta(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == src.kind);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s || dst.kind == KindA64::q);
 
-    placeR1("frinta", dst, src, 0b000'11110'01'1'001'100'10000);
+    if (dst.kind == KindA64::q)
+        placeR1("frinta", dst, src, 0b011'01110'00'1'0000'11000'10);
+    else if (dst.kind == KindA64::d)
+        placeR1("frinta", dst, src, 0b000'11110'01'1'001'100'10000);
+    else
+        placeR1("frinta", dst, src, 0b000'11110'00'1'001'100'10000);
 }
 
 void AssemblyBuilderA64::frintm(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == src.kind);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s || dst.kind == KindA64::q);
 
-    placeR1("frintm", dst, src, 0b000'11110'01'1'001'010'10000);
+    if (dst.kind == KindA64::q)
+        placeR1("frintm", dst, src, 0b010'01110'00'1'0000'11001'10);
+    else if (dst.kind == KindA64::d)
+        placeR1("frintm", dst, src, 0b000'11110'01'1'001'010'10000);
+    else
+        placeR1("frintm", dst, src, 0b000'11110'00'1'001'010'10000);
 }
 
 void AssemblyBuilderA64::frintp(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == src.kind);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s || dst.kind == KindA64::q);
 
-    placeR1("frintp", dst, src, 0b000'11110'01'1'001'001'10000);
+    if (dst.kind == KindA64::q)
+        placeR1("frintp", dst, src, 0b010'01110'10'1'0000'11000'10);
+    else if (dst.kind == KindA64::d)
+        placeR1("frintp", dst, src, 0b000'11110'01'1'001'001'10000);
+    else
+        placeR1("frintp", dst, src, 0b000'11110'00'1'001'001'10000);
 }
 
 void AssemblyBuilderA64::fcvt(RegisterA64 dst, RegisterA64 src)
@@ -987,10 +1200,13 @@ void AssemblyBuilderA64::scvtf(RegisterA64 dst, RegisterA64 src)
 
 void AssemblyBuilderA64::ucvtf(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s);
     CODEGEN_ASSERT(src.kind == KindA64::w || src.kind == KindA64::x);
 
-    placeR1("ucvtf", dst, src, 0b000'11110'01'1'00'011'000000);
+    if (dst.kind == KindA64::d)
+        placeR1("ucvtf", dst, src, 0b000'11110'01'1'00'011'000000);
+    else
+        placeR1("ucvtf", dst, src, 0b000'11110'00'1'00'011'000000);
 }
 
 void AssemblyBuilderA64::fjcvtzs(RegisterA64 dst, RegisterA64 src)
@@ -1004,28 +1220,46 @@ void AssemblyBuilderA64::fjcvtzs(RegisterA64 dst, RegisterA64 src)
 
 void AssemblyBuilderA64::fcmp(RegisterA64 src1, RegisterA64 src2)
 {
-    CODEGEN_ASSERT(src1.kind == KindA64::d && src2.kind == KindA64::d);
+    CODEGEN_ASSERT(src1.kind == src2.kind);
+    CODEGEN_ASSERT(src1.kind == KindA64::d || src1.kind == KindA64::s);
 
-    placeFCMP("fcmp", src1, src2, 0b11110'01'1, 0b00);
+    if (src1.kind == KindA64::d)
+        placeFCMP("fcmp", src1, src2, 0b11110'01'1, 0b00);
+    else
+        placeFCMP("fcmp", src1, src2, 0b11110'00'1, 0b00);
 }
 
 void AssemblyBuilderA64::fcmpz(RegisterA64 src)
 {
-    CODEGEN_ASSERT(src.kind == KindA64::d);
+    CODEGEN_ASSERT(src.kind == KindA64::d || src.kind == KindA64::s);
 
-    placeFCMP("fcmp", src, RegisterA64{src.kind, 0}, 0b11110'01'1, 0b01);
+    if (src.kind == KindA64::d)
+        placeFCMP("fcmp", src, RegisterA64{src.kind, 0}, 0b11110'01'1, 0b01);
+    else
+        placeFCMP("fcmp", src, RegisterA64{src.kind, 0}, 0b11110'00'1, 0b01);
 }
 
 void AssemblyBuilderA64::fcsel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == src1.kind && src1.kind == src2.kind);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::s);
 
-    placeCS("fcsel", dst, src1, src2, cond, 0b11110'01'1, 0b11);
+    if (src1.kind == KindA64::d)
+        placeCS("fcsel", dst, src1, src2, cond, 0b11110'01'1, 0b11);
+    else
+        placeCS("fcsel", dst, src1, src2, cond, 0b11110'00'1, 0b11);
 }
 
 void AssemblyBuilderA64::udf()
 {
     place0("udf", 0);
+}
+
+void AssemblyBuilderA64::nop(uint32_t bytes)
+{
+    uint32_t count = bytes / 4;
+    for (uint32_t i = 0; i < count; ++i)
+        place0("nop", 0b11010101000000110010000000011111u);
 }
 
 bool AssemblyBuilderA64::finalize()
@@ -1084,12 +1318,22 @@ void AssemblyBuilderA64::setLabel(Label& label)
 
 void AssemblyBuilderA64::logAppend(const char* fmt, ...)
 {
-    char buf[256];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    text.append(buf);
+    if (FFlag::LuauCodegenSharedLog)
+    {
+        va_list args;
+        va_start(args, fmt);
+        logger->vformatAppend(fmt, args);
+        va_end(args);
+    }
+    else
+    {
+        char buf[256];
+        va_list args;
+        va_start(args, fmt);
+        vsnprintf(buf, sizeof(buf), fmt, args);
+        va_end(args);
+        text.append(buf);
+    }
 }
 
 uint32_t AssemblyBuilderA64::getCodeSize() const
@@ -1099,7 +1343,7 @@ uint32_t AssemblyBuilderA64::getCodeSize() const
 
 unsigned AssemblyBuilderA64::getInstructionCount() const
 {
-    return unsigned(getCodeSize()) / 4;
+    return unsigned(getCodeSize());
 }
 
 bool AssemblyBuilderA64::isMaskSupported(uint32_t mask)
@@ -1229,11 +1473,19 @@ void AssemblyBuilderA64::placeA(const char* name, RegisterA64 dst, AddressA64 sr
         break;
     case AddressKindA64::imm:
         if (unsigned(src.data >> sizelog) < 1024 && (src.data & ((1 << sizelog) - 1)) == 0)
+        {
             place(dst.index | (src.base.index << 5) | ((src.data >> sizelog) << 10) | (opsize << 22) | (1 << 24));
+        }
         else if (src.data >= -256 && src.data <= 255)
+        {
             place(dst.index | (src.base.index << 5) | ((src.data & ((1 << 9) - 1)) << 12) | (opsize << 22));
+        }
         else
+        {
+            overflowed = true;
+
             CODEGEN_ASSERT(!"Unable to encode large immediate offset");
+        }
         break;
     case AddressKindA64::pre:
         CODEGEN_ASSERT(src.data >= -256 && src.data <= 255);
@@ -1544,10 +1796,16 @@ void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, RegisterA64 sr
     if (dst != xzr && dst != wzr)
     {
         log(dst);
-        text.append(",");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append(",");
+        else
+            text.append(",");
     }
     log(src1);
-    text.append(",");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append(",");
+    else
+        text.append(",");
     log(src2);
     if (src1.kind == KindA64::x && src2.kind == KindA64::w)
         logAppend(" UXTW #%d", shift);
@@ -1555,7 +1813,10 @@ void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, RegisterA64 sr
         logAppend(" LSL #%d", shift);
     else if (shift < 0)
         logAppend(" LSR #%d", -shift);
-    text.append("\n");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append("\n");
+    else
+        text.append("\n");
 }
 
 void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, RegisterA64 src1, int src2)
@@ -1564,68 +1825,113 @@ void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, RegisterA64 sr
     if (dst != xzr && dst != wzr)
     {
         log(dst);
-        text.append(",");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append(",");
+        else
+            text.append(",");
     }
     log(src1);
-    text.append(",");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append(",");
+    else
+        text.append(",");
     logAppend("#%d", src2);
-    text.append("\n");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append("\n");
+    else
+        text.append("\n");
 }
 
 void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, AddressA64 src)
 {
     logAppend(" %-12s", opcode);
     log(dst);
-    text.append(",");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append(",");
+    else
+        text.append(",");
     log(src);
-    text.append("\n");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append("\n");
+    else
+        text.append("\n");
 }
 
 void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst1, RegisterA64 dst2, AddressA64 src)
 {
     logAppend(" %-12s", opcode);
     log(dst1);
-    text.append(",");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append(",");
+    else
+        text.append(",");
     log(dst2);
-    text.append(",");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append(",");
+    else
+        text.append(",");
     log(src);
-    text.append("\n");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append("\n");
+    else
+        text.append("\n");
 }
 
 void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, RegisterA64 src)
 {
     logAppend(" %-12s", opcode);
     log(dst);
-    text.append(",");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append(",");
+    else
+        text.append(",");
     log(src);
-    text.append("\n");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append("\n");
+    else
+        text.append("\n");
 }
 
 void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, int src, int shift)
 {
     logAppend(" %-12s", opcode);
     log(dst);
-    text.append(",");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append(",");
+    else
+        text.append(",");
     logAppend("#%d", src);
     if (shift > 0)
         logAppend(" LSL #%d", shift);
-    text.append("\n");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append("\n");
+    else
+        text.append("\n");
 }
 
 void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, double src)
 {
     logAppend(" %-12s", opcode);
     log(dst);
-    text.append(",");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append(",");
+    else
+        text.append(",");
     logAppend("#%.17g", src);
-    text.append("\n");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append("\n");
+    else
+        text.append("\n");
 }
 
 void AssemblyBuilderA64::log(const char* opcode, RegisterA64 src, Label label, int imm)
 {
     logAppend(" %-12s", opcode);
     log(src);
-    text.append(",");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append(",");
+    else
+        text.append(",");
     if (imm >= 0)
         logAppend("#%d,", imm);
     logAppend(".L%d\n", label.id);
@@ -1635,7 +1941,10 @@ void AssemblyBuilderA64::log(const char* opcode, RegisterA64 src)
 {
     logAppend(" %-12s", opcode);
     log(src);
-    text.append("\n");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append("\n");
+    else
+        text.append("\n");
 }
 
 void AssemblyBuilderA64::log(const char* opcode, Label label)
@@ -1649,14 +1958,29 @@ void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, RegisterA64 sr
     log(dst);
     if ((src1 != wzr && src1 != xzr) || (src2 != wzr && src2 != xzr))
     {
-        text.append(",");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append(",");
+        else
+            text.append(",");
         log(src1);
-        text.append(",");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append(",");
+        else
+            text.append(",");
         log(src2);
     }
-    text.append(",");
-    text.append(textForCondition[int(cond)] + 2); // skip b.
-    text.append("\n");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append(",");
+    else
+        text.append(",");
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append(textForCondition[int(cond)] + 2); // skip b.
+    else
+        text.append(textForCondition[int(cond)] + 2); // skip b.
+    if (FFlag::LuauCodegenSharedLog)
+        logger->append("\n");
+    else
+        text.append("\n");
 }
 
 void AssemblyBuilderA64::log(Label label)
@@ -1670,16 +1994,30 @@ void AssemblyBuilderA64::log(RegisterA64 reg)
     {
     case KindA64::w:
         if (reg.index == 31)
-            text.append("wzr");
+        {
+            if (FFlag::LuauCodegenSharedLog)
+                logger->append("wzr");
+            else
+                text.append("wzr");
+        }
         else
+        {
             logAppend("w%d", reg.index);
+        }
         break;
 
     case KindA64::x:
         if (reg.index == 31)
-            text.append("xzr");
+        {
+            if (FFlag::LuauCodegenSharedLog)
+                logger->append("xzr");
+            else
+                text.append("xzr");
+        }
         else
+        {
             logAppend("x%d", reg.index);
+        }
         break;
 
     case KindA64::s:
@@ -1696,9 +2034,16 @@ void AssemblyBuilderA64::log(RegisterA64 reg)
 
     case KindA64::none:
         if (reg.index == 31)
-            text.append("sp");
+        {
+            if (FFlag::LuauCodegenSharedLog)
+                logger->append("sp");
+            else
+                text.append("sp");
+        }
         else
+        {
             CODEGEN_ASSERT(!"Unexpected register kind");
+        }
         break;
     }
 }
@@ -1708,30 +2053,57 @@ void AssemblyBuilderA64::log(AddressA64 addr)
     switch (addr.kind)
     {
     case AddressKindA64::reg:
-        text.append("[");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append("[");
+        else
+            text.append("[");
         log(addr.base);
-        text.append(",");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append(",");
+        else
+            text.append(",");
         log(addr.offset);
-        text.append("]");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append("]");
+        else
+            text.append("]");
         break;
     case AddressKindA64::imm:
-        text.append("[");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append("[");
+        else
+            text.append("[");
         log(addr.base);
         if (addr.data != 0)
             logAppend(",#%d", addr.data);
-        text.append("]");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append("]");
+        else
+            text.append("]");
         break;
     case AddressKindA64::pre:
-        text.append("[");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append("[");
+        else
+            text.append("[");
         log(addr.base);
         if (addr.data != 0)
             logAppend(",#%d", addr.data);
-        text.append("]!");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append("]!");
+        else
+            text.append("]!");
         break;
     case AddressKindA64::post:
-        text.append("[");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append("[");
+        else
+            text.append("[");
         log(addr.base);
-        text.append("]!");
+        if (FFlag::LuauCodegenSharedLog)
+            logger->append("]!");
+        else
+            text.append("]!");
         if (addr.data != 0)
             logAppend(",#%d", addr.data);
         break;

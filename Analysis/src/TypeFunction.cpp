@@ -7,7 +7,7 @@
 #include "Luau/DenseHash.h"
 #include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
-#include "Luau/OverloadResolution.h"
+#include "Luau/OverloadResolver.h"
 #include "Luau/Subtyping.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
@@ -32,8 +32,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
-LUAU_FASTFLAGVARIABLE(LuauMarkUnscopedGenericsAsSolved)
-LUAU_FASTFLAGVARIABLE(LuauUserTypeFunctionsNoUninhabitedError)
 
 namespace Luau
 {
@@ -326,6 +324,8 @@ struct TypeFunctionReducer
     template<typename T>
     void replace(T subject, T replacement)
     {
+        static_assert(std::is_same_v<T, TypeId> || std::is_same_v<T, TypePackId>, "Can only replace types or type packs");
+
         if (subject->owningArena != ctx->arena.get())
         {
             result.errors.emplace_back(location, InternalError{"Attempting to modify a type function instance from another arena"});
@@ -381,17 +381,15 @@ struct TypeFunctionReducer
         if (reduction.result)
         {
             replace(subject, *reduction.result);
-            for (auto ty : reduction.freshTypes)
+            for (auto ty : ctx->freshInstances)
             {
-                if constexpr (std::is_same_v<T, TypeId>)
-                    queuedTys.push_back(ty);
-                else if constexpr (std::is_same_v<T, TypePackId>)
-                    queuedTps.push_back(ty);
+                queuedTys.push_back(ty);
+                if (ctx->solver)
+                    ctx->pushConstraint(ReduceConstraint{ty});
             }
         }
         else
         {
-            LUAU_ASSERT(reduction.freshTypes.empty());
             irreducible.insert(subject);
 
             if (reduction.error.has_value())
@@ -419,16 +417,11 @@ struct TypeFunctionReducer
 
                 if constexpr (std::is_same_v<T, TypeId>)
                 {
-                    if (FFlag::LuauUserTypeFunctionsNoUninhabitedError)
+                    if (const TypeFunctionInstanceType* tf = get<TypeFunctionInstanceType>(subject))
                     {
-                        if (const TypeFunctionInstanceType* tf = get<TypeFunctionInstanceType>(subject))
-                        {
-                            if (tf->function != &ctx->builtins->typeFunctions->userFunc)
-                                result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
-                        }
+                        if (tf->function != &ctx->builtins->typeFunctions->userFunc)
+                            result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
                     }
-                    else
-                        result.errors.emplace_back(location, UninhabitedTypeFunction{subject});
                 }
                 else if constexpr (std::is_same_v<T, TypePackId>)
                     result.errors.emplace_back(location, UninhabitedTypePackFunction{subject});
@@ -455,6 +448,8 @@ struct TypeFunctionReducer
             else
                 LUAU_ASSERT(!"Unreachable");
         }
+
+        ctx->freshInstances.clear();
     }
 
     bool done() const
@@ -593,11 +588,8 @@ struct TypeFunctionReducer
                     // Let the caller know this type will not become reducible
                     result.irreducibleTypes.insert(subject);
 
-                    if (FFlag::LuauMarkUnscopedGenericsAsSolved)
-                    {
-                        if (getState(subject) == TypeFunctionInstanceState::Unsolved)
-                            setState(subject, TypeFunctionInstanceState::Solved);
-                    }
+                    if (getState(subject) == TypeFunctionInstanceState::Unsolved)
+                        setState(subject, TypeFunctionInstanceState::Solved);
 
                     if (FFlag::DebugLuauLogTypeFamilies)
                         printf("Irreducible due to an unscoped generic type\n");
@@ -684,7 +676,7 @@ static FunctionGraphReductionResult reduceFunctionsInternal(
     if (ctx->normalizer->sharedState->reentrantTypeReduction)
         return {};
 
-    TypeReductionRentrancyGuard _{ctx->normalizer->sharedState};
+    TypeReductionReentrancyGuard _{ctx->normalizer->sharedState};
     while (!reducer.done())
     {
         reducer.step();

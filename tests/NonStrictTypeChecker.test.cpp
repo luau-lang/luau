@@ -19,10 +19,9 @@ LUAU_DYNAMIC_FASTINT(LuauConstraintGeneratorRecursionLimit)
 
 LUAU_FASTINT(LuauNonStrictTypeCheckerRecursionLimit)
 LUAU_FASTINT(LuauCheckRecursionLimit)
-LUAU_FASTFLAG(LuauUnreducedTypeFunctionsDontTriggerWarnings)
-LUAU_FASTFLAG(LuauNewNonStrictBetterCheckedFunctionErrorMessage)
 LUAU_FASTFLAG(LuauAddRecursionCounterToNonStrictTypeChecker)
-LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
+LUAU_FASTFLAG(LuauTidyTypePrototyping)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 using namespace Luau;
 
@@ -68,13 +67,12 @@ using namespace Luau;
 
 struct NonStrictTypeCheckerFixture : Fixture
 {
-
     NonStrictTypeCheckerFixture() = default;
 
     CheckResult checkNonStrict(const std::string& code)
     {
         ScopedFastFlag flags[] = {
-            {FFlag::LuauSolverV2, true},
+            {FFlag::DebugLuauForceOldSolver, false},
         };
         LoadDefinitionFileResult res = loadDefinition(definitions);
         LUAU_ASSERT(res.success);
@@ -84,7 +82,7 @@ struct NonStrictTypeCheckerFixture : Fixture
     CheckResult checkNonStrictModule(const std::string& moduleName)
     {
         ScopedFastFlag flags[] = {
-            {FFlag::LuauSolverV2, true},
+            {FFlag::DebugLuauForceOldSolver, false},
         };
         LoadDefinitionFileResult res = loadDefinition(definitions);
         LUAU_ASSERT(res.success);
@@ -392,10 +390,7 @@ end}
 )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauNewNonStrictBetterCheckedFunctionErrorMessage)
-        CHECK(toString(result.errors[0]) == "the argument 'x' is used in a way that will error at runtime");
-    else
-        CHECK(toString(result.errors[0]) == "Argument x with type 'unknown' is used in a way that will run time error");
+    CHECK(toString(result.errors[0]) == "the argument 'x' is used in a way that will error at runtime");
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "local_fn_produces_error")
@@ -466,8 +461,6 @@ end
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "generic_type_instantiation")
 {
-    ScopedFastFlag sff{FFlag::LuauExplicitTypeExpressionInstantiation, true};
-
     CheckResult result = checkNonStrict(R"(
         function array<T>(): {T}
             return {}
@@ -787,7 +780,7 @@ TEST_CASE_FIXTURE(Fixture, "unknown_globals_in_one_sided_conditionals")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "new_non_strict_should_suppress_dynamic_require_errors")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     // Avoid warning about dynamic requires in new nonstrict mode
     CheckResult result = check(Mode::Nonstrict, R"(
 function passThrough(module)
@@ -810,7 +803,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "new_non_strict_should_suppress_unknown_require_errors")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     // Avoid warning about dynamic requires in new nonstrict mode
     CheckResult result = check(Mode::Nonstrict, R"(
@@ -844,29 +837,19 @@ getAllTheArgsWrong(3, true, "what")
     CHECK(err1 != nullptr);
     CHECK(err2 != nullptr);
     CHECK(err3 != nullptr);
-    if (FFlag::LuauNewNonStrictBetterCheckedFunctionErrorMessage)
-    {
-        CHECK_EQ(
-            "the function 'getAllTheArgsWrong' expects to get a string as its 1st argument, but is being given a number", toString(result.errors[0])
-        );
-        CHECK_EQ(
-            "the function 'getAllTheArgsWrong' expects to get a number as its 2nd argument, but is being given a boolean", toString(result.errors[1])
-        );
-        CHECK_EQ(
-            "the function 'getAllTheArgsWrong' expects to get a boolean as its 3rd argument, but is being given a string", toString(result.errors[2])
-        );
-    }
-    else
-    {
-        CHECK_EQ("Function 'getAllTheArgsWrong' expects 'string' at argument #1, but got 'number'", toString(result.errors[0]));
-        CHECK_EQ("Function 'getAllTheArgsWrong' expects 'number' at argument #2, but got 'boolean'", toString(result.errors[1]));
-        CHECK_EQ("Function 'getAllTheArgsWrong' expects 'boolean' at argument #3, but got 'string'", toString(result.errors[2]));
-    }
+    CHECK_EQ(
+        "the function 'getAllTheArgsWrong' expects to get a string as its 1st argument, but is being given a number", toString(result.errors[0])
+    );
+    CHECK_EQ(
+        "the function 'getAllTheArgsWrong' expects to get a number as its 2nd argument, but is being given a boolean", toString(result.errors[1])
+    );
+    CHECK_EQ(
+        "the function 'getAllTheArgsWrong' expects to get a boolean as its 3rd argument, but is being given a string", toString(result.errors[2])
+    );
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "new_non_strict_skips_warnings_on_unreduced_typefunctions")
 {
-    ScopedFastFlag sff{FFlag::LuauUnreducedTypeFunctionsDontTriggerWarnings, true};
     CheckResult result = checkNonStrict(R"(
 function foo(x)
     local y = x + 1
@@ -910,5 +893,27 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_check_expr_recursion_l
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 #endif
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "typecheck_class_method_bodies")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauTidyTypePrototyping, true},
+    };
+
+    CheckResult result = checkNonStrict(R"(
+        --!nonstrict
+        class Student
+            public name: number
+            function greet(self)
+                return `Hello, {lower(self.name)}!`
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_CHECK_ERROR(result, CheckedFunctionCallError);
+}
 
 TEST_SUITE_END();

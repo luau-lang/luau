@@ -71,7 +71,7 @@
 #define LUA_IDSIZE 256
 #endif
 
-// LUA_MINSTACK is the guaranteed number of Lua stack slots available to a C function
+// LUA_MINSTACK is the initial number of reserved stack slots for a C function
 #ifndef LUA_MINSTACK
 #define LUA_MINSTACK 20
 #endif
@@ -114,6 +114,11 @@
 // available number of separate memory categories
 #ifndef LUA_MEMORY_CATEGORIES
 #define LUA_MEMORY_CATEGORIES 256
+#endif
+
+// extra storage for execution callbacks in global state
+#ifndef LUA_EXECUTION_CALLBACK_STORAGE
+#define LUA_EXECUTION_CALLBACK_STORAGE 512
 #endif
 
 // minimum size for the string table (must be power of 2)

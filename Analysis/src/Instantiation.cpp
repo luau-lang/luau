@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Instantiation.h"
 
+#include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/Instantiation2.h" // including for `Replacer` which was stolen since it will be kept in the new solver
 #include "Luau/ToString.h"
@@ -11,6 +12,8 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAGVARIABLE(LuauReplacerIsSolverAgnostic)
+LUAU_FASTFLAGVARIABLE(LuauInstantiationUsesPolarity)
 
 namespace Luau
 {
@@ -150,22 +153,38 @@ bool ReplaceGenerics::isDirty(TypePackId tp)
 TypeId ReplaceGenerics::clean(TypeId ty)
 {
     LUAU_ASSERT(isDirty(ty));
-    if (const TableType* ttv = log->getMutable<TableType>(ty))
+
+    if (FFlag::LuauReplacerIsSolverAgnostic)
     {
-        TableType clone = TableType{ttv->props, ttv->indexer, level, scope, TableState::Free};
-        clone.definitionModuleName = ttv->definitionModuleName;
-        clone.definitionLocation = ttv->definitionLocation;
-        return addType(std::move(clone));
-    }
-    else if (FFlag::LuauSolverV2)
-    {
-        TypeId res = freshType(NotNull{arena}, builtinTypes, scope);
-        getMutable<FreeType>(res)->level = level;
-        return res;
+        if (const TableType* ttv = log->getMutable<TableType>(ty))
+        {
+            TableType clone = TableType{ttv->props, ttv->indexer, level, scope, TableState::Free};
+            clone.definitionModuleName = ttv->definitionModuleName;
+            clone.definitionLocation = ttv->definitionLocation;
+            return addType(std::move(clone));
+        }
+        else
+            return arena->freshType(builtinTypes, scope, level);
     }
     else
     {
-        return arena->freshType(builtinTypes, scope, level);
+        if (const TableType* ttv = log->getMutable<TableType>(ty))
+        {
+            TableType clone = TableType{ttv->props, ttv->indexer, level, scope, TableState::Free};
+            clone.definitionModuleName = ttv->definitionModuleName;
+            clone.definitionLocation = ttv->definitionLocation;
+            return addType(std::move(clone));
+        }
+        else if (FFlag::LuauSolverV2)
+        {
+            TypeId res = freshType(NotNull{arena}, builtinTypes, scope);
+            getMutable<FreeType>(res)->level = level;
+            return res;
+        }
+        else
+        {
+            return arena->freshType(builtinTypes, scope, level);
+        }
     }
 }
 
@@ -195,28 +214,46 @@ std::optional<TypeId> instantiate(
     DenseHashMap<TypeId, TypeId> replacements{nullptr};
     DenseHashMap<TypePackId, TypePackId> replacementPacks{nullptr};
 
-    for (TypeId g : ft->generics)
-        replacements[g] = freshType(arena, builtinTypes, scope);
+    if (FFlag::LuauInstantiationUsesPolarity)
+    {
+        for (TypeId g : ft->generics)
+        {
+            if (auto gen = get<GenericType>(follow(g)))
+                replacements[g] = freshType(arena, builtinTypes, scope, gen->polarity);
+        }
 
-    for (TypePackId g : ft->genericPacks)
-        replacementPacks[g] = arena->freshTypePack(scope);
+        for (TypePackId g : ft->genericPacks)
+        {
+            if (auto gen = get<GenericTypePack>(follow(g)))
+                replacementPacks[g] = arena->freshTypePack(scope, gen->polarity);
+        }
+    }
+    else
+    {
+        for (TypeId g : ft->generics)
+            replacements[g] = freshType(arena, builtinTypes, scope);
 
-    Replacer r{arena, std::move(replacements), std::move(replacementPacks)};
+        for (TypePackId g : ft->genericPacks)
+            replacementPacks[g] = arena->freshTypePack(scope);
+    }
+
+    Replacer r{arena, NotNull{&replacements}, NotNull{&replacementPacks}};
 
     if (limits->instantiationChildLimit)
         r.childLimit = *limits->instantiationChildLimit;
 
-    std::optional<TypeId> res = r.substitute(ty);
-    if (!res)
-        return res;
-
-    FunctionType* ft2 = getMutable<FunctionType>(*res);
+    CloneState cs{builtinTypes};
+    // We clone persistent types here to enable instantiation for generic
+    // builtins like `table.find`; otherwise, the lines after would
+    // immediately corrupt the definitions of the original function.
+    auto clonedFunctionTypeId = shallowClone(ty, *arena, cs, /* clonePersistentTypes */ true);
+    FunctionType* ft2 = getMutable<FunctionType>(clonedFunctionTypeId);
     LUAU_ASSERT(ft != ft2);
 
     ft2->generics.clear();
     ft2->genericPacks.clear();
 
-    return res;
+    return r.substitute(clonedFunctionTypeId);
 }
 
 } // namespace Luau

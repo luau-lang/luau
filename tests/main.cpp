@@ -48,6 +48,9 @@ bool codegen = false;
 // Something to seed a pseudorandom number generator with
 std::optional<unsigned> randomSeed;
 
+// Run conformance tests with JIT bytecode inliner
+bool jitInliner = false;
+
 static bool skipFastFlag(const char* flagName)
 {
     if (strncmp(flagName, "Test", 4) == 0)
@@ -135,6 +138,7 @@ struct BoostLikeReporter : doctest::IReporter
 
         printf("Entering test suite \"%s\"\n", tc.m_test_suite);
         printf("Entering test case \"%s\"\n", tc.m_name);
+        fflush(stdout);
     }
 
     // called when a test case has ended
@@ -146,6 +150,7 @@ struct BoostLikeReporter : doctest::IReporter
         printf("Leaving test suite \"%s\"\n", currentTest->m_test_suite);
 
         currentTest = nullptr;
+        fflush(stdout);
     }
 
     // called when an exception is thrown from the test case (or it crashes)
@@ -154,6 +159,7 @@ struct BoostLikeReporter : doctest::IReporter
         LUAU_ASSERT(currentTest);
 
         printf("%s(%d): FATAL: Unhandled exception %s\n", currentTest->m_file.c_str(), currentTest->m_line, e.error_string.c_str());
+        fflush(stdout);
     }
 
     // called whenever a subcase is entered/exited (noop)
@@ -200,6 +206,7 @@ struct TeamCityReporter : doctest::IReporter
     {
         currentTest = &in;
         printf("##teamcity[testStarted name='%s: %s' captureStandardOutput='true']\n", in.m_test_suite, in.m_name);
+        fflush(stdout);
     }
 
     // called when a test case is reentered because of unfinished subcases
@@ -230,6 +237,7 @@ struct TeamCityReporter : doctest::IReporter
             printf("##teamcity[testFailed name='%s: %s']\n", currentTest->m_test_suite, currentTest->m_name);
 
         printf("##teamcity[testFinished name='%s: %s']\n", currentTest->m_test_suite, currentTest->m_name);
+        fflush(stdout);
     }
 
     void test_case_exception(const doctest::TestCaseException& in) override
@@ -240,6 +248,7 @@ struct TeamCityReporter : doctest::IReporter
             currentTest->m_name,
             in.error_string.c_str()
         );
+        fflush(stdout);
     }
 
     void subcase_start(const doctest::SubcaseSignature& /*in*/) override {}
@@ -394,13 +403,27 @@ int main(int argc, char** argv)
         codegen = true;
     }
 
-    int level = -1;
-    if (doctest::parseIntOption(argc, argv, "-O", doctest::option_int, level))
+    if (doctest::parseFlag(argc, argv, "--jit-inliner"))
     {
-        if (level < 0 || level > 2)
+        jitInliner = true;
+    }
+
+    doctest::String optlevel;
+    if (doctest::parseOption(argc, argv, "-O", &optlevel))
+    {
+        try
+        {
+            int level = std::stoi(optlevel.c_str());
+
+            if (level < 0 || level > 2)
+                fprintf(stderr, "Optimization level must be between 0 and 2 inclusive\n");
+            else
+                optimizationLevel = level;
+        }
+        catch (...)
+        {
             fprintf(stderr, "Optimization level must be between 0 and 2 inclusive\n");
-        else
-            optimizationLevel = level;
+        }
     }
 
     int rseed = -1;

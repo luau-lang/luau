@@ -120,7 +120,7 @@ inline ConditionX64 getInverseCondition(ConditionX64 cond)
     case ConditionX64::BelowEqual:
         return ConditionX64::AboveEqual;
     case ConditionX64::Above:
-        return ConditionX64::Above;
+        return ConditionX64::Below;
     case ConditionX64::AboveEqual:
         return ConditionX64::BelowEqual;
     case ConditionX64::Equal:

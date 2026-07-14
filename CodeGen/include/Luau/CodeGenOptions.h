@@ -19,6 +19,13 @@ enum CodeGenFlags
     CodeGen_ColdFunctions = 1 << 1,
 };
 
+enum class CodeGenCounter : unsigned
+{
+    RegularBlockExecuted = 1,
+    FallbackBlockExecuted = 2,
+    VmExitTaken = 3,
+};
+
 using AllocationCallback = void(void* context, void* oldPointer, size_t oldSize, void* newPointer, size_t newSize);
 
 struct IrBuilder;
@@ -119,8 +126,13 @@ struct CompilationOptions
 
     // null-terminated array of userdata types names that might have custom lowering
     const char* const* userdataTypes = nullptr;
-};
 
+    bool recordCounters = false;
+
+    // When true, random NOP sleds are inserted between blocks to
+    // make intra-function gadget offsets unpredictable.
+    bool nopPadding = false;
+};
 
 using AnnotatorFn = void (*)(void* context, std::string& result, int fid, int instpos);
 

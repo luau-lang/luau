@@ -16,6 +16,7 @@ struct ExpectedTypeVisitor : public AstVisitor
         NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
         NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
         NotNull<DenseHashMap<const AstType*, TypeId>> astResolvedTypes,
+        NotNull<DenseHashMap<const AstNode*, TypeId>> astOverloadResolvedTypes,
         NotNull<TypeArena> arena,
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<Scope> rootScope
@@ -67,6 +68,7 @@ private:
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
     NotNull<DenseHashMap<const AstType*, TypeId>> astResolvedTypes;
+    NotNull<DenseHashMap<const AstNode*, TypeId>> astOverloadResolvedTypes;
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<Scope> rootScope;

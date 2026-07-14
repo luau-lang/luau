@@ -14,35 +14,35 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 TEST_SUITE_BEGIN("NonstrictModeTests");
 
+/**
+ * NOTE: In the new solver, non-strict uses the same type inference logic
+ * as strict mode, but has a different error checking strategy. In the
+ * old solver we used `any` in some unannotated positions.
+ */
+
 TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
         function foo(x, y) end
     )");
 
+    LUAU_REQUIRE_NO_ERRORS(result);
     TypeId fooType = requireType("foo");
     REQUIRE(fooType);
 
-    const FunctionType* ftv = get<FunctionType>(fooType);
-    REQUIRE_MESSAGE(ftv != nullptr, "Expected a function, got " << toString(fooType));
-
-    auto args = flatten(ftv->argTypes).first;
-    REQUIRE_EQ(2, args.size());
-    REQUIRE_EQ("any", toString(args[0]));
-    REQUIRE_EQ("any", toString(args[1]));
-
-    auto rets = flatten(ftv->retTypes).first;
-    REQUIRE_EQ(0, rets.size());
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK_EQ("(unknown, unknown) -> ()", toString(fooType));
+    else
+        CHECK_EQ("(any, any) -> (...any)", toString(fooType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_the_maximum_number_of_values_the_function_could_return")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
         function getMinCardCountForWidth(width)
@@ -57,7 +57,10 @@ TEST_CASE_FIXTURE(Fixture, "infer_the_maximum_number_of_values_the_function_coul
     TypeId t = requireType("getMinCardCountForWidth");
     REQUIRE(t);
 
-    REQUIRE_EQ("(any) -> (...any)", toString(t));
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK_EQ("(number) -> number", toString(t));
+    else
+        CHECK_EQ("(any) -> (...any)", toString(t));
 }
 
 TEST_CASE_FIXTURE(Fixture, "return_annotation_is_still_checked")
@@ -68,7 +71,7 @@ TEST_CASE_FIXTURE(Fixture, "return_annotation_is_still_checked")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    REQUIRE_NE(*getBuiltins()->anyType, *requireType("foo"));
+    CHECK("any" != toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_parameters_are_any")
@@ -103,7 +106,6 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_return_types_are_ok")
 
 TEST_CASE_FIXTURE(Fixture, "locals_are_any_by_default")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
         local m = 55
@@ -111,7 +113,10 @@ TEST_CASE_FIXTURE(Fixture, "locals_are_any_by_default")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*getBuiltins()->anyType, *requireType("m"));
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK("number" == toString(requireType("m"), {true}));
+    else
+        CHECK("any" == toString(requireType("m")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parameters_having_type_any_are_optional")
@@ -163,7 +168,6 @@ TEST_CASE_FIXTURE(Fixture, "offer_a_hint_if_you_use_a_dot_instead_of_a_colon")
 
 TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -172,20 +176,14 @@ TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    TableType* ttv = getMutable<TableType>(requireType("T"));
-
-    REQUIRE(ttv != nullptr);
-
-    REQUIRE(ttv->props.count("foo"));
-    TypeId fooProp = ttv->props["foo"].type_DEPRECATED();
-    REQUIRE(fooProp != nullptr);
-
-    CHECK_EQ(*fooProp, *getBuiltins()->anyType);
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK_EQ("{ foo: number }", toString(requireType("T"), {true}));
+    else
+        CHECK_EQ("{| foo: any |}", toString(requireType("T"), {true}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
         local T = {
@@ -197,14 +195,10 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    TableType* ttv = getMutable<TableType>(requireType("T"));
-    REQUIRE_MESSAGE(ttv, "Should be a table: " << toString(requireType("T")));
-
-    CHECK_EQ(*getBuiltins()->anyType, *ttv->props["one"].type_DEPRECATED());
-    CHECK_EQ(*getBuiltins()->anyType, *ttv->props["two"].type_DEPRECATED());
-    CHECK_MESSAGE(
-        get<FunctionType>(follow(ttv->props["three"].type_DEPRECATED())), "Should be a function: " << *ttv->props["three"].type_DEPRECATED()
-    );
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK_EQ("{ one: number, three: () -> number, two: string }", toString(requireType("T"), {true}));
+    else
+        CHECK_EQ("{| one: any, three: () -> (...any), two: any |}", toString(requireType("T"), {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_variables_are_any")
@@ -263,7 +257,6 @@ TEST_CASE_FIXTURE(Fixture, "delay_function_does_not_require_its_argument_to_retu
 
 TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
     CheckResult result = check(R"(
         --!nonstrict
 
@@ -280,7 +273,11 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    REQUIRE_EQ("any", toString(getMainModule()->returnType));
+    if (!FFlag::DebugLuauForceOldSolver)
+        // The new solver just picks the "first" return type.
+        REQUIRE_EQ("{ foo: string }", toString(getMainModule()->returnType));
+    else
+        REQUIRE_EQ("any", toString(getMainModule()->returnType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "returning_insufficient_return_values")
@@ -320,7 +317,7 @@ TEST_CASE_FIXTURE(Fixture, "returning_too_many_values")
 TEST_CASE_FIXTURE(Fixture, "standalone_constraint_solving_incomplete_is_hidden_nonstrict")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauMagicTypes, true},
         // This debug flag is normally on, but we turn it off as we're testing
         // the exact behavior it enables.
@@ -338,7 +335,7 @@ TEST_CASE_FIXTURE(Fixture, "standalone_constraint_solving_incomplete_is_hidden_n
 TEST_CASE_FIXTURE(BuiltinsFixture, "non_standalone_constraint_solving_incomplete_is_hidden_nonstrict")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauMagicTypes, true},
     };
 
@@ -351,6 +348,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_standalone_constraint_solving_incomplete
     LUAU_REQUIRE_ERROR_COUNT(2, results);
     CHECK(get<CheckedFunctionCallError>(results.errors[0]));
     CHECK(get<ConstraintSolvingIncompleteError>(results.errors[1]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "allow_error_type_nonstrict")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(Mode::Nonstrict, R"(
+        local sublist: any
+        if sublist then
+            for _, entry in sublist do
+                local _ = string.upper(entry)
+            end
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_in_union_suppresses")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(Mode::Nonstrict, R"(
+        local sublist: any
+        if sublist then
+            local subitem = sublist.item
+            local _ = string.upper(subitem)
+        end
+    )"));
 }
 
 TEST_SUITE_END();

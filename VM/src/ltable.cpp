@@ -99,6 +99,31 @@ static LuaNode* hashnum(const LuaTable* t, double n)
     return hashpow2(t, h2);
 }
 
+static LuaNode* hashint(const LuaTable* t, int64_t n)
+{
+    static_assert(sizeof(n) == sizeof(unsigned int) * 2, "expected a 8-byte integer");
+    unsigned int i[2];
+    memcpy(i, &n, sizeof(i));
+
+    uint32_t h1 = i[0];
+    uint32_t h2 = i[1];
+
+    // finalizer from MurmurHash64B
+    const uint32_t m = 0x5bd1e995;
+
+    h1 ^= h2 >> 18;
+    h1 *= m;
+    h2 ^= h1 >> 22;
+    h2 *= m;
+    h1 ^= h2 >> 17;
+    h1 *= m;
+    h2 ^= h1 >> 19;
+    h2 *= m;
+
+    // ... truncated to 32-bit output (normally hash is equal to (uint64_t(h1) << 32) | h2, but we only really need the lower 32-bit half)
+    return hashpow2(t, h2);
+}
+
 static LuaNode* hashvec(const LuaTable* t, const float* v)
 {
     unsigned int i[LUA_VECTOR_SIZE];
@@ -136,6 +161,8 @@ static LuaNode* mainposition(const LuaTable* t, const TValue* key)
     {
     case LUA_TNUMBER:
         return hashnum(t, nvalue(key));
+    case LUA_TINTEGER:
+        return hashint(t, lvalue(key));
     case LUA_TVECTOR:
         return hashvec(t, vvalue(key));
     case LUA_TSTRING:

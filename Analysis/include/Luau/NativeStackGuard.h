@@ -18,7 +18,7 @@ private:
     uintptr_t low;
 };
 
-}
+} // namespace Luau
 
 namespace Luau
 {

@@ -59,12 +59,7 @@ RuntimeNavigationContext::RuntimeNavigationContext(luarequire_Configuration* con
     };
 }
 
-std::string RuntimeNavigationContext::getRequirerIdentifier() const
-{
-    return requirerChunkname;
-}
-
-NavigationContext::NavigateResult RuntimeNavigationContext::reset(const std::string& requirerChunkname)
+NavigationContext::NavigateResult RuntimeNavigationContext::resetToRequirer()
 {
     return convertNavigateResult(config->reset(L, ctx, requirerChunkname.c_str()));
 }

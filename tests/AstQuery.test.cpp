@@ -83,7 +83,7 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_fn")
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "class_method")
 {
     loadDefinition(R"(
-        declare class Foo
+        declare extern type Foo with
             function bar(self, x: string): number
         end
 
@@ -106,7 +106,7 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "class_method")
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_class_method")
 {
     loadDefinition(R"(
-        declare class Foo
+        declare extern type Foo with
             function bar(self, x: string): number
             function bar(self, x: number): string
         end
@@ -179,11 +179,11 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "string_metatable_method")
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "parent_class_method")
 {
     loadDefinition(R"(
-        declare class Foo
+        declare extern type Foo with
             function bar(self, x: string): number
         end
 
-        declare class Bar extends Foo
+        declare extern type Bar extends Foo with
             function notbar(self, x: string): number
         end
     )");
@@ -205,6 +205,8 @@ TEST_SUITE_BEGIN("AstQuery");
 
 TEST_CASE_FIXTURE(Fixture, "last_argument_function_call_type")
 {
+    // NOTE: This does not pass in the new solver as we do not give the
+    // expression "foo()" a type, only a type pack.
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
     check(R"(
@@ -409,12 +411,10 @@ TEST_CASE_FIXTURE(Fixture, "interior_binding_location_is_consistent_with_exterio
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // FIXME CLI-114385: findBindingByPosition does not properly handle AstStatLocalFunction.
+    std::optional<Binding> declBinding = findBindingAtPosition(*getMainModule(), *getMainSourceModule(), {1, 26});
+    REQUIRE(declBinding);
 
-    // std::optional<Binding> declBinding = findBindingAtPosition(*getMainModule(), *getMainSourceModule(), {1, 26});
-    // REQUIRE(declBinding);
-
-    // CHECK(declBinding->location == Location{{1, 25}, {1, 28}});
+    CHECK(declBinding->location == Location{{1, 23}, {1, 27}});
 
     std::optional<Binding> innerCallBinding = findBindingAtPosition(*getMainModule(), *getMainSourceModule(), {2, 15});
     REQUIRE(innerCallBinding);

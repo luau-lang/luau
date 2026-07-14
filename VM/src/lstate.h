@@ -4,6 +4,7 @@
 
 #include "lobject.h"
 #include "ltm.h"
+#include "ludata.h"
 
 // registry
 #define registry(L) (&L->global->registry)
@@ -58,7 +59,13 @@ typedef struct CallInfo
     StkId base;    // base for this function
     StkId func;    // function index in the stack
     StkId top;     // top for this function
-    const Instruction* savedpc;
+    Proto* p;
+
+    union
+    {
+        const Instruction* savedpc;
+        int errfunc; // For C functions, the error function index in the stack
+    };
 
     int nresults;       // expected number of results from this function
     unsigned int flags; // call frame flags, see LUA_CALLINFO_*
@@ -68,6 +75,7 @@ typedef struct CallInfo
 #define LUA_CALLINFO_RETURN (1 << 0) // should the interpreter return after returning from this callinfo? first frame must have this set
 #define LUA_CALLINFO_HANDLE (1 << 1) // should the error thrown during execution get handled by continuation from this callinfo? func must be C
 #define LUA_CALLINFO_NATIVE (1 << 2) // should this function be executed using execution callback for native code
+#define LUA_CALLINFO_OPYIELD (1 << 3) // call frame has yielded on a non-call opcode and requires luaV_finishop
 
 #define curr_func(L) (clvalue(L->ci->func))
 #define ci_func(ci) (clvalue((ci)->func))
@@ -155,6 +163,22 @@ struct lua_ExecutionCallbacks
     void (*disable)(lua_State* L, Proto* proto); // called when function has to be switched from native to bytecode in the debugger
     size_t (*getmemorysize)(lua_State* L, Proto* proto); // called to request the size of memory associated with native part of the Proto
     uint8_t (*gettypemapping)(lua_State* L, const char* str, size_t len); // called to get the userdata type index
+    char* (*getcounterdata)(
+        lua_State* L,
+        Proto* proto,
+        size_t* count
+    ); // called to get the execution counter data and count {uint32_t, uint32_t, uint64_t}
+    Proto* (*inlinefunction)(lua_State* L, Closure* caller, Closure* target, uint32_t pc); // called when inlining threshold is reached
+};
+
+struct lua_UdataDirectAccessData
+{
+    TValue indextm;
+    TValue newindextm;
+    TValue namecalltm;
+    lua_UserdataDirectAccess index;
+    lua_UserdataDirectAccess newindex;
+    lua_UserdataDirectNamecall namecall;
 };
 
 /*
@@ -175,7 +199,7 @@ typedef struct global_State
     GCObject* grayagain; // list of objects to be traversed atomically
     GCObject* weak;      // list of weak tables (to be cleared)
 
-    size_t GCthreshold;                       // when totalbytes > GCthreshold, run GC step
+    size_t GCthreshold;                       // when totalbytes >= GCthreshold, run GC step
     size_t totalbytes;                        // number of bytes currently allocated
 
     int gcgoal;                               // see LUAI_GCGOAL
@@ -187,8 +211,6 @@ typedef struct global_State
     struct lua_Page* allpages; // page linked list with all pages for all non-collectable object classes (available with LUAU_ASSERTENABLED)
     struct lua_Page* allgcopages; // page linked list with all pages for all collectable object classes
     struct lua_Page* sweepgcopage; // position of the sweep in `allgcopages'
-
-    size_t memcatbytes[LUA_MEMORY_CATEGORIES]; // total amount of memory used by each memory category
 
     struct lua_State* mainthread;
     UpVal uvhead; // head of double-linked list of all open upvalues
@@ -210,12 +232,23 @@ typedef struct global_State
 
     lua_ExecutionCallbacks ecb;
 
+    alignas(16) uint8_t ecbdata[LUA_EXECUTION_CALLBACK_STORAGE];
+
+    // Set of userdata __index/__newindex/__namecall metamethods for a direct access
+    lua_UdataDirectAccessData udatadirect[UTAG_INTERNAL_LIMIT];
+
+    size_t memcatbytes[LUA_MEMORY_CATEGORIES]; // total amount of memory used by each memory category
+
     void (*udatagc[LUA_UTAG_LIMIT])(lua_State*, void*); // for each userdata tag, a gc callback to be called immediately before freeing memory
     LuaTable* udatamt[LUA_UTAG_LIMIT]; // metatables for tagged userdata
 
     TString* lightuserdataname[LUA_LUTAG_LIMIT]; // names for tagged lightuserdata
 
+    // per-tag direct field dispatch tables; NULL until first field is registered for that tag
+    struct LuaTable* udatadirectfields[UTAG_INTERNAL_LIMIT];
+
     GCStats gcstats;
+    uint32_t lastprotoid;
 
 #ifdef LUAI_GCMETRICS
     GCMetrics gcmetrics;
@@ -279,6 +312,8 @@ union GCObject
     struct UpVal uv;
     struct lua_State th; // thread
     struct LuauBuffer buf;
+    struct LuauClass lclass;
+    struct LuauObject lobject;
 };
 
 // macros to convert a GCObject into a specific value
@@ -290,6 +325,8 @@ union GCObject
 #define gco2uv(o) check_exp((o)->gch.tt == LUA_TUPVAL, &((o)->uv))
 #define gco2th(o) check_exp((o)->gch.tt == LUA_TTHREAD, &((o)->th))
 #define gco2buf(o) check_exp((o)->gch.tt == LUA_TBUFFER, &((o)->buf))
+#define gco2class(o) check_exp((o)->gch.tt == LUA_TCLASS, &((o)->lclass))
+#define gco2object(o) check_exp((o)->gch.tt == LUA_TOBJECT, &((o)->lobject))
 
 // macro to convert any Lua object into a GCObject
 #define obj2gco(v) check_exp(iscollectable(v), cast_to(GCObject*, (v) + 0))

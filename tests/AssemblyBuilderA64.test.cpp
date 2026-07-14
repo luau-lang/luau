@@ -7,7 +7,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenUpvalueLoadProp)
+LUAU_FASTFLAG(LuauCodegenSharedLog)
 
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::A64;
@@ -37,7 +37,7 @@ class AssemblyBuilderA64Fixture
 public:
     bool check(void (*f)(AssemblyBuilderA64& build), std::vector<uint32_t> code, std::vector<uint8_t> data = {}, unsigned int features = 0)
     {
-        AssemblyBuilderA64 build(/* logText= */ false, features);
+        AssemblyBuilderA64 build(/* logger= */ nullptr, false, features);
 
         f(build);
 
@@ -108,10 +108,10 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Binary")
     SINGLE_COMPARE(tst(x0, x1), 0xEA01001F);
 
     // reg, imm
-    SINGLE_COMPARE(add(x3, x7, 78), 0x910138E3);
-    SINGLE_COMPARE(add(w3, w7, 78), 0x110138E3);
-    SINGLE_COMPARE(sub(w3, w7, 78), 0x510138E3);
-    SINGLE_COMPARE(cmp(w0, 42), 0x7100A81F);
+    SINGLE_COMPARE(add(x3, x7, uint16_t(78)), 0x910138E3);
+    SINGLE_COMPARE(add(w3, w7, uint16_t(78)), 0x110138E3);
+    SINGLE_COMPARE(sub(w3, w7, uint16_t(78)), 0x510138E3);
+    SINGLE_COMPARE(cmp(w0, uint16_t(42)), 0x7100A81F);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "BinaryExtended")
@@ -119,6 +119,22 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "BinaryExtended")
     // reg, reg
     SINGLE_COMPARE(add(x0, x1, w2, 3), 0x8B224C20);
     SINGLE_COMPARE(sub(x0, x1, w2, 3), 0xCB224C20);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Ternary")
+{
+    SINGLE_COMPARE(msub(x0, x1, x2, x3), 0x9B028C20);
+    SINGLE_COMPARE(msub(w0, w1, w2, w3), 0x1B028C20);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "MulDiv")
+{
+    SINGLE_COMPARE(mul(x0, x1, x2), 0x9B027C20);
+    SINGLE_COMPARE(mul(w0, w1, w2), 0x1B027C20);
+    SINGLE_COMPARE(sdiv(x0, x1, x2), 0x9AC20C20);
+    SINGLE_COMPARE(sdiv(w0, w1, w2), 0x1AC20C20);
+    SINGLE_COMPARE(udiv(x0, x1, x2), 0x9AC20820);
+    SINGLE_COMPARE(udiv(w0, w1, w2), 0x1AC20820);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "BinaryImm")
@@ -333,11 +349,11 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "StackOps")
     SINGLE_COMPARE(mov(x0, sp), 0x910003E0);
     SINGLE_COMPARE(mov(sp, x0), 0x9100001F);
 
-    SINGLE_COMPARE(add(sp, sp, 4), 0x910013FF);
-    SINGLE_COMPARE(sub(sp, sp, 4), 0xD10013FF);
+    SINGLE_COMPARE(add(sp, sp, uint16_t(4)), 0x910013FF);
+    SINGLE_COMPARE(sub(sp, sp, uint16_t(4)), 0xD10013FF);
 
-    SINGLE_COMPARE(add(x0, sp, 4), 0x910013E0);
-    SINGLE_COMPARE(sub(sp, x0, 4), 0xD100101F);
+    SINGLE_COMPARE(add(x0, sp, uint16_t(4)), 0x910013E0);
+    SINGLE_COMPARE(sub(sp, x0, uint16_t(4)), 0xD100101F);
 
     SINGLE_COMPARE(ldr(x0, mem(sp, 8)), 0xF94007E0);
     SINGLE_COMPARE(str(x0, mem(sp, 8)), 0xF90007E0);
@@ -383,8 +399,6 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "AddressOfLabel")
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPBasic")
 {
-    ScopedFastFlag luauCodegenUpvalueLoadProp{FFlag::LuauCodegenUpvalueLoadProp, true};
-
     SINGLE_COMPARE(fmov(d0, d1), 0x1E604020);
     SINGLE_COMPARE(fmov(d0, x1), 0x9E670020);
     SINGLE_COMPARE(fmov(x3, d2), 0x9E660043);
@@ -393,17 +407,24 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPBasic")
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPMath")
 {
     SINGLE_COMPARE(fabs(d1, d2), 0x1E60C041);
+    SINGLE_COMPARE(fabs(s1, s2), 0x1E20C041);
+    SINGLE_COMPARE(fabs(q1, q2), 0x4EA0F841);
     SINGLE_COMPARE(fadd(d1, d2, d3), 0x1E632841);
     SINGLE_COMPARE(fadd(s29, s29, s28), 0x1E3C2BBD);
+    SINGLE_COMPARE(fadd(q29, q29, q28), 0x4E3CD7BD);
     SINGLE_COMPARE(fdiv(d1, d2, d3), 0x1E631841);
     SINGLE_COMPARE(fdiv(s29, s29, s28), 0x1E3C1BBD);
+    SINGLE_COMPARE(fdiv(q29, q29, q28), 0x6E3CFFBD);
     SINGLE_COMPARE(fmul(d1, d2, d3), 0x1E630841);
     SINGLE_COMPARE(fmul(s29, s29, s28), 0x1E3C0BBD);
+    SINGLE_COMPARE(fmul(q29, q29, q28), 0x6E3CDFBD);
     SINGLE_COMPARE(fneg(d1, d2), 0x1E614041);
     SINGLE_COMPARE(fneg(s30, s30), 0x1E2143DE);
+    SINGLE_COMPARE(fneg(q30, q30), 0x6EA0FBDE);
     SINGLE_COMPARE(fsqrt(d1, d2), 0x1E61C041);
     SINGLE_COMPARE(fsub(d1, d2, d3), 0x1E633841);
     SINGLE_COMPARE(fsub(s29, s29, s28), 0x1E3C3BBD);
+    SINGLE_COMPARE(fsub(q29, q29, q28), 0x4EBCD7BD);
 
     SINGLE_COMPARE(faddp(s29, s28), 0x7E30DB9D);
     SINGLE_COMPARE(faddp(d29, d28), 0x7E70DB9D);
@@ -411,6 +432,14 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPMath")
     SINGLE_COMPARE(frinta(d1, d2), 0x1E664041);
     SINGLE_COMPARE(frintm(d1, d2), 0x1E654041);
     SINGLE_COMPARE(frintp(d1, d2), 0x1E64C041);
+
+    SINGLE_COMPARE(frinta(s1, s2), 0x1E264041);
+    SINGLE_COMPARE(frintm(s1, s2), 0x1E254041);
+    SINGLE_COMPARE(frintp(s1, s2), 0x1E24C041);
+
+    SINGLE_COMPARE(frinta(q1, q2), 0x6E218841);
+    SINGLE_COMPARE(frintm(q1, q2), 0x4E219841);
+    SINGLE_COMPARE(frintp(q1, q2), 0x4EA18841);
 
     SINGLE_COMPARE(fcvt(s1, d2), 0x1E624041);
     SINGLE_COMPARE(fcvt(d1, s2), 0x1E22C041);
@@ -422,8 +451,11 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPMath")
 
     SINGLE_COMPARE(scvtf(d1, w2), 0x1E620041);
     SINGLE_COMPARE(scvtf(d1, x2), 0x9E620041);
+
     SINGLE_COMPARE(ucvtf(d1, w2), 0x1E630041);
     SINGLE_COMPARE(ucvtf(d1, x2), 0x9E630041);
+    SINGLE_COMPARE(ucvtf(s1, w2), 0x1E230041);
+    SINGLE_COMPARE(ucvtf(s1, x2), 0x9E230041);
 
     CHECK(check(
         [](AssemblyBuilderA64& build)
@@ -473,12 +505,18 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPInsertExtract")
     SINGLE_COMPARE(dup_4s(q29, q30, 0), 0x4E0407DD);
     SINGLE_COMPARE(umov_4s(w1, q30, 3), 0x0E1C3FC1);
     SINGLE_COMPARE(umov_4s(w13, q1, 1), 0x0E0C3C2D);
+
+    SINGLE_COMPARE(bit(q1, q2, q3), 0x6EA31C41);
+    SINGLE_COMPARE(bif(q1, q2, q3), 0x6EE31C41);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPCompare")
 {
     SINGLE_COMPARE(fcmp(d0, d1), 0x1E612000);
     SINGLE_COMPARE(fcmpz(d1), 0x1E602028);
+
+    SINGLE_COMPARE(fcmeq_4s(q1, q2, q3), 0x4E23E441);
+    SINGLE_COMPARE(fcmgt_4s(q1, q2, q3), 0x6EA3E441);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPImm")
@@ -554,14 +592,16 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "SIMDMath")
 
 TEST_CASE("LogTest")
 {
-    AssemblyBuilderA64 build(/* logText= */ true);
+    AssemblyOptions options;
+    LogBuilder logger(options);
+    AssemblyBuilderA64 build(/* logger= */ &logger, true, /* features= */ 0);
 
-    build.add(sp, sp, 4);
+    build.add(sp, sp, uint16_t(4));
     build.add(w0, w1, w2);
     build.add(x0, x1, x2, 2);
     build.add(x0, x1, x2, -2);
-    build.add(w7, w8, 5);
-    build.add(x7, x8, 5);
+    build.add(w7, w8, uint16_t(5));
+    build.add(x7, x8, uint16_t(5));
     build.ldr(x7, x8);
     build.ldr(x7, mem(x8, 8));
     build.ldr(x7, mem(x8, x9));
@@ -658,7 +698,53 @@ TEST_CASE("LogTest")
  ret
 )";
 
-    CHECK("\n" + build.text == expected);
+    CHECK("\n" + (FFlag::LuauCodegenSharedLog ? logger.text : build.text) == expected);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Nop")
+{
+    // 0 bytes: no instructions emitted
+    CHECK(check(
+        [](AssemblyBuilderA64& build)
+        {
+            build.nop(0);
+        },
+        {}
+    ));
+
+    // Non-multiple of 4: rounds down to nearest multiple (7 -> 1 NOP = 4 bytes)
+    CHECK(check(
+        [](AssemblyBuilderA64& build)
+        {
+            build.nop(7);
+        },
+        {0xD503201F}
+    ));
+
+    // Exact multiples: 4 -> 1 NOP, 8 -> 2 NOPs, 12 -> 3 NOPs
+    CHECK(check(
+        [](AssemblyBuilderA64& build)
+        {
+            build.nop(4);
+        },
+        {0xD503201F}
+    ));
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build)
+        {
+            build.nop(8);
+        },
+        {0xD503201F, 0xD503201F}
+    ));
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build)
+        {
+            build.nop(12);
+        },
+        {0xD503201F, 0xD503201F, 0xD503201F}
+    ));
 }
 
 TEST_SUITE_END();

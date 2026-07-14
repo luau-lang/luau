@@ -11,7 +11,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauStacklessPcall)
+LUAU_FASTFLAGVARIABLE(LuauCustomYieldablePcalls)
 
 // convert a stack index to positive
 #define abs_index(L, i) ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
@@ -138,6 +138,16 @@ void* luaL_checkudata(lua_State* L, int ud, const char* tname)
     luaL_typeerrorL(L, ud, tname); // else error
 }
 
+void* luaL_checkudatatagged(lua_State* L, int ud, int tag)
+{
+    void* p = lua_touserdatatagged(L, ud, tag);
+    if (p != NULL)
+        return p;
+
+    const char* tname = lua_getuserdataname(L, tag);
+    luaL_typeerrorL(L, ud, tname); // else error
+}
+
 void* luaL_checkbuffer(lua_State* L, int narg, size_t* len)
 {
     void* b = lua_tobuffer(L, narg, len);
@@ -223,9 +233,21 @@ int luaL_checkinteger(lua_State* L, int narg)
     return d;
 }
 
+int64_t luaL_checkinteger64(lua_State* L, int narg)
+{
+    if (!lua_isinteger64(L, narg))
+        tag_error(L, narg, LUA_TINTEGER);
+    return lua_tointeger64(L, narg, nullptr);
+}
+
 int luaL_optinteger(lua_State* L, int narg, int def)
 {
     return luaL_opt(L, luaL_checkinteger, narg, def);
+}
+
+int64_t luaL_optinteger64(lua_State* L, int narg, int64_t def)
+{
+    return luaL_opt(L, luaL_checkinteger64, narg, def);
 }
 
 unsigned luaL_checkunsigned(lua_State* L, int narg)
@@ -361,20 +383,102 @@ int luaL_callyieldable(lua_State* L, int nargs, int nresults)
 
     lua_call(L, nargs, nresults);
 
-    if (FFlag::LuauStacklessPcall)
-    {
-        // yielding means we need to propagate yield; resume will call continuation function later
-        if (isyielded(L))
-            return C_CALL_YIELD;
-    }
-    else
-    {
-        if (L->status == LUA_YIELD || L->status == LUA_BREAK)
-            return -1; // -1 is a marker for yielding from C
-    }
+    // yielding means we need to propagate yield; resume will call continuation function later
+    if (isyielded(L))
+        return C_CALL_YIELD;
 
     return cl->c.cont(L, LUA_OK);
 }
+
+int luaL_pcallyieldable(lua_State* L, int nargs, int nresults, int errfunc)
+{
+    LUAU_ASSERT(FFlag::LuauCustomYieldablePcalls);
+    api_check(L, iscfunction(L->ci->func));
+    Closure* cl = clvalue(L->ci->func);
+    api_check(L, cl->c.cont);
+    api_check(L, nargs + 1 <= L->top - L->base);
+    api_check(L, errfunc >= 0 && errfunc <= L->top - L->base);
+
+    L->ci->errfunc = errfunc; // 0 means no error function
+    L->ci->flags |= LUA_CALLINFO_HANDLE;
+
+    struct CallContext
+    {
+        StkId func;
+        int nresults;
+
+        static void run(lua_State* L, void* ud)
+        {
+            CallContext* ctx = (CallContext*)ud;
+
+            luaD_callint(L, ctx->func, ctx->nresults, lua_isyieldable(L) != 0);
+        }
+    } ctx = {L->top - (nargs + 1), nresults};
+
+    ptrdiff_t savedfunc = savestack(L, ctx.func);
+    ptrdiff_t savederrfunc = errfunc != 0 ? savestack(L, L->base + (errfunc - 1)) : 0;
+
+    int status = luaD_pcall(L, &CallContext::run, &ctx, savedfunc, savederrfunc);
+
+    // necessary to accommodate functions that return lots of values
+    expandstacklimit(L, L->top);
+
+    // yielding means we need to propagate yield; resume will call continuation function later
+    if (status == 0 && isyielded(L))
+        return C_CALL_YIELD;
+
+    // the called function has completed synchronously, continuation can use non-protected calls again
+    L->ci->flags &= ~LUA_CALLINFO_HANDLE;
+
+    return cl->c.cont(L, status);
+}
+
+void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level)
+{
+    api_check(L, level >= 0);
+
+    luaL_Strbuf buf;
+    luaL_buffinit(L, &buf);
+
+    if (msg)
+    {
+        luaL_addstring(&buf, msg);
+        luaL_addstring(&buf, "\n");
+    }
+
+    lua_Debug ar;
+    for (int i = level; lua_getinfo(L1, i, "sln", &ar); ++i)
+    {
+        if (strcmp(ar.what, "C") == 0)
+            continue;
+
+        if (ar.source)
+            luaL_addstring(&buf, ar.short_src);
+
+        if (ar.currentline > 0)
+        {
+            char line[32]; // manual conversion for performance
+            char* lineend = line + sizeof(line);
+            char* lineptr = lineend;
+            for (unsigned int r = ar.currentline; r > 0; r /= 10)
+                *--lineptr = '0' + (r % 10);
+
+            luaL_addchar(&buf, ':');
+            luaL_addlstring(&buf, lineptr, lineend - lineptr);
+        }
+
+        if (ar.name)
+        {
+            luaL_addstring(&buf, " function ");
+            luaL_addstring(&buf, ar.name);
+        }
+
+        luaL_addchar(&buf, '\n');
+    }
+
+    luaL_pushresult(&buf);
+}
+
 
 /*
 ** {======================================================
@@ -512,6 +616,14 @@ void luaL_addvalueany(luaL_Strbuf* B, int idx)
         luaL_addlstring(B, s, len);
         break;
     }
+    case LUA_TINTEGER:
+    {
+        int64_t n = lua_tointeger64(L, idx, nullptr);
+        char s[LUAI_MAXINT2STR];
+        char* e = luai_int2str(s, n);
+        luaL_addlstring(B, s, e - s);
+        break;
+    }
     default:
     {
         size_t len;
@@ -603,6 +715,14 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
     case LUA_TSTRING:
         lua_pushvalue(L, idx);
         break;
+    case LUA_TINTEGER:
+    {
+        int64_t l = lua_tointeger64(L, idx, nullptr);
+        char s[LUAI_MAXINT2STR];
+        char* e = luai_int2str(s, l);
+        lua_pushlstring(L, s, e - s);
+        break;
+    }
     default:
     {
         const void* ptr = lua_topointer(L, idx);

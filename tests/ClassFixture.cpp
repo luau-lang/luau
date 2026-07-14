@@ -150,6 +150,25 @@ Frontend& ExternTypeFixture::getFrontend()
 
     addGlobalBinding(globals, "confusingBaseClassInstance", duplicateBaseClassInstanceType, "@test");
 
+    TypeId genericT = arena.addType(GenericType{Name{"T"}, Polarity::Mixed});
+    TypeId identity = arena.addType(
+        FunctionType{
+            {genericT},
+            {},
+            arena.addTypePack(TypePack{{genericT}, {}}),
+            arena.addTypePack(TypePack{{genericT}, {}}),
+            std::nullopt,
+            /* hasSelf */ false
+        }
+    );
+
+    TypeId classWithGenericMethod = arena.addType(
+        ExternType{"ClassWithGenericMethod", {{"identity", Property::readonly(identity)}}, std::nullopt, std::nullopt, {}, {}, "Test", {}}
+    );
+
+    globals.globalScope->exportedTypeBindings["ClassWithGenericMethod"] = TypeFun{{}, classWithGenericMethod};
+    addGlobalBinding(globals, "ClassWithGenericMethod", classWithGenericMethod, "@test");
+
     for (const auto& [name, tf] : globals.globalScope->exportedTypeBindings)
         persist(tf.type);
 

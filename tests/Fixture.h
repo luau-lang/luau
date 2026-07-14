@@ -27,12 +27,21 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauForceAllNewSolverTests)
+LUAU_FASTFLAG(DebugLuauForceAllOldSolverTests)
 
 LUAU_FASTFLAG(DebugLuauAlwaysShowConstraintSolvingIncomplete);
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauDisallowExternClassInTypeDefinitions)
 
-#define DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::LuauSolverV2, FFlag::DebugLuauForceAllNewSolverTests};
+#define DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::DebugLuauForceOldSolver, !FFlag::DebugLuauForceAllNewSolverTests};
 
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD() DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(__LINE__)
+
+#define DOES_NOT_PASS_OLD_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::DebugLuauForceOldSolver, FFlag::DebugLuauForceAllOldSolverTests};
+
+#define DOES_NOT_PASS_OLD_SOLVER_GUARD() DOES_NOT_PASS_OLD_SOLVER_GUARD_IMPL(__LINE__)
+
+
 
 namespace Luau
 {
@@ -140,12 +149,15 @@ struct Fixture
     TypeId requireType(const ScopePtr& scope, const std::string& name);
 
     std::optional<TypeId> findTypeAtPosition(Position position);
+    std::optional<TypeId> findTypeAtPosition(const ModuleName& moduleName, Position position);
     TypeId requireTypeAtPosition(Position position);
+    TypeId requireTypeAtPosition(const ModuleName& moduleName, Position position);
     std::optional<TypeId> findExpectedTypeAtPosition(Position position);
 
     std::optional<TypeId> lookupType(const std::string& name);
     std::optional<TypeId> lookupImportedType(const std::string& moduleAlias, const std::string& name);
     TypeId requireTypeAlias(const std::string& name);
+    TypeId requireExportedType(const std::string& name);
     TypeId requireExportedType(const ModuleName& moduleName, const std::string& name);
 
     TypeId parseType(std::string_view src);
@@ -161,6 +173,9 @@ struct Fixture
 
     // This makes sure that errant cases of constraint solving failing to complete still pop up in tests.
     ScopedFastFlag sff_DebugLuauAlwaysShowConstraintSolvingIncomplete{FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete, true};
+
+    // lots of tests might use declare class in type definitions - disable this and force all tests to adopt the new syntax
+    ScopedFastFlag sff_LuauDisallowExternClassInTypeDefinitions{FFlag::LuauDisallowExternClassInTypeDefinitions, true};
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;
@@ -213,6 +228,11 @@ struct BuiltinsFixture : Fixture
 
     // For the purpose of our tests, we're always the latest version of type functions.
     Frontend& getFrontend() override;
+};
+
+struct IsSubtypeFixture : Fixture
+{
+    bool isSubtype(TypeId a, TypeId b);
 };
 
 std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleName, const std::vector<std::string_view>& segments);
@@ -377,3 +397,27 @@ const E* findError(const CheckResult& result)
             CHECK_MESSAGE(false, "Expected to find no " #Type " error"); \
         } \
     } while (false)
+
+#define CHECK_LONG_STRINGS_EQ(a, b) \
+    do \
+    { \
+        const auto aa = (a); \
+        const auto bb = (b); \
+        const auto aLines = split(aa, '\n'); \
+        const auto bLines = split(bb, '\n'); \
+        CHECK_MESSAGE(aLines.size() == bLines.size(), "Line counts don't match: " << aLines.size() << " != " << bLines.size()); \
+        bool anyWrong = false; \
+        for (size_t i = 0; i < std::min(aLines.size(), bLines.size()); ++i) \
+        { \
+            auto aLine = strip(aLines.at(i)); \
+            auto bLine = strip(bLines.at(i)); \
+            if (aLine != bLine) \
+                anyWrong = true; \
+            CHECK_MESSAGE(aLine == bLine, "Mismatch on line " << i << " between:\n\t«" << aLine << "»\nand\t«" << bLine << "»\n"); \
+        } \
+        if (anyWrong) \
+        { \
+            MESSAGE(aa); \
+            MESSAGE(bb); \
+        } \
+    } while (0)

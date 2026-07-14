@@ -53,19 +53,19 @@ struct UnifierSharedState
     bool reentrantTypeReduction = false;
 };
 
-struct TypeReductionRentrancyGuard final
+struct TypeReductionReentrancyGuard final
 {
-    explicit TypeReductionRentrancyGuard(NotNull<UnifierSharedState> sharedState)
+    explicit TypeReductionReentrancyGuard(NotNull<UnifierSharedState> sharedState)
         : sharedState{sharedState}
     {
         sharedState->reentrantTypeReduction = true;
     }
-    ~TypeReductionRentrancyGuard()
+    ~TypeReductionReentrancyGuard()
     {
         sharedState->reentrantTypeReduction = false;
     }
-    TypeReductionRentrancyGuard(const TypeReductionRentrancyGuard&) = delete;
-    TypeReductionRentrancyGuard(TypeReductionRentrancyGuard&&) = delete;
+    TypeReductionReentrancyGuard(const TypeReductionReentrancyGuard&) = delete;
+    TypeReductionReentrancyGuard(TypeReductionReentrancyGuard&&) = delete;
 
 private:
     NotNull<UnifierSharedState> sharedState;

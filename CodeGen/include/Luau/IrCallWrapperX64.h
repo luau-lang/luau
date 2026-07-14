@@ -39,9 +39,16 @@ public:
     void addArgument(SizeX64 targetSize, OperandX64 source, IrOp sourceOp = {});
     void addArgument(SizeX64 targetSize, ScopedRegX64& scopedReg);
 
+    // Declare that the call produces a result that should be placed in the selected register
+    void setResultRegister(RegisterX64 reg, uint32_t instIdx);
+
     void call(const OperandX64& func);
 
     RegisterX64 suggestNextArgumentRegister(SizeX64 size) const;
+    // Returns the register for argument position N, sized according to 'size', for the given ABI.
+    // N must be 0-3: on Windows, args 4+ are passed on the stack (not in registers).
+    template<size_t N>
+    static RegisterX64 suggestArgumentRegister(SizeX64 size, AssemblyBuilderX64& build);
 
     IrRegAllocX64& regs;
     AssemblyBuilderX64& build;
@@ -73,6 +80,9 @@ private:
     int xmmPos = 0;
 
     OperandX64 funcOp;
+
+    RegisterX64 resultReg = noreg;
+    uint32_t resultInstIdx = kInvalidInstIdx;
 
     // Internal counters for remaining register use counts
     std::array<uint8_t, 16> gprUses;

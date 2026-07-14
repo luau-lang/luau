@@ -18,9 +18,8 @@
 #include <algorithm>
 #include <string>
 
-LUAU_FASTFLAGVARIABLE(LuauEnableDenseTableAlias)
-
 LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauIntegerType2)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -154,6 +153,12 @@ static std::pair<bool, std::optional<Luau::Name>> canUseTypeNameInScope(ScopePtr
     return {false, std::nullopt};
 }
 
+struct ElementResult
+{
+    std::string str;
+    std::vector<ToStringSpan> spans;
+};
+
 struct StringifierState
 {
     ToStringOptions& opts;
@@ -168,12 +173,15 @@ struct StringifierState
     size_t indentation = 0;
 
     bool exhaustive;
+    bool ignoreSyntheticName = false;
 
     StringifierState(ToStringOptions& opts, ToStringResult& result)
         : opts(opts)
         , result(result)
         , exhaustive(opts.exhaustive)
     {
+        ignoreSyntheticName = opts.ignoreSyntheticName;
+
         for (const auto& [_, v] : opts.nameMap.types)
             usedNames.insert(v);
         for (const auto& [_, v] : opts.nameMap.typePacks)
@@ -292,6 +300,16 @@ struct StringifierState
     void emit(size_t i)
     {
         emit(std::to_string(i).c_str());
+    }
+
+    void emitAndRecordSpan(const std::string& s, TypeId ty)
+    {
+        size_t startPos = result.name.length();
+        emit(s);
+        size_t endPos = result.name.length();
+
+        if (endPos > startPos)
+            result.typeSpans.emplace_back(ToStringSpan{startPos, endPos, ty});
     }
 
     void emit(Polarity p)
@@ -592,6 +610,13 @@ struct TypeStringifier
         case PrimitiveType::Table:
             state.emit("table");
             return;
+        case PrimitiveType::Integer:
+            if (FFlag::LuauIntegerType2)
+            {
+                state.emit("integer");
+                return;
+            }
+            [[fallthrough]];
         default:
             LUAU_ASSERT(!"Unknown primitive type");
             throw InternalCompilerError("Unknown primitive type " + std::to_string(ptv.type));
@@ -684,17 +709,14 @@ struct TypeStringifier
         state.unsee(&ftv);
     }
 
-    void operator()(TypeId, const TableType& ttv)
+    void operator()(TypeId ty, const TableType& ttv)
     {
         if (ttv.boundTo)
             return stringify(*ttv.boundTo);
 
-        bool showName = !state.exhaustive;
-        if (FFlag::LuauEnableDenseTableAlias)
-        {
-            // if hide table alias expansions are enabled and there is a name found for the table, use it
-            showName = !state.exhaustive || state.opts.hideTableAliasExpansions;
-        }
+        // if hide table alias expansions are enabled and there is a name found for the table, use it
+        bool showName = !state.exhaustive || state.opts.hideTableAliasExpansions;
+
         if (showName)
         {
             if (ttv.name)
@@ -714,18 +736,18 @@ struct TypeStringifier
                     }
                 }
 
-                state.emit(*ttv.name);
+                state.emitAndRecordSpan(*ttv.name, ty);
                 stringify(ttv.instantiatedTypeParams, ttv.instantiatedTypePackParams);
                 return;
             }
         }
 
-        if (!state.exhaustive)
+        if (!state.exhaustive && !state.ignoreSyntheticName)
         {
             if (ttv.syntheticName)
             {
                 state.result.invalid = true;
-                state.emit(*ttv.syntheticName);
+                state.emitAndRecordSpan(*ttv.syntheticName, ty);
                 stringify(ttv.instantiatedTypeParams, ttv.instantiatedTypePackParams);
                 return;
             }
@@ -767,6 +789,8 @@ struct TypeStringifier
         if (ttv.indexer && ttv.props.empty() && isNumber(ttv.indexer->indexType))
         {
             state.emit("{");
+            if (ttv.indexer->isReadOnly)
+                state.emit("read ");
             stringify(ttv.indexer->indexResultType);
             state.emit("}");
 
@@ -781,6 +805,8 @@ struct TypeStringifier
         if (ttv.indexer)
         {
             state.newline();
+            if (ttv.indexer->isReadOnly)
+                state.emit("read ");
             state.emit("[");
             stringify(ttv.indexer->indexType);
             state.emit("]: ");
@@ -826,12 +852,12 @@ struct TypeStringifier
         state.unsee(&ttv);
     }
 
-    void operator()(TypeId, const MetatableType& mtv)
+    void operator()(TypeId ty, const MetatableType& mtv)
     {
         state.result.invalid = true;
         if (!state.exhaustive && mtv.syntheticName)
         {
-            state.emit(*mtv.syntheticName);
+            state.emitAndRecordSpan(*mtv.syntheticName, ty);
             return;
         }
 
@@ -843,9 +869,9 @@ struct TypeStringifier
         state.emit(" }");
     }
 
-    void operator()(TypeId, const ExternType& etv)
+    void operator()(TypeId ty, const ExternType& etv)
     {
-        state.emit(etv.name);
+        state.emitAndRecordSpan(etv.name, ty);
     }
 
     void operator()(TypeId, const AnyType&)
@@ -872,7 +898,7 @@ struct TypeStringifier
         bool optional = false;
         bool hasNonNilDisjunct = false;
 
-        std::vector<std::string> results = {};
+        std::vector<ElementResult> results = {};
         size_t resultsLength = 0;
         bool lengthLimitHit = false;
 
@@ -891,8 +917,9 @@ struct TypeStringifier
             }
 
             std::string saved = std::move(state.result.name);
+            size_t savedSpansSize = state.result.typeSpans.size();
 
-            bool needParens = !state.cycleNames.contains(el) && (get<IntersectionType>(el) || get<FunctionType>(el));
+            bool needParens = !state.cycleNames.contains(el) && (get<IntersectionType>(el) != nullptr || get<FunctionType>(el) != nullptr);
 
             if (needParens)
                 state.emit("(");
@@ -902,8 +929,15 @@ struct TypeStringifier
             if (needParens)
                 state.emit(")");
 
-            resultsLength += state.result.name.length();
-            results.push_back(std::move(state.result.name));
+            ElementResult elem;
+            elem.str = std::move(state.result.name);
+
+            for (size_t i = savedSpansSize; i < state.result.typeSpans.size(); ++i)
+                elem.spans.push_back(state.result.typeSpans[i]);
+            state.result.typeSpans.resize(savedSpansSize);
+
+            resultsLength += elem.str.length();
+            results.push_back(std::move(elem));
 
             state.result.name = std::move(saved);
 
@@ -916,14 +950,21 @@ struct TypeStringifier
         state.unsee(&uv);
 
         if (!lengthLimitHit && !FFlag::DebugLuauToStringNoLexicalSort)
-            std::sort(results.begin(), results.end());
+            std::sort(
+                results.begin(),
+                results.end(),
+                [](const ElementResult& a, const ElementResult& b)
+                {
+                    return a.str < b.str;
+                }
+            );
 
         if (optional && results.size() > 1)
             state.emit("(");
 
         bool first = true;
         bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit;
-        for (std::string& ss : results)
+        for (ElementResult& elem : results)
         {
             if (!first)
             {
@@ -933,7 +974,12 @@ struct TypeStringifier
                     state.emit(" ");
                 state.emit("| ");
             }
-            state.emit(ss);
+
+            size_t basePos = state.result.name.length();
+            state.emit(elem.str);
+            for (const auto& [start, end, ty] : elem.spans)
+                state.result.typeSpans.emplace_back(ToStringSpan{basePos + start, basePos + end, ty});
+
             first = false;
         }
 
@@ -959,7 +1005,7 @@ struct TypeStringifier
             return;
         }
 
-        std::vector<std::string> results = {};
+        std::vector<ElementResult> results = {};
         size_t resultsLength = 0;
         bool lengthLimitHit = false;
 
@@ -968,8 +1014,9 @@ struct TypeStringifier
             el = follow(el);
 
             std::string saved = std::move(state.result.name);
+            size_t savedSpansSize = state.result.typeSpans.size();
 
-            bool needParens = !state.cycleNames.contains(el) && (get<UnionType>(el) || get<FunctionType>(el));
+            bool needParens = !state.cycleNames.contains(el) && (get<UnionType>(el) != nullptr || get<FunctionType>(el) != nullptr);
 
             if (needParens)
                 state.emit("(");
@@ -979,8 +1026,15 @@ struct TypeStringifier
             if (needParens)
                 state.emit(")");
 
-            resultsLength += state.result.name.length();
-            results.push_back(std::move(state.result.name));
+            ElementResult elem;
+            elem.str = std::move(state.result.name);
+
+            for (size_t i = savedSpansSize; i < state.result.typeSpans.size(); ++i)
+                elem.spans.push_back(state.result.typeSpans[i]);
+            state.result.typeSpans.resize(savedSpansSize);
+
+            resultsLength += elem.str.length();
+            results.push_back(std::move(elem));
 
             state.result.name = std::move(saved);
 
@@ -993,11 +1047,18 @@ struct TypeStringifier
         state.unsee(&uv);
 
         if (!lengthLimitHit && !FFlag::DebugLuauToStringNoLexicalSort)
-            std::sort(results.begin(), results.end());
+            std::sort(
+                results.begin(),
+                results.end(),
+                [](const ElementResult& a, const ElementResult& b)
+                {
+                    return a.str < b.str;
+                }
+            );
 
         bool first = true;
         bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit || isOverloadedFunction(ty);
-        for (std::string& ss : results)
+        for (ElementResult& elem : results)
         {
             if (!first)
             {
@@ -1007,7 +1068,12 @@ struct TypeStringifier
                     state.emit(" ");
                 state.emit("& ");
             }
-            state.emit(ss);
+
+            size_t basePos = state.result.name.length();
+            state.emit(elem.str);
+            for (const auto& [start, end, spanTy] : elem.spans)
+                state.result.typeSpans.emplace_back(ToStringSpan{basePos + start, basePos + end, spanTy});
+
             first = false;
         }
     }
@@ -1373,6 +1439,47 @@ static void assignCycleNames(
     }
 }
 
+enum class IgnoreSyntheticName
+{
+    Yes,
+    No
+};
+
+static void tableTypeToStringDetailed(
+    TypeId ty,
+    const TableType* ttv,
+    const IgnoreSyntheticName ignoreSyntheticName,
+    ToStringResult& result,
+    const std::shared_ptr<Scope>& scope,
+    const std::string_view nameToUse,
+    TypeStringifier& tvs
+)
+{
+    if (ignoreSyntheticName == IgnoreSyntheticName::No && ttv->syntheticName)
+        result.invalid = true;
+
+    // If scope is provided, add module name and check visibility
+    if (ttv->name && scope)
+    {
+        auto [success, moduleName] = canUseTypeNameInScope(scope, *ttv->name);
+
+        if (!success)
+            result.invalid = true;
+
+        if (moduleName)
+            result.name = format("%s.", moduleName->c_str());
+    }
+
+    size_t startPos = result.name.length();
+    result.name += nameToUse;
+    size_t endPos = result.name.length();
+
+    if (endPos > startPos)
+        result.typeSpans.emplace_back(ToStringSpan{startPos, endPos, ty});
+
+    tvs.stringify(ttv->instantiatedTypeParams, ttv->instantiatedTypePackParams);
+}
+
 ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 {
     /*
@@ -1397,26 +1504,18 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 
     if (!opts.exhaustive)
     {
-        if (auto ttv = get<TableType>(ty); ttv && (ttv->name || ttv->syntheticName))
+        if (state.ignoreSyntheticName)
         {
-            if (ttv->syntheticName)
-                result.invalid = true;
-
-            // If scope if provided, add module name and check visibility
-            if (ttv->name && opts.scope)
+            if (auto ttv = get<TableType>(ty); ttv && ttv->name)
             {
-                auto [success, moduleName] = canUseTypeNameInScope(opts.scope, *ttv->name);
+                tableTypeToStringDetailed(ty, ttv, IgnoreSyntheticName::Yes, result, opts.scope, *ttv->name, tvs);
 
-                if (!success)
-                    result.invalid = true;
-
-                if (moduleName)
-                    result.name = format("%s.", moduleName->c_str());
+                return result;
             }
-
-            result.name += ttv->name ? *ttv->name : *ttv->syntheticName;
-
-            tvs.stringify(ttv->instantiatedTypeParams, ttv->instantiatedTypePackParams);
+        }
+        else if (auto ttv = get<TableType>(ty); ttv && (ttv->name || ttv->syntheticName))
+        {
+            tableTypeToStringDetailed(ty, ttv, IgnoreSyntheticName::No, result, opts.scope, ttv->name ? *ttv->name : *ttv->syntheticName, tvs);
 
             return result;
         }
@@ -1910,7 +2009,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             return "function_check " + tos(c.fn) + " " + tos(c.argsPack);
         }
-        else if constexpr (std::is_same_v<T, PrimitiveTypeConstraint>)
+        else if constexpr (std::is_same_v<T, DEPRECATED_PrimitiveTypeConstraint>)
         {
             if (c.expectedType)
                 return "prim " + tos(c.freeType) + "[expected: " + tos(*c.expectedType) + "] as " + tos(c.primitiveType);

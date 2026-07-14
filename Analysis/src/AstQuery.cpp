@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/AstQuery.h"
 
+#include "Luau/Frontend.h"
 #include "Luau/Module.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
@@ -10,8 +11,6 @@
 #include "Luau/Common.h"
 
 #include <algorithm>
-
-LUAU_FASTFLAG(LuauSolverV2)
 
 namespace Luau
 {
@@ -348,15 +347,20 @@ static std::optional<AstStatLocal*> findBindingLocalStatement(const SourceModule
 
 std::optional<Binding> findBindingAtPosition(const Module& module, const SourceModule& source, Position pos)
 {
-    AstExpr* expr = findExprAtPosition(source, pos);
-    if (!expr)
-        return std::nullopt;
+    ExprOrLocal exprOrLocal = findExprOrLocalAtPosition(source, pos);
 
     Symbol name;
-    if (auto g = expr->as<AstExprGlobal>())
-        name = g->name;
-    else if (auto l = expr->as<AstExprLocal>())
-        name = l->local;
+    if (auto expr = exprOrLocal.getExpr())
+    {
+        if (auto g = expr->as<AstExprGlobal>())
+            name = g->name;
+        else if (auto l = expr->as<AstExprLocal>())
+            name = l->local;
+        else
+            return std::nullopt;
+    }
+    else if (auto local = exprOrLocal.getLocal())
+        name = local;
     else
         return std::nullopt;
 
@@ -447,7 +451,7 @@ struct FindExprOrLocal : public AstVisitor
         return true;
     }
 
-    virtual bool visit(AstExprFunction* fn) override
+    bool visit(AstExprFunction* fn) override
     {
         for (size_t i = 0; i < fn->args.size; ++i)
         {
@@ -456,13 +460,13 @@ struct FindExprOrLocal : public AstVisitor
         return visit((class AstExpr*)fn);
     }
 
-    virtual bool visit(AstStatFor* forStat) override
+    bool visit(AstStatFor* forStat) override
     {
         visitLocal(forStat->var);
         return true;
     }
 
-    virtual bool visit(AstStatForIn* forIn) override
+    bool visit(AstStatForIn* forIn) override
     {
         for (AstLocal* var : forIn->vars)
         {
@@ -526,17 +530,13 @@ static std::optional<DocumentationSymbol> getMetatableDocumentation(
         return std::nullopt;
 
     TypeId followed;
-    if (FFlag::LuauSolverV2)
-    {
-        if (indexIt->second.readTy)
-            followed = follow(*indexIt->second.readTy);
-        else if (indexIt->second.writeTy)
-            followed = follow(*indexIt->second.writeTy);
-        else
-            return std::nullopt;
-    }
+    if (indexIt->second.readTy)
+        followed = follow(*indexIt->second.readTy);
+    else if (indexIt->second.writeTy)
+        followed = follow(*indexIt->second.writeTy);
     else
-        followed = follow(indexIt->second.type_DEPRECATED());
+        return std::nullopt;
+
     const TableType* ttv = get<TableType>(followed);
     if (!ttv)
         return std::nullopt;
@@ -545,13 +545,8 @@ static std::optional<DocumentationSymbol> getMetatableDocumentation(
     if (propIt == ttv->props.end())
         return std::nullopt;
 
-    if (FFlag::LuauSolverV2)
-    {
-        if (auto ty = propIt->second.readTy)
-            return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
-    }
-    else
-        return checkOverloadedDocumentationSymbol(module, propIt->second.type_DEPRECATED(), parentExpr, propIt->second.documentationSymbol);
+    if (auto ty = propIt->second.readTy)
+        return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
 
     return std::nullopt;
 }
@@ -562,9 +557,6 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
 
     AstExpr* targetExpr = ancestry.size() >= 1 ? ancestry[ancestry.size() - 1]->asExpr() : nullptr;
     AstExpr* parentExpr = ancestry.size() >= 2 ? ancestry[ancestry.size() - 2]->asExpr() : nullptr;
-
-    if (std::optional<Binding> binding = findBindingAtPosition(module, source, position))
-        return checkOverloadedDocumentationSymbol(module, binding->typeId, parentExpr, binding->documentationSymbol);
 
     if (targetExpr)
     {
@@ -577,15 +569,8 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                 {
                     if (auto propIt = ttv->props.find(indexName->index.value); propIt != ttv->props.end())
                     {
-                        if (FFlag::LuauSolverV2)
-                        {
-                            if (auto ty = propIt->second.readTy)
-                                return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
-                        }
-                        else
-                            return checkOverloadedDocumentationSymbol(
-                                module, propIt->second.type_DEPRECATED(), parentExpr, propIt->second.documentationSymbol
-                            );
+                        if (auto ty = propIt->second.readTy)
+                            return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
                     }
                 }
                 else if (const ExternType* etv = get<ExternType>(parentTy))
@@ -594,15 +579,9 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                     {
                         if (auto propIt = etv->props.find(indexName->index.value); propIt != etv->props.end())
                         {
-                            if (FFlag::LuauSolverV2)
-                            {
-                                if (auto ty = propIt->second.readTy)
-                                    return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
-                            }
-                            else
-                                return checkOverloadedDocumentationSymbol(
-                                    module, propIt->second.type_DEPRECATED(), parentExpr, propIt->second.documentationSymbol
-                                );
+
+                            if (auto ty = propIt->second.readTy)
+                                return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
                         }
                         etv = etv->parent ? Luau::get<Luau::ExternType>(*etv->parent) : nullptr;
                     }
@@ -649,6 +628,9 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
             }
         }
     }
+
+    if (std::optional<Binding> binding = findBindingAtPosition(module, source, position))
+        return checkOverloadedDocumentationSymbol(module, binding->typeId, parentExpr, binding->documentationSymbol);
 
     if (std::optional<TypeId> ty = findTypeAtPosition(module, source, position))
     {

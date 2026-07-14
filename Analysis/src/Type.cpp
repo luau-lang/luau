@@ -4,7 +4,7 @@
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Common.h"
-#include "Luau/ConstraintSolver.h"
+#include "Luau/StructuralTypeEquality.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Error.h"
 #include "Luau/RecursionCounter.h"
@@ -25,13 +25,10 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 
-LUAU_FASTFLAG(LuauSolverV2)
-
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
 
 namespace Luau
 {
@@ -191,6 +188,11 @@ bool isBoolean(TypeId ty)
 bool isNumber(TypeId ty)
 {
     return isPrim(ty, PrimitiveType::Number);
+}
+
+bool isInteger(TypeId ty)
+{
+    return isPrim(ty, PrimitiveType::Integer);
 }
 
 // Returns true when ty is a subtype of string
@@ -554,6 +556,16 @@ GenericType::GenericType(Scope* scope, const Name& name)
 {
 }
 
+GenericType::GenericType(Scope* scope, Name name, Polarity polarity)
+    : index(Unifiable::freshIndex())
+    , scope(scope)
+    , name(std::move(name))
+    , explicitName(true)
+    , polarity(polarity)
+{
+}
+
+
 BlockedType::BlockedType()
     : index(Unifiable::freshIndex())
 {
@@ -772,178 +784,6 @@ TableType::TableType(const Props& props, const std::optional<TableIndexer>& inde
 {
 }
 
-// Test Types for equivalence
-// More complex than we'd like because Types can self-reference.
-
-bool areSeen(SeenSet& seen, const void* lhs, const void* rhs)
-{
-    if (lhs == rhs)
-        return true;
-
-    auto p = std::make_pair(const_cast<void*>(lhs), const_cast<void*>(rhs));
-    if (seen.find(p) != seen.end())
-        return true;
-
-    seen.insert(p);
-    return false;
-}
-
-bool areEqual(SeenSet& seen, const FunctionType& lhs, const FunctionType& rhs)
-{
-    if (areSeen(seen, &lhs, &rhs))
-        return true;
-
-    // TODO: check generics CLI-39915
-
-    if (!areEqual(seen, *lhs.argTypes, *rhs.argTypes))
-        return false;
-
-    if (!areEqual(seen, *lhs.retTypes, *rhs.retTypes))
-        return false;
-
-    return true;
-}
-
-bool areEqual(SeenSet& seen, const TableType& lhs, const TableType& rhs)
-{
-    if (areSeen(seen, &lhs, &rhs))
-        return true;
-
-    if (lhs.state != rhs.state)
-        return false;
-
-    if (lhs.props.size() != rhs.props.size())
-        return false;
-
-    if (bool(lhs.indexer) != bool(rhs.indexer))
-        return false;
-
-    if (lhs.indexer && rhs.indexer)
-    {
-        if (!areEqual(seen, *lhs.indexer->indexType, *rhs.indexer->indexType))
-            return false;
-
-        if (!areEqual(seen, *lhs.indexer->indexResultType, *rhs.indexer->indexResultType))
-            return false;
-    }
-
-    auto l = lhs.props.begin();
-    auto r = rhs.props.begin();
-
-    while (l != lhs.props.end())
-    {
-        if (l->first != r->first)
-            return false;
-
-        if (FFlag::LuauSolverV2)
-        {
-            if (l->second.readTy && r->second.readTy)
-            {
-                if (!areEqual(seen, **l->second.readTy, **r->second.readTy))
-                    return false;
-            }
-            else if (l->second.readTy || r->second.readTy)
-                return false;
-
-            if (l->second.writeTy && r->second.writeTy)
-            {
-                if (!areEqual(seen, **l->second.writeTy, **r->second.writeTy))
-                    return false;
-            }
-            else if (l->second.writeTy || r->second.writeTy)
-                return false;
-        }
-        else if (!areEqual(seen, *l->second.type_DEPRECATED(), *r->second.type_DEPRECATED()))
-            return false;
-        ++l;
-        ++r;
-    }
-
-    return true;
-}
-
-static bool areEqual(SeenSet& seen, const MetatableType& lhs, const MetatableType& rhs)
-{
-    if (areSeen(seen, &lhs, &rhs))
-        return true;
-
-    return areEqual(seen, *lhs.table, *rhs.table) && areEqual(seen, *lhs.metatable, *rhs.metatable);
-}
-
-bool areEqual(SeenSet& seen, const Type& lhs, const Type& rhs)
-{
-    if (auto bound = get_if<BoundType>(&lhs.ty))
-        return areEqual(seen, *bound->boundTo, rhs);
-
-    if (auto bound = get_if<BoundType>(&rhs.ty))
-        return areEqual(seen, lhs, *bound->boundTo);
-
-    if (lhs.ty.index() != rhs.ty.index())
-        return false;
-
-    {
-        const FreeType* lf = get_if<FreeType>(&lhs.ty);
-        const FreeType* rf = get_if<FreeType>(&rhs.ty);
-        if (lf && rf)
-            return lf->index == rf->index;
-    }
-
-    {
-        const GenericType* lg = get_if<GenericType>(&lhs.ty);
-        const GenericType* rg = get_if<GenericType>(&rhs.ty);
-        if (lg && rg)
-            return lg->index == rg->index;
-    }
-
-    {
-        const PrimitiveType* lp = get_if<PrimitiveType>(&lhs.ty);
-        const PrimitiveType* rp = get_if<PrimitiveType>(&rhs.ty);
-        if (lp && rp)
-            return lp->type == rp->type;
-    }
-
-    {
-        const GenericType* lg = get_if<GenericType>(&lhs.ty);
-        const GenericType* rg = get_if<GenericType>(&rhs.ty);
-        if (lg && rg)
-            return lg->index == rg->index;
-    }
-
-    {
-        const ErrorType* le = get_if<ErrorType>(&lhs.ty);
-        const ErrorType* re = get_if<ErrorType>(&rhs.ty);
-        if (le && re)
-            return le->index == re->index;
-    }
-
-    {
-        const FunctionType* lf = get_if<FunctionType>(&lhs.ty);
-        const FunctionType* rf = get_if<FunctionType>(&rhs.ty);
-        if (lf && rf)
-            return areEqual(seen, *lf, *rf);
-    }
-
-    {
-        const TableType* lt = get_if<TableType>(&lhs.ty);
-        const TableType* rt = get_if<TableType>(&rhs.ty);
-        if (lt && rt)
-            return areEqual(seen, *lt, *rt);
-    }
-
-    {
-        const MetatableType* lmt = get_if<MetatableType>(&lhs.ty);
-        const MetatableType* rmt = get_if<MetatableType>(&rhs.ty);
-
-        if (lmt && rmt)
-            return areEqual(seen, *lmt, *rmt);
-    }
-
-    if (get_if<AnyType>(&lhs.ty) && get_if<AnyType>(&rhs.ty))
-        return true;
-
-    return false;
-}
-
 Type* asMutable(TypeId ty)
 {
     return const_cast<Type*>(ty);
@@ -1006,12 +846,15 @@ BuiltinTypes::BuiltinTypes()
     , typeFunctions(std::make_unique<BuiltinTypeFunctions>())
     , nilType(arena->addType(Type{PrimitiveType{PrimitiveType::NilType}, /*persistent*/ true}))
     , numberType(arena->addType(Type{PrimitiveType{PrimitiveType::Number}, /*persistent*/ true}))
+    , integerType(arena->addType(Type{PrimitiveType{PrimitiveType::Integer}, /*persistent*/ true}))
     , stringType(arena->addType(Type{PrimitiveType{PrimitiveType::String}, /*persistent*/ true}))
     , booleanType(arena->addType(Type{PrimitiveType{PrimitiveType::Boolean}, /*persistent*/ true}))
     , threadType(arena->addType(Type{PrimitiveType{PrimitiveType::Thread}, /*persistent*/ true}))
     , bufferType(arena->addType(Type{PrimitiveType{PrimitiveType::Buffer}, /*persistent*/ true}))
     , functionType(arena->addType(Type{PrimitiveType{PrimitiveType::Function}, /*persistent*/ true}))
     , externType(arena->addType(Type{ExternType{"userdata", {}, std::nullopt, std::nullopt, {}, {}, {}, {}}, /*persistent*/ true}))
+    , objectType(arena->addType(Type{ExternType{"object", {}, std::nullopt, std::nullopt, {}, {}, {}, {}}, /*persistent*/ true}))
+    , classType(arena->addType(Type{ExternType{"class", {}, std::nullopt, std::nullopt, {}, {}, {}, {}}, /*persistent*/ true}))
     , tableType(arena->addType(Type{PrimitiveType{PrimitiveType::Table}, /*persistent*/ true}))
     , emptyTableType(arena->addType(Type{TableType{TableState::Sealed, TypeLevel{}, nullptr}, /*persistent*/ true}))
     , trueType(arena->addType(Type{SingletonType{BooleanSingleton{true}}, /*persistent*/ true}))
@@ -1085,17 +928,11 @@ void persist(TypeId ty)
 
             for (const auto& [_name, prop] : ttv->props)
             {
-                if (FFlag::LuauSolverV2)
-                {
-                    if (prop.readTy)
-                        queue.push_back(*prop.readTy);
-                    if (prop.writeTy)
-                        queue.push_back(*prop.writeTy);
-                }
-                else
-                    queue.push_back(prop.type_DEPRECATED());
+                if (prop.readTy)
+                    queue.push_back(*prop.readTy);
+                if (prop.writeTy)
+                    queue.push_back(*prop.writeTy);
             }
-
 
             if (ttv->indexer)
             {
@@ -1107,15 +944,11 @@ void persist(TypeId ty)
         {
             for (const auto& [_name, prop] : etv->props)
             {
-                if (FFlag::LuauSolverV2)
-                {
-                    if (prop.readTy)
-                        queue.push_back(*prop.readTy);
-                    if (prop.writeTy)
-                        queue.push_back(*prop.writeTy);
-                }
-                else
-                    queue.push_back(prop.type_DEPRECATED());
+
+                if (prop.readTy)
+                    queue.push_back(*prop.readTy);
+                if (prop.writeTy)
+                    queue.push_back(*prop.writeTy);
             }
         }
         else if (auto utv = get<UnionType>(t))

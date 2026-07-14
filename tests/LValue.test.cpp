@@ -175,13 +175,13 @@ TEST_CASE_FIXTURE(LValueFixture, "hashing_lvalue_local_prop_access")
     std::string t1 = "t";
     std::string x1 = "x";
 
-    AstLocal localt1{AstName{t1.data()}, Location(), nullptr, 0, 0, nullptr};
+    AstLocal localt1{AstName{t1.data()}, Location(), nullptr, 0, 0, nullptr, false};
     LValue t_x1{Field{std::make_shared<LValue>(Symbol{&localt1}), x1}};
 
     std::string t2 = "t";
     std::string x2 = "x";
 
-    AstLocal localt2{AstName{t2.data()}, Location(), &localt1, 0, 0, nullptr};
+    AstLocal localt2{AstName{t2.data()}, Location(), &localt1, 0, 0, nullptr, false};
     LValue t_x2{Field{std::make_shared<LValue>(Symbol{&localt2}), x2}};
 
     CHECK_EQ(t_x1, t_x1);

@@ -7,8 +7,8 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauSolverV2);
-LUAU_FASTFLAG(LuauUnknownGlobalFixSuggestion)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 
 using namespace Luau;
 
@@ -40,7 +40,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "UnknownGlobal")
 {
-    ScopedFastFlag sff{FFlag::LuauUnknownGlobalFixSuggestion, true};
     LintResult result = lint("--!nocheck\nreturn foo");
 
     REQUIRE(1 == result.warnings.size());
@@ -635,20 +634,18 @@ TEST_CASE_FIXTURE(Fixture, "UnknownType")
 local game = ...
 local _e01 = type(game) == "Part"
 local _e02 = typeof(game) == "Bar"
-local _e03 = typeof(game) == "vector"
+local _ok = typeof(game) == "vector"
 
 local _o01 = type(game) == "number"
 local _o02 = type(game) == "vector"
 local _o03 = typeof(game) == "Part"
 )");
 
-    REQUIRE(3 == result.warnings.size());
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 2);
     CHECK_EQ(result.warnings[0].text, "Unknown type 'Part' (expected primitive type)");
     CHECK_EQ(result.warnings[1].location.begin.line, 3);
     CHECK_EQ(result.warnings[1].text, "Unknown type 'Bar'");
-    CHECK_EQ(result.warnings[2].location.begin.line, 4);
-    CHECK_EQ(result.warnings[2].text, "Unknown type 'vector' (expected primitive or userdata type)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "ForRangeTable")
@@ -1269,7 +1266,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "read_write_table_props")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     LintResult result = lint(R"(-- line 1
         type A = {x: number}
@@ -1627,7 +1624,7 @@ static void checkDeprecatedWarning(const Luau::LintWarning& warning, const Luau:
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttribute")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // @deprecated works on local functions
     {
@@ -1872,6 +1869,21 @@ end
         REQUIRE(1 == result.warnings.size());
         checkDeprecatedWarning(result.warnings[0], Position(12, 0), Position(12, 22), "Member 'deposit' is deprecated");
     }
+
+    // @deprecated works on anonymous functions assigned to locals
+    {
+        ScopedFastFlag sflag{FFlag::LuauDeprecatedAttributeOnAnonymousFunctions, true};
+
+        LintResult result = lint(R"(
+local foo = @deprecated function()
+end
+
+foo()
+)");
+
+        REQUIRE(1 == result.warnings.size());
+        checkDeprecatedWarning(result.warnings[0], Position(4, 0), Position(4, 3), "Function 'foo' is deprecated");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeWithParams")
@@ -2041,7 +2053,7 @@ print(Hooty:tooty(2.0))
 
     {
         loadDefinition(R"(
-declare class Foo
+declare extern type Foo with
    @[deprecated{use = 'foo', reason = 'baz'}]
    function bar(self, value: number) : number
 end
@@ -2063,7 +2075,7 @@ print(foo:bar(2.0))
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeFunctionDeclaration")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // @deprecated works on function type declarations
 
@@ -2081,7 +2093,7 @@ bar(2)
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeTableDeclaration")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // @deprecated works on table type declarations
 
@@ -2101,12 +2113,12 @@ print(Hooty:tooty(2.0))
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedAttributeMethodDeclaration")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     // @deprecated works on table type declarations
 
     loadDefinition(R"(
-declare class Foo
+declare extern type Foo with
    @deprecated
    function bar(self, value: number) : number
 end
@@ -2183,7 +2195,7 @@ table.create(42, {} :: {})
 TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperationsIndexer")
 {
     // CLI-116824 Linter incorrectly issues false positive when taking the length of a unannotated string function argument
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         return;
 
     LintResult result = lint(R"(
@@ -2545,6 +2557,19 @@ f(3)(4)
 
     CHECK_EQ(result.warnings[1].text, "native attribute on a function is redundant in a native module; consider removing it");
     CHECK_EQ(result.warnings[1].location, Location(Position(5, 4), Position(5, 11)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_instantiation_lints")
+{
+    LintResult result = lint(R"(
+local function a<b>(cool: b)
+    print(cool)
+end
+
+a<<"hi">>("hi")
+)");
+
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_SUITE_END();

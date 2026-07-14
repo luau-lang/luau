@@ -7,7 +7,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenBufferLoadProp2)
+LUAU_FASTFLAG(LuauCodegenSharedLog)
 
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::X64;
@@ -27,7 +27,7 @@ class AssemblyBuilderX64Fixture
 public:
     bool check(void (*f)(AssemblyBuilderX64& build), std::vector<uint8_t> code, std::vector<uint8_t> data = {})
     {
-        AssemblyBuilderX64 build(/* logText= */ false);
+        AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
         f(build);
 
@@ -222,8 +222,6 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMov")
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMovExtended")
 {
-    ScopedFastFlag luauCodegenBufferLoadProp{FFlag::LuauCodegenBufferLoadProp2, true};
-
     SINGLE_COMPARE(movsx(eax, byte[rcx]), 0x0f, 0xbe, 0x01);
     SINGLE_COMPARE(movsx(r12, byte[r10]), 0x4d, 0x0f, 0xbe, 0x22);
     SINGLE_COMPARE(movsx(ebx, word[r11]), 0x41, 0x0f, 0xbf, 0x1b);
@@ -377,7 +375,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentOverflow")
 {
     // Test that alignment correctly resizes the code buffer
     {
-        AssemblyBuilderX64 build(/* logText */ false);
+        AssemblyBuilderX64 build(/* logger */ nullptr, false, /* features= */ 0);
 
         build.ret();
         build.align(8192, AlignmentDataX64::Nop);
@@ -385,7 +383,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentOverflow")
     }
 
     {
-        AssemblyBuilderX64 build(/* logText */ false);
+        AssemblyBuilderX64 build(/* logger */ nullptr, false, /* features= */ 0);
 
         build.ret();
         build.align(8192, AlignmentDataX64::Int3);
@@ -393,7 +391,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentOverflow")
     }
 
     {
-        AssemblyBuilderX64 build(/* logText */ false);
+        AssemblyBuilderX64 build(/* logger */ nullptr, false, /* features= */ 0);
 
         for (int i = 0; i < 8192; i++)
             build.int3();
@@ -401,7 +399,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentOverflow")
     }
 
     {
-        AssemblyBuilderX64 build(/* logText */ false);
+        AssemblyBuilderX64 build(/* logger */ nullptr, false, /* features= */ 0);
 
         build.ret();
         build.align(8192, AlignmentDataX64::Ud2);
@@ -520,6 +518,12 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXBinaryInstructionForms")
     SINGLE_COMPARE(vmaxsd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x2b, 0x5f, 0xc6);
     SINGLE_COMPARE(vminsd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x2b, 0x5d, 0xc6);
 
+    SINGLE_COMPARE(vmaxss(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x2a, 0x5f, 0xc6);
+    SINGLE_COMPARE(vminss(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x2a, 0x5d, 0xc6);
+
+    SINGLE_COMPARE(vmaxps(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x28, 0x5f, 0xc6);
+    SINGLE_COMPARE(vminps(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x28, 0x5d, 0xc6);
+
     SINGLE_COMPARE(vcmpeqsd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x2b, 0xc2, 0xc6, 0x00);
     SINGLE_COMPARE(vcmpltsd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x2b, 0xc2, 0xc6, 0x01);
 }
@@ -590,6 +594,11 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXTernaryInstructionForms")
         vroundsd(xmm8, xmm13, xmmword[r13 + rdx], RoundingModeX64::RoundToPositiveInfinity), 0xc4, 0x43, 0x11, 0x0b, 0x44, 0x15, 0x00, 0x0a
     );
     SINGLE_COMPARE(vroundsd(xmm9, xmm14, xmmword[rcx + r10], RoundingModeX64::RoundToZero), 0xc4, 0x23, 0x09, 0x0b, 0x0c, 0x11, 0x0b);
+
+    SINGLE_COMPARE(vroundps(xmm1, xmm3, RoundingModeX64::RoundToNegativeInfinity), 0xc4, 0xe3, 0x79, 0x08, 0xcb, 0x09);
+    SINGLE_COMPARE(vroundps(xmm12, xmm14, RoundingModeX64::RoundToNegativeInfinity), 0xc4, 0x43, 0x79, 0x08, 0xe6, 0x09);
+    SINGLE_COMPARE(vroundps(xmm12, xmmword[rax + r13], RoundingModeX64::RoundToNegativeInfinity), 0xc4, 0x23, 0x79, 0x08, 0x24, 0x28, 0x09);
+
     SINGLE_COMPARE(vblendvpd(xmm7, xmm12, xmmword[rcx + r10], xmm5), 0xc4, 0xa3, 0x19, 0x4b, 0x3c, 0x11, 0x50);
 
     SINGLE_COMPARE(vpshufps(xmm7, xmm12, xmmword[rcx + r10], 0b11010100), 0xc4, 0xa1, 0x18, 0xc6, 0x3c, 0x11, 0xd4);
@@ -631,7 +640,9 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "LabelLea")
 
 TEST_CASE("LogTest")
 {
-    AssemblyBuilderX64 build(/* logText= */ true);
+    AssemblyOptions options;
+    LogBuilder logger(options);
+    AssemblyBuilderX64 build(/* logger= */ &logger, true, /* features= */ 0);
 
     build.push(r12);
     build.align(8);
@@ -662,6 +673,7 @@ TEST_CASE("LogTest")
     build.imul(rcx, rdx);
     build.imul(rcx, rdx, 8);
     build.vroundsd(xmm1, xmm2, xmm3, RoundingModeX64::RoundToNearestEven);
+    build.vroundps(xmm1, xmm12, RoundingModeX64::RoundToNegativeInfinity);
     build.add(rdx, qword[rcx - 12]);
     build.pop(r12);
     build.cmov(ConditionX64::AboveEqual, rax, rbx);
@@ -709,6 +721,7 @@ TEST_CASE("LogTest")
  imul        rcx,rdx
  imul        rcx,rdx,8
  vroundsd    xmm1,xmm2,xmm3,8
+ vroundps    xmm1,xmm12,9
  add         rdx,qword ptr [rcx-0Ch]
  pop         r12
  cmovae      rax,rbx
@@ -726,7 +739,7 @@ TEST_CASE("LogTest")
  nop         word ptr[rax+rax] ; 9-byte nop
 )";
 
-    CHECK("\n" + build.text == expected);
+    CHECK("\n" + (FFlag::LuauCodegenSharedLog ? logger.text : build.text) == expected);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "Constants")
@@ -773,7 +786,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "Constants")
 
 TEST_CASE("ConstantStorage")
 {
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
     for (int i = 0; i <= 3000; i++)
         build.vaddss(xmm0, xmm0, build.i32(i));
@@ -793,7 +806,7 @@ TEST_CASE("ConstantStorage")
 
 TEST_CASE("ConstantStorageDedup")
 {
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
     for (int i = 0; i <= 3000; i++)
         build.vaddss(xmm0, xmm0, build.f32(1.0f));
@@ -810,7 +823,7 @@ TEST_CASE("ConstantStorageDedup")
 
 TEST_CASE("ConstantCaching")
 {
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
     OperandX64 two = build.f64(2);
 

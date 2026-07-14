@@ -3,9 +3,8 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAG(LuauRefineDistributesOverUnions)
-LUAU_FASTFLAG(LuauBetterTypeMismatchErrors)
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauDoNotOverwriteAstDefs)
 
 using namespace Luau;
 
@@ -13,7 +12,7 @@ namespace
 {
 struct TypeStateFixture : BuiltinsFixture
 {
-    ScopedFastFlag dcr{FFlag::LuauSolverV2, true};
+    ScopedFastFlag dcr{FFlag::DebugLuauForceOldSolver, false};
 };
 } // namespace
 
@@ -75,7 +74,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types")
         end
     )");
 
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
     {
         // `y` is annotated `string | number` which is explicitly not compatible with `string?`
         // as such, we produce an error here for that mismatch.
@@ -137,10 +136,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "assign_a_local_and_then_refine_it")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauBetterTypeMismatchErrors)
-        CHECK("Expected this to be unreachable, but got 'string'" == toString(result.errors[0]));
-    else
-        CHECK("Type 'string' could not be converted into 'never'" == toString(result.errors[0]));
+    CHECK("Expected this to be unreachable, but got 'string'" == toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(TypeStateFixture, "recursive_local_function")
@@ -364,10 +360,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type"
 
 TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type_2")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
-        {FFlag::LuauRefineDistributesOverUnions, true},
-    };
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         local t = {x = nil}
@@ -383,9 +376,9 @@ TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_do_not_mutate_upvalue_type_
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<TypeMismatch>(result.errors[0]);
-    CHECK_EQ("number?", toString(err->wantedType));
-    CHECK_EQ("string", toString(err->givenType));
-    CHECK("{ x: number? }" == toString(requireTypeAtPosition({4, 18}), {true}));
+    CHECK_EQ("{ x: nil } | { x: number }", toString(err->wantedType, {/* exhaustive */ true}));
+    CHECK_EQ("{ x: string }", toString(err->givenType));
+    CHECK("{ x: nil } | { x: number }" == toString(requireTypeAtPosition({4, 18}), {true}));
     CHECK("number?" == toString(requireTypeAtPosition({4, 20})));
 }
 
@@ -407,7 +400,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "prototyped_recursive_functions")
 TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_future_assignments")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauSolverV2, true},
+        {FFlag::DebugLuauForceOldSolver, false},
     };
 
     CheckResult result = check(R"(
@@ -473,7 +466,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "typestates_preserve_error_suppression")
 TEST_CASE_FIXTURE(BuiltinsFixture, "typestates_do_not_apply_to_the_initial_local_definition")
 {
     // early return if the flag isn't set since this is blocking gated commits
-    if (!FFlag::LuauSolverV2)
+    if (FFlag::DebugLuauForceOldSolver)
         return;
 
     CheckResult result = check(R"(
@@ -491,7 +484,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typestates_do_not_apply_to_the_initial_local
 
 TEST_CASE_FIXTURE(Fixture, "typestate_globals")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
         declare foo: string | number
@@ -508,7 +501,7 @@ TEST_CASE_FIXTURE(Fixture, "typestate_globals")
 
 TEST_CASE_FIXTURE(Fixture, "typestate_unknown_global")
 {
-    ScopedFastFlag sff{FFlag::LuauSolverV2, true};
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         x = 5
@@ -594,7 +587,7 @@ TEST_CASE_FIXTURE(Fixture, "modify_captured_table_field")
 
     auto randTy = getType("state");
     REQUIRE(randTy);
-    if (FFlag::LuauSolverV2)
+    if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("{ x: number }", toString(*randTy, {true}));
     else
         CHECK_EQ("{| x: number |}", toString(*randTy, {true}));
@@ -603,7 +596,7 @@ TEST_CASE_FIXTURE(Fixture, "modify_captured_table_field")
 TEST_CASE_FIXTURE(Fixture, "oss_1561")
 {
     loadDefinition(R"(
-        declare class Vector3
+        declare extern type Vector3 with
             X: number
             Y: number
             Z: number
@@ -716,7 +709,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinement_through_erroring")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refinement_through_erroring_in_loop")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict
@@ -757,7 +750,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_refinement_in_loop")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "throw_in_if_branch_and_do_nothing_in_else")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict
@@ -779,7 +772,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "throw_in_if_branch_and_do_nothing_in_else")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assign_in_an_if_branch_without_else")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict
@@ -800,22 +793,38 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assign_in_an_if_branch_without_else")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_table_freeze_in_binary_expr")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
-    // CLI-154237: This currently throws an exception due to a mismatch between
-    // the scopes created in the data flow graph versus the constraint generator.
-    CHECK_THROWS_AS(
-        check(R"(
-            local _
-            if _ or table.freeze(_,_) or table.freeze(_,_) then
-            end
-        )"),
-        Luau::InternalCompilerError
-    );
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauDoNotOverwriteAstDefs, true};
+
+    CheckResult result = check(R"(
+        local _
+        if _ or table.freeze(_,_) or table.freeze(_,_) then
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    auto err0 = get<TypeMismatch>(result.errors[0]);
+    CHECK(err0);
+    CHECK_EQ("nil", toString(err0->givenType));
+    CHECK_EQ("table", toString(err0->wantedType));
+    auto err1 = get<CountMismatch>(result.errors[1]);
+    CHECK(err1);
+    CHECK_EQ(1, err1->expected);
+    CHECK_EQ(2, err1->actual);
+    auto err2 = get<TypeMismatch>(result.errors[0]);
+    CHECK(err2);
+    CHECK_EQ("nil", toString(err2->givenType));
+    CHECK_EQ("table", toString(err2->wantedType));
+    auto err3 = get<CountMismatch>(result.errors[1]);
+    CHECK(err3);
+    CHECK_EQ(1, err3->expected);
+    CHECK_EQ(2, err3->actual);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_in_conditional")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
     // NOTE: This _probably_ should be disallowed, but it is representing that
     // type stating functions in short circuiting binary expressions do not
     // reflect their type states.
@@ -830,19 +839,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_in_conditional")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_table_freeze_in_conditional_expr")
 {
-    ScopedFastFlag _{FFlag::LuauSolverV2, true};
-    // CLI-154237: This currently throws an exception due to a mismatch between
-    // the scopes created in the data flow graph versus the constraint generator.
-    CHECK_THROWS_AS(
-        check(R"(
-            local _
-            if
-                if table.freeze(_,_) then _ else _
-            then
-            end
-        )"),
-        Luau::InternalCompilerError
-    );
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauDoNotOverwriteAstDefs, true};
+
+    CheckResult result = check(R"(
+        local _
+        if
+            if table.freeze(_,_) then _ else _
+        then
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    auto err0 = get<TypeMismatch>(result.errors[0]);
+    CHECK(err0);
+    CHECK_EQ("nil", toString(err0->givenType));
+    CHECK_EQ("table", toString(err0->wantedType));
+    auto err1 = get<CountMismatch>(result.errors[1]);
+    CHECK(err1);
+    CHECK_EQ(1, err1->expected);
+    CHECK_EQ(2, err1->actual);
+
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_depends_on_sub_expression")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        type AB = setmetatable<{ foo: number }, { bar: number }>
+
+        local function takes(tbl: AB, _: unknown): ()
+        end
+
+        local function sends(tbl: { foo: number }): ()
+            takes(tbl, setmetatable(tbl, { bar = 3 }))
+        end
+    )");
+
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("{ @metatable { bar: number }, { foo: number } }", toString(err->wantedType, { /* exhaustive */ true}));
+    CHECK_EQ("{ foo: number }", toString(err->givenType, { /* exhaustive */ true}));
 }
 
 TEST_SUITE_END();

@@ -9,6 +9,11 @@
 #include "lgc.h"
 #include "ldo.h"
 #include "ldebug.h"
+#include "ludata.h"
+
+#include <string.h>
+
+LUAU_FASTFLAG(LuauDirectFieldGet)
 
 /*
 ** Main thread combines a thread state and the global state
@@ -36,6 +41,7 @@ static void stack_init(lua_State* L1, lua_State* L)
     L1->stack_last = stack + (L1->stacksize - EXTRA_STACK);
     // initialize first ci
     L1->ci->func = L1->top;
+    L1->ci->p = nullptr;
     setnilvalue(L1->top++); // `function' entry for this `ci'
     L1->base = L1->ci->base = L1->top;
     L1->ci->top = L1->top + LUA_MINSTACK;
@@ -125,16 +131,22 @@ void luaE_freethread(lua_State* L, lua_State* L1, lua_Page* page)
     global_State* g = L->global;
     if (g->cb.userthread)
         g->cb.userthread(NULL, L1);
+
     freestack(L, L1);
     luaM_freegco(L, L1, sizeof(lua_State), L1->memcat, page);
 }
 
 void lua_resetthread(lua_State* L)
 {
+    api_check(L, !L->isactive);
+    api_check(L, L->status != LUA_OK || L->ci == L->base_ci);
+
     // close upvalues before clearing anything
     luaF_close(L, L->stack);
+
     // clear call frames
     CallInfo* ci = L->base_ci;
+    ci->p = nullptr;
     ci->func = L->stack;
     ci->base = ci->func + 1;
     ci->top = ci->base + LUA_MINSTACK;
@@ -199,23 +211,44 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     g->gcgoal = LUAI_GCGOAL;
     g->gcstepmul = LUAI_GCSTEPMUL;
     g->gcstepsize = LUAI_GCSTEPSIZE << 10;
+
     for (i = 0; i < LUA_SIZECLASSES; i++)
     {
         g->freepages[i] = NULL;
         g->freegcopages[i] = NULL;
     }
+
     g->allpages = NULL;
     g->allgcopages = NULL;
     g->sweepgcopage = NULL;
+
     for (i = 0; i < LUA_T_COUNT; i++)
         g->mt[i] = NULL;
+
     for (i = 0; i < LUA_UTAG_LIMIT; i++)
     {
         g->udatagc[i] = NULL;
         g->udatamt[i] = NULL;
     }
+
+    for (i = 0; i < UTAG_INTERNAL_LIMIT; i++)
+    {
+        lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[i];
+
+        setnilvalue(&udatadirect.indextm);
+        setnilvalue(&udatadirect.newindextm);
+        setnilvalue(&udatadirect.namecalltm);
+        udatadirect.index = NULL;
+        udatadirect.newindex = NULL;
+        udatadirect.namecall = NULL;
+    }
+
     for (i = 0; i < LUA_LUTAG_LIMIT; i++)
         g->lightuserdataname[i] = NULL;
+
+    for (i = 0; i < UTAG_INTERNAL_LIMIT; i++)
+        g->udatadirectfields[i] = NULL;
+
     for (i = 0; i < LUA_MEMORY_CATEGORIES; i++)
         g->memcatbytes[i] = 0;
 
@@ -225,7 +258,10 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
 
     g->ecb = lua_ExecutionCallbacks();
 
+    memset(g->ecbdata, 0, LUA_EXECUTION_CALLBACK_STORAGE * sizeof(g->ecbdata[0]));
+
     g->gcstats = GCStats();
+    g->lastprotoid = 1;
 
 #ifdef LUAI_GCMETRICS
     g->gcmetrics = GCMetrics();

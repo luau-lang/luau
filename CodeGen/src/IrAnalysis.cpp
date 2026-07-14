@@ -13,8 +13,6 @@
 
 #include <stddef.h>
 
-LUAU_FASTFLAG(LuauCodegenChainLink)
-
 namespace Luau
 {
 namespace CodeGen
@@ -49,13 +47,24 @@ void updateUseCounts(IrFunction& function)
 
     for (IrInst& inst : instructions)
     {
-        checkOp(inst.a);
-        checkOp(inst.b);
-        checkOp(inst.c);
-        checkOp(inst.d);
-        checkOp(inst.e);
-        checkOp(inst.f);
-        checkOp(inst.g);
+        for (IrOp& op : inst.ops)
+            checkOp(op);
+    }
+}
+
+static void updateLastUseForOp(IrFunction& function, uint32_t instIdx, IrOp op)
+{
+    if (op.kind == IrOpKind::Inst)
+    {
+        function.instructions[op.index].lastUse = uint32_t(instIdx);
+    }
+    else if (op.kind == IrOpKind::Block && function.blockOp(op).kind == IrBlockKind::ExitSync)
+    {
+        if (VmExitSyncInfo* syncInfo = function.vmExitInfo.find(instIdx))
+        {
+            for (auto argOp : syncInfo->argOps)
+                updateLastUseForOp(function, instIdx, argOp);
+        }
     }
 }
 
@@ -64,7 +73,7 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
     std::vector<IrInst>& instructions = function.instructions;
 
 #if defined(LUAU_ASSERTENABLED)
-    // Last use assignements should be called only once
+    // Last use assignments should be called only once
     for (IrInst& inst : instructions)
         CODEGEN_ASSERT(inst.lastUse == 0);
 #endif
@@ -77,6 +86,16 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
         if (block.kind == IrBlockKind::Dead)
             continue;
 
+        VmExitSyncInfo* syncInfo = nullptr;
+
+        if (block.kind == IrBlockKind::ExitSync)
+        {
+            if (const uint32_t* key = function.blockToVmExitMap.find(blockIndex))
+                syncInfo = function.vmExitInfo.find(*key);
+
+            CODEGEN_ASSERT(syncInfo);
+        }
+
         CODEGEN_ASSERT(block.start != ~0u);
         CODEGEN_ASSERT(block.finish != ~0u);
 
@@ -85,27 +104,67 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
             CODEGEN_ASSERT(instIdx < function.instructions.size());
             IrInst& inst = instructions[instIdx];
 
-            auto checkOp = [&](IrOp op)
-            {
-                if (op.kind == IrOpKind::Inst)
-                    instructions[op.index].lastUse = uint32_t(instIdx);
-            };
-
             if (isPseudo(inst.cmd))
                 continue;
 
-            checkOp(inst.a);
-            checkOp(inst.b);
-            checkOp(inst.c);
-            checkOp(inst.d);
-            checkOp(inst.e);
-            checkOp(inst.f);
-            checkOp(inst.g);
+            for (IrOp& op : inst.ops)
+            {
+                if (syncInfo)
+                {
+                    if (std::find(syncInfo->argOps.begin(), syncInfo->argOps.end(), op) != syncInfo->argOps.end())
+                        continue;
+                }
+
+                updateLastUseForOp(function, instIdx, op);
+            }
         }
     }
 }
 
-uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t startInstIdx)
+void updateLastUseLocationsInBlock(IrFunction& function, uint32_t blockIdx)
+{
+    IrBlock& block = function.blocks[blockIdx];
+
+    for (uint32_t instIdx = block.start; instIdx <= block.finish; instIdx++)
+    {
+        IrInst& inst = function.instructions[instIdx];
+
+        for (auto& op : inst.ops)
+        {
+            if (op.kind == IrOpKind::Inst)
+                function.instructions[op.index].lastUse = instIdx;
+        }
+    }
+}
+
+static bool isInstUseForOp(IrFunction& function, uint32_t instIdx, uint32_t targetInstIdx, IrOp op, bool& inVmExitSync)
+{
+    if (op.kind == IrOpKind::Inst)
+    {
+        return op.index == targetInstIdx;
+    }
+
+    if (op.kind == IrOpKind::Block && function.blockOp(op).kind == IrBlockKind::ExitSync)
+    {
+        if (VmExitSyncInfo* syncInfo = function.vmExitInfo.find(instIdx))
+        {
+            for (auto argOp : syncInfo->argOps)
+            {
+                CODEGEN_ASSERT(argOp.kind == IrOpKind::Inst);
+
+                if (argOp.index == targetInstIdx)
+                {
+                    inVmExitSync = true;
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t startInstIdx, bool& inVmExitSync)
 {
     CODEGEN_ASSERT(startInstIdx < function.instructions.size());
     IrInst& targetInst = function.instructions[targetInstIdx];
@@ -117,26 +176,11 @@ uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t s
         if (isPseudo(inst.cmd))
             continue;
 
-        if (inst.a.kind == IrOpKind::Inst && inst.a.index == targetInstIdx)
-            return i;
-
-        if (inst.b.kind == IrOpKind::Inst && inst.b.index == targetInstIdx)
-            return i;
-
-        if (inst.c.kind == IrOpKind::Inst && inst.c.index == targetInstIdx)
-            return i;
-
-        if (inst.d.kind == IrOpKind::Inst && inst.d.index == targetInstIdx)
-            return i;
-
-        if (inst.e.kind == IrOpKind::Inst && inst.e.index == targetInstIdx)
-            return i;
-
-        if (inst.f.kind == IrOpKind::Inst && inst.f.index == targetInstIdx)
-            return i;
-
-        if (inst.g.kind == IrOpKind::Inst && inst.g.index == targetInstIdx)
-            return i;
+        for (IrOp& op : inst.ops)
+        {
+            if (isInstUseForOp(function, i, targetInstIdx, op, inVmExitSync))
+                return i;
+        }
     }
 
     // There must be a next use since there is the last use location
@@ -144,10 +188,8 @@ uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t s
     return targetInst.lastUse;
 }
 
-std::pair<uint32_t, uint32_t> getLiveInOutValueCount_NEW(IrFunction& function, IrBlock& start, bool visitChain)
+std::pair<uint32_t, uint32_t> getLiveInOutValueCount(IrFunction& function, IrBlock& start, bool visitChain)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenChainLink);
-
     // TODO: the function is not called often, but having a small vector would help here
     std::vector<uint32_t> blocks;
 
@@ -199,53 +241,9 @@ std::pair<uint32_t, uint32_t> getLiveInOutValueCount_NEW(IrFunction& function, I
 
             liveOuts += inst.useCount;
 
-            checkOp(inst.a);
-            checkOp(inst.b);
-            checkOp(inst.c);
-            checkOp(inst.d);
-            checkOp(inst.e);
-            checkOp(inst.f);
-            checkOp(inst.g);
+            for (IrOp& op : inst.ops)
+                checkOp(op);
         }
-    }
-
-    return std::make_pair(liveIns, liveOuts);
-}
-
-std::pair<uint32_t, uint32_t> getLiveInOutValueCount_DEPRECATED(IrFunction& function, IrBlock& block)
-{
-    CODEGEN_ASSERT(!FFlag::LuauCodegenChainLink);
-
-    uint32_t liveIns = 0;
-    uint32_t liveOuts = 0;
-
-    auto checkOp = [&](IrOp op)
-    {
-        if (op.kind == IrOpKind::Inst)
-        {
-            if (op.index >= block.start && op.index <= block.finish)
-                liveOuts--;
-            else
-                liveIns++;
-        }
-    };
-
-    for (uint32_t instIdx = block.start; instIdx <= block.finish; instIdx++)
-    {
-        IrInst& inst = function.instructions[instIdx];
-
-        if (isPseudo(inst.cmd))
-            continue;
-
-        liveOuts += inst.useCount;
-
-        checkOp(inst.a);
-        checkOp(inst.b);
-        checkOp(inst.c);
-        checkOp(inst.d);
-        checkOp(inst.e);
-        checkOp(inst.f);
-        checkOp(inst.g);
     }
 
     return std::make_pair(liveIns, liveOuts);
@@ -253,18 +251,12 @@ std::pair<uint32_t, uint32_t> getLiveInOutValueCount_DEPRECATED(IrFunction& func
 
 uint32_t getLiveInValueCount(IrFunction& function, IrBlock& block)
 {
-    if (FFlag::LuauCodegenChainLink)
-        return getLiveInOutValueCount_NEW(function, block, false).first;
-    else
-        return getLiveInOutValueCount_DEPRECATED(function, block).first;
+    return getLiveInOutValueCount(function, block, false).first;
 }
 
 uint32_t getLiveOutValueCount(IrFunction& function, IrBlock& block)
 {
-    if (FFlag::LuauCodegenChainLink)
-        return getLiveInOutValueCount_NEW(function, block, false).second;
-    else
-        return getLiveInOutValueCount_DEPRECATED(function, block).second;
+    return getLiveInOutValueCount(function, block, false).second;
 }
 
 void requireVariadicSequence(RegisterSet& sourceRs, const RegisterSet& defRs, uint8_t varargStart)
@@ -593,13 +585,8 @@ void computeCfgBlockEdges(IrFunction& function)
                 }
             };
 
-            checkOp(inst.a);
-            checkOp(inst.b);
-            checkOp(inst.c);
-            checkOp(inst.d);
-            checkOp(inst.e);
-            checkOp(inst.f);
-            checkOp(inst.g);
+            for (const IrOp& op : inst.ops)
+                checkOp(op);
         }
     }
 

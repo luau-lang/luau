@@ -7,7 +7,9 @@
 #include "Luau/Config.h"
 #include "Luau/ConstraintGenerator.h"
 #include "Luau/ConstraintSolver.h"
+#include "Luau/ControlFlowGraph.h"
 #include "Luau/DataFlowGraph.h"
+#include "Luau/DumpCFG.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/ExpectedTypeVisitor.h"
 #include "Luau/FileResolver.h"
@@ -20,6 +22,7 @@
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeInfer.h"
+#include "Luau/TypeStateMap.h"
 #include "Luau/VisitType.h"
 
 #include <algorithm>
@@ -32,7 +35,6 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
-LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
@@ -40,10 +42,15 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
-LUAU_FASTFLAGVARIABLE(LuauUseWorkspacePropToChooseSolver)
-LUAU_FASTFLAGVARIABLE(LuauPassTypeCheckLimitsEarly)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
-LUAU_FASTFLAG(LuauStandaloneParseType)
+LUAU_FASTFLAG(LuauConstraintGraph)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAGVARIABLE(LuauExportValueTypecheck)
+
+LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(DebugLuauLogCFG)
+LUAU_FASTFLAG(DebugLuauDumpCFGJson)
 
 namespace Luau
 {
@@ -430,6 +437,19 @@ static TypeCheckLimits makeTypeCheckLimits(const FrontendOptions& options)
     return limits;
 }
 
+Frontend::Frontend(SolverMode mode, FileResolver* fileResolver, ConfigResolver* configResolver, FrontendOptions options)
+    : useNewLuauSolver(mode)
+    , builtinTypes(NotNull{&builtinTypes_})
+    , fileResolver(fileResolver)
+    , moduleResolver(this)
+    , moduleResolverForAutocomplete(this)
+    , globals(builtinTypes, getLuauSolverMode())
+    , globalsForAutocomplete(builtinTypes, getLuauSolverMode())
+    , configResolver(configResolver)
+    , options(std::move(options))
+{
+}
+
 Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options)
     : useNewLuauSolver(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old)
     , builtinTypes(NotNull{&builtinTypes_})
@@ -450,12 +470,7 @@ void Frontend::setLuauSolverMode(SolverMode mode)
 
 SolverMode Frontend::getLuauSolverMode() const
 {
-    if (FFlag::LuauUseWorkspacePropToChooseSolver)
-        return useNewLuauSolver.load();
-    else if (FFlag::LuauSolverV2)
-        return SolverMode::New;
-    else
-        return SolverMode::Old;
+    return useNewLuauSolver.load();
 }
 
 void Frontend::parse(const ModuleName& name)
@@ -1007,52 +1022,22 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     double timestamp = getTimestamp();
     const std::vector<RequireCycle>& requireCycles = item.requireCycles;
 
-    TypeCheckLimits typeCheckLimits;
+    TypeCheckLimits typeCheckLimits = makeTypeCheckLimits(item.options);
 
-    if (FFlag::LuauPassTypeCheckLimitsEarly)
+    // TODO: This is a dirty ad hoc solution for autocomplete timeouts
+    // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
+    // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
+    if (item.options.applyInternalLimitScaling)
     {
-        typeCheckLimits = makeTypeCheckLimits(item.options);
-
-        // TODO: This is a dirty ad hoc solution for autocomplete timeouts
-        // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
-        // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
-        if (item.options.applyInternalLimitScaling)
-        {
-            if (FInt::LuauTarjanChildLimit > 0)
-                typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
-            else
-                typeCheckLimits.instantiationChildLimit = std::nullopt;
-
-            if (FInt::LuauTypeInferIterationLimit > 0)
-                typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
-            else
-                typeCheckLimits.unifierIterationLimit = std::nullopt;
-        }
-    }
-    else
-    {
-        if (item.options.moduleTimeLimitSec)
-            typeCheckLimits.finishTime = TimeTrace::getClock() + *item.options.moduleTimeLimitSec;
+        if (FInt::LuauTarjanChildLimit > 0)
+            typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
         else
-            typeCheckLimits.finishTime = std::nullopt;
+            typeCheckLimits.instantiationChildLimit = std::nullopt;
 
-        // TODO: This is a dirty ad hoc solution for autocomplete timeouts
-        // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
-        // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
-        if (item.options.applyInternalLimitScaling)
-        {
-            if (FInt::LuauTarjanChildLimit > 0)
-                typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
-            else
-                typeCheckLimits.instantiationChildLimit = std::nullopt;
-
-            if (FInt::LuauTypeInferIterationLimit > 0)
-                typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
-            else
-                typeCheckLimits.unifierIterationLimit = std::nullopt;
-        }
-
-        typeCheckLimits.cancellationToken = item.options.cancellationToken;
+        if (FInt::LuauTypeInferIterationLimit > 0)
+            typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
+        else
+            typeCheckLimits.unifierIterationLimit = std::nullopt;
     }
 
     if (item.options.forAutocomplete)
@@ -1527,6 +1512,26 @@ ModulePtr check(
 
     typeFunctionRuntime.allowEvaluation = true;
 
+    Subtyping subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler};
+
+    std::unique_ptr<ConstraintGraph> cgraph;
+    if (FFlag::LuauConstraintGraph)
+        cgraph = std::make_unique<ConstraintGraph>(builtinTypes);
+
+    CFG::CFGAllocator cfgAllocator;
+    std::unique_ptr<CFG::ControlFlowGraph> cfg;
+    std::unique_ptr<CFG::TypeStateMap> state;
+    if (FFlag::DebugLuauCFG && mode != Mode::Definition)
+    {
+        cfg = CFG::CFGBuilder::makeCFG(NotNull{&cfgAllocator}, sourceModule.root);
+        if (FFlag::DebugLuauLogCFG)
+            printf("%s", dumpCFG(*cfg).c_str());
+        if (FFlag::DebugLuauDumpCFGJson)
+            printf("%s\n", dumpCFGJson(*cfg).c_str());
+        state = std::make_unique<CFG::TypeStateMap>(NotNull{&module->internalTypes}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
+        state->computeTypes();
+    }
+
     ConstraintGenerator cg{
         module,
         NotNull{&normalizer},
@@ -1539,7 +1544,9 @@ ModulePtr check(
         std::move(prepareModuleScope),
         logger.get(),
         NotNull{&dfg},
-        requireCycles
+        requireCycles,
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
+        FFlag::DebugLuauCFG ? state.get() : nullptr
     };
 
     ConstraintSet constraintSet = cg.run(sourceModule.root);
@@ -1555,8 +1562,11 @@ ModulePtr check(
         logger.get(),
         NotNull{&dfg},
         limits,
-        std::move(constraintSet)
+        std::move(constraintSet),
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
+        NotNull{&subtyping}
     };
+
 
     if (options.randomizeConstraintResolutionSeed)
         cs.randomize(*options.randomizeConstraintResolutionSeed);
@@ -1627,13 +1637,7 @@ ModulePtr check(
                 // fallthrough intentional
             case Mode::Strict:
                 Luau::check(
-                    builtinTypes,
-                    NotNull{&typeFunctionRuntime},
-                    NotNull{&unifierState},
-                    NotNull{&limits},
-                    logger.get(),
-                    sourceModule,
-                    module.get()
+                    builtinTypes, NotNull{&typeFunctionRuntime}, NotNull{&unifierState}, NotNull{&limits}, logger.get(), sourceModule, module.get()
                 );
                 break;
             case Mode::NoCheck:
@@ -1648,6 +1652,9 @@ ModulePtr check(
         {
             module->cancelled = true;
         }
+
+        if (FFlag::LuauExportValueSyntax && FFlag::LuauExportValueTypecheck && !module->timeout && !module->cancelled)
+            synthesizeExportReturn(builtinTypes, NotNull{module.get()});
     }
 
     // if the only error we're producing is one about constraint solving being incomplete, we can silence it.
@@ -1661,6 +1668,7 @@ ModulePtr check(
         NotNull{&module->astTypes},
         NotNull{&module->astExpectedTypes},
         NotNull{&module->astResolvedTypes},
+        NotNull{&module->astOverloadResolvedTypes},
         NotNull{&module->internalTypes},
         builtinTypes,
         NotNull{parentScope.get()}
@@ -1701,10 +1709,7 @@ ModulePtr check(
 
 
     unfreeze(module->interfaceTypes);
-    if (FFlag::LuauUseWorkspacePropToChooseSolver)
-        module->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::New);
-    else
-        module->clonePublicInterface_DEPRECATED(builtinTypes, *iceHandler);
+    module->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::New);
 
     // It would be nice if we could freeze the arenas before doing type
     // checking, but we'll have to do some work to get there.
@@ -2102,6 +2107,10 @@ TypeId Frontend::parseType(
 
     DataFlowGraph dfg = DataFlowGraphBuilder::empty(NotNull{&module->defArena}, NotNull{&module->keyArena});
 
+    std::unique_ptr<ConstraintGraph> cgraph;
+    if (FFlag::LuauConstraintGraph)
+        cgraph = std::make_unique<ConstraintGraph>(builtinTypes);
+
     ConstraintGenerator cg{
         module,
         NotNull{&normalizer},
@@ -2114,7 +2123,8 @@ TypeId Frontend::parseType(
         nullptr,
         nullptr,
         NotNull{&dfg},
-        {}
+        {},
+        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr
     };
 
     TypeId t = cg.resolveType(globals.globalScope, parseResult.root, false);

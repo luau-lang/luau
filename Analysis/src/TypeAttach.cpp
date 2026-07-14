@@ -100,6 +100,8 @@ public:
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("boolean"), std::nullopt, Location());
         case PrimitiveType::Number:
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("number"), std::nullopt, Location());
+        case PrimitiveType::Integer:
+            return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("integer"), std::nullopt, Location());
         case PrimitiveType::String:
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("string"), std::nullopt, Location());
         case PrimitiveType::Thread:
@@ -581,7 +583,7 @@ public:
         return result;
     }
 
-    virtual bool visit(AstStatLocal* al) override
+    bool visit(AstStatLocal* al) override
     {
         for (size_t i = 0; i < al->vars.size; ++i)
         {
@@ -604,25 +606,25 @@ public:
         return true;
     }
 
-    virtual bool visit(AstExprLocal* al) override
+    bool visit(AstExprLocal* al) override
     {
         return visitLocal(al->local);
     }
 
-    virtual bool visit(AstStatFor* stat) override
+    bool visit(AstStatFor* stat) override
     {
         visitLocal(stat->var);
         return true;
     }
 
-    virtual bool visit(AstStatForIn* stat) override
+    bool visit(AstStatForIn* stat) override
     {
         for (size_t i = 0; i < stat->vars.size; ++i)
             visitLocal(stat->vars.data[i]);
         return true;
     }
 
-    virtual bool visit(AstExprFunction* fn) override
+    bool visit(AstExprFunction* fn) override
     {
         // TODO: add generics if the inferred type of the function is generic CLI-39908
         for (size_t i = 0; i < fn->args.size; ++i)

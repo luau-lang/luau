@@ -14,12 +14,12 @@ namespace Luau
 struct TypeArena;
 struct TypeCheckLimits;
 
-struct Replacer : Substitution
+struct Replacer_DEPRECATED : Substitution
 {
     DenseHashMap<TypeId, TypeId> replacements;
     DenseHashMap<TypePackId, TypePackId> replacementPacks;
 
-    Replacer(NotNull<TypeArena> arena, DenseHashMap<TypeId, TypeId> replacements, DenseHashMap<TypePackId, TypePackId> replacementPacks)
+    Replacer_DEPRECATED(NotNull<TypeArena> arena, DenseHashMap<TypeId, TypeId> replacements, DenseHashMap<TypePackId, TypePackId> replacementPacks)
         : Substitution(TxnLog::empty(), arena)
         , replacements(std::move(replacements))
         , replacementPacks(std::move(replacementPacks))
@@ -53,8 +53,38 @@ struct Replacer : Substitution
     }
 };
 
+struct Replacer : Substitution
+{
+    NotNull<DenseHashMap<TypeId, TypeId>> replacements;
+    NotNull<DenseHashMap<TypePackId, TypePackId>> replacementPacks;
+
+    Replacer(
+        NotNull<TypeArena> arena,
+        NotNull<DenseHashMap<TypeId, TypeId>> replacements,
+        NotNull<DenseHashMap<TypePackId, TypePackId>> replacementPacks
+    );
+
+    bool isDirty(TypeId ty) override;
+
+    bool isDirty(TypePackId tp) override;
+
+    TypeId clean(TypeId ty) override;
+
+    TypePackId clean(TypePackId tp) override;
+
+    bool ignoreChildren(TypeId ty) override;
+
+private:
+    /**
+     * It is *very* easy to create the world's worst bug by using a bound type
+     * as key: this is a helper function we run in debug mode to confirm this
+     * isn't the case.
+     */
+    bool checkReplacementKeys() const;
+};
+
 // A substitution which replaces generic functions by monomorphic functions
-struct Instantiation2 final : Substitution
+struct Instantiation2_DEPRECATED final : Substitution
 {
     // Mapping from generic types to free types to be used in instantiation.
     DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
@@ -65,14 +95,14 @@ struct Instantiation2 final : Substitution
     Subtyping* subtyping = nullptr;
     Scope* scope = nullptr;
 
-    Instantiation2(TypeArena* arena, DenseHashMap<TypeId, TypeId> genericSubstitutions, DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions)
+    Instantiation2_DEPRECATED(TypeArena* arena, DenseHashMap<TypeId, TypeId> genericSubstitutions, DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions)
         : Substitution(TxnLog::empty(), arena)
         , genericSubstitutions(std::move(genericSubstitutions))
         , genericPackSubstitutions(std::move(genericPackSubstitutions))
     {
     }
 
-    Instantiation2(
+    Instantiation2_DEPRECATED(
         TypeArena* arena,
         DenseHashMap<TypeId, TypeId> genericSubstitutions,
         DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
@@ -94,22 +124,17 @@ struct Instantiation2 final : Substitution
     TypePackId clean(TypePackId tp) override;
 };
 
-// Clip with LuauInstantiationUsesGenericPolarity
-std::optional<TypeId> instantiate2_DEPRECATED(
+void resolveGenericSubstitutions(
     TypeArena* arena,
-    DenseHashMap<TypeId, TypeId> genericSubstitutions,
-    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
-    TypeId ty
+    DenseHashMap<TypeId, TypeId>& genericSubstitutions,
+    DenseHashMap<TypePackId, TypePackId>& genericPackSubstitutions,
+    NotNull<Subtyping> subtyping,
+    NotNull<Scope> scope
 );
 
-// Clip with LuauInstantiationUsesGenericPolarity
-std::optional<TypePackId> instantiate2_DEPRECATED(
-    TypeArena* arena,
-    DenseHashMap<TypeId, TypeId> genericSubstitutions,
-    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
-    TypePackId tp
-);
-
+// FIXME: This process needs a rename.  It's not really instantiation.  It's the
+// process of substituting generics in a function type for inferred
+// substitutions.
 std::optional<TypeId> instantiate2(
     TypeArena* arena,
     DenseHashMap<TypeId, TypeId> genericSubstitutions,

@@ -10,8 +10,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-LUAU_FASTFLAG(LuauSolverV2)
-
 namespace Luau
 {
 
@@ -37,7 +35,7 @@ struct StateDot
     bool canDuplicatePrimitive(TypeId ty);
 
     void visitChildren(TypeId ty, int index);
-    void visitChildren(TypePackId ty, int index);
+    void visitChildren(TypePackId tp, int index);
 
     void visitChild(TypeId ty, int parentIndex, const char* linkName = nullptr);
     void visitChild(TypePackId tp, int parentIndex, const char* linkName = nullptr);
@@ -271,14 +269,11 @@ void StateDot::visitChildren(TypeId ty, int index)
             finishNodeLabel(ty);
             finishNode();
 
-            if (FFlag::LuauSolverV2)
-            {
-                if (!get<NeverType>(t.lowerBound))
-                    visitChild(t.lowerBound, index, "[lowerBound]");
+            if (t.lowerBound && !get<NeverType>(t.lowerBound))
+                visitChild(t.lowerBound, index, "[lowerBound]");
 
-                if (!get<UnknownType>(t.upperBound))
-                    visitChild(t.upperBound, index, "[upperBound]");
-            }
+            if (t.upperBound && !get<UnknownType>(t.upperBound))
+                visitChild(t.upperBound, index, "[upperBound]");
         }
         else if constexpr (std::is_same_v<T, AnyType>)
         {

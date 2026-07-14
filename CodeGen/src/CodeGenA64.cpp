@@ -12,7 +12,9 @@
 
 #include "lstate.h"
 
-LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck);
+LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck)
+LUAU_FASTFLAG(LuauCIProto)
+LUAU_FASTFLAG(LuauCodegenSharedLog)
 
 namespace Luau
 {
@@ -85,7 +87,7 @@ static void emitInterrupt(AssemblyBuilderA64& build)
     // note: recomputing this avoids having to stash x0
     build.ldr(x1, mem(rState, offsetof(lua_State, ci)));
     build.ldr(x0, mem(x1, offsetof(CallInfo, savedpc)));
-    build.sub(x0, x0, sizeof(Instruction));
+    build.sub(x0, x0, uint16_t(sizeof(Instruction)));
     build.str(x0, mem(x1, offsetof(CallInfo, savedpc)));
 
     emitExit(build, /* continueInVm */ false);
@@ -110,7 +112,15 @@ static void emitContinueCall(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.tbnz(x0, 0, helpers.exitNoContinueVm);
 
     // Need to update state of the current function before we jump away
-    build.ldr(x1, mem(x0, offsetof(Closure, l.p))); // cl->l.p aka proto
+    if (FFlag::LuauCIProto)
+    {
+        build.ldr(x1, mem(rState, offsetof(lua_State, ci)));
+        build.ldr(x1, mem(x1, offsetof(CallInfo, p))); // L->ci->p aka proto
+    }
+    else
+    {
+        build.ldr(x1, mem(x0, offsetof(Closure, l.p))); // cl->l.p aka proto
+    }
 
     build.ldr(x2, mem(x1, offsetof(Proto, exectarget)));
     build.cbz(x2, helpers.exitContinueVm);
@@ -145,14 +155,14 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     Label repeatNilLoop = build.setLabel();
     build.str(w4, mem(x1, offsetof(TValue, tt)));
-    build.add(x1, x1, sizeof(TValue));
-    build.sub(w2, w2, 1);
+    build.add(x1, x1, uint16_t(sizeof(TValue)));
+    build.sub(w2, w2, uint16_t(1));
     build.cbnz(w2, repeatNilLoop);
 
     build.setLabel(skipResultCopy);
 
     // x2 = cip = ci - 1
-    build.sub(x2, x0, sizeof(CallInfo));
+    build.sub(x2, x0, uint16_t(sizeof(CallInfo)));
 
     // res = cip->top when nresults >= 0
     Label skipFixedRetTop;
@@ -169,17 +179,20 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     // Unlikely, but this might be the last return from VM
     build.ldr(w4, mem(x0, offsetof(CallInfo, flags)));
-    build.tbnz(w4, countrz(LUA_CALLINFO_RETURN), helpers.exitNoContinueVm);
+    build.tbnz(w4, countrz(uint32_t(LUA_CALLINFO_RETURN)), helpers.exitNoContinueVm);
 
     // Continue in interpreter if function has no native data
     build.ldr(w4, mem(x2, offsetof(CallInfo, flags)));
-    build.tbz(w4, countrz(LUA_CALLINFO_NATIVE), helpers.exitContinueVm);
+    build.tbz(w4, countrz(uint32_t(LUA_CALLINFO_NATIVE)), helpers.exitContinueVm);
 
     // Need to update state of the current function before we jump away
     build.ldr(rClosure, mem(x2, offsetof(CallInfo, func)));
     build.ldr(rClosure, mem(rClosure, offsetof(TValue, value.gc)));
 
-    build.ldr(x1, mem(rClosure, offsetof(Closure, l.p))); // cl->l.p aka proto
+    if (FFlag::LuauCIProto)
+        build.ldr(x1, mem(x2, offsetof(CallInfo, p))); // ci->p aka proto
+    else
+        build.ldr(x1, mem(rClosure, offsetof(Closure, l.p))); // cl->l.p aka proto
 
     if (DFFlag::AddReturnExectargetCheck)
     {
@@ -218,7 +231,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     locations.start = build.setLabel();
 
     // prologue
-    build.sub(sp, sp, kStackSize);
+    build.sub(sp, sp, uint16_t(kStackSize));
     build.stp(x29, x30, mem(sp)); // fp, lr
 
     // stash non-volatile registers used for execution environment
@@ -259,7 +272,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     build.ldp(x21, x22, mem(sp, 32));
     build.ldp(x19, x20, mem(sp, 16));
     build.ldp(x29, x30, mem(sp)); // fp, lr
-    build.add(sp, sp, kStackSize);
+    build.add(sp, sp, uint16_t(kStackSize));
 
     build.ret();
 
@@ -273,7 +286,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
 
 bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
 {
-    AssemblyBuilderA64 build(/* logText= */ false);
+    AssemblyBuilderA64 build(/* logger= */ nullptr, false, /* features= */ 0);
     UnwindBuilder& unwind = *codeGenContext.unwindBuilder.get();
 
     unwind.startInfo(UnwindBuilder::A64);
@@ -286,19 +299,14 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
 
     CODEGEN_ASSERT(build.data.empty());
 
-    uint8_t* codeStart = nullptr;
-    if (!codeGenContext.codeAllocator.allocate(
-            build.data.data(),
-            int(build.data.size()),
-            reinterpret_cast<const uint8_t*>(build.code.data()),
-            int(build.code.size() * sizeof(build.code[0])),
-            codeGenContext.gateData,
-            codeGenContext.gateDataSize,
-            codeStart
-        ))
-    {
+    codeGenContext.gateAllocationData = codeGenContext.codeAllocator.allocate(
+        build.data.data(), int(build.data.size()), reinterpret_cast<const uint8_t*>(build.code.data()), int(build.code.size() * sizeof(build.code[0]))
+    );
+
+    if (!codeGenContext.gateAllocationData.start)
         return false;
-    }
+
+    uint8_t* codeStart = codeGenContext.gateAllocationData.codeStart;
 
     // Set the offset at the beginning so that functions in new blocks will not overlay the locations
     // specified by the unwind information of the entry function
@@ -310,39 +318,53 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
     return true;
 }
 
-void assembleHelpers(AssemblyBuilderA64& build, ModuleHelpers& helpers)
+void assembleHelpers(LogBuilder* logger, AssemblyBuilderA64& build, ModuleHelpers& helpers)
 {
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; updatePcAndContinueInVm\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; updatePcAndContinueInVm\n");
     build.setLabel(helpers.updatePcAndContinueInVm);
     emitUpdatePcForExit(build);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; exitContinueVmClearNativeFlag\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; exitContinueVmClearNativeFlag\n");
     build.setLabel(helpers.exitContinueVmClearNativeFlag);
     emitClearNativeFlag(build);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; exitContinueVm\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; exitContinueVm\n");
     build.setLabel(helpers.exitContinueVm);
     emitExit(build, /* continueInVm */ true);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; exitNoContinueVm\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; exitNoContinueVm\n");
     build.setLabel(helpers.exitNoContinueVm);
     emitExit(build, /* continueInVm */ false);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; interrupt\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; interrupt\n");
     build.setLabel(helpers.interrupt);
     emitInterrupt(build);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; return\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; return\n");
     build.setLabel(helpers.return_);
     emitReturn(build, helpers);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; continueCall\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; continueCall\n");
     build.setLabel(helpers.continueCall);
     emitContinueCall(build, helpers);

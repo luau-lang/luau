@@ -167,7 +167,7 @@ void TxnLog::concatAsUnion(TxnLog rhs, NotNull<TypeArena> arena)
 
 // Like follow(), but only takes a single step.
 //
-// This is potentailly performance sensitive, so we use nullptr rather than an
+// This is potentially performance sensitive, so we use nullptr rather than an
 // optional<TypeId> for the return type here.
 static TypeId followOnce(TxnLog& log, TypeId ty)
 {

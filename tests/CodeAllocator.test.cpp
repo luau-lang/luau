@@ -7,6 +7,7 @@
 #include "Luau/UnwindBuilder.h"
 #include "Luau/UnwindBuilderDwarf2.h"
 #include "Luau/UnwindBuilderWin.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
@@ -15,37 +16,40 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauCodegenProtectData)
+
 using namespace Luau::CodeGen;
 
 TEST_SUITE_BEGIN("CodeAllocation");
 
 TEST_CASE("CodeAllocation")
 {
+    ScopedFastFlag luauCodegenProtectData{FFlag::LuauCodegenProtectData, false};
+
     size_t blockSize = 1024 * 1024;
     size_t maxTotalSize = 1024 * 1024;
     CodeAllocator allocator(blockSize, maxTotalSize);
 
-    uint8_t* nativeData = nullptr;
-    size_t sizeNativeData = 0;
-    uint8_t* nativeEntry = nullptr;
-
     std::vector<uint8_t> code;
     code.resize(128);
 
-    REQUIRE(allocator.allocate(nullptr, 0, code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
-    CHECK(nativeData != nullptr);
-    CHECK(sizeNativeData == 128);
-    CHECK(nativeEntry != nullptr);
-    CHECK(nativeEntry == nativeData);
+    CodeAllocationData result1 = allocator.allocate(nullptr, 0, code.data(), code.size());
+    CHECK(result1.start != nullptr);
+    CHECK(result1.size == 128);
+    CHECK(result1.codeStart != nullptr);
+    CHECK(result1.codeStart == result1.start);
 
     std::vector<uint8_t> data;
     data.resize(8);
 
-    REQUIRE(allocator.allocate(data.data(), data.size(), code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
-    CHECK(nativeData != nullptr);
-    CHECK(sizeNativeData == kCodeAlignment + 128);
-    CHECK(nativeEntry != nullptr);
-    CHECK(nativeEntry == nativeData + kCodeAlignment);
+    CodeAllocationData result2 = allocator.allocate(data.data(), data.size(), code.data(), code.size());
+    CHECK(result2.start != nullptr);
+    CHECK(result2.size == kCodeAlignment + 128);
+    CHECK(result2.codeStart != nullptr);
+    CHECK(result2.codeStart == result2.start + kCodeAlignment);
+
+    allocator.deallocate(result1);
+    allocator.deallocate(result2);
 }
 
 TEST_CASE("CodeAllocationCallbacks")
@@ -82,16 +86,15 @@ TEST_CASE("CodeAllocationCallbacks")
     {
         CodeAllocator allocator(blockSize, maxTotalSize, allocationCallback, &allocationData);
 
-        uint8_t* nativeData = nullptr;
-        size_t sizeNativeData = 0;
-        uint8_t* nativeEntry = nullptr;
-
         std::vector<uint8_t> code;
         code.resize(128);
 
-        REQUIRE(allocator.allocate(nullptr, 0, code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
+        CodeAllocationData result = allocator.allocate(nullptr, 0, code.data(), code.size());
+        REQUIRE(result.start != nullptr);
         CHECK(allocationData.bytesAllocated == blockSize);
         CHECK(allocationData.bytesFreed == 0);
+
+        allocator.deallocate(result);
     }
 
     CHECK(allocationData.bytesAllocated == blockSize);
@@ -104,25 +107,30 @@ TEST_CASE("CodeAllocationFailure")
     size_t maxTotalSize = 7000;
     CodeAllocator allocator(blockSize, maxTotalSize);
 
-    uint8_t* nativeData;
-    size_t sizeNativeData;
-    uint8_t* nativeEntry;
-
     std::vector<uint8_t> code;
     code.resize(4000);
 
     // allocation has to fit in a block
-    REQUIRE(!allocator.allocate(nullptr, 0, code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
+    CodeAllocationData result1 = allocator.allocate(nullptr, 0, code.data(), code.size());
+    REQUIRE(!result1.start);
 
     // each allocation exhausts a block, so third allocation fails
     code.resize(2000);
-    REQUIRE(allocator.allocate(nullptr, 0, code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
-    REQUIRE(allocator.allocate(nullptr, 0, code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
-    REQUIRE(!allocator.allocate(nullptr, 0, code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
+    CodeAllocationData result2 = allocator.allocate(nullptr, 0, code.data(), code.size());
+    REQUIRE(result2.start);
+    CodeAllocationData result3 = allocator.allocate(nullptr, 0, code.data(), code.size());
+    REQUIRE(result3.start);
+    CodeAllocationData result4 = allocator.allocate(nullptr, 0, code.data(), code.size());
+    REQUIRE(!result4.start);
+
+    allocator.deallocate(result2);
+    allocator.deallocate(result3);
 }
 
 TEST_CASE("CodeAllocationWithUnwindCallbacks")
 {
+    ScopedFastFlag luauCodegenProtectData{FFlag::LuauCodegenProtectData, false};
+
     struct Info
     {
         std::vector<uint8_t> unwind;
@@ -136,10 +144,6 @@ TEST_CASE("CodeAllocationWithUnwindCallbacks")
         size_t blockSize = 1024 * 1024;
         size_t maxTotalSize = 1024 * 1024;
         CodeAllocator allocator(blockSize, maxTotalSize);
-
-        uint8_t* nativeData = nullptr;
-        size_t sizeNativeData = 0;
-        uint8_t* nativeEntry = nullptr;
 
         std::vector<uint8_t> code;
         code.resize(128);
@@ -170,12 +174,106 @@ TEST_CASE("CodeAllocationWithUnwindCallbacks")
             delete (int*)unwindData;
         };
 
-        REQUIRE(allocator.allocate(data.data(), data.size(), code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
-        CHECK(nativeData != nullptr);
-        CHECK(sizeNativeData == kCodeAlignment + 128);
-        CHECK(nativeEntry != nullptr);
-        CHECK(nativeEntry == nativeData + kCodeAlignment);
-        CHECK(nativeData == info.block + kCodeAlignment);
+        CodeAllocationData result = allocator.allocate(data.data(), data.size(), code.data(), code.size());
+        CHECK(result.start != nullptr);
+        CHECK(result.size == kCodeAlignment + 128);
+        CHECK(result.codeStart != nullptr);
+        CHECK(result.codeStart == result.start + kCodeAlignment);
+        CHECK(result.start == info.block + kCodeAlignment);
+
+        allocator.deallocate(result);
+    }
+
+    CHECK(info.destroyCalled);
+}
+
+TEST_CASE("CodeAllocationProtectData")
+{
+    ScopedFastFlag luauCodegenProtectData{FFlag::LuauCodegenProtectData, true};
+
+    size_t blockSize = 1024 * 1024;
+    size_t maxTotalSize = 1024 * 1024;
+    CodeAllocator allocator(blockSize, maxTotalSize);
+
+    // dataSize = 0 should not waste a page for read only
+    std::vector<uint8_t> code(128);
+    CodeAllocationData result1 = allocator.allocate(nullptr, 0, code.data(), code.size());
+    CHECK(result1.start != nullptr);
+    CHECK(result1.size == 128);
+    CHECK(result1.codeStart != nullptr);
+    CHECK(result1.codeStart == result1.start);
+
+    // dataSize != 0 should page-align the code start so that data page is read only
+    std::vector<uint8_t> data(8);
+    CodeAllocationData result2 = allocator.allocate(data.data(), data.size(), code.data(), code.size());
+    CHECK(result2.start != nullptr);
+    CHECK(result2.size == CodeAllocator::alignToPageSize(data.size()) + code.size());
+    CHECK(result2.codeStart != nullptr);
+    // Code must start on a page boundary
+    CHECK(uintptr_t(result2.codeStart) == CodeAllocator::alignToPageSize(uintptr_t(result2.codeStart)));
+    // Data is placed immediately before code
+    CHECK(result2.codeStart - data.size() >= result2.start);
+
+    allocator.deallocate(result1);
+    allocator.deallocate(result2);
+}
+
+TEST_CASE("CodeAllocationProtectDataWithUnwindCallbacks")
+{
+    ScopedFastFlag luauCodegenProtectData{FFlag::LuauCodegenProtectData, true};
+
+    struct Info
+    {
+        std::vector<uint8_t> unwind;
+        uint8_t* block = nullptr;
+        bool destroyCalled = false;
+    };
+    Info info;
+    info.unwind.resize(8);
+
+    {
+        size_t blockSize = 1024 * 1024;
+        size_t maxTotalSize = 1024 * 1024;
+        CodeAllocator allocator(blockSize, maxTotalSize);
+
+        std::vector<uint8_t> code;
+        code.resize(128);
+
+        std::vector<uint8_t> data;
+        data.resize(8);
+
+        allocator.context = &info;
+        allocator.createBlockUnwindInfo = [](void* context, uint8_t* block, size_t blockSize, size_t& beginOffset) -> void*
+        {
+            Info& info = *(Info*)context;
+
+            CHECK(info.unwind.size() == 8);
+            memcpy(block, info.unwind.data(), info.unwind.size());
+            beginOffset = 8;
+
+            info.block = block;
+
+            return new int(7);
+        };
+        allocator.destroyBlockUnwindInfo = [](void* context, void* unwindData)
+        {
+            Info& info = *(Info*)context;
+
+            info.destroyCalled = true;
+
+            CHECK(*(int*)unwindData == 7);
+            delete (int*)unwindData;
+        };
+
+        CodeAllocationData result = allocator.allocate(data.data(), data.size(), code.data(), code.size());
+        CHECK(result.start != nullptr);
+        CHECK(result.size == CodeAllocator::alignToPageSize(data.size()) + code.size());
+        CHECK(result.codeStart != nullptr);
+        // Code must start on a page boundary as data is non zero size
+        CHECK(uintptr_t(result.codeStart) == CodeAllocator::alignToPageSize(uintptr_t(result.codeStart)));
+        CHECK(result.start == info.block + kCodeAlignment);
+
+        allocator.deallocate(result);
     }
 
     CHECK(info.destroyCalled);
@@ -284,7 +382,7 @@ TEST_CASE("GeneratedCodeExecutionX64")
 
     using namespace X64;
 
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
     build.mov(rax, rArg1);
     build.add(rax, rArg2);
@@ -297,16 +395,15 @@ TEST_CASE("GeneratedCodeExecutionX64")
     size_t maxTotalSize = 1024 * 1024;
     CodeAllocator allocator(blockSize, maxTotalSize);
 
-    uint8_t* nativeData;
-    size_t sizeNativeData;
-    uint8_t* nativeEntry;
-    REQUIRE(allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size(), nativeData, sizeNativeData, nativeEntry));
-    REQUIRE(nativeEntry);
+    CodeAllocationData codeAllocation = allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size());
+    REQUIRE(codeAllocation.codeStart);
 
     using FunctionType = int64_t(int64_t, int64_t);
-    FunctionType* f = (FunctionType*)nativeEntry;
+    FunctionType* f = (FunctionType*)codeAllocation.codeStart;
     int64_t result = f(10, 20);
     CHECK(result == 210);
+
+    allocator.deallocate(codeAllocation);
 }
 
 static void throwing(int64_t arg)
@@ -328,7 +425,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64")
 
     using namespace X64;
 
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
 #if defined(_WIN32)
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderWin>();
@@ -385,14 +482,11 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64")
     allocator.createBlockUnwindInfo = createBlockUnwindInfo;
     allocator.destroyBlockUnwindInfo = destroyBlockUnwindInfo;
 
-    uint8_t* nativeData;
-    size_t sizeNativeData;
-    uint8_t* nativeEntry;
-    REQUIRE(allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size(), nativeData, sizeNativeData, nativeEntry));
-    REQUIRE(nativeEntry);
+    CodeAllocationData codeAllocation = allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size());
+    REQUIRE(codeAllocation.codeStart);
 
     using FunctionType = int64_t(int64_t, void (*)(int64_t));
-    FunctionType* f = (FunctionType*)nativeEntry;
+    FunctionType* f = (FunctionType*)codeAllocation.codeStart;
 
     f(10, nonthrowing);
 
@@ -405,6 +499,8 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64")
     {
         CHECK(strcmp(error.what(), "testing") == 0);
     }
+
+    allocator.deallocate(codeAllocation);
 }
 
 static void obscureThrowCase(int64_t (*f)(int64_t, void (*)(int64_t)))
@@ -428,7 +524,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64Simd")
 
     using namespace X64;
 
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
 #if defined(_WIN32)
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderWin>();
@@ -508,18 +604,17 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64Simd")
     allocator.createBlockUnwindInfo = createBlockUnwindInfo;
     allocator.destroyBlockUnwindInfo = destroyBlockUnwindInfo;
 
-    uint8_t* nativeData;
-    size_t sizeNativeData;
-    uint8_t* nativeEntry;
-    REQUIRE(allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size(), nativeData, sizeNativeData, nativeEntry));
-    REQUIRE(nativeEntry);
+    CodeAllocationData codeAllocation = allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size());
+    REQUIRE(codeAllocation.codeStart);
 
     using FunctionType = int64_t(int64_t, void (*)(int64_t));
-    FunctionType* f = (FunctionType*)nativeEntry;
+    FunctionType* f = (FunctionType*)codeAllocation.codeStart;
 
     f(10, nonthrowing);
 
     obscureThrowCase(f);
+
+    allocator.deallocate(codeAllocation);
 }
 
 TEST_CASE("GeneratedCodeExecutionMultipleFunctionsWithThrowX64")
@@ -529,7 +624,7 @@ TEST_CASE("GeneratedCodeExecutionMultipleFunctionsWithThrowX64")
 
     using namespace X64;
 
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
 #if defined(_WIN32)
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderWin>();
@@ -632,15 +727,12 @@ TEST_CASE("GeneratedCodeExecutionMultipleFunctionsWithThrowX64")
     allocator.createBlockUnwindInfo = createBlockUnwindInfo;
     allocator.destroyBlockUnwindInfo = destroyBlockUnwindInfo;
 
-    uint8_t* nativeData;
-    size_t sizeNativeData;
-    uint8_t* nativeEntry;
-    REQUIRE(allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size(), nativeData, sizeNativeData, nativeEntry));
-    REQUIRE(nativeEntry);
+    CodeAllocationData codeAllocation = allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size());
+    REQUIRE(codeAllocation.codeStart);
 
     using FunctionType = int64_t(int64_t, void (*)(int64_t));
-    FunctionType* f1 = (FunctionType*)(nativeEntry + start1.location);
-    FunctionType* f2 = (FunctionType*)(nativeEntry + start2.location);
+    FunctionType* f1 = (FunctionType*)(codeAllocation.codeStart + start1.location);
+    FunctionType* f2 = (FunctionType*)(codeAllocation.codeStart + start2.location);
 
     // To simplify debugging, CHECK_THROWS_WITH_AS is not used here
     try
@@ -660,6 +752,8 @@ TEST_CASE("GeneratedCodeExecutionMultipleFunctionsWithThrowX64")
     {
         CHECK(strcmp(error.what(), "testing") == 0);
     }
+
+    allocator.deallocate(codeAllocation);
 }
 
 TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
@@ -669,7 +763,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 
     using namespace X64;
 
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
 #if defined(_WIN32)
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderWin>();
@@ -733,24 +827,19 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
     allocator.createBlockUnwindInfo = createBlockUnwindInfo;
     allocator.destroyBlockUnwindInfo = destroyBlockUnwindInfo;
 
-    uint8_t* nativeData1;
-    size_t sizeNativeData1;
-    uint8_t* nativeEntry1;
-    REQUIRE(
-        allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size(), nativeData1, sizeNativeData1, nativeEntry1)
-    );
-    REQUIRE(nativeEntry1);
+    CodeAllocationData codeAllocation1 = allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size());
+    REQUIRE(codeAllocation1.codeStart);
 
-    // Now we set the offset at the begining so that functions in new blocks will not overlay the locations
+    // Now we set the offset at the beginning so that functions in new blocks will not overlay the locations
     // specified by the unwind information of the entry function
     unwind->setBeginOffset(prologueSize);
 
     using FunctionType = int64_t(void*, void (*)(int64_t), void*);
-    FunctionType* f = (FunctionType*)nativeEntry1;
+    FunctionType* f = (FunctionType*)codeAllocation1.codeStart;
 
-    uint8_t* nativeExit = nativeEntry1 + returnOffset.location;
+    uint8_t* nativeExit = codeAllocation1.codeStart + returnOffset.location;
 
-    AssemblyBuilderX64 build2(/* logText= */ false);
+    AssemblyBuilderX64 build2(/* logger= */ nullptr, false, /* features= */ 0);
 
     build2.mov(r12, rArg3);
     build2.call(rArg2);
@@ -758,25 +847,21 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 
     build2.finalize();
 
-    uint8_t* nativeData2;
-    size_t sizeNativeData2;
-    uint8_t* nativeEntry2;
-    REQUIRE(
-        allocator.allocate(build2.data.data(), build2.data.size(), build2.code.data(), build2.code.size(), nativeData2, sizeNativeData2, nativeEntry2)
-    );
-    REQUIRE(nativeEntry2);
+    CodeAllocationData codeAllocation2 = allocator.allocate(build2.data.data(), build2.data.size(), build2.code.data(), build2.code.size());
+    REQUIRE(codeAllocation2.codeStart);
 
     // To simplify debugging, CHECK_THROWS_WITH_AS is not used here
     try
     {
-        f(nativeEntry2, throwing, nativeExit);
+        f(codeAllocation2.codeStart, throwing, nativeExit);
     }
     catch (const std::runtime_error& error)
     {
         CHECK(strcmp(error.what(), "testing") == 0);
     }
 
-    REQUIRE(nativeEntry2);
+    allocator.deallocate(codeAllocation1);
+    allocator.deallocate(codeAllocation2);
 }
 
 #endif
@@ -787,7 +872,7 @@ TEST_CASE("GeneratedCodeExecutionA64")
 {
     using namespace A64;
 
-    AssemblyBuilderA64 build(/* logText= */ false);
+    AssemblyBuilderA64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
     Label skip;
     build.cbz(x1, skip);
@@ -801,7 +886,7 @@ TEST_CASE("GeneratedCodeExecutionA64")
     build.ldrb(w2, x2);
     build.sub(x1, x1, x2);
 
-    build.add(x1, x1, 2);
+    build.add(x1, x1, uint16_t(2));
     build.add(x0, x0, x1, /* LSL */ 1);
 
     build.ret();
@@ -812,25 +897,17 @@ TEST_CASE("GeneratedCodeExecutionA64")
     size_t maxTotalSize = 1024 * 1024;
     CodeAllocator allocator(blockSize, maxTotalSize);
 
-    uint8_t* nativeData;
-    size_t sizeNativeData;
-    uint8_t* nativeEntry;
-    REQUIRE(allocator.allocate(
-        build.data.data(),
-        build.data.size(),
-        reinterpret_cast<uint8_t*>(build.code.data()),
-        build.code.size() * 4,
-        nativeData,
-        sizeNativeData,
-        nativeEntry
-    ));
-    REQUIRE(nativeEntry);
+    CodeAllocationData codeAllocation =
+        allocator.allocate(build.data.data(), build.data.size(), reinterpret_cast<uint8_t*>(build.code.data()), build.code.size() * 4);
+    REQUIRE(codeAllocation.codeStart);
 
     using FunctionType = int64_t(int64_t, int*);
-    FunctionType* f = (FunctionType*)nativeEntry;
+    FunctionType* f = (FunctionType*)codeAllocation.codeStart;
     int input = 10;
     int64_t result = f(20, &input);
     CHECK(result == 42);
+
+    allocator.deallocate(codeAllocation);
 }
 
 static void throwing(int64_t arg)
@@ -848,25 +925,25 @@ TEST_CASE("GeneratedCodeExecutionWithThrowA64")
 
     using namespace A64;
 
-    AssemblyBuilderA64 build(/* logText= */ false);
+    AssemblyBuilderA64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderDwarf2>();
 
     unwind->startInfo(UnwindBuilder::A64);
 
-    build.sub(sp, sp, 32);
+    build.sub(sp, sp, uint16_t(32));
     build.stp(x29, x30, mem(sp));
     build.str(x28, mem(sp, 16));
     build.mov(x29, sp);
 
     Label prologueEnd = build.setLabel();
 
-    build.add(x0, x0, 15);
+    build.add(x0, x0, uint16_t(15));
     build.blr(x1);
 
     build.ldr(x28, mem(sp, 16));
     build.ldp(x29, x30, mem(sp));
-    build.add(sp, sp, 32);
+    build.add(sp, sp, uint16_t(32));
 
     build.ret();
 
@@ -888,22 +965,12 @@ TEST_CASE("GeneratedCodeExecutionWithThrowA64")
     allocator.createBlockUnwindInfo = createBlockUnwindInfo;
     allocator.destroyBlockUnwindInfo = destroyBlockUnwindInfo;
 
-    uint8_t* nativeData;
-    size_t sizeNativeData;
-    uint8_t* nativeEntry;
-    REQUIRE(allocator.allocate(
-        build.data.data(),
-        build.data.size(),
-        reinterpret_cast<uint8_t*>(build.code.data()),
-        build.code.size() * 4,
-        nativeData,
-        sizeNativeData,
-        nativeEntry
-    ));
-    REQUIRE(nativeEntry);
+    CodeAllocationData codeAllocation =
+        allocator.allocate(build.data.data(), build.data.size(), reinterpret_cast<uint8_t*>(build.code.data()), build.code.size() * 4);
+    REQUIRE(codeAllocation.codeStart);
 
     using FunctionType = int64_t(int64_t, void (*)(int64_t));
-    FunctionType* f = (FunctionType*)nativeEntry;
+    FunctionType* f = (FunctionType*)codeAllocation.codeStart;
 
     // To simplify debugging, CHECK_THROWS_WITH_AS is not used here
     try
@@ -914,6 +981,8 @@ TEST_CASE("GeneratedCodeExecutionWithThrowA64")
     {
         CHECK(strcmp(error.what(), "testing") == 0);
     }
+
+    allocator.deallocate(codeAllocation);
 }
 
 #endif

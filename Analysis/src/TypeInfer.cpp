@@ -2,7 +2,6 @@
 #include "Luau/TypeInfer.h"
 
 #include "Luau/ApplyTypeFunction.h"
-#include "Luau/Cancellation.h"
 #include "Luau/Common.h"
 #include "Luau/Instantiation.h"
 #include "Luau/ModuleResolver.h"
@@ -29,10 +28,11 @@ LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
 LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
 LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
-LUAU_FASTFLAG(LuauExplicitTypeExpressionInstantiation)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauUseWorkspacePropToChooseSolver)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauExportValueTypecheck)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
@@ -212,6 +212,7 @@ TypeChecker::TypeChecker(const ScopePtr& globalScope, ModuleResolver* resolver, 
     , reusableInstantiation(TxnLog::empty(), nullptr, builtinTypes, {}, nullptr)
     , nilType(builtinTypes->nilType)
     , numberType(builtinTypes->numberType)
+    , integerType(builtinTypes->integerType)
     , stringType(builtinTypes->stringType)
     , booleanType(builtinTypes->booleanType)
     , threadType(builtinTypes->threadType)
@@ -286,6 +287,9 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
         currentModule->cancelled = true;
     }
 
+    if (FFlag::LuauExportValueSyntax && FFlag::LuauExportValueTypecheck && !currentModule->timeout && !currentModule->cancelled)
+        synthesizeExportReturn(builtinTypes, NotNull{currentModule.get()});
+
     if (get<FreeTypePack>(follow(moduleScope->returnType)))
         moduleScope->returnType = addTypePack(TypePack{{}, std::nullopt});
     else
@@ -302,10 +306,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     normalizer.clearCaches();
     normalizer.arena = nullptr;
 
-    if (FFlag::LuauUseWorkspacePropToChooseSolver)
-        currentModule->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::Old);
-    else
-        currentModule->clonePublicInterface_DEPRECATED(builtinTypes, *iceHandler);
+    currentModule->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::Old);
 
     freeze(currentModule->internalTypes);
     freeze(currentModule->interfaceTypes);
@@ -398,6 +399,11 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStat& program)
         // we don't think the type errors will be useful most of the time.
         currentModule->errors.resize(oldSize);
 
+        return ControlFlow::None;
+    }
+    else if (FFlag::DebugLuauUserDefinedClasses && program.is<AstStatClass>())
+    {
+        reportError(program.as<AstStatClass>()->name->location, GenericError{"class keyword is illegal here"});
         return ControlFlow::None;
     }
     else
@@ -1898,6 +1904,8 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     }
     else if (expr.is<AstExprConstantNumber>())
         result = WithPredicate{numberType};
+    else if (expr.is<AstExprConstantInteger>())
+        result = WithPredicate{integerType};
     else if (auto a = expr.as<AstExprLocal>())
         result = checkExpr(scope, *a);
     else if (auto a = expr.as<AstExprGlobal>())
@@ -1927,10 +1935,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     else if (auto a = expr.as<AstExprInterpString>())
         result = checkExpr(scope, *a);
     else if (auto a = expr.as<AstExprInstantiate>())
-    {
-        LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
         result = checkExpr(scope, *a);
-    }
     else
         ice("Unhandled AstExpr?");
 
@@ -2051,7 +2056,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 std::optional<TypeId> TypeChecker::findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location, bool addErrors)
 {
     ErrorVec errors;
-    auto result = Luau::findTablePropertyRespectingMeta(builtinTypes, errors, lhsType, name, location);
+    auto result = Luau::findTablePropertyRespectingMeta(builtinTypes, errors, lhsType, name, location, /* useNewSolver */ false);
     if (addErrors)
         reportErrors(errors);
     return result;
@@ -2318,7 +2323,7 @@ TypeId TypeChecker::checkExprTable(
 
         auto [keyType, valueType] = fieldTypes[i];
 
-        if (item.kind == AstExprTable::Item::List)
+        if (item.kind == AstExprTable::Item::Kind::List)
         {
             if (expectedTable && !indexer)
                 indexer = expectedTable->indexer;
@@ -2331,7 +2336,7 @@ TypeId TypeChecker::checkExprTable(
             else
                 indexer = TableIndexer{numberType, anyIfNonstrict(valueType)};
         }
-        else if (item.kind == AstExprTable::Item::Record || item.kind == AstExprTable::Item::General)
+        else if (item.kind == AstExprTable::Item::Kind::Record || item.kind == AstExprTable::Item::Kind::General)
         {
             if (auto key = k->as<AstExprConstantString>())
             {
@@ -2429,12 +2434,12 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         std::optional<TypeId> expectedResultType;
         bool isIndexedItem = false;
 
-        if (item.kind == AstExprTable::Item::List)
+        if (item.kind == AstExprTable::Item::Kind::List)
         {
             expectedResultType = expectedIndexResultType;
             isIndexedItem = true;
         }
-        else if (item.kind == AstExprTable::Item::Record || item.kind == AstExprTable::Item::General)
+        else if (item.kind == AstExprTable::Item::Kind::Record || item.kind == AstExprTable::Item::Kind::General)
         {
             if (auto key = item.key->as<AstExprConstantString>())
             {
@@ -2491,9 +2496,9 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
     switch (expr.op)
     {
-    case AstExprUnary::Not:
+    case AstExprUnary::Op::Not:
         return {booleanType, {NotPredicate{std::move(result.predicates)}}};
-    case AstExprUnary::Minus:
+    case AstExprUnary::Op::Minus:
     {
         const bool operandIsAny = get<AnyType>(operandType) || get<ErrorType>(operandType) || get<NeverType>(operandType);
 
@@ -2532,7 +2537,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         reportErrors(tryUnify(operandType, numberType, scope, expr.location));
         return WithPredicate{numberType};
     }
-    case AstExprUnary::Len:
+    case AstExprUnary::Op::Len:
     {
         tablify(operandType);
 
@@ -3283,8 +3288,6 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
 WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprInstantiate& explicitTypeInstantiation)
 {
-    LUAU_ASSERT(FFlag::LuauExplicitTypeExpressionInstantiation);
-
     WithPredicate<TypeId> baseType = checkExpr(scope, *explicitTypeInstantiation.expr);
 
     return WithPredicate{instantiateTypeParameters(
@@ -4484,7 +4487,7 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
             functionType = *propTy;
             actualFunctionType = instantiate(
                 scope,
-                FFlag::LuauExplicitTypeExpressionInstantiation && expr.typeArguments.size
+                expr.typeArguments.size
                     ? instantiateTypeParameters(scope, functionType, expr.typeArguments, expr.func, expr.location)
                     : functionType,
                 expr.func->location
@@ -4962,7 +4965,7 @@ WithPredicate<TypePackId> TypeChecker::checkExprList(
     const Location& location,
     const AstArray<AstExpr*>& exprs,
     bool substituteFreeForNil,
-    const std::vector<bool>& instantiateGenerics,
+    const std::vector<bool>& annotatedTypeArguments,
     const std::vector<std::optional<TypeId>>& expectedTypes
 )
 {
@@ -5033,7 +5036,7 @@ WithPredicate<TypePackId> TypeChecker::checkExprList(
 
             if (!FFlag::LuauInstantiateInSubtyping)
             {
-                if (instantiateGenerics.size() > i && instantiateGenerics[i])
+                if (annotatedTypeArguments.size() > i && annotatedTypeArguments[i])
                     actualType = instantiate(scope, actualType, expr->location);
             }
 
@@ -5734,7 +5737,7 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
             }
         }
 
-        // If we still haven't meterialized an implicit type pack, do it now
+        // If we still haven't materialized an implicit type pack, do it now
         if (typePackParams.empty() && !extraTypes.empty())
             typePackParams.push_back(addTypePack(extraTypes));
 
@@ -6472,7 +6475,7 @@ void TypeChecker::resolve(const IsAPredicate& isaP, RefinementMap& refis, const 
         // If both are subtypes, then we're in one of the two situations:
         //   1. Instance₁ <: Instance₂ ∧ Instance₂ <: Instance₁
         //   2. any <: Instance ∧ Instance <: any
-        // Right now, we have to look at the typeArguments to see if they were undecidables.
+        // Right now, we have to look at the typeArguments to see if they were undecidable.
         // By this point, we also know free tables are also subtypes and supertypes.
         if (optionIsSubtype && targetIsSubtype)
         {
@@ -6541,6 +6544,8 @@ void TypeChecker::resolve(const TypeGuardPredicate& typeguardP, RefinementMap& r
         return refine(isString, stringType);
     else if (typeguardP.kind == "number")
         return refine(isNumber, numberType);
+    else if (typeguardP.kind == "integer")
+        return refine(isInteger, integerType);
     else if (typeguardP.kind == "boolean")
         return refine(isBoolean, booleanType);
     else if (typeguardP.kind == "thread")

@@ -57,14 +57,6 @@ struct InConditionalContext
 
 using ScopePtr = std::shared_ptr<struct Scope>;
 
-std::optional<Property> findTableProperty(
-    NotNull<BuiltinTypes> builtinTypes,
-    ErrorVec& errors,
-    TypeId ty,
-    const std::string& name,
-    Location location
-);
-
 std::optional<TypeId> findMetatableEntry(
     NotNull<BuiltinTypes> builtinTypes,
     ErrorVec& errors,
@@ -77,7 +69,8 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
     ErrorVec& errors,
     TypeId ty,
     const std::string& name,
-    Location location
+    Location location,
+    bool useNewSolver
 );
 std::optional<TypeId> findTablePropertyRespectingMeta(
     NotNull<BuiltinTypes> builtinTypes,
@@ -85,10 +78,21 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
     TypeId ty,
     const std::string& name,
     ValueContext context,
-    Location location
+    Location location,
+    bool useNewSolver
 );
 
 bool occursCheck(TypeId needle, TypeId haystack);
+
+// NOTE: This uses a custom enum as it is replacing several bespoke
+// implementations of the same logic.
+enum class OccursCheckResult
+{
+    Pass,
+    Fail
+};
+
+OccursCheckResult occursCheck(TypePackId needle, TypePackId haystack);
 
 // Returns the minimum and maximum number of types the argument list can accept.
 std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, TypePackId tp, bool includeHiddenVariadics = false);
@@ -273,7 +277,7 @@ std::vector<TypeId> findBlockedArgTypesIn(AstExprCall* expr, NotNull<DenseHashMa
 /**
  * Given a scope and a free type, find the closest parent that has a present
  * `interiorFreeTypes` and append the given type to said list. This list will
- * be generalized when the requiste `GeneralizationConstraint` is resolved.
+ * be generalized when the requisite `GeneralizationConstraint` is resolved.
  * @param scope Initial scope this free type was attached to
  * @param ty Free type to track.
  */
@@ -289,7 +293,9 @@ bool fastIsSubtype(TypeId subTy, TypeId superTy);
  * @param exprType Type of the expression to match
  * @return An element of `tables` that best matches `exprType`.
  */
-std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& tables, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
+std::optional<TypeId> extractMatchingTableType_DEPRECATED(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
+
+std::optional<TypeId> extractMatchingTableType(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
 
 /**
  * @param item A member of a table in an AST
@@ -389,17 +395,48 @@ private:
 TypeId addIntersection(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
 TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
 
-struct ContainsAnyGeneric final : public TypeOnceVisitor
+// Clip with LuauInstantiateFunctionTypeBeforePush
+struct ContainsAnyGeneric_DEPRECATED final : public TypeOnceVisitor
 {
     bool found = false;
 
-    explicit ContainsAnyGeneric();
+    explicit ContainsAnyGeneric_DEPRECATED();
 
     bool visit(TypeId ty) override;
     bool visit(TypePackId ty) override;
 
+    bool visit(TypeId ty, const ExternType&) override;
+
+    /**
+     * @returns if there is _any_ generic in `ty`
+     */
     static bool hasAnyGeneric(TypeId ty);
     static bool hasAnyGeneric(TypePackId tp);
 };
+
+/**
+ * @returns if `ty` contains a generic in the set `generics`.
+ */
+bool containsGeneric(TypeId ty, NotNull<DenseHashSet<const void*>> generics);
+bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics);
+
+/**
+ * @return Whether `ty` is a type that cannot be unified with another type,
+ *         such as a blocked type, pending expansion type, or an unsolved
+ *         type function.
+ */
+bool isBlocked(TypeId ty);
+
+
+/**
+ * **YOU SHOULD PROBABLY NOT USE THIS FUNCTION.**
+ *
+ * This function is a stop-gap while we rework function call inference and
+ * eager generalization.
+ *
+ * @return An approximate return type of `ty`, assuming `ty` is a function or
+ *         union of functions.
+ */
+std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty);
 
 } // namespace Luau

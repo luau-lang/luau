@@ -5,10 +5,8 @@
 #include "Luau/Lexer.h"
 
 #include <array>
+#include <limits>
 #include <math.h>
-
-LUAU_FASTFLAGVARIABLE(LuauCompileTypeofFold)
-LUAU_FASTFLAGVARIABLE(LuauCompileStringCharSubFold)
 
 namespace Luau
 {
@@ -17,6 +15,11 @@ namespace Compile
 
 const double kPi = 3.14159265358979323846;
 const double kRadDeg = kPi / 180.0;
+const double kNan = std::numeric_limits<double>::quiet_NaN();
+const double kE = 2.71828182845904523536;
+const double kPhi = 1.61803398874989484820;
+const double kSqrt2 = 1.41421356237309504880;
+const double kTau = 6.28318530717958647692;
 
 constexpr size_t kStringCharFoldLimit = 128;
 
@@ -80,6 +83,9 @@ static Constant ctype(const Constant& c)
     case Constant::Type_Number:
         return cstring("number");
 
+    case Constant::Type_Integer:
+        return cstring("integer");
+
     case Constant::Type_Vector:
         return cstring("vector");
 
@@ -106,6 +112,9 @@ static Constant ctypeof(const Constant& c)
 
     case Constant::Type_Number:
         return cstring("number");
+
+    case Constant::Type_Integer:
+        return cstring("integer");
 
     case Constant::Type_Vector:
         return cvar(); // vector can have a custom typeof name at runtime
@@ -472,7 +481,7 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
         break;
 
     case LBF_STRING_CHAR:
-        if (FFlag::LuauCompileStringCharSubFold && count < kStringCharFoldLimit)
+        if (count < kStringCharFoldLimit)
         {
             std::array<char, kStringCharFoldLimit> buf{};
 
@@ -504,11 +513,11 @@ Constant foldBuiltin(AstNameTable& stringTable, int bfid, const Constant* args, 
 
     case LBF_TYPEOF:
         if (count == 1 && args[0].type != Constant::Type_Unknown)
-            return FFlag::LuauCompileTypeofFold ? ctypeof(args[0]) : ctype(args[0]);
+            return ctypeof(args[0]);
         break;
 
     case LBF_STRING_SUB:
-        if (FFlag::LuauCompileStringCharSubFold && count >= 2 && args[0].type == Constant::Type_String && args[1].type == Constant::Type_Number)
+        if (count >= 2 && args[0].type == Constant::Type_String && args[1].type == Constant::Type_Number)
         {
             if (count >= 3 && args[2].type != Constant::Type_Number)
                 return cvar();
@@ -636,6 +645,21 @@ Constant foldBuiltinMath(AstName index)
 
     if (index == "huge")
         return cnum(HUGE_VAL);
+
+    if (index == "nan")
+        return cnum(kNan);
+
+    if (index == "e")
+        return cnum(kE);
+
+    if (index == "phi")
+        return cnum(kPhi);
+
+    if (index == "sqrt2")
+        return cnum(kSqrt2);
+
+    if (index == "tau")
+        return cnum(kTau);
 
     return cvar();
 }

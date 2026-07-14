@@ -17,7 +17,7 @@
 //     E - least-significant byte for the opcode, followed by E (24-bit integer). E is a signed integer that commonly specifies a jump offset
 //
 // Instruction word is sometimes followed by one extra word, indicated as AUX - this is just a 32-bit word and is decoded according to the specification for each opcode.
-// For each opcode the encoding is *static* - that is, based on the opcode you know a-priory how large the instruction is, with the exception of NEWCLOSURE
+// For each opcode the encoding is *static* - that is, based on the opcode you know apriori how large the instruction is, with the exception of NEWCLOSURE
 
 // # Bytecode indices
 // Bytecode instructions commonly refer to integer values that define offsets or indices for various entities. For each type, there's a maximum encodable value.
@@ -47,6 +47,12 @@
 // Version 4: Adds Proto::flags, typeinfo, and floor division opcodes IDIV/IDIVK. Currently supported.
 // Version 5: Adds SUBRK/DIVRK and vector constants. Currently supported.
 // Version 6: Adds FASTCALL3. Currently supported.
+// Version 7: Adds LBC_CONSTANT_TABLE_WITH_CONSTANTS for DUPTABLE with pre-filled constant values. Currently supported.
+// Version 8: Adds LBC_CONSTANT_INTEGER for 64-bit integer constants. Currently supported.
+// Version 9: Adds atom-based userdata field access acceleration. Currently supported.
+// Version 10: Adds LBC_CONSTANT_CLASS_SHAPE and NEWCLASSMEMBER for use with Luau Classes. Experimental.
+// Version 11: Adds CALLFB, CMPPROTO and feedback vector description. Experimental.
+// Version 12: Adds cost function serialized for proto and prepend each proto with size in bytes. Experimental.
 
 // # Bytecode type information history
 // Version 1: (from bytecode version 4) Type information for function signature. Currently supported.
@@ -419,6 +425,33 @@ enum LuauOpcode
     // C: constant table index (0..255)
     LOP_IDIVK,
 
+    // Atom-based userdata field access acceleration
+    // These are equivalent to their GETTABLEKS/SETTABLEKS/NAMECALL counterparts, except tailored towards userdata field accesses
+    // If the user has registered metamethods for a userdata tag, callbacks will be called by these instructions
+    LOP_GETUDATAKS,
+    LOP_SETUDATAKS,
+    LOP_NAMECALLUDATA,
+
+    // NEWCLASSMEMBER: register this method on a class object.
+    // A: target register of class
+    // B: reserved
+    // C: initial value of this member. currently must be a function.
+    // AUX: The name of this member as a constant string
+    LOP_NEWCLASSMEMBER,
+
+    // CALLFB: call specified function with collecting runtime stats in a feedback slot
+    // A: register where the function object lives, followed by arguments; results are placed starting from the same register
+    // B: argument count + 1, or 0 to preserve all arguments up to top (MULTRET)
+    // C: result count + 1, or 0 to preserve all values and adjust top (MULTRET)
+    // AUX: feedback slot id. 0xFFFFFFFF - sealed
+    LOP_CALLFB,
+
+    // CMPPROTO: check if a register contains a closure with a specified Luau function proto id
+    // A: closure register
+    // D: jump offset if proto doesn't match
+    // AUX: proto id
+    LOP_CMPPROTO,
+
     // Enum entry for number of opcodes, not a valid opcode by itself!
     LOP__COUNT
 };
@@ -455,13 +488,20 @@ enum LuauOpcode
 // Used in LOP_JUMPXEQK* instructions
 #define LUAU_INSN_AUX_NOT(aux) ((aux) >> 31)
 
+// Auxilary 16-bit constant index and 16-bit cachedslot
+// Used in LOP_GETUDATAKS, LOP_SETUDATAKS and LOP_NAMECALLUDATA
+#define LUAU_INSN_AUX_KV16(aux) ((aux) & 0xffffu)
+#define LUAU_INSN_AUX_SLOT(aux) ((aux) >> 16)
+
+#define LUAU_INSN_FBSLOT_SEALED 0xFFFFFFFF
+
 // Bytecode tags, used internally for bytecode encoded as a string
 enum LuauBytecodeTag
 {
     // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
     LBC_VERSION_MIN = 3,
-    LBC_VERSION_MAX = 6,
-    LBC_VERSION_TARGET = 6,
+    LBC_VERSION_MAX = 12,
+    LBC_VERSION_TARGET = 7,
     // Type encoding version
     LBC_TYPE_VERSION_MIN = 1,
     LBC_TYPE_VERSION_MAX = 3,
@@ -475,6 +515,12 @@ enum LuauBytecodeTag
     LBC_CONSTANT_TABLE,
     LBC_CONSTANT_CLOSURE,
     LBC_CONSTANT_VECTOR,
+    LBC_CONSTANT_TABLE_WITH_CONSTANTS,
+    LBC_CONSTANT_INTEGER,
+    LBC_CONSTANT_CLASS_SHAPE,
+
+    /** WARNING: This must always be last. */
+    LBC_CONSTANT__COUNT
 };
 
 // Type table tags
@@ -490,6 +536,7 @@ enum LuauBytecodeType
     LBC_TYPE_USERDATA,
     LBC_TYPE_VECTOR,
     LBC_TYPE_BUFFER,
+    LBC_TYPE_INTEGER,
 
     LBC_TYPE_ANY = 15,
 
@@ -643,7 +690,50 @@ enum LuauBuiltinFunction
     // math.
     LBF_MATH_ISNAN,
     LBF_MATH_ISINF,
-    LBF_MATH_ISFINITE
+    LBF_MATH_ISFINITE,
+
+    // integer
+    LBF_INTEGER_CREATE,
+    LBF_INTEGER_TONUMBER,
+    LBF_INTEGER_NEG,
+    LBF_INTEGER_ADD,
+    LBF_INTEGER_SUB,
+    LBF_INTEGER_MUL,
+    LBF_INTEGER_DIV,
+    LBF_INTEGER_MIN,
+    LBF_INTEGER_MAX,
+    LBF_INTEGER_REM,
+    LBF_INTEGER_IDIV,
+    LBF_INTEGER_UDIV,
+    LBF_INTEGER_UREM,
+    LBF_INTEGER_MOD,
+    LBF_INTEGER_CLAMP,
+    LBF_INTEGER_BAND,
+    LBF_INTEGER_BOR,
+    LBF_INTEGER_BNOT,
+    LBF_INTEGER_BXOR,
+    LBF_INTEGER_LT,
+    LBF_INTEGER_LE,
+    LBF_INTEGER_ULT,
+    LBF_INTEGER_ULE,
+    LBF_INTEGER_GT,
+    LBF_INTEGER_GE,
+    LBF_INTEGER_UGT,
+    LBF_INTEGER_UGE,
+    LBF_INTEGER_LSHIFT,
+    LBF_INTEGER_RSHIFT,
+    LBF_INTEGER_ARSHIFT,
+    LBF_INTEGER_LROTATE,
+    LBF_INTEGER_RROTATE,
+    LBF_INTEGER_EXTRACT,
+    LBF_INTEGER_BTEST,
+    LBF_INTEGER_COUNTRZ,
+    LBF_INTEGER_COUNTLZ,
+    LBF_INTEGER_BSWAP,
+
+    // buffer.readinteger / buffer.writeinteger (int64_t)
+    LBF_BUFFER_READINTEGER,
+    LBF_BUFFER_WRITEINTEGER,
 };
 
 // Capture type, used in LOP_CAPTURE
@@ -663,4 +753,11 @@ enum LuauProtoFlag
     LPF_NATIVE_COLD = 1 << 1,
     // used to tag main proto for modules that have at least one function with native attribute
     LPF_NATIVE_FUNCTION = 1 << 2,
+    // function can be inlined
+    LPF_INLINABLE = 1 << 3,
+};
+
+enum LuauFeedbackType
+{
+    LFT_CALLTARGET = 0
 };

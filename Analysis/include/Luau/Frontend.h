@@ -174,13 +174,13 @@ struct Frontend
 
         size_t dynamicConstraintsCreated = 0;
     };
-
+    Frontend(SolverMode mode, FileResolver* fileResolver, ConfigResolver* configResolver, FrontendOptions options = {});
     Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options = {});
 
     void setLuauSolverMode(SolverMode mode);
     SolverMode getLuauSolverMode() const;
     // The default value assuming there is no workspace setup yet
-    std::atomic<SolverMode> useNewLuauSolver{FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old};
+    std::atomic<SolverMode> useNewLuauSolver;
     // Parse module graph and prepare SourceNode/SourceModule data, including required dependencies without running typechecking
     void parse(const ModuleName& name);
     void parseModules(const std::vector<ModuleName>& name);
@@ -317,21 +317,6 @@ public:
 
     std::vector<ModuleName> moduleQueue;
 };
-
-ModulePtr check(
-    const SourceModule& sourceModule,
-    Mode mode,
-    const std::vector<RequireCycle>& requireCycles,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<InternalErrorReporter> iceHandler,
-    NotNull<ModuleResolver> moduleResolver,
-    NotNull<FileResolver> fileResolver,
-    const ScopePtr& globalScope,
-    const ScopePtr& typeFunctionScope,
-    std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
-    FrontendOptions options,
-    TypeCheckLimits limits
-);
 
 ModulePtr check(
     const SourceModule& sourceModule,

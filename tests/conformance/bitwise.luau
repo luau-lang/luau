@@ -2,6 +2,8 @@
 -- This file is based on Lua 5.x tests -- https://github.com/lua/lua/tree/master/testes
 print("testing bitwise operations")
 
+local function noinline(x, ...) local s, r = pcall(function(y) return y end, x) return r end
+
 assert(bit32.band() == bit32.bnot(0))
 assert(bit32.btest() == true)
 assert(bit32.bor() == 0)
@@ -22,6 +24,16 @@ assert(bit32.band(2^40) == 0)
 assert(bit32.band(-2^40 - 2) == 0xfffffffe)
 assert(bit32.band(2^40 - 4) == 0xfffffffc)
 
+assert(bit32.band(noinline(-1)) == 0xffffffff)
+assert(bit32.band(noinline(2^33 - 1)) == 0xffffffff)
+assert(bit32.band(noinline(-2^33 - 1)) == 0xffffffff)
+assert(bit32.band(noinline(2^33 + 1)) == 1)
+assert(bit32.band(noinline(-2^33 + 1)) == 1)
+assert(bit32.band(noinline(-2^40)) == 0)
+assert(bit32.band(noinline(2^40)) == 0)
+assert(bit32.band(noinline(-2^40 - 2)) == 0xfffffffe)
+assert(bit32.band(noinline(2^40 - 4)) == 0xfffffffc)
+
 assert(bit32.lrotate(0, -1) == 0)
 assert(bit32.lrotate(0, 7) == 0)
 assert(bit32.lrotate(0x12345678, 4) == 0x23456781)
@@ -30,6 +42,16 @@ assert(bit32.lrotate(0x12345678, -8) == 0x78123456)
 assert(bit32.rrotate(0x12345678, 8) == 0x78123456)
 assert(bit32.lrotate(0xaaaaaaaa, 2) == 0xaaaaaaaa)
 assert(bit32.lrotate(0xaaaaaaaa, -2) == 0xaaaaaaaa)
+
+assert(bit32.lrotate(noinline(0), -1) == 0)
+assert(bit32.lrotate(noinline(0), 7) == 0)
+assert(bit32.lrotate(noinline(0x12345678), 4) == 0x23456781)
+assert(bit32.rrotate(noinline(0x12345678), -4) == 0x23456781)
+assert(bit32.lrotate(noinline(0x12345678), -8) == 0x78123456)
+assert(bit32.rrotate(noinline(0x12345678), 8) == 0x78123456)
+assert(bit32.lrotate(noinline(0xaaaaaaaa), 2) == 0xaaaaaaaa)
+assert(bit32.lrotate(noinline(0xaaaaaaaa), -2) == 0xaaaaaaaa)
+
 for i = -50, 50 do
   assert(bit32.lrotate(0x89abcdef, i) == bit32.lrotate(0x89abcdef, i%32))
 end
@@ -51,6 +73,24 @@ assert(bit32.arshift(-1, 1) == 0xffffffff)
 assert(bit32.arshift(-1, 24) == 0xffffffff)
 assert(bit32.arshift(-1, 32) == 0xffffffff)
 assert(bit32.arshift(-1, -1) == (-1 * 2) % 2^32)
+
+assert(bit32.lshift(noinline(0x12345678), 4) == 0x23456780)
+assert(bit32.lshift(noinline(0x12345678), 8) == 0x34567800)
+assert(bit32.lshift(noinline(0x12345678), -4) == 0x01234567)
+assert(bit32.lshift(noinline(0x12345678), -8) == 0x00123456)
+assert(bit32.lshift(noinline(0x12345678), 32) == 0)
+assert(bit32.lshift(noinline(0x12345678), -32) == 0)
+assert(bit32.rshift(noinline(0x12345678), 4) == 0x01234567)
+assert(bit32.rshift(noinline(0x12345678), 8) == 0x00123456)
+assert(bit32.rshift(noinline(0x12345678), 32) == 0)
+assert(bit32.rshift(noinline(0x12345678), -32) == 0)
+assert(bit32.arshift(noinline(0x12345678), 0) == 0x12345678)
+assert(bit32.arshift(noinline(0x12345678), 1) == 0x12345678 / 2)
+assert(bit32.arshift(noinline(0x12345678), -1) == 0x12345678 * 2)
+assert(bit32.arshift(noinline(-1), 1) == 0xffffffff)
+assert(bit32.arshift(noinline(-1), 24) == 0xffffffff)
+assert(bit32.arshift(noinline(-1), 32) == 0xffffffff)
+assert(bit32.arshift(noinline(-1), -1) == (-1 * 2) % 2^32)
 
 print("+")
 -- some special cases
@@ -107,6 +147,19 @@ assert(bit32.extract(0xa0001111, 16) == 0)
 assert(bit32.extract(0xa0001111, 31) == 1)
 assert(bit32.extract(42, 1, 3) == 5)
 
+assert(bit32.extract(noinline(0x12345678), 0, 4) == 8)
+assert(bit32.extract(0x12345678, noinline(0), 4) == 8)
+assert(bit32.extract(0x12345678, 0, noinline(4)) == 8)
+assert(bit32.extract(noinline(0x12345678), 4, 4) == 7)
+assert(bit32.extract(noinline(0xa0001111), 28, 4) == 0xa)
+assert(bit32.extract(noinline(0xa0001111), 31, 1) == 1)
+assert(bit32.extract(noinline(0x50000111), 31, 1) == 0)
+assert(bit32.extract(noinline(0xf2345679), 0, 32) == 0xf2345679)
+assert(bit32.extract(noinline(0xa0001111), 0) == 1)
+assert(bit32.extract(noinline(0xa0001111), 16) == 0)
+assert(bit32.extract(noinline(0xa0001111), 31) == 1)
+assert(bit32.extract(noinline(42), 1, 3) == 5)
+
 local pos pos = 1
 assert(bit32.extract(42, pos, 3) == 5) -- test bit32.extract builtin instead of bit32.extractk
 
@@ -122,12 +175,28 @@ assert(bit32.replace(0, -1, 4) == 2^4)
 assert(bit32.replace(-1, 0, 31) == 2^31 - 1)
 assert(bit32.replace(-1, 0, 1, 2) == 2^32 - 7)
 
+assert(bit32.replace(noinline(0x12345678), 5, 28, 4) == 0x52345678)
+assert(bit32.replace(0x12345678, noinline(5), 28, 4) == 0x52345678)
+assert(bit32.replace(0x12345678, 5, noinline(28), 4) == 0x52345678)
+assert(bit32.replace(0x12345678, 5, 28, noinline(4)) == 0x52345678)
+assert(bit32.replace(noinline(0x12345678), 0x87654321, 0, 32) == 0x87654321)
+assert(bit32.replace(noinline(0), 1, 2) == 2^2)
+assert(bit32.replace(noinline(0), -1, 4) == 2^4)
+assert(bit32.replace(noinline(-1), 0, 31) == 2^31 - 1)
+assert(bit32.replace(noinline(-1), 0, 1, 2) == 2^32 - 7)
+
 -- testing countlz/countrc
 assert(bit32.countlz(0) == 32)
 assert(bit32.countlz(42) == 26)
 assert(bit32.countlz(0xffffffff) == 0)
 assert(bit32.countlz(0x80000000) == 0)
 assert(bit32.countlz(0x7fffffff) == 1)
+
+assert(bit32.countlz(noinline(0)) == 32)
+assert(bit32.countlz(noinline(42)) == 26)
+assert(bit32.countlz(noinline(0xffffffff)) == 0)
+assert(bit32.countlz(noinline(0x80000000)) == 0)
+assert(bit32.countlz(noinline(0x7fffffff)) == 1)
 
 assert(bit32.countrz(0) == 32)
 assert(bit32.countrz(1) == 0)
@@ -136,10 +205,21 @@ assert(bit32.countrz(0x80000000) == 31)
 assert(bit32.countrz(0x40000000) == 30)
 assert(bit32.countrz(0x7fffffff) == 0)
 
+assert(bit32.countrz(noinline(0)) == 32)
+assert(bit32.countrz(noinline(1)) == 0)
+assert(bit32.countrz(noinline(42)) == 1)
+assert(bit32.countrz(noinline(0x80000000)) == 31)
+assert(bit32.countrz(noinline(0x40000000)) == 30)
+assert(bit32.countrz(noinline(0x7fffffff)) == 0)
+
 -- testing byteswap
 assert(bit32.byteswap(0x10203040) == 0x40302010)
 assert(bit32.byteswap(0) == 0)
 assert(bit32.byteswap(-1) == 0xffffffff)
+
+assert(bit32.byteswap(noinline(0x10203040)) == 0x40302010)
+assert(bit32.byteswap(noinline(0)) == 0)
+assert(bit32.byteswap(noinline(-1)) == 0xffffffff)
 
 -- bit32.bor(n, 0) must clear top bits
 -- we check this obscuring the constant through a global to make sure this gets evaluated fully

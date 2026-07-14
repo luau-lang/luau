@@ -31,7 +31,7 @@ public:
         return visitedNodes[index];
     }
 
-    ~AstVisitorTracking()
+    ~AstVisitorTracking() override
     {
         std::string s = "Seen " + std::to_string(seen.size()) + " nodes but got " + std::to_string(visitedNodes.size());
         CHECK_MESSAGE(seen.size() == visitedNodes.size(), s);

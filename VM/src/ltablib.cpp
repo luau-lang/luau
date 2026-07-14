@@ -529,13 +529,14 @@ static int tfind(lua_State* L)
         luaL_argerror(L, 3, "index out of range");
 
     LuaTable* t = hvalue(L->base);
-    StkId v = L->base + 1;
 
     for (int i = init;; ++i)
     {
         const TValue* e = luaH_getnum(t, i);
         if (ttisnil(e))
             break;
+
+        StkId v = L->base + 1;
 
         if (equalobj(L, v, e))
         {
@@ -589,7 +590,7 @@ static int tclone(lua_State* L)
 
     TValue v;
     sethvalue(L, &v, tt);
-    luaA_pushobject(L, &v);
+    luaA_pushvalue(L, &v);
 
     return 1;
 }

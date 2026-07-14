@@ -29,7 +29,9 @@ LUALIB_API int luaL_checkboolean(lua_State* L, int narg);
 LUALIB_API int luaL_optboolean(lua_State* L, int narg, int def);
 
 LUALIB_API int luaL_checkinteger(lua_State* L, int numArg);
+LUALIB_API int64_t luaL_checkinteger64(lua_State* L, int numArg);
 LUALIB_API int luaL_optinteger(lua_State* L, int nArg, int def);
+LUALIB_API int64_t luaL_optinteger64(lua_State* L, int nArg, int64_t def);
 LUALIB_API unsigned luaL_checkunsigned(lua_State* L, int numArg);
 LUALIB_API unsigned luaL_optunsigned(lua_State* L, int numArg, unsigned def);
 
@@ -42,6 +44,7 @@ LUALIB_API void luaL_checkany(lua_State* L, int narg);
 
 LUALIB_API int luaL_newmetatable(lua_State* L, const char* tname);
 LUALIB_API void* luaL_checkudata(lua_State* L, int ud, const char* tname);
+LUALIB_API void* luaL_checkudatatagged(lua_State* L, int ud, int tag);
 
 LUALIB_API void* luaL_checkbuffer(lua_State* L, int narg, size_t* len);
 
@@ -60,6 +63,9 @@ LUALIB_API const char* luaL_typename(lua_State* L, int idx);
 
 // wrapper for making calls from yieldable C functions
 LUALIB_API int luaL_callyieldable(lua_State* L, int nargs, int nresults);
+LUALIB_API int luaL_pcallyieldable(lua_State* L, int nargs, int nresults, int errfunc);
+
+LUALIB_API void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level);
 
 /*
 ** ===============================================================
@@ -133,6 +139,9 @@ LUALIB_API int luaopen_buffer(lua_State* L);
 #define LUA_UTF8LIBNAME "utf8"
 LUALIB_API int luaopen_utf8(lua_State* L);
 
+#define LUA_CLASSLIBNAME "class"
+LUALIB_API int luaopen_class(lua_State* L);
+
 #define LUA_MATHLIBNAME "math"
 LUALIB_API int luaopen_math(lua_State* L);
 
@@ -141,6 +150,9 @@ LUALIB_API int luaopen_debug(lua_State* L);
 
 #define LUA_VECLIBNAME "vector"
 LUALIB_API int luaopen_vector(lua_State* L);
+
+#define LUA_INTLIBNAME "integer"
+LUALIB_API int luaopen_integer(lua_State* L);
 
 // open all builtin libraries
 LUALIB_API void luaL_openlibs(lua_State* L);

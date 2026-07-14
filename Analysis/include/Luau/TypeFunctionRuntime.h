@@ -3,6 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/Scope.h"
+#include "Luau/TypeFunctionError.h"
 #include "Luau/TypeFunctionRuntimeBuilder.h"
 #include "Luau/Type.h"
 #include "Luau/Variant.h"
@@ -40,6 +41,7 @@ struct TypeFunctionPrimitiveType
         NilType,
         Boolean,
         Number,
+        Integer,
         String,
         Thread,
         Buffer,
@@ -157,6 +159,9 @@ struct TypeFunctionFunctionType
 
     TypeFunctionTypePackId argTypes;
     TypeFunctionTypePackId retTypes;
+
+    // Parallel to argTypes.head; nullopt entries mean the parameter has no name.
+    std::vector<std::optional<std::string>> argNames;
 };
 
 template<typename T>
@@ -177,14 +182,16 @@ T* getMutable(TypeFunctionTypePackId tv)
 
 struct TypeFunctionTableIndexer
 {
-    TypeFunctionTableIndexer(TypeFunctionTypeId keyType, TypeFunctionTypeId valueType)
+    TypeFunctionTableIndexer(TypeFunctionTypeId keyType, TypeFunctionTypeId valueType, bool isReadOnly = false)
         : keyType(keyType)
         , valueType(valueType)
+        , isReadOnly(isReadOnly)
     {
     }
 
     TypeFunctionTypeId keyType;
     TypeFunctionTypeId valueType;
+    bool isReadOnly = false;
 };
 
 struct TypeFunctionProperty
@@ -194,6 +201,7 @@ struct TypeFunctionProperty
     static TypeFunctionProperty rw(TypeFunctionTypeId ty);                             // Shared read-write type.
     static TypeFunctionProperty rw(TypeFunctionTypeId read, TypeFunctionTypeId write); // Separate read-write type.
 
+    bool isShared() const;
     bool isReadOnly() const;
     bool isWriteOnly() const;
 
@@ -256,8 +264,9 @@ using TypeFunctionTypeVariant = Luau::Variant<
 struct TypeFunctionType
 {
     TypeFunctionTypeVariant type;
+    bool frozen = false;
 
-    TypeFunctionType(TypeFunctionTypeVariant type)
+    explicit TypeFunctionType(TypeFunctionTypeVariant type)
         : type(std::move(type))
     {
     }
@@ -286,8 +295,11 @@ struct TypeFunctionRuntime
     TypeFunctionRuntime(NotNull<InternalErrorReporter> ice, NotNull<TypeCheckLimits> limits);
     ~TypeFunctionRuntime();
 
-    // Return value is an error message if registration failed
-    std::optional<std::string> registerFunction(AstStatTypeFunction* function);
+    // Return value is an error message string if registration failed.
+    std::optional<std::string> registerFunction_DEPRECATED(AstStatTypeFunction* function);
+
+    // Return value is a structured error if registration failed.
+    std::optional<TypeFunctionError> registerFunction(AstStatTypeFunction* function);
 
     // For user-defined type functions, we store all generated types and packs for the duration of the typecheck
     TypedAllocator<TypeFunctionType> typeArena;
@@ -317,14 +329,18 @@ private:
     void prepareState();
 };
 
-std::optional<std::string> checkResultForError(lua_State* L, const char* typeFunctionName, int luaResult);
+std::optional<std::string> checkResultForError_DEPRECATED(lua_State* L, const char* typeFunctionName, int luaResult);
+std::optional<TypeFunctionError> checkResultForError(lua_State* L, const char* typeFunctionName, int luaResult);
 
 TypeFunctionRuntime* getTypeFunctionRuntime(lua_State* L);
 
 TypeFunctionType* allocateTypeFunctionType(lua_State* L, TypeFunctionTypeVariant type);
 TypeFunctionTypePackVar* allocateTypeFunctionTypePack(lua_State* L, TypeFunctionTypePackVariant type);
 
-void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type);
+void pushType(lua_State* L, TypeFunctionTypeId type);
+void pushTypePack(lua_State* L, TypeFunctionTypePackId tp);
+
+void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type, bool frozen = false);
 
 bool isTypeUserData(lua_State* L, int idx);
 TypeFunctionTypeId getTypeUserData(lua_State* L, int idx);

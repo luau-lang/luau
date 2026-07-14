@@ -52,6 +52,7 @@ GeneralizationResult<TypePackId> generalizeTypePack(
 
 void sealTable(NotNull<Scope> scope, TypeId ty);
 
+
 /** Attempt to generalize a type.
  *
  * If generalizationTarget is set, then only that type will be replaced by its
