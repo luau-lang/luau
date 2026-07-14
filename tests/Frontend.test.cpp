@@ -1337,7 +1337,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "clearModules_erases_module_and_marks_depende
         return require(game:GetService('Gui').Modules.B)
     )";
 
-    getFrontend().check("game/Gui/Modules/C");
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/C"));
 
     CHECK(!getFrontend().isDirty("game/Gui/Modules/A"));
     CHECK(!getFrontend().isDirty("game/Gui/Modules/B"));
@@ -1353,6 +1353,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "clearModules_erases_module_and_marks_depende
     // B and C should be marked dirty (transitive dependents)
     CHECK(getFrontend().isDirty("game/Gui/Modules/B"));
     CHECK(getFrontend().isDirty("game/Gui/Modules/C"));
+
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/C"));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "clearModules_cleans_up_reverse_dependency_edges")
@@ -1362,7 +1364,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "clearModules_cleans_up_reverse_dependency_ed
         return require(game:GetService('Gui').Modules.A)
     )";
 
-    getFrontend().check("game/Gui/Modules/B");
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/B"));
 
     // Before clearing: A has B as a dependent
     CHECK(getFrontend().sourceNodes["game/Gui/Modules/A"]->dependents.count("game/Gui/Modules/B") == 1);
@@ -1379,7 +1381,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "clearModules_cleans_up_reverse_dependency_ed
 TEST_CASE_FIXTURE(FrontendFixture, "clearModules_nonexistent_module_is_noop")
 {
     fileResolver.source["game/Gui/Modules/A"] = "return {hello=5}";
-    getFrontend().check("game/Gui/Modules/A");
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/A"));
 
     CHECK(!getFrontend().isDirty("game/Gui/Modules/A"));
 
@@ -1388,6 +1390,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "clearModules_nonexistent_module_is_noop")
 
     CHECK(!getFrontend().isDirty("game/Gui/Modules/A"));
     CHECK(getFrontend().sourceNodes.count("game/Gui/Modules/A") == 1);
+
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/A"));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "clearModules_multiple_with_shared_dependents")
@@ -1400,7 +1404,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "clearModules_multiple_with_shared_dependents
         return A + B
     )";
 
-    getFrontend().check("game/Gui/Modules/C");
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/C"));
 
     CHECK(!getFrontend().isDirty("game/Gui/Modules/C"));
 
@@ -1410,6 +1414,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "clearModules_multiple_with_shared_dependents
     CHECK(getFrontend().sourceNodes.count("game/Gui/Modules/A") == 0);
     CHECK(getFrontend().sourceNodes.count("game/Gui/Modules/B") == 0);
     CHECK(getFrontend().isDirty("game/Gui/Modules/C"));
+
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/C"));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "attribute_ices_to_the_correct_module")
