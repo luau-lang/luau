@@ -12,6 +12,7 @@
 #include "Luau/TypePack.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFunction.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/VisitType.h"
 #include "Luau/TypeOrPack.h"
 
@@ -39,6 +40,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
+LUAU_FASTFLAGVARIABLE(LuauToStringTruthyFalsy)
 
 namespace Luau
 {
@@ -884,8 +886,14 @@ struct TypeStringifier
         state.emit("*no-refine*");
     }
 
-    void operator()(TypeId, const UnionType& uv)
+    void operator()(TypeId ty, const UnionType& uv)
     {
+        if (FFlag::LuauToStringTruthyFalsy && state.opts.useTruthyFalsy && isApproximatelyFalsyType(ty))
+        {
+            state.emit("falsy");
+            return;
+        }
+
         if (state.hasSeen(&uv))
         {
             state.result.cycle = true;
@@ -1016,7 +1024,10 @@ struct TypeStringifier
             std::string saved = std::move(state.result.name);
             size_t savedSpansSize = state.result.typeSpans.size();
 
-            bool needParens = !state.cycleNames.contains(el) && (get<UnionType>(el) != nullptr || get<FunctionType>(el) != nullptr);
+            // soooo 'falsy' is technically a UnionType :(
+            bool isNonFalsyUnion =
+                get<UnionType>(el) != nullptr && (FFlag::LuauToStringTruthyFalsy && state.opts.useTruthyFalsy ? !isApproximatelyFalsyType(el) : true);
+            bool needParens = !state.cycleNames.contains(el) && (isNonFalsyUnion || get<FunctionType>(el) != nullptr);
 
             if (needParens)
                 state.emit("(");
@@ -1115,8 +1126,14 @@ struct TypeStringifier
         state.emit("never");
     }
 
-    void operator()(TypeId, const NegationType& ntv)
+    void operator()(TypeId ty, const NegationType& ntv)
     {
+        if (FFlag::LuauToStringTruthyFalsy && state.opts.useTruthyFalsy && isApproximatelyTruthyType(ty))
+        {
+            state.emit("truthy");
+            return;
+        }
+
         state.emit("~");
 
         // The precedence of `~` should be less than `|` and `&`.

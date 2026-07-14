@@ -47,6 +47,7 @@ struct ToStringOptions
     bool hideFunctionSelfArgument = false;        // If true, `self: X` will be omitted from the function signature if the function has self
     bool hideTableAliasExpansions = false;        // If true, all table aliases will not be expanded
     bool useQuestionMarks = true;                 // If true, use a postfix ? for options, else write them out as unions that include nil.
+    bool useTruthyFalsy = true;                   // If true, `~(false?)` and `false?` will emit `truthy` and `falsy` respectively.
     bool ignoreSyntheticName = false;             // If true, ignore synthetic names on table types.
     size_t maxTableLength = size_t(FInt::LuauTableTypeMaximumStringifierLength); // Only applied to TableTypes
     size_t maxTypeLength = size_t(FInt::LuauTypeMaximumStringifierLength);
