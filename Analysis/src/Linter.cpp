@@ -716,9 +716,10 @@ private:
     struct Local
     {
         AstNode* defined = nullptr;
-        bool function;
+        std::optional<Location> function;
         bool import;
         bool used;
+        bool softUsed;
         bool arg;
     };
 
@@ -803,13 +804,22 @@ private:
             return;
 
         if (info.function)
-            emitWarning(
-                *context,
-                LintWarning::Code_FunctionUnused,
-                local->location,
-                "Function '%s' is never used; prefix with '_' to silence",
-                local->name.value
-            );
+            if (info.softUsed)
+                emitWarning(
+                    *context,
+                    LintWarning::Code_FunctionUnused,
+                    local->location,
+                    "Function '%s' is never used outside its own body; prefix with '_' to silence",
+                    local->name.value
+                );
+            else
+                emitWarning(
+                    *context,
+                    LintWarning::Code_FunctionUnused,
+                    local->location,
+                    "Function '%s' is never used; prefix with '_' to silence",
+                    local->name.value
+                );
         else if (info.import)
             emitWarning(
                 *context, LintWarning::Code_ImportUnused, local->location, "Import '%s' is never used; prefix with '_' to silence", local->name.value
@@ -878,7 +888,7 @@ private:
         Local& l = locals[node->name];
 
         l.defined = node;
-        l.function = true;
+        l.function.emplace(node->location);
 
         return true;
     }
@@ -887,7 +897,10 @@ private:
     {
         Local& l = locals[node->local];
 
-        l.used = true;
+        if (l.function && l.function.value().contains(node->location.begin))
+            l.softUsed = true;
+        else
+            l.used = true;
 
         return true;
     }
@@ -960,7 +973,8 @@ private:
     struct Global
     {
         Location location;
-        bool function;
+        std::optional<Location> function;
+        bool softUsed;
         bool used;
     };
 
@@ -975,7 +989,17 @@ private:
     {
         for (auto& g : globals)
         {
-            if (g.second.function && !g.second.used && g.first.value[0] != '_')
+            if (!g.second.function || g.second.used || g.first.value[0] == '_')
+                continue;
+            if (g.second.softUsed)
+                emitWarning(
+                    *context,
+                    LintWarning::Code_FunctionUnused,
+                    g.second.location,
+                    "Function '%s' is never used outside its own body; prefix with '_' to silence",
+                    g.first.value
+                );
+            else
                 emitWarning(
                     *context,
                     LintWarning::Code_FunctionUnused,
@@ -992,7 +1016,7 @@ private:
         {
             Global& g = globals[expr->name];
 
-            g.function = true;
+            g.function.emplace(node->location);
             g.location = expr->location;
 
             node->func->visit(this);
@@ -1007,7 +1031,10 @@ private:
     {
         Global& g = globals[node->name];
 
-        g.used = true;
+        if (g.function && g.function.value().contains(node->location.begin))
+            g.softUsed = true;
+        else
+            g.used = true;
 
         return true;
     }
