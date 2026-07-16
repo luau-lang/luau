@@ -55,12 +55,6 @@ static int maxn(lua_State* L)
 
     LuaTable* t = hvalue(L->base);
 
-    for (int i = 0; i < t->sizearray; i++)
-    {
-        if (!ttisnil(&t->array[i]))
-            max = i + 1;
-    }
-
     for (int i = 0; i < sizenode(t); i++)
     {
         LuaNode* n = gnode(t, i);
@@ -71,6 +65,16 @@ static int maxn(lua_State* L)
 
             if (v > max)
                 max = v;
+        }
+    }
+
+    for (int i = t->sizearray; i > max;)
+    {
+        i--;
+        if (!ttisnil(&t->array[i]))
+        {
+            max = i + 1;
+            break;
         }
     }
 
