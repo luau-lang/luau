@@ -390,8 +390,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expected =
-        R"(Table type '{ ["\n"]: number }' not compatible with type '{ ["<>"]: number }' because the former is missing field '<>')";
+    const std::string expected = R"(required field '<>' not found in type '{ ["\n"]: number }' from expected type '{ ["<>"]: number }')";
     CHECK(expected == toString(result.errors[0]));
 }
 
@@ -408,15 +407,14 @@ local a: Animal = { tag = 'cat', cafood = 'something' }
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (!FFlag::DebugLuauForceOldSolver)
         CHECK(
-            R"(Table type '{ cafood: string, tag: "cat" }' not compatible with type 'Cat' because the former is missing field 'catfood')" ==
-            toString(result.errors[0])
+            R"(required field 'catfood' not found in type '{ cafood: string, tag: "cat" }' from expected type 'Cat')" == toString(result.errors[0])
         );
     else
     {
         const std::string expected = R"(Expected this to be 'Cat | Dog', but got 'a'
 caused by:
   None of the union options are compatible. For example:
-Table type 'a' not compatible with type 'Cat' because the former is missing field 'catfood')";
+required field 'catfood' not found in type 'a' from expected type 'Cat')";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
 }
@@ -435,8 +433,7 @@ local a: Result = { success = false, result = 'something' }
     if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK_EQ(
-            "Table type '{ result: string, success: false }' not compatible with type 'Bad' because the former is missing field 'error'",
-            toString(result.errors[0])
+            "required field 'error' not found in type '{ result: string, success: false }' from expected type 'Bad'", toString(result.errors[0])
         );
     }
     else
@@ -444,7 +441,7 @@ local a: Result = { success = false, result = 'something' }
         const std::string expected = R"(Expected this to be 'Bad | Good', but got 'a'
 caused by:
   None of the union options are compatible. For example:
-Table type 'a' not compatible with type 'Bad' because the former is missing field 'error')";
+required field 'error' not found in type 'a' from expected type 'Bad')";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
 }
@@ -465,8 +462,7 @@ TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ(
-        "Table type '{ result: string, success: false }' not compatible with type 'Err<number>' because the former is missing field 'error'",
-        toString(result.errors[0])
+        "required field 'error' not found in type '{ result: string, success: false }' from expected type 'Err<number>'", toString(result.errors[0])
     );
 }
 
