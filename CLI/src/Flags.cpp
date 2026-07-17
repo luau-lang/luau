@@ -66,7 +66,7 @@ void setLuauFlags(const char* list)
                 setLuauFlags(true);
             else if (element == "false" || element == "False")
                 setLuauFlags(false);
-            else if (element == "standard")
+            else if (element == "nonexperimental")
                 setLuauFlags(true, true);
             else
                 setLuauFlag(element, true);
