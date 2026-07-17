@@ -22,9 +22,9 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauBidirectionalInferenceVariadics)
-LUAU_FASTFLAG(LuauConstraintGraph)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
+LUAU_FASTFLAG(LuauCollapseDirectBoundCycles)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1424,16 +1424,25 @@ g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument")
 {
-    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCollapseDirectBoundCycles, true},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+    };
+
 
     CheckResult result = check(R"(
 local a = {{x=4}, {x=7}, {x=1}}
 table.sort(a, function(x, y) return x.x < y.x end)
     )");
 
-    // FIXME CLI-161355
+    // FIXME CLI-161355: We *should* be able to bidirectionally push the type
+    // of `a` into the lambda, but for now we claim that the inner lambda has
+    // type ({ read x: unknown }, { read x: unknown }) -> bool, and then
+    // error because you canont compare `unknown`s.
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(get<CannotInferBinaryOperation>(result.errors[0]));
+    CHECK(get<GenericError>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_any_is_compatible_with_a_generic_TypePack")
@@ -2887,7 +2896,6 @@ TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
-        {FFlag::LuauConstraintGraph, true},
     };
 
     CheckResult result = check(R"(

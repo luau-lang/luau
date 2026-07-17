@@ -864,13 +864,7 @@ void AstStatFunction::visit(AstVisitor* visitor)
     }
 }
 
-AstStatLocalFunction::AstStatLocalFunction(
-    const Location& location,
-    AstLocal* name,
-    AstExprFunction* func,
-    bool isConst,
-    Position constKeywordBegin
-)
+AstStatLocalFunction::AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func, bool isConst, Position constKeywordBegin)
     : AstStat(ClassIndex(), location)
     , name(name)
     , func(func)

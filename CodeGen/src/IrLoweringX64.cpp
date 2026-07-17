@@ -34,8 +34,8 @@ IrLoweringX64::IrLoweringX64(LogBuilder* logger, AssemblyBuilderX64& build, Modu
     , helpers(helpers)
     , function(function)
     , stats(stats)
-    , regs(build, function, stats)
-    , valueTracker(function)
+    , regs(logger, build, function, stats)
+    , valueTracker(logger, function)
     , exitHandlerMap(~0u)
 {
     valueTracker.setRestoreCallback(

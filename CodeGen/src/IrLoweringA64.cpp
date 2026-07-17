@@ -13,6 +13,7 @@
 #include "lgc.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenFixBufferLenCheck)
+LUAU_FASTFLAGVARIABLE(LuauCodegenFixTwoResA64Builtin)
 LUAU_FASTFLAG(LuauYieldIter2)
 LUAU_FASTFLAG(LuauCIProto)
 LUAU_FASTFLAG(LuauCodegenSharedLog)
@@ -239,8 +240,18 @@ static bool emitBuiltin(AssemblyBuilderA64& build, IrFunction& function, IrRegAl
 
         if (nresults == 2)
         {
-            build.ldr(w0, sTemporary);
-            build.scvtf(d1, w0);
+            if (FFlag::LuauCodegenFixTwoResA64Builtin)
+            {
+                RegisterA64 temp2 = regs.allocTemp(KindA64::w);
+                build.ldr(temp2, sTemporary);
+                build.scvtf(d1, temp2);
+            }
+            else
+            {
+                build.ldr(w0, sTemporary);
+                build.scvtf(d1, w0);
+            }
+
             build.str(d1, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, value.n)));
             build.str(temp, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, tt)));
         }
@@ -293,8 +304,8 @@ IrLoweringA64::IrLoweringA64(LogBuilder* logger, AssemblyBuilderA64& build, Modu
     , helpers(helpers)
     , function(function)
     , stats(stats)
-    , regs(build, function, stats, {{x0, x15}, {x16, x17}, {q0, q7}, {q16, q31}})
-    , valueTracker(function)
+    , regs(logger, build, function, stats, {{x0, x15}, {x16, x17}, {q0, q7}, {q16, q31}})
+    , valueTracker(logger, function)
     , exitHandlerMap(~0u)
 {
     valueTracker.setRestoreCallback(
