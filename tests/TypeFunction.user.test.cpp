@@ -21,6 +21,7 @@ LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
+LUAU_FASTFLAG(LuauUdtfTypeSetReadIndexerMethod)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3477,6 +3478,89 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
     CHECK_EQ(
         toString(results.errors[0]),
         "'meow' type function errored at runtime: [string \"meow\"]:4: types.singleton: can't create a singleton from a type"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_setreadindexer_works_for_newtable")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD()
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauUdtfTypeSetReadIndexerMethod, true},
+        {FFlag::LuauTypeFunctionTableIndexerIsReadOnly, true},
+        {FFlag::LuauReadOnlyIndexers, true},
+    };
+
+    CheckResult results = check(R"(
+        type function meow(index: type, value: type)
+            local new = types.newtable()
+            new:setreadindexer(index, value)
+            return new
+        end
+
+        local a: meow<number, string>
+        local b: meow<string, number>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+
+    CHECK_EQ(toString(requireType("a")), "{read string}");
+    CHECK_EQ(toString(requireType("b")), "{ read [string]: number }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_setreadindexer_works_when_existing_readonly_indexer")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD()
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauUdtfTypeSetReadIndexerMethod, true},
+        {FFlag::LuauTypeFunctionTableIndexerIsReadOnly, true},
+        {FFlag::LuauReadOnlyIndexers, true},
+    };
+
+    CheckResult results = check(R"(
+        type function kya(tbl: type)
+            tbl:setreadindexer(types.string, types.boolean)
+            return tbl
+        end
+
+        local a: kya<{ read [number]: number }>
+        local b: kya<{ read [string]: number }>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+
+    CHECK_EQ(toString(requireType("a")), "{ read [string]: boolean }");
+    CHECK_EQ(toString(requireType("b")), "{ read [string]: boolean }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_setreadindexer_errors_when_existing_readwrite_indexer")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD()
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauUdtfTypeSetReadIndexerMethod, true},
+        {FFlag::LuauTypeFunctionTableIndexerIsReadOnly, true},
+        {FFlag::LuauReadOnlyIndexers, true},
+    };
+
+    CheckResult results = check(R"(
+        type function nyanya(tbl: type)
+            tbl:setreadindexer(types.string, types.boolean)
+            return tbl
+        end
+
+        local a: nyanya<{ [number]: number }>
+        local b: nyanya<{ [string]: number }>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, results);
+    CHECK_EQ(
+        toString(results.errors[0]),
+        "'nyanya' type function errored at runtime: [string \"nyanya\"]:3: types.setreadindexer: the table has an existing read+write indexer, which "
+        "luau does not support setreadindexer for yet"
+    );
+    CHECK_EQ(
+        toString(results.errors[1]),
+        "'nyanya' type function errored at runtime: [string \"nyanya\"]:3: types.setreadindexer: the table has an existing read+write indexer, which "
+        "luau does not support setreadindexer for yet"
     );
 }
 

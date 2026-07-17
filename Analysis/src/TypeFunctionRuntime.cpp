@@ -34,6 +34,7 @@ LUAU_FASTFLAGVARIABLE(LuauTypeFunctionTableIndexerIsReadOnly)
 LUAU_FASTFLAGVARIABLE(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeUseTaggedMetatable)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeToStringMetamethod)
+LUAU_FASTFLAGVARIABLE(LuauUdtfTypeSetReadIndexerMethod)
 
 namespace Luau
 {
@@ -1111,7 +1112,35 @@ static int setTableIndexer(lua_State* L)
 // Sets the read indexer of the table
 static int setTableReadIndexer(lua_State* L)
 {
-    luaL_error(L, "type.setreadindexer: luau does not yet support separate read/write types for indexers.");
+    if (!(FFlag::LuauUdtfTypeSetReadIndexerMethod && FFlag::LuauTypeFunctionTableIndexerIsReadOnly))
+        luaL_error(L, "type.setreadindexer: this function is not enabled yet");
+
+    int argumentCount = lua_gettop(L);
+    if (argumentCount == 2 && get<TypeFunctionNeverType>(getTypeUserData(L, 2)))
+        luaL_error(
+            L,
+            "type.setreadindexer: expected 3 arguments, but got 2; the key was types.never, did you mean to do :setreadindexer(types.never, "
+            "types.never)?"
+        );
+    if (argumentCount != 3)
+        luaL_error(L, "type.setreadindexer: expected 3 arguments, but got %d", argumentCount);
+
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+    auto tftt = getMutable<TypeFunctionTableType>(self);
+    if (!tftt)
+        luaL_error(L, "type.setreadindexer: expected self to be either a table, but got %s instead", getTag(L, self).c_str());
+
+    if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
+        luaL_error(L, "type.setreadindexer: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
+
+    TypeFunctionTypeId key = getTypeUserData(L, 2);
+    if (tftt->indexer && !tftt->indexer->isReadOnly)
+        luaL_error(L, "types.setreadindexer: the table has an existing read+write indexer, which luau does not support setreadindexer for yet");
+
+    TypeFunctionTypeId value = getTypeUserData(L, 3);
+
+    tftt->indexer = TypeFunctionTableIndexer{key, value, true};
+    return 0;
 }
 
 // Luau: `self:setwriteindexer(key: type, value: type)`
