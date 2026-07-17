@@ -6,6 +6,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
+LUAU_FASTFLAGVARIABLE(LuauBetterIntegerAnalysis)
 
 namespace Luau
 {
@@ -343,6 +344,54 @@ declare vector: {
 static const char* const kBuiltinDefinitionIntegerSrc = R"BUILTIN_SRC(
 
 declare integer: {
+    create: @checked (x: number) -> integer?,
+    tonumber: @checked (x: integer) -> number,
+    neg: @checked (value: integer) -> integer,
+    add: @checked (x: integer, y: integer) -> integer,
+    sub: @checked (x: integer, y: integer) -> integer,
+    mul: @checked (x: integer, y: integer) -> integer,
+    div: @checked (x: integer, y: integer) -> integer,
+    rem: @checked (x: integer, y: integer) -> integer,
+    idiv: @checked (x: integer, y: integer) -> integer,
+    mod: @checked (x: integer, y: integer) -> integer,
+    udiv: @checked (x: integer, y: integer) -> integer,
+    urem: @checked (x: integer, y: integer) -> integer,
+    min: @checked (integer, ...integer) -> integer,
+    max: @checked (integer, ...integer) -> integer,
+    band: @checked (...integer) -> integer,
+    bor: @checked (...integer) -> integer,
+    bnot: @checked (x: integer) -> integer,
+    bxor: @checked (...integer) -> integer,
+    lt: @checked (x: integer, y: integer) -> boolean,
+    le: @checked (x: integer, y: integer) -> boolean,
+    ult: @checked (x: integer, y: integer) -> boolean,
+    ule: @checked (x: integer, y: integer) -> boolean,
+    gt: @checked (x: integer, y: integer) -> boolean,
+    ge: @checked (x: integer, y: integer) -> boolean,
+    ugt: @checked (x: integer, y: integer) -> boolean,
+    uge: @checked (x: integer, y: integer) -> boolean,
+    lshift: @checked (x: integer, numBitPositions: integer) -> integer,
+    rshift: @checked (x: integer, numBitPositions: integer) -> integer,
+    arshift: @checked (x: integer, numBitPositions: integer) -> integer,
+    lrotate: @checked (x: integer, numBitPositions: integer) -> integer,
+    rrotate: @checked (x: integer, numBitPositions: integer) -> integer,
+    extract: @checked (value: integer, bitPosition: integer, numBits: integer?) -> integer,
+    replace: @checked (value: integer, replacement: integer, bitPosition: integer, numBits: integer?) -> integer,
+    clamp: @checked (value: integer, min: integer, max: integer) -> integer,
+    btest: @checked (...integer) -> boolean,
+    countrz: @checked (x: integer) -> integer,
+    countlz: @checked (x: integer) -> integer,
+    bswap: @checked (x: integer) -> integer,
+    fromstring: @checked (str: string, base: number?) -> integer?,
+    minsigned: integer,
+    maxsigned: integer
+}
+
+)BUILTIN_SRC";
+
+static const char* const kBuiltinDefinitionIntegerSrc_DEPRECATED = R"BUILTIN_SRC(
+
+declare integer: {
     create: @checked (x: number) -> integer,
     tonumber: @checked (x: integer) -> number,
     neg: @checked (value: integer) -> integer,
@@ -415,7 +464,10 @@ std::string getBuiltinDefinitionSource()
 
     if (FFlag::LuauIntegerType2 && FFlag::LuauIntegerLibrary)
     {
-        result += kBuiltinDefinitionIntegerSrc;
+        if (FFlag::LuauBetterIntegerAnalysis)
+            result += kBuiltinDefinitionIntegerSrc;
+        else
+            result += kBuiltinDefinitionIntegerSrc_DEPRECATED;
     }
 
     if (FFlag::DebugLuauUserDefinedClasses && FFlag::LuauAllowGlobalDeclarationToBeCalledClass)
