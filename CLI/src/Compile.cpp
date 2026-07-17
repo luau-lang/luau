@@ -485,8 +485,6 @@ int main(int argc, char** argv)
 {
     Luau::assertHandler() = assertionHandler;
 
-    setLuauFlagsDefault();
-
     CompileFormat compileFormat = CompileFormat::Text;
     Luau::CodeGen::AssemblyOptions::Target assemblyTarget = Luau::CodeGen::AssemblyOptions::Host;
     RecordStats recordStats = RecordStats::None;

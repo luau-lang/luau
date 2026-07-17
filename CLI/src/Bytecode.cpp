@@ -270,8 +270,6 @@ int main(int argc, char** argv)
 {
     Luau::assertHandler() = assertionHandler;
 
-    setLuauFlagsDefault();
-
     std::string summaryFile("bytecode-summary.json");
     unsigned nestingLimit = 0;
 

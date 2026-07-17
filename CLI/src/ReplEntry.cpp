@@ -4,7 +4,5 @@
 
 int main(int argc, char** argv)
 {
-    setLuauFlagsDefault();
-
     return replMain(argc, argv);
 }

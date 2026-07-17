@@ -37,13 +37,6 @@ static void setLuauFlags(bool state)
             flag->value = state;
 }
 
-void setLuauFlagsDefault()
-{
-    for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
-        if (strncmp(flag->name, "Luau", 4) == 0 && !Luau::isAnalysisFlagExperimental(flag->name))
-            flag->value = true;
-}
-
 void setLuauFlags(const char* list)
 {
     std::string_view rest = list;
