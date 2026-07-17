@@ -389,7 +389,6 @@ public:
         // This is nice to do because it means the user of dense hash doesn't have to design a good hash function - e.g. if you're hashing integers
         // you can just return the integer. If you tried to do this with DenseHash(old), you'd end up with a lot of clustering, and it means we can
         // just use std::hash as the default hash everywhere
-        LUAU_ASSERT(hashShift > 32);
         return static_cast<size_t>((static_cast<uint64_t>(hasher(key)) * 11400714819323198485ull) >> hashShift);
     }
 
