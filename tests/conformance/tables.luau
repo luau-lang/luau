@@ -311,6 +311,12 @@ assert(table.maxn{["1000"] = true} == 0)
 assert(table.maxn{["1000"] = true, [24.5] = 3} == 24.5)
 assert(table.maxn{[1000] = true} == 1000)
 assert(table.maxn{[10] = true, [100*math.pi] = print} == 100*math.pi)
+assert(table.maxn{[1] = true, [2] = true, [1.1] = true} == 2)
+assert(table.maxn{[1] = true, [2] = nil, [1.1] = true} == 1.1)
+assert(table.maxn{[1] = true, [0.9999] = true} == 1)
+assert(table.maxn{[0] = 123, [0.1] = 1234} == 0.1)
+assert(table.maxn{[1] = true, [math.huge] = true} == math.huge)
+assert(table.maxn{[1] = true, [-math.huge] = true} == 1)
 a = {[10] = 1, [20] = 2}
 a[20] = nil
 assert(table.maxn(a) == 10)
