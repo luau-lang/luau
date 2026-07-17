@@ -737,7 +737,7 @@ struct Sccp
         for (BcBlock& block : func.blocks)
         {
             uint32_t blockidx = func.getBlockIndex(block);
-            block.useCount = blockUses[blockidx].size();
+            block.useCount = uint32_t(blockUses[blockidx].size());
             if (!reachable.contains(blockidx))
                 block.flags |= BcBlockFlag::Dead;
         }
