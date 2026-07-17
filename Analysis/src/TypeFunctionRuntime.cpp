@@ -341,20 +341,20 @@ void pushType(lua_State* L, TypeFunctionTypeId type)
 {
     luaL_checkstack(L, 2, "allocating type");
 
-    TypeFunctionTypeId* ptr = nullptr;
-
     if (FFlag::LuauUdtfTypeUseTaggedMetatable)
-        ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+    {
+        TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+        *ptr = type;
+    }
     else
     {
-        ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+        TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+        *ptr = type;
 
         // set the new userdata's metatable to type metatable
         luaL_getmetatable(L, "type");
         lua_setmetatable(L, -2);
     }
-
-    *ptr = type;
 }
 
 // Pushes a new type userdata onto the stack
@@ -363,21 +363,22 @@ void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type, bool frozen)
     luaL_checkstack(L, 2, "allocating type");
 
     // allocate a new type userdata
-    TypeFunctionTypeId* ptr = nullptr;
-
     if (FFlag::LuauUdtfTypeUseTaggedMetatable)
-        ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+    {
+        TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+        *ptr = allocateTypeFunctionType(L, std::move(type));
+        const_cast<TypeFunctionType*>(*ptr)->frozen = frozen;
+    }
     else
     {
-        ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+        TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+        *ptr = allocateTypeFunctionType(L, std::move(type));
+        const_cast<TypeFunctionType*>(*ptr)->frozen = frozen;
 
         // set the new userdata's metatable to type metatable
         luaL_getmetatable(L, "type");
         lua_setmetatable(L, -2);
     }
-
-    *ptr = allocateTypeFunctionType(L, std::move(type));
-    const_cast<TypeFunctionType*>(*ptr)->frozen = frozen;
 }
 
 void deallocTypeUserData(lua_State* L, void* data)
@@ -387,12 +388,25 @@ void deallocTypeUserData(lua_State* L, void* data)
 
 bool isTypeUserData(lua_State* L, int idx)
 {
+    if (!FFlag::LuauUdtfTypeUseTaggedMetatable && !lua_isuserdata(L, idx))
+        return false;
+
     return lua_touserdatatagged(L, idx, kTypeUserdataTag) != nullptr;
 }
 
 TypeFunctionTypeId getTypeUserData(lua_State* L, int idx)
 {
-    return *static_cast<TypeFunctionTypeId*>(luaL_checkudatatagged(L, idx, kTypeUserdataTag));
+    if (FFlag::LuauUdtfTypeUseTaggedMetatable)
+    {
+        return *static_cast<TypeFunctionTypeId*>(luaL_checkudatatagged(L, idx, kTypeUserdataTag));
+    }
+    else
+    {
+        if (auto typ = static_cast<TypeFunctionTypeId*>(lua_touserdatatagged(L, idx, kTypeUserdataTag)))
+            return *typ;
+
+        luaL_typeerrorL(L, idx, "type");
+    }
 }
 
 std::optional<TypeFunctionTypeId> optionalTypeUserData(lua_State* L, int idx)
