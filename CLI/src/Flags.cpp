@@ -30,10 +30,10 @@ static void setLuauFlag(std::string_view name, bool state)
     fprintf(stderr, "Warning: unrecognized flag '%.*s'.\n", int(name.length()), name.data());
 }
 
-static void setLuauFlags(bool state)
+static void setLuauFlags(bool state, bool allowExperimental)
 {
     for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
-        if (strncmp(flag->name, "Luau", 4) == 0)
+        if (strncmp(flag->name, "Luau", 4) == 0 && (allowExperimental || !Luau::isAnalysisFlagExperimental(flag->name)))
             flag->value = state;
 }
 
@@ -66,6 +66,8 @@ void setLuauFlags(const char* list)
                 setLuauFlags(true);
             else if (element == "false" || element == "False")
                 setLuauFlags(false);
+            else if (element == "standard")
+                setLuauFlags(true, true);
             else
                 setLuauFlag(element, true);
         }
