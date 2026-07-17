@@ -29,9 +29,9 @@ inline size_t countTrailingZeroes(uint64_t word)
     return idx;
 #else
     size_t n = 0;
-    while ((x & 1) == 0)
+    while ((word & 1) == 0)
     {
-        x >>= 1;
+        word >>= 1;
         ++n;
     }
     return n;
