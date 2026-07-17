@@ -23,7 +23,7 @@ inline size_t countTrailingZeroes(uint64_t word)
     LUAU_ASSERT(word != 0);
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_ctzll(word);
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) && defined(_M_X64)
     unsigned long idx;
     _BitScanForward64(&idx, word);
     return idx;
