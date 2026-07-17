@@ -9,8 +9,6 @@
 
 #include <stdarg.h>
 
-LUAU_FASTFLAG(LuauCodegenVmExitSync)
-
 namespace Luau
 {
 namespace CodeGen
@@ -911,41 +909,38 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blo
         ctx.result.append("\n");
     }
 
-    if (FFlag::LuauCodegenVmExitSync)
+    if (const VmExitSyncInfo* sync = ctx.vmExitInfo.find(instIdx))
     {
-        if (const VmExitSyncInfo* sync = ctx.vmExitInfo.find(instIdx))
+        if (!sync->regStores.empty())
         {
-            if (!sync->regStores.empty())
+            append(ctx.result, "   ; exit sync: ");
+
+            bool comma = false;
+
+            for (auto& el : sync->regStores)
             {
-                append(ctx.result, "   ; exit sync: ");
+                if (comma)
+                    append(ctx.result, ", ");
+                comma = true;
 
-                bool comma = false;
-
-                for (auto& el : sync->regStores)
-                {
-                    if (comma)
-                        append(ctx.result, ", ");
-                    comma = true;
-
-                    append(ctx.result, "R%d", el.reg);
-                }
-
-                comma = false;
-
-                append(ctx.result, ", {");
-
-                for (auto argOp : sync->argOps)
-                {
-                    if (comma)
-                        append(ctx.result, ", ");
-                    comma = true;
-
-                    toString(ctx, argOp);
-                }
-
-                append(ctx.result, "}");
-                append(ctx.result, "\n");
+                append(ctx.result, "R%d", el.reg);
             }
+
+            comma = false;
+
+            append(ctx.result, ", {");
+
+            for (auto argOp : sync->argOps)
+            {
+                if (comma)
+                    append(ctx.result, ", ");
+                comma = true;
+
+                toString(ctx, argOp);
+            }
+
+            append(ctx.result, "}");
+            append(ctx.result, "\n");
         }
     }
 }

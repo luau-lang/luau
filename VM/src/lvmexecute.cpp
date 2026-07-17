@@ -18,7 +18,7 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauDirectFieldGet)
-LUAU_FLAGVERSION(LuauDirectFieldGet, 2)
+LUAU_FLAGVERSION(LuauDirectFieldGet, 3)
 
 LUAU_FASTFLAGVARIABLE(LuauCIProto)
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClassesRuntime)

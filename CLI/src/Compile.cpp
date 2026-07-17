@@ -436,6 +436,7 @@ static void displayHelp(const char* argv0)
     printf("  -h, --help: Display this usage message.\n");
     printf("  -O<n>: compile with optimization level n (default 1, n should be between 0 and 2).\n");
     printf("  -g<n>: compile with debug level n (default 1, n should be between 0 and 2).\n");
+    printf("  -t<n>: compile with type information level n (default 0, n should be between 0 and 1).\n");
     printf("  --target=<target>: compile code for specific architecture (a64, x64, a64_nf, x64_ms).\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
     printf("  --record-stats=<granularity>: granularity of compilation stats (total, file, function).\n");

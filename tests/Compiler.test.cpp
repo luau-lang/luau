@@ -29,7 +29,6 @@ LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
-LUAU_FASTFLAG(LuauCompileTypeAliases)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCompileNewTableMutationTracker)
 LUAU_FASTFLAG(LuauCompileInlineTableFunctions)
@@ -10303,8 +10302,6 @@ type Instance = string
 
 TEST_CASE("TypeAliasResolve")
 {
-    ScopedFastFlag luauTypeAliases{FFlag::LuauCompileTypeAliases, true};
-
     CHECK_EQ(
         "\n" + compileTypeTable(R"(
 type Foo1 = number

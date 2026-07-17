@@ -808,6 +808,14 @@ void luaC_freeall(lua_State* L)
     LUAU_ASSERT(L->global->strt.nuse == 0);
 }
 
+static void markudatadirectfields(global_State* g)
+{
+    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
+    for (int i = 0; i < UTAG_INTERNAL_LIMIT; i++)
+        if (g->udatadirectfields[i])
+            markobject(g, g->udatadirectfields[i]);
+}
+
 static void markmt(global_State* g)
 {
     int i;
@@ -850,11 +858,7 @@ static void markroot(lua_State* L)
     }
 
     if (FFlag::LuauDirectFieldGet)
-    {
-        for (int i = 0; i < UTAG_INTERNAL_LIMIT; i++)
-            if (g->udatadirectfields[i])
-                markobject(g, g->udatadirectfields[i]);
-    }
+        markudatadirectfields(g);
 
     markmt(g);
 
@@ -947,6 +951,9 @@ static size_t atomic(lua_State* L)
 
     if (FFlag::LuauUdataMetatablePinned)
         marktaggetmt(g); // mark tagged userdata metatables (again)
+
+    if (FFlag::LuauDirectFieldGet)
+        markudatadirectfields(g); // mark direct field dispatch tables (again)
 
     work += propagateall(g);
 

@@ -13,7 +13,6 @@
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
 LUAU_FASTFLAGVARIABLE(DebugCodegenLimitRegs)
 
-LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAG(LuauCodegenNoEcbData)
 
 namespace Luau
@@ -159,8 +158,7 @@ IrRegAllocA64::IrRegAllocA64(
 
 RegisterA64 IrRegAllocA64::allocReg(KindA64 kind, uint32_t index)
 {
-    if (FFlag::LuauCodegenVmExitSync)
-        allocActionCount++;
+    allocActionCount++;
 
     Set& set = getSet(kind);
 
@@ -192,8 +190,7 @@ RegisterA64 IrRegAllocA64::allocReg(KindA64 kind, uint32_t index)
 
 RegisterA64 IrRegAllocA64::allocTemp(KindA64 kind)
 {
-    if (FFlag::LuauCodegenVmExitSync)
-        allocActionCount++;
+    allocActionCount++;
 
     Set& set = getSet(kind);
 
@@ -723,7 +720,7 @@ uint32_t IrRegAllocA64::findInstructionWithFurthestNextUse(Set& set) const
         uint32_t nextUse = getNextInstUse(function, regInstUser, currInstIdx, inVmExitSync);
 
         // Cannot spill value that is about to be used in the current instruction
-        if (nextUse == currInstIdx && (!FFlag::LuauCodegenVmExitSync || !inVmExitSync))
+        if (nextUse == currInstIdx && !inVmExitSync)
             continue;
 
         if (furthestUseTarget == kInvalidInstIdx || nextUse > furthestUseLocation)

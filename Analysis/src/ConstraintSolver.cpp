@@ -55,6 +55,7 @@ LUAU_FASTFLAGVARIABLE(LuauFixInfiniteTypeRedundantBind)
 LUAU_FASTFLAG(LuauBidirectionalInferenceVariadics)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauRemoveExtraSubtypingInstances)
+LUAU_FASTFLAGVARIABLE(LuauIndexingIntoErrorGivesError)
 
 namespace Luau
 {
@@ -1829,13 +1830,13 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         //
         // Our solution for now is, if there are no bounds on any
         // generics, we do not store the resolved overload.
-        bool hasBound = false;
+        bool hasNonTrivialSubstitution = false;
         for (auto& [_, ty] : u2.genericSubstitutions)
             if (auto ft = get<FreeType>(ty))
-                hasBound |= !is<NeverType>(follow(ft->lowerBound)) || !is<UnknownType>(follow(ft->upperBound));
+                hasNonTrivialSubstitution |= !is<NeverType>(follow(ft->lowerBound)) || !is<UnknownType>(follow(ft->upperBound));
 
         // If we have generics we can bind *and*
-        if (auto overloadAsFn = get<FunctionType>(overloadToUse); overloadAsFn && hasBound)
+        if (auto overloadAsFn = get<FunctionType>(overloadToUse); overloadAsFn && hasNonTrivialSubstitution)
         {
             CloneState cs{builtinTypes};
             // We want to clone persistent types here, for example if we try to instantiate
@@ -3570,7 +3571,7 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
 
     if (isBlocked(subjectType))
         return {{subjectType}, std::nullopt};
-    else if (get<AnyType>(subjectType) || get<NeverType>(subjectType))
+    else if (get<AnyType>(subjectType) || get<NeverType>(subjectType) || (FFlag::LuauIndexingIntoErrorGivesError && get<ErrorType>(subjectType)))
     {
         return {{}, subjectType};
     }

@@ -11,8 +11,6 @@
 #include "lobject.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenDsePtrStoreTagCheck)
-LUAU_FASTFLAG(LuauCodegenVmExitSync)
-LUAU_FASTFLAGVARIABLE(LuauCodegenVmExitSyncFix)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDseRestoreHints)
 LUAU_FLAGVERSION(LuauCodegenDseRestoreHints, 2)
 
@@ -347,7 +345,7 @@ struct RemoveDeadStoreState
     {
         if (op.kind == IrOpKind::VmExit)
         {
-            if (FFlag::LuauCodegenVmExitSync && recordVmExitSync && vmExitOp(op) != kVmExitEntryGuardPc)
+            if (recordVmExitSync && vmExitOp(op) != kVmExitEntryGuardPc)
             {
                 VmExitSyncInfo& syncInfo = function.vmExitInfo[instIdx];
                 CODEGEN_ASSERT(syncInfo.regStores.empty());
@@ -632,12 +630,9 @@ struct RemoveDeadStoreState
                     regInfo.tvalueInstIdx = ~0u;
                 }
 
-                if (FFlag::LuauCodegenVmExitSync)
-                {
-                    // If the GCO values remain, they can no longer be propagated further as that will create a new use
-                    // And we ensured there will be no more uses with 'hasRemainingUses' above
-                    invalidateValuePropagation(regInfo);
-                }
+                // If the GCO values remain, they can no longer be propagated further as that will create a new use
+                // And we ensured there will be no more uses with 'hasRemainingUses' above
+                invalidateValuePropagation(regInfo);
 
                 // Indirect register read by GC doesn't clear the known tag
                 regInfo.maybeGco = false;
@@ -1314,38 +1309,35 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         break;
     }
 
-    if (FFlag::LuauCodegenVmExitSync)
+    // Pending stores with SSA operands must not be deferred to ExitSync blocks past instructions that can invalidate operand physical location
+    switch (inst.cmd)
     {
-        // Pending stores with SSA operands must not be deferred to ExitSync blocks past instructions that can invalidate operand physical location
-        switch (inst.cmd)
-        {
-            // These instructions can perform an indirect Luau function call through metamethods
-            // Creating new native execution frames can invalidate shared extended spill area
-        case IrCmd::CMP_ANY:
-        case IrCmd::DO_ARITH:
-        case IrCmd::DO_LEN:
-        case IrCmd::GET_TABLE:
-        case IrCmd::SET_TABLE:
-        case IrCmd::CONCAT:
-        case IrCmd::GET_CACHED_IMPORT:
-        case IrCmd::FORGLOOP_FALLBACK:
-        case IrCmd::FALLBACK_GETGLOBAL:
-        case IrCmd::FALLBACK_SETGLOBAL:
-        case IrCmd::FALLBACK_GETTABLEKS:
-        case IrCmd::FALLBACK_SETTABLEKS:
-        case IrCmd::FALLBACK_NAMECALL:
-        case IrCmd::FALLBACK_DUPCLOSURE:
-        case IrCmd::FALLBACK_FORGPREP:
-            // CALL directly executes a Luau function on the same native stack frame
-        case IrCmd::CALL:
-            // These instructions use lowering that is not aware of register allocator and demand no active values to exist
-        case IrCmd::SETLIST:
-        case IrCmd::FORGLOOP:
-            state.invalidateValuePropagation();
-            break;
-        default:
-            break;
-        }
+        // These instructions can perform an indirect Luau function call through metamethods
+        // Creating new native execution frames can invalidate shared extended spill area
+    case IrCmd::CMP_ANY:
+    case IrCmd::DO_ARITH:
+    case IrCmd::DO_LEN:
+    case IrCmd::GET_TABLE:
+    case IrCmd::SET_TABLE:
+    case IrCmd::CONCAT:
+    case IrCmd::GET_CACHED_IMPORT:
+    case IrCmd::FORGLOOP_FALLBACK:
+    case IrCmd::FALLBACK_GETGLOBAL:
+    case IrCmd::FALLBACK_SETGLOBAL:
+    case IrCmd::FALLBACK_GETTABLEKS:
+    case IrCmd::FALLBACK_SETTABLEKS:
+    case IrCmd::FALLBACK_NAMECALL:
+    case IrCmd::FALLBACK_DUPCLOSURE:
+    case IrCmd::FALLBACK_FORGPREP:
+        // CALL directly executes a Luau function on the same native stack frame
+    case IrCmd::CALL:
+        // These instructions use lowering that is not aware of register allocator and demand no active values to exist
+    case IrCmd::SETLIST:
+    case IrCmd::FORGLOOP:
+        state.invalidateValuePropagation();
+        break;
+    default:
+        break;
     }
 }
 
@@ -1425,7 +1417,7 @@ static void markDeadStoresInBlockChain(
             if (target.useCount == 1 && !visited[targetIdx] && target.kind != IrBlockKind::Fallback)
             {
                 // If this block isn't glued to the target in the lowering order, we cannot capture any remaining stores from it in ExitSync blocks
-                if (FFlag::LuauCodegenVmExitSyncFix && block->expectedNextBlock != targetIdx)
+                if (block->expectedNextBlock != targetIdx)
                     state.invalidateValuePropagation();
 
                 nextBlock = &target;
@@ -1435,12 +1427,9 @@ static void markDeadStoresInBlockChain(
         block = nextBlock;
     }
 
-    if (FFlag::LuauCodegenVmExitSync)
-    {
-        state.pruneVmExitInfo();
+    state.pruneVmExitInfo();
 
-        allRecordedVmExitSyncs.insert(allRecordedVmExitSyncs.end(), state.recordedVmExitSyncs.begin(), state.recordedVmExitSyncs.end());
-    }
+    allRecordedVmExitSyncs.insert(allRecordedVmExitSyncs.end(), state.recordedVmExitSyncs.begin(), state.recordedVmExitSyncs.end());
 
     // If there are allocating instructions, check if they have 'read' uses after DSE
     if (state.hasAllocations)
@@ -1685,8 +1674,7 @@ void markDeadStoresInBlockChains(IrBuilder& build)
         markDeadStoresInBlockChain(build, visited, remainingUses, blockIdxChain, recordedVmExitSyncs, &block);
     }
 
-    if (FFlag::LuauCodegenVmExitSync)
-        generateVmExitBlocks(build, recordedVmExitSyncs);
+    generateVmExitBlocks(build, recordedVmExitSyncs);
 }
 
 } // namespace CodeGen

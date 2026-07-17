@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauBidirectionalInferenceVariadics)
 LUAU_FASTFLAG(LuauConstraintGraph)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
+LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -692,11 +693,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_higher_order_function")
 
 TEST_CASE_FIXTURE(Fixture, "higher_order_function_2")
 {
-    // CLI-114134: this code *probably* wants the egraph in order
-    // to work properly. The new solver either falls over or
-    // forces so many constraints as to be unreliable.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         function bottomupmerge(comp, a, b, left, mid, right)
             local i, j = left, mid
@@ -762,11 +758,6 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_3")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "higher_order_function_4")
 {
-    // CLI-114134: this code *probably* wants the egraph in order
-    // to work properly. The new solver either falls over or
-    // forces so many constraints as to be unreliable.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         function bottomupmerge(comp, a, b, left, mid, right)
             local i, j = left, mid
@@ -4352,5 +4343,21 @@ TEST_CASE_FIXTURE(Fixture, "bidi_inference_union_of_functions_distinguished_by_r
     )"));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "pass_generic_function_to_pcall")
+{
+    ScopedFastFlag sff{FFlag::LuauHigherOrderGenericInference, true};
+
+    CheckResult result = check(R"(
+        local function identity<T>(t: T)
+            return t
+        end
+
+        local ok, result = pcall(identity, 42)
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    CHECK("number" == toString(requireType("result")));
+}
 
 TEST_SUITE_END();

@@ -13,6 +13,7 @@ LUAU_FASTFLAGVARIABLE(LuauCompileUdataDirect)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauVirtualBcBuilder)
+LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
 
 namespace Luau
 {
@@ -217,7 +218,7 @@ void BytecodeBuilder::clearState()
     debugRemarkBuffer.clear();
 }
 
-void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uint8_t flags)
+void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uint8_t flags, uint64_t cost)
 {
     LUAU_ASSERT(currentFunction != ~0u);
 
@@ -240,7 +241,7 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uin
     if (encoder)
         encoder->encode(insns.data(), insns.size());
 
-    writeFunction(func.data, currentFunction, flags);
+    writeFunction(func.data, currentFunction, flags, cost);
 
     currentFunction = ~0u;
 
@@ -747,13 +748,17 @@ void BytecodeBuilder::finalize()
     writeVarInt(bytecode, uint32_t(functions.size()));
 
     for (const Function& func : functions)
+    {
+        if (FFlag::LuauBytecodeCostModel)
+            writeVarInt(bytecode, func.data.size());
         bytecode += func.data;
+    }
 
     LUAU_ASSERT(mainFunction < functions.size());
     writeVarInt(bytecode, mainFunction);
 }
 
-void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
+void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags, uint64_t cost)
 {
     LUAU_ASSERT(id < functions.size());
     const Function& func = functions[id];
@@ -961,6 +966,13 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
             writeByte(ss, LFT_CALLTARGET);
             writeVarInt(ss, pc);
         }
+    }
+
+    if (FFlag::LuauBytecodeCostModel && (flags & LPF_INLINABLE) != 0)
+    {
+        if (!FFlag::LuauEmitCallFeedback)
+            writeVarInt(ss, 0);
+        writeVarInt(ss, cost);
     }
 }
 
@@ -1401,6 +1413,8 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
+    if (FFlag::LuauBytecodeCostModel)
+        return 12;
     if (FFlag::LuauEmitCallFeedback)
         return 11;
 

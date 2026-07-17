@@ -19,6 +19,11 @@
 #include <cstdio>
 #include <optional>
 
+LUAU_FASTINTVARIABLE(LuauJitInlineThreshold, 25)
+LUAU_FASTINTVARIABLE(LuauJitInlineThresholdMaxBoost, 300)
+LUAU_FASTINTVARIABLE(LuauJitInlineSmallFunSize, 128)
+LUAU_FASTINTVARIABLE(LuauJitInlineTooLongFunSize, 0xFFFF);
+
 using namespace Luau::Bytecode;
 
 namespace Luau
@@ -152,6 +157,7 @@ Proto* createInlinedProto(lua_State* L, Proto* caller, Proto* target, RuntimeBcF
     p->sizelineinfo = codeData.sizelineinfo;
     p->codeentry = p->code;
     p->bytecodeid = caller->bytecodeid;
+    p->cost = caller->cost;
 
     uint32_t feedbackvecsize = caller->feedbackvecsize + target->feedbackvecsize;
     p->feedbackvec = luaM_newarray(L, feedbackvecsize, FeedbackVectorSlot, L->activememcat);
@@ -184,7 +190,42 @@ void sealAllSlots(Instruction* code, uint32_t codesize)
     }
 }
 
-constexpr int kMaxFunctionBytecodeSize = 0xFFFF;
+// Extracted from Compiler/src/CostModel.cpp
+int computeCost(uint64_t model, std::vector<bool> varsConst)
+{
+    int cost = int(model & 0x7f);
+
+    // don't apply discounts to what is likely a saturated sum
+    if (cost == 0x7f)
+        return cost;
+
+    for (size_t i = 0; i < varsConst.size() && i < 7; ++i)
+        cost -= int((model >> (i * 8 + 8)) & 0x7f) * static_cast<int>(varsConst[i]);
+
+    return cost;
+}
+
+bool isConstOp(RuntimeBcFunction& graph, BcOp op)
+{
+    if (op.kind == BcOpKind::Inst)
+    {
+        BcInst& inst = graph.instOp(op);
+        switch (inst.op)
+        {
+        case LOP_LOADB:
+        case LOP_LOADNIL:
+        case LOP_LOADN:
+        case LOP_LOADK:
+        case LOP_LOADKX:
+            return true;
+        case LOP_MOVE:
+            return isConstOp(graph, inst.ops[0]);
+        default:
+            return false;
+        }
+    }
+    return false;
+}
 
 Proto* onInlineFunction(lua_State* L, Closure* caller, Closure* target, uint32_t pc)
 {
@@ -210,13 +251,38 @@ Proto* onInlineFunction(lua_State* L, Closure* caller, Closure* target, uint32_t
     while (targetProto->optimized != nullptr)
         targetProto = targetProto->optimized;
 
-    if (callerProto->sizecode >= kMaxFunctionBytecodeSize || targetProto->sizecode >= kMaxFunctionBytecodeSize)
+    if (callerProto->sizecode > FInt::LuauJitInlineTooLongFunSize || targetProto->sizecode > FInt::LuauJitInlineTooLongFunSize)
         return nullptr;
 
     auto callerGraph = buildGraphFromProto(callerProto, pc);
+    if (!callerGraph)
+        return nullptr;
+
+    if (targetProto->cost != 0 && targetProto->sizecode > FInt::LuauJitInlineSmallFunSize)
+    {
+        // Can we calculate constness of arguments before building a caller's graph?
+        std::vector<bool> params;
+        int baselineCost = computeCost(targetProto->cost, params) + 3;
+        BcCallFB<TValue*> call = callerGraph->first.template as<BcCallFB<TValue*>>(callerGraph->second);
+        for (BcOp arg : call.params())
+        {
+            if (params.size() == 7)
+                break;
+            params.push_back(isConstOp(callerGraph->first, arg));
+        }
+        int inlinedCost = computeCost(targetProto->cost, params);
+        int inlineProfit = (inlinedCost == 0) ? FInt::LuauJitInlineThresholdMaxBoost
+                                              : std::min<int>(FInt::LuauJitInlineThresholdMaxBoost, 100 * baselineCost / inlinedCost);
+        int threshold = FInt::LuauJitInlineThreshold * inlineProfit / 100;
+        if (inlinedCost > threshold)
+        {
+            return nullptr;
+        }
+    }
+
     auto targetGraph = buildGraphFromProto(targetProto);
 
-    if (!callerGraph || !targetGraph)
+    if (!targetGraph)
         return nullptr;
 
     if (!inlineCall(callerGraph->first, targetGraph->first, callerGraph->second, targetProto->funid, callerProto->feedbackvecsize))

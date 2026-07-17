@@ -10,7 +10,6 @@
 
 LUAU_FASTFLAG(DebugCodegenLimitRegs)
 
-LUAU_FASTFLAG(LuauCodegenVmExitSync)
 LUAU_FASTFLAGVARIABLE(LuauCodegenNoEcbData)
 
 namespace Luau
@@ -39,8 +38,7 @@ IrRegAllocX64::IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function, Lo
 
 RegisterX64 IrRegAllocX64::allocReg(SizeX64 size, uint32_t instIdx)
 {
-    if (FFlag::LuauCodegenVmExitSync)
-        allocActionCount++;
+    allocActionCount++;
 
     if (size == SizeX64::xmmword)
     {
@@ -691,7 +689,7 @@ uint32_t IrRegAllocX64::findInstructionWithFurthestNextUse(const std::array<uint
         uint32_t nextUse = getNextInstUse(function, regInstUser, currInstIdx, inVmExitSync);
 
         // Cannot spill value that is about to be used in the current instruction
-        if (nextUse == currInstIdx && (!FFlag::LuauCodegenVmExitSync || !inVmExitSync))
+        if (nextUse == currInstIdx && !inVmExitSync)
             continue;
 
         if (furthestUseTarget == kInvalidInstIdx || nextUse > furthestUseLocation)
