@@ -317,8 +317,8 @@ TypeChecker2::TypeChecker2(
     , ice(unifierState->iceHandler)
     , sourceModule(sourceModule)
     , module(module)
-    , normalizer{&module->internalTypes, builtinTypes, unifierState, SolverMode::New, /* cacheInhabitance */ true}
-    , _subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, typeFunctionRuntime, NotNull{unifierState->iceHandler}}
+    , normalizer{module->internalTypes.get(), builtinTypes, unifierState, SolverMode::New, /* cacheInhabitance */ true}
+    , _subtyping{builtinTypes, NotNull{module->internalTypes.get()}, NotNull{&normalizer}, typeFunctionRuntime, NotNull{unifierState->iceHandler}}
     , subtyping(&_subtyping)
 {
 }
@@ -497,7 +497,7 @@ TypeId TypeChecker2::checkForTypeFunctionInhabitance(TypeId instance, Location l
     seenTypeFunctionInstances.insert(instance);
 
     TypeFunctionContext context{
-        NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, subtyping
+        NotNull{module->internalTypes.get()}, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, subtyping
     };
 
     ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true).errors;
@@ -725,7 +725,7 @@ void TypeChecker2::visit(AstStatReturn* ret)
         return;
     }
 
-    auto [head, _] = extendTypePack(module->internalTypes, builtinTypes, expectedRetType, ret->list.size);
+    auto [head, _] = extendTypePack(*module->internalTypes, builtinTypes, expectedRetType, ret->list.size);
     bool isSubtype = true;
     std::vector<TypeId> actualHead;
     std::optional<TypePackId> actualTail;
@@ -774,7 +774,7 @@ void TypeChecker2::visit(AstStatReturn* ret)
     // we double error.
     if (isSubtype)
     {
-        auto reconstructedRetType = module->internalTypes.addTypePack(TypePack{std::move(actualHead), std::move(actualTail)});
+        auto reconstructedRetType = module->internalTypes->addTypePack(TypePack{std::move(actualHead), std::move(actualTail)});
         testIsSubtype(reconstructedRetType, expectedRetType, ret->location);
     }
 
@@ -817,7 +817,7 @@ void TypeChecker2::visit(AstStatLocal* local)
             TypePackId valuePack = lookupPack(value);
             TypePack valueTypes;
             if (i < local->vars.size)
-                valueTypes = extendTypePack(module->internalTypes, builtinTypes, valuePack, local->vars.size - i);
+                valueTypes = extendTypePack(*module->internalTypes, builtinTypes, valuePack, local->vars.size - i);
 
             Location errorLocation;
             for (size_t j = i; j < local->vars.size; ++j)
@@ -901,7 +901,7 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
         return;
 
     NotNull<Scope> scope = stack.back();
-    TypeArena& arena = module->internalTypes;
+    TypeArena& arena = *module->internalTypes;
 
     std::vector<TypeId> variableTypes;
     for (AstLocal* var : forInStatement->vars)
@@ -1496,7 +1496,7 @@ void TypeChecker2::visit(AstExprConstantString* expr)
 {
     // strings use specialized inference logic for singleton typeArguments, which can lead to real type errors here.
 
-    const TypeId bestType = module->internalTypes.addType(SingletonType{StringSingleton{std::string{expr->value.data, expr->value.size}}});
+    const TypeId bestType = module->internalTypes->addType(SingletonType{StringSingleton{std::string{expr->value.data, expr->value.size}}});
     const TypeId inferredType = lookupType(expr);
     NotNull<Scope> scope{findInnermostScope(expr->location)};
 
@@ -1636,7 +1636,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
     {
         size_t selfOffset = call->self ? 1 : 0;
 
-        std::vector<TypeId> paramsHead = extendTypePack(module->internalTypes, builtinTypes, fty->argTypes, call->args.size + selfOffset).head;
+        std::vector<TypeId> paramsHead = extendTypePack(*module->internalTypes, builtinTypes, fty->argTypes, call->args.size + selfOffset).head;
 
         for (size_t idx = 0; idx < call->args.size; ++idx)
         {
@@ -1690,7 +1690,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
         }
     }
 
-    TypePackId argsTp = module->internalTypes.addTypePack(args);
+    TypePackId argsTp = module->internalTypes->addTypePack(args);
     if (auto ftv = get<FunctionType>(follow(*originalCallTy)))
     {
         if (ftv->magic)
@@ -1703,7 +1703,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
 
     OverloadResolver resolver{
         builtinTypes,
-        NotNull{&module->internalTypes},
+        NotNull{module->internalTypes.get()},
         NotNull{&normalizer},
         typeFunctionRuntime,
         NotNull{stack.back()},
@@ -1714,7 +1714,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
     DenseHashSet<TypeId> uniqueTypes{nullptr};
     findUniqueTypes(NotNull{&uniqueTypes}, argExprs, NotNull{&module->astTypes});
 
-    TypePackId argsPack = module->internalTypes.addTypePack(args);
+    TypePackId argsPack = module->internalTypes->addTypePack(args);
     const OverloadResolution result2 = resolver.resolveOverload(fnTy, argsPack, call->func->location, NotNull{&uniqueTypes}, false);
 
     if (!result2.potentialOverloads.empty())
@@ -1869,7 +1869,7 @@ std::optional<TypeId> TypeChecker2::tryStripUnionFromNil(TypeId ty) const
         if (result.empty())
             return std::nullopt;
 
-        return result.size() == 1 ? result[0] : module->internalTypes.addType(UnionType{std::move(result)});
+        return result.size() == 1 ? result[0] : module->internalTypes->addType(UnionType{std::move(result)});
     }
 
     return std::nullopt;
@@ -2194,10 +2194,10 @@ void TypeChecker2::visit(AstExprUnary* expr)
                     return;
                 }
 
-                TypePackId expectedArgs = module->internalTypes.addTypePack({operandType});
-                TypePackId expectedRet = module->internalTypes.addTypePack({resultType});
+                TypePackId expectedArgs = module->internalTypes->addTypePack({operandType});
+                TypePackId expectedRet = module->internalTypes->addTypePack({resultType});
 
-                TypeId expectedFunction = module->internalTypes.addType(FunctionType{expectedArgs, expectedRet});
+                TypeId expectedFunction = module->internalTypes->addType(FunctionType{expectedArgs, expectedRet});
 
                 bool success = testIsSubtype(*mm, expectedFunction, expr->location);
                 if (!success)
@@ -2318,7 +2318,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
 
     if (expr->op == AstExprBinary::Op::Or)
     {
-        leftType = stripNil(builtinTypes, module->internalTypes, leftType);
+        leftType = stripNil(builtinTypes, *module->internalTypes, leftType);
     }
 
     std::shared_ptr<const NormalizedType> normLeft = normalizer.normalize(leftType);
@@ -2449,25 +2449,25 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
                 // swapped argument ordering.
                 if (expr->op == AstExprBinary::Op::CompareGe || expr->op == AstExprBinary::Op::CompareGt)
                 {
-                    expectedArgs = module->internalTypes.addTypePack({rightType, leftType});
+                    expectedArgs = module->internalTypes->addTypePack({rightType, leftType});
                 }
                 else
                 {
-                    expectedArgs = module->internalTypes.addTypePack({leftType, rightType});
+                    expectedArgs = module->internalTypes->addTypePack({leftType, rightType});
                 }
 
                 TypePackId expectedRets;
                 if (expr->op == AstExprBinary::CompareEq || expr->op == AstExprBinary::CompareNe || expr->op == AstExprBinary::CompareGe ||
                     expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::Op::CompareLe || expr->op == AstExprBinary::Op::CompareLt)
                 {
-                    expectedRets = module->internalTypes.addTypePack({builtinTypes->booleanType});
+                    expectedRets = module->internalTypes->addTypePack({builtinTypes->booleanType});
                 }
                 else
                 {
-                    expectedRets = module->internalTypes.addTypePack({module->internalTypes.freshType(builtinTypes, scope, TypeLevel{})});
+                    expectedRets = module->internalTypes->addTypePack({module->internalTypes->freshType(builtinTypes, scope, TypeLevel{})});
                 }
 
-                TypeId expectedTy = module->internalTypes.addType(FunctionType(expectedArgs, expectedRets));
+                TypeId expectedTy = module->internalTypes->addType(FunctionType(expectedArgs, expectedRets));
 
                 testIsSubtype(follow(*mm), expectedTy, expr->location);
 
@@ -2574,7 +2574,7 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         return builtinTypes->numberType;
     case AstExprBinary::Op::Concat:
     {
-        const TypeId numberOrString = module->internalTypes.addType(UnionType{{builtinTypes->numberType, builtinTypes->stringType}});
+        const TypeId numberOrString = module->internalTypes->addType(UnionType{{builtinTypes->numberType, builtinTypes->stringType}});
         testIsSubtype(leftType, numberOrString, expr->left->location);
         testIsSubtype(rightType, numberOrString, expr->right->location);
         return builtinTypes->stringType;
@@ -2719,8 +2719,8 @@ TypeId TypeChecker2::flattenPack(TypePackId pack)
         return *fst;
     else if (auto ftp = get<FreeTypePack>(pack))
     {
-        TypeId result = module->internalTypes.freshType(builtinTypes, ftp->scope);
-        TypePackId freeTail = module->internalTypes.addTypePack(FreeTypePack{ftp->scope});
+        TypeId result = module->internalTypes->freshType(builtinTypes, ftp->scope);
+        TypePackId freeTail = module->internalTypes->addTypePack(FreeTypePack{ftp->scope});
 
         TypePack* resultPack = emplaceTypePack<TypePack>(asMutable(pack));
         resultPack->head.assign(1, result);
@@ -3200,7 +3200,7 @@ bool TypeChecker2::testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedT
         // if they occur in any other context, and so we need to separate the
         // caches.
 
-        Subtyping st{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, typeFunctionRuntime, ice};
+        Subtyping st{builtinTypes, NotNull{module->internalTypes.get()}, NotNull{&normalizer}, typeFunctionRuntime, ice};
         st.uniqueTypes = &uniqueTypes;
 
         r = st.isSubtype(exprTy, expectedType, scope);
@@ -3235,7 +3235,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     {
         // In this case: `{ ... } or { ... }` is literal _enough_ that
         // we should do this covariant check.
-        auto relaxedExpectedLhs = module->internalTypes.addType(UnionType{{builtinTypes->falsyType, expectedType}});
+        auto relaxedExpectedLhs = module->internalTypes->addType(UnionType{{builtinTypes->falsyType, expectedType}});
         bool passes = testPotentialLiteralIsSubtype(binExpr->left, relaxedExpectedLhs);
         passes &= testPotentialLiteralIsSubtype(binExpr->right, expectedType);
         return passes;
@@ -3260,7 +3260,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
         {
             if (FFlag::LuauBidirectionalInferenceSimplifyTables)
             {
-                if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes, NotNull{&module->internalTypes}))
+                if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes, NotNull{module->internalTypes.get()}))
                     return testLiteralOrAstTypeIsSubtype(expr, *tt);
             }
             else
@@ -3276,7 +3276,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
             // construct it and use it as the input to this algorithm.
             TypeIds parts;
             parts.insert(begin(itv), end(itv));
-            TypeId simplified = simplifyIntersection(builtinTypes, NotNull{&module->internalTypes}, std::move(parts)).result;
+            TypeId simplified = simplifyIntersection(builtinTypes, NotNull{module->internalTypes.get()}, std::move(parts)).result;
             if (is<TableType>(simplified))
                 return testPotentialLiteralIsSubtype(expr, simplified);
         }
@@ -3320,7 +3320,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
                 {
                     module->astExpectedTypes[item.key] = expectedTableType->indexer->indexType;
                     module->astExpectedTypes[item.value] = expectedTableType->indexer->indexResultType;
-                    auto inferredKeyType = module->internalTypes.addType(SingletonType{StringSingleton{keyStr}});
+                    auto inferredKeyType = module->internalTypes->addType(SingletonType{StringSingleton{keyStr}});
                     isSubtype &= testIsSubtype(inferredKeyType, expectedTableType->indexer->indexType, item.key->location);
                     isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType);
                 }
@@ -3655,7 +3655,7 @@ PropertyTypes TypeChecker2::lookupProp(
         {
             std::vector<TypeId> parts;
             parts.insert(parts.end(), norm->functions.parts.begin(), norm->functions.parts.end());
-            fetch(module->internalTypes.addType(IntersectionType{std::move(parts)}));
+            fetch(module->internalTypes->addType(IntersectionType{std::move(parts)}));
         }
     }
 
@@ -3666,7 +3666,7 @@ PropertyTypes TypeChecker2::lookupProp(
             if (get<NeverType>(intersect->tops))
             {
                 TypeId ty = normalizer.typeFromNormal(*intersect);
-                fetch(module->internalTypes.addType(IntersectionType{{tyvar, ty}}));
+                fetch(module->internalTypes->addType(IntersectionType{{tyvar, ty}}));
             }
             else
                 fetch(follow(tyvar));
@@ -3775,7 +3775,7 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         if (tt->indexer)
         {
             TypeId indexType = follow(tt->indexer->indexType);
-            TypeId givenType = module->internalTypes.addType(SingletonType{StringSingleton{prop}});
+            TypeId givenType = module->internalTypes->addType(SingletonType{StringSingleton{prop}});
             bool keyMatches = subtyping->isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}).isSubtype;
 
             if (keyMatches)
@@ -3803,7 +3803,7 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
         }
         if (cls->indexer)
         {
-            TypeId inhabitedTestType = module->internalTypes.addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});
+            TypeId inhabitedTestType = module->internalTypes->addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});
             return {normalizer.isInhabited(inhabitedTestType), {cls->indexer->indexResultType}};
         }
 
@@ -3851,9 +3851,9 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
 
         TypeId propTy;
         if (context == ValueContext::LValue)
-            propTy = module->internalTypes.addType(IntersectionType{std::move(parts)});
+            propTy = module->internalTypes->addType(IntersectionType{std::move(parts)});
         else
-            propTy = module->internalTypes.addType(UnionType{std::move(parts)});
+            propTy = module->internalTypes->addType(UnionType{std::move(parts)});
 
         return {NormalizationResult::True, propTy};
     }
@@ -3882,7 +3882,7 @@ void TypeChecker2::suggestAnnotations(AstExprFunction* expr, TypeId ty)
     VecDeque<TypeId> workList;
     DenseHashSet<TypeId> seen{nullptr};
 
-    TypeFunctionReductionGuesser guesser{NotNull{&module->internalTypes}, builtinTypes, NotNull{&normalizer}};
+    TypeFunctionReductionGuesser guesser{NotNull{module->internalTypes.get()}, builtinTypes, NotNull{&normalizer}};
     for (TypeId retTy : inferredFtv->retTypes)
         workList.push_back(retTy);
 

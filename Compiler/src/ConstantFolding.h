@@ -55,7 +55,6 @@ struct Constant
 enum TableConstantKind
 {
     ConstantTable,
-    ConstantOther, // Remove with FFlagLuauCompileNewTableMutationTracker
     NotConstant
 };
 

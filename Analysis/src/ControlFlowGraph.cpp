@@ -4,6 +4,7 @@
 #include "Luau/AstUtils.h"
 #include "Luau/Common.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 

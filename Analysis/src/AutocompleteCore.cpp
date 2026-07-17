@@ -31,6 +31,7 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteExport)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionArglistSuggestion)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteSkipErrorTypeInUnion)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords_DEPRECATED =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -265,6 +266,25 @@ enum class PropIndexType
     Key,
 };
 
+/**
+ * When we perform autocomplete on a type, if we encounter a union we often
+ * need to provide the intersection of the union's options. However, for UX
+ * reasons we skip over types like `nil` and `never`. If we didn't, then
+ * something like ...
+ *
+ *  local function foobar(tbl: { prop: number }?)
+ *      return tbl.|
+ *  end
+ *
+ * ... would never provide autocomplete options, even though `prop` is a
+ * reasonable option, even in strict mode.
+ */
+static bool isSkippableTypeInUnion(TypeId ty)
+{
+    ty = follow(ty);
+    return isNil(ty) || is<ErrorType>(ty) || is<NeverType>(ty);
+}
+
 static void autocompleteProps(
     const Module& module,
     TypeArena* typeArena,
@@ -478,12 +498,20 @@ static void autocompleteProps(
         auto iter = begin(u);
         auto endIter = end(u);
 
-        while (iter != endIter)
+        if (FFlag::LuauAutocompleteSkipErrorTypeInUnion)
         {
-            if (isNil(*iter))
+            while (iter != endIter && isSkippableTypeInUnion(*iter))
                 ++iter;
-            else
-                break;
+        }
+        else
+        {
+            while (iter != endIter)
+            {
+                if (isNil(*iter))
+                    ++iter;
+                else
+                    break;
+            }
         }
 
         if (iter == endIter)
@@ -510,10 +538,21 @@ static void autocompleteProps(
                     innerSeen.insert(ty);
             }
 
-            if (isNil(*iter))
+            if (FFlag::LuauAutocompleteSkipErrorTypeInUnion)
             {
-                ++iter;
-                continue;
+                if (isSkippableTypeInUnion(*iter))
+                {
+                    ++iter;
+                    continue;
+                }
+            }
+            else
+            {
+                if (isNil(*iter))
+                {
+                    ++iter;
+                    continue;
+                }
             }
 
             autocompleteProps(module, typeArena, builtinTypes, rootTy, *iter, indexType, nodes, inner, innerSeen);

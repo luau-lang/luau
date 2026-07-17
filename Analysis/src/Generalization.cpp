@@ -727,6 +727,46 @@ void removeType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, Ty
     tr.process(haystack);
 }
 
+struct FreeTypeFinder : TypeOnceVisitor
+{
+    NotNull<TypeArena> arena;
+    TypeIds freeTys;
+
+    explicit FreeTypeFinder(NotNull<TypeArena> arena)
+        : TypeOnceVisitor("FreeTypeFinder", /*skipBoundTypes*/ true)
+        , arena(arena)
+    {}
+
+    bool visit(TypeId ty, const FreeType&) override
+    {
+        if (ty->owningArena != arena)
+            return false;
+
+        freeTys.insert(ty);
+        return true;
+    }
+
+    bool visit(TypeId ty, const TableType&) override
+    {
+        return false;
+    }
+
+    bool visit(TypeId ty, const MetatableType&) override
+    {
+        return false;
+    }
+
+    bool visit(TypeId ty, const FunctionType&) override
+    {
+        return false;
+    }
+
+    bool visit(TypeId ty, const ExternType&) override
+    {
+        return false;
+    }
+};
+
 TypeId getDirectFreeNeighbor(TypeId ty)
 {
     ty = follow(ty);
@@ -734,6 +774,24 @@ TypeId getDirectFreeNeighbor(TypeId ty)
         return ty;
     return nullptr;
 }
+
+void collapseInvariantFreeType(NotNull<TypeArena> arena, TypeId ty)
+{
+    FreeTypeFinder ftf{arena};
+    ftf.traverse(ty);
+
+    for (TypeId t : ftf.freeTys)
+    {
+        const FreeType* ft = get<FreeType>(t);
+        LUAU_ASSERT(ft);
+
+        auto ub = follow(ft->upperBound);
+        auto lb = follow(ft->lowerBound);
+        if (ub == lb && ub != t)
+            emplaceType<BoundType>(asMutable(t), ub);
+    }
+}
+
 
 // Walk direct free-type bounds starting from `startTy`.  If a cycle is
 // reachable, collapse every member into one representative free type whose
@@ -750,7 +808,11 @@ TypeId getDirectFreeNeighbor(TypeId ty)
 // Returns true if any types were collapsed.
 bool collapseDirectBoundCycleAt(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, TypeId startTy)
 {
+    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+        collapseInvariantFreeType(arena, startTy);
+
     startTy = follow(startTy);
+
     if (!get<FreeType>(startTy))
         return false;
 
@@ -861,6 +923,7 @@ void collapseFreeTypeCycles(
 
 } // namespace
 
+
 GeneralizationResult<TypeId> generalizeType(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
@@ -879,7 +942,13 @@ GeneralizationResult<TypeId> generalizeType(
     // representative of the cycle, so we re-follow it.
     if (FFlag::LuauCollapseDirectBoundCycles)
     {
-        if (collapseDirectBoundCycleAt(arena, builtinTypes, freeTy))
+        if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+        {
+            // Run this and unconditionally re-follow.
+            collapseDirectBoundCycleAt(arena, builtinTypes, freeTy);
+            freeTy = follow(freeTy);
+        }
+        else if (collapseDirectBoundCycleAt(arena, builtinTypes, freeTy))
             freeTy = follow(freeTy);
 
         if (!get<FreeType>(freeTy))

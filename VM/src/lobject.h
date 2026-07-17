@@ -555,7 +555,7 @@ typedef struct LuauClass
 
     // Number of instance members that we expect instances of this class object
     // to have.
-    int numberofinstancemembers;
+    uint32_t numberofinstancemembers;
 
     // Total number of members that we expect this class object to have between
     // instance and static members.
@@ -565,7 +565,7 @@ typedef struct LuauClass
     // to reference the total number of members (for validating hot paths in
     // the interpreter) and the number of instance members (branching on
     // instance or static members, creating class instances).
-    int numberofallmembers;
+    uint32_t numberofallmembers;
 
 } LuauClass;
 
@@ -581,7 +581,7 @@ typedef struct LuauObject
     // The number of members that this instance contains. We need this in order
     // to free ourselves if we got swept in the same GC cycle as our class
     // pointer.
-    int numberofmembers;
+    uint32_t numberofmembers;
 
     // The fields of this instance.
     TValue* members;
@@ -591,7 +591,7 @@ typedef struct LuauObject
 /*
 ** `module' operation for hashing (size is always a power of 2)
 */
-#define lmod(s, size) (check_exp((size & (size - 1)) == 0, (cast_to(int, (s) & ((size)-1)))))
+#define lmod(s, size) (check_exp((size & (size - 1)) == 0, (cast_to(int, (s) & ((size) - 1)))))
 
 #define twoto(x) ((int)(1 << (x)))
 #define sizenode(t) (twoto((t)->lsizenode))
@@ -600,7 +600,7 @@ typedef struct LuauObject
 
 LUAI_DATA const TValue luaO_nilobject_;
 
-#define ceillog2(x) (luaO_log2((x)-1) + 1)
+#define ceillog2(x) (luaO_log2((x) - 1) + 1)
 
 LUAI_FUNC int luaO_log2(unsigned int x);
 LUAI_FUNC int luaO_rawequalObj(const TValue* t1, const TValue* t2);

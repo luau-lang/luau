@@ -69,6 +69,8 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauAutoStack)
 LUAU_FASTFLAG(LuauUdataMetatablePinned)
 LUAU_DYNAMIC_FASTFLAG(LuauGcTableStepFix)
+LUAU_FASTFLAG(LuauCodegenFixTwoResA64Builtin)
+LUAU_FASTFLAG(LuauMathRoundNegZero)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -1247,6 +1249,9 @@ TEST_CASE("Buffers")
 
 TEST_CASE("Math")
 {
+    ScopedFastFlag luauCodegenFixTwoResA64Builtin{FFlag::LuauCodegenFixTwoResA64Builtin, true};
+    ScopedFastFlag luauMathRoundNegZero{FFlag::LuauMathRoundNegZero, true};
+
     runConformance("math.luau");
 }
 

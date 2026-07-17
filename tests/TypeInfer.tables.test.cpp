@@ -3131,9 +3131,9 @@ TEST_CASE_FIXTURE(Fixture, "inferring_crazy_table_should_also_be_quick")
 
     ModulePtr module = getMainModule();
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_GE(500, module->internalTypes.types.size());
+        CHECK_GE(500, module->internalTypes->types.size());
     else
-        CHECK_GE(100, module->internalTypes.types.size());
+        CHECK_GE(100, module->internalTypes->types.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "MixedPropertiesAndIndexers")
@@ -7310,6 +7310,23 @@ TEST_CASE_FIXTURE(Fixture, "test_indexing_into_unsealed_table")
     CHECK_EQ("string", toString(err->wantedType));
     CHECK_EQ("number", toString(err->givenType));
     CHECK_EQ("{ [string]: number }", toString(requireType("tbl"), {/* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_strings_and_then_concat")
+{
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        export type Glob = { string }
+
+        local function parseGlob(): Glob
+            local lua_parts = {}
+            table.insert(lua_parts, "")
+            table.insert(lua_parts, "")
+
+            return {
+                table.concat(lua_parts)
+            }
+        end
+    )"));
 }
 
 TEST_SUITE_END();

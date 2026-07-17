@@ -13,8 +13,8 @@ class IrCallWrapperX64Fixture
 {
 public:
     IrCallWrapperX64Fixture(ABIX64 abi = ABIX64::Windows)
-        : build(/* logger */ &logger, true, abi, /* features */ 0)
-        , regs(build, function, nullptr)
+        : build(&logger, true, abi, /* features */ 0)
+        , regs(&logger, build, function, nullptr)
         , callWrap(regs, build, ~0u)
     {
     }
