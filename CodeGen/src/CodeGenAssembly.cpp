@@ -399,7 +399,9 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options, Lowering
 
     case AssemblyOptions::A64:
     {
-        A64::AssemblyBuilderA64 build(/* logger= */ options.includeAssembly ? &logger : nullptr, options.includeAssembly, /* features= */ A64::Feature_JSCVT);
+        A64::AssemblyBuilderA64 build(/* logger= */ options.includeAssembly ? &logger : nullptr,
+                                      options.includeAssembly,
+                                      /* features= */ A64::Feature_JSCVT);
 
         return getAssemblyImpl(logger, build, func, options, stats);
     }
@@ -413,14 +415,18 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options, Lowering
 
     case AssemblyOptions::X64_Windows:
     {
-        X64::AssemblyBuilderX64 build(/* logger= */ options.includeAssembly ? &logger : nullptr, options.includeAssembly, X64::ABIX64::Windows, /* features= */ 0);
+        X64::AssemblyBuilderX64 build(
+            /* logger= */ options.includeAssembly ? &logger : nullptr, options.includeAssembly, X64::ABIX64::Windows, /* features= */ 0
+        );
 
         return getAssemblyImpl(logger, build, func, options, stats);
     }
 
     case AssemblyOptions::X64_SystemV:
     {
-        X64::AssemblyBuilderX64 build(/* logger= */ options.includeAssembly ? &logger : nullptr, options.includeAssembly, X64::ABIX64::SystemV, /* features= */ 0);
+        X64::AssemblyBuilderX64 build(
+            /* logger= */ options.includeAssembly ? &logger : nullptr, options.includeAssembly, X64::ABIX64::SystemV, /* features= */ 0
+        );
 
         return getAssemblyImpl(logger, build, func, options, stats);
     }
@@ -509,7 +515,9 @@ std::string getAssemblyFromIr(IrBuilder& ir, AssemblyOptions options, LoweringSt
 
     case AssemblyOptions::A64:
     {
-        A64::AssemblyBuilderA64 build(/* logger= */ options.includeAssembly ? &logger : nullptr, options.includeAssembly, /* features= */ A64::Feature_JSCVT);
+        A64::AssemblyBuilderA64 build(/* logger= */ options.includeAssembly ? &logger : nullptr,
+                                      options.includeAssembly,
+                                      /* features= */ A64::Feature_JSCVT);
 
         return getAssemblyFromIrImpl(logger, build, ir, options, stats);
     }
@@ -523,14 +531,18 @@ std::string getAssemblyFromIr(IrBuilder& ir, AssemblyOptions options, LoweringSt
 
     case AssemblyOptions::X64_Windows:
     {
-        X64::AssemblyBuilderX64 build(/* logger= */ options.includeAssembly ? &logger : nullptr, options.includeAssembly, X64::ABIX64::Windows, /* features= */ 0);
+        X64::AssemblyBuilderX64 build(
+            /* logger= */ options.includeAssembly ? &logger : nullptr, options.includeAssembly, X64::ABIX64::Windows, /* features= */ 0
+        );
 
         return getAssemblyFromIrImpl(logger, build, ir, options, stats);
     }
 
     case AssemblyOptions::X64_SystemV:
     {
-        X64::AssemblyBuilderX64 build(/* logger= */ options.includeAssembly ? &logger : nullptr, options.includeAssembly, X64::ABIX64::SystemV, /* features= */ 0);
+        X64::AssemblyBuilderX64 build(
+            /* logger= */ options.includeAssembly ? &logger : nullptr, options.includeAssembly, X64::ABIX64::SystemV, /* features= */ 0
+        );
 
         return getAssemblyFromIrImpl(logger, build, ir, options, stats);
     }

@@ -34,7 +34,6 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
-LUAU_FASTFLAGVARIABLE(LuauCompileInlineTableFunctions)
 
 namespace Luau
 {
@@ -301,7 +300,7 @@ struct Compiler
 
             return getFunctionExpr(lv->init);
         }
-        else if (AstExprIndexName* expr = node->as<AstExprIndexName>(); expr && FFlag::LuauCompileInlineTableFunctions)
+        else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
         {
             if (AstExpr* value = tryIndexConstantTable(expr))
                 return getFunctionExpr(value);
@@ -312,7 +311,7 @@ struct Compiler
             return getFunctionExpr(expr->expr);
         else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
             return getFunctionExpr(expr->expr);
-        else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>(); expr && FFlag::LuauCompileInlineTableFunctions)
+        else if (AstExprInstantiate* expr = node->as<AstExprInstantiate>())
             return getFunctionExpr(expr->expr);
         else
             return node->as<AstExprFunction>();
@@ -3277,21 +3276,7 @@ struct Compiler
 
     AstExprLocal* getExprLocal(AstExpr* node)
     {
-        if (FFlag::LuauCompileInlineTableFunctions)
-        {
-            return unwrapExprOfType<AstExprLocal>(node);
-        }
-        else
-        {
-            if (AstExprLocal* expr = node->as<AstExprLocal>())
-                return expr;
-            else if (AstExprGroup* expr = node->as<AstExprGroup>())
-                return getExprLocal(expr->expr);
-            else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
-                return getExprLocal(expr->expr);
-            else
-                return nullptr;
-        }
+        return unwrapExprOfType<AstExprLocal>(node);
     }
 
     int getExprLocalReg(AstExpr* node)

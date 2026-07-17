@@ -18,6 +18,8 @@ struct CfgInfo;
 
 const char* getCmdName(IrCmd cmd);
 const char* getBlockKindName(IrBlockKind kind);
+const char* getValueKindName(IrValueKind kind);
+const char* getConversionCmdSuffix(IrCmd conversionCmd);
 
 struct IrToStringContext
 {

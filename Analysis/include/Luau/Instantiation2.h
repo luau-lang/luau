@@ -95,7 +95,11 @@ struct Instantiation2_DEPRECATED final : Substitution
     Subtyping* subtyping = nullptr;
     Scope* scope = nullptr;
 
-    Instantiation2_DEPRECATED(TypeArena* arena, DenseHashMap<TypeId, TypeId> genericSubstitutions, DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions)
+    Instantiation2_DEPRECATED(
+        TypeArena* arena,
+        DenseHashMap<TypeId, TypeId> genericSubstitutions,
+        DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions
+    )
         : Substitution(TxnLog::empty(), arena)
         , genericSubstitutions(std::move(genericSubstitutions))
         , genericPackSubstitutions(std::move(genericPackSubstitutions))

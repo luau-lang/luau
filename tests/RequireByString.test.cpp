@@ -1290,9 +1290,7 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportTrap")
 TEST_CASE("RequireExportClass")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauExportValueSyntax, true},
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauUserDefinedClassesRuntime, true}
+        {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauUserDefinedClasses, true}, {FFlag::DebugLuauUserDefinedClassesRuntime, true}
     };
 
     // we create a new fixture so the new lua_State has the class library

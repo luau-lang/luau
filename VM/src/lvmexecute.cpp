@@ -68,7 +68,8 @@ LUAU_FASTFLAGVARIABLE(LuauPromoteProto)
 // Some external functions can cause an error, but never reallocate the stack; for these, VM_PROTECT_PC() is
 // a cheaper version of VM_PROTECT that can be called before the external call.
 #define VM_PROTECT_PC() L->ci->savedpc = pc
-#define VM_ASSERT_PC(pc) LUAU_ASSERT(unsigned(pc - (FFlag::LuauCIProto ? L->ci->p : cl->l.p)->code) < unsigned((FFlag::LuauCIProto ? L->ci->p : cl->l.p)->sizecode));
+#define VM_ASSERT_PC(pc) \
+    LUAU_ASSERT(unsigned(pc - (FFlag::LuauCIProto ? L->ci->p : cl->l.p)->code) < unsigned((FFlag::LuauCIProto ? L->ci->p : cl->l.p)->sizecode));
 
 #define VM_REG(i) (LUAU_ASSERT(unsigned(i) < unsigned(L->top - base)), &base[i])
 #define VM_KV(i) (LUAU_ASSERT(unsigned(i) < unsigned((FFlag::LuauCIProto ? L->ci->p : cl->l.p)->sizek)), &k[i])
@@ -177,7 +178,8 @@ LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
     LUAU_ASSERT(L->ci->top <= L->stack_last);
 
     lua_Debug ar;
-    ar.currentline = cl->isC ? -1 : luaG_getline((FFlag::LuauCIProto ? L->ci->p : cl->l.p), pcRel(L->ci->savedpc, (FFlag::LuauCIProto ? L->ci->p : cl->l.p)));
+    ar.currentline =
+        cl->isC ? -1 : luaG_getline((FFlag::LuauCIProto ? L->ci->p : cl->l.p), pcRel(L->ci->savedpc, (FFlag::LuauCIProto ? L->ci->p : cl->l.p)));
     ar.userdata = userdata;
 
     hook(L, &ar);
@@ -650,8 +652,7 @@ reentry:
                             const TValue* offset = luaH_getstr(inst->lclass->memberstooffset, tsvalue(kv));
                             if (ttisnil(offset))
                                 luaG_missingmembererror(L, rb, kv);
-                            LUAU_ASSERT(ttisnumber(offset));
-                            const int offsetnum = int(nvalue(offset));
+                            const uint32_t offsetnum = uint32_t(nvalue(offset));
                             setobj2s(L, ra, luaR_lookupmemberatoffset(inst, offsetnum));
                             VM_PATCH_C(pc - 2, offsetnum);
                             VM_NEXT();
@@ -995,7 +996,7 @@ reentry:
                     }
                     else if (LUAU_UNLIKELY(FFlag::DebugLuauUserDefinedClassesRuntime && ttisobject(rb)))
                     {
-                        int slot = LUAU_INSN_C(insn);
+                        uint8_t slot = LUAU_INSN_C(insn);
                         LuauObject* inst = objectvalue(rb);
                         if (slot < inst->lclass->numberofallmembers && tsvalue(kv) == inst->lclass->offsettomember[slot])
                         {
@@ -1009,8 +1010,7 @@ reentry:
                             const TValue* offset = luaH_getstr(inst->lclass->memberstooffset, tsvalue(kv));
                             if (ttisnil(offset))
                                 luaG_missingmembererror(L, rb, kv);
-                            LUAU_ASSERT(ttisnumber(offset));
-                            const int offsetnum = int(nvalue(offset));
+                            const uint32_t offsetnum = uint32_t(nvalue(offset));
                             setobj2s(L, ra + 1, rb);
                             setobj2s(L, ra, luaR_lookupmemberatoffset(inst, offsetnum));
                             VM_PATCH_C(pc - 2, offsetnum);
@@ -2896,7 +2896,8 @@ reentry:
 
                 // clone closure if the environment is not shared
                 // note: we save closure to stack early in case the code below wants to capture it by value
-                Closure* ncl = (kcl->env == cl->env) ? kcl : luaF_newLclosure(L, kcl->nupvalues, cl->env, FFlag::LuauCIProto ? getproto(kcl) : kcl->l.p);
+                Closure* ncl =
+                    (kcl->env == cl->env) ? kcl : luaF_newLclosure(L, kcl->nupvalues, cl->env, FFlag::LuauCIProto ? getproto(kcl) : kcl->l.p);
                 setclvalue(L, ra, ncl);
 
                 // this loop does three things:
