@@ -7,6 +7,7 @@ local ignore =
 	"_G.limitedstack",
 	"_G.RTTI",
 	"_G.collectgarbage",
+	"_G.loadstring",
 
 	-- what follows is a set of mismatches that hopefully eventually will go down to 0
 	"_G.require", -- need to move to Roblox type defs
