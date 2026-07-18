@@ -59,7 +59,7 @@ public:
     virtual ~BytecodeBuilder() = default;
 
     uint32_t beginFunction(uint8_t numparams, bool isvararg = false);
-    void endFunction(uint8_t maxstacksize, uint8_t numupvalues, uint8_t flags = 0);
+    void endFunction(uint8_t maxstacksize, uint8_t numupvalues, uint8_t flags = 0, uint64_t cost = 0);
 
     void setMainFunction(uint32_t fid);
 
@@ -361,7 +361,7 @@ protected:
     int calcLinesSpan() const;
     void fillBaselineInfo(int span, int* baseline, size_t baselineSize) const;
 
-    void writeFunction(std::string& ss, uint32_t id, uint8_t flags);
+    void writeFunction(std::string& ss, uint32_t id, uint8_t flags, uint64_t cost);
     void writeLineInfo(std::string& ss) const;
     void writeStringTable(std::string& ss) const;
     void writeClassShape(std::string& ss, const ClassShape& cs) const;

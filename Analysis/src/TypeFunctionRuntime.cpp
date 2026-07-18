@@ -14,6 +14,7 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/TypeFunctionRuntimeBuilder.h"
 #include "Luau/RecursionCounter.h"
+#include "Luau/ToString.h"
 
 #include "lua.h"
 #include "lualib.h"
@@ -28,9 +29,11 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionRobustness)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeIsSubtypeOf)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionTableIndexerIsReadOnly)
+LUAU_FASTFLAGVARIABLE(LuauUdtfCreateSingletonFixErrorMessage)
+LUAU_FASTFLAGVARIABLE(LuauUdtfTypeUseTaggedMetatable)
+LUAU_FASTFLAGVARIABLE(LuauUdtfTypeToStringMetamethod)
 
 namespace Luau
 {
@@ -338,12 +341,20 @@ void pushType(lua_State* L, TypeFunctionTypeId type)
 {
     luaL_checkstack(L, 2, "allocating type");
 
-    TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
-    *ptr = type;
+    if (FFlag::LuauUdtfTypeUseTaggedMetatable)
+    {
+        TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+        *ptr = type;
+    }
+    else
+    {
+        TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+        *ptr = type;
 
-    // set the new userdata's metatable to type metatable
-    luaL_getmetatable(L, "type");
-    lua_setmetatable(L, -2);
+        // set the new userdata's metatable to type metatable
+        luaL_getmetatable(L, "type");
+        lua_setmetatable(L, -2);
+    }
 }
 
 // Pushes a new type userdata onto the stack
@@ -352,13 +363,22 @@ void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type, bool frozen)
     luaL_checkstack(L, 2, "allocating type");
 
     // allocate a new type userdata
-    TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
-    *ptr = allocateTypeFunctionType(L, std::move(type));
-    const_cast<TypeFunctionType*>(*ptr)->frozen = frozen;
+    if (FFlag::LuauUdtfTypeUseTaggedMetatable)
+    {
+        TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+        *ptr = allocateTypeFunctionType(L, std::move(type));
+        const_cast<TypeFunctionType*>(*ptr)->frozen = frozen;
+    }
+    else
+    {
+        TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatatagged(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+        *ptr = allocateTypeFunctionType(L, std::move(type));
+        const_cast<TypeFunctionType*>(*ptr)->frozen = frozen;
 
-    // set the new userdata's metatable to type metatable
-    luaL_getmetatable(L, "type");
-    lua_setmetatable(L, -2);
+        // set the new userdata's metatable to type metatable
+        luaL_getmetatable(L, "type");
+        lua_setmetatable(L, -2);
+    }
 }
 
 void deallocTypeUserData(lua_State* L, void* data)
@@ -368,7 +388,7 @@ void deallocTypeUserData(lua_State* L, void* data)
 
 bool isTypeUserData(lua_State* L, int idx)
 {
-    if (!lua_isuserdata(L, idx))
+    if (!FFlag::LuauUdtfTypeUseTaggedMetatable && !lua_isuserdata(L, idx))
         return false;
 
     return lua_touserdatatagged(L, idx, kTypeUserdataTag) != nullptr;
@@ -376,10 +396,17 @@ bool isTypeUserData(lua_State* L, int idx)
 
 TypeFunctionTypeId getTypeUserData(lua_State* L, int idx)
 {
-    if (auto typ = static_cast<TypeFunctionTypeId*>(lua_touserdatatagged(L, idx, kTypeUserdataTag)))
-        return *typ;
+    if (FFlag::LuauUdtfTypeUseTaggedMetatable)
+    {
+        return *static_cast<TypeFunctionTypeId*>(luaL_checkudatatagged(L, idx, kTypeUserdataTag));
+    }
+    else
+    {
+        if (auto typ = static_cast<TypeFunctionTypeId*>(lua_touserdatatagged(L, idx, kTypeUserdataTag)))
+            return *typ;
 
-    luaL_typeerrorL(L, idx, "type");
+        luaL_typeerrorL(L, idx, "type");
+    }
 }
 
 std::optional<TypeFunctionTypeId> optionalTypeUserData(lua_State* L, int idx)
@@ -532,7 +559,10 @@ static int createSingleton(lua_State* L)
         return 1;
     }
 
-    luaL_error(L, "types.singleton: can't create singleton from `%s` type", lua_typename(L, 1));
+    if (FFlag::LuauUdtfCreateSingletonFixErrorMessage)
+        luaL_error(L, "types.singleton: can't create a singleton from a %s", luaL_typename(L, 1));
+    else
+        luaL_error(L, "types.singleton: can't create singleton from `%s` type", lua_typename(L, 1));
 }
 
 // Luau: `types.generic(name: string, ispack: boolean?) -> type
@@ -1111,11 +1141,7 @@ static int setTableMetatable(lua_State* L)
     TypeFunctionTypeId arg = getTypeUserData(L, 2);
     if (!get<TypeFunctionTableType>(arg))
     {
-        luaL_error(
-            L,
-            "type.setmetatable: expected the argument to be a table, but got %s instead",
-            getTag(L, FFlag::LuauTypeFunctionRobustness ? arg : self).c_str()
-        );
+        luaL_error(L, "type.setmetatable: expected the argument to be a table, but got %s instead", getTag(L, arg).c_str());
     }
 
     tftt->metatable = arg;
@@ -1421,16 +1447,8 @@ static int setFunctionGenerics(lua_State* L)
 
     int argumentCount = lua_gettop(L);
 
-    if (FFlag::LuauTypeFunctionRobustness)
-    {
-        if (argumentCount > 2)
-            luaL_error(L, "type.setgenerics: expected 2 arguments, but got %d", argumentCount);
-    }
-    else
-    {
-        if (argumentCount > 3)
-            luaL_error(L, "type.setgenerics: expected 3 arguments, but got %d", argumentCount);
-    }
+    if (argumentCount > 2)
+        luaL_error(L, "type.setgenerics: expected 2 arguments, but got %d", argumentCount);
 
     auto [genericTypes, genericPacks] = getGenerics(L, 2, "types.setgenerics");
 
@@ -1852,7 +1870,7 @@ static int deepCopy(lua_State* L)
 
     TypeFunctionTypeId copy = deepClone(NotNull{getTypeFunctionRuntime(L)}, arg);
 
-    if (FFlag::LuauTypeFunctionRobustness && !copy)
+    if (!copy)
         luaL_error(L, "types.copy: complexity limit reached during type copy");
 
     allocTypeUserData(L, copy->type);
@@ -1871,6 +1889,23 @@ static int isEqualToType(lua_State* L)
     TypeFunctionTypeId arg = getTypeUserData(L, 2);
 
     lua_pushboolean(L, *self == *arg);
+    return 1;
+}
+
+// Luau: `tostring(self) -> string`,
+// or other cases where the `__tostring` metamethod is invoked
+static int typeToString(lua_State* L)
+{
+    TypeFunctionTypeId self = getTypeUserData(L, 1);
+
+    TypeFunctionRuntimeBuilderState* runtimeBuilder = Luau::getTypeFunctionRuntime(L)->runtimeBuilder;
+    TypeId selfTy = Luau::deserialize(self, runtimeBuilder);
+    if (FFlag::LuauTypeFunctionStructuredErrors ? !runtimeBuilder->errors.empty() : !runtimeBuilder->errors_DEPRECATED.empty())
+        luaL_error(L, "failed to deserialize the self type");
+
+    std::string asString = Luau::toString(selfTy);
+
+    lua_pushlstring(L, asString.data(), asString.size());
     return 1;
 }
 
@@ -1932,57 +1967,6 @@ static int typeUserdataIndex(lua_State* L)
 
 void registerTypeUserData(lua_State* L)
 {
-    luaL_Reg typeUserdataMethods_DEPRECATED[] = {
-        {"is", checkTag},
-
-        // Negation type methods
-        {"inner", getNegatedValue},
-
-        // Singleton type methods
-        {"value", getSingletonValue},
-
-        // Table type methods
-        {"setproperty", setTableProp},
-        {"setreadproperty", setReadTableProp},
-        {"setwriteproperty", setWriteTableProp},
-        {"readproperty", readTableProp},
-        {"writeproperty", writeTableProp},
-        {"properties", getProps},
-        {"setindexer", setTableIndexer},
-        {"setreadindexer", setTableReadIndexer},
-        {"setwriteindexer", setTableWriteIndexer},
-        {"indexer", getIndexer},
-        {"readindexer", getReadIndexer},
-        {"writeindexer", getWriteIndexer},
-        {"setmetatable", setTableMetatable},
-        {"metatable", getMetatable},
-
-        // Function type methods
-        {"setparameters", setFunctionParameters},
-        {"parameters", getFunctionParameters},
-        {"setreturns", setFunctionReturns},
-        {"returns", getFunctionReturns},
-        {"setgenerics", setFunctionGenerics},
-        {"generics", getFunctionGenerics},
-
-        // Union and Intersection type methods
-        {"components", getComponents},
-
-        //  Extern type methods
-        {"readparent", getReadParent},
-        {"writeparent", getWriteParent},
-
-        // Function type methods (cont.)
-        {"setgenerics", setFunctionGenerics},
-        {"generics", getFunctionGenerics},
-
-        // Generic type methods
-        {"name", getGenericName},
-        {"ispack", getGenericIsPack},
-
-        {nullptr, nullptr}
-    };
-
     luaL_Reg typeUserdataMethods[] = {
         {"is", checkTag},
 
@@ -2043,9 +2027,15 @@ void registerTypeUserData(lua_State* L)
     lua_pushcfunction(L, isEqualToType, "__eq");
     lua_setfield(L, -2, "__eq");
 
+    if (FFlag::LuauUdtfTypeToStringMetamethod)
+    {
+        lua_pushcfunction(L, typeToString, "__tostring");
+        lua_setfield(L, -2, "__tostring");
+    }
+
     // Indexing will be a dynamic function because some type fields are dynamic
     lua_newtable(L);
-    luaL_register(L, nullptr, FFlag::LuauTypeFunctionRobustness ? typeUserdataMethods : typeUserdataMethods_DEPRECATED);
+    luaL_register(L, nullptr, typeUserdataMethods);
 
     if (FFlag::LuauUdtfTypeIsSubtypeOf)
     {
@@ -2058,7 +2048,12 @@ void registerTypeUserData(lua_State* L)
     lua_setfield(L, -2, "__index");
 
     lua_setreadonly(L, -1, true);
-    lua_pop(L, 1);
+
+    if (FFlag::LuauUdtfTypeUseTaggedMetatable)
+        // Sets up the metatable for the type userdata.
+        lua_setuserdatametatable(L, kTypeUserdataTag);
+    else
+        lua_pop(L, 1);
 
     // Sets up a destructor for the type userdata.
     lua_setuserdatadtor(L, kTypeUserdataTag, deallocTypeUserData);
@@ -2343,10 +2338,7 @@ bool areEqual(AreEqualState& seen, const TypeFunctionExternType& lhs, const Type
 
 bool areEqual(AreEqualState& seen, const TypeFunctionType& lhs, const TypeFunctionType& rhs)
 {
-    std::optional<RecursionLimiter> _ra;
-
-    if (FFlag::LuauTypeFunctionRobustness)
-        _ra.emplace("areEqual", &seen.recursionCount, 100);
+    RecursionLimiter _ra("areEqual", &seen.recursionCount, 100);
 
     if (lhs.type.index() != rhs.type.index())
         return false;

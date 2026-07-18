@@ -382,7 +382,7 @@ TEST_CASE("GeneratedCodeExecutionX64")
 
     using namespace X64;
 
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
     build.mov(rax, rArg1);
     build.add(rax, rArg2);
@@ -425,7 +425,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64")
 
     using namespace X64;
 
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
 #if defined(_WIN32)
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderWin>();
@@ -524,7 +524,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64Simd")
 
     using namespace X64;
 
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
 #if defined(_WIN32)
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderWin>();
@@ -624,7 +624,7 @@ TEST_CASE("GeneratedCodeExecutionMultipleFunctionsWithThrowX64")
 
     using namespace X64;
 
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
 #if defined(_WIN32)
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderWin>();
@@ -763,7 +763,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 
     using namespace X64;
 
-    AssemblyBuilderX64 build(/* logText= */ false);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
 #if defined(_WIN32)
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderWin>();
@@ -839,7 +839,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 
     uint8_t* nativeExit = codeAllocation1.codeStart + returnOffset.location;
 
-    AssemblyBuilderX64 build2(/* logText= */ false);
+    AssemblyBuilderX64 build2(/* logger= */ nullptr, false, /* features= */ 0);
 
     build2.mov(r12, rArg3);
     build2.call(rArg2);
@@ -872,7 +872,7 @@ TEST_CASE("GeneratedCodeExecutionA64")
 {
     using namespace A64;
 
-    AssemblyBuilderA64 build(/* logText= */ false);
+    AssemblyBuilderA64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
     Label skip;
     build.cbz(x1, skip);
@@ -925,7 +925,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowA64")
 
     using namespace A64;
 
-    AssemblyBuilderA64 build(/* logText= */ false);
+    AssemblyBuilderA64 build(/* logger= */ nullptr, false, /* features= */ 0);
 
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderDwarf2>();
 

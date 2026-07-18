@@ -138,6 +138,16 @@ void* luaL_checkudata(lua_State* L, int ud, const char* tname)
     luaL_typeerrorL(L, ud, tname); // else error
 }
 
+void* luaL_checkudatatagged(lua_State* L, int ud, int tag)
+{
+    void* p = lua_touserdatatagged(L, ud, tag);
+    if (p != NULL)
+        return p;
+
+    const char* tname = lua_getuserdataname(L, tag);
+    luaL_typeerrorL(L, ud, tname); // else error
+}
+
 void* luaL_checkbuffer(lua_State* L, int narg, size_t* len)
 {
     void* b = lua_tobuffer(L, narg, len);

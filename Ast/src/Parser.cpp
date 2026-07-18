@@ -32,6 +32,8 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowExternClassInTypeDefinitions)
 LUAU_FASTFLAGVARIABLE(LuauTableEntriesDontNeedToMatchIndent)
 LUAU_FASTFLAGVARIABLE(LuauCstAttr)
 LUAU_FASTFLAGVARIABLE(LuauStoreConstKeywordBegin)
+LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
+LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -1431,8 +1433,7 @@ AstStat* Parser::parseLocal(
         AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation, isConst);
         if (options.storeCstData)
         {
-            cstNodeMap[node] =
-                allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
+            cstNodeMap[node] = allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
         }
 
         // It is a syntax error when a const declaration *definitely* does
@@ -3327,6 +3328,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
         std::optional<AstName> prefix;
         Position prefixPointPosition = Position::missing();
         std::optional<Location> prefixLocation;
+        AstLocal* prefixLocal = nullptr;
         Name name = parseName("type name");
 
         if (lexer.current().type == '.')
@@ -3336,6 +3338,13 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
 
             prefix = name.name;
             prefixLocation = name.location;
+
+            if (FFlag::LuauTrackPrefixLocal)
+            {
+                AstLocal* const* prefixLocalValue = localMap.find(name.name);
+                prefixLocal = (prefixLocalValue && *prefixLocalValue) ? *prefixLocalValue : nullptr;
+            }
+
             name = parseIndexName("field name", prefixPointPosition);
         }
         else if (lexer.current().type == Lexeme::Dot3)
@@ -3382,7 +3391,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
         Location end = lexer.previousLocation();
 
         AstTypeReference* node =
-            allocator.alloc<AstTypeReference>(Location(start, end), prefix, name.name, prefixLocation, name.location, hasParameters, parameters);
+            allocator.alloc<AstTypeReference>(Location(start, end), prefix, name.name, prefixLocation, name.location, hasParameters, parameters, prefixLocal);
         if (options.storeCstData)
             cstNodeMap[node] = allocator.alloc<CstTypeReference>(
                 prefixPointPosition, parametersOpeningPosition, copy(parametersCommaPositions), parametersClosingPosition
@@ -3896,6 +3905,14 @@ static ConstantNumberParseResult parseInteger(double& result, const char* data, 
 {
     LUAU_ASSERT(base == 2 || base == 16);
 
+    if (FFlag::LuauNoDuplicateBinaryPrefix)
+    {
+        // Some libc implementations accept an optional 0b prefix for base-2 parsing.
+        // Binary literals have already had their leading 0b stripped by us.
+        if (base == 2 && data[0] == '0' && (data[1] == 'b' || data[1] == 'B'))
+            return ConstantNumberParseResult::Malformed;
+    }
+
     char* end = nullptr;
     unsigned long long value = strtoull(data, &end, base);
 
@@ -3947,6 +3964,12 @@ static ConstantNumberParseResult parseInteger64(int64_t& result, const char* dat
     }
     else
     {
+        if (FFlag::LuauNoDuplicateBinaryPrefix)
+        {
+            if (base == 2 && data[0] == '0' && (data[1] == 'b' || data[1] == 'B'))
+                return ConstantNumberParseResult::Malformed;
+        }
+
         // hex and binary literals represent bit patterns covering the full uint64 range
         unsigned long long u = strtoull(data, &end, base);
 

@@ -75,6 +75,12 @@ struct RequireCycle
 
 struct Module
 {
+    explicit Module(std::shared_ptr<TypeArena> sharedInternalTypes)
+        : internalTypes(std::move(sharedInternalTypes))
+    {
+        LUAU_ASSERT(internalTypes);
+    }
+
     ~Module();
 
     // TODO: Clip this when we clip FFlagLuauSolverV2
@@ -84,7 +90,9 @@ struct Module
     std::string humanReadableName;
 
     TypeArena interfaceTypes;
-    TypeArena internalTypes;
+    // For modules in a require cycle, internalTypes is shared across all members
+    // so that a single constraint solver pass can allocate and resolve types across the cycle.
+    std::shared_ptr<TypeArena> internalTypes;
 
     // Scopes and AST types refer to parse data, so we need to keep that alive
     std::shared_ptr<Allocator> allocator;

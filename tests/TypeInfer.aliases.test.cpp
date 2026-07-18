@@ -12,7 +12,6 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauAvoidCascadingRecursiveConstraintViolationError)
-LUAU_FASTFLAG(LuauConstraintGraph)
 LUAU_FASTFLAG(LuauFixInfiniteTypeRedundantBind)
 LUAU_FASTFLAG(LuauDoNotEmplaceAnnotatedType)
 LUAU_FASTFLAG(LuauBetterPackAndVariadicMismatchErrors)
@@ -275,7 +274,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_errors")
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes, getBuiltins());
     freeze(module->interfaceTypes);
-    module->internalTypes.clear();
+    module->internalTypes->clear();
     module->astTypes.clear();
 
     // Make sure the error strings don't include "VALUELESS"
@@ -409,8 +408,6 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_function_types")
 
 TEST_CASE_FIXTURE(Fixture, "generic_param_remap")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     const std::string code = R"(
         -- An example of a forwarded use of a type that has different type arguments than parameters
         type A<T,U> = {t:T, u:U, next:A<U,T>?}
@@ -705,8 +702,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_ok")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
 {
-    // CLI-116108
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag _{FFlag::LuauFixInfiniteTypeRedundantBind, true};
 
     CheckResult result = check(R"(
         -- OK because forwarded types are used with their parameters.
@@ -719,8 +715,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_2")
 {
-    // CLI-116108
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag _{FFlag::LuauFixInfiniteTypeRedundantBind, true};
 
     CheckResult result = check(R"(
         -- Not OK because forwarded types are used with different types than their parameters.
@@ -743,8 +738,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_ok")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_not_ok")
 {
-    // CLI-116108
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag _{FFlag::LuauFixInfiniteTypeRedundantBind, true};
 
     CheckResult result = check(R"(
         type Tree1<T,U> = { data: T, children: {Tree2<U,T>} }
@@ -866,9 +860,6 @@ TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_ok")
 
 TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_not_ok")
 {
-    // CLI-116108
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         -- this would be an infinite type if we allowed it
         type Tree<T> = { data: T, children: {Tree<{T}>} }
@@ -1391,7 +1382,6 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_type_alias_through_generic_does_not_assert")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauConstraintGraph, true},
         {FFlag::LuauFixInfiniteTypeRedundantBind, true},
     };
 

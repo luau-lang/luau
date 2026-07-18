@@ -57,7 +57,6 @@ void luau_callhook(lua_State* L, lua_Hook hook, void* userdata);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauResumeRestoreCcalls)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
@@ -70,6 +69,8 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauAutoStack)
 LUAU_FASTFLAG(LuauUdataMetatablePinned)
 LUAU_DYNAMIC_FASTFLAG(LuauGcTableStepFix)
+LUAU_FASTFLAG(LuauCodegenFixTwoResA64Builtin)
+LUAU_FASTFLAG(LuauMathRoundNegZero)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -524,12 +525,7 @@ Vec2* lua_vec2_push(lua_State* L)
 
 Vec2* lua_vec2_get(lua_State* L, int idx)
 {
-    Vec2* a = (Vec2*)lua_touserdatatagged(L, idx, kTagVec2);
-
-    if (a)
-        return a;
-
-    luaL_typeerror(L, idx, "vec2");
+    return (Vec2*)luaL_checkudatatagged(L, idx, kTagVec2);
 }
 
 static int lua_vec2(lua_State* L)
@@ -676,6 +672,7 @@ Vertex* lua_vertex_push(lua_State* L)
 
 Vertex* lua_vertex_get(lua_State* L, int idx)
 {
+    // Intentionally not using `luaL_checkudatatagged` for coverage
     Vertex* a = (Vertex*)lua_touserdatatagged(L, idx, kTagVertex);
 
     if (a)
@@ -801,6 +798,9 @@ void setupUserdataHelpers(lua_State* L)
 
     lua_pushvalue(L, -1);
     lua_setuserdatametatable(L, kTagVec2);
+
+    lua_pushliteral(L, "vec2");
+    lua_setfield(L, -2, "__type");
 
     lua_pushcfunction(L, lua_vec2_index, nullptr);
     lua_setfield(L, -2, "__index");
@@ -1248,6 +1248,9 @@ TEST_CASE("Buffers")
 
 TEST_CASE("Math")
 {
+    ScopedFastFlag luauCodegenFixTwoResA64Builtin{FFlag::LuauCodegenFixTwoResA64Builtin, true};
+    ScopedFastFlag luauMathRoundNegZero{FFlag::LuauMathRoundNegZero, true};
+
     runConformance("math.luau");
 }
 
@@ -1455,8 +1458,6 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
-    ScopedFastFlag luauResumeRestoreCcalls{FFlag::LuauResumeRestoreCcalls, true};
-
     runConformance(
         "pcall.luau",
         [](lua_State* L)
@@ -1746,7 +1747,6 @@ int pcallThenXCallContinuation(lua_State* L, int status)
 
 TEST_CASE("CYield")
 {
-    ScopedFastFlag luauResumeRestoreCcalls{FFlag::LuauResumeRestoreCcalls, true};
     ScopedFastFlag luauCustomYieldablePcalls{FFlag::LuauCustomYieldablePcalls, true};
 
     runConformance(
@@ -3786,15 +3786,15 @@ TEST_CASE("Userdata")
             // create metatable with all the metamethods
             luaL_newmetatable(L, "int64");
 
+            lua_pushliteral(L, "int64");
+            lua_setfield(L, -2, "__type");
+
             // __index
             lua_pushcfunction(
                 L,
                 [](lua_State* L)
                 {
-                    void* p = lua_touserdatatagged(L, 1, kInt64Tag);
-                    if (!p)
-                        luaL_typeerror(L, 1, "int64");
-
+                    void* p = luaL_checkudatatagged(L, 1, kInt64Tag);
                     const char* name = luaL_checkstring(L, 2);
 
                     if (strcmp(name, "value") == 0)
@@ -3814,10 +3814,7 @@ TEST_CASE("Userdata")
                 L,
                 [](lua_State* L)
                 {
-                    void* p = lua_touserdatatagged(L, 1, kInt64Tag);
-                    if (!p)
-                        luaL_typeerror(L, 1, "int64");
-
+                    void* p = luaL_checkudatatagged(L, 1, kInt64Tag);
                     const char* name = luaL_checkstring(L, 2);
 
                     if (strcmp(name, "value") == 0)

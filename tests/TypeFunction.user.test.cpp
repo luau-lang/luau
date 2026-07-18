@@ -14,12 +14,13 @@ LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauTypeFunctionRobustness)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
 LUAU_FASTFLAG(LuauTypeFunctionTableIndexerIsReadOnly)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
+LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2970,7 +2971,6 @@ type bar = identity<foo>
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_serialize_iteration_limit_null_deref")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
     ScopedFastInt luauTypeFunctionSerdeIterationLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
 
     CheckResult result = check(R"(
@@ -2998,7 +2998,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_serialize_iteration_limit_null_deref")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_alias_call_serialize_null_deref")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
     ScopedFastInt luauTypeFunctionSerdeIterationLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
 
     CheckResult result = check(R"(
@@ -3029,7 +3028,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_alias_call_serialize_null_deref")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_env_alias_serialize_null_deref")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
     ScopedFastInt luauTypeFunctionSerdeIterationLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
 
     CheckResult result = check(R"(
@@ -3057,7 +3055,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_env_alias_serialize_null_deref")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_deep_copy_iteration_limit_null_deref")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
     ScopedFastInt serdeLimit{DFInt::LuauTypeFunctionSerdeIterationLimit, 10};
 
     CheckResult result = check(R"(
@@ -3087,7 +3084,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_deep_copy_iteration_limit_null_deref")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_areequal_stack_overflow_on_deep_types")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
 
     CheckResult result = check(R"(
         type function deep_eq()
@@ -3119,7 +3115,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_areequal_stack_overflow_on_deep_types")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setmetatable_wrong_error_tag")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
 
     CheckResult result = check(R"(
         type function foo()
@@ -3158,7 +3153,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_cloner_missing_integer_crashes_copy")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setgenerics_wrong_argcount_check")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag luauTypeFunctionRobustness{FFlag::LuauTypeFunctionRobustness, true};
 
     CheckResult result = check(R"(
         type function extra_arg()
@@ -3436,6 +3430,54 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_table_indexer")
     CHECK(toString(requireType("a")) == "false");
     CHECK(toString(requireType("b")) == "false");
     CHECK(toString(requireType("c")) == "true");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag tostringMetamethod{FFlag::LuauUdtfTypeToStringMetamethod, true};
+
+    CheckResult results = check(R"(
+        type function foo(ty)
+            error(tostring(ty))
+        end
+
+        type T<U> = {
+            read absoluteHina: true,
+            [number]: string,
+            t: T<U>
+        }
+
+        local x: foo<T<vector>>
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+
+    CHECK_EQ(
+        toString(results.errors[0]),
+        "'foo' type function errored at runtime: [string \"foo\"]:3: { [number]: string, read absoluteHina: true, t: t1 }"
+            " where t1 = { [number]: string, read absoluteHina: true, t: t1 }"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag fixErrorMessage{FFlag::LuauUdtfCreateSingletonFixErrorMessage, true};
+
+    CheckResult results = check(R"(
+        type alias = {}
+        type function meow()
+            return types.singleton(alias :: any)
+        end
+
+        type test = meow<>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    CHECK_EQ(
+        toString(results.errors[0]),
+        "'meow' type function errored at runtime: [string \"meow\"]:4: types.singleton: can't create a singleton from a type"
+    );
 }
 
 TEST_SUITE_END();
