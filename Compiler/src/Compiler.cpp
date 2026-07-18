@@ -5116,11 +5116,11 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, A
     bytecode.finalize();
 }
 
-void compileOrThrow(BytecodeBuilder& bytecode, const std::string& source, const CompileOptions& options, const ParseOptions& parseOptions)
+void compileOrThrow(BytecodeBuilder& bytecode, std::string_view source, const CompileOptions& options, const ParseOptions& parseOptions)
 {
     Allocator allocator;
     AstNameTable names(allocator);
-    ParseResult result = Parser::parse(source.c_str(), source.size(), names, allocator, parseOptions);
+    ParseResult result = Parser::parse(source.data(), source.size(), names, allocator, parseOptions);
 
     if (!result.errors.empty())
         throw ParseErrors(result.errors);
@@ -5128,13 +5128,13 @@ void compileOrThrow(BytecodeBuilder& bytecode, const std::string& source, const 
     compileOrThrow(bytecode, result, names, options);
 }
 
-std::string compile(const std::string& source, const CompileOptions& options, const ParseOptions& parseOptions, BytecodeEncoder* encoder)
+std::string compile(std::string_view source, const CompileOptions& options, const ParseOptions& parseOptions, BytecodeEncoder* encoder)
 {
     LUAU_TIMETRACE_SCOPE("compile", "Compiler");
 
     Allocator allocator;
     AstNameTable names(allocator);
-    ParseResult result = Parser::parse(source.c_str(), source.size(), names, allocator, parseOptions);
+    ParseResult result = Parser::parse(source.data(), source.size(), names, allocator, parseOptions);
 
     if (!result.errors.empty())
     {
