@@ -11,6 +11,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauRawGetUseTypeFunction)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -2044,6 +2045,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_function")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Argument count mismatch. Function 'table.freeze' expects 1 argument, but none are specified", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_use_type_function")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag useTypeFunction{FFlag::LuauRawGetUseTypeFunction, true};
+
+    CheckResult result = check(R"(
+        type T = { number }
+        type K = number
+        local v: rawget<T, K> = rawget({} :: T, 1 :: K)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
 TEST_SUITE_END();
