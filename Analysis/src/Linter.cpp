@@ -2,6 +2,7 @@
 #include "Luau/Linter.h"
 
 #include "Luau/AstQuery.h"
+#include "Luau/LinterConfig.h"
 #include "Luau/Module.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
@@ -716,10 +717,12 @@ private:
     struct Local
     {
         AstNode* defined = nullptr;
-        bool function;
-        bool import;
-        bool used;
-        bool arg;
+        unsigned int scopeDepth = 0;
+        bool function = false;
+        bool import = false;
+        bool used = false;
+        bool softUsed = false;
+        bool arg = false;
     };
 
     struct Global
@@ -802,22 +805,29 @@ private:
         if (local->name.value[0] == '_')
             return;
 
+        const char* msg;
+        LintWarning::Code warning;
+
         if (info.function)
-            emitWarning(
-                *context,
-                LintWarning::Code_FunctionUnused,
-                local->location,
-                "Function '%s' is never used; prefix with '_' to silence",
-                local->name.value
-            );
+        {
+            warning = LintWarning::Code_FunctionUnused;
+            if (info.softUsed)
+                msg = "Function '%s' is never used outside its own body; prefix with '_' to silence";
+            else
+                msg = "Function '%s' is never used; prefix with '_' to silence";
+        }
         else if (info.import)
-            emitWarning(
-                *context, LintWarning::Code_ImportUnused, local->location, "Import '%s' is never used; prefix with '_' to silence", local->name.value
-            );
+        {
+            warning = LintWarning::Code_ImportUnused;
+            msg = "Import '%s' is never used; prefix with '_' to silence";
+        }
         else
-            emitWarning(
-                *context, LintWarning::Code_LocalUnused, local->location, "Variable '%s' is never used; prefix with '_' to silence", local->name.value
-            );
+        {
+            warning = LintWarning::Code_LocalUnused;
+            msg = "Variable '%s' is never used; prefix with '_' to silence";
+        }
+
+        emitWarning(*context, warning, local->location, msg, local->name.value);
     }
 
     bool isRequireCall(AstExpr* expr)
@@ -880,14 +890,21 @@ private:
         l.defined = node;
         l.function = true;
 
-        return true;
+        l.scopeDepth++;
+        node->func->visit(this);
+        l.scopeDepth--;
+
+        return false;
     }
 
     bool visit(AstExprLocal* node) override
     {
         Local& l = locals[node->local];
 
-        l.used = true;
+        if (l.function && l.scopeDepth > 0)
+            l.softUsed = true;
+        else
+            l.used = true;
 
         return true;
     }
@@ -959,9 +976,12 @@ private:
 
     struct Global
     {
-        Location location;
-        bool function;
-        bool used;
+        unsigned int scopeDepth = 0;
+        bool func = false;
+        bool used = false;
+        bool softUsed = false;
+
+        Location nameLocation;
     };
 
     DenseHashMap<AstName, Global> globals;
@@ -975,39 +995,44 @@ private:
     {
         for (auto& g : globals)
         {
-            if (g.second.function && !g.second.used && g.first.value[0] != '_')
-                emitWarning(
-                    *context,
-                    LintWarning::Code_FunctionUnused,
-                    g.second.location,
-                    "Function '%s' is never used; prefix with '_' to silence",
-                    g.first.value
-                );
+            if (!g.second.func || g.second.used || g.first.value[0] == '_')
+                continue;
+
+            const char* msg;
+            if (g.second.softUsed)
+                msg = "Function '%s' is never used outside its own body; prefix with '_' to silence";
+            else
+                msg = "Function '%s' is never used; prefix with '_' to silence";
+
+            emitWarning(*context, LintWarning::Code_FunctionUnused, g.second.nameLocation, msg, g.first.value);
         }
     }
 
     bool visit(AstStatFunction* node) override
     {
-        if (AstExprGlobal* expr = node->name->as<AstExprGlobal>())
-        {
-            Global& g = globals[expr->name];
+        AstExprGlobal* expr = node->name->as<AstExprGlobal>();
+        if (!expr)
+            return true;
 
-            g.function = true;
-            g.location = expr->location;
+        Global& g = globals[expr->name];
+        g.func = true;
+        g.nameLocation = expr->location;
 
-            node->func->visit(this);
+        g.scopeDepth++;
+        node->func->visit(this);
+        g.scopeDepth--;
 
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     bool visit(AstExprGlobal* node) override
     {
         Global& g = globals[node->name];
 
-        g.used = true;
+        if (g.func && g.scopeDepth > 0)
+            g.softUsed = true;
+        else
+            g.used = true;
 
         return true;
     }

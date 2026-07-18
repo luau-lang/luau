@@ -17,8 +17,8 @@ TEST_SUITE_BEGIN("Linter");
 TEST_CASE_FIXTURE(Fixture, "CleanCode")
 {
     LintResult result = lint(R"(
-function fib(n)
-    return n < 2 and 1 or fib(n-1) + fib(n-2)
+function _fib(n)
+    return n < 2 and 1 or _fib(n-1) + _fib(n-2)
 end
 
 )");
@@ -29,8 +29,8 @@ end
 TEST_CASE_FIXTURE(Fixture, "type_function_fully_reduces")
 {
     LintResult result = lint(R"(
-function fib(n)
-    return n < 2 or  fib(n-2)
+function _fib(n)
+    return n < 2 or  _fib(n-2)
 end
 
 )");
@@ -417,12 +417,28 @@ end
 function _unusedg()
 end
 
+function meow()
+    meow()
+end
+
+local function nyanya()
+    nyanya()
+end
+
+function kya()
+    kya()
+end
+
+kya()
+
 return foo()
 )");
 
-    REQUIRE(2 == result.warnings.size());
+    REQUIRE(4 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Function 'bar' is never used; prefix with '_' to silence");
     CHECK_EQ(result.warnings[1].text, "Function 'qux' is never used; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[2].text, "Function 'meow' is never used outside its own body; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[3].text, "Function 'nyanya' is never used outside its own body; prefix with '_' to silence");
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeBasic")
