@@ -54,6 +54,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceVariadics)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauRemoveExtraSubtypingInstances)
 LUAU_FASTFLAGVARIABLE(LuauIndexingIntoErrorGivesError)
+LUAU_FASTFLAG(LuauTypeNegationSupport)
 
 namespace Luau
 {
@@ -352,8 +353,29 @@ struct InfiniteTypeFinder : IterativeTypeVisitor
         if (foundInfiniteType)
             return false;
 
-        const std::optional<TypeFun> tf =
-            petv.prefix ? scope->lookupImportedType(petv.prefix->value, petv.name.value) : scope->lookupType(petv.name.value);
+        std::optional<TypeFun> tf;
+
+        if (FFlag::LuauTypeNegationSupport)
+        {
+            if (const PendingExpansionType::NamedType* nt = get_if<PendingExpansionType::NamedType>(&petv.target))
+            {
+                tf = nt->prefix ? scope->lookupImportedType(nt->prefix->value, nt->name.value) : scope->lookupType(nt->name.value);
+            }
+            else
+            {
+                const TypeFun* targetTypeFun = get_if<TypeFun>(&petv.target);
+                LUAU_ASSERT(targetTypeFun);
+
+                tf = *targetTypeFun;
+            }
+        }
+        else
+        {
+            const PendingExpansionType::NamedType* nt = get_if<PendingExpansionType::NamedType>(&petv.target);
+            LUAU_ASSERT(nt);
+
+            tf = nt->prefix ? scope->lookupImportedType(nt->prefix->value, nt->name.value) : scope->lookupType(nt->name.value);
+        }
 
         if (!tf)
             return true;
@@ -1274,12 +1296,38 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
         }
     };
 
-    std::optional<TypeFun> tf = (petv->prefix) ? constraint->scope->lookupImportedType(petv->prefix->value, petv->name.value)
-                                               : constraint->scope->lookupType(petv->name.value);
+    std::optional<TypeFun> tf;
+
+    if (FFlag::LuauTypeNegationSupport)
+    {
+        if (const PendingExpansionType::NamedType* nt = get_if<PendingExpansionType::NamedType>(&petv->target))
+        {
+            tf = (nt->prefix) ? constraint->scope->lookupImportedType(nt->prefix->value, nt->name.value)
+                    : constraint->scope->lookupType(nt->name.value);
+        }
+        else
+        {
+            const TypeFun* targetTypeFun = get_if<TypeFun>(&petv->target);
+            LUAU_ASSERT(targetTypeFun);
+
+            tf = *targetTypeFun;
+        }
+    }
+    else
+    {
+        const PendingExpansionType::NamedType* nt = get_if<PendingExpansionType::NamedType>(&petv->target);
+        LUAU_ASSERT(nt);
+
+        tf = (nt->prefix) ? constraint->scope->lookupImportedType(nt->prefix->value, nt->name.value)
+                : constraint->scope->lookupType(nt->name.value);
+    }
 
     if (!tf.has_value())
     {
-        reportError(UnknownSymbol{petv->name.value, UnknownSymbol::Context::Type}, constraint->location);
+        const PendingExpansionType::NamedType* nt = get_if<PendingExpansionType::NamedType>(&petv->target);
+        LUAU_ASSERT(nt);
+
+        reportError(UnknownSymbol{nt->name.value, UnknownSymbol::Context::Type}, constraint->location);
         bindResult(builtinTypes->errorType);
         return true;
     }
@@ -1366,8 +1414,25 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
     if (itf.foundInfiniteType)
     {
+        // `bindResult` corrupts the `typeId` of the petv->target Variant
+        if (const PendingExpansionType::NamedType* nt = get_if<PendingExpansionType::NamedType>(&petv->target))
+        {
+            constraint->scope->invalidTypeAliases[nt->name.value] = constraint->location;
+        }
+        else
+        {
+            LUAU_ASSERT(FFlag::LuauTypeNegationSupport);
+
+            const TypeFun* targetTypeFun = get_if<TypeFun>(&petv->target);
+            LUAU_ASSERT(targetTypeFun);
+
+            const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(targetTypeFun->type));
+            LUAU_ASSERT(tfit);
+
+            constraint->scope->invalidTypeAliases[tfit->function->name] = constraint->location;
+        }
+
         bindResult(builtinTypes->errorType);
-        constraint->scope->invalidTypeAliases[petv->name.value] = constraint->location;
         return true;
     }
 

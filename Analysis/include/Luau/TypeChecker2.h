@@ -182,6 +182,7 @@ private:
     void visit(AstTypeTable* table);
     void visit(AstTypeFunction* ty);
     void visit(AstTypeTypeof* ty);
+    void visit(AstTypeNegation* ty);
     void visit(AstTypeUnion* ty);
     void visit(AstTypeIntersection* ty);
     void visit(AstTypePack* pack);
