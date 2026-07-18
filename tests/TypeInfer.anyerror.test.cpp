@@ -14,6 +14,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauIndexingIntoErrorGivesError)
 
 TEST_SUITE_BEGIN("TypeInferAnyError");
 
@@ -266,6 +267,8 @@ TEST_CASE_FIXTURE(Fixture, "quantify_any_does_not_bind_to_itself")
 
 TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")
 {
+    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
+
     CheckResult result = check(R"(
         local a = unknown.Parent.Reward.GetChildren()
     )");
@@ -276,23 +279,18 @@ TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")
     REQUIRE(err != nullptr);
 
     CHECK_EQ("unknown", err->name);
-
-    if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("any", toString(requireType("a")));
-    else
-        CHECK_EQ("*error-type*", toString(requireType("a")));
+    CHECK_EQ("*error-type*", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "chain_calling_error_type_yields_error")
 {
+    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
+
     CheckResult result = check(R"(
         local a = Utility.Create "Foo" {}
     )");
 
-    if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("any", toString(requireType("a")));
-    else
-        CHECK_EQ("*error-type*", toString(requireType("a")));
+    CHECK_EQ("*error-type*", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "replace_every_free_type_when_unifying_a_complex_function_with_any")
@@ -417,6 +415,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_of_any_calls")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_any_can_have_props")
 {
+    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
+
     // *blocked-130* ~ hasProp any & ~(false?), "_status"
     CheckResult result = check(R"(
 function foo(x: any, y)
@@ -427,7 +427,18 @@ function foo(x: any, y)
 end
 )");
 
-    CHECK("(any, any) -> any" == toString(requireType("foo")));
+    if (!FFlag::DebugLuauForceOldSolver)
+    {
+        // This is an artifact of formalizing `any = unknown | *error-type*`.
+        // We refine `any` to `*error-type* | ~(false?)`, and then index
+        // into it, versus the old solver path where we just claim refining
+        // `any` means `any`.
+        CHECK("(any, *error-type*) -> *error-type*" == toString(requireType("foo")));
+    }
+    else
+    {
+        CHECK("(any, any) -> any" == toString(requireType("foo")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "cast_to_table_of_any")

@@ -864,13 +864,7 @@ void AstStatFunction::visit(AstVisitor* visitor)
     }
 }
 
-AstStatLocalFunction::AstStatLocalFunction(
-    const Location& location,
-    AstLocal* name,
-    AstExprFunction* func,
-    bool isConst,
-    Position constKeywordBegin
-)
+AstStatLocalFunction::AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func, bool isConst, Position constKeywordBegin)
     : AstStat(ClassIndex(), location)
     , name(name)
     , func(func)
@@ -1132,12 +1126,14 @@ AstTypeReference::AstTypeReference(
     std::optional<Location> prefixLocation,
     const Location& nameLocation,
     bool hasParameterList,
-    const AstArray<AstTypeOrPack>& parameters
+    const AstArray<AstTypeOrPack>& parameters,
+    AstLocal* prefixLocal
 )
     : AstType(ClassIndex(), location)
     , hasParameterList(hasParameterList)
     , prefix(prefix)
     , prefixLocation(prefixLocation)
+    , prefixLocal(prefixLocal)
     , name(name)
     , nameLocation(nameLocation)
     , parameters(parameters)

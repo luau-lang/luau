@@ -48,11 +48,14 @@ target_sources(Luau.Bytecode PRIVATE
     Bytecode/include/Luau/BytecodeCallInliner.h
     Bytecode/include/Luau/BytecodeGraph.h
     Bytecode/include/Luau/BytecodeOps.h
+    Bytecode/include/Luau/BytecodeValidation.h
+    Bytecode/include/Luau/Sccp.h
 
     Bytecode/src/BytecodeBuilder.cpp
     Bytecode/src/BytecodeGraph.cpp
     Bytecode/src/BytecodeGraphParser.h
     Bytecode/src/BytecodeGraphSerializer.h
+    Bytecode/src/Sccp.cpp
 )
 
 # Luau.Inliner Sources
@@ -122,6 +125,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/IrUtils.h
     CodeGen/include/Luau/IrVisitUseDef.h
     CodeGen/include/Luau/Label.h
+    CodeGen/include/Luau/LogBuilder.h
     CodeGen/include/Luau/LoweringStats.h
     CodeGen/include/Luau/NativeProtoExecData.h
     CodeGen/include/Luau/OperandX64.h
@@ -536,6 +540,7 @@ if(TARGET Luau.UnitTest)
         tests/RegisterCallbacks.h
         tests/RequireTracer.test.cpp
         tests/RuntimeLimits.test.cpp
+        tests/Sccp.test.cpp
         tests/ScopedFlags.h
         tests/Simplify.test.cpp
         tests/Set.test.cpp
