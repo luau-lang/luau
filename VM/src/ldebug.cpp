@@ -13,6 +13,7 @@
 #include <stdio.h>
 
 LUAU_FASTFLAG(LuauCIProto)
+LUAU_FASTFLAGVARIABLE(LuauActivationRecordStopDeadnaming)
 
 static const char* getfuncname(Closure* cl);
 
@@ -134,7 +135,10 @@ static Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closur
             {
                 TString* source = (FFlag::LuauCIProto && ci != nullptr ? ci->p : f->l.p)->source;
                 ar->source = getstr(source);
-                ar->what = "Lua";
+                if (FFlag::LuauActivationRecordStopDeadnaming)
+                    ar->what = "Luau";
+                else
+                    ar->what = "Lua";
                 ar->linedefined = (FFlag::LuauCIProto && ci != nullptr ? ci->p : f->l.p)->linedefined;
                 ar->short_src = luaO_chunkid(ar->ssbuf, sizeof(ar->ssbuf), getstr(source), source->len);
             }
