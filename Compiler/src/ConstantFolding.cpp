@@ -10,7 +10,6 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAGVARIABLE(LuauCompileNewTableMutationTracker)
 
 namespace Luau
 {
@@ -432,352 +431,6 @@ static void foldInterpString(Constant& result, AstExprInterpString* expr, DenseH
     result.valueString = name.value;
 }
 
-// Figures out which locals are initialized with constant tables, and never potentially mutated
-// The bulk of the work is done on two analyses on AstExpr nodes:
-// isConstantTableLiteral determines if an expression consists mainly of a table literal with constant keys and values, which we can fold into a
-// constant table. We don't yet support folding nested tables, so we require keys and values to be non table constants. If we see a local initialized
-// with a constant table literal, we start tracking it as a potentially foldable ConstantTable.
-// observeMutations is used to check for whether a local we have mapped to a ConstantTable is ever potentially mutated in order to ensure that any
-// folding we perform later on is sound.
-struct TableMutationTracker_DEPRECATED : AstVisitor
-{
-    DenseHashMap<AstLocal*, TableConstantKind>& constantTables;
-    const DenseHashMap<AstLocal*, Variable>& variables;
-
-    TableMutationTracker_DEPRECATED(DenseHashMap<AstLocal*, TableConstantKind>& constantTables, const DenseHashMap<AstLocal*, Variable>& variables)
-        : constantTables(constantTables)
-        , variables(variables)
-    {
-    }
-
-    bool isNonTableConstant(const AstExpr* node)
-    {
-        if (const AstExprGroup* expr = node->as<AstExprGroup>())
-            return isNonTableConstant(expr->expr);
-        else if (node->is<AstExprConstantNil>())
-            return true;
-        else if (node->is<AstExprConstantBool>())
-            return true;
-        else if (node->is<AstExprConstantNumber>())
-            return true;
-        else if (node->is<AstExprConstantInteger>())
-            return true;
-        else if (node->is<AstExprConstantString>())
-            return true;
-        else if (const AstExprLocal* expr = node->as<AstExprLocal>())
-            if (const TableConstantKind* kind = constantTables.find(expr->local))
-                return *kind == ConstantOther; // We don't support folding nested tables yet
-            else
-                return false;
-        else if (node->is<AstExprGlobal>())
-            return false;
-        else if (node->is<AstExprVarargs>())
-            return false;
-        else if (const AstExprCall* expr = node->as<AstExprCall>())
-            return false;
-        else if (const AstExprIndexName* expr = node->as<AstExprIndexName>())
-        {
-            const AstExprLocal* local = expr->expr->as<AstExprLocal>();
-            if (!local)
-                return false;
-
-            // We don't currently constant fold nested tables, so property access on a constant table never returns a table
-            if (const TableConstantKind* kind = constantTables.find(local->local))
-                return *kind == ConstantTable;
-            else
-                return false;
-        }
-        else if (const AstExprIndexExpr* expr = node->as<AstExprIndexExpr>())
-        {
-            const AstExprLocal* local = expr->expr->as<AstExprLocal>();
-            if (!local)
-                return false;
-
-            // We don't currently constant fold nested tables, so property access on a constant table never returns a table
-            if (const TableConstantKind* kind = constantTables.find(local->local))
-                return *kind == ConstantTable && isNonTableConstant(expr->index);
-            else
-                return false;
-        }
-        else if (const AstExprFunction* expr = node->as<AstExprFunction>())
-            return false;
-        else if (const AstExprTable* expr = node->as<AstExprTable>())
-        {
-            // we only fold table literals directly assigned to locals, which we hit in isTableLiteral
-            // if we see a table literal here, we're not folding it, so we treat it as not constant
-            return false;
-        }
-        else if (const AstExprUnary* expr = node->as<AstExprUnary>())
-            return isNonTableConstant(expr->expr);
-        else if (const AstExprBinary* expr = node->as<AstExprBinary>())
-        {
-            return isNonTableConstant(expr->left) && isNonTableConstant(expr->right);
-        }
-        else if (const AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
-            return isNonTableConstant(expr->expr);
-        else if (const AstExprIfElse* expr = node->as<AstExprIfElse>())
-        {
-            return isNonTableConstant(expr->condition) && isNonTableConstant(expr->trueExpr) && isNonTableConstant(expr->falseExpr);
-        }
-        else if (const AstExprInterpString* expr = node->as<AstExprInterpString>())
-        {
-            for (AstExpr* expression : expr->expressions)
-            {
-                if (!isNonTableConstant(expression))
-                    return false;
-            }
-            return true;
-        }
-        else if (const AstExprInstantiate* expr = node->as<AstExprInstantiate>())
-            return isNonTableConstant(expr->expr);
-        else
-            LUAU_ASSERT(!"Unknown expression type");
-
-        return false;
-    }
-
-    bool isConstantTableLiteral(const AstExpr* node)
-    {
-        if (const AstExprTable* table = node->as<AstExprTable>())
-        {
-            for (const AstExprTable::Item& item : table->items)
-            {
-                if (item.key && !isNonTableConstant(item.key))
-                    return false;
-                if (!isNonTableConstant(item.value))
-                    return false;
-            }
-            return true;
-        }
-        else if (const AstExprGroup* group = node->as<AstExprGroup>())
-            return isConstantTableLiteral(group->expr);
-        else if (const AstExprTypeAssertion* assert = node->as<AstExprTypeAssertion>())
-            return isConstantTableLiteral(assert->expr);
-        else if (const AstExprInstantiate* instantiate = node->as<AstExprInstantiate>())
-            return isConstantTableLiteral(instantiate->expr);
-        else
-            return false;
-    }
-
-    // Could node evaluate to a reference to a constant table?
-    bool couldBeTableReference(const AstExpr* node)
-    {
-        if (const AstExprGroup* expr = node->as<AstExprGroup>())
-            return couldBeTableReference(expr->expr);
-        else if (const AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
-            return couldBeTableReference(expr->expr);
-        else if (const AstExprInstantiate* expr = node->as<AstExprInstantiate>())
-            return couldBeTableReference(expr->expr);
-        else if (const AstExprIfElse* expr = node->as<AstExprIfElse>())
-            return couldBeTableReference(expr->trueExpr) || couldBeTableReference(expr->falseExpr);
-        else if (const AstExprBinary* binExpr = node->as<AstExprBinary>();
-                 binExpr && (binExpr->op == AstExprBinary::And || binExpr->op == AstExprBinary::Or))
-            return couldBeTableReference(binExpr->left) || couldBeTableReference(binExpr->right);
-        else if (node->is<AstExprLocal>())
-            return true;
-        else
-        { // We ignore AstExprIndexName and AstExprIndexExpr here since tables referencing other tables should be caught in the AstExprTable case
-            // of observeMutations or the AstStatAssign visitor
-            return false;
-        }
-    }
-
-    // Updates constantTables if mutations are observed
-    void observeMutations(const AstExpr* node, bool couldMutateTable)
-    {
-        if (const AstExprGroup* expr = node->as<AstExprGroup>())
-            observeMutations(expr->expr, couldMutateTable);
-        else if (node->is<AstExprConstantNil>())
-            return;
-        else if (node->is<AstExprConstantBool>())
-            return;
-        else if (node->is<AstExprConstantNumber>())
-            return;
-        else if (node->is<AstExprConstantInteger>())
-            return;
-        else if (node->is<AstExprConstantString>())
-            return;
-        else if (const AstExprLocal* expr = node->as<AstExprLocal>())
-        {
-            AstLocal* local = expr->local;
-            if (couldMutateTable && constantTables.contains(local))
-                constantTables[local] = NotConstant;
-        }
-        else if (node->is<AstExprGlobal>())
-            return;
-        else if (node->is<AstExprVarargs>())
-            return;
-        else if (const AstExprCall* expr = node->as<AstExprCall>())
-        {
-            observeMutations(expr->func, /* couldMutateTable */ true); // t:method() could mutate t
-
-            for (size_t i = 0; i < expr->args.size; ++i)
-            {
-                AstExpr* arg = expr->args.data[i];
-                // func(t) could mutate t, but func(t.prop) can't
-                observeMutations(arg, /* couldMutateTable */ couldBeTableReference(arg));
-            }
-        }
-        else if (const AstExprIndexName* expr = node->as<AstExprIndexName>())
-            observeMutations(expr->expr, couldMutateTable);
-        else if (const AstExprIndexExpr* expr = node->as<AstExprIndexExpr>())
-        {
-            observeMutations(expr->index, /* couldMutateTable */ false);
-            observeMutations(expr->expr, couldMutateTable);
-        }
-        else if (const AstExprFunction* expr = node->as<AstExprFunction>())
-        {
-            // this is necessary to observe mutations in the function's body
-            expr->body->visit(this);
-        }
-        else if (const AstExprTable* expr = node->as<AstExprTable>())
-        {
-            for (const AstExprTable::Item& item : expr->items)
-            {
-                if (item.key)
-                    observeMutations(item.key, /* couldMutateTable */ false);
-                observeMutations(item.value, /* couldMutateTable */ couldBeTableReference(item.value));
-            }
-        }
-        else if (const AstExprUnary* expr = node->as<AstExprUnary>())
-        {
-            // We don't worry about metamethods because we observe mutations from setmetatable calls elsewhere
-            observeMutations(expr->expr, /* couldMutateTable */ false);
-        }
-        else if (const AstExprBinary* expr = node->as<AstExprBinary>())
-        {
-            // We don't worry about metamethods because we observe mutations from setmetatable calls elsewhere
-            bool shortCircuiting = expr->op == AstExprBinary::And || expr->op == AstExprBinary::Or;
-            observeMutations(expr->left, /* couldMutateTable */ shortCircuiting);
-            observeMutations(expr->right, /* couldMutateTable */ shortCircuiting);
-        }
-        else if (const AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
-            observeMutations(expr->expr, couldMutateTable);
-        else if (const AstExprIfElse* expr = node->as<AstExprIfElse>())
-        {
-            observeMutations(expr->condition, /* couldMutateTable */ false);
-            observeMutations(expr->trueExpr, couldMutateTable);
-            observeMutations(expr->falseExpr, couldMutateTable);
-        }
-        else if (const AstExprInterpString* expr = node->as<AstExprInterpString>())
-        {
-            for (AstExpr* expression : expr->expressions)
-                observeMutations(expression, /* couldMutateTable */ false);
-        }
-        else if (const AstExprInstantiate* expr = node->as<AstExprInstantiate>())
-            observeMutations(expr->expr, couldMutateTable);
-        else
-        {
-            LUAU_ASSERT(!"Unknown expression type");
-        }
-    }
-
-    bool visit(AstExpr* node) override
-    {
-        observeMutations(node, /* couldMutateTable */ false);
-        return false;
-    }
-
-    bool visit(AstStatLocal* node) override
-    {
-        // all values that align wrt indexing are simple - we just match them 1-1
-        for (size_t i = 0; i < node->vars.size && i < node->values.size; ++i)
-        {
-            AstLocal* local = node->vars.data[i];
-            const AstExpr* rhs = node->values.data[i];
-
-            // note: we rely on trackValues to have been run before us
-            // if the local isn't written to, see if we can mark it as a constant
-            const Variable* v = variables.find(local);
-            LUAU_ASSERT(v);
-
-            if (!v->written)
-            {
-                if (isConstantTableLiteral(rhs))
-                    constantTables[local] = ConstantTable;
-                else if (isNonTableConstant(rhs))
-                    constantTables[local] = ConstantOther;
-            }
-
-            // aliasing a table reference could lead to downstream mutations, so we conservatively treat a referenced table as mutated
-            if (!constantTables.contains(local))
-                observeMutations(rhs, /* couldMutateTable */ couldBeTableReference(rhs));
-        }
-
-        // check remaining values to observe mutations
-        if (node->vars.size < node->values.size)
-        {
-            for (size_t i = node->vars.size; i < node->values.size; ++i)
-                observeMutations(node->values.data[i], /* couldMutateTable */ false);
-        }
-
-        return false;
-    }
-
-    bool visit(AstStatAssign* node) override
-    {
-        for (size_t i = 0; i < node->vars.size && i < node->values.size; ++i)
-        {
-            AstExpr* rhs = node->values.data[i];
-
-            // aliasing a table reference could lead to downstream mutations, so we conservatively treat a referenced table as mutated
-            observeMutations(rhs, /* couldMutateTable */ couldBeTableReference(rhs));
-        }
-
-        // Any remaining values don't inherently mutate tables, but we still observe for things like function calls that could mutate tables
-        if (node->values.size > node->vars.size)
-        {
-            for (size_t i = node->vars.size; i < node->values.size; ++i)
-                observeMutations(node->values.data[i], /* couldMutateTable */ false);
-        }
-
-        // Tables referred to in lhs expressions could be mutated by the assignment
-        for (AstExpr* lhs : node->vars)
-            observeMutations(lhs, /* couldMutateTable */ true);
-
-        return false;
-    }
-
-    bool visit(AstStatCompoundAssign* node) override
-    {
-        AstExpr* rhs = node->value;
-        observeMutations(rhs, /* couldMutateTable */ couldBeTableReference(rhs));
-        // Tables referred to in the lhs could be mutated by the assignment
-        observeMutations(node->var, /* couldMutateTable */ true);
-
-        return false;
-    }
-
-    bool visit(AstStatFunction* node) override
-    {
-        // Mutations in the body of the function will get caught by other visitor cases
-        observeMutations(node->func, /* couldMutateTable */ false);
-        // If this stat adds a table method, the table is no longer constant
-        observeMutations(node->name, /* couldMutateTable */ true);
-
-        return false;
-    }
-
-    bool visit(AstStatReturn* node) override
-    {
-        for (AstExpr* expr : node->list)
-            observeMutations(expr, /* couldMutateTable */ couldBeTableReference(expr));
-
-        return false;
-    }
-
-    bool visit(AstStatForIn* node) override
-    {
-        // Table iterators could mutate their tables
-        for (AstExpr* expr : node->values)
-            observeMutations(expr, /* couldMutateTable */ true);
-
-        node->body->visit(this);
-
-        return false;
-    }
-};
-
 // Pass to detect which tables are mutated or 'escape'
 struct TableMutationTracker : AstVisitor
 {
@@ -1151,8 +804,8 @@ struct ConstantVisitor : AstVisitor
                 {
                     Constant keyVal = analyze(item.key);
 
-                    if (keyVal.type == Constant::Type_String && valueVal.type != Constant::Type_Unknown &&
-                        valueVal.type != Constant::Type_Table && keyVal.stringLength != 0)
+                    if (keyVal.type == Constant::Type_String && valueVal.type != Constant::Type_Unknown && valueVal.type != Constant::Type_Table &&
+                        keyVal.stringLength != 0)
                     {
                         AstName constKey = stringTable.getOrAdd(keyVal.valueString, keyVal.stringLength);
 
@@ -1348,27 +1001,19 @@ struct ConstantVisitor : AstVisitor
 
 void buildTableConstantMap(DenseHashMap<AstLocal*, TableConstantKind>& result, const DenseHashMap<AstLocal*, Variable>& variables, AstNode* root)
 {
-    if (FFlag::LuauCompileNewTableMutationTracker)
+    TableMutationTracker tracker{variables};
+    root->visit(&tracker);
+
+    for (auto& [local, var] : variables)
     {
-        TableMutationTracker tracker{variables};
-        root->visit(&tracker);
+        if (var.written)
+            continue;
 
-        for (auto& [local, var] : variables)
-        {
-            if (var.written)
-                continue;
+        if (!var.init || !unwrapExprOfType<AstExprTable>(var.init))
+            continue;
 
-            if (!var.init || !unwrapExprOfType<AstExprTable>(var.init))
-                continue;
-
-            if (!tracker.escaped.contains(local))
-                result[local] = ConstantTable;
-        }
-    }
-    else
-    {
-        TableMutationTracker_DEPRECATED mutationTracker{result, variables};
-        root->visit(&mutationTracker);
+        if (!tracker.escaped.contains(local))
+            result[local] = ConstantTable;
     }
 }
 
@@ -1419,16 +1064,7 @@ void foldConstants(
 )
 {
     ConstantVisitor visitor{
-        constants,
-        variables,
-        locals,
-        builtins,
-        foldLibraryK,
-        libraryMemberConstantCb,
-        stringTable,
-        tableConstants,
-        exprChangeLog,
-        localChangeLog
+        constants, variables, locals, builtins, foldLibraryK, libraryMemberConstantCb, stringTable, tableConstants, exprChangeLog, localChangeLog
     };
     root->visit(&visitor);
 }

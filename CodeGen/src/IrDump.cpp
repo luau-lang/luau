@@ -9,8 +9,6 @@
 
 #include <stdarg.h>
 
-LUAU_FASTFLAG(LuauCodegenVmExitSync)
-
 namespace Luau
 {
 namespace CodeGen
@@ -559,6 +557,40 @@ const char* getBlockKindName(IrBlockKind kind)
     LUAU_UNREACHABLE();
 }
 
+const char* getValueKindName(IrValueKind kind)
+{
+    switch (kind)
+    {
+    case IrValueKind::Unknown:
+        return "unknown";
+    case IrValueKind::None:
+        return "none";
+    case IrValueKind::Tag:
+        return "tag";
+    case IrValueKind::Int:
+        return "int";
+    case IrValueKind::Int64:
+        return "int64";
+    case IrValueKind::Pointer:
+        return "pointer";
+    case IrValueKind::Float:
+        return "float";
+    case IrValueKind::Double:
+        return "double";
+    case IrValueKind::Tvalue:
+        return "tvalue";
+    case IrValueKind::Count:
+        CODEGEN_ASSERT(!"invalid value kind");
+    }
+
+    LUAU_UNREACHABLE();
+}
+
+const char* getConversionCmdSuffix(IrCmd conversionCmd)
+{
+    return conversionCmd == IrCmd::INT_TO_NUM ? " as int" : conversionCmd == IrCmd::UINT_TO_NUM ? " as uint" : "";
+}
+
 void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
 {
     append(ctx.result, "  ");
@@ -911,41 +943,38 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blo
         ctx.result.append("\n");
     }
 
-    if (FFlag::LuauCodegenVmExitSync)
+    if (const VmExitSyncInfo* sync = ctx.vmExitInfo.find(instIdx))
     {
-        if (const VmExitSyncInfo* sync = ctx.vmExitInfo.find(instIdx))
+        if (!sync->regStores.empty())
         {
-            if (!sync->regStores.empty())
+            append(ctx.result, "   ; exit sync: ");
+
+            bool comma = false;
+
+            for (auto& el : sync->regStores)
             {
-                append(ctx.result, "   ; exit sync: ");
+                if (comma)
+                    append(ctx.result, ", ");
+                comma = true;
 
-                bool comma = false;
-
-                for (auto& el : sync->regStores)
-                {
-                    if (comma)
-                        append(ctx.result, ", ");
-                    comma = true;
-
-                    append(ctx.result, "R%d", el.reg);
-                }
-
-                comma = false;
-
-                append(ctx.result, ", {");
-
-                for (auto argOp : sync->argOps)
-                {
-                    if (comma)
-                        append(ctx.result, ", ");
-                    comma = true;
-
-                    toString(ctx, argOp);
-                }
-
-                append(ctx.result, "}");
-                append(ctx.result, "\n");
+                append(ctx.result, "R%d", el.reg);
             }
+
+            comma = false;
+
+            append(ctx.result, ", {");
+
+            for (auto argOp : sync->argOps)
+            {
+                if (comma)
+                    append(ctx.result, ", ");
+                comma = true;
+
+                toString(ctx, argOp);
+            }
+
+            append(ctx.result, "}");
+            append(ctx.result, "\n");
         }
     }
 }

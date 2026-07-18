@@ -9,10 +9,10 @@
 #include <climits>
 
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAGVARIABLE(LuauCompileUdataDirect)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauVirtualBcBuilder)
+LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
 
 namespace Luau
 {
@@ -217,7 +217,7 @@ void BytecodeBuilder::clearState()
     debugRemarkBuffer.clear();
 }
 
-void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uint8_t flags)
+void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uint8_t flags, uint64_t cost)
 {
     LUAU_ASSERT(currentFunction != ~0u);
 
@@ -240,7 +240,7 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uin
     if (encoder)
         encoder->encode(insns.data(), insns.size());
 
-    writeFunction(func.data, currentFunction, flags);
+    writeFunction(func.data, currentFunction, flags, cost);
 
     currentFunction = ~0u;
 
@@ -747,13 +747,17 @@ void BytecodeBuilder::finalize()
     writeVarInt(bytecode, uint32_t(functions.size()));
 
     for (const Function& func : functions)
+    {
+        if (FFlag::LuauBytecodeCostModel)
+            writeVarInt(bytecode, func.data.size());
         bytecode += func.data;
+    }
 
     LUAU_ASSERT(mainFunction < functions.size());
     writeVarInt(bytecode, mainFunction);
 }
 
-void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
+void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags, uint64_t cost)
 {
     LUAU_ASSERT(id < functions.size());
     const Function& func = functions[id];
@@ -961,6 +965,13 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
             writeByte(ss, LFT_CALLTARGET);
             writeVarInt(ss, pc);
         }
+    }
+
+    if (FFlag::LuauBytecodeCostModel && (flags & LPF_INLINABLE) != 0)
+    {
+        if (!FFlag::LuauEmitCallFeedback)
+            writeVarInt(ss, 0);
+        writeVarInt(ss, cost);
     }
 }
 
@@ -1401,18 +1412,13 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
+    if (FFlag::LuauBytecodeCostModel)
+        return 12;
     if (FFlag::LuauEmitCallFeedback)
         return 11;
 
     if (FFlag::DebugLuauUserDefinedClasses)
         return 10;
-
-    if (FFlag::LuauCompileUdataDirect)
-        return 9;
-
-    // LBC_CONSTANT_INTEGER requires version 8
-    if (FFlag::LuauIntegerType2)
-        return 8;
 
     return LBC_VERSION_TARGET;
 }
@@ -1460,7 +1466,9 @@ void BytecodeBuilder::validateInstructions() const
 #define VREG(v) LUAU_ASSERT(unsigned(v) < func.maxstacksize)
 #define VREGRANGE(v, count) LUAU_ASSERT(unsigned(v + (count < 0 ? 0 : count)) <= func.maxstacksize)
 #define VUPVAL(v) LUAU_ASSERT(unsigned(v) < func.numupvalues)
-#define VCONST(v, kind) FFlag::LuauVirtualBcBuilder ? validateConst(v, Constant::Type_##kind) : LUAU_ASSERT(unsigned(v) < constants.size() && constants[v].type == Constant::Type_##kind)
+#define VCONST(v, kind) \
+    FFlag::LuauVirtualBcBuilder ? validateConst(v, Constant::Type_##kind) \
+                                : LUAU_ASSERT(unsigned(v) < constants.size() && constants[v].type == Constant::Type_##kind)
 #define VCONSTANY(v) FFlag::LuauVirtualBcBuilder ? validateConst(v) : LUAU_ASSERT(unsigned(v) < constants.size())
 #define VJUMP(v) LUAU_ASSERT(size_t(i + 1 + v) < insns.size() && insnvalid[i + 1 + v])
 

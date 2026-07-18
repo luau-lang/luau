@@ -164,9 +164,9 @@ TEST_CASE_FIXTURE(Fixture, "inferring_hundreds_of_self_calls_should_not_suffocat
 
     ModulePtr module = getMainModule();
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_GE(80, module->internalTypes.types.size());
+        CHECK_GE(80, module->internalTypes->types.size());
     else
-        CHECK_GE(50, module->internalTypes.types.size());
+        CHECK_GE(50, module->internalTypes->types.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "pass_too_many_arguments")

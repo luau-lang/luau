@@ -29,10 +29,7 @@ LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
-LUAU_FASTFLAG(LuauCompileTypeAliases)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
-LUAU_FASTFLAG(LuauCompileNewTableMutationTracker)
-LUAU_FASTFLAG(LuauCompileInlineTableFunctions)
 
 using namespace Luau;
 
@@ -8711,9 +8708,6 @@ RETURN R0 0
 
 TEST_CASE("InlineTableFunction")
 {
-    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-    ScopedFastFlag luauCompileInlineTableFunctions{FFlag::LuauCompileInlineTableFunctions, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -8798,23 +8792,23 @@ RETURN R1 1
 
     CHECK_EQ(
         "\n" + compileFunction(
-            R"(
+                   R"(
 local t = {
     f = function(x) return x + 1 end
 }
 return t.f<<number>>(100)
 )",
-1,
-2
-),
-R"(
+                   1,
+                   2
+               ),
+        R"(
 DUPTABLE R0 1
 DUPCLOSURE R1 K2 ['f']
 SETTABLEKS R1 R0 K0 ['f']
 LOADN R1 101
 RETURN R1 1
 )"
-);
+    );
 
     // cannot inline if the table escapes
     CHECK_EQ(
@@ -10303,8 +10297,6 @@ type Instance = string
 
 TEST_CASE("TypeAliasResolve")
 {
-    ScopedFastFlag luauTypeAliases{FFlag::LuauCompileTypeAliases, true};
-
     CHECK_EQ(
         "\n" + compileTypeTable(R"(
 type Foo1 = number
@@ -11303,8 +11295,6 @@ RETURN R1 1
 
 TEST_CASE("FoldConstTableProps")
 {
-    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -11550,14 +11540,17 @@ RETURN R1 1
 
     // table used as a key in another table that escapes allows mutation through iteration
     CHECK_EQ(
-        "\n" + compileFunction(R"(
+        "\n" + compileFunction(
+                   R"(
 local function id(x) return x end
 local t = { x = 1 }
 local u = { [t] = true }
 id(u)
 return t.x
-)", 1),
-R"(
+)",
+                   1
+               ),
+        R"(
 DUPCLOSURE R0 K0 ['id']
 DUPTABLE R1 3
 NEWTABLE R2 1 0
@@ -11569,17 +11562,20 @@ CALL R3 1 0
 GETTABLEKS R3 R1 K1 ['x']
 RETURN R3 1
 )"
-);
+    );
 
     CHECK_EQ(
-        "\n" + compileFunction(R"(
+        "\n" + compileFunction(
+                   R"(
 local function id(x) return x end
 local t = { x = 1 }
 u[t] = 100
 id(u)
 return t.x
-)", 1),
-R"(
+)",
+                   1
+               ),
+        R"(
 DUPCLOSURE R0 K0 ['id']
 DUPTABLE R1 3
 GETIMPORT R2 5 [u]
@@ -11591,17 +11587,20 @@ CALL R2 1 0
 GETTABLEKS R2 R1 K1 ['x']
 RETURN R2 1
 )"
-);
+    );
 
     CHECK_EQ(
-        "\n" + compileFunction(R"(
+        "\n" + compileFunction(
+                   R"(
 local function id(x) return x end
 local t = { x = 1 }
 u[t] += 100
 id(u)
 return t.x
-)", 1),
-R"(
+)",
+                   1
+               ),
+        R"(
 DUPCLOSURE R0 K0 ['id']
 DUPTABLE R1 3
 GETIMPORT R2 5 [u]
@@ -11614,7 +11613,7 @@ CALL R2 1 0
 GETTABLEKS R2 R1 K1 ['x']
 RETURN R2 1
 )"
-);
+    );
 
     // empty key name is used
     CHECK_EQ(
@@ -11668,8 +11667,6 @@ RETURN R1 1
 
 TEST_CASE("FoldConstTablePropsOrAnd")
 {
-    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-
     // handle 'or'
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -11740,7 +11737,6 @@ RETURN R1 1
 TEST_CASE("FoldConstTablePropsReturnLocal")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -11782,8 +11778,6 @@ RETURN R0 1
 
 TEST_CASE("FoldConstTablePropsReturnUpvalue")
 {
-    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-
     // returning a table is an 'escape' if we also provide a separate way of observing the same table
     CHECK_EQ(
         "\n" + compileFunction(

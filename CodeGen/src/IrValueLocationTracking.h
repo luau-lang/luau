@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/IrData.h"
+#include "Luau/LogBuilder.h"
 
 #include <array>
 
@@ -12,7 +13,7 @@ namespace CodeGen
 
 struct IrValueLocationTracking
 {
-    IrValueLocationTracking(IrFunction& function);
+    IrValueLocationTracking(LogBuilder* logger, IrFunction& function);
 
     void setRestoreCallback(void* context, void (*callback)(void* context, IrInst& inst));
 
@@ -28,6 +29,7 @@ struct IrValueLocationTracking
     void invalidateRestoreOp(IrOp location, bool skipValueInvalidation);
     void invalidateRestoreVmRegs(int start, int count);
 
+    LogBuilder* logger = nullptr;
     IrFunction& function;
 
     std::array<uint32_t, 256> vmRegValue;

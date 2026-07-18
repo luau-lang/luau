@@ -130,8 +130,7 @@ void luaV_gettable(lua_State* L, const TValue* t, TValue* key, StkId val)
             if (ttisnil(offsettval))
                 luaG_missingmembererror(L, t, key);
 
-            LUAU_ASSERT(ttisnumber(offsettval));
-            int offset = int(nvalue(offsettval));
+            const uint32_t offset = uint32_t(nvalue(offsettval));
             setobj2s(L, val, luaR_lookupmemberatoffset(inst, offset));
             return;
         }
@@ -145,9 +144,8 @@ void luaV_gettable(lua_State* L, const TValue* t, TValue* key, StkId val)
             if (ttisnil(res))
                 luaG_missingmembererror(L, t, key);
 
-            LUAU_ASSERT(ttisnumber(res));
-            int offset = int(nvalue(res));
-            LUAU_ASSERT(offset >= 0 && offset < lco->numberofallmembers);
+            const uint32_t offset = uint32_t(nvalue(res));
+            LUAU_ASSERT(offset < lco->numberofallmembers);
 
             // This is the case where we try to access an instance member on a
             // class object, for example:
@@ -214,8 +212,8 @@ void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
             const TValue* offset = luaH_get(inst->lclass->memberstooffset, key);
             if (ttisnil(offset))
                 luaG_missingmembererror(L, t, key);
-            const int offsetnum = int(nvalue(offset));
-            LUAU_ASSERT(offsetnum >= 0 && offsetnum < inst->lclass->numberofallmembers);
+            const uint32_t offsetnum = uint32_t(nvalue(offset));
+            LUAU_ASSERT(offsetnum < inst->lclass->numberofallmembers);
             if (offsetnum >= inst->lclass->numberofinstancemembers)
                 luaG_indexerror(L, t, key);
             setobj2class(L, &inst->members[offsetnum], val);

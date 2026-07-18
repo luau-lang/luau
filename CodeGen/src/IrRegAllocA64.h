@@ -14,6 +14,7 @@ namespace Luau
 namespace CodeGen
 {
 
+struct LogBuilder;
 struct LoweringStats;
 
 namespace A64
@@ -37,6 +38,7 @@ using ExitSyncArgsA64 = SmallVector<ExitSyncArgA64, 2>;
 struct IrRegAllocA64
 {
     IrRegAllocA64(
+        LogBuilder* logger,
         AssemblyBuilderA64& build,
         IrFunction& function,
         LoweringStats* stats,
@@ -110,6 +112,7 @@ struct IrRegAllocA64
         return allocActionCount;
     }
 
+    LogBuilder* logger = nullptr;
     AssemblyBuilderA64& build;
     IrFunction& function;
     LoweringStats* stats = nullptr;

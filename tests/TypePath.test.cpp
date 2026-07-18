@@ -628,8 +628,6 @@ TEST_CASE("empty_path")
 
 TEST_CASE("prop")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     Path p = PathBuilder().prop("foo").build();
     CHECK(p == Path(TypePath::Property{"foo"}));
 }

@@ -483,11 +483,7 @@ TEST_CASE_FIXTURE(CFGFixture, "dump_renders_type_guard_as_a_call")
     std::string dump = dumpCFG(*cfg);
 
     // The well-formed rendering puts the guard name before the variable, as a call.
-    CHECK_MESSAGE(
-        dump.find("typeof(x-0) == \"string\"") != std::string::npos,
-        "dumpCFG produced malformed refinement text:\n",
-        dump
-    );
+    CHECK_MESSAGE(dump.find("typeof(x-0) == \"string\"") != std::string::npos, "dumpCFG produced malformed refinement text:\n", dump);
 
     // And it must NOT contain the broken juxtaposition where the variable precedes the guard.
     CHECK(dump.find("x-0 typeof") == std::string::npos);

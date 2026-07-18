@@ -8,7 +8,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauConstraintGraph)
 LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 
 TEST_SUITE_BEGIN("TypeSingletons");
@@ -174,8 +173,6 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_resolution_singleton_parameters"
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons_mismatch")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
         function f(g: ((true, string) -> ()) & ((false, number) -> ()))
             g(true, 37)
@@ -853,8 +850,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_184125")
 TEST_CASE_FIXTURE(Fixture, "pass_singleton_through_to_identity")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauConstraintGraph, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function id(x) return x end
