@@ -860,7 +860,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_table_freeze_in_conditional_expr")
     CHECK(err1);
     CHECK_EQ(1, err1->expected);
     CHECK_EQ(2, err1->actual);
-
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_depends_on_sub_expression")
@@ -880,8 +879,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_depends_on_sub_expression")
 
     auto err = get<TypeMismatch>(result.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("{ @metatable { bar: number }, { foo: number } }", toString(err->wantedType, { /* exhaustive */ true}));
-    CHECK_EQ("{ foo: number }", toString(err->givenType, { /* exhaustive */ true}));
+    CHECK_EQ("{ @metatable { bar: number }, { foo: number } }", toString(err->wantedType, {/* exhaustive */ true}));
+    CHECK_EQ("{ foo: number }", toString(err->givenType, {/* exhaustive */ true}));
 }
 
 TEST_SUITE_END();

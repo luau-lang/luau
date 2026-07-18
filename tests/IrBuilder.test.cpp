@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauCodegenInteger3)
+LUAU_FASTFLAG(LuauCodegenVmExitSyncMultiUse)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauCodegenLoadPropagateOrigin)
@@ -7868,6 +7869,159 @@ bb_0:
 bb_exit_1:
    STORE_VECTOR R1, 1, 2, 3, tvector
    JUMP exit(20)
+
+)");
+}
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncMultiUseSink")
+{
+    ScopedFastFlag luauCodegenVmExitSyncMultiUse{FFlag::LuauCodegenVmExitSyncMultiUse, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp load = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+    IrOp add = build.inst(IrCmd::ADD_NUM, load, build.constDouble(1.0));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), add);
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(2)), build.constTag(tnumber), build.vmExit(1));
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(3)), build.constTag(tnumber), build.vmExit(2));
+
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    // Checking that ADD_NUM is only used at exit
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0, R2, R3
+   %0 = LOAD_DOUBLE R0
+   %4 = LOAD_TAG R2
+   CHECK_TAG %4, tnumber, bb_exit_1
+   ; exit sync: R1, {%0}
+   %6 = LOAD_TAG R3
+   CHECK_TAG %6, tnumber, bb_exit_2
+   ; exit sync: R1, {%0}
+   RETURN R0, 1i
+
+bb_exit_1:
+   %9 = ADD_NUM %0, 1
+   STORE_TAG R1, tnumber
+   STORE_DOUBLE R1, %9
+   JUMP exit(1)
+
+bb_exit_2:
+   %13 = ADD_NUM %0, 1
+   STORE_TAG R1, tnumber
+   STORE_DOUBLE R1, %13
+   JUMP exit(2)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncMultiUseChainedDependency1")
+{
+    ScopedFastFlag luauCodegenVmExitSyncMultiUse{FFlag::LuauCodegenVmExitSyncMultiUse, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp load = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+    IrOp x = build.inst(IrCmd::ADD_NUM, load, build.constDouble(1.0));
+    IrOp a = build.inst(IrCmd::MUL_NUM, x, build.constDouble(2.0));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), a);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), x);
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(3)), build.constTag(tnumber), build.vmExit(1));
+
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    // When sinking multiple inputs where one of the input uses the others, we avoid sinking that input multiple times
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0, R3
+   %0 = LOAD_DOUBLE R0
+   %7 = LOAD_TAG R3
+   CHECK_TAG %7, tnumber, bb_exit_1
+   ; exit sync: R2, R1, {%0}
+   RETURN R0, 1i
+
+bb_exit_1:
+   %10 = ADD_NUM %0, 1
+   %11 = ADD_NUM %10, %10
+   STORE_TAG R2, tnumber
+   STORE_DOUBLE R2, %10
+   STORE_TAG R1, tnumber
+   STORE_DOUBLE R1, %11
+   JUMP exit(1)
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncMultiUseChainedDependency2")
+{
+    ScopedFastFlag luauCodegenVmExitSyncMultiUse{FFlag::LuauCodegenVmExitSyncMultiUse, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp load = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+    IrOp x = build.inst(IrCmd::ADD_NUM, load, build.constDouble(1.0));
+    IrOp y = build.inst(IrCmd::ADD_NUM, x, build.constDouble(3.0));
+    IrOp z = build.inst(IrCmd::ADD_NUM, y, build.constDouble(5.0));
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), z);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), y);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(3), x);
+
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(4)), build.constTag(tnumber), build.vmExit(1));
+
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    markDeadStoresInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; in regs: R0, R4
+   %0 = LOAD_DOUBLE R0
+   %10 = LOAD_TAG R4
+   CHECK_TAG %10, tnumber, bb_exit_1
+   ; exit sync: R3, R2, R1, {%0}
+   RETURN R0, 1i
+
+bb_exit_1:
+   %13 = ADD_NUM %0, 1
+   %14 = ADD_NUM %13, 3
+   %15 = ADD_NUM %14, 5
+   STORE_TAG R3, tnumber
+   STORE_DOUBLE R3, %13
+   STORE_TAG R2, tnumber
+   STORE_DOUBLE R2, %14
+   STORE_TAG R1, tnumber
+   STORE_DOUBLE R1, %15
+   JUMP exit(1)
 
 )");
 }

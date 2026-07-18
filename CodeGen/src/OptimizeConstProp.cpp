@@ -24,7 +24,6 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLoadPropagateOrigin)
-LUAU_FASTFLAGVARIABLE(LuauCodegenRecordAllBlockExitInfo)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSubstituteReplacements)
 
 namespace Luau
@@ -3508,8 +3507,6 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
     const uint32_t startSortkey = block->sortkey;
     uint32_t chainPos = 0;
 
-    IrBlock* lastBlock = nullptr;
-
     while (block)
     {
         uint32_t blockIdx = function.getBlockIndex(*block);
@@ -3554,18 +3551,9 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
             }
         }
 
-        if (FFlag::LuauCodegenRecordAllBlockExitInfo)
-            saveBlockExitState(function, *block, state);
-        else
-            lastBlock = block;
+        saveBlockExitState(function, *block, state);
 
         block = nextBlock;
-    }
-
-    if (!FFlag::LuauCodegenRecordAllBlockExitInfo)
-    {
-        if (lastBlock)
-            saveBlockExitState(function, *lastBlock, state);
     }
 }
 

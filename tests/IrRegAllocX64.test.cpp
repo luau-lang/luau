@@ -12,8 +12,8 @@ class IrRegAllocX64Fixture
 {
 public:
     IrRegAllocX64Fixture()
-        : build(/* logger */ &logger, true, ABIX64::Windows, /* features */ 0)
-        , regs(build, function, nullptr)
+        : build(&logger, true, ABIX64::Windows, /* features */ 0)
+        , regs(&logger, build, function, nullptr)
     {
     }
 

@@ -676,7 +676,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 
         if (!FFlag::DebugLuauForceOldSolver)
         {
-            const std::string expected = "Expected this to be 'number | string', but got 'boolean'" ;
+            const std::string expected = "Expected this to be 'number | string', but got 'boolean'";
             CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
         }
         else

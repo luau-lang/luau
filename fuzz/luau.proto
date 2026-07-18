@@ -353,8 +353,8 @@ message StatLocal
     repeated Local vars = 1;
     repeated Expr values = 2;
     repeated Type types = 3;
-    optional bool is_const = 4 [default = false];
-    optional bool is_exported = 5 [default = false];
+    optional bool is_const = 4 [ default = false ];
+    optional bool is_exported = 5 [ default = false ];
 }
 
 message StatFor
@@ -408,8 +408,8 @@ message StatLocalFunction
 {
     required Local var = 1;
     required ExprFunction func = 2;
-    optional bool is_const = 3 [default = false];
-    optional bool is_exported = 4 [default = false];
+    optional bool is_const = 3 [ default = false ];
+    optional bool is_exported = 4 [ default = false ];
 }
 
 message StatTypeAlias
@@ -462,7 +462,7 @@ message StatClass
     repeated ClassMethod methods = 3;
     required Local local = 5;
     required ExprClassInst inst = 4;
-    optional bool is_exported = 6 [default = false];
+    optional bool is_exported = 6 [ default = false ];
 }
 
 message StatRequireIntoLocalHelper
