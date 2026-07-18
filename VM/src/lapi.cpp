@@ -1688,6 +1688,22 @@ void lua_getuserdatametatable(lua_State* L, int tag)
     api_incr_top(L);
 }
 
+const char* lua_getuserdataname(lua_State* L, int tag)
+{
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    
+    const char* tname = "userdata";
+
+    if (LuaTable* mt = L->global->udatamt[tag])
+    {
+        const TValue* type = luaH_getstr(mt, L->global->tmname[TM_TYPE]);
+        if (ttisstring(type))
+            tname = getstr(tsvalue(type));
+    }
+
+    return tname;
+}
+
 int lua_registeruserdatadirectaccess(
     lua_State* L,
     int tag,

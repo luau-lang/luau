@@ -18,8 +18,6 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenVmExitSync)
-
 namespace Luau
 {
 namespace CodeGen
@@ -1788,18 +1786,9 @@ std::vector<uint32_t> getSortedBlockOrder(IrFunction& function)
             const IrBlock& a = function.blocks[idxA];
             const IrBlock& b = function.blocks[idxB];
 
-            if (FFlag::LuauCodegenVmExitSync)
-            {
-                // Place fallback blocks at the end followed by exit sync blocks
-                if (getBlockKindPriority(a.kind) != getBlockKindPriority(b.kind))
-                    return getBlockKindPriority(a.kind) < getBlockKindPriority(b.kind);
-            }
-            else
-            {
-                // Place fallback blocks at the end
-                if ((a.kind == IrBlockKind::Fallback) != (b.kind == IrBlockKind::Fallback))
-                    return (a.kind == IrBlockKind::Fallback) < (b.kind == IrBlockKind::Fallback);
-            }
+            // Place fallback blocks at the end followed by exit sync blocks
+            if (getBlockKindPriority(a.kind) != getBlockKindPriority(b.kind))
+                return getBlockKindPriority(a.kind) < getBlockKindPriority(b.kind);
 
             // Try to order by instruction order
             if (a.sortkey != b.sortkey)

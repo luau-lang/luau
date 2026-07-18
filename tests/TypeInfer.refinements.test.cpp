@@ -11,6 +11,8 @@
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauIndexingIntoErrorGivesError);
+LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 
 using namespace Luau;
 
@@ -40,7 +42,7 @@ struct MagicInstanceIsA final : MagicFunction
             return std::nullopt;
 
         ModulePtr module = typeChecker.currentModule;
-        TypePackId booleanPack = module->internalTypes.addTypePack({typeChecker.booleanType});
+        TypePackId booleanPack = module->internalTypes->addTypePack({typeChecker.booleanType});
         return WithPredicate<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
     }
 
@@ -1683,6 +1685,8 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_optional_properties_sh
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_non_existent_properties_should_not_refine_extern_types_to_never")
 {
+    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
+
     CheckResult result = check(R"(
         local weld: WeldConstraint = nil :: any
         assert(weld.Part8)
@@ -1696,10 +1700,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_non_existent_propertie
     CHECK_EQ(toString(result.errors[0]), "Key 'Part8' not found in external type 'WeldConstraint'");
 
     CHECK_EQ("WeldConstraint", toString(requireTypeAtPosition({3, 15})));
-    if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("any", toString(requireTypeAtPosition({6, 29})));
-    else
-        CHECK_EQ("*error-type*", toString(requireTypeAtPosition({6, 29})));
+    CHECK_EQ("*error-type*", toString(requireTypeAtPosition({6, 29})));
 }
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "x_is_not_instance_or_else_not_part")
@@ -3226,6 +3227,48 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_vector_refine")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     REQUIRE(get<UnknownProperty>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_into_error_gives_error")
+{
+    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function keyExtractor(item: any, index: number): string
+            if typeof(item) == "table" and item.key ~= nil then
+                return item.key
+            end
+            if typeof(item) == "table" and item.id ~= nil then
+                return item.id
+            end
+            return tostring(index)
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cli_181894_refinement_cancelled_by_for_loop")
+{
+    ScopedFastFlag _{FFlag::LuauAvoidTrivialPhis, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type LightingChanger = { [string]: number, Instances: LightingChanger }
+
+        local lightingChangers: { LightingChanger } = nil :: any
+
+        local closestChanger: LightingChanger?
+        if #lightingChangers == 1 then
+            closestChanger = lightingChangers[1]
+        end
+        if closestChanger == nil then
+            return
+        end
+
+        for _, _ in closestChanger do
+        end
+
+        local _ = closestChanger.Instances
+    )"));
 }
 
 TEST_SUITE_END();

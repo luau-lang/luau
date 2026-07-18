@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowExternClassInTypeDefinitions)
 LUAU_FASTFLAGVARIABLE(LuauTableEntriesDontNeedToMatchIndent)
 LUAU_FASTFLAGVARIABLE(LuauCstAttr)
 LUAU_FASTFLAGVARIABLE(LuauStoreConstKeywordBegin)
+LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -1432,8 +1433,7 @@ AstStat* Parser::parseLocal(
         AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation, isConst);
         if (options.storeCstData)
         {
-            cstNodeMap[node] =
-                allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
+            cstNodeMap[node] = allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
         }
 
         // It is a syntax error when a const declaration *definitely* does
@@ -3905,6 +3905,14 @@ static ConstantNumberParseResult parseInteger(double& result, const char* data, 
 {
     LUAU_ASSERT(base == 2 || base == 16);
 
+    if (FFlag::LuauNoDuplicateBinaryPrefix)
+    {
+        // Some libc implementations accept an optional 0b prefix for base-2 parsing.
+        // Binary literals have already had their leading 0b stripped by us.
+        if (base == 2 && data[0] == '0' && (data[1] == 'b' || data[1] == 'B'))
+            return ConstantNumberParseResult::Malformed;
+    }
+
     char* end = nullptr;
     unsigned long long value = strtoull(data, &end, base);
 
@@ -3956,6 +3964,12 @@ static ConstantNumberParseResult parseInteger64(int64_t& result, const char* dat
     }
     else
     {
+        if (FFlag::LuauNoDuplicateBinaryPrefix)
+        {
+            if (base == 2 && data[0] == '0' && (data[1] == 'b' || data[1] == 'B'))
+                return ConstantNumberParseResult::Malformed;
+        }
+
         // hex and binary literals represent bit patterns covering the full uint64 range
         unsigned long long u = strtoull(data, &end, base);
 
