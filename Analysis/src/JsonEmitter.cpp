@@ -155,14 +155,20 @@ void write(JsonEmitter& emitter, std::string_view sv)
 
     for (char c : sv)
     {
-        if (c == '"')
+        unsigned char uc = static_cast<unsigned char>(c);
+
+        if (uc == '"')
             emitter.writeRaw("\\\"");
-        else if (c == '\\')
+        else if (uc == '\\')
             emitter.writeRaw("\\\\");
-        else if (c == '\n')
-            emitter.writeRaw("\\n");
-        else if (c < ' ')
-            emitter.writeRaw(format("\\u%04x", c));
+        else if (uc == '\n')
+            emitter.writeRaw("\\n"); // New lines
+        else if (uc == '\r')
+            emitter.writeRaw("\\r"); // Carriage returns
+        else if (uc == '\t')
+            emitter.writeRaw("\\t"); // Tabs
+        else if (uc < 32 || uc > 126)
+            emitter.writeRaw(format("\\u%04x", (int)uc));
         else
             emitter.writeRaw(c);
     }
