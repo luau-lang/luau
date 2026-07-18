@@ -236,7 +236,7 @@ declare utf8: {
     codes: @checked (str: string) -> ((string, number) -> (number, number), string, number),
     codepoint: @checked (str: string, i: number?, j: number?) -> ...number,
     len: @checked (s: string, i: number?, j: number?) -> (number?, number?),
-    offset: @checked (s: string, n: number?, i: number?) -> number,
+    offset: @checked (s: string, n: number, i: number?) -> number,
 }
 
 )BUILTIN_SRC";
