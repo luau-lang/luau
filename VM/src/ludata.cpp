@@ -22,22 +22,17 @@ Udata* luaU_newudata(lua_State* L, size_t s, int tag)
 
 void luaU_freeudata(lua_State* L, Udata* u, lua_Page* page)
 {
-    if (u->tag < LUA_UTAG_LIMIT)
-    {
-        lua_Destructor dtor = L->global->udatagc[u->tag];
-        // TODO: access to L here is highly unsafe since this is called during internal GC traversal
-        // certain operations such as lua_getthreaddata are okay, but by and large this risks crashes on improper use
-        if (dtor)
-            dtor(L, u->data);
-    }
-    else if (u->tag == UTAG_IDTOR)
-    {
-        void (*dtor)(void*) = nullptr;
-        memcpy(&dtor, &u->data + u->len - sizeof(dtor), sizeof(dtor));
-        if (dtor)
-            dtor(u->data);
-    }
+    lua_Destructor dtor = nullptr;
 
+    if (u->tag < LUA_UTAG_LIMIT)
+        dtor = L->global->udatagc[u->tag];
+    else if (u->tag == UTAG_IDTOR)
+        memcpy(&dtor, &u->data + u->len - sizeof(dtor), sizeof(dtor));
+
+    // TODO: access to L here is highly unsafe since this is called during internal GC traversal
+    // certain operations such as lua_getthreaddata are okay, but by and large this risks crashes on improper use
+    if (dtor)
+        dtor(L, u->data);
 
     luaM_freegco(L, u, sizeudata(u->len), u->memcat, page);
 }
