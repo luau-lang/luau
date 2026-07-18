@@ -32,8 +32,8 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowExternClassInTypeDefinitions)
 LUAU_FASTFLAGVARIABLE(LuauTableEntriesDontNeedToMatchIndent)
 LUAU_FASTFLAGVARIABLE(LuauCstAttr)
 LUAU_FASTFLAGVARIABLE(LuauStoreConstKeywordBegin)
-LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
+LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 LUAU_FASTFLAGVARIABLE(LuauTypeNegationSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -1434,8 +1434,7 @@ AstStat* Parser::parseLocal(
         AstStatLocal* node = allocator.alloc<AstStatLocal>(Location(start, end), copy(vars), copy(values), equalsSignLocation, isConst);
         if (options.storeCstData)
         {
-            cstNodeMap[node] =
-                allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
+            cstNodeMap[node] = allocator.alloc<CstStatLocal>(extractAnnotationColonPositions(names), varsCommaPositions, copy(valuesCommaPositions));
         }
 
         // It is a syntax error when a const declaration *definitely* does

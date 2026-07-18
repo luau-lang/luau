@@ -22,8 +22,7 @@ LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAGVARIABLE(LuauCheckIfNegatedNormalIsNullptr)
-  
+
 namespace Luau
 {
 
@@ -1935,11 +1934,8 @@ NormalizationResult Normalizer::unionNormalWithTy(
 
         std::shared_ptr<const NormalizedType> thereNormal = normalize(ntv->ty);
 
-        if (FFlag::LuauCheckIfNegatedNormalIsNullptr)
-        {
-            if (!thereNormal)
-                return NormalizationResult::False;
-        }
+        if (!thereNormal)
+            return NormalizationResult::False;
 
         tn = negateNormal(*thereNormal);
 

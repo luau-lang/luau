@@ -135,7 +135,7 @@ struct ClonePublicInterface : Substitution
 
     bool isDirty(TypeId ty) override
     {
-        if (ty->owningArena == &module->internalTypes)
+        if (ty->owningArena == module->internalTypes.get())
             return true;
 
         if (const FunctionType* ftv = get<FunctionType>(ty))
@@ -147,12 +147,12 @@ struct ClonePublicInterface : Substitution
 
     bool isDirty(TypePackId tp) override
     {
-        return tp->owningArena == &module->internalTypes;
+        return tp->owningArena == module->internalTypes.get();
     }
 
     bool ignoreChildrenVisit(TypeId ty) override
     {
-        if (ty->owningArena != &module->internalTypes)
+        if (ty->owningArena != module->internalTypes.get())
             return true;
 
         return false;
@@ -160,7 +160,7 @@ struct ClonePublicInterface : Substitution
 
     bool ignoreChildrenVisit(TypePackId tp) override
     {
-        if (tp->owningArena != &module->internalTypes)
+        if (tp->owningArena != module->internalTypes.get())
             return true;
 
         return false;
@@ -204,7 +204,8 @@ struct ClonePublicInterface : Substitution
             {
                 genericty->scope = nullptr;
             }
-            else if (auto tfit = get<TypeFunctionInstanceType>(ty); FFlag::LuauDoNotExportBrokenTypeFunction && tfit && tfit->state != TypeFunctionInstanceState::Solved)
+            else if (auto tfit = get<TypeFunctionInstanceType>(ty);
+                     FFlag::LuauDoNotExportBrokenTypeFunction && tfit && tfit->state != TypeFunctionInstanceState::Solved)
             {
                 result = builtinTypes->errorType;
             }
@@ -299,7 +300,8 @@ struct ClonePublicInterface : Substitution
 Module::~Module()
 {
     unfreeze(interfaceTypes);
-    unfreeze(internalTypes);
+    if (internalTypes)
+        unfreeze(*internalTypes);
 }
 
 void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice, SolverMode mode)
@@ -468,8 +470,8 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
     if (props.empty())
         return;
 
-    TypeId exports = module->internalTypes.addType(TableType{std::move(props), std::nullopt, moduleScope->level, TableState::Sealed});
-    moduleScope->returnType = module->internalTypes.addTypePack({exports});
+    TypeId exports = module->internalTypes->addType(TableType{props, std::nullopt, moduleScope->level, TableState::Sealed});
+    moduleScope->returnType = module->internalTypes->addTypePack({exports});
 }
 
 } // namespace Luau

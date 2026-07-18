@@ -1956,7 +1956,7 @@ void AssemblyBuilderX64::log(OperandX64 op)
     }
 }
 
-const char* AssemblyBuilderX64::getSizeName(SizeX64 size) const
+const char* AssemblyBuilderX64::getSizeName(SizeX64 size)
 {
     static const char* sizeNames[] = {"none", "byte", "word", "dword", "qword", "xmmword", "ymmword"};
 
@@ -1964,7 +1964,7 @@ const char* AssemblyBuilderX64::getSizeName(SizeX64 size) const
     return sizeNames[unsigned(size)];
 }
 
-const char* AssemblyBuilderX64::getRegisterName(RegisterX64 reg) const
+const char* AssemblyBuilderX64::getRegisterName(RegisterX64 reg)
 {
     static const char* names[][16] = {
         {"rip", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},

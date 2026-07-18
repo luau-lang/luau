@@ -152,7 +152,8 @@ struct ConstraintGenerator
 
     bool recursionLimitMet = false;
 
-    ConstraintGraph* cgraph = nullptr;
+    NotNull<ConstraintGraph> cgraph;
+
     CFG::TypeStateMap* typestate = nullptr;
     ConstraintGenerator(
         ModulePtr module,
@@ -167,7 +168,7 @@ struct ConstraintGenerator
         DcrLogger* logger,
         NotNull<DataFlowGraph> dfg,
         std::vector<RequireCycle> requireCycles,
-        ConstraintGraph* cgraph,
+        NotNull<ConstraintGraph> cgraph,
         CFG::TypeStateMap* typestate = nullptr
     );
 

@@ -31,6 +31,8 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteExport)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionArglistSuggestion)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
+LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteSkipErrorTypeInUnion)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords_DEPRECATED =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -258,12 +260,45 @@ static TypeCorrectKind checkTypeCorrectKind(
     return checkTypeMatch(module, ty, expectedType, moduleScope, typeArena, builtinTypes) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
 }
 
+static bool isTypeDeprecated(TypeId ty)
+{
+    LUAU_ASSERT(FFlag::LuauCheckTypeForDeprecated);
+    ty = follow(ty);
+
+    if (const auto ftv = get<FunctionType>(ty); ftv && ftv->isDeprecatedFunction)
+        return true;
+
+    if (const auto itv = get<IntersectionType>(ty))
+        return std::all_of(itv->parts.begin(), itv->parts.end(), isTypeDeprecated);
+
+    return false;
+}
+
 enum class PropIndexType
 {
     Point,
     Colon,
     Key,
 };
+
+/**
+ * When we perform autocomplete on a type, if we encounter a union we often
+ * need to provide the intersection of the union's options. However, for UX
+ * reasons we skip over types like `nil` and `never`. If we didn't, then
+ * something like ...
+ *
+ *  local function foobar(tbl: { prop: number }?)
+ *      return tbl.|
+ *  end
+ *
+ * ... would never provide autocomplete options, even though `prop` is a
+ * reasonable option, even in strict mode.
+ */
+static bool isSkippableTypeInUnion(TypeId ty)
+{
+    ty = follow(ty);
+    return isNil(ty) || is<ErrorType>(ty) || is<NeverType>(ty);
+}
 
 static void autocompleteProps(
     const Module& module,
@@ -388,7 +423,7 @@ static void autocompleteProps(
                 result[name] = AutocompleteEntry{
                     AutocompleteEntryKind::Property,
                     type,
-                    prop.deprecated,
+                    prop.deprecated || (FFlag::LuauCheckTypeForDeprecated && isTypeDeprecated(type)),
                     isWrongIndexer(type),
                     typeCorrect,
                     containingExternType,
@@ -478,12 +513,20 @@ static void autocompleteProps(
         auto iter = begin(u);
         auto endIter = end(u);
 
-        while (iter != endIter)
+        if (FFlag::LuauAutocompleteSkipErrorTypeInUnion)
         {
-            if (isNil(*iter))
+            while (iter != endIter && isSkippableTypeInUnion(*iter))
                 ++iter;
-            else
-                break;
+        }
+        else
+        {
+            while (iter != endIter)
+            {
+                if (isNil(*iter))
+                    ++iter;
+                else
+                    break;
+            }
         }
 
         if (iter == endIter)
@@ -510,10 +553,21 @@ static void autocompleteProps(
                     innerSeen.insert(ty);
             }
 
-            if (isNil(*iter))
+            if (FFlag::LuauAutocompleteSkipErrorTypeInUnion)
             {
-                ++iter;
-                continue;
+                if (isSkippableTypeInUnion(*iter))
+                {
+                    ++iter;
+                    continue;
+                }
+            }
+            else
+            {
+                if (isNil(*iter))
+                {
+                    ++iter;
+                    continue;
+                }
             }
 
             autocompleteProps(module, typeArena, builtinTypes, rootTy, *iter, indexType, nodes, inner, innerSeen);
@@ -1330,10 +1384,11 @@ static AutocompleteEntryMap autocompleteStatement(
 
             std::string n = toString(name);
             if (!result.count(n))
+            {
                 result[n] = {
                     AutocompleteEntryKind::Binding,
                     binding.typeId,
-                    binding.deprecated,
+                    binding.deprecated || (FFlag::LuauCheckTypeForDeprecated && isTypeDeprecated(binding.typeId)),
                     false,
                     TypeCorrectKind::None,
                     std::nullopt,
@@ -1342,6 +1397,7 @@ static AutocompleteEntryMap autocompleteStatement(
                     {},
                     getParenRecommendation(binding.typeId, ancestry, TypeCorrectKind::None)
                 };
+            }
         }
 
         scope = scope->parent;
@@ -1533,7 +1589,7 @@ static AutocompleteContext autocompleteExpression(
                     result[n] = {
                         AutocompleteEntryKind::Binding,
                         binding.typeId,
-                        binding.deprecated,
+                        binding.deprecated || (FFlag::LuauCheckTypeForDeprecated && isTypeDeprecated(binding.typeId)),
                         false,
                         typeCorrect,
                         std::nullopt,

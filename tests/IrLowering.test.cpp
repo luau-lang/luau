@@ -20,12 +20,14 @@ LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauCodegenLoadPropagateOrigin)
+LUAU_FASTFLAG(LuauCodegenVmExitSyncMultiUse)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCallFeedback)
-LUAU_FASTFLAG(LuauCodegenDsePtrStoreTagCheck)
-LUAU_FASTFLAG(LuauCodegenRecordAllBlockExitInfo)
+LUAU_FASTFLAG(LuauCodegenA64ExitUseCheck)
 
-#define ensureVectorSize3() if (LUA_VECTOR_SIZE != 3) return
+#define ensureVectorSize3() \
+    if (LUA_VECTOR_SIZE != 3) \
+    return
 
 static void luauLibraryConstantLookup(const char* library, const char* member, Luau::CompileConstant* constant)
 {
@@ -129,6 +131,7 @@ public:
         assemblyOptions.includeIr = true;
         assemblyOptions.includeOutlinedCode = false;
         assemblyOptions.includeIrTypes = false;
+        assemblyOptions.includeRegSpills = false;
 
         assemblyOptions.includeIrPrefix = Luau::CodeGen::IncludeIrPrefix::No;
         assemblyOptions.includeUseInfo = Luau::CodeGen::IncludeUseInfo::No;
@@ -2762,8 +2765,6 @@ bb_linear_11:
 TEST_CASE_FIXTURE(LoweringFixture, "TableNodeLoadStoreProp5")
 {
     ensureVectorSize3();
-
-    ScopedFastFlag luauCodegenRecordAllBlockExitInfo{FFlag::LuauCodegenRecordAllBlockExitInfo, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -5862,6 +5863,58 @@ bb_bytecode_1:
     );
 }
 
+TEST_CASE_FIXTURE(LoweringFixture, "BufferVmExitSyncMultiUseSink")
+{
+    ScopedFastFlag luauCodegenVmExitSyncMultiUse{FFlag::LuauCodegenVmExitSyncMultiUse, true};
+
+    // This test captures that 'a * b' is only needed for the VM exit to display the 'expected' value of 's' if buffer read throws an exception
+    // If the compiler output makes this test outdated, it can be removed as we have IR builder tests covering this as well
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(R"(
+local function foo(buf: buffer, a: number, b: number, p: number, q: number)
+    local s = a * b
+    local v1 = buffer.readi32(buf, p)
+    local v2 = buffer.readi32(buf, q)
+    s = v1 + v2
+    return s
+end
+)"),
+        R"(
+; function foo($arg0, $arg1, $arg2, $arg3, $arg4) line 2
+bb_0:
+  CHECK_TAG R0, tbuffer, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  CHECK_TAG R2, tnumber, exit(entry)
+  CHECK_TAG R3, tnumber, exit(entry)
+  CHECK_TAG R4, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %16 = LOAD_DOUBLE R1
+  %17 = LOAD_DOUBLE R2
+  %26 = LOAD_POINTER R0
+  %27 = LOAD_DOUBLE R3
+  %28 = NUM_TO_INT %27
+  CHECK_BUFFER_LEN %26, %28, 0i, 4i, undef, bb_exit_5
+   ; exit sync: R5, {%16, %17}
+  %30 = BUFFER_READI32 %26, %28, tbuffer
+  %31 = INT_TO_NUM %30
+  %41 = LOAD_DOUBLE R4
+  %42 = NUM_TO_INT %41
+  CHECK_BUFFER_LEN %26, %42, 0i, 4i, undef, bb_exit_6
+   ; exit sync: R6, R5, {%31, %16, %17}
+  %44 = BUFFER_READI32 %26, %42, tbuffer
+  %45 = INT_TO_NUM %44
+  %55 = ADD_NUM %31, %45
+  STORE_SPLIT_TVALUE R5, tnumber, %55
+  INTERRUPT 16u
+  RETURN R5, 1i
+)"
+    );
+}
+
 TEST_CASE_FIXTURE(LoweringFixture, "BufferEffects")
 {
     CHECK_EQ(
@@ -6607,8 +6660,6 @@ end
 
 TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest14")
 {
-    ScopedFastFlag luauCodegenDsePtrStoreTagCheck{FFlag::LuauCodegenDsePtrStoreTagCheck, true};
-
     // Check that this compiles with no assertions
     CHECK(
         getCodegenAssembly(R"(
@@ -6825,8 +6876,6 @@ end
 
 TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest24")
 {
-    ScopedFastFlag luauCodegenDsePtrStoreTagCheck{FFlag::LuauCodegenDsePtrStoreTagCheck, true};
-
     // Check that this compiles with no assertions
     CHECK(
         getCodegenAssembly(
@@ -6848,8 +6897,6 @@ _ {_ == _,}
 
 TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest25")
 {
-    ScopedFastFlag luauCodegenRecordAllBlockExitInfo{FFlag::LuauCodegenRecordAllBlockExitInfo, true};
-
     CHECK(
         getCodegenAssembly(
             R"(
@@ -6862,6 +6909,26 @@ local _ = function(l0,l4,l0: ()->())
     end
 end
 _()
+)"
+        )
+            .size() > 0
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest26")
+{
+    ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
+    ScopedFastFlag LuauCodegenInteger3{FFlag::LuauCodegenInteger3, true};
+    ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
+    ScopedFastFlag luauCodegenA64ExitUseCheck{FFlag::LuauCodegenA64ExitUseCheck, true};
+
+    CHECK(
+        getCodegenAssembly(
+            R"(
+local function foo(...)
+    local _ = ...
+    buffer.readu32(_,_,_,nil,integer.max(0i,_,_,_,_,_,_,_,_,_,_,_,_,_,nil,- _,_,_),_)
+end
 )"
         )
             .size() > 0
