@@ -47,6 +47,7 @@ typedef struct lua_State lua_State;
 
 typedef int (*lua_CFunction)(lua_State* L);
 typedef int (*lua_Continuation)(lua_State* L, int status);
+typedef void (*lua_InlineDestructor)(void* userdata);
 
 /*
 ** prototype for memory-allocation functions
@@ -175,6 +176,7 @@ LUA_API int lua_lightuserdatatag(lua_State* L, int idx);
 LUA_API lua_State* lua_tothread(lua_State* L, int idx);
 LUA_API void* lua_tobuffer(lua_State* L, int idx, size_t* len);
 LUA_API const void* lua_topointer(lua_State* L, int idx);
+LUA_API lua_InlineDestructor lua_toinlineuserdatadtor(lua_State* L, int idx);
 
 /*
 ** push functions (C -> stack)
@@ -200,7 +202,7 @@ LUA_API int lua_pushthread(lua_State* L);
 LUA_API void lua_pushlightuserdatatagged(lua_State* L, void* p, int tag);
 LUA_API void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag);
 LUA_API void* lua_newuserdatataggedwithmetatable(lua_State* L, size_t sz, int tag); // metatable fetched with lua_getuserdatametatable
-LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*));
+LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, lua_InlineDestructor dtor);
 
 LUA_API void* lua_newbuffer(lua_State* L, size_t sz);
 
@@ -233,6 +235,7 @@ LUA_API void lua_rawseti(lua_State* L, int idx, int n);
 LUA_API void lua_rawsetptagged(lua_State* L, int idx, void* p, int tag);
 LUA_API int lua_setmetatable(lua_State* L, int objindex);
 LUA_API int lua_setfenv(lua_State* L, int idx);
+LUA_API void lua_setinlineuserdatadtor(lua_State* L, int idx, lua_InlineDestructor dtor);
 
 /*
 ** `load' and `call' functions (load and run Luau bytecode)

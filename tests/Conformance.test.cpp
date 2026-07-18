@@ -3559,7 +3559,7 @@ TEST_CASE("UserdataApi")
     );
 
     *(int*)ud3 = 43;
-    *(char*)ud4 = 3;
+    *(char*)ud4 = 4;
 
     // user data with named metatable
     luaL_newmetatable(L, "udata1");
@@ -3593,6 +3593,24 @@ TEST_CASE("UserdataApi")
 
     CHECK(luaL_checkudata(L, -2, "udata3") == ud7);
     CHECK(luaL_checkudata(L, -1, "udata4") == ud8);
+
+    auto idtorAdd = +[](void* data)
+    {
+        dtorhits += *(int*)data;
+    };
+    auto idtorSub = +[](void* data)
+    {
+        dtorhits -= *(int*)data;
+    };
+    void* ud9 = lua_newuserdatadtor(L, sizeof(int), idtorAdd);
+    *(int*)ud9 = 1;
+    CHECK((lua_toinlineuserdatadtor(L, -1) == idtorAdd));
+    // Tag 51, not UTAG_IDTOR.
+    CHECK((lua_toinlineuserdatadtor(L, -2) == nullptr));
+    lua_setinlineuserdatadtor(L, -1, nullptr);
+    CHECK((lua_toinlineuserdatadtor(L, -1) == nullptr));
+    lua_setinlineuserdatadtor(L, -1, idtorSub);
+    CHECK((lua_toinlineuserdatadtor(L, -1) == idtorSub));
 
     globalState.reset();
 

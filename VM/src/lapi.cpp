@@ -673,6 +673,18 @@ const void* lua_topointer(lua_State* L, int idx)
     }
 }
 
+lua_InlineDestructor lua_toinlineuserdatadtor(lua_State* L, int idx)
+{
+    StkId o = index2addr(L, idx);
+    if (!ttisuserdata(o) || uvalue(o)->tag != UTAG_IDTOR)
+        return NULL;
+
+    Udata* u = uvalue(o);
+    lua_InlineDestructor dtor = nullptr;
+    memcpy(&dtor, &u->data + u->len - sizeof(dtor), sizeof(dtor));
+    return dtor;
+}
+
 /*
 ** push functions (C -> stack)
 */
@@ -1104,6 +1116,15 @@ int lua_setfenv(lua_State* L, int idx)
     return res;
 }
 
+void lua_setinlineuserdatadtor(lua_State* L, int idx, lua_InlineDestructor dtor)
+{
+    StkId o = index2addr(L, idx);
+    api_checkvalidindex(L, o);
+    api_check(L, ttisuserdata(o) && uvalue(o)->tag == UTAG_IDTOR);
+    Udata* u = uvalue(o);
+    memcpy(&u->data + u->len - sizeof(dtor), &dtor, sizeof(dtor));
+}
+
 /*
 ** `load' and `call' functions (run Lua code)
 */
@@ -1504,7 +1525,7 @@ void* lua_newuserdatataggedwithmetatable(lua_State* L, size_t sz, int tag)
     return u->data;
 }
 
-void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*))
+void* lua_newuserdatadtor(lua_State* L, size_t sz, lua_InlineDestructor dtor)
 {
     api_check(L, dtor != nullptr);
     luaC_checkGC(L);
