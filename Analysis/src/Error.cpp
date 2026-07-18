@@ -18,6 +18,7 @@
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTFLAGVARIABLE(LuauTweakAccessViolationReporting)
+LUAU_FASTFLAG(LuauBetterPackAndVariadicMismatchErrors)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -556,11 +557,23 @@ struct ErrorConverter
         switch (e.kind)
         {
         case Luau::SwappedGenericTypeParameter::Type:
-            return "Variadic type parameter '" + e.name + "...' is used as a regular generic type; consider changing '" + e.name + "...' to '" +
-                   e.name + "' in the generic argument list";
+        {
+            if (FFlag::LuauBetterPackAndVariadicMismatchErrors)
+                return "Generic pack '" + e.name + "...' is used like a generic type; consider changing it to '" +
+                    e.name + "' in the generic argument list or using it as '" + e.name + "...'";
+            else
+                return "Variadic type parameter '" + e.name + "...' is used as a regular generic type; consider changing '" + e.name + "...' to '" +
+                    e.name + "' in the generic argument list";
+        }
         case Luau::SwappedGenericTypeParameter::Pack:
-            return "Generic type '" + e.name + "' is used as a variadic type parameter; consider changing '" + e.name + "' to '" + e.name +
-                   "...' in the generic argument list";
+        {
+            if (FFlag::LuauBetterPackAndVariadicMismatchErrors)
+                return "Generic type '" + e.name + "' is used like a generic pack; consider changing it to '" + e.name +
+                    "...' in the generic argument list or using it as '" + e.name + "' or '..." + e.name + "'";
+            else
+                return "Generic type '" + e.name + "' is used as a variadic type parameter; consider changing '" + e.name + "' to '" + e.name +
+                    "...' in the generic argument list";
+        }
         default:
             LUAU_ASSERT(!"Unknown kind");
             return "";

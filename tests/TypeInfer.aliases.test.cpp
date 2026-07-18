@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauAvoidCascadingRecursiveConstraintViolationError)
 LUAU_FASTFLAG(LuauFixInfiniteTypeRedundantBind)
 LUAU_FASTFLAG(LuauDoNotEmplaceAnnotatedType)
+LUAU_FASTFLAG(LuauBetterPackAndVariadicMismatchErrors)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -108,6 +109,7 @@ TEST_CASE_FIXTURE(Fixture, "mismatched_generic_type_param")
 {
     // We erroneously report an extra error in this case when the new solver is enabled.
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag betterErrors{FFlag::LuauBetterPackAndVariadicMismatchErrors, true};
 
     CheckResult result = check(R"(
         type T<A> = (A...) -> ()
@@ -116,13 +118,15 @@ TEST_CASE_FIXTURE(Fixture, "mismatched_generic_type_param")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(
         toString(result.errors[0]) ==
-        "Generic type 'A' is used as a variadic type parameter; consider changing 'A' to 'A...' in the generic argument list"
+        "Generic type 'A' is used like a generic pack; consider changing it to 'A...' in the generic argument list or using it as 'A' or '...A'"
     );
     CHECK(result.errors[0].location == Location{{1, 21}, {1, 25}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "mismatched_generic_pack_type_param")
 {
+    ScopedFastFlag betterErrors{FFlag::LuauBetterPackAndVariadicMismatchErrors, true};
+
     CheckResult result = check(R"(
         type T<A...> = (A) -> ()
     )");
@@ -130,7 +134,7 @@ TEST_CASE_FIXTURE(Fixture, "mismatched_generic_pack_type_param")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(
         toString(result.errors[0]) ==
-        "Variadic type parameter 'A...' is used as a regular generic type; consider changing 'A...' to 'A' in the generic argument list"
+        "Generic pack 'A...' is used like a generic type; consider changing it to 'A' in the generic argument list or using it as 'A...'"
     );
     CHECK(result.errors[0].location == Location{{1, 24}, {1, 25}});
 }

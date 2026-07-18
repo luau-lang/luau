@@ -40,6 +40,7 @@ LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAGVARIABLE(LuauBetterPackAndVariadicMismatchErrors)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -3108,6 +3109,19 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
                    << "`";
         else
             reason << toStringHuman(reasoning.superPath) << "`" << superLeafAsString << "`, and " << baseReason;
+
+        if (FFlag::LuauBetterPackAndVariadicMismatchErrors && reasoning.variance == SubtypingVariance::Contravariant && subLeafTp && superLeafTp)
+        {
+            const VariadicTypePack* vtp = get<VariadicTypePack>(*subLeafTp);
+            const GenericTypePack* gtp = get<GenericTypePack>(*superLeafTp);
+
+            if (gtp && vtp && gtp->explicitName && is<GenericType>(vtp->ty))
+            {
+                reason << "; the former type has a generic pack, and the latter type has a variadic, ";
+                reason << "consider changing the former generic to `" << gtp->name << "` or the latter generic to ";
+                reason << "`" << toString(vtp->ty) << "...`";
+            }
+        }
 
         reasons.push_back(reason.str());
 

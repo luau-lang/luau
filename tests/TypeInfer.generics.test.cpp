@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauInstantiateFunctionTypeBeforePush)
+LUAU_FASTFLAG(LuauBetterPackAndVariadicMismatchErrors)
 
 using namespace Luau;
 
@@ -2190,6 +2191,40 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pus
             if math.random() > 0.5 then return self else return nil end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_pack_and_variadic_mismatch_error")
+{
+    ScopedFastFlag betterErrors{FFlag::LuauBetterPackAndVariadicMismatchErrors, true};
+
+    CheckResult res = check(R"(
+        local function _foo<T...>(a: number, ...: T...)
+            local _t = table.pack(...)
+        end
+
+        type fn = <DT...>(b: string, DT...) -> number
+        local _fun: fn = function<FT>(b: string, ...: FT): number
+            return 5
+        end
+
+        type fn2 = <DT>(DT...) -> number
+        local _fun2 = function<FT...>(...: FT)
+        end
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(5, res);
+
+    CHECK_EQ(toString(res.errors[0]), "Unknown type 'DT'");
+    CHECK_EQ(toString(res.errors[1]), "Expected this to be '...V', but got 'T...'; the former is a variadic, "
+        "and the latter is a generic pack; consider changing the generic to 'T', and the variadic parameter to  '...: T'");
+    CHECK_EQ(toString(res.errors[2]), "Expected this to be"
+        "\n\t'<DT...>(string, DT...) -> number'"
+        "\nbut got"
+        "\n\t'<FT>(string, ...FT) -> number'; "
+        "\nit takes a tail of `...FT` in the latter type and `DT...` in the former type, and `...FT` is not a supertype of `DT...`; "
+        "the former type has a generic pack, and the latter type has a variadic, consider changing the former generic to `DT` or the latter generic to `FT...`"
+    );
+    CHECK_EQ(toString(res.errors[3]), "Generic type 'DT' is used like a generic pack; consider changing it to 'DT...' in the generic argument list or using it as 'DT' or '...DT'");
+    CHECK_EQ(toString(res.errors[4]), "Generic pack 'FT...' is used like a generic type; consider changing it to 'FT' in the generic argument list or using it as 'FT...'");
 }
 
 TEST_SUITE_END();

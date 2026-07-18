@@ -13,6 +13,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauBetterPackAndVariadicMismatchErrors)
 
 namespace Luau
 {
@@ -386,6 +387,20 @@ void OverloadResolver::reportErrors(
             // satisfied.
 
             maybeEmplaceError(&errors, argLocation, moduleName, &reason, failedSuperPack, failedSubPack.value_or(builtinTypes->emptyTypePack));
+
+            if (FFlag::LuauBetterPackAndVariadicMismatchErrors && failedSubPack.has_value())
+            {
+                if (const GenericTypePack* gtp = get<GenericTypePack>(*failedSubPack); gtp && gtp->explicitName)
+                {
+                    TypePackMismatch* error = get<TypePackMismatch>(errors.back());
+                    LUAU_ASSERT(error);
+
+                    const std::string& name = gtp->name;
+                    error->reason = "the former is a variadic, and the latter is a generic pack; "
+                                        "consider changing the generic to '"+ name + "', and the variadic parameter to "
+                                        " '...: " + name + "'";
+                }
+            }
         }
         else
             errors.emplace_back(fnLocation, moduleName, CountMismatch{paramsHead.size(), optMaxParams, argCount, CountMismatch::Arg, isVariadic});
