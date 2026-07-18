@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Linter.h"
 
+#include "Luau/Ast.h"
 #include "Luau/AstQuery.h"
 #include "Luau/Module.h"
 #include "Luau/Scope.h"
@@ -3514,6 +3515,136 @@ private:
     }
 };
 
+class LintUnusedType : AstVisitor
+{
+public:
+    LUAU_NOINLINE static void process(LintContext& context)
+    {
+        LintUnusedType pass;
+        pass.context = &context;
+
+        context.root->visit(&pass);
+
+        pass.report();
+    }
+
+private:
+    LintContext* context;
+
+    struct Alias
+    {
+        AstStat* declaration = nullptr;
+        unsigned int scopeDepth = 0;
+        bool referenced = false;
+        bool softReferenced = false;
+        bool exported = false;
+
+        Location nameLocation;
+    };
+
+    DenseHashMap<AstName, Alias> refs;
+    std::vector<Alias*> typesEnvScopeStack;
+
+    LintUnusedType()
+        : refs(AstName())
+    {
+    }
+
+    void report()
+    {
+        for (auto& pair : refs)
+        {
+            AstStat* declaration = pair.second.declaration;
+            if (!declaration || pair.second.referenced || pair.second.exported)
+                continue;
+
+            const char* nameValue = pair.first.value;
+
+            if (nameValue[0] == '_')
+                continue;
+
+            const char* msg;
+            if (!declaration->is<AstStatTypeFunction>())
+                msg = "Type '%s' is never used; prefix with '_' to silence";
+            else if (!pair.second.softReferenced)
+                msg = "Type Function '%s' is never used; prefix with '_' to silence";
+            else
+                msg = "Type Function '%s' is never used outside its own body; prefix with '_' to silence";
+
+            emitWarning(*context, LintWarning::Code_TypeUnused, pair.second.nameLocation, msg, nameValue);
+        }
+    }
+
+    void scopePush(Alias& alias)
+    {
+        alias.scopeDepth++;
+        typesEnvScopeStack.push_back(&alias);
+    }
+    void scopePop()
+    {
+        Alias* scope = typesEnvScopeStack.back();
+        scope->scopeDepth--;
+        typesEnvScopeStack.pop_back();
+    }
+
+    bool visit(AstType* node) override
+    {
+        return true;
+    }
+    bool visit(AstTypePack* node) override
+    {
+        return true;
+    }
+
+    bool visit(AstStatTypeAlias* node) override
+    {
+        Alias& alias = refs[node->name];
+        alias.declaration = node;
+        alias.nameLocation = node->nameLocation;
+        alias.exported = node->exported;
+
+        return true;
+    }
+    bool visit(AstStatTypeFunction* node) override
+    {
+        Alias& alias = refs[node->name];
+        alias.declaration = node;
+        alias.nameLocation = node->nameLocation;
+        alias.exported = node->exported;
+
+        scopePush(alias);
+        node->body->visit(this);
+        scopePop();
+
+        return false;
+    }
+
+    bool visit(AstTypeReference* node) override
+    {
+        if (node->prefix)
+            return true;
+
+        Alias& alias = refs[node->name];
+        alias.referenced = true;
+
+        return true;
+    }
+
+    bool visit(AstExprGlobal* node) override
+    {
+        if (typesEnvScopeStack.empty())
+            return true;
+
+        Alias& alias = refs[node->name];
+        if (alias.scopeDepth > 0)
+            alias.softReferenced = true;
+        else
+            alias.referenced = true;
+
+        return true;
+    }
+};
+
 std::vector<LintWarning> lint(
     AstStat* root,
     const AstNameTable& names,
@@ -3611,6 +3742,9 @@ std::vector<LintWarning> lint(
         if (hasNativeCommentDirective(hotcomments))
             LintRedundantNativeAttribute::process(context);
     }
+
+    if (context.warningEnabled(LintWarning::Code_TypeUnused))
+        LintUnusedType::process(context);
 
     std::sort(context.result.begin(), context.result.end(), WarningComparator());
 

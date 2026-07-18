@@ -883,7 +883,7 @@ return f1,f2,f3,f4
 TEST_CASE_FIXTURE(Fixture, "TypeAnnotationsShouldNotProduceWarnings")
 {
     LintResult result = lint(R"(--!strict
-type InputData = {
+export type InputData = {
     id: number,
     inputType: EnumItem,
     inputState: EnumItem,
@@ -1269,14 +1269,14 @@ TEST_CASE_FIXTURE(Fixture, "read_write_table_props")
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     LintResult result = lint(R"(-- line 1
-        type A = {x: number}
-        type B = {read x: number, write x: number}
-        type C = {x: number, read x: number} -- line 4
-        type D = {x: number, write x: number}
-        type E = {read x: number, x: boolean}
-        type F = {read x: number, read x: number}
-        type G = {write x: number, x: boolean}
-        type H = {write x: number, write x: boolean}
+        export type A = {x: number}
+        export type B = {read x: number, write x: number}
+        export type C = {x: number, read x: number} -- line 4
+        export type D = {x: number, write x: number}
+        export type E = {read x: number, x: boolean}
+        export type F = {read x: number, read x: number}
+        export type G = {write x: number, x: boolean}
+        export type H = {write x: number, write x: boolean}
     )");
 
     REQUIRE(6 == result.warnings.size());
@@ -2570,6 +2570,163 @@ a<<"hi">>("hi")
 )");
 
     REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "unused_type_referenced_type_alias")
+{
+    LintResult result = lint(R"(
+type Mrrp = {}
+type Meow = Mrrp
+
+return function(): Meow
+    return {}
+end
+)");
+
+    REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "unused_type_exported_type_alias")
+{
+    LintResult result = lint(R"(
+export type Mrrp = {}
+)");
+
+    REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "unused_type_referenced_type_fun")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    LintResult result = lint(R"(
+type function Kya()
+    return types.any
+end
+
+return function(): Kya<>
+    return {}
+end
+)");
+
+    REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "unused_type_exported_type_fun")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    LintResult result = lint(R"(
+export type function Kya()
+    return types.any
+end
+)");
+
+    REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "unused_type_type_alias_referenced_type_from_type_fun_body")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    LintResult result = lint(R"(
+type Mrrp = {}
+type Meow = Mrrp
+
+type function Kya()
+    return Meow
+end
+
+return function(): Kya<>
+    return {}
+end
+)");
+
+    REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "unused_type_referenced_type_fun_from_other_type_fun")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    LintResult result = lint(R"(
+type function Kya()
+    return types.any
+end
+type function Purr()
+    return Kya()
+end
+return ... :: Purr<>
+)");
+
+    REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "unused_type_type_alias_alone")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    LintResult result = lint(R"(
+type Mrrp = {}
+)");
+
+    REQUIRE(1 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Type 'Mrrp' is never used; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[0].location, Location(Position(1, 5), Position(1, 9)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unused_type_type_alias_reference_chain_unreferenced")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    LintResult result = lint(R"(
+type Mrrp = {}
+type Meow = Mrrp
+)");
+
+    REQUIRE(1 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Type 'Meow' is never used; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[0].location, Location(Position(2, 5), Position(2, 9)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unused_type_unreferenced_type_fun")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    LintResult result = lint(R"(
+type function Kya()
+    return types.any
+end
+)");
+
+    REQUIRE(1 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Type Function 'Kya' is never used; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[0].location, Location(Position(1, 14), Position(1, 17)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unused_type_recursive_type_fun")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    LintResult result = lint(R"(
+type function Kya()
+    return Kya()
+end
+)");
+
+    REQUIRE(1 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Type Function 'Kya' is never used outside its own body; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[0].location, Location(Position(1, 14), Position(1, 17)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unused_type_unrelated_global_reference")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    LintResult result = lint(R"(
+type Purr = number
+type function Hiss()
+    return types.any
+end
+return Purr or Hiss
+)");
+
+    REQUIRE(2 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Type 'Purr' is never used; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[0].location, Location(Position(1, 5), Position(1, 9)));
+    CHECK_EQ(result.warnings[1].text, "Type Function 'Hiss' is never used; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[1].location, Location(Position(2, 14), Position(2, 18)));
 }
 
 TEST_SUITE_END();
