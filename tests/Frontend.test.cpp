@@ -914,8 +914,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
 
     ModulePtr module = fe.moduleResolver.getModule("Module/A");
 
-    CHECK_EQ(0, module->internalTypes.types.size());
-    CHECK_EQ(0, module->internalTypes.typePacks.size());
+    CHECK_EQ(0, module->internalTypes->types.size());
+    CHECK_EQ(0, module->internalTypes->typePacks.size());
     CHECK_EQ(0, module->astTypes.size());
     CHECK_EQ(0, module->astResolvedTypes.size());
     CHECK_EQ(0, module->astResolvedTypePacks.size());

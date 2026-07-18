@@ -19,8 +19,8 @@ LUAI_FUNC LuauClass* luaR_newclass(
     TString* name,
     LuaTable* memberstooffset,
     TString** offsettomember,
-    int numberofinstancemembers,
-    int numberofstaticmembers
+    uint32_t numberofinstancemembers,
+    uint32_t numberofstaticmembers
 );
 
 /**
@@ -46,7 +46,7 @@ LUAI_FUNC int luaR_createobject(lua_State* L);
 
 LUAI_FUNC void luaR_freeobject(lua_State* L, LuauObject* classinstance, lua_Page* page);
 
-#define luaR_checkoffsetinbounds(inst, offset) (int(offset) >= 0 && int(offset) < (inst)->lclass->numberofallmembers)
+#define luaR_checkoffsetinbounds(inst, offset) (offset < (inst)->lclass->numberofallmembers)
 
 #define luaR_lookupmemberatoffset(inst, offset) \
     (LUAU_ASSERT(luaR_checkoffsetinbounds(inst, offset)), \

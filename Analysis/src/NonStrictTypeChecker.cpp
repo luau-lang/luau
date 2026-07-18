@@ -1288,7 +1288,7 @@ void checkNonStrict(
 {
     LUAU_TIMETRACE_SCOPE("checkNonStrict", "Typechecking");
 
-    NonStrictTypeChecker typeChecker{NotNull{&module->internalTypes}, builtinTypes, typeFunctionRuntime, ice, unifierState, dfg, limits, module};
+    NonStrictTypeChecker typeChecker{NotNull{module->internalTypes.get()}, builtinTypes, typeFunctionRuntime, ice, unifierState, dfg, limits, module};
     typeChecker.visit(sourceModule.root);
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes, builtinTypes);

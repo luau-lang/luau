@@ -105,7 +105,14 @@ inline bool lowerImpl(
     bool outputEnabled = options.includeAssembly || options.includeIr;
 
     std::string emptyLog;
-    IrToStringContext ctx{FFlag::LuauCodegenSharedLog ? (logger ? logger->text : emptyLog) : build.text, function.blocks, function.constants, function.cfg, function.vmExitInfo, function.proto};
+    IrToStringContext ctx{
+        FFlag::LuauCodegenSharedLog ? (logger ? logger->text : emptyLog) : build.text,
+        function.blocks,
+        function.constants,
+        function.cfg,
+        function.vmExitInfo,
+        function.proto
+    };
 
     // We use this to skip outlined fallback blocks from IR/asm text output
     size_t textSize = (FFlag::LuauCodegenSharedLog ? ctx.result : build.text).length();

@@ -949,9 +949,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = isCovariantWith(env, p, scope);
     else if (auto p = get2<TableType, TableType>(subTy, superTy))
     {
-        const bool forceCovariantTest = FFlag::LuauBidirectionalInferenceSimplifyTables
-            ? false
-            : uniqueTypes != nullptr && uniqueTypes->contains(subTy);
+        const bool forceCovariantTest =
+            FFlag::LuauBidirectionalInferenceSimplifyTables ? false : uniqueTypes != nullptr && uniqueTypes->contains(subTy);
         result = isCovariantWith(env, p.first, p.second, forceCovariantTest, scope);
         if (result.isSubtype && !p.first->indexer && p.second->indexer && p.first->state != TableState::Sealed)
         {
@@ -1635,7 +1634,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     {
         // First pass: If the union already includes subTy, stop.  Do not
         // attempt to bind any generics.
-        for (TypeId ty: superUnion)
+        for (TypeId ty : superUnion)
         {
             if (follow(ty) == subTy)
                 return {true};

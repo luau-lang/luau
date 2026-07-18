@@ -135,7 +135,7 @@ Proto* createInlinedProto(lua_State* L, Proto* caller, Proto* target, RuntimeBcF
     p->userdata = caller->userdata;
     p->source = caller->source;
     p->linedefined = caller->linedefined;
-    
+
     p->k = luaM_newarray(L, graph.constants.size(), TValue, L->activememcat);
     p->sizek = graph.constants.size();
     for (int i = 0; i < p->sizek; i++)
