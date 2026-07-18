@@ -6,6 +6,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
+LUAU_FASTFLAGVARIABLE(LuauBetterOsAnalysis)
 
 namespace Luau
 {
@@ -146,6 +147,40 @@ declare math: {
 )BUILTIN_SRC";
 
 static constexpr const char* kBuiltinDefinitionOsSrc = R"BUILTIN_SRC(
+
+type DateTypeArg = {
+    year: number,
+    month: number,
+    day: number,
+    hour: number?,
+    min: number?,
+    sec: number?,
+    isdst: boolean?,
+}
+
+type DateTypeResult = {
+    year: number,
+    month: number,
+    wday: number,
+    yday: number,
+    day: number,
+    hour: number,
+    min: number,
+    sec: number,
+    isdst: boolean,
+}
+
+declare os: {
+    time: ((time: DateTypeArg) -> number?) & (() -> number),
+    date: ((formatString: "*t" | "!*t", time: number?) -> DateTypeResult) & ((formatString: string?, time: number?) -> string),
+    difftime: (t2: number, t1: number) -> number,
+    clock: () -> number,
+}
+
+)BUILTIN_SRC";
+
+// Remove with FFlag::LuauBetterOsAnalysis
+static constexpr const char* kBuiltinDefinitionOsSrc_DEPRECATED = R"BUILTIN_SRC(
 
 type DateTypeArg = {
     year: number,
@@ -401,7 +436,10 @@ std::string getBuiltinDefinitionSource()
 
     result += kBuiltinDefinitionBit32Src;
     result += kBuiltinDefinitionMathSrc;
-    result += kBuiltinDefinitionOsSrc;
+    if (FFlag::LuauBetterOsAnalysis)
+        result += kBuiltinDefinitionOsSrc;
+    else
+        result += kBuiltinDefinitionOsSrc_DEPRECATED;
     result += kBuiltinDefinitionCoroutineSrc;
     result += kBuiltinDefinitionTableSrc;
     result += kBuiltinDefinitionDebugSrc;
