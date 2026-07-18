@@ -232,6 +232,9 @@ public:
 
     unsigned getInstructionCount() const;
 
+    static const char* getSizeName(SizeX64 size);
+    static const char* getRegisterName(RegisterX64 reg);
+
     // Resulting data and code that need to be copied over one after the other
     // The *end* of 'data' has to be aligned to 16 bytes, this will also align 'code'
     std::vector<uint8_t> data;
@@ -319,9 +322,6 @@ private:
     LUAU_NOINLINE void log(const char* opcode, Label label);
     LUAU_NOINLINE void log(const char* opcode, RegisterX64 reg, Label label);
     void log(OperandX64 op);
-
-    const char* getSizeName(SizeX64 size) const;
-    const char* getRegisterName(RegisterX64 reg) const;
 
     LogBuilder* logger = nullptr;
 

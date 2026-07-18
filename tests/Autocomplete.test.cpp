@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauAutocompleteFunctionArglistSuggestion)
 LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
+LUAU_FASTFLAG(LuauAutocompleteSkipErrorTypeInUnion)
 
 using namespace Luau;
 
@@ -5664,6 +5665,26 @@ TEST_CASE_FIXTURE(ACFixture, "class_autocomplete_classname_inside_method")
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("Bar"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_on_nonexistent_table")
+{
+    ScopedFastFlag _{FFlag::LuauAutocompleteSkipErrorTypeInUnion, true};
+
+    check(R"(
+        local mygame = {}
+
+        local char = (nil :: any) :: {
+            Humanoid: {
+                Animator: number
+            }
+        } & typeof(mygame.interesting)
+
+        char.Humanoid.@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("Animator"));
 }
 
 TEST_SUITE_END();

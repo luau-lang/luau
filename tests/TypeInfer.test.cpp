@@ -27,7 +27,6 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauRefineNilFromTableIndexerResultType)
 LUAU_FASTFLAG(LuauInstantiationUsesPolarity)
 LUAU_FASTFLAG(LuauCollapseDirectBoundCycles)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
@@ -2772,10 +2771,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_instantiation2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_table_with_optional_indexer_values")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict
@@ -2794,10 +2790,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_table_with_optional_indexer_val
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_local_table_with_optional_indexer_values")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict
@@ -2816,10 +2809,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_local_table_with_optional_index
 // https://github.com/luau-lang/luau/issues/2236
 TEST_CASE_FIXTURE(BuiltinsFixture, "2236_iterate_over_table_with_values_as_optional_types")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict

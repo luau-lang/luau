@@ -48,6 +48,7 @@ target_sources(Luau.Bytecode PRIVATE
     Bytecode/include/Luau/BytecodeCallInliner.h
     Bytecode/include/Luau/BytecodeGraph.h
     Bytecode/include/Luau/BytecodeOps.h
+    Bytecode/include/Luau/BytecodeValidation.h
     Bytecode/include/Luau/Sccp.h
 
     Bytecode/src/BytecodeBuilder.cpp
@@ -539,6 +540,7 @@ if(TARGET Luau.UnitTest)
         tests/RegisterCallbacks.h
         tests/RequireTracer.test.cpp
         tests/RuntimeLimits.test.cpp
+        tests/Sccp.test.cpp
         tests/ScopedFlags.h
         tests/Simplify.test.cpp
         tests/Set.test.cpp

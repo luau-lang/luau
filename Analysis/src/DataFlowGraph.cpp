@@ -14,6 +14,7 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauDoNotOverwriteAstDefs)
+LUAU_FASTFLAGVARIABLE(LuauAvoidTrivialPhis)
 
 namespace Luau
 {
@@ -227,18 +228,47 @@ void DataFlowGraphBuilder::join(DfgScope* p, DfgScope* a, DfgScope* b)
 
 void DataFlowGraphBuilder::joinBindings(DfgScope* p, const DfgScope& a, const DfgScope& b)
 {
-    for (const auto& [sym, def1] : a.bindings)
+    if (FFlag::LuauAvoidTrivialPhis)
     {
-        if (auto def2 = b.bindings.find(sym))
-            p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
-        else if (auto def2 = p->lookup(sym))
-            p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
-    }
+        auto join = [&](auto sym, auto def1, auto def2)
+        {
+            // Refinements are keyed on `DefId`s, meaning that allocating
+            // a trivial phi node like this *breaks* refinements.
+            if (def1 == def2)
+                p->bindings[sym] = def1;
+            else
+                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{def2});
+        };
 
-    for (const auto& [sym, def1] : b.bindings)
+        for (const auto& [sym, def1] : a.bindings)
+        {
+            if (auto def2 = b.bindings.find(sym))
+                join(sym, def1, *def2);
+            else if (auto def2 = p->lookup(sym))
+                join(sym, def1, *def2);
+        }
+
+        for (const auto& [sym, def1] : b.bindings)
+        {
+            if (auto def2 = p->lookup(sym))
+                join(sym, def1, *def2);
+        }
+    }
+    else
     {
-        if (auto def2 = p->lookup(sym))
-            p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
+        for (const auto& [sym, def1] : a.bindings)
+        {
+            if (auto def2 = b.bindings.find(sym))
+                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
+            else if (auto def2 = p->lookup(sym))
+                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
+        }
+
+        for (const auto& [sym, def1] : b.bindings)
+        {
+            if (auto def2 = p->lookup(sym))
+                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
+        }
     }
 }
 
@@ -1034,7 +1064,7 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
         scopeStack.push_back(child);
 
         auto [def, key] = *result;
-        
+
         if (FFlag::LuauDoNotOverwriteAstDefs)
         {
             if (!graph.astDefs.contains(firstArg))

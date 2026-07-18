@@ -23,15 +23,15 @@ inline size_t countTrailingZeroes(uint64_t word)
     LUAU_ASSERT(word != 0);
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_ctzll(word);
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) && defined(_M_X64)
     unsigned long idx;
     _BitScanForward64(&idx, word);
     return idx;
 #else
     size_t n = 0;
-    while ((x & 1) == 0)
+    while ((word & 1) == 0)
     {
-        x >>= 1;
+        word >>= 1;
         ++n;
     }
     return n;
@@ -175,6 +175,70 @@ private:
             return count;
         }
 
+        // This iterator produces a stream of indices representing indices in bitset that are on, not each bit in the set
+        // Insertions to this set / mutations will invalidate this iterator
+        class iterator
+        {
+        public:
+            iterator(const BitsetT* data, size_t wordCount, size_t wordIdx)
+                : data(data)
+                , wordCount(wordCount)
+                , wordIdx(wordIdx)
+                , word(0)
+            {
+                // Skip all words that are 0's
+                while (this->wordIdx < this->wordCount && (this->word = data[this->wordIdx]) == 0)
+                    this->wordIdx++;
+
+                if (this->wordIdx < this->wordCount)
+                    currentBucket = this->wordIdx * numElements + countTrailingZeroes(word);
+            }
+
+            size_t operator*() const
+            {
+                return currentBucket;
+            }
+
+            iterator& operator++()
+            {
+                // When you want the `next` occupied bucket, zero out the lowest 1 in the current word in the bitset (since that's where you are
+                // currently) If the word is 0, skip to the next one - there aren't anymore elements in the current block of 64 Otherwise, the
+                // currentBucket is the index of the word * numElements per word + the trailing zeroes in that word
+                word &= word - 1;
+                while (word == 0)
+                {
+                    wordIdx++;
+                    if (wordIdx >= wordCount)
+                        return *this;
+                    word = data[wordIdx];
+                }
+                currentBucket = wordIdx * numElements + countTrailingZeroes(word);
+                return *this;
+            }
+
+            bool operator!=(const iterator& other) const
+            {
+                return wordIdx != other.wordIdx || word != other.word;
+            }
+
+        private:
+            const BitsetT* data;
+            size_t wordCount;
+            size_t wordIdx;
+            BitsetT word;
+            size_t currentBucket = 0;
+        };
+
+        iterator begin() const
+        {
+            return iterator(data, count, 0);
+        }
+
+        iterator end() const
+        {
+            return iterator(data, count, count);
+        }
+
     private:
         size_t capacity;
         size_t count;
@@ -199,9 +263,9 @@ public:
         {
             data = static_cast<Item*>(::operator new(sizeof(Item) * buckets));
             capacity = buckets;
-            hashShift = 64 - detail::countTrailingZeroes(static_cast<uint64_t>(buckets));
-
-            ItemInterface::fill(data, buckets);
+            // This cast is fine because count trailing zeroes on a uint64_t returns a number in [0, 64)
+            // Easily fits in a uint8_t
+            hashShift = 64 - static_cast<uint8_t>(detail::countTrailingZeroes(static_cast<uint64_t>(buckets)));
         }
     }
 
@@ -213,7 +277,7 @@ public:
 
     DenseHashTable2(const DenseHashTable2& other)
         : data(nullptr)
-        , usedTable(other.usedTable)
+        , usedTable(0)
         , capacity(0)
         , count(other.count)
         , hashShift(other.hashShift)
@@ -221,12 +285,16 @@ public:
         if (other.capacity)
         {
             data = static_cast<Item*>(::operator new(sizeof(Item) * other.capacity));
+            usedTable = BitSet{other.capacity};
 
-            for (size_t i = 0; i < other.capacity; ++i)
+            for (size_t bucket : other.usedTable)
             {
-                new (&data[i]) Item(other.data[i]);
-                capacity = i + 1; // if Item copy throws, capacity will note the number of initialized objects for destroy() to clean up
+                new (&data[bucket]) Item(other.data[bucket]);
+                usedTable.set(bucket, true); // if Item copy throws, used table will note the initialized objects for destroy() to clean up
             }
+
+            capacity = other.capacity;
+            LUAU_ASSERT((capacity & (capacity - 1)) == 0);
         }
     }
 
@@ -287,8 +355,8 @@ public:
         }
         else
         {
-            ItemInterface::destroy(data, capacity);
-            ItemInterface::fill(data, capacity);
+            for (size_t bucket : usedTable)
+                data[bucket].~Item();
             usedTable.clear();
         }
 
@@ -297,7 +365,8 @@ public:
 
     void destroy()
     {
-        ItemInterface::destroy(data, capacity);
+        for (size_t bucket : usedTable)
+            data[bucket].~Item();
 
         ::operator delete(data);
         data = nullptr;
@@ -320,7 +389,7 @@ public:
         // This is nice to do because it means the user of dense hash doesn't have to design a good hash function - e.g. if you're hashing integers
         // you can just return the integer. If you tried to do this with DenseHash(old), you'd end up with a lot of clustering, and it means we can
         // just use std::hash as the default hash everywhere
-        return (static_cast<uint64_t>(hasher(key)) * 11400714819323198485ull) >> hashShift;
+        return static_cast<size_t>((static_cast<uint64_t>(hasher(key)) * 11400714819323198485ull) >> hashShift);
     }
 
     struct BucketResult
@@ -362,7 +431,6 @@ public:
         return found ? &data[bucket] : NULL;
     }
 
-
     void grow()
     {
         size_t newsize = capacity == 0 ? 16 : capacity * 2;
@@ -370,22 +438,16 @@ public:
         DenseHashTable2 newtable(newsize);
 
         // We can leverage the structure of the bitvector here to skip contiguous chunks of empty elements
-        size_t numWords = usedTable.numWords();
-        for (size_t wordIdx = 0; wordIdx < numWords; ++wordIdx)
+        for (size_t bucket : usedTable)
         {
-            uint64_t word = usedTable.wordAt(wordIdx);
-            while (word != 0)
-            {
-                size_t bit = countTrailingZeroes(word);
-                size_t bucket = wordIdx * BitSet::numElements + bit;
-
-                const Key& key = ItemInterface::getKey(data[bucket]);
-                Item* item = newtable.insert_unsafe(key);
-                *item = std::move(data[bucket]);
-
-                // Zero out the right most bit
-                word &= word - 1;
-            }
+            const Key& key = ItemInterface::getKey(data[bucket]);
+            // ItemInterface::setKey default constructs the value type. If we use insert_unsafe here, we then pay for one unecessary construction
+            // which is immediately overwritten. Instead, we manually insert these items into the destination table
+            auto [dest, found] = newtable.getBucket(key);
+            LUAU_ASSERT(!found);
+            newtable.usedTable.set(dest, true);
+            ++newtable.count;
+            new (&newtable.data[dest]) Item(std::move(data[bucket]));
         }
 
         LUAU_ASSERT(count == newtable.count);
@@ -582,7 +644,10 @@ private:
         for (;;)
         {
             if (!usedTable.contains(bucket))
+            {
                 return {bucket, false};
+            }
+
             if (eq(ItemInterface::getKey(data[bucket]), key))
                 return {bucket, true};
             bucket = (bucket + 1) & hashmod;
@@ -619,14 +684,15 @@ private:
 
             if (left < right)
             {
-                data[i] = std::move(data[j]);
                 usedTable.set(i, true);
                 usedTable.set(j, false);
+                new (&data[i]) Item(std::move(data[j]));
                 i = j;
             }
         }
 
         usedTable.set(i, false);
+        data[i].~Item();
         --count;
     }
 
@@ -649,19 +715,7 @@ struct ItemInterfaceSet2
 
     static void setKey(Key& item, const Key& key)
     {
-        item = key;
-    }
-
-    static void fill(Key* data, size_t count)
-    {
-        for (size_t i = 0; i < count; ++i)
-            new (&data[i]) Key();
-    }
-
-    static void destroy(Key* data, size_t count)
-    {
-        for (size_t i = 0; i < count; ++i)
-            data[i].~Key();
+        new (&item) Key(key);
     }
 };
 
@@ -675,25 +729,8 @@ struct ItemInterfaceMap2
 
     static void setKey(std::pair<Key, Value>& item, const Key& key)
     {
-        item.first = key;
-    }
-
-    static void fill(std::pair<Key, Value>* data, size_t count)
-    {
-        for (size_t i = 0; i < count; ++i)
-        {
-            new (&data[i].first) Key();
-            new (&data[i].second) Value();
-        }
-    }
-
-    static void destroy(std::pair<Key, Value>* data, size_t count)
-    {
-        for (size_t i = 0; i < count; ++i)
-        {
-            data[i].first.~Key();
-            data[i].second.~Value();
-        }
+        new (&item.first) Key(key);
+        new (&item.second) Value();
     }
 };
 
