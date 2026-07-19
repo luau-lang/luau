@@ -237,6 +237,8 @@ void applySubstitutions(IrFunction& function, IrInst& inst);
 
 // Compare numbers using IR condition value
 bool compare(double a, double b, IrCondition cond);
+bool compare(int a, int b, IrCondition cond);
+bool compare(int64_t a, int64_t b, IrCondition cond);
 
 // Perform constant folding on instruction at index
 // For most instructions, successful folding results in a IrCmd::SUBSTITUTE
