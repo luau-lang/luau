@@ -46,6 +46,13 @@ enum struct SolverMode
     New
 };
 
+// Number of components in the 'vector' type, matching the VM's LUA_VECTOR_SIZE (which is always 3 or 4)
+enum struct VectorSize
+{
+    Three,
+    Four
+};
+
 /**
  * There are three kinds of type variables:
  * - `Free` variables are metavariables, which stand for unconstrained types.
