@@ -1220,6 +1220,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::JUMP_IF_FALSY:
     case IrCmd::JUMP_EQ_TAG:
     case IrCmd::JUMP_CMP_INT:
+    case IrCmd::JUMP_CMP_INT64:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::JUMP_CMP_FLOAT:

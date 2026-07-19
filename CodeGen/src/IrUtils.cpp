@@ -266,6 +266,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::JUMP_IF_FALSY:
     case IrCmd::JUMP_EQ_TAG:
     case IrCmd::JUMP_CMP_INT:
+    case IrCmd::JUMP_CMP_INT64:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::JUMP_CMP_FLOAT:
@@ -1133,6 +1134,15 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
         {
             if (compare(function.intOp(OP_A(inst)), function.intOp(OP_B(inst)), conditionOp(OP_C(inst))))
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
+            else
+                replace(function, block, index, {IrCmd::JUMP, {OP_E(inst)}});
+        }
+        break;
+    case IrCmd::JUMP_CMP_INT64:
+        if (OP_A(inst).kind == IrOpKind::Constant && OP_B(inst).kind == IrOpKind::Constant)
+        {
+            if (compare(function.int64Op(OP_A(inst)), function.int64Op(OP_B(inst)), conditionOp(OP_C(inst))))
                 replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
             else
                 replace(function, block, index, {IrCmd::JUMP, {OP_E(inst)}});

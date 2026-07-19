@@ -1709,6 +1709,30 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         jumpOrFallthrough(blockOp(OP_E(inst)), next);
         break;
     }
+    case IrCmd::JUMP_CMP_INT64:
+    {
+        IrCondition cond = conditionOp(OP_C(inst));
+
+        if (cond == IrCondition::Equal && OP_B(inst).kind == IrOpKind::Constant && int64Op(OP_B(inst)) == 0)
+        {
+            build.cbz(regOp(OP_A(inst)), labelOp(OP_D(inst)));
+        }
+        else if (cond == IrCondition::NotEqual && OP_B(inst).kind == IrOpKind::Constant && int64Op(OP_B(inst)) == 0)
+        {
+            build.cbnz(regOp(OP_A(inst)), labelOp(OP_D(inst)));
+        }
+        else
+        {
+            if (OP_B(inst).kind == IrOpKind::Constant && uint64_t(int64Op(OP_B(inst))) <= AssemblyBuilderA64::kMaxImmediate)
+                build.cmp(regOp(OP_A(inst)), uint16_t(int64Op(OP_B(inst))));
+            else
+                build.cmp(regOp(OP_A(inst)), tempInt64(OP_B(inst)));
+
+            build.b(getConditionInt64(cond), labelOp(OP_D(inst)));
+        }
+        jumpOrFallthrough(blockOp(OP_E(inst)), next);
+        break;
+    }
     case IrCmd::JUMP_EQ_POINTER:
         build.cmp(regOp(OP_A(inst)), regOp(OP_B(inst)));
         build.b(ConditionA64::Equal, labelOp(OP_C(inst)));
