@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
+#include "luaconf.h" // for LUA_VECTOR_SIZE
+
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
@@ -309,7 +311,23 @@ declare buffer: {
 
 )BUILTIN_SRC";
 
-static const char* const kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
+// The vector library's shape depends on LUA_VECTOR_SIZE: 4-wide vectors expose a 'w' component and
+// take a fourth argument in 'create'. The size-dependent header is kept separate from the shared method list.
+#if LUA_VECTOR_SIZE == 4
+static const char* const kBuiltinDefinitionVectorHeaderSrc = R"BUILTIN_SRC(
+
+-- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
+declare extern type vector with
+    read x: number
+    read y: number
+    read z: number
+    read w: number
+end
+
+declare vector: {
+    create: @checked (x: number, y: number, z: number?, w: number?) -> vector,)BUILTIN_SRC";
+#else
+static const char* const kBuiltinDefinitionVectorHeaderSrc = R"BUILTIN_SRC(
 
 -- While vector would have been better represented as a built-in primitive type, type solver extern type handling covers most of the properties
 declare extern type vector with
@@ -319,7 +337,10 @@ declare extern type vector with
 end
 
 declare vector: {
-    create: @checked (x: number, y: number, z: number?) -> vector,
+    create: @checked (x: number, y: number, z: number?) -> vector,)BUILTIN_SRC";
+#endif
+
+static const char* const kBuiltinDefinitionVectorSrc = R"BUILTIN_SRC(
     magnitude: @checked (vec: vector) -> number,
     normalize: @checked (vec: vector) -> vector,
     cross: @checked (vec1: vector, vec2: vector) -> vector,
@@ -411,6 +432,7 @@ std::string getBuiltinDefinitionSource()
     else
         result += kBuiltinDefinitionBufferSrc_NOINTEGER;
 
+    result += kBuiltinDefinitionVectorHeaderSrc;
     result += kBuiltinDefinitionVectorSrc;
 
     if (FFlag::LuauIntegerType2 && FFlag::LuauIntegerLibrary)
