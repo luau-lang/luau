@@ -471,6 +471,7 @@ int main(int argc, char** argv)
         };
     }
 
+    frontend.setVectorSize(LUA_VECTOR_SIZE == 4 ? Luau::VectorSize::Four : Luau::VectorSize::Three);
     Luau::registerBuiltinGlobals(frontend, frontend.globals);
     Luau::freeze(frontend.globals.globalTypes);
 

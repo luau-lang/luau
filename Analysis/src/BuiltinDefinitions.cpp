@@ -358,7 +358,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
 
     LoadDefinitionFileResult loadResult = frontend.loadDefinitionFile(
-        globals, globals.globalScope, getBuiltinDefinitionSource(), "@luau", /* captureComments */ false, typeCheckForAutocomplete
+        globals, globals.globalScope, getBuiltinDefinitionSource(frontend.getVectorSize()), "@luau", /* captureComments */ false, typeCheckForAutocomplete
     );
     LUAU_ASSERT(loadResult.success);
 
