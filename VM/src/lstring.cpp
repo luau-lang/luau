@@ -72,7 +72,7 @@ void luaS_resize(lua_State* L, int newsize)
 static TString* newlstr(lua_State* L, const char* str, size_t l, unsigned int h)
 {
     if (l > MAXSSIZE)
-        luaM_toobig(L);
+        luaM_toobig(L, "string too big");
 
     TString* ts = luaM_newgco(L, TString, sizestring(l), L->activememcat);
     luaC_init(L, ts, LUA_TSTRING);
@@ -98,7 +98,7 @@ static TString* newlstr(lua_State* L, const char* str, size_t l, unsigned int h)
 TString* luaS_bufstart(lua_State* L, size_t size)
 {
     if (size > MAXSSIZE)
-        luaM_toobig(L);
+        luaM_toobig(L, "string too big");
 
     TString* ts = luaM_newgco(L, TString, sizestring(size), L->activememcat);
     luaC_init(L, ts, LUA_TSTRING);
