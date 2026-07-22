@@ -9,7 +9,7 @@
 Buffer* luaB_newbuffer(lua_State* L, size_t s)
 {
     if (s > MAX_BUFFER_SIZE)
-        luaM_toobig(L);
+        luaM_toobig(L, "buffer too big");
 
     Buffer* b = luaM_newgco(L, Buffer, sizebuffer(s), L->activememcat);
     luaC_init(L, b, LUA_TBUFFER);

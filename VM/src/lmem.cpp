@@ -232,9 +232,9 @@ struct lua_Page
 
 static_assert(offsetof(lua_Page, data) % 16 == 0, "data must be 16 byte aligned to provide properly aligned allocation of userdata objects");
 
-l_noret luaM_toobig(lua_State* L)
+l_noret luaM_toobig(lua_State* L, const char* msg)
 {
-    luaG_runerror(L, "memory allocation error: block too big");
+    luaG_runerror(L, "memory allocation error: %s", msg);
 }
 
 static lua_Page* newpage(lua_State* L, lua_Page** pageset, int pageSize, int blockSize, int blockCount)
