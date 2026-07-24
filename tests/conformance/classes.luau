@@ -502,4 +502,63 @@ expectpass("stack reallocation in creation", function()
     assert(f.z == 300)
 end)
 
+expectpass("hoisting: read before declaration is nil", function()
+    assert(typeof(Hoisted) == "nil")
+end)
+
+class Hoisted
+    public x
+end
+
+expectpass("hoisting: read after declaration is class", function()
+    assert(typeof(Hoisted) == "class")
+    local h = Hoisted({ x = 1 })
+    assert(h.x == 1)
+end)
+
+class Parent
+    public children: {Child}
+
+    function createChild(self)
+        local child = Child({parent = self}) -- forward reference to Child
+        table.insert(self.children, child)
+        return child
+    end
+end
+
+class Child
+    public parent: Parent
+
+    function createParent(self)
+        local p = Parent({children = {self}})
+        return p
+    end
+end
+
+expectpass("hoisting: mutually referential classes work via capture by ref", function()
+    local p = Parent({children = {}})
+    local c = p:createChild()
+    assert(class.isinstance(c, Child))
+    assert(c.parent == p)
+    assert(#p.children == 1)
+    assert(p.children[1] == c)
+
+    local p2 = c:createParent()
+    assert(class.isinstance(p2, Parent))
+end)
+
+local function makeWidget(id)
+    return Widget({ id = id }) -- forward reference to Widget
+end
+
+class Widget
+    public id
+end
+
+expectpass("hoisting: function defined before class works via capture by ref", function()
+    local w = makeWidget(42)
+    assert(class.isinstance(w, Widget))
+    assert(w.id == 42)
+end)
+
 return 'OK'

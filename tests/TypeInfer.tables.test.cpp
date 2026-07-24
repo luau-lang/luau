@@ -26,9 +26,9 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
-LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -4597,7 +4597,7 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_basic")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     // Read-only indexer annotations round-trip through ToString.
     CheckResult result = check(R"(
@@ -4610,7 +4610,7 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_basic")
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_write_rejected")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     CheckResult result = check(R"(
         local t: {read [string]: number} = {}
@@ -4626,7 +4626,7 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_write_rejected")
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_covariance")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     // A read-write indexer is a subtype of a read-only indexer (covariance).
     CheckResult result = check(R"(
@@ -4639,7 +4639,7 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_covariance")
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_not_subtype_of_readwrite")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     // A read-only indexer is NOT a subtype of a read-write indexer.
     CheckResult result = check(R"(
@@ -4657,7 +4657,7 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_not_subtype_of_readwrite")
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_value_covariance")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     // Value type is covariant for read-only indexers.
     CheckResult result = check(R"(
@@ -4670,7 +4670,7 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_value_covariance")
 
 TEST_CASE_FIXTURE(Fixture, "read_only_array_shorthand")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     // {read T} is a read-only array (desugars to {read [number]: T}).
     CheckResult result = check(R"(
@@ -4688,7 +4688,7 @@ TEST_CASE_FIXTURE(Fixture, "read_only_array_shorthand")
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_value_not_contravariant")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     // {read [K]: number | string} is NOT a subtype of {read [K]: number}: value type is covariant.
     CheckResult result = check(R"(
@@ -4706,7 +4706,7 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_value_not_contravariant")
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_tostring")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     CheckResult result = check(R"(
         local t: {read [string]: number} = {}
@@ -4718,7 +4718,7 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_tostring")
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_read_allowed")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     CheckResult result = check(R"(
         local t: {read [string]: number} = {}
@@ -4730,7 +4730,7 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_read_allowed")
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_cannot_cover_readwrite_property")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     // A read-only string indexer cannot satisfy a read-write named property because the
     // holder cannot be written through.
@@ -4749,7 +4749,7 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_cannot_cover_readwrite_property")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_read_only_indexers_is_read_only")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     // {read [K]: V} & {read [K]: W} must normalize to {read [K]: V & W}.
     // Reading is fine; writing must fail because both sides are read-only.
@@ -4772,7 +4772,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_read_only_indexers_is_read_only")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_read_only_and_read_write_indexer_allows_writes")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyIndexers, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
 
     // {read [K]: V} & {[K]: W} normalizes to {[K]: V & W} — read-write with intersection value.
     // Write access comes from the read-write side; write type is the conservative intersection.
@@ -7325,6 +7325,25 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_strings_and_then_concat")
             return {
                 table.concat(lua_parts)
             }
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "normalization_always_intersects_table")
+{
+    ScopedFastFlag _{FFlag::LuauAlwaysIntersectTablesWithTables, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl = {}
+
+        function tbl:hmm(occlusionMode)
+            if self.activeOcclusionModule and self.activeOcclusionModule:GetOcclusionMode() == occlusionMode then
+            end
+
+            if self.activeOcclusionModule then
+                local newModuleOcclusionMode = self.activeOcclusionModule:GetOcclusionMode()
+                error("CameraScript ActivateOcclusionModule mismatch: ",self.activeOcclusionModule:GetOcclusionMode())
+            end
         end
     )"));
 }

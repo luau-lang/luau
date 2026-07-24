@@ -123,6 +123,7 @@ struct GCCycleMetrics
     double atomictimeupval = 0.0;
     double atomictimeweak = 0.0;
     double atomictimegray = 0.0;
+    double atomictimeembedder = 0.0;
     double atomictimeclear = 0.0;
 
     double sweeptime = 0.0;
@@ -240,7 +241,12 @@ typedef struct global_State
     size_t memcatbytes[LUA_MEMORY_CATEGORIES]; // total amount of memory used by each memory category
 
     void (*udatagc[LUA_UTAG_LIMIT])(lua_State*, void*); // for each userdata tag, a gc callback to be called immediately before freeing memory
+    lua_UserdataMark udatamark[LUA_UTAG_LIMIT]; // gc callbacks allowing the embedder to mark underlying native objects for the given userdata
     LuaTable* udatamt[LUA_UTAG_LIMIT]; // metatables for tagged userdata
+
+    TValue weakregistry; // backing table for lua_weakref/lua_weakunref/lua_getweakref
+    int weakregistryfree; // next free slot in weakregistry
+    lua_EmbedderGc embeddergc; // embedder GC callback for keeping weak references alive
 
     TString* lightuserdataname[LUA_LUTAG_LIMIT]; // names for tagged lightuserdata
 
@@ -314,6 +320,7 @@ union GCObject
     struct LuauBuffer buf;
     struct LuauClass lclass;
     struct LuauObject lobject;
+    struct LuauVector vec;
 };
 
 // macros to convert a GCObject into a specific value
@@ -327,6 +334,7 @@ union GCObject
 #define gco2buf(o) check_exp((o)->gch.tt == LUA_TBUFFER, &((o)->buf))
 #define gco2class(o) check_exp((o)->gch.tt == LUA_TCLASS, &((o)->lclass))
 #define gco2object(o) check_exp((o)->gch.tt == LUA_TOBJECT, &((o)->lobject))
+#define gco2vec(o) check_exp((o)->gch.tt == LUA_TVECTOR, &((o)->vec))
 
 // macro to convert any Lua object into a GCObject
 #define obj2gco(v) check_exp(iscollectable(v), cast_to(GCObject*, (v) + 0))

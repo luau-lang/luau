@@ -17,7 +17,6 @@ LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAG(LuauCodegenVmExitSyncMultiUse)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerLibrary)
-LUAU_FASTFLAG(LuauCodegenLoadPropagateOrigin)
 LUAU_FASTFLAG(LuauCodegenSubstituteReplacements)
 
 using namespace Luau::CodeGen;
@@ -117,16 +116,16 @@ public:
     IrBuilder build;
 
     // Luau.VM headers are not accessible
-    static const int tnil = 0;
-    static const int tboolean = 1;
-    static const int tnumber = 3;
-    static const int tinteger = 4;
-    static const int tvector = 5;
-    static const int tstring = 6;
-    static const int ttable = 7;
-    static const int tfunction = 8;
-    static const int tuserdata = 9;
-    static const int tbuffer = 11;
+    int tnil = parseTagName("tnil");
+    int tboolean = parseTagName("tboolean");
+    int tnumber = parseTagName("tnumber");
+    int tinteger = parseTagName("tinteger");
+    int tvector = parseTagName("tvector");
+    int tstring = parseTagName("tstring");
+    int ttable = parseTagName("ttable");
+    int tfunction = parseTagName("tfunction");
+    int tuserdata = parseTagName("tuserdata");
+    int tbuffer = parseTagName("tbuffer");
 };
 
 TEST_SUITE_BEGIN("Optimization");
@@ -4753,8 +4752,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateBufferLengthChecks")
 {
-    ScopedFastFlag luauCodegenLoadPropagateOrigin{FFlag::LuauCodegenLoadPropagateOrigin, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
@@ -4855,8 +4852,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLengthChecksIntegerMatch")
 {
-    ScopedFastFlag luauCodegenLoadPropagateOrigin{FFlag::LuauCodegenLoadPropagateOrigin, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
