@@ -448,6 +448,8 @@ private:
         ...
     ) LUAU_PRINTF_ATTR(5, 6);
     AstExprError* reportExprError(const Location& location, const AstArray<AstExpr*>& expressions, const char* format, ...) LUAU_PRINTF_ATTR(4, 5);
+    AstStatClass* getMatchingClass(AstExpr* expr);
+    bool isExprLValue(AstExpr* expr);
     AstExprError* reportLValueError(AstExpr* expr);
     AstTypeError* reportTypeError(const Location& location, const AstArray<AstType*>& types, const char* format, ...) LUAU_PRINTF_ATTR(4, 5);
     // `parseErrorLocation` is associated with the parser error
@@ -542,7 +544,7 @@ private:
 
     DenseHashMap<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
-    DenseHashSet<AstName> classesWithinModule{{}};
+    DenseHashMap<AstName, AstStatClass*> classesWithinModule{{}};
 
     std::vector<ParseError> parseErrors;
 

@@ -22,7 +22,9 @@ struct DenseHashPointer
         uint64_t u = static_cast<uint64_t>(uintptr_t(key));
         u *= 0xbf58476d1ce4e5b9u;
         u ^= u >> 31;
-        return u;
+        // On 32-bit platforms uint64_t to size_t is a narrowing, so we need
+        // to static cast here.
+        return static_cast<size_t>(u);
     }
 };
 

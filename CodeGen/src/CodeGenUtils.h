@@ -19,6 +19,8 @@ Closure* callProlog(lua_State* L, TValue* ra, StkId argtop, int nresults);
 void callEpilogC(lua_State* L, int nresults, int n);
 
 Udata* newUserdata(lua_State* L, size_t s, int tag);
+LuauVector* newVector(lua_State* L, double x, double y, double z);
+
 void getImport(lua_State* L, StkId res, unsigned id, unsigned pc);
 
 #define CALL_FALLBACK_YIELD 1

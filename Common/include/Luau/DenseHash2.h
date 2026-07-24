@@ -747,7 +747,7 @@ public:
     using const_iterator = typename Impl::const_iterator;
     using iterator = typename Impl::iterator;
 
-    explicit DenseHashSet2(size_t buckets = 0)
+    DenseHashSet2(size_t buckets = 0)
         : impl(buckets)
     {
     }
@@ -839,7 +839,7 @@ public:
     using const_iterator = typename Impl::const_iterator;
     using iterator = typename Impl::iterator;
 
-    explicit DenseHashMap2(size_t buckets = 0)
+    DenseHashMap2(size_t buckets = 0)
         : impl(buckets)
     {
     }

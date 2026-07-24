@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(LuauDontBindOptionalGenericToNil)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauFrontendSourceNodeErase)
 
 namespace
 {
@@ -1327,6 +1328,97 @@ TEST_CASE_FIXTURE(FrontendFixture, "markdirty_early_return")
     }
 }
 
+TEST_CASE_FIXTURE(FrontendFixture, "clearModules_erases_module_and_marks_dependents_dirty")
+{
+    fileResolver.source["game/Gui/Modules/A"] = "return {hello=5}";
+    fileResolver.source["game/Gui/Modules/B"] = R"(
+        return require(game:GetService('Gui').Modules.A)
+    )";
+    fileResolver.source["game/Gui/Modules/C"] = R"(
+        return require(game:GetService('Gui').Modules.B)
+    )";
+
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/C"));
+
+    CHECK(!getFrontend().isDirty("game/Gui/Modules/A"));
+    CHECK(!getFrontend().isDirty("game/Gui/Modules/B"));
+    CHECK(!getFrontend().isDirty("game/Gui/Modules/C"));
+
+    getFrontend().clearModules({"game/Gui/Modules/A"});
+
+    // A should be fully erased
+    CHECK(getFrontend().sourceNodes.count("game/Gui/Modules/A") == 0);
+    CHECK(getFrontend().getSourceModule("game/Gui/Modules/A") == nullptr);
+    CHECK(getFrontend().moduleResolver.getModule("game/Gui/Modules/A") == nullptr);
+
+    // B and C should be marked dirty (transitive dependents)
+    CHECK(getFrontend().isDirty("game/Gui/Modules/B"));
+    CHECK(getFrontend().isDirty("game/Gui/Modules/C"));
+
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/C"));
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "clearModules_cleans_up_reverse_dependency_edges")
+{
+    fileResolver.source["game/Gui/Modules/A"] = "return {hello=5}";
+    fileResolver.source["game/Gui/Modules/B"] = R"(
+        return require(game:GetService('Gui').Modules.A)
+    )";
+
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/B"));
+
+    // Before clearing: A has B as a dependent
+    CHECK(getFrontend().sourceNodes["game/Gui/Modules/A"]->dependents.count("game/Gui/Modules/B") == 1);
+
+    getFrontend().clearModules({"game/Gui/Modules/B"});
+
+    // B is erased
+    CHECK(getFrontend().sourceNodes.count("game/Gui/Modules/B") == 0);
+
+    // A should no longer list B as a dependent
+    CHECK(getFrontend().sourceNodes["game/Gui/Modules/A"]->dependents.count("game/Gui/Modules/B") == 0);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "clearModules_nonexistent_module_is_noop")
+{
+    fileResolver.source["game/Gui/Modules/A"] = "return {hello=5}";
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/A"));
+
+    CHECK(!getFrontend().isDirty("game/Gui/Modules/A"));
+
+    // Clearing a non-existent module should not affect anything
+    getFrontend().clearModules({"game/Gui/Modules/DoesNotExist"});
+
+    CHECK(!getFrontend().isDirty("game/Gui/Modules/A"));
+    CHECK(getFrontend().sourceNodes.count("game/Gui/Modules/A") == 1);
+
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/A"));
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "clearModules_multiple_with_shared_dependents")
+{
+    fileResolver.source["game/Gui/Modules/A"] = "return 1";
+    fileResolver.source["game/Gui/Modules/B"] = "return 2";
+    fileResolver.source["game/Gui/Modules/C"] = R"(
+        local A = require(game:GetService('Gui').Modules.A)
+        local B = require(game:GetService('Gui').Modules.B)
+        return A + B
+    )";
+
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/C"));
+
+    CHECK(!getFrontend().isDirty("game/Gui/Modules/C"));
+
+    // Clear both A and B at once; C depends on both
+    getFrontend().clearModules({"game/Gui/Modules/A", "game/Gui/Modules/B"});
+
+    CHECK(getFrontend().sourceNodes.count("game/Gui/Modules/A") == 0);
+    CHECK(getFrontend().sourceNodes.count("game/Gui/Modules/B") == 0);
+    CHECK(getFrontend().isDirty("game/Gui/Modules/C"));
+
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/C"));
+}
+
 TEST_CASE_FIXTURE(FrontendFixture, "attribute_ices_to_the_correct_module")
 {
     ScopedFastFlag sff{FFlag::DebugLuauMagicTypes, true};
@@ -1955,6 +2047,51 @@ TEST_CASE_FIXTURE(FrontendFixture, "generic_P_widening_with_cross_module_recursi
 
     CheckResult result = getFrontend().check("game/Gui/Modules/B");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "deleted_source_is_evicted_on_recheck")
+{
+    ScopedFastFlag luauFrontendSourceNodeErase{FFlag::LuauFrontendSourceNodeErase, true};
+
+    fileResolver.source["game/A"] = R"(
+        export type Props = { name: string, value: number, label: string? }
+        local function make(p: Props): Props
+            return p
+        end
+        return {make = make}
+    )";
+    fileResolver.source["game/B"] = R"(
+        local A = require(game.A)
+        local function wrap(p: A.Props): A.Props
+            return A.make(p)
+        end
+        return {wrap = wrap}
+    )";
+    fileResolver.source["game/C"] = R"(
+        local A = require(game.A)
+        local B = require(game.B)
+        local x = B.wrap({name = "hi", value = 1})
+        local y = A.make({name = "lo", value = 2})
+        return {x, y}
+    )";
+
+    LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/C"));
+
+    // Delete module B, mark it as dirty
+    fileResolver.source.erase("game/B");
+    getFrontend().markDirty("game/B");
+
+    // Invalidate old contents of A
+    getFrontend().markDirty("game/A");
+
+    // Should be able to check C and fail on missing B
+    LUAU_REQUIRE_ERROR_COUNT(1, getFrontend().check("game/C"));
+
+    CHECK(getFrontend().sourceNodes.count("game/B") == 0);
+    CHECK(getFrontend().moduleResolver.getModule("game/B") == nullptr);
+
+    CHECK(getFrontend().sourceNodes.count("game/A") == 1);
+    CHECK(getFrontend().moduleResolver.getModule("game/A") != nullptr);
 }
 
 TEST_SUITE_END();
