@@ -31,7 +31,6 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteExport)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionArglistSuggestion)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
-LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteSkipErrorTypeInUnion)
 LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 
