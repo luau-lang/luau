@@ -24,7 +24,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
-LUAU_FASTFLAGVARIABLE(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 
 namespace Luau
@@ -339,33 +338,30 @@ UnifyResult Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
     // free-type members. Without this, `freeA <: 'T | nil` (or `freeA <: 'T & C`) never
     // constrains 'T, because the FreeType path intercepts before structural dispatch.
     // Members may be GenericTypes that map to FreeTypes via genericSubstitutions.
-    if (FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
+    auto propagateToFreeMembers = [&](auto memberRange)
     {
-        auto propagateToFreeMembers = [&](auto memberRange)
+        for (TypeId member : memberRange)
         {
-            for (TypeId member : memberRange)
+            TypeId m = follow(member);
+            if (auto subst = genericSubstitutions.find(m))
+                m = follow(*subst);
+            if (FreeType* memberFree = getMutable<FreeType>(m))
             {
-                TypeId m = follow(member);
-                if (auto subst = genericSubstitutions.find(m))
-                    m = follow(*subst);
-                if (FreeType* memberFree = getMutable<FreeType>(m))
-                {
-                    memberFree->lowerBound = mkUnion(memberFree->lowerBound, instantiateWithBoundTypes(subTy));
-                }
+                memberFree->lowerBound = mkUnion(memberFree->lowerBound, instantiateWithBoundTypes(subTy));
             }
-        };
-
-        if (const UnionType* superUnion = get<UnionType>(superTy))
-        {
-            propagateToFreeMembers(superUnion->options);
-            return doDefault();
         }
+    };
 
-        if (const IntersectionType* superIntersection = get<IntersectionType>(superTy))
-        {
-            propagateToFreeMembers(superIntersection->parts);
-            return doDefault();
-        }
+    if (const UnionType* superUnion = get<UnionType>(superTy))
+    {
+        propagateToFreeMembers(superUnion->options);
+        return doDefault();
+    }
+
+    if (const IntersectionType* superIntersection = get<IntersectionType>(superTy))
+    {
+        propagateToFreeMembers(superIntersection->parts);
+        return doDefault();
     }
 
     const FunctionType* superFunction = get<FunctionType>(superTy);

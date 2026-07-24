@@ -6,6 +6,7 @@
 #include "Luau/BytecodeCallInliner.h"
 #include "Luau/Compiler.h"
 #include "Luau/Parser.h"
+#include "Luau/Sccp.h"
 
 #include <optional>
 
@@ -52,12 +53,19 @@ struct BytecodeInlinerFixture
         return res;
     }
 
-    std::string inlineAndPrint(std::string_view src, uint32_t callIdx = 0)
+    std::string inlineAndPrint(std::string_view src, uint32_t callIdx = 0, bool foldConstants = false)
     {
         auto res = compileAndInline(src, callIdx);
 
         REQUIRE(res);
         REQUIRE_EQ(verifyUseConsistency(res->second), true);
+
+        if (foldConstants)
+        {
+            BcVmConstImpl impl(res->second);
+            Bytecode::foldConstants(res->second, impl);
+        }
+        REQUIRE(verifyUseConsistency(res->second));
 
         BytecodeBuilder bcb;
         bcb.setDumpFlags(BytecodeBuilder::Dump_Code);
@@ -912,6 +920,437 @@ L1: CALLFB R5 1 1 [-1]
 L2: ADD R1 R1 R5
 FORNLOOP R2 L0
 L3: RETURN R1 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a, b)
+            return a + b
+        end
+
+        local function caller(x)
+            local result = inlinee(5, 42)
+            return result + 2
+        end
+    )",
+        0,
+        true
+    );
+
+    // The inlined ADD (5+42) folds to LOADK 47, and the MOVE copying it also folds.
+    // The second ADD (result+2) cannot fold because R1 merges from both the inlined path (constant 47) and the CALLFB fallback path
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R1 0
+LOADK R2 K0 [5]
+LOADK R3 K1 [42]
+CMPPROTO R1 #0 L0
+LOADK R4 K3 [47]
+LOADK R1 K3 [47]
+JUMP L1
+L0: CALLFB R1 2 1 [-1]
+L1: ADDK R2 R1 K2 [2]
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_chained")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    // Multiple arithmetic ops that should all fold
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a, b)
+            return (a + b) * 2
+        end
+
+        local function caller(x)
+            local result = inlinee(10, 11)
+            return result + x
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R1 0
+LOADK R2 K0 [10]
+LOADK R3 K1 [11]
+CMPPROTO R1 #0 L0
+LOADK R5 K3 [21]
+LOADK R6 K2 [2]
+LOADK R4 K4 [42]
+LOADK R1 K4 [42]
+JUMP L1
+L0: CALLFB R1 2 1 [-1]
+L1: ADD R2 R1 R0
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_div_by_zero")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    // Division by zero should fold to inf
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a, b)
+            return a / b
+        end
+
+        local function caller(x)
+            local result = inlinee(10, 0)
+            return result + x
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R1 0
+LOADK R2 K0 [10]
+LOADK R3 K1 [0]
+CMPPROTO R1 #0 L0
+LOADK R4 K2 [inf]
+LOADK R1 K2 [inf]
+JUMP L1
+L0: CALLFB R1 2 1 [-1]
+L1: ADD R2 R1 R0
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_with_branch")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+            local function inlinee(a)
+                if a then
+                    return 1
+                else
+                    return 2
+                end
+            end
+
+            local function caller()
+                local t = true
+                local res = inlinee(t)
+                return res
+            end
+            )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+LOADB R0 1
+GETUPVAL R1 0
+LOADB R2 1
+CMPPROTO R1 #0 L0
+LOADK R3 K0 [1]
+LOADK R1 K0 [1]
+RETURN R1 1
+L0: CALLFB R1 1 1 [-1]
+RETURN R1 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_with_branches")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+            local function inlinee(a)
+                if a then
+                    if a > 1 then
+                        return 3
+                    else
+                        return 1
+                    end
+                else
+                    return 2
+                end
+            end
+
+            local function caller()
+                local res = inlinee(5)
+                return res
+            end
+            )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ("\n" + result, R"(
+GETUPVAL R0 0
+LOADK R1 K0 [5]
+CMPPROTO R0 #0 L0
+LOADK R2 K1 [1]
+LOADK R2 K2 [3]
+LOADK R0 K2 [3]
+RETURN R0 1
+L0: CALLFB R0 1 1 [-1]
+RETURN R0 1
+)");
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_with_for_loop")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+            local function inlinee(a)
+                local sum = 0
+                for i = 1, a do
+                    sum = sum + i
+                end
+                return sum
+            end
+
+            local function caller()
+                local t = 10
+                local res = inlinee(t)
+                return res
+            end
+            )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+LOADK R0 K0 [10]
+GETUPVAL R1 0
+LOADK R2 K0 [10]
+CMPPROTO R1 #0 L2
+LOADK R3 K1 [0]
+LOADK R6 K2 [1]
+LOADK R4 K0 [10]
+LOADN R5 1
+FORNPREP R4 L1
+L0: ADD R3 R3 R6
+FORNLOOP R4 L0
+L1: MOVE R1 R3
+RETURN R1 1
+L2: CALLFB R1 1 1 [-1]
+RETURN R1 1
+)"
+    );
+}
+
+// tests JUMPIF(NOT)LT path in evaluateComparisonCondition
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_prunes_ordering_branch")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a, b)
+            if a < b then
+                return a
+            end
+            return b
+        end
+
+        local function caller()
+            local res = inlinee(3, 10)
+            return res
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R0 0
+LOADK R1 K0 [3]
+LOADK R2 K1 [10]
+CMPPROTO R0 #0 L0
+LOADK R0 K0 [3]
+RETURN R0 1
+L0: CALLFB R0 2 1 [-1]
+RETURN R0 1
+)"
+    );
+}
+
+// JUMPIFEQ equality comparison folding
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_prunes_equality_branch")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a, b)
+            if a == b then
+                return 1
+            end
+            return 2
+        end
+
+        local function caller()
+            local res = inlinee(7, 7)
+            return res
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R0 0
+LOADK R1 K0 [7]
+LOADK R2 K0 [7]
+CMPPROTO R0 #0 L0
+LOADK R3 K1 [1]
+LOADK R0 K1 [1]
+RETURN R0 1
+L0: CALLFB R0 2 1 [-1]
+RETURN R0 1
+)"
+    );
+}
+
+// constant string argument compared against a string literal tests evaluateXeqkCondition
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_string_equality")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(s)
+            if s == "yes" then
+                return 1
+            end
+            return 0
+        end
+
+        local function caller()
+            local res = inlinee("yes")
+            return res
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R0 0
+LOADK R1 K0 ['yes']
+CMPPROTO R0 #0 L0
+LOADK R2 K0 ['yes']
+LOADK R2 K1 [1]
+LOADK R0 K1 [1]
+RETURN R0 1
+L0: CALLFB R0 1 1 [-1]
+RETURN R0 1
+)"
+    );
+}
+
+// the missing parameter is treated as a LOADNIL, which SCCP can fold to prune `return 1`
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_nil_argument")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a)
+            if a == nil then
+                return 0
+            end
+            return 1
+        end
+
+        local function caller()
+            local res = inlinee()
+            return res
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R0 0
+CMPPROTO R0 #0 L0
+LOADNIL R1
+LOADNIL R2
+LOADK R2 K0 [0]
+LOADK R0 K0 [0]
+RETURN R0 1
+L0: CALLFB R0 0 1 [-1]
+RETURN R0 1
+)"
+    );
+}
+
+//  when the caller passes runtime values, no operand is constant, so the inlined ADD must survive unfolded
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "does_not_fold_runtime_arguments")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::string result = inlineAndPrint(
+        R"(
+        local function inlinee(a, b)
+            return a + b
+        end
+
+        local function caller(x, y)
+            local res = inlinee(x, y)
+            return res
+        end
+    )",
+        0,
+        true
+    );
+
+    REQUIRE_EQ(
+        "\n" + result,
+        R"(
+GETUPVAL R2 0
+MOVE R3 R0
+MOVE R4 R1
+CMPPROTO R2 #0 L0
+ADD R5 R3 R4
+MOVE R2 R5
+RETURN R2 1
+L0: CALLFB R2 2 1 [-1]
+RETURN R2 1
 )"
     );
 }

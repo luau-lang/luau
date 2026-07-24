@@ -2,6 +2,7 @@
 #include "Luau/CodeGen.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/IrBuilder.h"
+#include "Luau/IrDump.h"
 
 #include "doctest.h"
 #include "ScopedFlags.h"
@@ -9,7 +10,6 @@
 #include <regex>
 
 LUAU_FASTFLAG(LuauCodegenDseRestoreHints)
-LUAU_FASTFLAG(LuauCodegenForwardRematerialize)
 
 using namespace Luau::CodeGen;
 
@@ -106,24 +106,22 @@ public:
     AssemblyOptions options;
 
     // Luau.VM headers are not accessible
-    static const int tnil = 0;
-    static const int tboolean = 1;
-    static const int tnumber = 3;
-    static const int tinteger = 4;
-    static const int tvector = 5;
-    static const int tstring = 6;
-    static const int ttable = 7;
-    static const int tfunction = 8;
-    static const int tuserdata = 9;
-    static const int tbuffer = 11;
+    int tnil = parseTagName("tnil");
+    int tboolean = parseTagName("tboolean");
+    int tnumber = parseTagName("tnumber");
+    int tinteger = parseTagName("tinteger");
+    int tvector = parseTagName("tvector");
+    int tstring = parseTagName("tstring");
+    int ttable = parseTagName("ttable");
+    int tfunction = parseTagName("tfunction");
+    int tuserdata = parseTagName("tuserdata");
+    int tbuffer = parseTagName("tbuffer");
 };
 
 TEST_SUITE_BEGIN("IrAssembly");
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "PreserveIntChainedFromDoubleVmReg")
 {
-    ScopedFastFlag luauCodegenForwardRematerialize{FFlag::LuauCodegenForwardRematerialize, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -169,8 +167,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "PreserveIntChainedFromDoubleVmRegBoth")
 {
-    ScopedFastFlag luauCodegenForwardRematerialize{FFlag::LuauCodegenForwardRematerialize, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -272,7 +268,6 @@ bb_0:
 TEST_CASE_FIXTURE(IrAssemblyFixture, "DseHintMaterializesIntIntoDeadVmReg")
 {
     ScopedFastFlag luauCodegenDseRestoreHints{FFlag::LuauCodegenDseRestoreHints, true};
-    ScopedFastFlag luauCodegenForwardRematerialize{FFlag::LuauCodegenForwardRematerialize, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);
     build.beginBlock(entry);
@@ -428,8 +423,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "MultiNumToXSharedSourceStrandsRestore")
 {
-    ScopedFastFlag luauCodegenForwardRematerialize{FFlag::LuauCodegenForwardRematerialize, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     build.beginBlock(entry);
 

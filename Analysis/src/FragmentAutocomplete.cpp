@@ -31,6 +31,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(DebugLuauCyclicRequireTypeInference)
 
 namespace Luau
 {
@@ -1239,8 +1240,8 @@ FragmentTypeCheckResult typecheckFragment_(
         NotNull{&normalizer},
         NotNull{&typeFunctionRuntime},
         NotNull(cg.rootScope),
-        borrowConstraints(cg.constraints),
-        NotNull{&cg.scopeToFunction},
+        borrowConstraints(FFlag::DebugLuauCyclicRequireTypeInference ? cg.cgraph->constraints : cg.constraints),
+        NotNull{FFlag::DebugLuauCyclicRequireTypeInference ? &cg.cgraph->scopeToFunction : &cg.scopeToFunction},
         incrementalModule,
         NotNull{&resolver},
         {},

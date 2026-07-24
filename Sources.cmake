@@ -64,6 +64,8 @@ target_sources(Luau.Inliner PRIVATE
     Inliner/include/luajitinliner.h
 
     Inliner/src/JitInliner.cpp
+    Inliner/src/TValueVmConstImpl.cpp
+    Inliner/src/TValueVmConstImpl.h
     Inliner/src/luajitinliner.cpp
     Inliner/src/RuntimeBytecodeBuilder.h
 )
@@ -414,6 +416,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/lvmexecute.cpp
     VM/src/lclass.cpp
     VM/src/lclasslib.cpp
+    VM/src/lvector.cpp
     VM/src/lvmload.cpp
     VM/src/lvmutils.cpp
 
@@ -435,6 +438,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/ltable.h
     VM/src/ltm.h
     VM/src/ludata.h
+    VM/src/lvector.h
     VM/src/lvm.h
 )
 
