@@ -51,7 +51,7 @@ static bool isPrintableStringConstant(const char* str, size_t len)
     return true;
 }
 
-static const char* getTagName(uint8_t tag)
+const char* getTagName(uint8_t tag)
 {
     switch (tag)
     {
@@ -311,6 +311,8 @@ const char* getCmdName(IrCmd cmd)
         return "TRY_CALL_FASTGETTM";
     case IrCmd::NEW_USERDATA:
         return "NEW_USERDATA";
+    case IrCmd::NEW_VECTOR:
+        return "NEW_VECTOR";
     case IrCmd::INT64_TO_NUM:
         return "INT64_TO_NUM";
     case IrCmd::INT_TO_NUM:
@@ -591,6 +593,63 @@ const char* getConversionCmdSuffix(IrCmd conversionCmd)
     return conversionCmd == IrCmd::INT_TO_NUM ? " as int" : conversionCmd == IrCmd::UINT_TO_NUM ? " as uint" : "";
 }
 
+uint8_t parseTagName(std::string_view name)
+{
+    if (name == "tnil")
+        return LUA_TNIL;
+
+    if (name == "tboolean")
+        return LUA_TBOOLEAN;
+
+    if (name == "tlightuserdata")
+        return LUA_TLIGHTUSERDATA;
+
+    if (name == "tnumber")
+        return LUA_TNUMBER;
+
+    if (name == "tinteger")
+        return LUA_TINTEGER;
+
+    if (name == "tvector")
+        return LUA_TVECTOR;
+
+    if (name == "tstring")
+        return LUA_TSTRING;
+
+    if (name == "ttable")
+        return LUA_TTABLE;
+
+    if (name == "tfunction")
+        return LUA_TFUNCTION;
+
+    if (name == "tuserdata")
+        return LUA_TUSERDATA;
+
+    if (name == "tthread")
+        return LUA_TTHREAD;
+
+    if (name == "tbuffer")
+        return LUA_TBUFFER;
+
+    if (name == "tproto")
+        return LUA_TPROTO;
+
+    if (name == "tupval")
+        return LUA_TUPVAL;
+
+    if (name == "tdeadkey")
+        return LUA_TDEADKEY;
+
+    if (name == "tclass")
+        return LUA_TCLASS;
+
+    if (name == "tobject")
+        return LUA_TOBJECT;
+
+    CODEGEN_ASSERT(!"Unknown type tag");
+    return 0xff;
+}
+
 void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
 {
     append(ctx.result, "  ");
@@ -653,7 +712,7 @@ static void appendVmConstant(std::string& result, Proto* proto, int index)
     }
     else if (constant.tt == LUA_TVECTOR)
     {
-        const float* v = constant.value.v;
+        const LUA_VECTOR_TYPE* v = vvalue(&constant);
 
 #if LUA_VECTOR_SIZE == 4
         if (v[3] != 0)

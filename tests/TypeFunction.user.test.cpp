@@ -17,7 +17,6 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
 LUAU_FASTFLAG(LuauTypeFunctionTableIndexerIsReadOnly)
-LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
@@ -3406,7 +3405,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_table_indexer")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauUdtfTypeIsSubtypeOf, true}, {FFlag::LuauTypeFunctionTableIndexerIsReadOnly, true}, {FFlag::LuauReadOnlyIndexers, true}
+        {FFlag::LuauUdtfTypeIsSubtypeOf, true}, {FFlag::LuauTypeFunctionTableIndexerIsReadOnly, true}
     };
 
     CheckResult results = check(R"(
