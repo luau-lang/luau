@@ -96,11 +96,21 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
 
         case LBC_CONSTANT_VECTOR:
         {
-            fn.constants[i].kind = BcVmConstKind::Vector;
-            fn.constants[i].valueVector[0] = read<float>(data, offset);
-            fn.constants[i].valueVector[1] = read<float>(data, offset);
-            fn.constants[i].valueVector[2] = read<float>(data, offset);
-            fn.constants[i].valueVector[3] = read<float>(data, offset);
+            fn.constants[i].kind = BcVmConstKind::Vectorf;
+            fn.constants[i].valueVectorf[0] = read<float>(data, offset);
+            fn.constants[i].valueVectorf[1] = read<float>(data, offset);
+            fn.constants[i].valueVectorf[2] = read<float>(data, offset);
+            fn.constants[i].valueVectorf[3] = read<float>(data, offset);
+            break;
+        }
+
+        case LBC_CONSTANT_VECTORD:
+        {
+            fn.constants[i].kind = BcVmConstKind::Vectord;
+            fn.constants[i].valueVectord[0] = read<double>(data, offset);
+            fn.constants[i].valueVectord[1] = read<double>(data, offset);
+            fn.constants[i].valueVectord[2] = read<double>(data, offset);
+            fn.constants[i].valueVectord[3] = read<double>(data, offset);
             break;
         }
 
@@ -313,8 +323,12 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
             consts.push_back(bcb.addConstantNumber(c.valueNumber));
             break;
 
-        case BcVmConstKind::Vector:
-            consts.push_back(bcb.addConstantVector(c.valueVector[0], c.valueVector[1], c.valueVector[2], c.valueVector[3]));
+        case BcVmConstKind::Vectorf:
+            consts.push_back(bcb.addConstantVectorf(c.valueVectorf[0], c.valueVectorf[1], c.valueVectorf[2], c.valueVectorf[3]));
+            break;
+
+        case BcVmConstKind::Vectord:
+            consts.push_back(bcb.addConstantVectord(c.valueVectord[0], c.valueVectord[1], c.valueVectord[2], c.valueVectord[3]));
             break;
 
         case BcVmConstKind::String:
