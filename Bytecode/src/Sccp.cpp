@@ -51,8 +51,6 @@ std::optional<BcOp> BcVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& rhsOp
         r = a * b;
         break;
     case LuauOpcode::LOP_DIV:
-        if (b == 0.0)
-            return std::nullopt;
         r = a / b;
         break;
     case LuauOpcode::LOP_MOD:
@@ -64,8 +62,6 @@ std::optional<BcOp> BcVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& rhsOp
         r = pow(a, b);
         break;
     case LuauOpcode::LOP_IDIV:
-        if (b == 0.0)
-            return std::nullopt;
         r = floor(a / b);
         break;
     default:
