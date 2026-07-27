@@ -718,6 +718,68 @@ struct TypeFunctionInstanceType
     }
 };
 
+struct GenericTypeDefinition
+{
+    TypeId ty;
+    std::optional<TypeId> defaultValue;
+
+    bool operator==(const GenericTypeDefinition& rhs) const;
+};
+
+struct GenericTypePackDefinition
+{
+    TypePackId tp;
+    std::optional<TypePackId> defaultValue;
+
+    bool operator==(const GenericTypePackDefinition& rhs) const;
+};
+
+struct TypeFun
+{
+    // These should all be generic
+    std::vector<GenericTypeDefinition> typeParams;
+    std::vector<GenericTypePackDefinition> typePackParams;
+
+    /** The underlying type.
+     *
+     * WARNING!  This is not safe to use as a type if typeParams is not empty!!
+     * You must first use TypeChecker::instantiateTypeFun to turn it into a real type.
+     */
+    TypeId type;
+
+    // The location of where this TypeFun was defined, if available
+    std::optional<Location> definitionLocation;
+
+    TypeFun() = default;
+
+    explicit TypeFun(TypeId ty)
+        : type(ty)
+    {
+    }
+
+    TypeFun(std::vector<GenericTypeDefinition> typeParams, TypeId type, std::optional<Location> definitionLocation = std::nullopt)
+        : typeParams(std::move(typeParams))
+        , type(type)
+        , definitionLocation(definitionLocation)
+    {
+    }
+
+    TypeFun(
+        std::vector<GenericTypeDefinition> typeParams,
+        std::vector<GenericTypePackDefinition> typePackParams,
+        TypeId type,
+        std::optional<Location> definitionLocation = std::nullopt
+    )
+        : typeParams(std::move(typeParams))
+        , typePackParams(std::move(typePackParams))
+        , type(type)
+        , definitionLocation(definitionLocation)
+    {
+    }
+
+    bool operator==(const TypeFun& rhs) const;
+};
+
 /** Represents a pending type alias instantiation.
  *
  * In order to afford (co)recursive type aliases, we need to reason about a
@@ -729,8 +791,17 @@ struct TypeFunctionInstanceType
 struct PendingExpansionType
 {
     PendingExpansionType(std::optional<AstName> prefix, AstName name, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments);
-    std::optional<AstName> prefix;
-    AstName name;
+    PendingExpansionType(TypeFun tyfun, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments);
+
+    struct NamedType
+    {
+        std::optional<AstName> prefix;
+        AstName name;
+    };
+
+    // Either a named type, or a built-in type function
+    Variant<NamedType, TypeFun> target;
+
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> packArguments;
     size_t index;
@@ -890,68 +961,6 @@ struct Type final
 private:
     Type(const Type&) = default;
     Type& operator=(const Type& rhs);
-};
-
-struct GenericTypeDefinition
-{
-    TypeId ty;
-    std::optional<TypeId> defaultValue;
-
-    bool operator==(const GenericTypeDefinition& rhs) const;
-};
-
-struct GenericTypePackDefinition
-{
-    TypePackId tp;
-    std::optional<TypePackId> defaultValue;
-
-    bool operator==(const GenericTypePackDefinition& rhs) const;
-};
-
-struct TypeFun
-{
-    // These should all be generic
-    std::vector<GenericTypeDefinition> typeParams;
-    std::vector<GenericTypePackDefinition> typePackParams;
-
-    /** The underlying type.
-     *
-     * WARNING!  This is not safe to use as a type if typeParams is not empty!!
-     * You must first use TypeChecker::instantiateTypeFun to turn it into a real type.
-     */
-    TypeId type;
-
-    // The location of where this TypeFun was defined, if available
-    std::optional<Location> definitionLocation;
-
-    TypeFun() = default;
-
-    explicit TypeFun(TypeId ty)
-        : type(ty)
-    {
-    }
-
-    TypeFun(std::vector<GenericTypeDefinition> typeParams, TypeId type, std::optional<Location> definitionLocation = std::nullopt)
-        : typeParams(std::move(typeParams))
-        , type(type)
-        , definitionLocation(definitionLocation)
-    {
-    }
-
-    TypeFun(
-        std::vector<GenericTypeDefinition> typeParams,
-        std::vector<GenericTypePackDefinition> typePackParams,
-        TypeId type,
-        std::optional<Location> definitionLocation = std::nullopt
-    )
-        : typeParams(std::move(typeParams))
-        , typePackParams(std::move(typePackParams))
-        , type(type)
-        , definitionLocation(definitionLocation)
-    {
-    }
-
-    bool operator==(const TypeFun& rhs) const;
 };
 
 enum class FollowOption

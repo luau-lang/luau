@@ -5951,6 +5951,11 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
     {
         return builtinTypes->nilType;
     }
+    else if (const auto& nty = annotation.as<AstTypeNegation>())
+    {
+        reportError(TypeError{annotation.location, GenericError{"Negation types are not supported by the old type solver"}});
+        return errorRecoveryType(scope);
+    }
     else if (const auto& un = annotation.as<AstTypeUnion>())
     {
         if (un->types.size == 1)

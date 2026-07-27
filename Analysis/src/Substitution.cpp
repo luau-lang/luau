@@ -11,6 +11,7 @@
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
+LUAU_FASTFLAG(LuauTypeNegationSupport)
 
 namespace Luau
 {
@@ -42,8 +43,30 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
         }
         else if constexpr (std::is_same_v<T, PendingExpansionType>)
         {
-            PendingExpansionType clone = PendingExpansionType{a.prefix, a.name, a.typeArguments, a.packArguments};
-            return dest.addType(std::move(clone));
+            if (FFlag::LuauTypeNegationSupport)
+            {
+                if (const PendingExpansionType::NamedType* nt = get_if<PendingExpansionType::NamedType>(&a.target))
+                {
+                    PendingExpansionType clone = PendingExpansionType{nt->prefix, nt->name, a.typeArguments, a.packArguments};
+                    return dest.addType(std::move(clone));
+                }
+                else
+                {
+                    const TypeFun* targetTf = get_if<TypeFun>(&a.target);
+                    LUAU_ASSERT(targetTf);
+
+                    PendingExpansionType clone = PendingExpansionType{*targetTf, a.typeArguments, a.packArguments};
+                    return dest.addType(std::move(clone));
+                }
+            }
+            else
+            {
+                const PendingExpansionType::NamedType* nt = get_if<PendingExpansionType::NamedType>(&a.target);
+                LUAU_ASSERT(nt);
+
+                PendingExpansionType clone = PendingExpansionType{nt->prefix, nt->name, a.typeArguments, a.packArguments};
+                return dest.addType(std::move(clone));
+            }
         }
         else if constexpr (std::is_same_v<T, AnyType>)
         {
