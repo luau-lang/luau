@@ -8,6 +8,7 @@
 #include "lgc.h"
 #include "ldo.h"
 #include "lbytecode.h"
+#include "lvm.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -186,6 +187,14 @@ static Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closur
         }
     }
     return cl;
+}
+
+void lua_callhook(lua_State* L, lua_Hook hook, void* userdata)
+{
+    api_check(L, hook != nullptr);
+    api_check(L, L->ci != L->base_ci);
+
+    return luau_callhook(L, hook, userdata);
 }
 
 int lua_stackdepth(lua_State* L)
@@ -532,6 +541,11 @@ int lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
         luaG_breakpoint(L, p, target, bool(enabled));
 
     return target;
+}
+
+int lua_atbreakpoint(lua_State* L)
+{
+    return luaG_onbreak(L) ? 1 : 0;
 }
 
 static void getcoverage(Proto* p, int depth, int* buffer, size_t size, void* context, lua_Coverage callback)

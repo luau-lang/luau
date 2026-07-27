@@ -5,7 +5,7 @@
 # This is useful to find memory leaks - reachability analysis answers the question "why is this set of objects not freed"
 # This tool can also be ran with just one snapshot, in which case it displays all allocated objects
 # The result of analysis is a .svg file which can be viewed in a browser
-# To generate these dumps, use luaC_dump, ideally preceded by luaC_fullgc
+# To generate these dumps, use lua_memorydump, ideally preceded by lua_gc(L, LUA_GCCOLLECT, 0)
 
 import argparse
 import json
