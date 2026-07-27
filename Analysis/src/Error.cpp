@@ -17,7 +17,6 @@
 #include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
-LUAU_FASTFLAGVARIABLE(LuauTweakAccessViolationReporting)
 LUAU_FASTFLAG(LuauBetterPackAndVariadicMismatchErrors)
 
 static std::string wrongNumberOfArgsString(
@@ -789,27 +788,14 @@ struct ErrorConverter
     std::string operator()(const PropertyAccessViolation& e) const
     {
         const std::string stringKey = isIdentifier(e.key) ? e.key : "\"" + e.key + "\"";
-        if (FFlag::LuauTweakAccessViolationReporting)
-        {
-            const std::string kind = getTableType(e.table) ? "table" : "type";
+        const std::string kind = getTableType(e.table) ? "table" : "type";
 
-            switch (e.context)
-            {
-            case PropertyAccessViolation::CannotRead:
-                return "Property " + stringKey + " of " + kind + " '" + toString(e.table) + "' is write-only";
-            case PropertyAccessViolation::CannotWrite:
-                return "Property " + stringKey + " of " + kind + " '" + toString(e.table) + "' is read-only";
-            }
-        }
-        else
+        switch (e.context)
         {
-            switch (e.context)
-            {
-            case PropertyAccessViolation::CannotRead:
-                return "Property " + stringKey + " of table '" + toString(e.table) + "' is write-only";
-            case PropertyAccessViolation::CannotWrite:
-                return "Property " + stringKey + " of table '" + toString(e.table) + "' is read-only";
-            }
+        case PropertyAccessViolation::CannotRead:
+            return "Property " + stringKey + " of " + kind + " '" + toString(e.table) + "' is write-only";
+        case PropertyAccessViolation::CannotWrite:
+            return "Property " + stringKey + " of " + kind + " '" + toString(e.table) + "' is read-only";
         }
 
         LUAU_UNREACHABLE();

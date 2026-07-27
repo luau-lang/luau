@@ -18,7 +18,6 @@
 #include <initializer_list>
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
@@ -1412,8 +1411,6 @@ TEST_IS_NOT_SUBTYPE(
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ read [number] : string } <: { read [number] : string | number }")
 {
-    ScopedFastFlag sff{FFlag::LuauReadOnlyIndexers, true};
-
     CHECK_IS_SUBTYPE(
         idx(getBuiltins()->numberType, getBuiltins()->stringType, true),
         idx(getBuiltins()->numberType, join(getBuiltins()->stringType, getBuiltins()->numberType), true)
