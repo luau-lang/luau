@@ -542,7 +542,7 @@ struct Sccp
         BcRef<BcInst> inst = func.inst(op);
         for (BcOp& usedOp : inst->ops)
         {
-            eraseUse(op, usedOp);
+            func.eraseUse(op, usedOp);
         }
 
         inst->ops.clear();
@@ -558,27 +558,6 @@ struct Sccp
             const BcImm& imm = lattice.immConst.value();
             inst->op = (imm.kind == BcImmKind::Boolean) ? LOP_LOADB : LOP_LOADN;
             inst->ops.push_back(func.addImm(imm));
-        }
-    }
-
-    void eraseOp(BcOp op)
-    {
-        BcRef<BcInst> inst = func.inst(op);
-        BcRef<BcBlock> block = func.block(inst->block);
-        block->ops.erase(std::remove(block->ops.begin(), block->ops.end(), op), block->ops.end());
-    }
-
-    void eraseUse(BcOp userOp, BcOp usedOp)
-    {
-        if (usedOp.kind == BcOpKind::Inst)
-        {
-            BcRef<BcInst> usedInst = func.inst(usedOp);
-            usedInst->uses.erase(std::remove(usedInst->uses.begin(), usedInst->uses.end(), userOp), usedInst->uses.end());
-        }
-        else if (usedOp.kind == BcOpKind::Phi)
-        {
-            BcRef<BcPhi> usedPhi = func.phi(usedOp);
-            usedPhi->uses.erase(std::remove(usedPhi->uses.begin(), usedPhi->uses.end(), userOp), usedPhi->uses.end());
         }
     }
 
@@ -648,7 +627,7 @@ struct Sccp
             if (isJumpD(inst->op))
             {
                 removeDeadEdges(inst);
-                eraseOp(op);
+                func.eraseOp(op);
             }
             else
                 rewriteToLoad(op, lattice);
@@ -737,7 +716,7 @@ struct Sccp
         for (BcBlock& block : func.blocks)
         {
             uint32_t blockidx = func.getBlockIndex(block);
-            block.useCount = uint32_t(blockUses[blockidx].size());
+            block.useCount = static_cast<uint32_t>(blockUses[blockidx].size());
             if (!reachable.contains(blockidx))
                 block.flags |= BcBlockFlag::Dead;
         }
@@ -799,7 +778,7 @@ struct Sccp
             return;
         if (!inst->uses.empty())
             return;
-        eraseOp(op);
+        func.eraseOp(op);
     }
 
     // values that are known constant used in arithmetic operations can be turned into their KR or RK variants
@@ -876,6 +855,7 @@ struct Sccp
                 }
 
                 BcOp prevConstOperand = (nonConstantOp == lhs) ? rhs : lhs;
+
                 // we can do some potential folding here now that we know one operand is constant
                 // for instance, adds of zero, muls of zero or 1, pows of zero or 1, etc
                 double valueNumber = impl->asNumber(constantK.vmConst.value());
@@ -884,26 +864,21 @@ struct Sccp
                     if (inst->op == LOP_ADD || inst->op == LOP_SUB)
                     {
                         inst->op = LOP_MOVE;
-                        inst->ops.clear();
-                        inst->ops.push_back(nonConstantOp);
+                        func.setOps(op, inst, {nonConstantOp});
                     }
                     else if (inst->op == LOP_MUL)
                     {
                         inst->op = LOP_LOADN;
-                        inst->ops.clear();
                         BcImm imm{BcImmKind::Int};
                         imm.valueInt = 0;
-                        BcOp immOp = func.addImm(imm);
-                        inst->ops.push_back(immOp);
+                        func.setOps(op, inst, {func.addImm(imm)});
                     }
                     else if (inst->op == LOP_POW)
                     {
                         inst->op = LOP_LOADN;
-                        inst->ops.clear();
                         BcImm imm{BcImmKind::Int};
                         imm.valueInt = 1;
-                        BcOp immOp = func.addImm(imm);
-                        inst->ops.push_back(immOp);
+                        func.setOps(op, inst, {func.addImm(imm)});
                     }
                 }
                 else if (valueNumber == 1)
@@ -911,27 +886,18 @@ struct Sccp
                     if (inst->op == LOP_MUL || inst->op == LOP_POW || inst->op == LOP_DIV)
                     {
                         inst->op = LOP_MOVE;
-                        inst->ops.clear();
-                        inst->ops.push_back(nonConstantOp);
+                        func.setOps(op, inst, {nonConstantOp});
                     }
                 }
                 else
                 {
                     inst->op = *kOpcode;
-                    inst->ops.clear();
                     if (!rk)
-                    {
-                        inst->ops.push_back(nonConstantOp);
-                        inst->ops.push_back(constantK.vmConst.value());
-                    }
+                        func.setOps(op, inst, {nonConstantOp, constantK.vmConst.value()});
                     else
-                    {
                         // SUBRK and DIVRK expect B as the constant table index
-                        inst->ops.push_back(constantK.vmConst.value());
-                        inst->ops.push_back(nonConstantOp);
-                    }
+                        func.setOps(op, inst, {constantK.vmConst.value(), nonConstantOp});
                 }
-
 
                 toErase.push_back(prevConstOperand);
             }

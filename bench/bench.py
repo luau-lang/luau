@@ -893,6 +893,8 @@ def run(args, argsubcb, reporter_factory=None):
         for filepath in sorted(all_files):
             subdir, filename = os.path.split(filepath)
             if filename.endswith(".lua"):
+                if os.path.isfile(os.path.join(subdir, "bench_resource_directory")):
+                    continue
                 if arguments.run_test == None or re.match(arguments.run_test, filename[:-4]):
                     runTest(subdir, filename, filepath)
 

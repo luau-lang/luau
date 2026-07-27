@@ -66,6 +66,9 @@ TEST_CASE("encode_constants")
     AstExprConstantNumber positiveInfinity{Location(), INFINITY};
     AstExprConstantNumber negativeInfinity{Location(), -INFINITY};
     AstExprConstantNumber nan{Location(), NAN};
+    AstExprConstantInteger intSmall{Location(), 42};
+    AstExprConstantInteger intNeg{Location(), -1};
+    AstExprConstantInteger intLarge{Location(), 0x7FFFFFFFFFFFFFFFLL};
 
     AstArray<char> charString;
     charString.data = const_cast<char*>("a\x1d\0\\\"b");
@@ -80,6 +83,9 @@ TEST_CASE("encode_constants")
     CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":Infinity})", toJson(&positiveInfinity));
     CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":-Infinity})", toJson(&negativeInfinity));
     CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":NaN})", toJson(&nan));
+    CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":42})", toJson(&intSmall));
+    CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":-1})", toJson(&intNeg));
+    CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":9223372036854775807})", toJson(&intLarge));
     CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"a\\u001d\\u0000\\\\\\\"b\"}", toJson(&needsEscaping));
 }
 

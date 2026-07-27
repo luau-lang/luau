@@ -7,6 +7,7 @@
 #include "lstate.h"
 #include "lstring.h"
 #include "ltable.h"
+#include "lvector.h"
 #include "lgc.h"
 #include "ldo.h"
 #include "lnumutils.h"
@@ -47,7 +48,7 @@ int luaV_tostring(lua_State* L, StkId obj)
     }
 }
 
-const float* luaV_tovector(const TValue* obj)
+const LUA_VECTOR_TYPE* luaV_tovector(const TValue* obj)
 {
     if (ttisvector(obj))
         return vvalue(obj);
@@ -466,36 +467,37 @@ void luaV_doarithimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc
     // v*v  s*v  v*s   (mul)
     // v/v  s/v  v/s   (div)
     // v//v s//v v//s  (floor div)
-    const float* vb = ttisvector(rb) ? vvalue(rb) : nullptr;
-    const float* vc = ttisvector(rc) ? vvalue(rc) : nullptr;
+    const LUA_VECTOR_TYPE* vb = ttisvector(rb) ? vvalue(rb) : nullptr;
+    const LUA_VECTOR_TYPE* vc = ttisvector(rc) ? vvalue(rc) : nullptr;
 
     if (vb && vc)
     {
         switch (op)
         {
         case TM_ADD:
-            setvvalue(ra, vb[0] + vc[0], vb[1] + vc[1], vb[2] + vc[2], vb[3] + vc[3]);
+            setvvalue(L, ra, vb[0] + vc[0], vb[1] + vc[1], vb[2] + vc[2], vb[3] + vc[3]);
             return;
         case TM_SUB:
-            setvvalue(ra, vb[0] - vc[0], vb[1] - vc[1], vb[2] - vc[2], vb[3] - vc[3]);
+            setvvalue(L, ra, vb[0] - vc[0], vb[1] - vc[1], vb[2] - vc[2], vb[3] - vc[3]);
             return;
         case TM_MUL:
-            setvvalue(ra, vb[0] * vc[0], vb[1] * vc[1], vb[2] * vc[2], vb[3] * vc[3]);
+            setvvalue(L, ra, vb[0] * vc[0], vb[1] * vc[1], vb[2] * vc[2], vb[3] * vc[3]);
             return;
         case TM_DIV:
-            setvvalue(ra, vb[0] / vc[0], vb[1] / vc[1], vb[2] / vc[2], vb[3] / vc[3]);
+            setvvalue(L, ra, vb[0] / vc[0], vb[1] / vc[1], vb[2] / vc[2], vb[3] / vc[3]);
             return;
         case TM_IDIV:
             setvvalue(
+                L,
                 ra,
-                float(luai_numidiv(vb[0], vc[0])),
-                float(luai_numidiv(vb[1], vc[1])),
-                float(luai_numidiv(vb[2], vc[2])),
-                float(luai_numidiv(vb[3], vc[3]))
+                LUA_VECTOR_TYPE(luai_numidiv(vb[0], vc[0])),
+                LUA_VECTOR_TYPE(luai_numidiv(vb[1], vc[1])),
+                LUA_VECTOR_TYPE(luai_numidiv(vb[2], vc[2])),
+                LUA_VECTOR_TYPE(luai_numidiv(vb[3], vc[3]))
             );
             return;
         case TM_UNM:
-            setvvalue(ra, -vb[0], -vb[1], -vb[2], -vb[3]);
+            setvvalue(L, ra, -vb[0], -vb[1], -vb[2], -vb[3]);
             return;
         default:
             break;
@@ -507,19 +509,24 @@ void luaV_doarithimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc
 
         if (c)
         {
-            float nc = cast_to(float, nvalue(c));
+            LUA_VECTOR_TYPE nc = cast_to(LUA_VECTOR_TYPE, nvalue(c));
 
             switch (op)
             {
             case TM_MUL:
-                setvvalue(ra, vb[0] * nc, vb[1] * nc, vb[2] * nc, vb[3] * nc);
+                setvvalue(L, ra, vb[0] * nc, vb[1] * nc, vb[2] * nc, vb[3] * nc);
                 return;
             case TM_DIV:
-                setvvalue(ra, vb[0] / nc, vb[1] / nc, vb[2] / nc, vb[3] / nc);
+                setvvalue(L, ra, vb[0] / nc, vb[1] / nc, vb[2] / nc, vb[3] / nc);
                 return;
             case TM_IDIV:
                 setvvalue(
-                    ra, float(luai_numidiv(vb[0], nc)), float(luai_numidiv(vb[1], nc)), float(luai_numidiv(vb[2], nc)), float(luai_numidiv(vb[3], nc))
+                    L,
+                    ra,
+                    LUA_VECTOR_TYPE(luai_numidiv(vb[0], nc)),
+                    LUA_VECTOR_TYPE(luai_numidiv(vb[1], nc)),
+                    LUA_VECTOR_TYPE(luai_numidiv(vb[2], nc)),
+                    LUA_VECTOR_TYPE(luai_numidiv(vb[3], nc))
                 );
                 return;
             default:
@@ -533,19 +540,24 @@ void luaV_doarithimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc
 
         if (b)
         {
-            float nb = cast_to(float, nvalue(b));
+            LUA_VECTOR_TYPE nb = cast_to(LUA_VECTOR_TYPE, nvalue(b));
 
             switch (op)
             {
             case TM_MUL:
-                setvvalue(ra, nb * vc[0], nb * vc[1], nb * vc[2], nb * vc[3]);
+                setvvalue(L, ra, nb * vc[0], nb * vc[1], nb * vc[2], nb * vc[3]);
                 return;
             case TM_DIV:
-                setvvalue(ra, nb / vc[0], nb / vc[1], nb / vc[2], nb / vc[3]);
+                setvvalue(L, ra, nb / vc[0], nb / vc[1], nb / vc[2], nb / vc[3]);
                 return;
             case TM_IDIV:
                 setvvalue(
-                    ra, float(luai_numidiv(nb, vc[0])), float(luai_numidiv(nb, vc[1])), float(luai_numidiv(nb, vc[2])), float(luai_numidiv(nb, vc[3]))
+                    L,
+                    ra,
+                    LUA_VECTOR_TYPE(luai_numidiv(nb, vc[0])),
+                    LUA_VECTOR_TYPE(luai_numidiv(nb, vc[1])),
+                    LUA_VECTOR_TYPE(luai_numidiv(nb, vc[2])),
+                    LUA_VECTOR_TYPE(luai_numidiv(nb, vc[3]))
                 );
                 return;
             default:

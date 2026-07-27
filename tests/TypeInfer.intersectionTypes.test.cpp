@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
@@ -1521,8 +1520,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_intersection_boun
     /*
      * When unifying 'a <: T & C in a context where T is substituted for 't, we must constrain the lower bound of 't by 'a.
      */
-    ScopedFastFlag sff{FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds, true};
-
     CheckResult result = check(R"(
         local function f<T>(a: T & string): T
             return a

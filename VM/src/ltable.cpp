@@ -124,7 +124,7 @@ static LuaNode* hashint(const LuaTable* t, int64_t n)
     return hashpow2(t, h2);
 }
 
-static LuaNode* hashvec(const LuaTable* t, const float* v)
+LUAU_MAYBE_UNUSED static LuaNode* hashvec(const LuaTable* t, const float* v)
 {
     unsigned int i[LUA_VECTOR_SIZE];
     memcpy(i, v, sizeof(i));
@@ -146,6 +146,33 @@ static LuaNode* hashvec(const LuaTable* t, const float* v)
     i[3] = (i[3] == 0x80000000) ? 0 : i[3];
     i[3] ^= i[3] >> 17;
     h ^= i[3] * 39916801;
+#endif
+
+    return hashpow2(t, h);
+}
+
+static LUAU_MAYBE_UNUSED LuaNode* hashvec(const LuaTable* t, const double* v)
+{
+    uint64_t i[LUA_VECTOR_SIZE];
+    memcpy(i, v, sizeof(i));
+
+    // convert -0 to 0 to make sure they hash to the same value
+    i[0] = (i[0] == 0x8000000000000000ull) ? 0 : i[0];
+    i[1] = (i[1] == 0x8000000000000000ull) ? 0 : i[1];
+    i[2] = (i[2] == 0x8000000000000000ull) ? 0 : i[2];
+
+    // scramble bits to make sure that integer coordinates have entropy in lower bits
+    i[0] ^= i[0] >> 32;
+    i[1] ^= i[1] >> 32;
+    i[2] ^= i[2] >> 32;
+
+    // Optimized Spatial Hashing for Collision Detection of Deformable Objects
+    unsigned int h = uint32_t(i[0] * 73856093) ^ uint32_t(i[1] * 19349663) ^ uint32_t(i[2] * 83492791);
+
+#if LUA_VECTOR_SIZE == 4
+    i[3] = (i[3] == 0x8000000000000000ull) ? 0 : i[3];
+    i[3] ^= i[3] >> 32;
+    h ^= uint32_t(i[3] * 39916801);
 #endif
 
     return hashpow2(t, h);
