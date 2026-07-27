@@ -490,6 +490,12 @@ enum class IrCmd : uint8_t
     // B: int (tag)
     NEW_USERDATA,
 
+    // Create new heap-allocated vector
+    // A: double (x)
+    // B: double (y)
+    // C: double (z)
+    NEW_VECTOR,
+
     // Convert integer into a double number
     // A: int
     INT_TO_NUM,
