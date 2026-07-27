@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 LUAU_FASTFLAG(LuauCodegenSharedLog)
+LUAU_FASTFLAGVARIABLE(LuauCodegenRexWidth)
 
 namespace Luau
 {
@@ -175,21 +176,28 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
     {
         SizeX64 size = lhs.base.size;
 
-        placeRex(lhs.base);
+        if (!FFlag::LuauCodegenRexWidth)
+            placeRex(lhs.base);
 
         if (size == SizeX64::byte)
         {
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs.base);
             place(OP_PLUS_REG(0xb0, lhs.base.index));
             placeImm8(rhs.imm);
         }
         else if (size == SizeX64::word)
         {
             place(0x66);
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs.base);
             place(OP_PLUS_REG(0xb8, lhs.base.index));
             placeImm16(rhs.imm);
         }
         else if (size == SizeX64::dword)
         {
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs.base);
             place(OP_PLUS_REG(0xb8, lhs.base.index));
             placeImm32(rhs.imm);
         }
@@ -197,6 +205,8 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
         {
             CODEGEN_ASSERT(size == SizeX64::qword);
 
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs.base);
             place(OP_PLUS_REG(0xb8, lhs.base.index));
             placeImm64(rhs.imm);
         }
@@ -205,10 +215,13 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
     {
         SizeX64 size = lhs.memSize;
 
-        placeRex(lhs);
+        if (!FFlag::LuauCodegenRexWidth)
+            placeRex(lhs);
 
         if (size == SizeX64::byte)
         {
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs);
             place(0xc6);
             placeModRegMem(lhs, 0, /*extraCodeBytes=*/1);
             placeImm8(rhs.imm);
@@ -216,6 +229,8 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
         else if (size == SizeX64::word)
         {
             place(0x66);
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs);
             place(0xc7);
             placeModRegMem(lhs, 0, /*extraCodeBytes=*/2);
             placeImm16(rhs.imm);
@@ -224,6 +239,8 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
         {
             CODEGEN_ASSERT(size == SizeX64::dword || size == SizeX64::qword);
 
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs);
             place(0xc7);
             placeModRegMem(lhs, 0, /*extraCodeBytes=*/4);
             placeImm32(rhs.imm);

@@ -887,8 +887,8 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatClass* d)
     DefId def = defArena->freshCell(d->name, d->name->location);
 
     graph.localDefs[d->name] = def;
-    currentScope()->bindings[d->name] = def;
-    captures[d->name].allVersions.push_back(def);
+    currentScope()->bindings[d->name->name] = def;
+    captures[d->name->name].allVersions.push_back(def);
 
     for (const auto& member : d->members)
     {

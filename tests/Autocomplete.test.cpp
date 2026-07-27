@@ -23,6 +23,8 @@ LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAG(LuauAutocompleteSkipErrorTypeInUnion)
+LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
+LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 
 using namespace Luau;
 

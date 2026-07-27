@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCyclicRequireShortCircuit)
+LUAU_DYNAMIC_FASTFLAG(LuauSelfIsSelfAndAlwaysSelf)
 
 #if __APPLE__
 #include <TargetConditionals.h>
@@ -645,6 +646,21 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireUnprefixedPath")
     std::string path = "an/unprefixed/path";
     runProtectedRequire(path);
     assertOutputContainsAll({"false", "require path must start with a valid prefix: ./, ../, or @"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSubmoduleUsingSelfWithOverrideAttempt")
+{
+    ScopedFastFlag sffs[] = {{DFFlag::LuauSelfIsSelfAndAlwaysSelf, true}};
+    {
+        std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config/nested_override";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"true", "result from submodule"});
+    }
+    {
+        std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config_luau/nested_override";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"true", "result from submodule"});
+    }
 }
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithAlias")

@@ -32,8 +32,8 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowExternClassInTypeDefinitions)
 LUAU_FASTFLAGVARIABLE(LuauTableEntriesDontNeedToMatchIndent)
 LUAU_FASTFLAGVARIABLE(LuauCstAttr)
 LUAU_FASTFLAGVARIABLE(LuauStoreConstKeywordBegin)
-LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
+LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAGVARIABLE(LuauTypeNegationSyntax)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
@@ -889,10 +889,22 @@ AstExpr* Parser::parseFunctionName(bool& hasself, AstName& debugname)
     return expr;
 }
 
-static bool isExprLValue(AstExpr* expr)
+AstStatClass* Parser::getMatchingClass(AstExpr* expr)
 {
-    return (expr->is<AstExprLocal>() && !expr->as<AstExprLocal>()->local->isConst) || expr->is<AstExprGlobal>() || expr->is<AstExprIndexExpr>() ||
-           expr->is<AstExprIndexName>();
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    if (AstExprGlobal* g = expr->as<AstExprGlobal>())
+    {
+        if (AstStatClass** classDecl = classesWithinModule.find(g->name))
+            return *classDecl;
+    }
+    return nullptr;
+}
+
+bool Parser::isExprLValue(AstExpr* expr)
+{
+    return (expr->is<AstExprLocal>() && !expr->as<AstExprLocal>()->local->isConst) ||
+           (expr->is<AstExprGlobal>() && !(FFlag::DebugLuauUserDefinedClasses && getMatchingClass(expr) != nullptr)) ||
+           expr->is<AstExprIndexExpr>() || expr->is<AstExprIndexName>();
 }
 
 // function funcname funcbody
@@ -1567,10 +1579,8 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
     if (!name)
         name = Name(nameError, lexer.current().location);
 
-    // We save the locals here as part of error recovery later.
-    auto savedLocals = saveLocals();
-
-    AstLocal* nameLocal = pushLocal(Binding(*name, nullptr, {0, 0}, true));
+    AstLocal* nameLocal =
+        allocator.alloc<AstLocal>(name->name, name->location, nullptr, functionStack.size() - 1, functionStack.back().loopDepth, nullptr, true);
 
     TempVector<AstClassMember> declarations(scratchClassDeclarations);
 
@@ -1713,19 +1723,18 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
     if (recursionCounter > 1)
         report(nameLocal->location, "Cannot declare class '%s' inside another statement or expression", nameLocal->name.value);
 
-    AstStat* cls = allocator.alloc<AstStatClass>(location, nameLocal, copy(declarations), exported);
+    AstStatClass* cls = allocator.alloc<AstStatClass>(location, nameLocal, copy(declarations), exported);
     if (classesWithinModule.contains(nameLocal->name))
     {
-        // We do not allow shadowing classes with the same name. However, we
-        // want to have a decent experience when editing classes that have
-        // the same name, so if we encounter this shadowing, we pop the local
-        // representing the class off the stack and return an error.
-        restoreLocals(savedLocals);
         return reportStatError(
-            nameLocal->location, {}, copy({cls}), "A class named '%s' has already been declared in this module", nameLocal->name.value
+            nameLocal->location,
+            {},
+            copy({static_cast<AstStat*>(cls)}),
+            "A class named '%s' has already been declared in this module",
+            nameLocal->name.value
         );
     }
-    classesWithinModule.insert(nameLocal->name);
+    classesWithinModule[nameLocal->name] = cls;
     return cls;
 }
 
@@ -2079,6 +2088,19 @@ AstExprError* Parser::reportLValueError(AstExpr* expr)
         AstExprLocal* local = expr->as<AstExprLocal>();
         return reportExprError(expr->location, copy({expr}), "Variable '%s' is constant and may not be reassigned", local->local->name.value);
     }
+    if (FFlag::DebugLuauUserDefinedClasses)
+    {
+        if (AstStatClass* classStat = getMatchingClass(expr))
+        {
+            return reportExprError(
+                expr->location,
+                copy({expr}),
+                "'%s' refers to a class and cannot be used as a variable name (defined on line %d)",
+                classStat->name->name.value,
+                classStat->location.begin.line + 1
+            );
+        }
+    }
 
     return reportExprError(expr->location, copy({expr}), "Assigned expression must be a variable or a field");
 }
@@ -2087,7 +2109,6 @@ AstExprError* Parser::reportLValueError(AstExpr* expr)
 AstStat* Parser::parseAssignment(AstExpr* initial)
 {
     if (!isExprLValue(initial))
-
         initial = FFlag::LuauExportValueSyntax
                       ? reportLValueError(initial)
                       : reportExprError(initial->location, copy({initial}), "Assigned expression must be a variable or a field");

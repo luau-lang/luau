@@ -52,6 +52,7 @@ LUAU_FASTFLAGVARIABLE(LuauAvoidCascadingRecursiveConstraintViolationError)
 LUAU_FASTFLAGVARIABLE(LuauFixInfiniteTypeRedundantBind)
 LUAU_FASTFLAG(LuauBidirectionalInferenceVariadics)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(DebugLuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRemoveExtraSubtypingInstances)
 LUAU_FASTFLAGVARIABLE(LuauIndexingIntoErrorGivesError)
 LUAU_FASTFLAG(LuauTypeNegationSupport)
@@ -445,8 +446,8 @@ ConstraintSolver::ConstraintSolver(
     , normalizer(normalizer)
     , typeFunctionRuntime(typeFunctionRuntime)
     , constraintSet(std::move(constraintSet_))
-    , constraints(borrowConstraints(constraintSet.constraints))
-    , scopeToFunction(&constraintSet.scopeToFunction)
+    , constraints(borrowConstraints(FFlag::DebugLuauCyclicRequireTypeInference ? cgraph->constraints : constraintSet.constraints))
+    , scopeToFunction(FFlag::DebugLuauCyclicRequireTypeInference ? NotNull{&cgraph->scopeToFunction} : NotNull{&constraintSet.scopeToFunction})
     , rootScope(constraintSet.rootScope)
     , module(std::move(module))
     , dfg(dfg)
@@ -541,12 +542,13 @@ void ConstraintSolver::run()
 
     // Free types that have no constraints at all can be generalized right away.
     // TODO CLI-206649: We can fold constraint set into constraint graph.
-    for (TypeId ty : constraintSet.freeTypes)
+    TypeIds& freeTypesToProcess = FFlag::DebugLuauCyclicRequireTypeInference ? cgraph->freeTypes : constraintSet.freeTypes;
+    for (TypeId ty : freeTypesToProcess)
     {
         if (!cgraph->hasUnsolvedDependencies(ty))
             generalizeOneType(ty);
     }
-    constraintSet.freeTypes.clear();
+    freeTypesToProcess.clear();
 
     auto runSolverPass = [&](bool force)
     {
