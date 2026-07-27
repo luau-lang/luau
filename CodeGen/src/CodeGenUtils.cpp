@@ -15,6 +15,7 @@
 #include "lstring.h"
 #include "ltable.h"
 #include "ludata.h"
+#include "lvector.h"
 
 #include <string.h>
 
@@ -274,6 +275,11 @@ Udata* newUserdata(lua_State* L, size_t s, int tag)
     return u;
 }
 
+LuauVector* newVector(lua_State* L, double x, double y, double z)
+{
+    return luaVec_newvector(L, x, y, z, 0.0);
+}
+
 void getImport(lua_State* L, StkId res, unsigned id, unsigned pc)
 {
     if (FFlag::LuauCIProto)
@@ -479,10 +485,17 @@ const Instruction* executeGETTABLEKS(lua_State* L, const Instruction* pc, StkId 
                 int slot = LUAU_INSN_C(insn) & dispatch->nodemask8;
                 LuaNode* n = &dispatch->node[slot];
 
+#if LUA_VECTOR_DOUBLE == 1
+                DirectFieldResult dfr{L, ra};
+                void* resultarg = &dfr;
+#else
+                void* resultarg = ra;
+#endif
+
                 if (LUAU_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n))))
                 {
                     lua_UserdataDirectFieldGet fn = reinterpret_cast<lua_UserdataDirectFieldGet>(pvalue(gval(n)));
-                    fn(uvalue(rb)->data, ra);
+                    fn(uvalue(rb)->data, resultarg);
                     return pc;
                 }
 
@@ -492,7 +505,7 @@ const Instruction* executeGETTABLEKS(lua_State* L, const Instruction* pc, StkId 
                     // cache slot for future lookups
                     VM_PATCH_C(pc - 2, gval2slot(dispatch, fptr));
                     lua_UserdataDirectFieldGet fn = reinterpret_cast<lua_UserdataDirectFieldGet>(pvalue(fptr));
-                    fn(uvalue(rb)->data, ra);
+                    fn(uvalue(rb)->data, resultarg);
                     return pc;
                 }
             }
@@ -532,7 +545,7 @@ const Instruction* executeGETTABLEKS(lua_State* L, const Instruction* pc, StkId 
 
             if (unsigned(ic) < LUA_VECTOR_SIZE && name[1] == '\0')
             {
-                const float* v = vvalue(rb); // silences ubsan when indexing v[]
+                const LUA_VECTOR_TYPE* v = vvalue(rb); // silences ubsan when indexing v[]
                 setnvalue(ra, v[ic]);
                 return pc;
             }

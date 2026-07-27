@@ -31,8 +31,8 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteExport)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionArglistSuggestion)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
-LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteSkipErrorTypeInUnion)
+LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords_DEPRECATED =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};

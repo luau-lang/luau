@@ -264,15 +264,15 @@ unsigned luaL_optunsigned(lua_State* L, int narg, unsigned def)
     return luaL_opt(L, luaL_checkunsigned, narg, def);
 }
 
-const float* luaL_checkvector(lua_State* L, int narg)
+const LUA_VECTOR_TYPE* luaL_checkvector(lua_State* L, int narg)
 {
-    const float* v = lua_tovector(L, narg);
+    const LUA_VECTOR_TYPE* v = lua_tovector(L, narg);
     if (!v)
         tag_error(L, narg, LUA_TVECTOR);
     return v;
 }
 
-const float* luaL_optvector(lua_State* L, int narg, const float* def)
+const LUA_VECTOR_TYPE* luaL_optvector(lua_State* L, int narg, const LUA_VECTOR_TYPE* def)
 {
     return luaL_opt(L, luaL_checkvector, narg, def);
 }
@@ -696,7 +696,7 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
     }
     case LUA_TVECTOR:
     {
-        const float* v = lua_tovector(L, idx);
+        const LUA_VECTOR_TYPE* v = lua_tovector(L, idx);
 
         char s[LUAI_MAXNUM2STR * LUA_VECTOR_SIZE];
         char* e = s;

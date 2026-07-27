@@ -8,6 +8,7 @@
 #include "lfunc.h"
 #include "lobject.h"
 #include "lstring.h"
+#include "lvector.h"
 
 #include "lgc.h"
 #include "lmem.h"
@@ -497,7 +498,18 @@ static int loadsafe(
                 float z = read<float>(data, size, offset);
                 float w = read<float>(data, size, offset);
                 (void)w;
-                setvvalue(&p->k[j], x, y, z, w);
+                setvvalue(L, &p->k[j], x, y, z, w);
+                break;
+            }
+
+            case LBC_CONSTANT_VECTORD:
+            {
+                double x = read<double>(data, size, offset);
+                double y = read<double>(data, size, offset);
+                double z = read<double>(data, size, offset);
+                double w = read<double>(data, size, offset);
+                (void)w;
+                setvvalue(L, &p->k[j], x, y, z, w);
                 break;
             }
 

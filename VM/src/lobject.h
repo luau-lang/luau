@@ -50,6 +50,18 @@ typedef struct lua_TValue
     int tt;
 } TValue;
 
+#if LUA_VECTOR_SIZE == 4
+#define condvector4(vec4expr, vec3expr) vec4expr
+#else
+#define condvector4(vec4expr, vec3expr) vec3expr
+#endif
+
+#if LUA_VECTOR_DOUBLE == 1
+#define condvectordouble(vecdoubleexpr, vecfloatexpr) vecdoubleexpr
+#else
+#define condvectordouble(vecdoubleexpr, vecfloatexpr) vecfloatexpr
+#endif
+
 // Macros to test type
 #define ttisnil(o) (ttype(o) == LUA_TNIL)
 #define ttisnumber(o) (ttype(o) == LUA_TNUMBER)
@@ -73,7 +85,7 @@ typedef struct lua_TValue
 #define pvalue(o) check_exp(ttislightuserdata(o), (o)->value.p)
 #define nvalue(o) check_exp(ttisnumber(o), (o)->value.n)
 #define lvalue(o) check_exp(ttisinteger(o), (o)->value.l)
-#define vvalue(o) check_exp(ttisvector(o), (o)->value.v)
+#define vvalue(o) check_exp(ttisvector(o), condvectordouble((o)->value.gc->vec.v, (o)->value.v))
 #define tsvalue(o) check_exp(ttisstring(o), &(o)->value.gc->ts)
 #define uvalue(o) check_exp(ttisuserdata(o), &(o)->value.gc->u)
 #define clvalue(o) check_exp(ttisfunction(o), &(o)->value.gc->cl)
@@ -116,25 +128,24 @@ typedef struct lua_TValue
         i_o->tt = LUA_TINTEGER; \
     }
 
-#if LUA_VECTOR_SIZE == 4
-#define setvvalue(obj, x, y, z, w) \
+#if LUA_VECTOR_DOUBLE == 1
+#define setvvalue(L, obj, x, y, z, w) \
     { \
         TValue* i_o = (obj); \
-        float* i_v = i_o->value.v; \
-        i_v[0] = (x); \
-        i_v[1] = (y); \
-        i_v[2] = (z); \
-        i_v[3] = (w); \
+        LuauVector* i_vec = luaVec_newvector((L), double(x), double(y), double(z), condvector4(double(w), 0)); \
+        i_o->value.gc = cast_to(GCObject*, i_vec); \
         i_o->tt = LUA_TVECTOR; \
+        checkliveness((L)->global, i_o); \
     }
 #else
-#define setvvalue(obj, x, y, z, w) \
+#define setvvalue(L, obj, x, y, z, w) \
     { \
         TValue* i_o = (obj); \
         float* i_v = i_o->value.v; \
-        i_v[0] = (x); \
-        i_v[1] = (y); \
-        i_v[2] = (z); \
+        i_v[0] = float(x); \
+        i_v[1] = float(y); \
+        i_v[2] = float(z); \
+        condvector4(i_v[3] = float(w), (void)(w)); \
         i_o->tt = LUA_TVECTOR; \
     }
 #endif
@@ -262,6 +273,13 @@ typedef struct lua_TValue
 
 #define iscollectable(o) (ttype(o) >= LUA_TSTRING)
 
+// wrapper for returning userdata properties directly
+struct DirectFieldResult
+{
+    lua_State* L;
+    TValue* slot;
+};
+
 typedef TValue* StkId; // index to stack elements
 
 /*
@@ -311,6 +329,14 @@ typedef struct LuauBuffer
 
     alignas(8) char data[1];
 } Buffer;
+
+typedef struct LuauVector
+{
+    CommonHeader;
+    // 1 byte padding
+
+    LUA_VECTOR_TYPE v[LUA_VECTOR_SIZE];
+} LuauVector;
 
 enum FeedbackVectorSlotKind
 {

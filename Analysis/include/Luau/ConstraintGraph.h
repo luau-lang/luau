@@ -96,6 +96,17 @@ struct ConstraintGraph
 
     ConstraintGraph(NotNull<BuiltinTypes> builtinTypes);
 
+    // Constraint data co-located with the dependency edges that reference them.
+    // In the SCC path, multiple ConstraintGenerators accumulate directly into these fields.
+    // Constraints that go straight to the solver.
+    std::vector<ConstraintPtr> constraints;
+
+    // The set of all free types introduced during constraint generation.
+    TypeIds freeTypes;
+
+    // Map a function's signature scope back to its signature type.
+    DenseHashMap<Scope*, TypeId> scopeToFunction{nullptr};
+
     /**
      * Add [dependency] as a blocker for [target]
      *
