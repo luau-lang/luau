@@ -24,7 +24,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
-LUAU_FASTFLAGVARIABLE(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
+LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 
 namespace Luau
 {
@@ -338,33 +338,30 @@ UnifyResult Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
     // free-type members. Without this, `freeA <: 'T | nil` (or `freeA <: 'T & C`) never
     // constrains 'T, because the FreeType path intercepts before structural dispatch.
     // Members may be GenericTypes that map to FreeTypes via genericSubstitutions.
-    if (FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
+    auto propagateToFreeMembers = [&](auto memberRange)
     {
-        auto propagateToFreeMembers = [&](auto memberRange)
+        for (TypeId member : memberRange)
         {
-            for (TypeId member : memberRange)
+            TypeId m = follow(member);
+            if (auto subst = genericSubstitutions.find(m))
+                m = follow(*subst);
+            if (FreeType* memberFree = getMutable<FreeType>(m))
             {
-                TypeId m = follow(member);
-                if (auto subst = genericSubstitutions.find(m))
-                    m = follow(*subst);
-                if (FreeType* memberFree = getMutable<FreeType>(m))
-                {
-                    memberFree->lowerBound = mkUnion(memberFree->lowerBound, instantiateWithBoundTypes(subTy));
-                }
+                memberFree->lowerBound = mkUnion(memberFree->lowerBound, instantiateWithBoundTypes(subTy));
             }
-        };
-
-        if (const UnionType* superUnion = get<UnionType>(superTy))
-        {
-            propagateToFreeMembers(superUnion->options);
-            return doDefault();
         }
+    };
 
-        if (const IntersectionType* superIntersection = get<IntersectionType>(superTy))
-        {
-            propagateToFreeMembers(superIntersection->parts);
-            return doDefault();
-        }
+    if (const UnionType* superUnion = get<UnionType>(superTy))
+    {
+        propagateToFreeMembers(superUnion->options);
+        return doDefault();
+    }
+
+    if (const IntersectionType* superIntersection = get<IntersectionType>(superTy))
+    {
+        propagateToFreeMembers(superIntersection->parts);
+        return doDefault();
     }
 
     const FunctionType* superFunction = get<FunctionType>(superTy);
@@ -717,6 +714,123 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
     if (is<FreeTypePack>(superTp))
         return emplaceFreeTypePack(superTp, subTp);
 
+    /* If the passed iterator points at the head of a type pack, return that. If
+     * not, allocate a fresh type pack starting at the position of the iterator.
+     */
+    auto makeTail = [this](TypePackIterator iter, TypePackIterator endIter)
+    {
+        std::optional<TypePackId> newSuper = iter.tryGetHead();
+        if (newSuper)
+            return *newSuper;
+
+        std::vector<TypeId> newHead;
+        while (iter != endIter)
+        {
+            newHead.push_back(*iter);
+            ++iter;
+        }
+
+        return arena->addTypePack(std::move(newHead), iter.tail());
+    };
+
+    /* If either type pack is blocked, record a constraint so that the solver
+     * can get back to it later. Else unify.
+     */
+    auto deferOrUnify = [this](TypePackId subTp, TypePackId superTp)
+    {
+        if (isIrresolvable(subTp) || isIrresolvable(superTp))
+        {
+            if (uninhabitedTypeFunctions != nullptr && (uninhabitedTypeFunctions->contains(subTp) || uninhabitedTypeFunctions->contains(superTp)))
+                return UnifyResult::Ok;
+
+            incompleteSubtypes.emplace_back(PackSubtypeConstraint{subTp, superTp});
+            return UnifyResult::Ok;
+        }
+        else
+            return unify_(subTp, superTp);
+    };
+
+    auto maybeReplaceTail = [this](std::optional<TypePackId> maybeTp)
+    {
+        if (!maybeTp)
+            return builtinTypes->emptyTypePack;
+
+        auto tp = follow(*maybeTp);
+        if (auto replacement = genericPackSubstitutions.find(tp))
+            return follow(*replacement);
+        return tp;
+    };
+
+    if (FFlag::LuauHigherOrderGenericInference)
+    {
+        auto subIter = begin(subTp);
+        const auto subEnd = end(subTp);
+        auto superIter = begin(superTp);
+        const auto superEnd = end(superTp);
+
+        while (subIter != subEnd && superIter != superEnd)
+        {
+            unify_(*subIter, *superIter);
+            ++subIter;
+            ++superIter;
+        }
+
+        // If we have hit the end of one OR the other iter, and if that ended
+        // iter points at a variadic pack, expand it out.  Note that, if both
+        // packs have variadic tails, we do not expand.
+        if (subIter == subEnd && superIter != superEnd && subIter.tail())
+        {
+            if (auto vtp = get<VariadicTypePack>(follow(*subIter.tail())))
+            {
+                while (superIter != superEnd)
+                {
+                    unify_(vtp->ty, *superIter);
+                    ++superIter;
+                }
+            }
+        }
+        if (superIter == superEnd && subIter != subEnd && superIter.tail())
+        {
+            if (auto vtp = get<VariadicTypePack>(follow(*superIter.tail())))
+            {
+                while (subIter != subEnd)
+                {
+                    unify_(*subIter, vtp->ty);
+                    ++subIter;
+                }
+            }
+        }
+
+        if (subIter == subEnd && superIter == superEnd)
+        {
+            auto subTail = subIter.tail();
+            auto superTail = superIter.tail();
+
+            if (!subTail && !superTail)
+                return UnifyResult::Ok;
+
+            return deferOrUnify(maybeReplaceTail(subTail), maybeReplaceTail(superTail));
+        }
+        else if (subIter == subEnd)
+        {
+            LUAU_ASSERT(superIter != superEnd);
+            TypePackId newSub = maybeReplaceTail(subIter.tail());
+            TypePackId newSuper = makeTail(superIter, superEnd);
+
+            return deferOrUnify(newSub, newSuper);
+        }
+        else if (superIter == superEnd)
+        {
+            LUAU_ASSERT(subIter != subEnd);
+            TypePackId newSub = makeTail(subIter, subEnd);
+            TypePackId newSuper = maybeReplaceTail(superIter.tail());
+            return deferOrUnify(newSub, newSuper);
+        }
+
+        LUAU_ASSERT(!"Unreachable");
+        return UnifyResult::Ok;
+    }
+
     size_t maxLength = std::max(std::distance(begin(subTp), end(subTp)), std::distance(begin(superTp), end(superTp)));
 
     auto [subTypes, subTail] = extendTypePack(*arena, builtinTypes, subTp, maxLength);
@@ -735,17 +849,6 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
         // If both types are missing a tail, we've done all we can.
         return UnifyResult::Ok;
     }
-
-    auto maybeReplaceTail = [this](std::optional<TypePackId> maybeTp)
-    {
-        if (!maybeTp)
-            return builtinTypes->emptyTypePack;
-
-        auto tp = follow(*maybeTp);
-        if (auto replacement = genericPackSubstitutions.find(tp))
-            return follow(*replacement);
-        return tp;
-    };
 
     // It should be the case that exclusively one of these packs can be reduced
     // to their tail for the rest of the function.

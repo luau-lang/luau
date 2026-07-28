@@ -19,8 +19,8 @@ LuauClass* luaR_newclass(
     TString* name,
     LuaTable* memberstooffset,
     TString** offsettomember,
-    int numberofinstancemembers,
-    int numberofstaticmembers
+    uint32_t numberofinstancemembers,
+    uint32_t numberofstaticmembers
 )
 {
     LUAU_ASSERT(L->global->GCthreshold == SIZE_MAX && "GC must be paused");
@@ -30,7 +30,7 @@ LuauClass* luaR_newclass(
 
     classobject->staticmembers = luaM_newarray(L, numberofstaticmembers, TValue, classobject->memcat);
     // Initialize static members to nil, otherwise we may read uninitialized memory.
-    for (int i = 0; i < numberofstaticmembers; i++)
+    for (uint32_t i = 0; i < numberofstaticmembers; i++)
         setnilvalue(&classobject->staticmembers[i]);
 
     classobject->memberstooffset = memberstooffset;
@@ -61,8 +61,7 @@ void luaR_addclassmember(lua_State* L, LuauClass* classobject, TString* name, TV
 {
     LUAU_ASSERT(classobject->staticmembers != nullptr);
     const TValue* offset = luaH_getstr(classobject->memberstooffset, name);
-    LUAU_ASSERT(ttisnumber(offset));
-    const int offsetint = int(nvalue(offset));
+    const uint32_t offsetint = uint32_t(nvalue(offset));
     LUAU_ASSERT(offsetint >= classobject->numberofinstancemembers && offsetint < classobject->numberofallmembers);
     LUAU_ASSERT(ttisfunction(value) && value->value.gc->gch.tt == LUA_TFUNCTION);
     setobj2class(L, &classobject->staticmembers[offsetint - classobject->numberofinstancemembers], value);
@@ -98,7 +97,7 @@ int luaR_createobject(lua_State* L)
     int numargs = lua_gettop(L);
 
     // We need to initialize all of the instance members to `nil` to start.
-    for (int idx = 0; idx < classobject->numberofinstancemembers; idx++)
+    for (uint32_t idx = 0; idx < classobject->numberofinstancemembers; idx++)
         setnilvalue(&classinst->members[idx]);
 
     // Push the class object onto the stack. We do this prior to setting the
@@ -118,7 +117,7 @@ int luaR_createobject(lua_State* L)
         break;
     case 2:
         // If given a second argument, use it to initialize all class members.
-        for (int idx = 0; idx < classobject->numberofinstancemembers; idx++)
+        for (uint32_t idx = 0; idx < classobject->numberofinstancemembers; idx++)
         {
             TValue key;
             setsvalue(L, &key, classobject->offsettomember[idx]);

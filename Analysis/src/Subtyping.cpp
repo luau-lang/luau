@@ -25,7 +25,6 @@ LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
-LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_FASTFLAGVARIABLE(LuauSubtypeUnionsTogether)
 LUAU_FASTFLAGVARIABLE(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAGVARIABLE(LuauDontBindOptionalGenericToNil)
@@ -178,13 +177,6 @@ static void assertReasoningValid(TID subTy, TID superTy, const SubtypingResult& 
         LUAU_ASSERT(traverse(subTy, reasoning.subPath, builtinTypes, arena));
         LUAU_ASSERT(traverse(superTy, reasoning.superPath, builtinTypes, arena));
     }
-}
-
-template<>
-void assertReasoningValid<TableIndexer>(TableIndexer, TableIndexer, const SubtypingResult&, NotNull<BuiltinTypes>, NotNull<TypeArena>)
-{
-    // This specialization exists so that we can invoke methods like
-    // isInvariantWith() on a pair of TableIndexers.
 }
 
 static SubtypingReasonings mergeReasonings(const SubtypingReasonings& a, const SubtypingReasonings& b)
@@ -948,9 +940,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = isCovariantWith(env, p, scope);
     else if (auto p = get2<TableType, TableType>(subTy, superTy))
     {
-        const bool forceCovariantTest = FFlag::LuauBidirectionalInferenceSimplifyTables
-            ? false
-            : uniqueTypes != nullptr && uniqueTypes->contains(subTy);
+        const bool forceCovariantTest =
+            FFlag::LuauBidirectionalInferenceSimplifyTables ? false : uniqueTypes != nullptr && uniqueTypes->contains(subTy);
         result = isCovariantWith(env, p.first, p.second, forceCovariantTest, scope);
         if (result.isSubtype && !p.first->indexer && p.second->indexer && p.first->state != TableState::Sealed)
         {
@@ -1634,7 +1625,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     {
         // First pass: If the union already includes subTy, stop.  Do not
         // attempt to bind any generics.
-        for (TypeId ty: superUnion)
+        for (TypeId ty : superUnion)
         {
             if (follow(ty) == subTy)
                 return {true};
@@ -2043,7 +2034,7 @@ SubtypingResult Subtyping::isCovariantWith(
         {
             if (superProp.isShared())
             {
-                if (FFlag::LuauReadOnlyIndexers && subTable->indexer->isReadOnly)
+                if (subTable->indexer->isReadOnly)
                     // A read-only indexer cannot satisfy a read-write property requirement.
                     record(
                         SubtypingResult{false}.withSubComponent(TypePath::TypeField::IndexResult).withSuperComponent(TypePath::Property::read(name))
@@ -2063,7 +2054,7 @@ SubtypingResult Subtyping::isCovariantWith(
                 }
                 if (superProp.writeTy)
                 {
-                    if (FFlag::LuauReadOnlyIndexers && subTable->indexer->isReadOnly)
+                    if (subTable->indexer->isReadOnly)
                         record(
                             SubtypingResult{false}
                                 .withSubComponent(TypePath::TypeField::IndexResult)
@@ -2109,15 +2100,10 @@ SubtypingResult Subtyping::isCovariantWith(
     {
         if (subTable->indexer)
         {
-            if (FFlag::LuauReadOnlyIndexers)
-            {
-                // We say covariant here, but the implementation of
-                // isCovariantWith() properly handles variance of the index
-                // result type.
-                record(isCovariantWith(env, *subTable->indexer, *superTable->indexer, scope));
-            }
-            else
-                record(isInvariantWith(env, *subTable->indexer, *superTable->indexer, scope));
+            // We say covariant here, but the implementation of
+            // isCovariantWith() properly handles variance of the index
+            // result type.
+            record(isCovariantWith(env, *subTable->indexer, *superTable->indexer, scope));
         }
         else if (subTable->state != TableState::Sealed)
         {
@@ -2516,31 +2502,21 @@ SubtypingResult Subtyping::isCovariantWith(
     NotNull<Scope> scope
 )
 {
-    if (FFlag::LuauReadOnlyIndexers)
-    {
-        SubtypingResult result{false};
-        if (subIndexer.isReadOnly && !superIndexer.isReadOnly)
-            return result.withBothComponent(TypePath::TypeField::IndexResult);
+    SubtypingResult result{false};
+    if (subIndexer.isReadOnly && !superIndexer.isReadOnly)
+        return result.withBothComponent(TypePath::TypeField::IndexResult);
 
-        result = isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope).withBothComponent(TypePath::TypeField::IndexLookup);
+    result = isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope).withBothComponent(TypePath::TypeField::IndexLookup);
 
-        // Value-type variance: read-only super → covariant; read-write super → invariant.
-        if (superIndexer.isReadOnly)
-            result.andAlso(isCovariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope)
-                               .withBothComponent(TypePath::TypeField::IndexResult));
-        else
-            result.andAlso(isInvariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope)
-                               .withBothComponent(TypePath::TypeField::IndexResult));
-
-        return result;
-    }
+    // Value-type variance: read-only super → covariant; read-write super → invariant.
+    if (superIndexer.isReadOnly)
+        result.andAlso(isCovariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope)
+                           .withBothComponent(TypePath::TypeField::IndexResult));
     else
-    {
-        return isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope)
-            .withBothComponent(TypePath::TypeField::IndexLookup)
-            .andAlso(isInvariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope)
-                         .withBothComponent(TypePath::TypeField::IndexResult));
-    }
+        result.andAlso(isInvariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope)
+                           .withBothComponent(TypePath::TypeField::IndexResult));
+
+    return result;
 }
 
 SubtypingResult Subtyping::isCovariantWith(

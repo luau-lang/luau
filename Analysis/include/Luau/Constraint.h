@@ -351,9 +351,6 @@ struct Constraint
     Location location;
     ConstraintV c;
 
-    // Clip with LuauConstraintGraph
-    std::vector<NotNull<Constraint>> DEPRECATED_dependencies;
-
     /**
      * Return the types and type packs that may be mutated by this constraint.
      * Currently we do not do anything with type packs.
@@ -405,7 +402,6 @@ struct ReferenceCountInitializer : TypeOnceVisitor
 
     bool visit(TypePackId tp, const BlockedTypePack&) override;
     bool visit(TypePackId tp, const FreeTypePack&) override;
-
 };
 
 } // namespace Luau

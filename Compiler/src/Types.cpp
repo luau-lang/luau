@@ -4,7 +4,6 @@
 #include "Luau/BytecodeBuilder.h"
 
 LUAU_FASTFLAG(LuauIntegerFastcalls)
-LUAU_FASTFLAGVARIABLE(LuauCompileTypeAliases)
 
 namespace Luau
 {
@@ -46,7 +45,6 @@ static LuauBytecodeType getType(
     const AstType* ty,
     const AstArray<AstGenericType*>& generics,
     const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases,
-    bool resolveAliases_DEPRECATED, // TODO: remove with LuauCompileTypeAliases
     const char* hostVectorType,
     const DenseHashMap<AstName, uint8_t>& userdataTypes,
     BytecodeBuilder& bytecode,
@@ -60,44 +58,15 @@ static LuauBytecodeType getType(
 
         if (AstStatTypeAlias* const* alias = typeAliases.find(ref->name); alias && *alias)
         {
-            if (FFlag::LuauCompileTypeAliases)
+            if (seenAliases.contains((*alias)->name))
             {
-                if (seenAliases.contains((*alias)->name))
-                {
-                    seenAliases.clear();
-                    return LBC_TYPE_ANY;
-                }
-                else
-                {
-                    seenAliases.insert(ref->name);
-                    return getType(
-                        (*alias)->type,
-                        (*alias)->generics,
-                        typeAliases,
-                        /* resolveAliases_DEPRECATED= */ false,
-                        hostVectorType,
-                        userdataTypes,
-                        bytecode,
-                        seenAliases
-                    );
-                }
+                seenAliases.clear();
+                return LBC_TYPE_ANY;
             }
             else
             {
-                // note: we only resolve aliases to the depth of 1 to avoid dealing with recursive aliases
-                if (resolveAliases_DEPRECATED)
-                    return getType(
-                        (*alias)->type,
-                        (*alias)->generics,
-                        typeAliases,
-                        /* resolveAliases_DEPRECATED= */ false,
-                        hostVectorType,
-                        userdataTypes,
-                        bytecode,
-                        seenAliases
-                    );
-                else
-                    return LBC_TYPE_ANY;
+                seenAliases.insert(ref->name);
+                return getType((*alias)->type, (*alias)->generics, typeAliases, hostVectorType, userdataTypes, bytecode, seenAliases);
             }
         }
 
@@ -134,7 +103,7 @@ static LuauBytecodeType getType(
 
         for (AstType* ty : un->types)
         {
-            LuauBytecodeType et = getType(ty, generics, typeAliases, resolveAliases_DEPRECATED, hostVectorType, userdataTypes, bytecode, seenAliases);
+            LuauBytecodeType et = getType(ty, generics, typeAliases, hostVectorType, userdataTypes, bytecode, seenAliases);
 
             if (et == LBC_TYPE_NIL)
             {
@@ -163,7 +132,7 @@ static LuauBytecodeType getType(
     }
     else if (const AstTypeGroup* group = ty->as<AstTypeGroup>())
     {
-        return getType(group->type, generics, typeAliases, resolveAliases_DEPRECATED, hostVectorType, userdataTypes, bytecode, seenAliases);
+        return getType(group->type, generics, typeAliases, hostVectorType, userdataTypes, bytecode, seenAliases);
     }
     else if (const AstTypeOptional* optional = ty->as<AstTypeOptional>())
     {
@@ -204,17 +173,9 @@ static std::string getFunctionType(
     for (AstLocal* arg : func->args)
     {
         DenseHashSet<AstName> seenAliases{AstName()};
-        LuauBytecodeType ty = arg->annotation ? getType(
-                                                    arg->annotation,
-                                                    func->generics,
-                                                    typeAliases,
-                                                    /* resolveAliases_DEPRECATED= */ true,
-                                                    hostVectorType,
-                                                    userdataTypes,
-                                                    bytecode,
-                                                    seenAliases
-                                                )
-                                              : LBC_TYPE_ANY;
+        LuauBytecodeType ty = arg->annotation
+                                  ? getType(arg->annotation, func->generics, typeAliases, hostVectorType, userdataTypes, bytecode, seenAliases)
+                                  : LBC_TYPE_ANY;
 
         if (ty != LBC_TYPE_ANY)
             haveNonAnyParam = true;
@@ -356,8 +317,7 @@ struct TypeMapVisitor : AstVisitor
         resolvedExprs[expr] = ty;
 
         DenseHashSet<AstName> seenAliases{AstName()};
-        LuauBytecodeType bty =
-            getType(ty, {}, typeAliases, /* resolveAliases_DEPRECATED= */ true, hostVectorType, userdataTypes, bytecode, seenAliases);
+        LuauBytecodeType bty = getType(ty, {}, typeAliases, hostVectorType, userdataTypes, bytecode, seenAliases);
         exprTypes[expr] = bty;
         return bty;
     }
@@ -369,8 +329,7 @@ struct TypeMapVisitor : AstVisitor
         resolvedLocals[local] = ty;
 
         DenseHashSet<AstName> seenAliases{AstName()};
-        LuauBytecodeType bty =
-            getType(ty, {}, typeAliases, /* resolveAliases_DEPRECATED= */ true, hostVectorType, userdataTypes, bytecode, seenAliases);
+        LuauBytecodeType bty = getType(ty, {}, typeAliases, hostVectorType, userdataTypes, bytecode, seenAliases);
 
         if (bty != LBC_TYPE_ANY)
             localTypes[local] = bty;

@@ -447,7 +447,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional
     CheckResult result = getFrontend().check("Module/ListFns");
     auto modListFns = getFrontend().moduleResolver.getModule("Module/ListFns");
     freeze(modListFns->interfaceTypes);
-    freeze(modListFns->internalTypes);
+    freeze(*modListFns->internalTypes);
     LUAU_REQUIRE_NO_ERRORS(result);
     CheckResult result2 = getFrontend().check("Module/B");
     LUAU_REQUIRE_NO_ERRORS(result);

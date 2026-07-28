@@ -14,6 +14,7 @@
 
 LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck)
 LUAU_FASTFLAG(LuauCIProto)
+LUAU_FASTFLAG(LuauCodegenSharedLog)
 
 namespace Luau
 {
@@ -285,7 +286,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
 
 bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
 {
-    AssemblyBuilderA64 build(/* logText= */ false);
+    AssemblyBuilderA64 build(/* logger= */ nullptr, false, /* features= */ 0);
     UnwindBuilder& unwind = *codeGenContext.unwindBuilder.get();
 
     unwind.startInfo(UnwindBuilder::A64);
@@ -317,39 +318,53 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
     return true;
 }
 
-void assembleHelpers(AssemblyBuilderA64& build, ModuleHelpers& helpers)
+void assembleHelpers(LogBuilder* logger, AssemblyBuilderA64& build, ModuleHelpers& helpers)
 {
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; updatePcAndContinueInVm\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; updatePcAndContinueInVm\n");
     build.setLabel(helpers.updatePcAndContinueInVm);
     emitUpdatePcForExit(build);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; exitContinueVmClearNativeFlag\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; exitContinueVmClearNativeFlag\n");
     build.setLabel(helpers.exitContinueVmClearNativeFlag);
     emitClearNativeFlag(build);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; exitContinueVm\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; exitContinueVm\n");
     build.setLabel(helpers.exitContinueVm);
     emitExit(build, /* continueInVm */ true);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; exitNoContinueVm\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; exitNoContinueVm\n");
     build.setLabel(helpers.exitNoContinueVm);
     emitExit(build, /* continueInVm */ false);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; interrupt\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; interrupt\n");
     build.setLabel(helpers.interrupt);
     emitInterrupt(build);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; return\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; return\n");
     build.setLabel(helpers.return_);
     emitReturn(build, helpers);
 
-    if (build.logText)
+    if (FFlag::LuauCodegenSharedLog && logger)
+        logger->append("; continueCall\n");
+    else if (!FFlag::LuauCodegenSharedLog && build.logText)
         build.logAppend("; continueCall\n");
     build.setLabel(helpers.continueCall);
     emitContinueCall(build, helpers);

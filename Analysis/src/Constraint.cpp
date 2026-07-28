@@ -4,7 +4,6 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAGVARIABLE(LuauConstraintGraph)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 namespace Luau
@@ -64,21 +63,15 @@ bool ReferenceCountInitializer::visit(TypeId, const TypeFunctionInstanceType& tf
 
 bool ReferenceCountInitializer::visit(TypePackId tp, const BlockedTypePack&)
 {
-    if (FFlag::LuauConstraintGraph)
-    {
-        LUAU_ASSERT(mutatedTypePacks);
-        mutatedTypePacks->insert(tp);
-    }
+    LUAU_ASSERT(mutatedTypePacks);
+    mutatedTypePacks->insert(tp);
     return true;
 }
 
 bool ReferenceCountInitializer::visit(TypePackId tp, const FreeTypePack&)
 {
-    if (FFlag::LuauConstraintGraph)
-    {
-        LUAU_ASSERT(mutatedTypePacks);
-        mutatedTypePacks->insert(tp);
-    }
+    LUAU_ASSERT(mutatedTypePacks);
+    mutatedTypePacks->insert(tp);
     return true;
 }
 

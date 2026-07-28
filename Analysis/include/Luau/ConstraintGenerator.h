@@ -104,6 +104,7 @@ struct ConstraintGenerator
     // See the functions recordInferredBinding and fillInInferredBindings.
     DenseHashMap<Symbol, InferredBinding> inferredBindings{{}};
 
+    // Remove constraints, freeTypes, and scopeToFunction with DebugLuauCyclicRequireTypeInference: these move to ConstraintGraph (cgraph).
     // Constraints that go straight to the solver.
     std::vector<ConstraintPtr> constraints;
 
@@ -152,7 +153,8 @@ struct ConstraintGenerator
 
     bool recursionLimitMet = false;
 
-    ConstraintGraph* cgraph = nullptr;
+    NotNull<ConstraintGraph> cgraph;
+
     CFG::TypeStateMap* typestate = nullptr;
     ConstraintGenerator(
         ModulePtr module,
@@ -167,7 +169,7 @@ struct ConstraintGenerator
         DcrLogger* logger,
         NotNull<DataFlowGraph> dfg,
         std::vector<RequireCycle> requireCycles,
-        ConstraintGraph* cgraph,
+        NotNull<ConstraintGraph> cgraph,
         CFG::TypeStateMap* typestate = nullptr
     );
 

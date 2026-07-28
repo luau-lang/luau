@@ -667,7 +667,12 @@ std::optional<TypeId> extractMatchingTableType_DEPRECATED(const UnionType* expec
     return std::nullopt;
 }
 
-std::optional<TypeId> extractMatchingTableType(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena)
+std::optional<TypeId> extractMatchingTableType(
+    const UnionType* expectedUnion,
+    TypeId exprType,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena
+)
 {
     const TableType* exprTable = get<TableType>(follow(exprType));
     if (!exprTable)

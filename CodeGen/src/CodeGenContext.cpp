@@ -508,6 +508,7 @@ void create(lua_State* L, SharedCodeGenContext* codeGenContext)
 
 template<typename AssemblyBuilder>
 [[nodiscard]] static NativeProtoExecDataPtr createNativeFunction(
+    LogBuilder* logger,
     AssemblyBuilder& build,
     ModuleHelpers& helpers,
     Proto* proto,
@@ -532,7 +533,7 @@ template<typename AssemblyBuilder>
     AssemblyOptions assemblyOptions;
     assemblyOptions.compilationOptions = options;
 
-    if (!lowerFunction(ir, build, helpers, proto, assemblyOptions, /* stats */ nullptr, result))
+    if (!lowerFunction(ir, logger, build, helpers, proto, assemblyOptions, /* stats */ nullptr, result))
     {
         return {};
     }
@@ -595,17 +596,17 @@ template<typename AssemblyBuilder>
 
 #if defined(CODEGEN_TARGET_A64)
     static unsigned int cpuFeatures = getCpuFeaturesA64();
-    A64::AssemblyBuilderA64 build(/* logText= */ false, cpuFeatures);
+    A64::AssemblyBuilderA64 build(/* logger= */ nullptr, false, cpuFeatures);
 #else
     static unsigned int cpuFeatures = getCpuFeaturesX64();
-    X64::AssemblyBuilderX64 build(/* logText= */ false, cpuFeatures);
+    X64::AssemblyBuilderX64 build(/* logger= */ nullptr, false, cpuFeatures);
 #endif
 
     ModuleHelpers helpers;
 #if defined(CODEGEN_TARGET_A64)
-    A64::assembleHelpers(build, helpers);
+    A64::assembleHelpers(/* logger= */ nullptr, build, helpers);
 #else
-    X64::assembleHelpers(build, helpers);
+    X64::assembleHelpers(/* logger= */ nullptr, build, helpers);
 #endif
 
     CompilationResult compilationResult;
@@ -619,7 +620,7 @@ template<typename AssemblyBuilder>
     {
         CodeGenCompilationResult protoResult = CodeGenCompilationResult::Success;
 
-        NativeProtoExecDataPtr nativeExecData = createNativeFunction(build, helpers, protos[i], totalIrInstCount, options, protoResult);
+        NativeProtoExecDataPtr nativeExecData = createNativeFunction(nullptr, build, helpers, protos[i], totalIrInstCount, options, protoResult);
         if (nativeExecData != nullptr)
         {
             nativeProtos.push_back(std::move(nativeExecData));

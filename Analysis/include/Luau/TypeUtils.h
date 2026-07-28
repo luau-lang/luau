@@ -295,7 +295,12 @@ bool fastIsSubtype(TypeId subTy, TypeId superTy);
  */
 std::optional<TypeId> extractMatchingTableType_DEPRECATED(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes);
 
-std::optional<TypeId> extractMatchingTableType(const UnionType* expectedUnion, TypeId exprType, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
+std::optional<TypeId> extractMatchingTableType(
+    const UnionType* expectedUnion,
+    TypeId exprType,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena
+);
 
 /**
  * @param item A member of a table in an AST

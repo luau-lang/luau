@@ -8,6 +8,7 @@ namespace CodeGen
 
 class BaseCodeGenContext;
 struct ModuleHelpers;
+struct LogBuilder;
 
 namespace X64
 {
@@ -15,7 +16,7 @@ namespace X64
 class AssemblyBuilderX64;
 
 bool initHeaderFunctions(BaseCodeGenContext& codeGenContext);
-void assembleHelpers(AssemblyBuilderX64& build, ModuleHelpers& helpers);
+void assembleHelpers(LogBuilder* logger, AssemblyBuilderX64& build, ModuleHelpers& helpers);
 
 } // namespace X64
 } // namespace CodeGen

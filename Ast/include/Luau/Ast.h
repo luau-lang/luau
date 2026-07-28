@@ -957,13 +957,7 @@ class AstStatLocalFunction : public AstStat
 public:
     LUAU_RTTI(AstStatLocalFunction)
 
-    AstStatLocalFunction(
-        const Location& location,
-        AstLocal* name,
-        AstExprFunction* func,
-        bool isConst,
-        Position constKeywordBegin
-    );
+    AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func, bool isConst, Position constKeywordBegin);
 
     void visit(AstVisitor* visitor) override;
 
@@ -1195,7 +1189,8 @@ public:
         std::optional<Location> prefixLocation,
         const Location& nameLocation,
         bool hasParameterList = false,
-        const AstArray<AstTypeOrPack>& parameters = {}
+        const AstArray<AstTypeOrPack>& parameters = {},
+        AstLocal* prefixLocal = nullptr
     );
 
     void visit(AstVisitor* visitor) override;
@@ -1203,6 +1198,7 @@ public:
     bool hasParameterList;
     std::optional<AstName> prefix;
     std::optional<Location> prefixLocation;
+    AstLocal* prefixLocal = nullptr;
     AstName name;
     Location nameLocation;
     AstArray<AstTypeOrPack> parameters;

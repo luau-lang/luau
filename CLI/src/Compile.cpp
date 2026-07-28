@@ -54,6 +54,8 @@ struct GlobalOptions
 
     bool onlyParse = false;
     bool parseCst = false;
+
+    bool dumpRegSpills = false;
 } globalOptions;
 
 static Luau::CompileOptions copts()
@@ -76,8 +78,6 @@ static std::optional<CompileFormat> getCompileFormat(const char* name)
         return CompileFormat::Text;
     else if (strcmp(name, "binary") == 0)
         return CompileFormat::Binary;
-    else if (strcmp(name, "text") == 0)
-        return CompileFormat::Text;
     else if (strcmp(name, "remarks") == 0)
         return CompileFormat::Remarks;
     else if (strcmp(name, "codegen") == 0)
@@ -332,8 +332,10 @@ static bool compileFile(
         {
             options.includeAssembly = format != CompileFormat::CodegenIr;
             options.includeIr = format != CompileFormat::CodegenAsm;
+
             options.includeIrTypes = format != CompileFormat::CodegenAsm;
             options.includeOutlinedCode = format == CompileFormat::CodegenVerbose;
+            options.includeRegSpills = globalOptions.dumpRegSpills;
         }
 
         options.annotator = annotateInstruction;
@@ -436,11 +438,13 @@ static void displayHelp(const char* argv0)
     printf("  -h, --help: Display this usage message.\n");
     printf("  -O<n>: compile with optimization level n (default 1, n should be between 0 and 2).\n");
     printf("  -g<n>: compile with debug level n (default 1, n should be between 0 and 2).\n");
+    printf("  -t<n>: compile with type information level n (default 0, n should be between 0 and 1).\n");
     printf("  --target=<target>: compile code for specific architecture (a64, x64, a64_nf, x64_ms).\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
     printf("  --record-stats=<granularity>: granularity of compilation stats (total, file, function).\n");
     printf("  --bytecode-summary: Compute bytecode operation distribution.\n");
     printf("  --dump-constants: Dump constant table for each function (text mode only).\n");
+    printf("  --dump-regspills: include register spill events in codegen output.\n");
     printf("  --stats-file=<filename>: file in which compilation stats will be recored (default 'stats.json').\n");
     printf("  --vector-lib=<name>: name of the library providing vector type operations.\n");
     printf("  --vector-ctor=<name>: name of the function constructing a vector value.\n");
@@ -575,6 +579,10 @@ int main(int argc, char** argv)
         else if (strcmp(argv[i], "--dump-constants") == 0)
         {
             dumpConstants = true;
+        }
+        else if (strcmp(argv[i], "--dump-regspills") == 0)
+        {
+            globalOptions.dumpRegSpills = true;
         }
         else if (strncmp(argv[i], "--stats-file=", 13) == 0)
         {

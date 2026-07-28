@@ -1464,9 +1464,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_is_array_simplified")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_is_array")
 {
-    // CLI-116480 Subtyping bug: table should probably be a subtype of {[unknown]: unknown}
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     CheckResult result = check(R"(
 --!strict
 return function(value: any): boolean

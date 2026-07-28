@@ -143,7 +143,7 @@ static void validateclass(global_State* g, LuauClass* lco)
     GCObject* obj = obj2gco(lco);
     validateobjref(g, obj, obj2gco(lco->name));
     validateobjref(g, obj, obj2gco(lco->memberstooffset));
-    for (int i = 0; i < lco->numberofallmembers; i++)
+    for (uint32_t i = 0; i < lco->numberofallmembers; i++)
     {
         validateobjref(g, obj, obj2gco(lco->offsettomember[i]));
         if (i >= lco->numberofinstancemembers)
@@ -158,7 +158,7 @@ static void validateobject(global_State* g, LuauObject* inst)
 {
     GCObject* obj = obj2gco(inst);
     validateobjref(g, obj, obj2gco(inst->lclass));
-    for (int i = 0; i < inst->numberofmembers; i++)
+    for (uint32_t i = 0; i < inst->numberofmembers; i++)
         validateref(g, obj, &inst->members[i]);
 }
 
@@ -191,6 +191,9 @@ static void validateobj(global_State* g, GCObject* o)
 
     case LUA_TTHREAD:
         validatestack(g, gco2th(o));
+        break;
+
+    case LUA_TVECTOR:
         break;
 
     case LUA_TBUFFER:
@@ -279,6 +282,16 @@ void luaC_validate(lua_State* L)
     {
         if (g->udatamt[i])
             LUAU_ASSERT(!isdead(g, obj2gco(g->udatamt[i])));
+    }
+
+    for (int i = 0; i < UTAG_INTERNAL_LIMIT; i++)
+    {
+        checkliveness(g, &g->udatadirect[i].indextm);
+        checkliveness(g, &g->udatadirect[i].newindextm);
+        checkliveness(g, &g->udatadirect[i].namecalltm);
+
+        if (g->udatadirectfields[i])
+            LUAU_ASSERT(!isdead(g, obj2gco(g->udatadirectfields[i])));
     }
 
     validategraylist(g, g->weak);
@@ -589,7 +602,7 @@ static void dumpclass(FILE* f, LuauClass* lco)
     fprintf(f, R"(,"name":)");
     dumpstringdata(f, lco->name->data, lco->name->len);
     fprintf(f, R"(,"membernames":[)");
-    for (int i = 0; i < lco->numberofallmembers; i++)
+    for (uint32_t i = 0; i < lco->numberofallmembers; i++)
     {
         if (i != 0)
             fputc(',', f);
@@ -637,6 +650,9 @@ static void dumpobj(FILE* f, GCObject* o)
 
     case LUA_TTHREAD:
         return dumpthread(f, gco2th(o));
+
+    case LUA_TVECTOR:
+        return; // vector data is outlined, but is a constant cost of a vector
 
     case LUA_TBUFFER:
         return dumpbuffer(f, gco2buf(o));
@@ -961,8 +977,8 @@ static void enumclass(EnumContext* ctx, LuauClass* lco)
     enumnode(ctx, obj, sizeof(LuauClass), buf);
     enumedge(ctx, obj, obj2gco(lco->name), "classname");
     enumedge(ctx, obj, obj2gco(lco->memberstooffset), "classoffsets");
-    int numberofstaticmembers = lco->numberofallmembers - lco->numberofinstancemembers;
-    for (int i = 0; i < numberofstaticmembers; i++)
+    uint32_t numberofstaticmembers = lco->numberofallmembers - lco->numberofinstancemembers;
+    for (uint32_t i = 0; i < numberofstaticmembers; i++)
     {
         // It's a bit strange that if we have a non-collectable static member,
         // we'll just not note it as an edge.
@@ -973,7 +989,7 @@ static void enumclass(EnumContext* ctx, LuauClass* lco)
         snprintf(membername, sizeof(membername), "%s", getstr(lco->offsettomember[i + lco->numberofinstancemembers]));
         enumedge(ctx, obj, gcvalue(&lco->staticmembers[i]), membername);
     }
-    for (int i = 0; i < lco->numberofallmembers; i++)
+    for (uint32_t i = 0; i < lco->numberofallmembers; i++)
         enumedge(ctx, obj, obj2gco(lco->offsettomember[i]), "membername");
     enumedge(ctx, obj, obj2gco(lco->metatable), "metatable");
 }
@@ -984,7 +1000,7 @@ static void enumobject(EnumContext* ctx, LuauObject* inst)
     GCObject* obj = obj2gco(inst);
     snprintf(buf, sizeof(buf), "object %s", getstr(inst->lclass->name));
     enumnode(ctx, obj, sizeof(LuauObject), buf);
-    for (int i = 0; i < inst->lclass->numberofinstancemembers; i++)
+    for (uint32_t i = 0; i < inst->lclass->numberofinstancemembers; i++)
     {
         // It's a bit strange that if we have a non-collectable static member,
         // we'll just not note it as an edge.
@@ -1015,6 +1031,9 @@ static void enumobj(EnumContext* ctx, GCObject* o)
 
     case LUA_TTHREAD:
         return enumthread(ctx, gco2th(o));
+
+    case LUA_TVECTOR:
+        return enumnode(ctx, o, sizeof(LuauVector), NULL);
 
     case LUA_TBUFFER:
         return enumbuffer(ctx, gco2buf(o));

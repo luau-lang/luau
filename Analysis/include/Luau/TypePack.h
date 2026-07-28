@@ -167,6 +167,10 @@ struct TypePackIterator
 
     const TypeId& operator*();
 
+    // If the iterator currently points at the head of a type pack, return that
+    // pack.  Else return nullopt.
+    std::optional<TypePackId> tryGetHead() const;
+
     /** Return the tail of a TypePack.
      * This may *only* be called on an iterator that has been incremented to the end.
      * Returns nullopt if the pack has fixed length.

@@ -19,7 +19,6 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 
@@ -96,8 +95,6 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau-polyfill.Array.filter")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
-
     // This test exercises the fact that we should reduce sealed/unsealed/free tables
     // res is a unsealed table with type {((T & ~nil)?) & any}
     // Because we do not reduce it fully, we cannot unify it with `Array<T> = { [number] : T}
@@ -1560,7 +1557,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_calling_pcall")
 }
 
 
-// LuauPropagateFreeTypesIntoUnionAndIntersectionBounds: when a union super type has multiple free-type members,
+// When a union super type has multiple free-type members,
 // propagateToFreeMembers adds subTy as a lower bound to ALL of them. This is an over-approximation:
 // `freeA <: T | U` only requires one of T or U to contain freeA, not both.
 //
@@ -1574,7 +1571,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "union_super_with_multiple_free_members_over_
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds, true},
     };
 
     CheckResult result = check(R"(

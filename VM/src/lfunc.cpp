@@ -7,7 +7,7 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauCIProto)
-LUAU_FASTINTVARIABLE(LuauInlineHitsThreshold, 3)
+LUAU_FASTINTVARIABLE(LuauInlineHitsThreshold, 32)
 
 Proto* luaF_newproto(lua_State* L)
 {
@@ -60,6 +60,7 @@ Proto* luaF_newproto(lua_State* L)
     f->funid = 0;
     f->optimized = nullptr;
     f->deoptimized = nullptr;
+    f->cost = 0;
 
     return f;
 }

@@ -48,11 +48,14 @@ target_sources(Luau.Bytecode PRIVATE
     Bytecode/include/Luau/BytecodeCallInliner.h
     Bytecode/include/Luau/BytecodeGraph.h
     Bytecode/include/Luau/BytecodeOps.h
+    Bytecode/include/Luau/BytecodeValidation.h
+    Bytecode/include/Luau/Sccp.h
 
     Bytecode/src/BytecodeBuilder.cpp
     Bytecode/src/BytecodeGraph.cpp
     Bytecode/src/BytecodeGraphParser.h
     Bytecode/src/BytecodeGraphSerializer.h
+    Bytecode/src/Sccp.cpp
 )
 
 # Luau.Inliner Sources
@@ -61,6 +64,8 @@ target_sources(Luau.Inliner PRIVATE
     Inliner/include/luajitinliner.h
 
     Inliner/src/JitInliner.cpp
+    Inliner/src/TValueVmConstImpl.cpp
+    Inliner/src/TValueVmConstImpl.h
     Inliner/src/luajitinliner.cpp
     Inliner/src/RuntimeBytecodeBuilder.h
 )
@@ -122,6 +127,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/IrUtils.h
     CodeGen/include/Luau/IrVisitUseDef.h
     CodeGen/include/Luau/Label.h
+    CodeGen/include/Luau/LogBuilder.h
     CodeGen/include/Luau/LoweringStats.h
     CodeGen/include/Luau/NativeProtoExecData.h
     CodeGen/include/Luau/OperandX64.h
@@ -410,6 +416,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/lvmexecute.cpp
     VM/src/lclass.cpp
     VM/src/lclasslib.cpp
+    VM/src/lvector.cpp
     VM/src/lvmload.cpp
     VM/src/lvmutils.cpp
 
@@ -431,6 +438,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/ltable.h
     VM/src/ltm.h
     VM/src/ludata.h
+    VM/src/lvector.h
     VM/src/lvm.h
 )
 
@@ -536,6 +544,7 @@ if(TARGET Luau.UnitTest)
         tests/RegisterCallbacks.h
         tests/RequireTracer.test.cpp
         tests/RuntimeLimits.test.cpp
+        tests/Sccp.test.cpp
         tests/ScopedFlags.h
         tests/Simplify.test.cpp
         tests/Set.test.cpp

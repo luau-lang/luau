@@ -90,7 +90,6 @@ struct FindFunctionTypeIn : IterativeTypeVisitor
             {
                 ambiguous = true;
             }
-
         }
         else
         {
