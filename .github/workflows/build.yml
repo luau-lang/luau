@@ -105,6 +105,9 @@ jobs:
           - name: Vector4
             flags: "-DLUA_VECTOR_SIZE=4"
             codegen: false
+          - name: VectorDouble
+            flags: "-DLUA_VECTOR_DOUBLE=1"
+            codegen: false
     name: run extra configuration (${{matrix.config.name}})
     runs-on: ubuntu-latest
     steps:
