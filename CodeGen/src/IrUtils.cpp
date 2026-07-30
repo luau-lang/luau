@@ -286,6 +286,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Int;
     case IrCmd::TRY_CALL_FASTGETTM:
     case IrCmd::NEW_USERDATA:
+    case IrCmd::NEW_VECTOR:
         return IrValueKind::Pointer;
     case IrCmd::INT64_TO_NUM:
     case IrCmd::INT_TO_NUM:

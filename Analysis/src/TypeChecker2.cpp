@@ -36,8 +36,6 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
-LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
-LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 
@@ -1957,7 +1955,7 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
         if (tt->indexer)
         {
             testIsSubtype(indexType, tt->indexer->indexType, indexExpr->index->location);
-            if (FFlag::LuauReadOnlyIndexers && context == ValueContext::LValue && tt->indexer->isReadOnly)
+            if (context == ValueContext::LValue && tt->indexer->isReadOnly)
                 reportError(PropertyAccessViolation{exprType, "indexer", PropertyAccessViolation::CannotWrite}, indexExpr->location);
         }
         else
@@ -3719,7 +3717,7 @@ void TypeChecker2::checkIndexTypeFromType(
                 reportError(NotATable{tableTy}, location);
             else if (auto et = get<ExternType>(tableTy))
             {
-                if (!FFlag::LuauTweakAccessViolationReporting || et->indexer || context == ValueContext::RValue)
+                if (et->indexer)
                     reportError(UnknownProperty{tableTy, prop}, location);
                 else
                     reportError(PropertyAccessViolation{tableTy, prop, PropertyAccessViolation::CannotWrite}, location);
@@ -3780,7 +3778,7 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
 
             if (keyMatches)
             {
-                if (FFlag::LuauReadOnlyIndexers && context == ValueContext::LValue && tt->indexer->isReadOnly)
+                if (context == ValueContext::LValue && tt->indexer->isReadOnly)
                     return {NormalizationResult::False, {}};
                 return {NormalizationResult::True, {tt->indexer->indexResultType}};
             }

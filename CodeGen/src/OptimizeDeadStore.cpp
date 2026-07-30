@@ -1273,6 +1273,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         break;
 
     case IrCmd::NEW_USERDATA:
+    case IrCmd::NEW_VECTOR:
         state.hasAllocations = true;
         break;
 
@@ -1468,7 +1469,7 @@ static void markDeadStoresInBlockChain(
                         {
                             IrInst& pointer = function.instOp(OP_A(inst));
 
-                            if (pointer.cmd == IrCmd::NEW_USERDATA)
+                            if (pointer.cmd == IrCmd::NEW_USERDATA || pointer.cmd == IrCmd::NEW_VECTOR)
                                 kill(function, inst);
                         }
                         break;

@@ -29,6 +29,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
+LUAU_FASTFLAGVARIABLE(LuauCompileIifeInline)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpTargetTop)
@@ -417,6 +418,9 @@ struct Compiler
         bool terminatesEarly = false;
         Location terminationLocation;
         currentFunction = func;
+
+        if (FFlag::DebugLuauUserDefinedClasses && atTopLevel())
+            preallocateHoistedClasses(stat);
 
         for (size_t i = 0; i < stat->body.size; ++i)
         {
@@ -873,10 +877,23 @@ struct Compiler
 
         int threshold = thresholdBase * inlineProfit / 100;
 
-        if (inlinedCost > threshold)
+        if (FFlag::LuauCompileIifeInline)
         {
-            bytecode.addDebugRemark("inlining failed: too expensive (cost %d, profit %.2fx)", inlinedCost, double(inlineProfit) / 100);
-            return false;
+            bool isIife = unwrapExprOfType<AstExprFunction>(expr->func) != nullptr;
+
+            if (inlinedCost > threshold && !isIife)
+            {
+                bytecode.addDebugRemark("inlining failed: too expensive (cost %d, profit %.2fx)", inlinedCost, double(inlineProfit) / 100);
+                return false;
+            }
+        }
+        else
+        {
+            if (inlinedCost > threshold)
+            {
+                bytecode.addDebugRemark("inlining failed: too expensive (cost %d, profit %.2fx)", inlinedCost, double(inlineProfit) / 100);
+                return false;
+            }
         }
 
         bytecode.addDebugRemark(
@@ -918,6 +935,7 @@ struct Compiler
             locstants,
             builtinsFold,
             builtinsFoldLibraryK,
+            options.vectorPrecision == 1,
             options.libraryMemberConstantCb,
             func->body,
             names,
@@ -1080,6 +1098,7 @@ struct Compiler
             locstants,
             builtinsFold,
             builtinsFoldLibraryK,
+            options.vectorPrecision == 1,
             options.libraryMemberConstantCb,
             func->body,
             names,
@@ -1484,8 +1503,6 @@ struct Compiler
     void compileClassDeclaration(AstStatClass* decl)
     {
         LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-        // We allocate one register to store the class object.
-        auto dest = allocReg(decl, 1u);
 
         // CLI-194693: We probably need to add something here to prevent:
         //
@@ -1496,7 +1513,12 @@ struct Compiler
         //
         // ... properties and methods need to share a namespace.
 
-        pushLocal(decl->name, dest, kDefaultAllocPc);
+        AstLocal** classLocal = classLocals.find(decl->name->name);
+        LUAU_ASSERT(classLocal);
+        int destReg = getLocalReg(*classLocal);
+        LUAU_ASSERT(destReg >= 0);
+        uint8_t dest = uint8_t(destReg);
+
         if (FFlag::LuauExportValueSyntax && decl->exported)
         {
             // we want to eagerly insert into the exported classes map, as the class may be referenced by one of its methods
@@ -1663,7 +1685,7 @@ struct Compiler
     {
         const Constant* cv = constants.find(node);
 
-        return (cv != nullptr) && cv->type == Constant::Type_Vector;
+        return (cv != nullptr) && (cv->type == Constant::Type_Vectorf || cv->type == Constant::Type_Vectord);
     }
 
     bool isConstantInteger(AstExpr* node)
@@ -1813,8 +1835,12 @@ struct Compiler
             cid = bytecode.addConstantInteger(c->valueInteger64);
             break;
 
-        case Constant::Type_Vector:
-            cid = bytecode.addConstantVector(c->valueVector[0], c->valueVector[1], c->valueVector[2], c->valueVector[3]);
+        case Constant::Type_Vectorf:
+            cid = bytecode.addConstantVectorf(c->valueVectorf[0], c->valueVectorf[1], c->valueVectorf[2], c->valueVectorf[3]);
+            break;
+
+        case Constant::Type_Vectord:
+            cid = bytecode.addConstantVectord(c->valueVectord[0], c->valueVectord[1], c->valueVectord[2], c->valueVectord[3]);
             break;
 
         case Constant::Type_String:
@@ -2619,7 +2645,7 @@ struct Compiler
             import1 = expr;
         }
 
-        if (importRoot && canImportChain(importRoot))
+        if (importRoot && canImportChain(importRoot) && !(FFlag::DebugLuauUserDefinedClasses && classLocals.contains(importRoot->name)))
         {
             int32_t id0 = bytecode.addConstantString(sref(importRoot->name));
             int32_t id1 = bytecode.addConstantString(sref(import1->index));
@@ -2715,6 +2741,25 @@ struct Compiler
 
     void compileExprGlobal(AstExprGlobal* expr, uint8_t target)
     {
+        if (FFlag::DebugLuauUserDefinedClasses)
+        {
+            if (AstLocal** local = classLocals.find(expr->name))
+            {
+                int reg = getLocalReg(*local);
+                if (reg >= 0)
+                {
+                    if (target != uint8_t(reg))
+                        bytecode.emitABC(LOP_MOVE, target, uint8_t(reg), 0);
+                }
+                else
+                {
+                    uint8_t uid = getUpval(*local);
+                    bytecode.emitABC(LOP_GETUPVAL, target, uid, 0);
+                }
+                return;
+            }
+        }
+
         // Optimization: builtin globals can be retrieved using GETIMPORT
         if (canImport(expr))
         {
@@ -2792,9 +2837,19 @@ struct Compiler
         }
         break;
 
-        case Constant::Type_Vector:
+        case Constant::Type_Vectorf:
         {
-            int32_t cid = bytecode.addConstantVector(cv->valueVector[0], cv->valueVector[1], cv->valueVector[2], cv->valueVector[3]);
+            int32_t cid = bytecode.addConstantVectorf(cv->valueVectorf[0], cv->valueVectorf[1], cv->valueVectorf[2], cv->valueVectorf[3]);
+            if (cid < 0)
+                CompileError::raise(node->location, "Exceeded constant limit; simplify the code to compile");
+
+            emitLoadK(target, cid);
+        }
+        break;
+
+        case Constant::Type_Vectord:
+        {
+            int32_t cid = bytecode.addConstantVectord(cv->valueVectord[0], cv->valueVectord[1], cv->valueVectord[2], cv->valueVectord[3]);
             if (cid < 0)
                 CompileError::raise(node->location, "Exceeded constant limit; simplify the code to compile");
 
@@ -3167,6 +3222,17 @@ struct Compiler
         }
         else if (AstExprGlobal* expr = node->as<AstExprGlobal>())
         {
+            if (FFlag::DebugLuauUserDefinedClasses)
+            {
+                if (AstLocal** classLocal = classLocals.find(expr->name))
+                    CompileError::raise(
+                        expr->location,
+                        "'%s' refers to a class and cannot be used as a variable name (defined on line %d)",
+                        expr->name.value,
+                        (*classLocal)->location.begin.line + 1
+                    );
+            }
+
             LValue result = {LValue::Kind_Global};
             result.name = sref(expr->name);
             result.location = node->location;
@@ -3288,8 +3354,15 @@ struct Compiler
 
             return l && l->allocated ? l->reg : -1;
         }
-        else
-            return -1;
+        else if (FFlag::DebugLuauUserDefinedClasses)
+        {
+            if (AstExprGlobal* g = node->as<AstExprGlobal>())
+            {
+                if (AstLocal** local = classLocals.find(g->name))
+                    return getLocalReg(*local);
+            }
+        }
+        return -1;
     }
 
     bool isStatBreak(AstStat* node)
@@ -3755,6 +3828,7 @@ struct Compiler
                     locstants,
                     builtinsFold,
                     builtinsFoldLibraryK,
+                    options.vectorPrecision == 1,
                     options.libraryMemberConstantCb,
                     stat,
                     names,
@@ -3764,7 +3838,16 @@ struct Compiler
                 );
             else
                 foldConstants(
-                    constants, variables, locstants, builtinsFold, builtinsFoldLibraryK, options.libraryMemberConstantCb, stat, names, tableConstants
+                    constants,
+                    variables,
+                    locstants,
+                    builtinsFold,
+                    builtinsFoldLibraryK,
+                    options.vectorPrecision == 1,
+                    options.libraryMemberConstantCb,
+                    stat,
+                    names,
+                    tableConstants
                 );
 
 
@@ -4456,6 +4539,21 @@ struct Compiler
             );
     }
 
+    void preallocateHoistedClasses(AstStatBlock* body)
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+        for (AstStat* stat : body->body)
+        {
+            if (AstStatClass* decl = stat->as<AstStatClass>())
+            {
+                uint8_t reg = allocReg(decl, 1u);
+                pushLocal(decl->name, reg, kDefaultAllocPc);
+                bytecode.emitABC(LOP_LOADNIL, reg, 0, 0);
+            }
+        }
+    }
+
     void gatherConstUpvals(AstExprFunction* func)
     {
         ConstUpvalueVisitor visitor(this);
@@ -4915,6 +5013,7 @@ struct Compiler
     DenseHashMap<AstExprFunction*, std::string> functionTypes;
     DenseHashMap<AstLocal*, LuauBytecodeType> localTypes;
     DenseHashMap<AstExpr*, LuauBytecodeType> exprTypes;
+    DenseHashMap<AstName, AstLocal*> classLocals{AstName{}};
 
     DenseHashMap<AstExprCall*, int> inlineBuiltins{nullptr};
     DenseHashMap<AstExprCall*, int> inlineBuiltinsBackup{nullptr};
@@ -4997,7 +5096,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, A
     assignMutable(compiler.globals, names, options.mutableGlobals);
 
     // this pass analyzes mutability of locals/globals and associates locals with their initial values
-    trackValues(compiler.globals, compiler.variables, root);
+    trackValues(compiler.globals, compiler.variables, compiler.classLocals, root);
 
     // this visitor tracks calls to getfenv/setfenv and disables some optimizations when they are found
     if (options.optimizationLevel >= 1 && (names.get("getfenv").value || names.get("setfenv").value))
@@ -5043,6 +5142,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, A
             compiler.locstants,
             compiler.builtinsFold,
             compiler.builtinsFoldLibraryK,
+            options.vectorPrecision == 1,
             options.libraryMemberConstantCb,
             root,
             names,
@@ -5194,11 +5294,22 @@ void setCompileConstantVector(CompileConstant* constant, float x, float y, float
 {
     Compile::Constant* target = reinterpret_cast<Compile::Constant*>(constant);
 
-    target->type = Compile::Constant::Type_Vector;
-    target->valueVector[0] = x;
-    target->valueVector[1] = y;
-    target->valueVector[2] = z;
-    target->valueVector[3] = w;
+    target->type = Compile::Constant::Type_Vectorf;
+    target->valueVectorf[0] = x;
+    target->valueVectorf[1] = y;
+    target->valueVectorf[2] = z;
+    target->valueVectorf[3] = w;
+}
+
+void setCompileConstantVectord(CompileConstant* constant, double x, double y, double z, double w)
+{
+    Compile::Constant* target = reinterpret_cast<Compile::Constant*>(constant);
+
+    target->type = Compile::Constant::Type_Vectord;
+    target->valueVectord[0] = x;
+    target->valueVectord[1] = y;
+    target->valueVectord[2] = z;
+    target->valueVectord[3] = w;
 }
 
 void setCompileConstantString(CompileConstant* constant, const char* s, size_t l)
