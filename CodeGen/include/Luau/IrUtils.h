@@ -176,45 +176,6 @@ inline IrCondition getNegatedCondition(IrCondition cond)
     }
 }
 
-// Returns a condition that for 'a op b' will result in 'b op' a', so that operands can be swapped
-inline IrCondition getSwappedCondition(IrCondition cond)
-{
-    switch (cond)
-    {
-    case IrCondition::Equal:
-        return IrCondition::Equal;
-    case IrCondition::NotEqual:
-        return IrCondition::NotEqual;
-    case IrCondition::Less:
-        return IrCondition::Greater;
-    case IrCondition::NotLess:
-        return IrCondition::NotGreater;
-    case IrCondition::LessEqual:
-        return IrCondition::GreaterEqual;
-    case IrCondition::NotLessEqual:
-        return IrCondition::NotGreaterEqual;
-    case IrCondition::Greater:
-        return IrCondition::Less;
-    case IrCondition::NotGreater:
-        return IrCondition::NotLess;
-    case IrCondition::GreaterEqual:
-        return IrCondition::LessEqual;
-    case IrCondition::NotGreaterEqual:
-        return IrCondition::NotLessEqual;
-    case IrCondition::UnsignedLess:
-        return IrCondition::UnsignedGreater;
-    case IrCondition::UnsignedLessEqual:
-        return IrCondition::UnsignedGreaterEqual;
-    case IrCondition::UnsignedGreater:
-        return IrCondition::UnsignedLess;
-    case IrCondition::UnsignedGreaterEqual:
-        return IrCondition::UnsignedLessEqual;
-    default:
-        CODEGEN_ASSERT(!"Unsupported condition");
-        return IrCondition::Count;
-    }
-}
-
 template<typename F>
 void visitArguments(IrInst& inst, F&& func)
 {

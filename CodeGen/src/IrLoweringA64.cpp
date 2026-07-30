@@ -1713,17 +1713,17 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         IrCondition cond = conditionOp(OP_C(inst));
 
-        // Constant propagation can place a constant on either side, and every form below wants the value on the left,
-        // so swap and mirror the condition. Both sides constant is folded away before lowering.
+        // Constant propagation can place a constant on either side and every form below compares against the right
+        // operand, so the operands are swapped and the condition inverted, like CMP_INT64 does. Equal and NotEqual
+        // are unchanged by that inversion, so the zero forms below still test the original condition.
         IrOp lhs = OP_A(inst);
         IrOp rhs = OP_B(inst);
+        bool swapped = lhs.kind == IrOpKind::Constant;
 
-        if (lhs.kind == IrOpKind::Constant)
+        if (swapped)
         {
-            IrOp tmp = lhs;
-            lhs = rhs;
-            rhs = tmp;
-            cond = getSwappedCondition(cond);
+            lhs = OP_B(inst);
+            rhs = OP_A(inst);
         }
 
         if (cond == IrCondition::Equal && rhs.kind == IrOpKind::Constant && int64Op(rhs) == 0)
@@ -1741,7 +1741,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             else
                 build.cmp(regOp(lhs), tempInt64(rhs));
 
-            build.b(getConditionInt64(cond), labelOp(OP_D(inst)));
+            ConditionA64 cc = getConditionInt64(cond);
+            build.b(swapped ? getInverseCondition(cc) : cc, labelOp(OP_D(inst)));
         }
         jumpOrFallthrough(blockOp(OP_E(inst)), next);
         break;
