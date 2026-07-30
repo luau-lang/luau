@@ -1713,20 +1713,33 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         IrCondition cond = conditionOp(OP_C(inst));
 
-        if (cond == IrCondition::Equal && OP_B(inst).kind == IrOpKind::Constant && int64Op(OP_B(inst)) == 0)
+        // Constant propagation can place a constant on either side, and every form below wants the value on the left,
+        // so swap and mirror the condition. Both sides constant is folded away before lowering.
+        IrOp lhs = OP_A(inst);
+        IrOp rhs = OP_B(inst);
+
+        if (lhs.kind == IrOpKind::Constant)
         {
-            build.cbz(regOp(OP_A(inst)), labelOp(OP_D(inst)));
+            IrOp tmp = lhs;
+            lhs = rhs;
+            rhs = tmp;
+            cond = getSwappedCondition(cond);
         }
-        else if (cond == IrCondition::NotEqual && OP_B(inst).kind == IrOpKind::Constant && int64Op(OP_B(inst)) == 0)
+
+        if (cond == IrCondition::Equal && rhs.kind == IrOpKind::Constant && int64Op(rhs) == 0)
         {
-            build.cbnz(regOp(OP_A(inst)), labelOp(OP_D(inst)));
+            build.cbz(regOp(lhs), labelOp(OP_D(inst)));
+        }
+        else if (cond == IrCondition::NotEqual && rhs.kind == IrOpKind::Constant && int64Op(rhs) == 0)
+        {
+            build.cbnz(regOp(lhs), labelOp(OP_D(inst)));
         }
         else
         {
-            if (OP_B(inst).kind == IrOpKind::Constant && uint64_t(int64Op(OP_B(inst))) <= AssemblyBuilderA64::kMaxImmediate)
-                build.cmp(regOp(OP_A(inst)), uint16_t(int64Op(OP_B(inst))));
+            if (rhs.kind == IrOpKind::Constant && uint64_t(int64Op(rhs)) <= AssemblyBuilderA64::kMaxImmediate)
+                build.cmp(regOp(lhs), uint16_t(int64Op(rhs)));
             else
-                build.cmp(regOp(OP_A(inst)), tempInt64(OP_B(inst)));
+                build.cmp(regOp(lhs), tempInt64(rhs));
 
             build.b(getConditionInt64(cond), labelOp(OP_D(inst)));
         }

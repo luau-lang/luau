@@ -1771,7 +1771,17 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         IrCondition cond = conditionOp(OP_C(inst));
 
-        build.cmp(regOp(OP_A(inst)), memRegInt64Op(OP_B(inst)));
+        // Constant propagation can place a constant on either side, and there is no form comparing an immediate
+        // against a register, so swap and mirror the condition. Both sides constant is folded away before lowering.
+        if (OP_A(inst).kind == IrOpKind::Constant)
+        {
+            build.cmp(regOp(OP_B(inst)), memRegInt64Op(OP_A(inst)));
+            cond = getSwappedCondition(cond);
+        }
+        else
+        {
+            build.cmp(regOp(OP_A(inst)), memRegInt64Op(OP_B(inst)));
+        }
 
         build.jcc(getConditionInt(cond), labelOp(OP_D(inst)));
         jumpOrFallthrough(blockOp(OP_E(inst)), next);

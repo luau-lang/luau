@@ -19,6 +19,8 @@
 LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAG(LuauCodegenBufferInteger)
+LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCodegenLoadPropagateOrigin)
 LUAU_FASTFLAG(LuauCodegenVmExitSyncMultiUse)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
@@ -8351,6 +8353,65 @@ bb_bytecode_2:
   STORE_TAG R2, tnumber
   INTERRUPT 5u
   RETURN R2, 1i
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "IntegerCompareConstLhs")
+{
+    ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
+    ScopedFastFlag LuauCodegenInteger3{FFlag::LuauCodegenInteger3, true};
+    ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
+    ScopedFastFlag luauCodegenBufferInteger{FFlag::LuauCodegenBufferInteger, true};
+    ScopedFastFlag luauIntegerBufferFastcalls{FFlag::LuauIntegerBufferFastcalls, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(b: buffer, x: integer)
+    -- bytecode compiler is unlikely to constant-fold this
+    buffer.writeinteger(b, 0, 2i)
+    local lhs = buffer.readinteger(b, 0)
+
+    if lhs == x then
+        return 1
+    end
+    return 2
+end
+)",
+                   true,
+                   1,
+                   2
+               ),
+        R"(
+; function foo($arg0, $arg1) line 2
+; R0: buffer [argument]
+; R1: integer [argument]
+; R2: integer from 8 to 21
+bb_0:
+  CHECK_TAG R0, tbuffer, exit(entry)
+  CHECK_TAG R1, tinteger, exit(entry)
+  JUMP bb_3
+bb_3:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %17 = LOAD_POINTER R0
+  CHECK_BUFFER_LEN %17, 0i, 0i, 8i, undef, bb_exit_8
+   ; exit sync: R5, R4, {}
+  BUFFER_WRITEI64 %17, 0i, 2i, tbuffer
+  %39 = LOAD_INT64 R1
+  JUMP_CMP_INT64 2i, %39, not_eq, bb_bytecode_2, bb_6
+bb_6:
+  STORE_DOUBLE R3, 1
+  STORE_TAG R3, tnumber
+  INTERRUPT 18u
+  RETURN R3, 1i
+bb_bytecode_2:
+  STORE_DOUBLE R3, 2
+  STORE_TAG R3, tnumber
+  INTERRUPT 20u
+  RETURN R3, 1i
 )"
     );
 }
