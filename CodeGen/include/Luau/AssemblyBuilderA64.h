@@ -265,11 +265,12 @@ private:
     void placeA(const char* name, RegisterA64 dst, AddressA64 src, uint16_t opsize, int sizelog);
     void placeB(const char* name, Label& label, uint8_t op);
     void placeBC(const char* name, Label& label, uint8_t op, uint8_t cond);
-    void placeBCR(const char* name, Label& label, uint8_t op, RegisterA64 cond);
+    void placeBCR(const char* name, const char* nameInv, Label& label, uint8_t op, RegisterA64 cond);
     void placeBR(const char* name, RegisterA64 src, uint32_t op);
-    void placeBTR(const char* name, Label& label, uint8_t op, RegisterA64 cond, uint8_t bit);
+    void placeBTR(const char* name, const char* nameInv, Label& label, uint8_t op, RegisterA64 cond, uint8_t bit);
     void placeADR(const char* name, RegisterA64 dst, uint8_t op);
     void placeADR(const char* name, RegisterA64 dst, uint8_t op, Label& label);
+    void placeADRP(const char* name, RegisterA64 dst, int32_t pageOffset);
     void placeP(const char* name, RegisterA64 src1, RegisterA64 src2, AddressA64 dst, uint8_t op, uint8_t opc, int sizelog);
     void placeCS(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t op, uint8_t opc, int invert = 0);
     void placeFCMP(const char* name, RegisterA64 src1, RegisterA64 src2, uint8_t op, uint8_t opc);
@@ -295,7 +296,9 @@ private:
         uint32_t location;
     };
 
+    void patchDataRef(RegisterA64 dst, uint32_t location, size_t pos);
     void patchLabel(Label& label, Patch::Kind kind);
+    Label patchLabelFar(Label& label, Patch::Kind kind, uint32_t invertBit);
     void patchOffset(uint32_t location, int value, Patch::Kind kind);
 
     void commit();

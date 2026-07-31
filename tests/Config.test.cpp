@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/Compiler.h"
 #include "Luau/Config.h"
 #include "Luau/Frontend.h"
 #include "Luau/LinterConfig.h"
@@ -318,10 +319,10 @@ TEST_CASE("yielded_configuration")
         coroutine.yield()
     )";
 
-    std::string error;
-    std::optional<ConfigTable> configTable = extractConfig(source, InterruptCallbacks{}, &error);
-    REQUIRE(!configTable);
-    CHECK(error == "configuration execution cannot yield");
+    Config config;
+    std::optional<std::string> error = extractLuauConfig(source, config, std::nullopt, InterruptCallbacks{});
+    REQUIRE(error);
+    CHECK(*error == "configuration execution cannot yield");
 }
 
 TEST_CASE("interrupt_execution" * doctest::timeout(2))
@@ -330,20 +331,21 @@ TEST_CASE("interrupt_execution" * doctest::timeout(2))
         while true do end
     )";
 
-    std::string error;
-    std::optional<ConfigTable> configTable = extractConfig(
+    Config config;
+    std::optional<std::string> error = extractLuauConfig(
         source,
+        config,
+        std::nullopt,
         {
             nullptr,
             [](lua_State* L, int gc)
             {
                 throw std::runtime_error("interrupted");
             },
-        },
-        &error
+        }
     );
-    REQUIRE(!configTable);
-    CHECK(error.find("interrupted") != std::string_view::npos);
+    REQUIRE(error);
+    CHECK(error->find("interrupted") != std::string_view::npos);
 }
 
 TEST_CASE("validate_return_value")
@@ -355,11 +357,63 @@ TEST_CASE("validate_return_value")
 
     for (const auto& [source, expectedError] : testCases)
     {
-        std::string error;
-        std::optional<ConfigTable> configTable = extractConfig(source, InterruptCallbacks{}, &error);
-        REQUIRE(!configTable);
-        CHECK(error == expectedError);
+        Config config;
+        std::optional<std::string> error = extractLuauConfig(source, config, std::nullopt, InterruptCallbacks{});
+        REQUIRE(error);
+        CHECK(*error == expectedError);
     }
+}
+
+TEST_CASE("extract_luau_config_from_bytecode")
+{
+    std::string source = R"(
+        local config = {}
+        config.luau = {}
+
+        config.luau.languagemode = "strict"
+        config.luau.lint = {
+            ["*"] = true,
+            LocalUnused = false
+        }
+        config.luau.linterrors = true
+        config.luau.typeerrors = true
+        config.luau.globals = {"expect"}
+        config.luau.aliases = {
+            src = "./src"
+        }
+
+        return config
+    )";
+
+    std::string bytecode = Luau::compile(source);
+
+    ConfigOptions::AliasOptions aliasOptions;
+    aliasOptions.configLocation = "/some/path";
+    aliasOptions.overwriteAliases = true;
+
+    Config config;
+    std::optional<std::string> error = extractLuauConfigFromBytecode(bytecode, config, std::move(aliasOptions), InterruptCallbacks{});
+    REQUIRE(!error);
+
+    CHECK_EQ(config.mode, Mode::Strict);
+
+    for (LintWarning::Code code = static_cast<LintWarning::Code>(0); code <= LintWarning::Code::Code__Count; code = LintWarning::Code(int(code) + 1))
+    {
+        if (code == LintWarning::Code_LocalUnused)
+            CHECK(!config.enabledLint.isEnabled(code));
+        else
+            CHECK(config.enabledLint.isEnabled(code));
+    }
+
+    CHECK_EQ(config.lintErrors, true);
+    CHECK_EQ(config.typeErrors, true);
+
+    CHECK(config.globals.size() == 1);
+    CHECK(config.globals[0] == "expect");
+
+    CHECK(config.aliases.size() == 1);
+    REQUIRE(config.aliases.contains("src"));
+    CHECK(config.aliases["src"].value == "./src");
 }
 
 TEST_SUITE_END();

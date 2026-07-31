@@ -9,10 +9,19 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 namespace Luau
 {
 
+// Clip with DebugLuauCyclicRequireTypeInference
 Constraint::Constraint(NotNull<Scope> scope, const Location& location, ConstraintV&& c)
     : scope(scope)
     , location(location)
     , c(std::move(c))
+{
+}
+
+Constraint::Constraint(NotNull<Scope> scope, const Location& location, ConstraintV&& c, std::shared_ptr<ModuleName> moduleName)
+    : scope(scope)
+    , location(location)
+    , c(std::move(c))
+    , moduleName(std::move(moduleName))
 {
 }
 

@@ -24,6 +24,11 @@ LUAI_FUNC LuauClass* luaR_newclass(
 );
 
 /**
+ * Returns a new LuauClass object containing `child`'s members extended with `parent`'s.
+ */
+LUAI_FUNC LuauClass* luaR_inheritclass(lua_State* L, const LuauClass* child, const LuauClass* parent);
+
+/**
  * Add a new class member to `classobject` named `name` and with value `method`. As the naming implies
  * we only support methods today.
  */

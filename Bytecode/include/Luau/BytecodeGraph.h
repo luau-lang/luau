@@ -3,7 +3,6 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/BytecodeBuilder.h"
-#include "Luau/DenseHash.h"
 #include "Luau/SmallVector.h"
 
 #include <algorithm>
@@ -144,7 +143,8 @@ enum class BcVmConstKind : uint8_t
     Import,
     Table,
     Closure,
-    Integer
+    Integer,
+    ClassShape
 };
 
 struct BcVmConst
@@ -162,6 +162,7 @@ struct BcVmConst
         uint32_t valueTable;
         uint32_t valueClosure;
         int64_t valueInteger;
+        uint32_t valueClassShape;
     };
 
     BcVmConst()
@@ -208,6 +209,9 @@ struct BcVmConst
 
         case BcVmConstKind::Integer:
             return valueInteger == rhs.valueInteger;
+
+        case BcVmConstKind::ClassShape:
+            return valueClassShape == rhs.valueClassShape;
 
         default:
             LUAU_ASSERT(!"Unhandled BcVmConstKind");
@@ -407,6 +411,7 @@ struct BcFunction
     std::vector<BcPhi> phis;
     std::vector<BcProj> projections;
     std::vector<BytecodeBuilder::TableShape> tableShapes;
+    std::vector<BytecodeBuilder::ClassShape> classShapes;
 
     BcOp entryBlock;
     BcOp exitBlock;

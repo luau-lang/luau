@@ -164,7 +164,6 @@ private:
     void parseAttrList(TempVector<AstAttr*>& attributes, TempVector<CstAttrList*>* cstAttrLists);
 
     // attribute ::= '@' NAME | attrlist
-    void parseAttribute_DEPRECATED(TempVector<AstAttr*>& attribute); // TODO: Clip with LuauCstAttr
     void parseAttribute(TempVector<AstAttr*>& attribute);
 
     // attributes ::= {attribute}
@@ -363,6 +362,8 @@ private:
     AstArray<AstTypeOrPack> parseTypeInstantiationExpr(CstTypeInstantiation* cstNodeOut = nullptr, Location* endLocationOut = nullptr);
 
     AstExpr* parseExplicitTypeInstantiationExpr(Position start, AstExpr& basedOnExpr);
+
+    AstExpr* parseClassRefExpr();
 
     // Name
     std::optional<Name> parseNameOpt(const char* context = nullptr);

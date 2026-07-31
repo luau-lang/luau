@@ -25,6 +25,8 @@ LUAU_FASTFLAG(LuauDontBindOptionalGenericToNil)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauFrontendSourceNodeErase)
+LUAU_FASTFLAG(DebugLuauCyclicRequireTypeInference)
+LUAU_FASTINT(LuauCyclicSccWarningThreshold)
 
 namespace
 {
@@ -2092,6 +2094,811 @@ TEST_CASE_FIXTURE(FrontendFixture, "deleted_source_is_evicted_on_recheck")
 
     CHECK(getFrontend().sourceNodes.count("game/A") == 1);
     CHECK(getFrontend().moduleResolver.getModule("game/A") != nullptr);
+}
+
+// ===== Cyclic Require Type Inference Tests =====
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_detection_identifies_cycle")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+
+    getFrontend().check("game/A");
+
+    auto snA = getFrontend().sourceNodes["game/A"];
+    auto snB = getFrontend().sourceNodes["game/B"];
+    REQUIRE(snA);
+    REQUIRE(snB);
+
+    ModuleSCCPtr sccA = snA->scc.lock();
+    ModuleSCCPtr sccB = snB->scc.lock();
+    REQUIRE(sccA);
+    CHECK(sccA == sccB);
+    CHECK(sccA->members.size() == 2);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_non_export_cycle_reports_errors")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        return {a = 1}
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        return {b = 2}
+    )";
+
+    CheckResult result = getFrontend().check("game/A");
+
+    // Non-export modules in a cycle still report ModuleHasCyclicDependency
+    LUAU_CHECK_ERROR_COUNT(2, result);
+
+    bool foundCycleError = false;
+    for (const TypeError& e : result.errors)
+    {
+        if (get<ModuleHasCyclicDependency>(e))
+            foundCycleError = true;
+    }
+    CHECK(foundCycleError);
+
+    // Non-export modules are NOT grouped into an SCC
+    auto snA = getFrontend().sourceNodes["game/A"];
+    REQUIRE(snA);
+    CHECK(snA->scc.expired());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_mixed_export_non_export_not_grouped")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        return {b = 2}
+    )";
+
+    CheckResult result = getFrontend().check("game/A");
+
+    // Mixed SCC (one export, one non-export) is not grouped
+    auto snA = getFrontend().sourceNodes["game/A"];
+    auto snB = getFrontend().sourceNodes["game/B"];
+    REQUIRE(snA);
+    REQUIRE(snB);
+    CHECK(snA->scc.expired());
+    CHECK(snB->scc.expired());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_shared_arena")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+
+    getFrontend().check("game/A");
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    REQUIRE(modA);
+    REQUIRE(modB);
+
+    CHECK(modA->internalTypes.get() == modB->internalTypes.get());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_no_cycle_errors")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+
+    CheckResult result = getFrontend().check("game/A");
+
+    LUAU_CHECK_NO_ERROR(result, ModuleHasCyclicDependency);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_export_cycle_with_nocheck_no_errors")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        local b = require(game.B)
+        export local a_val = b.b_val
+    )";
+    fileResolver.source["game/B"] = R"(
+        --!nocheck
+        local a = require(game.A)
+        export local b_val = 42
+    )";
+
+    CheckResult result = getFrontend().check("game/A");
+
+    // Both use export, so the SCC is grouped and no cycle errors reported
+    LUAU_CHECK_NO_ERROR(result, ModuleHasCyclicDependency);
+
+    // Modules share an arena (grouped into SCC)
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    CHECK(modA->internalTypes.get() == modB->internalTypes.get());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_export_cycle_strict_sees_nocheck_exports")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        local b = require(game.B)
+        export local greeting = b.msg
+    )";
+    fileResolver.source["game/B"] = R"(
+        --!nocheck
+        local a = require(game.A)
+        export local msg = "hello"
+    )";
+
+    getFrontend().check("game/A");
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    REQUIRE(modA->returnType);
+    REQUIRE(modB->returnType);
+
+    std::optional<TypeId> bFirst = first(modB->returnType);
+    REQUIRE(bFirst);
+    CHECK(toString(*bFirst) == "{ read msg: string }");
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_return_types_resolved")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local value = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local other = "hi"
+    )";
+
+    getFrontend().check("game/A");
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    REQUIRE(modA->returnType);
+    REQUIRE(modB->returnType);
+
+    std::optional<TypeId> aFirst = first(modA->returnType);
+    std::optional<TypeId> bFirst = first(modB->returnType);
+    REQUIRE(aFirst);
+    REQUIRE(bFirst);
+
+    CHECK(toString(*aFirst) == "{ read value: number }");
+    CHECK(toString(*bFirst) == "{ read other: string }");
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_property_access_across_cycle")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a_val = b.b_val
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b_val = 42
+    )";
+
+    CheckResult result = getFrontend().check("game/A");
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    REQUIRE(modA->returnType);
+    REQUIRE(modB->returnType);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_three_module_cycle")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local c = require(game.C)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+    fileResolver.source["game/C"] = R"(
+        local b = require(game.B)
+        export local c = 3
+    )";
+
+    CheckResult result = getFrontend().check("game/A");
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    ModulePtr modC = getFrontend().moduleResolver.getModule("game/C");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    REQUIRE(modC);
+
+    CHECK(modA->internalTypes.get() == modB->internalTypes.get());
+    CHECK(modA->internalTypes.get() == modC->internalTypes.get());
+
+    LUAU_CHECK_NO_ERROR(result, ModuleHasCyclicDependency);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_non_cyclic_dependent_has_own_arena")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+    fileResolver.source["game/C"] = R"(
+        local a = require(game.A)
+        return {c = a.a}
+    )";
+
+    getFrontend().check("game/C");
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    ModulePtr modC = getFrontend().moduleResolver.getModule("game/C");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    REQUIRE(modC);
+
+    CHECK(modA->internalTypes.get() == modB->internalTypes.get());
+    CHECK(modC->internalTypes.get() != modA->internalTypes.get());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_markdirty_propagates_to_peers")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+
+    getFrontend().check("game/A");
+
+    CHECK(!getFrontend().isDirty("game/A"));
+    CHECK(!getFrontend().isDirty("game/B"));
+
+    std::vector<ModuleName> markedDirty;
+    getFrontend().markDirty("game/A", &markedDirty);
+
+    CHECK(getFrontend().isDirty("game/A"));
+    CHECK(getFrontend().isDirty("game/B"));
+    CHECK(std::find(markedDirty.begin(), markedDirty.end(), "game/A") != markedDirty.end());
+    CHECK(std::find(markedDirty.begin(), markedDirty.end(), "game/B") != markedDirty.end());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_large_cycle_warning")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local c = require(game.C)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+    fileResolver.source["game/C"] = R"(
+        local b = require(game.B)
+        export local c = 3
+    )";
+
+    ScopedFastInt sfi{FInt::LuauCyclicSccWarningThreshold, 2};
+    CheckResult result = getFrontend().check("game/A");
+
+    bool foundWarning = false;
+    for (const TypeError& e : result.errors)
+    {
+        if (get<CyclicModuleGraphTooLarge>(e))
+            foundWarning = true;
+    }
+    CHECK(foundWarning);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_old_solver_independent")
+{
+    ScopedFastFlag forceOld{FFlag::DebugLuauForceOldSolver, true};
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        return {}
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        return {}
+    )";
+
+    getFrontend().check("game/A");
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    REQUIRE(modA);
+    REQUIRE(modB);
+
+    CHECK(modA->internalTypes.get() != modB->internalTypes.get());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_queued_modules_shared_arena")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+
+    getFrontend().queueModuleCheck("game/A");
+    getFrontend().checkQueuedModules();
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    REQUIRE(modA);
+    REQUIRE(modB);
+
+    CHECK(modA->internalTypes.get() == modB->internalTypes.get());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_queued_modules_no_cycle_errors")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+
+    getFrontend().queueModuleCheck("game/A");
+    getFrontend().checkQueuedModules();
+
+    auto result = getFrontend().getCheckResult("game/A", true);
+    REQUIRE(result);
+    LUAU_CHECK_NO_ERROR(*result, ModuleHasCyclicDependency);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_queued_modules_return_types_resolved")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local value = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local other = "hi"
+    )";
+
+    getFrontend().queueModuleCheck("game/A");
+    getFrontend().checkQueuedModules();
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    REQUIRE(modA->returnType);
+    REQUIRE(modB->returnType);
+
+    std::optional<TypeId> aFirst = first(modA->returnType);
+    std::optional<TypeId> bFirst = first(modB->returnType);
+    REQUIRE(aFirst);
+    REQUIRE(bFirst);
+
+    CHECK(toString(*aFirst) == "{ read value: number }");
+    CHECK(toString(*bFirst) == "{ read other: string }");
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_queued_modules_three_module_cycle")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local c = require(game.C)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+    fileResolver.source["game/C"] = R"(
+        local b = require(game.B)
+        export local c = 3
+    )";
+
+    getFrontend().queueModuleCheck("game/A");
+    getFrontend().checkQueuedModules();
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    ModulePtr modC = getFrontend().moduleResolver.getModule("game/C");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    REQUIRE(modC);
+
+    CHECK(modA->internalTypes.get() == modB->internalTypes.get());
+    CHECK(modA->internalTypes.get() == modC->internalTypes.get());
+
+    auto result = getFrontend().getCheckResult("game/A", true);
+    REQUIRE(result);
+    LUAU_CHECK_NO_ERROR(*result, ModuleHasCyclicDependency);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_queued_modules_property_access_across_cycle")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a_val = b.b_val
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b_val = 42
+    )";
+
+    getFrontend().queueModuleCheck("game/A");
+    getFrontend().checkQueuedModules();
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    REQUIRE(modA->returnType);
+    REQUIRE(modB->returnType);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_queued_multiple_independent_cycles")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    // Two independent cycles: A<->B and C<->D
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a = b.b
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 1
+    )";
+    fileResolver.source["game/C"] = R"(
+        local d = require(game.D)
+        export local c = d.d
+    )";
+    fileResolver.source["game/D"] = R"(
+        local c = require(game.C)
+        export local d = "hello"
+    )";
+
+    getFrontend().queueModuleCheck("game/A");
+    getFrontend().queueModuleCheck("game/C");
+    getFrontend().checkQueuedModules();
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    ModulePtr modC = getFrontend().moduleResolver.getModule("game/C");
+    ModulePtr modD = getFrontend().moduleResolver.getModule("game/D");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    REQUIRE(modC);
+    REQUIRE(modD);
+
+    // Each cycle shares its own arena
+    CHECK(modA->internalTypes.get() == modB->internalTypes.get());
+    CHECK(modC->internalTypes.get() == modD->internalTypes.get());
+    // But the two cycles are independent
+    CHECK(modA->internalTypes.get() != modC->internalTypes.get());
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_queued_cycle_with_non_cyclic_dependent")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    // A <-> B form a cycle; C depends on A but is not in the cycle
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+    fileResolver.source["game/C"] = R"(
+        local a = require(game.A)
+        return {c = a.a}
+    )";
+
+    getFrontend().queueModuleCheck("game/C");
+    getFrontend().checkQueuedModules();
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    ModulePtr modC = getFrontend().moduleResolver.getModule("game/C");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    REQUIRE(modC);
+
+    CHECK(modA->internalTypes.get() == modB->internalTypes.get());
+    CHECK(modC->internalTypes.get() != modA->internalTypes.get());
+
+    auto result = getFrontend().getCheckResult("game/C", true);
+    REQUIRE(result);
+    LUAU_CHECK_NO_ERROR(*result, ModuleHasCyclicDependency);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_queued_recheck_after_dirty")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a = 1
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+
+    // First check
+    getFrontend().queueModuleCheck("game/A");
+    getFrontend().checkQueuedModules();
+
+    ModulePtr modA1 = getFrontend().moduleResolver.getModule("game/A");
+    REQUIRE(modA1);
+    REQUIRE(modA1->returnType);
+    std::optional<TypeId> aFirst1 = first(modA1->returnType);
+    REQUIRE(aFirst1);
+    CHECK(toString(*aFirst1) == "{ read a: number }");
+
+    // Dirty and recheck
+    getFrontend().markDirty("game/A");
+
+    getFrontend().queueModuleCheck("game/A");
+    getFrontend().checkQueuedModules();
+
+    ModulePtr modA2 = getFrontend().moduleResolver.getModule("game/A");
+    REQUIRE(modA2);
+    REQUIRE(modA2->returnType);
+    std::optional<TypeId> aFirst2 = first(modA2->returnType);
+    REQUIRE(aFirst2);
+    CHECK(toString(*aFirst2) == "{ read a: number }");
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_self_loop")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local a = require(game.A)
+        export local x = 1
+    )";
+
+    getFrontend().check("game/A");
+
+    auto snA = getFrontend().sourceNodes["game/A"];
+    REQUIRE(snA);
+
+    ModuleSCCPtr sccA = snA->scc.lock();
+    REQUIRE(sccA);
+    CHECK(sccA->members.size() == 1);
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    REQUIRE(modA);
+    REQUIRE(modA->returnType);
+    std::optional<TypeId> aFirst = first(modA->returnType);
+    REQUIRE(aFirst);
+    CHECK(toString(*aFirst) == "{ read x: number }");
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "scc_error_attributed_to_correct_module")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauCyclicRequireTypeInference, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::LuauExportValueTypecheck, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local b = require(game.B)
+        export local a: number = "oops"
+    )";
+    fileResolver.source["game/B"] = R"(
+        local a = require(game.A)
+        export local b = 2
+    )";
+
+    getFrontend().check("game/A");
+
+    ModulePtr modA = getFrontend().moduleResolver.getModule("game/A");
+    ModulePtr modB = getFrontend().moduleResolver.getModule("game/B");
+    REQUIRE(modA);
+    REQUIRE(modB);
+
+    // The type error should be attributed to module A, not B
+    bool aHasError = false;
+    for (const TypeError& e : modA->errors)
+    {
+        if (e.moduleName == "game/A")
+            aHasError = true;
+    }
+    CHECK(aHasError);
+
+    // Module B should not have module A's type errors
+    for (const TypeError& e : modB->errors)
+        CHECK(e.moduleName != "game/A");
 }
 
 TEST_SUITE_END();

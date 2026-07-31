@@ -574,7 +574,11 @@ struct CallInliner
                 // Feedback slots are concatenated in optimized version: caller's slots + target's slots.
                 // So all target's slot should be increased by caller's slots count.
                 BcCallFB<VmConst> fbcall = BcCallFB<VmConst>::from(caller, callerInst);
-                fbcall.setFbSlot(fbcall.FbSlot() + callerFbVecSize);
+
+                // do not migrate sealed fbcalls
+                if (fbcall.FbSlot() != -1)
+                    fbcall.setFbSlot(fbcall.FbSlot() + callerFbVecSize);
+
                 break;
             }
             default:

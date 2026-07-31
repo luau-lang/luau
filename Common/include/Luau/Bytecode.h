@@ -53,6 +53,10 @@
 // Version 10: Adds LBC_CONSTANT_CLASS_SHAPE and NEWCLASSMEMBER for use with Luau Classes. Experimental.
 // Version 11: Adds CALLFB, CMPPROTO and feedback vector description. Experimental.
 // Version 12: Adds cost function serialized for proto and prepend each proto with size in bytes. Experimental.
+// Version 13: Adds support for double-precision vector constants. Experimental.
+
+// WIP Versions: Used for in-progress features that might require multiple changes to bytecode. Since these versions are higher than the non-WIP versions, they are responsible for maintaining compatibility with them. For example, tests exercising WIP bytecode versions may need to enable flags for unreleased but non-WIP bytecode versions.
+// Version 100: Adds NEWCLASS for use with Luau Classes. Future class-related bytecode changes should go in this version before release. Experimental.
 
 // # Bytecode type information history
 // Version 1: (from bytecode version 4) Type information for function signature. Currently supported.
@@ -452,6 +456,13 @@ enum LuauOpcode
     // AUX: proto id
     LOP_CMPPROTO,
 
+    // NEWCLASS: reify a class object
+    // A: target register of class
+    // B: source register of superclass, or 0xFF if no superclass
+    // C: reserved
+    // AUX: constant table index of unreified class object
+    LOP_NEWCLASS,
+
     // Enum entry for number of opcodes, not a valid opcode by itself!
     LOP__COUNT
 };
@@ -500,8 +511,9 @@ enum LuauBytecodeTag
 {
     // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
     LBC_VERSION_MIN = 3,
-    LBC_VERSION_MAX = 12,
+    LBC_VERSION_MAX = 13,
     LBC_VERSION_TARGET = 9,
+    LBC_VERSION_CLASSES = 100,
     // Type encoding version
     LBC_TYPE_VERSION_MIN = 1,
     LBC_TYPE_VERSION_MAX = 3,
@@ -756,6 +768,8 @@ enum LuauProtoFlag
     LPF_NATIVE_FUNCTION = 1 << 2,
     // function can be inlined
     LPF_INLINABLE = 1 << 3,
+    // top-level function uses export statements and returns the export table
+    LPF_USES_EXPORT = 1 << 4,
 };
 
 enum LuauFeedbackType
