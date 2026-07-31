@@ -105,19 +105,66 @@ struct BytecodeCompilerFixture
         return result;
     }
 
-    void checkRoundtrip(std::string_view snippet)
+    void checkRoundtrip(std::string_view snippet, bool ignoreCompilationErrors = false)
     {
+        Allocator allocator;
+        AstNameTable names(allocator);
+        ParseResult result = Parser::parse(snippet.data(), snippet.size(), names, allocator, ParseOptions{});
+        if (!result.errors.empty())
+        {
+            std::string message;
+
+            for (const auto& error : result.errors)
+            {
+                if (!message.empty())
+                    message += "\n";
+
+                message += error.what();
+            }
+
+            printf("Parse error: %s\n", message.c_str());
+        }
+
         for (int optLevel = 0; optLevel <= 2; optLevel++)
         {
-            auto bytecode = getFunctionBytecode(snippet, optLevel);
-            REQUIRE(bytecode);
+            BytecodeBuilder bcb;
+            bcb.setDumpFlags(BytecodeBuilder::Dump_Code);
+            try
+            {
+                CompileOptions opts;
+                opts.optimizationLevel = optLevel;
+                compileOrThrow(bcb, result, names, opts);
+            }
+            catch (CompileError& e)
+            {
+                if (!ignoreCompilationErrors)
+                {
+                    std::string error = format(":%d: %s", e.getLocation().begin.line + 1, e.what());
+                    BytecodeBuilder::getError(error);
+                    printf("Compilation error: %s\n", error.c_str());
+                }
+            }
+
+            strings = extractStringTable(bcb);
             std::vector<std::string_view> table;
-            for (std::string& s : bytecode->second)
+            table.reserve(strings.size());
+            for (std::string& s : strings)
                 table.push_back(s);
-            std::optional<CompTimeBcFunction> func = Bytecode::fromFunctionBytecode(bytecode->first, table);
-            std::string orig = extractCode(bytecode->first);
-            std::string dumped = extractCode(Bytecode::toFunctionBytecode(*func));
-            REQUIRE_EQ(orig, dumped);
+
+            // We share a single BytecodeBuilder for reserializing every function, since serializing NEWCLOSURE requires functions that were
+            // previously serialized
+            BytecodeBuilder reserializer;
+            for (uint32_t fi = 0; fi < bcb.getFunctionCount(); fi++)
+            {
+                std::string fnData = bcb.getFunctionData(fi);
+                std::optional<CompTimeBcFunction> fn = Bytecode::fromFunctionBytecode(fnData, table);
+                REQUIRE(fn);
+                std::string orig = extractCode(fnData);
+                std::string dumped = extractCode(Bytecode::toFunctionBytecode(reserializer, *fn));
+                REQUIRE_EQ(orig, dumped);
+                // The StringRefs added to reserializer's string table are invalidated when fn goes out of scope
+                reserializer.clearStringTable();
+            }
         }
     }
 
@@ -1037,6 +1084,37 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "classes_bytecode_roundtrips")
         print(Point)
 
         return { Point = Point }
+    )");
+}
+
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "inheriting_classes_bytecode_roundtrips")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    checkRoundtrip(R"(
+class Animal
+	public species: string
+	
+	function __tostring(self)
+		return "I am an animal."
+	end
+	
+	function live(self)
+		return "I am alive"
+	end
+end
+
+class Cat extends Animal
+	public breed: string
+	
+	function __tostring(self): string
+		return `{Animal.__tostring(self)} I am a {self.breed} cat.`
+	end
+end
+
+print(Cat)
+
+return { Animal = Animal, Cat = Cat }
     )");
 }
 

@@ -27,6 +27,7 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauAutocompleteSkipErrorTypeInUnion)
+LUAU_FASTFLAG(LuauFragmentACEnableTypeFunctionEvaluation)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -5524,6 +5525,42 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_ac_on_nonexistent_table
             REQUIRE(frag.result);
             CHECK(frag.result->acResults.entryMap.count("Animator"));
         }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_type_function_string_singleton_union")
+{
+    ScopedFastFlag sff{FFlag::LuauFragmentACEnableTypeFunctionEvaluation, true};
+
+    const std::string source = R"(--!strict
+type function test(ty: type)
+    return types.unionof(types.singleton("test"), types.singleton("test2"))
+end
+
+local a: test<number> = 
+)";
+
+    const std::string dest = R"(--!strict
+type function test(ty: type)
+    return types.unionof(types.singleton("test"), types.singleton("test2"))
+end
+
+local a: test<number> = "@1"
+)";
+
+    // Only checking in new solver as old solver doesn't handle type functions
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK_EQ(frag.result->acResults.context, AutocompleteContext::String);
+            CHECK(frag.result->acResults.entryMap.count("test") == 1);
+            CHECK(frag.result->acResults.entryMap.count("test2") == 1);
+        },
+        Position{7, 19}
     );
 }
 

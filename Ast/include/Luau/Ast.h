@@ -1123,10 +1123,11 @@ public:
     LUAU_RTTI(AstStatClass)
 
     AstLocal* name;
+    AstExpr* super;
     AstArray<AstClassMember> members;
     bool exported;
 
-    AstStatClass(const Location& location, AstLocal* name, AstArray<AstClassMember> members, bool exported);
+    AstStatClass(const Location& location, AstLocal* name, AstExpr* super, AstArray<AstClassMember> members, bool exported);
 
     void visit(AstVisitor* visitor) override;
 };

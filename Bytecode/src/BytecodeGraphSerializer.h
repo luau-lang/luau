@@ -546,6 +546,12 @@ struct BytecodeGraphSerializer
             bcb.emitAux(getImmInt(insn, 1));
             break;
 
+        case LOP_NEWCLASS:
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+            bcb.emitABC(LOP_NEWCLASS, getRegister(insnOp), getRegInput(insn, 0), 0);
+            bcb.emitAux(getVmConstInputAux(insn, 1));
+            break;
+
         case LOP__COUNT:
             LUAU_UNREACHABLE();
         }
@@ -563,7 +569,7 @@ struct BytecodeGraphSerializer
     {
         std::vector<BcOp> schedule = reschedule();
         std::vector<uint32_t> insnsPC;
-        insnsPC.resize(func.instructions.size());
+        insnsPC.resize(func.instructions.size(), ~0u);
 
         for (size_t i = 0; i < schedule.size(); i++)
         {

@@ -125,7 +125,7 @@ NavigationContext::ConfigBehavior RuntimeNavigationContext::getConfigBehavior() 
     return ConfigBehavior::GetConfig;
 }
 
-std::optional<std::string> RuntimeNavigationContext::getAlias(const std::string& alias) const
+std::optional<std::string> RuntimeNavigationContext::getAlias(const std::string& alias)
 {
     return getStringFromCWriterWithInput(config->get_alias, alias, initalIdentifierBufferSize);
 }

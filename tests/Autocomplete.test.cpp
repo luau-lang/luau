@@ -4731,6 +4731,25 @@ end
     CHECK_EQ(ac.entryMap.count("number"), 1);
 }
 
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "type_function_string_singleton_union")
+{
+    // Type functions are only handled in the new solver
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+
+    check(R"(
+type function test(ty: type)
+    return types.unionof(types.singleton("test"), types.singleton("test2"))
+end
+
+local a: test<number> = "@1"
+)");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+    CHECK_EQ(ac.entryMap.count("test"), 1);
+    CHECK_EQ(ac.entryMap.count("test2"), 1);
+}
+
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_assignment")
 {
     check(R"(
@@ -5185,10 +5204,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_local_function")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_anonymous_function")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCheckTypeForDeprecated, true},
-        {FFlag::LuauDeprecatedAttributeOnAnonymousFunctions, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauCheckTypeForDeprecated, true}, {FFlag::LuauDeprecatedAttributeOnAnonymousFunctions, true}};
 
     check(R"(
         local foo = \@deprecated function()

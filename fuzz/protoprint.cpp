@@ -1227,6 +1227,16 @@ struct ProtoToLuau
 
         source += "class ";
         print(stat.name());
+
+        if (stat.has_extends())
+        {
+            source += " extends ";
+            if (classes.size() == 0)
+                source += "_";
+            else
+                print(*classes[size_t(stat.extends()) % classes.size()].name);
+        }
+
         source += '\n';
 
         std::vector<const luau::Name*> propNames;

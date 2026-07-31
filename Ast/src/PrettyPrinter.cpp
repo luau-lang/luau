@@ -13,8 +13,6 @@
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 
-LUAU_FASTFLAG(LuauCstAttr)
-
 namespace
 {
 bool isIdentifierStartChar(char c)
@@ -622,27 +620,16 @@ struct Printer
         }
         else if (const auto& a = expr.as<AstExprFunction>())
         {
-            if (FFlag::LuauCstAttr)
+            if (const CstExprFunction* cstNode = lookupCstNode<CstExprFunction>(a))
             {
-                if (const CstExprFunction* cstNode = lookupCstNode<CstExprFunction>(a))
-                {
-                    visualizeAttributes(a->attributes, &cstNode->attrLists);
-                    if (cstNode->functionKeywordPosition.hasValue())
-                        advance(cstNode->functionKeywordPosition);
-                }
-                else
-                {
-                    for (const auto& attribute : a->attributes)
-                        visualizeAttribute(*attribute);
-                }
+                visualizeAttributes(a->attributes, &cstNode->attrLists);
+                if (cstNode->functionKeywordPosition.hasValue())
+                    advance(cstNode->functionKeywordPosition);
             }
             else
             {
                 for (const auto& attribute : a->attributes)
                     visualizeAttribute(*attribute);
-
-                if (const auto cstNode = lookupCstNode<CstExprFunction>(a); cstNode && cstNode->functionKeywordPosition.hasValue())
-                    advance(cstNode->functionKeywordPosition);
             }
 
             writer.keyword("function");
@@ -1195,23 +1182,13 @@ struct Printer
         }
         else if (const auto& a = program.as<AstStatFunction>())
         {
-            if (FFlag::LuauCstAttr)
+            if (const CstStatFunction* cstNode = lookupCstNode<CstStatFunction>(a))
             {
-                if (const CstStatFunction* cstNode = lookupCstNode<CstStatFunction>(a))
-                {
-                    visualizeAttributes(a->func->attributes, &cstNode->attrLists);
-                    advance(cstNode->functionKeywordPosition);
-                }
-                else
-                    visualizeAttributes(a->func->attributes, nullptr);
+                visualizeAttributes(a->func->attributes, &cstNode->attrLists);
+                advance(cstNode->functionKeywordPosition);
             }
             else
-            {
-                for (const auto& attribute : a->func->attributes)
-                    visualizeAttribute(*attribute);
-                if (const auto cstNode = lookupCstNode<CstStatFunction>(a))
-                    advance(cstNode->functionKeywordPosition);
-            }
+                visualizeAttributes(a->func->attributes, nullptr);
             writer.keyword("function");
             visualize(*a->name);
             visualizeFunctionBody(*a->func);
@@ -1220,7 +1197,7 @@ struct Printer
         {
             const auto cstNode = lookupCstNode<CstStatLocalFunction>(a);
 
-            if (FFlag::LuauCstAttr && cstNode)
+            if (cstNode)
                 visualizeAttributes(a->func->attributes, &cstNode->attrLists);
             else
             {
@@ -1389,6 +1366,11 @@ struct Printer
             writer.keyword("class");
             writer.advance(c->name->location.begin);
             writer.identifier(c->name->name.value);
+            if (c->super)
+            {
+                writer.keyword("extends");
+                visualize(*c->super);
+            }
 
             for (const auto& member : c->members)
             {
@@ -1625,36 +1607,28 @@ struct Printer
     void visualizeAttribute(AstAttr& attribute)
     {
         advance(attribute.location.begin);
-        if (FFlag::LuauCstAttr)
+        if (const CstAttr* cstNode = lookupCstNode<CstAttr>(&attribute))
         {
-            if (const CstAttr* cstNode = lookupCstNode<CstAttr>(&attribute))
-            {
-                if (cstNode->hasAt)
-                    writer.symbol("@");
-                writer.identifier(attribute.name.value);
-            }
-            else if (const CstParametrizedAttr* cstParamNode = lookupCstNode<CstParametrizedAttr>(&attribute))
-            {
-                writer.identifier(attribute.name.value);
-
-                maybeAdvanceAndWrite(cstParamNode->openParenPosition, "(");
-
-                const size_t commaPositionSize = cstParamNode->argsCommaPositions.size;
-
-                for (size_t i = 0; i < attribute.args.size; ++i)
-                {
-                    visualize(*attribute.args.data[i]);
-                    if (i < commaPositionSize)
-                        maybeAdvanceAndWrite(cstParamNode->argsCommaPositions.data[i], ",");
-                }
-
-                maybeAdvanceAndWrite(cstParamNode->closeParenPosition, ")");
-            }
-            else
-            {
+            if (cstNode->hasAt)
                 writer.symbol("@");
-                writer.identifier(attribute.name.value);
+            writer.identifier(attribute.name.value);
+        }
+        else if (const CstParametrizedAttr* cstParamNode = lookupCstNode<CstParametrizedAttr>(&attribute))
+        {
+            writer.identifier(attribute.name.value);
+
+            maybeAdvanceAndWrite(cstParamNode->openParenPosition, "(");
+
+            const size_t commaPositionSize = cstParamNode->argsCommaPositions.size;
+
+            for (size_t i = 0; i < attribute.args.size; ++i)
+            {
+                visualize(*attribute.args.data[i]);
+                if (i < commaPositionSize)
+                    maybeAdvanceAndWrite(cstParamNode->argsCommaPositions.data[i], ",");
             }
+
+            maybeAdvanceAndWrite(cstParamNode->closeParenPosition, ")");
         }
         else
         {
@@ -1665,8 +1639,6 @@ struct Printer
 
     void visualizeAttributes(const AstArray<AstAttr*>& attributes, const AstArray<CstAttrList*>* attrLists)
     {
-        LUAU_ASSERT(FFlag::LuauCstAttr);
-
         if (attrLists == nullptr)
         {
             for (const auto& attribute : attributes)

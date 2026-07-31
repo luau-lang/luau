@@ -16,6 +16,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauDoNotExportBrokenTypeFunction)
+LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -2091,7 +2092,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_t
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
-    ScopedFastFlag _{FFlag::LuauDoNotExportBrokenTypeFunction, true};
+    ScopedFastFlag _{FFlag::LuauCloneTypeFunctionFromForeignArena, true};
 
     fileResolver.source["game/A"] = R"(
         local function get(x: string, y: unknown)
@@ -2105,12 +2106,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_t
     LUAU_REQUIRE_ERROR_COUNT(3, aResult);
 
     CheckResult bResult = check(R"(
-local Test = require(game.A);
-local x = Test.get("hello", "world")
+        local Test = require(game.A);
+        local x = Test.get("hello", "world")
     )");
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
-    CHECK(toString(requireType("x")) == "*error-type*");
+    if (FFlag::LuauCloneTypeFunctionFromForeignArena)
+        CHECK(toString(requireType("x")) == "*error-type<concat<string, unknown>>*");
+    else
+        CHECK(toString(requireType("x")) == "*error-type*");
 }
 
 TEST_SUITE_END();
