@@ -97,7 +97,10 @@ struct ConstraintSolver
     std::vector<NotNull<Constraint>> constraints;
     NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction;
     NotNull<Scope> rootScope;
-    ModulePtr module;
+    ModulePtr module; // Clip with DebugLuauCyclicRequireTypeInference
+    // Used for solver-scoped errors not attributable to a specific constraint
+    // (e.g. ConstraintSolvingIncompleteError, time limits).
+    std::shared_ptr<ModuleName> representativeModuleName;
 
     // The dataflow graph of the program, used in constraint generation and for magic functions.
     NotNull<const DataFlowGraph> dfg;
@@ -330,7 +333,10 @@ public:
     /** Pushes a new solver constraint to the solver.
      * @param cv the body of the constraint.
      **/
-    NotNull<Constraint> pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv);
+    NotNull<Constraint> pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv, std::shared_ptr<ModuleName> moduleName);
+
+    // Clip with DebugLuauCyclicRequireTypeInference
+    NotNull<Constraint> DEPRECATED_pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv);
 
     /**
      * Attempts to resolve a module from its module information. Returns the
@@ -341,10 +347,15 @@ public:
      * @param location the location where the require is taking place; used for
      * error locations.
      **/
-    TypeId resolveModule(const ModuleInfo& info, const Location& location);
+    TypeId resolveModule(const ModuleInfo& info, const Location& location, const ModuleName& moduleName);
 
-    void reportError(TypeErrorData&& data, const Location& location);
-    void reportError(TypeError e);
+    void reportError(TypeErrorData&& data, const Location& location, const ModuleName& errorModule);
+
+    // Clip with DebugLuauCyclicRequireTypeInference
+    TypeId DEPRECATED_resolveModule(const ModuleInfo& info, const Location& location);
+    void DEPRECATED_reportError(TypeErrorData&& data, const Location& location);
+    void DEPRECATED_reportError(TypeError e);
+    void DEPRECATED_reportError(TypeError e, const ModuleName& errorModule);
 
     /**
      * Bind a type variable to another type.
@@ -387,7 +398,10 @@ public:
      * At the time of writing, this pertains only to type functions.
      * @param subst the substitution that was applied
      **/
-    void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);
+    void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst, const std::shared_ptr<ModuleName>& moduleName);
+
+    // Clip with DebugLuauCyclicRequireTypeInference
+    void DEPRECATED_reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);
 
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
 

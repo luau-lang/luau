@@ -24,6 +24,7 @@ LUAU_FASTFLAGVARIABLE(LuauConcatDoesntAlwaysReturnString)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauRemoveExtraSubtypingInstances)
+LUAU_FASTFLAG(DebugLuauCyclicRequireTypeInference)
 
 namespace Luau
 {
@@ -383,7 +384,10 @@ TypeFunctionContext::TypeFunctionContext(
 NotNull<Constraint> TypeFunctionContext::pushConstraint(ConstraintV&& c) const
 {
     LUAU_ASSERT(solver);
-    NotNull<Constraint> newConstraint = solver->pushConstraint(scope, constraint ? constraint->location : Location{}, std::move(c));
+    Location location = constraint ? constraint->location : Location{};
+    NotNull<Constraint> newConstraint = FFlag::DebugLuauCyclicRequireTypeInference
+        ? solver->pushConstraint(scope, location, std::move(c), constraint ? constraint->moduleName : solver->representativeModuleName)
+        : solver->DEPRECATED_pushConstraint(scope, location, std::move(c));
 
     // Every constraint that is blocked on the current constraint must also be
     // blocked on this new one.

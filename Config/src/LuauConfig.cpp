@@ -20,6 +20,8 @@
         return std::nullopt; \
     } while (false)
 
+LUAU_FASTFLAGVARIABLE(LuauRbsConfigAliasResolution)
+
 namespace Luau
 {
 
@@ -96,7 +98,7 @@ static std::optional<ConfigTable> serializeTable(lua_State* L, std::string* erro
     return table;
 }
 
-static std::optional<std::string> load(lua_State* L, const std::string& source)
+static std::optional<std::string> loadFromSource(lua_State* L, const std::string& source)
 {
     std::string bytecode = compile(source);
     if (luau_load(L, "=config", bytecode.data(), bytecode.size(), 0) != 0)
@@ -105,16 +107,51 @@ static std::optional<std::string> load(lua_State* L, const std::string& source)
     return std::nullopt;
 }
 
+static std::optional<std::string> loadFromBytecode(lua_State* L, const std::string& bytecode)
+{
+    if (luau_load(L, "=config", bytecode.data(), bytecode.size(), 0) != 0)
+        return lua_tostring(L, -1);
+
+    return std::nullopt;
+}
+
+static std::optional<ConfigTable> executeAndExtractConfig(lua_State* L, const InterruptCallbacks& callbacks, std::string* error)
+{
+    if (callbacks.initCallback)
+        callbacks.initCallback(L);
+    lua_callbacks(L)->interrupt = callbacks.interruptCallback;
+    switch (lua_resume(L, nullptr, 0))
+    {
+    case LUA_OK:
+        break;
+    case LUA_BREAK: // debugging not supported, at least for now
+    case LUA_YIELD:
+        RETURN_WITH_ERROR("configuration execution cannot yield");
+    default:
+        RETURN_WITH_ERROR(lua_tostring(L, -1));
+    }
+
+    if (lua_gettop(L) != 1)
+        RETURN_WITH_ERROR("configuration must return exactly one value");
+
+    if (lua_type(L, -1) != LUA_TTABLE)
+        RETURN_WITH_ERROR("configuration did not return a table");
+
+    return serializeTable(L, error);
+}
+
 std::optional<ConfigTable> extractConfig(const std::string& source, const InterruptCallbacks& callbacks, std::string* error)
 {
-    // Initialize Luau VM
     std::unique_ptr<lua_State, void (*)(lua_State*)> state{luaL_newstate(), lua_close};
     lua_State* L = state.get();
     luaL_openlibs(L);
     luaL_sandbox(L);
 
-    if (std::optional<std::string> loadError = load(L, source))
+    if (std::optional<std::string> loadError = loadFromSource(L, source))
         RETURN_WITH_ERROR(*loadError);
+
+    if (FFlag::LuauRbsConfigAliasResolution)
+        return executeAndExtractConfig(L, callbacks, error);
 
     // Execute configuration
     if (callbacks.initCallback)
@@ -273,6 +310,22 @@ static std::optional<std::string> createLuauConfigFromLuauTable(
     return std::nullopt;
 }
 
+static std::optional<std::string> parseLuauConfigTable(
+    ConfigTable& configTable,
+    Config& config,
+    std::optional<ConfigOptions::AliasOptions> aliasOptions
+)
+{
+    if (!configTable.contains("luau"))
+        return std::nullopt;
+
+    ConfigTable* luauTable = configTable["luau"].get_if<ConfigTable>();
+    if (!luauTable)
+        return "configuration value for key \"luau\" must be a table";
+
+    return createLuauConfigFromLuauTable(config, *luauTable, aliasOptions);
+}
+
 std::optional<std::string> extractLuauConfig(
     const std::string& source,
     Config& config,
@@ -285,6 +338,9 @@ std::optional<std::string> extractLuauConfig(
     if (!configTable)
         return error;
 
+    if (FFlag::LuauRbsConfigAliasResolution)
+        return parseLuauConfigTable(*configTable, config, std::move(aliasOptions));
+
     if (!configTable->contains("luau"))
         return std::nullopt;
 
@@ -293,6 +349,29 @@ std::optional<std::string> extractLuauConfig(
         return "configuration value for key \"luau\" must be a table";
 
     return createLuauConfigFromLuauTable(config, *luauTable, aliasOptions);
+}
+
+std::optional<std::string> extractLuauConfigFromBytecode(
+    const std::string& bytecode,
+    Config& config,
+    std::optional<ConfigOptions::AliasOptions> aliasOptions,
+    InterruptCallbacks callbacks
+)
+{
+    std::unique_ptr<lua_State, void (*)(lua_State*)> state{luaL_newstate(), lua_close};
+    lua_State* L = state.get();
+    luaL_openlibs(L);
+    luaL_sandbox(L);
+
+    if (std::optional<std::string> loadError = loadFromBytecode(L, bytecode))
+        return loadError;
+
+    std::string error;
+    std::optional<ConfigTable> configTable = executeAndExtractConfig(L, callbacks, &error);
+    if (!configTable)
+        return error;
+
+    return parseLuauConfigTable(*configTable, config, std::move(aliasOptions));
 }
 
 } // namespace Luau

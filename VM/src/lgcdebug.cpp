@@ -15,6 +15,7 @@
 #include <stdio.h>
 
 LUAU_FASTFLAG(LuauCIProto)
+LUAU_FASTFLAG(LuauManagedDebugNames)
 
 static void validateobjref(global_State* g, GCObject* f, GCObject* t)
 {
@@ -414,8 +415,16 @@ static void dumpclosure(FILE* f, Closure* cl)
 
     if (cl->isC)
     {
-        if (cl->c.debugname)
-            fprintf(f, ",\"name\":\"%s\"", cl->c.debugname + 0);
+        if (FFlag::LuauManagedDebugNames)
+        {
+            if (TString* str = cl->c.debugname)
+                fprintf(f, ",\"name\":\"%s\"", getstr(str));
+        }
+        else
+        {
+            if (cl->c.debugname_DEPRECATED)
+                fprintf(f, ",\"name\":\"%s\"", cl->c.debugname_DEPRECATED + 0);
+        }
 
         if (cl->nupvalues)
         {
@@ -512,7 +521,10 @@ static void dumpthread(FILE* f, lua_State* th)
 
                 if (cl->isC)
                 {
-                    fprintf(f, "\"frame:%s\"", cl->c.debugname ? cl->c.debugname : "[C]");
+                    if (FFlag::LuauManagedDebugNames)
+                        fprintf(f, "\"frame:%s\"", cl->c.debugname ? getstr(cl->c.debugname) : "[C]");
+                    else
+                        fprintf(f, "\"frame:%s\"", cl->c.debugname_DEPRECATED ? cl->c.debugname_DEPRECATED : "[C]");
                 }
                 else
                 {
@@ -827,7 +839,10 @@ static void enumclosure(EnumContext* ctx, Closure* cl)
 {
     if (cl->isC)
     {
-        enumnode(ctx, obj2gco(cl), sizeCclosure(cl->nupvalues), cl->c.debugname);
+        if (FFlag::LuauManagedDebugNames)
+            enumnode(ctx, obj2gco(cl), sizeCclosure(cl->nupvalues), cl->c.debugname ? getstr(cl->c.debugname) : nullptr);
+        else
+            enumnode(ctx, obj2gco(cl), sizeCclosure(cl->nupvalues), cl->c.debugname_DEPRECATED);
     }
     else
     {

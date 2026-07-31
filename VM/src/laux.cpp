@@ -11,7 +11,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCustomYieldablePcalls)
+LUAU_FASTFLAG(LuauManagedDebugNames)
 
 // convert a stack index to positive
 #define abs_index(L, i) ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
@@ -25,12 +25,25 @@ LUAU_FASTFLAGVARIABLE(LuauCustomYieldablePcalls)
 static const char* currfuncname(lua_State* L)
 {
     Closure* cl = L->ci > L->base_ci ? curr_func(L) : NULL;
-    const char* debugname = cl && cl->isC ? cl->c.debugname + 0 : NULL;
 
-    if (debugname && strcmp(debugname, "__namecall") == 0)
-        return L->namecall ? getstr(L->namecall) : NULL;
+    if (FFlag::LuauManagedDebugNames)
+    {
+        const char* debugname = cl && cl->isC && cl->c.debugname ? getstr(cl->c.debugname) : NULL;
+
+        if (debugname && strcmp(debugname, "__namecall") == 0)
+            return L->namecall ? getstr(L->namecall) : NULL;
+        else
+            return debugname;
+    }
     else
-        return debugname;
+    {
+        const char* debugname = cl && cl->isC ? cl->c.debugname_DEPRECATED + 0 : NULL;
+
+        if (debugname && strcmp(debugname, "__namecall") == 0)
+            return L->namecall ? getstr(L->namecall) : NULL;
+        else
+            return debugname;
+    }
 }
 
 l_noret luaL_argerrorL(lua_State* L, int narg, const char* extramsg)
@@ -392,7 +405,6 @@ int luaL_callyieldable(lua_State* L, int nargs, int nresults)
 
 int luaL_pcallyieldable(lua_State* L, int nargs, int nresults, int errfunc)
 {
-    LUAU_ASSERT(FFlag::LuauCustomYieldablePcalls);
     api_check(L, iscfunction(L->ci->func));
     Closure* cl = clvalue(L->ci->func);
     api_check(L, cl->c.cont);

@@ -32,6 +32,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauCyclicRequireTypeInference)
+LUAU_FASTFLAGVARIABLE(LuauFragmentACEnableTypeFunctionEvaluation)
 
 namespace Luau
 {
@@ -1165,7 +1166,7 @@ FragmentTypeCheckResult typecheckFragment_(
         frontend.builtinTypes, NotNull{incrementalModule->internalTypes.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler
     };
 
-    typeFunctionRuntime.allowEvaluation = false;
+    typeFunctionRuntime.allowEvaluation = FFlag::LuauFragmentACEnableTypeFunctionEvaluation;
 
     /// Create a DataFlowGraph just for the surrounding context
     DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);

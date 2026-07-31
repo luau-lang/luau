@@ -299,7 +299,7 @@ static int loadsafe(
         return 1;
     }
 
-    if (version < LBC_VERSION_MIN || version > LBC_VERSION_MAX)
+    if ((version < LBC_VERSION_MIN || version > LBC_VERSION_MAX) && version != LBC_VERSION_CLASSES)
     {
         char chunkbuf[LUA_IDSIZE];
         const char* chunkid = luaO_chunkid(chunkbuf, sizeof(chunkbuf), chunkname, strlen(chunkname));
