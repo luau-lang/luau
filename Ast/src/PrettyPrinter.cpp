@@ -12,6 +12,7 @@
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAGVARIABLE(LuauPrettyPrintVisualizeIndexerAccess)
 
 namespace
 {
@@ -1885,6 +1886,16 @@ struct Printer
             {
                 if (a->props.size == 0 && indexType && indexType->name == "number")
                 {
+                    if (AstTableAccess access = a->indexer->access;
+                        FFlag::LuauPrettyPrintVisualizeIndexerAccess && access != AstTableAccess::ReadWrite
+                    )
+                    {
+                        if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
+                            advance(accessLocation->begin);
+
+                        writer.keyword(access == AstTableAccess::Read ? "read" : "write");
+                    }
+
                     visualizeTypeAnnotation(*a->indexer->resultType);
                 }
                 else
@@ -1905,6 +1916,20 @@ struct Printer
                     if (a->indexer)
                     {
                         comma();
+
+                        if (FFlag::LuauPrettyPrintVisualizeIndexerAccess)
+                        {
+                            if (AstTableAccess access = a->indexer->access; access != AstTableAccess::ReadWrite)
+                            {
+                                if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
+                                    advance(accessLocation->begin);
+
+                                writer.keyword(access == AstTableAccess::Read ? "read" : "write");
+                            }
+
+                            advance(a->indexer->location.begin);
+                        }
+
                         writer.symbol("[");
                         visualizeTypeAnnotation(*a->indexer->indexType);
                         writer.symbol("]");
