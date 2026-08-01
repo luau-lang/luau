@@ -30,6 +30,7 @@ LUAU_FASTFLAGVARIABLE(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAGVARIABLE(LuauDontBindOptionalGenericToNil)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauIndexerModifierMismatchErrors)
 
 namespace Luau
 {
@@ -37,13 +38,13 @@ namespace Luau
 bool SubtypingReasoning::operator==(const SubtypingReasoning& other) const
 {
     return subPath == other.subPath && superPath == other.superPath && variance == other.variance &&
-           isPropertyModifierViolation == other.isPropertyModifierViolation;
+           isAccessModifierViolation == other.isAccessModifierViolation;
 }
 
 size_t SubtypingReasoningHash::operator()(const SubtypingReasoning& r) const
 {
     return TypePath::PathHash()(r.subPath) ^ (TypePath::PathHash()(r.superPath) << 1) ^ (static_cast<size_t>(r.variance) << 1) ^
-           (static_cast<size_t>(r.isPropertyModifierViolation) << 2);
+           (static_cast<size_t>(r.isAccessModifierViolation) << 2);
 }
 
 MappedGenericEnvironment::MappedGenericFrame::MappedGenericFrame(
@@ -365,10 +366,10 @@ SubtypingResult& SubtypingResult::withError(TypeError err)
     return *this;
 }
 
-SubtypingResult& SubtypingResult::withPropertyModifierViolation()
+SubtypingResult& SubtypingResult::withAccessModifierViolation()
 {
     for (auto& r : reasoning)
-        r.isPropertyModifierViolation = true;
+        r.isAccessModifierViolation = true;
     return *this;
 }
 
@@ -2503,7 +2504,7 @@ SubtypingResult Subtyping::isCovariantWith(
 )
 {
     SubtypingResult result{false};
-    if (subIndexer.isReadOnly && !superIndexer.isReadOnly)
+    if (!FFlag::LuauIndexerModifierMismatchErrors && (subIndexer.isReadOnly && !superIndexer.isReadOnly))
         return result.withBothComponent(TypePath::TypeField::IndexResult);
 
     result = isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope).withBothComponent(TypePath::TypeField::IndexLookup);
@@ -2515,6 +2516,9 @@ SubtypingResult Subtyping::isCovariantWith(
     else
         result.andAlso(isInvariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope)
                            .withBothComponent(TypePath::TypeField::IndexResult));
+
+    if (FFlag::LuauIndexerModifierMismatchErrors && (subIndexer.isReadOnly && !superIndexer.isReadOnly))
+        result.withBothComponent(TypePath::TypeField::IndexResult).withAccessModifierViolation();
 
     return result;
 }
@@ -2549,14 +2553,14 @@ SubtypingResult Subtyping::isCovariantWith(
             if (subProp.isReadOnly())
             {
                 if (FFlag::LuauPropertyModifierMismatchErrors)
-                    res.andAlso(SubtypingResult{false}.withBothComponent(TypePath::Property::read(name)).withPropertyModifierViolation());
+                    res.andAlso(SubtypingResult{false}.withBothComponent(TypePath::Property::read(name)).withAccessModifierViolation());
                 else
                     res.andAlso(SubtypingResult{false}.withBothComponent(TypePath::Property::read(name)));
             }
             else if (subProp.isWriteOnly())
             {
                 if (FFlag::LuauPropertyModifierMismatchErrors)
-                    res.andAlso(SubtypingResult{false}.withBothComponent(TypePath::Property::write(name)).withPropertyModifierViolation());
+                    res.andAlso(SubtypingResult{false}.withBothComponent(TypePath::Property::write(name)).withAccessModifierViolation());
                 else
                     res.andAlso(SubtypingResult{false}.withBothComponent(TypePath::Property::write(name)));
             }

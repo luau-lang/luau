@@ -29,6 +29,7 @@ LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
+LUAU_FASTFLAG(LuauIndexerModifierMismatchErrors)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -4498,7 +4499,10 @@ TEST_CASE_FIXTURE(Fixture, "write_to_unusually_named_read_only_property")
 TEST_CASE_FIXTURE(Fixture, "read_only_property_with_type_mismatch_reports_both_errors")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag sff{FFlag::LuauPropertyModifierMismatchErrors, true};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauPropertyModifierMismatchErrors, true},
+        {FFlag::LuauIndexerModifierMismatchErrors, true},
+    };
 
     // When a property is both read-only AND has a type mismatch, both issues are reported
     // independently so the user knows they need to fix both.
@@ -4512,13 +4516,16 @@ TEST_CASE_FIXTURE(Fixture, "read_only_property_with_type_mismatch_reports_both_e
 
     const std::string msg = toString(result.errors[0]);
     CHECK(msg.find("accessing `woof` results in `string` in the latter type and `number` in the former type") != std::string::npos);
-    CHECK(msg.find("`woof` is a read-only property in the latter type, but the former type requires a read-write property") != std::string::npos);
+    CHECK(msg.find("`woof` is read-only in the latter type, but the former type requires it to be read-write") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(Fixture, "read_only_property_subtype_mismatch_error_message")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag sff{FFlag::LuauPropertyModifierMismatchErrors, true};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauPropertyModifierMismatchErrors, true},
+        {FFlag::LuauIndexerModifierMismatchErrors, true},
+    };
 
     CheckResult result = check(R"(
         local function f(t: { read woof: number }): { woof: number }
@@ -4533,14 +4540,17 @@ TEST_CASE_FIXTURE(Fixture, "read_only_property_subtype_mismatch_error_message")
         "\t'{ woof: number }'\n"
         "but got\n"
         "\t'{ read woof: number }'; \n"
-        "`woof` is a read-only property in the latter type, but the former type requires a read-write property" == toString(result.errors[0])
+        "`woof` is read-only in the latter type, but the former type requires it to be read-write" == toString(result.errors[0])
     );
 }
 
 TEST_CASE_FIXTURE(Fixture, "write_only_property_subtype_mismatch_error_message")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag sff{FFlag::LuauPropertyModifierMismatchErrors, true};
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauPropertyModifierMismatchErrors, true},
+        {FFlag::LuauIndexerModifierMismatchErrors, true},
+    };
 
     CheckResult result = check(R"(
         local function f(t: { write woof: number }): { woof: number }
@@ -4555,7 +4565,7 @@ TEST_CASE_FIXTURE(Fixture, "write_only_property_subtype_mismatch_error_message")
         "\t'{ woof: number }'\n"
         "but got\n"
         "\t'{ write woof: number }'; \n"
-        "`woof` is a write-only property in the latter type, but the former type requires a read-write property" == toString(result.errors[0])
+        "`woof` is write-only in the latter type, but the former type requires it to be read-write" == toString(result.errors[0])
     );
 }
 
@@ -7346,6 +7356,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "normalization_always_intersects_table")
             end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "readonly_indexer_access_mismatch_error")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag _[] = {
+        {FFlag::LuauPropertyModifierMismatchErrors, true},
+        {FFlag::LuauIndexerModifierMismatchErrors, true},
+    };
+
+    CheckResult result = check(R"(
+        local function needBoth(_t: { string })
+        end
+
+        local read: { read number } = {}
+        needBoth(read)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Expected this to be"
+        "\n\t'{ x: string }'"
+        "\nbut got"
+        "\n\t'{ read x: number }'; "
+        "\nthis is because "
+        "\n\t* `x` is read-only in the latter type, but the former type requires it to be read-write"
+        "\n\t* accessing `x` results in `number` in the latter type and `string` in the former type, and `number` is not a subtype of `string`");
 }
 
 TEST_SUITE_END();
