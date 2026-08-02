@@ -3100,7 +3100,7 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
                 else
                     reason << path << " is write-only in the latter type, but the former type requires it to be read-write";
             }
-            else
+            else if (FFlag::LuauPropertyModifierMismatchErrors)
             {
                 // The leaf types at the end of the paths are the same type, so a
                 // plain "X is not a subtype of X" message would be misleading.
