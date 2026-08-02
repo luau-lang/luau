@@ -7367,6 +7367,27 @@ TEST_CASE_FIXTURE(Fixture, "readonly_indexer_access_mismatch_error")
     };
 
     CheckResult result = check(R"(
+        local function needBoth(_t: { number })
+        end
+
+        local read: { read number } = {}
+        needBoth(read)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Expected this to be '{number}', but got '{read number}'; "
+        "\nthe indexer is read-only in the latter type, but the former type requires it to be read-write");
+}
+
+TEST_CASE_FIXTURE(Fixture, "readonly_indexer_access_and_type_mismatch_error")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag _[] = {
+        {FFlag::LuauPropertyModifierMismatchErrors, true},
+        {FFlag::LuauIndexerModifierMismatchErrors, true},
+    };
+
+    CheckResult result = check(R"(
         local function needBoth(_t: { string })
         end
 
@@ -7375,13 +7396,10 @@ TEST_CASE_FIXTURE(Fixture, "readonly_indexer_access_mismatch_error")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Expected this to be"
-        "\n\t'{ x: string }'"
-        "\nbut got"
-        "\n\t'{ read x: number }'; "
+    CHECK_EQ(toString(result.errors[0]), "Expected this to be '{string}', but got '{read number}'; "
         "\nthis is because "
-        "\n\t* `x` is read-only in the latter type, but the former type requires it to be read-write"
-        "\n\t* accessing `x` results in `number` in the latter type and `string` in the former type, and `number` is not a subtype of `string`");
+        "\n\t * the indexer is read-only in the latter type, but the former type requires it to be read-write"
+        "\n\t * the result of indexing is `number` in the latter type and `string` in the former type, and `number` is not exactly `string`");
 }
 
 TEST_SUITE_END();

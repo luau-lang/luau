@@ -2518,7 +2518,7 @@ SubtypingResult Subtyping::isCovariantWith(
                            .withBothComponent(TypePath::TypeField::IndexResult));
 
     if (FFlag::LuauIndexerModifierMismatchErrors && (subIndexer.isReadOnly && !superIndexer.isReadOnly))
-        result.withBothComponent(TypePath::TypeField::IndexResult).withAccessModifierViolation();
+        result.andAlso(SubtypingResult{false}.withBothComponent(TypePath::TypeField::IndexResult).withAccessModifierViolation());
 
     return result;
 }
