@@ -21,6 +21,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauFixNegationTypePathsInCovarianceChecks)
 
 using namespace Luau;
 
@@ -1872,12 +1873,16 @@ TEST_CASE_FIXTURE(SubtypeFixture, "negation")
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
-    CHECK(
-        result.reasoning == std::vector{SubtypingReasoning{
-                                /* subPath */ TypePath::kEmpty,
-                                /* superPath */ Path(TypePath::TypeField::Negated),
-                            }}
-    );
+
+    if (FFlag::LuauFixNegationTypePathsInCovarianceChecks)
+        CHECK(result.reasoning.empty());
+    else
+        CHECK(
+            result.reasoning == std::vector{SubtypingReasoning{
+                                    /* subPath */ TypePath::kEmpty,
+                                    /* superPath */ Path(TypePath::TypeField::Negated),
+                                }}
+        );
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "multiple_reasonings")

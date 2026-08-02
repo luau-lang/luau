@@ -7,6 +7,8 @@
 #include "Luau/Common.h"
 #include "ScopedFlags.h"
 
+LUAU_FASTFLAG(LuauFixNegationTypePathsInCovarianceChecks)
+
 using namespace Luau;
 
 namespace
@@ -75,6 +77,18 @@ if u == v then
 end
 )");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "covariant_reasoning_has_no_negated_typefield_path")
+{
+    ScopedFastFlag fixTypePaths{FFlag::LuauFixNegationTypePathsInCovarianceChecks, true};
+
+    CheckResult result = check(R"(
+        local a: Not<number> = 5
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Expected this to be '~number', but got 'number'");
 }
 
 TEST_SUITE_END();

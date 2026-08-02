@@ -30,6 +30,7 @@ LUAU_FASTFLAGVARIABLE(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAGVARIABLE(LuauDontBindOptionalGenericToNil)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAGVARIABLE(LuauFixNegationTypePathsInCovarianceChecks)
 
 namespace Luau
 {
@@ -1763,17 +1764,26 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Nega
     if (is<NeverType>(negatedTy))
     {
         // ¬never ~ unknown
-        result = isCovariantWith(env, builtinTypes->unknownType, superTy, scope).withSubComponent(TypePath::TypeField::Negated);
+        if (FFlag::LuauFixNegationTypePathsInCovarianceChecks)
+            result = isCovariantWith(env, builtinTypes->unknownType, superTy, scope);
+        else
+            result = isCovariantWith(env, builtinTypes->unknownType, superTy, scope).withSubComponent(TypePath::TypeField::Negated);
     }
     else if (is<UnknownType>(negatedTy))
     {
         // ¬unknown ~ never
-        result = isCovariantWith(env, builtinTypes->neverType, superTy, scope).withSubComponent(TypePath::TypeField::Negated);
+        if (FFlag::LuauFixNegationTypePathsInCovarianceChecks)
+            result = isCovariantWith(env, builtinTypes->neverType, superTy, scope);
+        else
+            result = isCovariantWith(env, builtinTypes->neverType, superTy, scope).withSubComponent(TypePath::TypeField::Negated);
     }
     else if (is<AnyType>(negatedTy))
     {
         // ¬any ~ any
-        result = isCovariantWith(env, negatedTy, superTy, scope).withSubComponent(TypePath::TypeField::Negated);
+        if (FFlag::LuauFixNegationTypePathsInCovarianceChecks)
+            result = isCovariantWith(env, negatedTy, superTy, scope);
+        else
+            result = isCovariantWith(env, negatedTy, superTy, scope).withSubComponent(TypePath::TypeField::Negated);
     }
     else if (auto u = get<UnionType>(negatedTy))
     {
@@ -1784,7 +1794,12 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Nega
         for (TypeId ty : u)
         {
             if (auto negatedPart = get<NegationType>(follow(ty)))
-                result.andAlso(isCovariantWith(env, negatedPart->ty, superTy, scope).withSubComponent(TypePath::TypeField::Negated));
+            {
+                if (FFlag::LuauFixNegationTypePathsInCovarianceChecks)
+                    result.andAlso(isCovariantWith(env, negatedPart->ty, superTy, scope));
+                else
+                    result.andAlso(isCovariantWith(env, negatedPart->ty, superTy, scope).withSubComponent(TypePath::TypeField::Negated));
+            }
             else
             {
                 NegationType negatedTmp{ty};
@@ -1801,7 +1816,12 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Nega
         for (TypeId ty : i)
         {
             if (auto negatedPart = get<NegationType>(follow(ty)))
-                result.orElse(isCovariantWith(env, negatedPart->ty, superTy, scope).withSubComponent(TypePath::TypeField::Negated));
+            {
+                if (FFlag::LuauFixNegationTypePathsInCovarianceChecks)
+                    result.orElse(isCovariantWith(env, negatedPart->ty, superTy, scope));
+                else
+                    result.orElse(isCovariantWith(env, negatedPart->ty, superTy, scope).withSubComponent(TypePath::TypeField::Negated));
+            }
             else
             {
                 NegationType negatedTmp{ty};
@@ -1817,7 +1837,10 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Nega
     // subtype of other stuff.
     else
     {
-        result = SubtypingResult{false}.withSubComponent(TypePath::TypeField::Negated);
+        if (FFlag::LuauFixNegationTypePathsInCovarianceChecks)
+            result = SubtypingResult{false};
+        else
+            result = SubtypingResult{false}.withSubComponent(TypePath::TypeField::Negated);
     }
 
     return result;
@@ -1925,7 +1948,10 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
     else
         result = {false};
 
-    return result.withSuperComponent(TypePath::TypeField::Negated);
+    if (FFlag::LuauFixNegationTypePathsInCovarianceChecks)
+        return result;
+    else
+        return result.withSuperComponent(TypePath::TypeField::Negated);
 }
 
 SubtypingResult Subtyping::isCovariantWith(
