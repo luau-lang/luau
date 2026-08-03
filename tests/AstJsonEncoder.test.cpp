@@ -70,11 +70,14 @@ TEST_CASE("encode_constants")
     AstExprConstantInteger intNeg{Location(), -1};
     AstExprConstantInteger intLarge{Location(), 0x7FFFFFFFFFFFFFFFLL};
 
-    AstArray<char> charString;
-    charString.data = const_cast<char*>("a\x1d\0\\\"b");
-    charString.size = 6;
+    char escapeRaw[] = "a\x1d\0\\\"b";
+    AstExprConstantString needsEscaping{Location(), {escapeRaw, sizeof(escapeRaw) - 1}, AstExprConstantString::QuoteStyle::QuotedSimple};
 
-    AstExprConstantString needsEscaping{Location(), charString, AstExprConstantString::QuoteStyle::QuotedSimple};
+    char shorthandRaw[] = "x\b\f\n\r\ty";
+    AstExprConstantString hasShorthands{Location(), {shorthandRaw, sizeof(shorthandRaw) - 1}, AstExprConstantString::QuoteStyle::QuotedSimple};
+
+    char utf8Raw[] = "e\xc3\xa9\xf0\x9f\x98\x80";
+    AstExprConstantString hasUtf8{Location(), {utf8Raw, sizeof(utf8Raw) - 1}, AstExprConstantString::QuoteStyle::QuotedSimple};
 
     CHECK_EQ(R"({"type":"AstExprConstantNil","location":"0,0 - 0,0"})", toJson(&nil));
     CHECK_EQ(R"({"type":"AstExprConstantBool","location":"0,0 - 0,0","value":true})", toJson(&b));
@@ -87,6 +90,8 @@ TEST_CASE("encode_constants")
     CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":-1})", toJson(&intNeg));
     CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":9223372036854775807})", toJson(&intLarge));
     CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"a\\u001d\\u0000\\\\\\\"b\"}", toJson(&needsEscaping));
+    CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"x\\b\\f\\n\\r\\ty\"}", toJson(&hasShorthands));
+    CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"e\xc3\xa9\xf0\x9f\x98\x80\"}", toJson(&hasUtf8));
 }
 
 TEST_CASE("basic_escaping")

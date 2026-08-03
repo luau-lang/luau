@@ -8,6 +8,8 @@
 #include <stdio.h>
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenSharedLog)
+LUAU_FASTFLAGVARIABLE(LuauCodegenA64FarRefs)
+LUAU_FASTFLAG(LuauCodegenProtectData)
 
 namespace Luau
 {
@@ -683,22 +685,22 @@ void AssemblyBuilderA64::b(ConditionA64 cond, Label& label)
 
 void AssemblyBuilderA64::cbz(RegisterA64 src, Label& label)
 {
-    placeBCR("cbz", label, 0b011010'0, src);
+    placeBCR("cbz", "cbnz", label, 0b011010'0, src);
 }
 
 void AssemblyBuilderA64::cbnz(RegisterA64 src, Label& label)
 {
-    placeBCR("cbnz", label, 0b011010'1, src);
+    placeBCR("cbnz", "cbz", label, 0b011010'1, src);
 }
 
 void AssemblyBuilderA64::tbz(RegisterA64 src, uint8_t bit, Label& label)
 {
-    placeBTR("tbz", label, 0b011011'0, src, bit);
+    placeBTR("tbz", "tbnz", label, 0b011011'0, src, bit);
 }
 
 void AssemblyBuilderA64::tbnz(RegisterA64 src, uint8_t bit, Label& label)
 {
-    placeBTR("tbnz", label, 0b011011'1, src, bit);
+    placeBTR("tbnz", "tbz", label, 0b011011'1, src, bit);
 }
 
 void AssemblyBuilderA64::adr(RegisterA64 dst, const void* ptr, size_t size)
@@ -707,9 +709,17 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, const void* ptr, size_t size)
     uint32_t location = getCodeSize();
 
     memcpy(&data[pos], ptr, size);
-    placeADR("adr", dst, 0b10000);
 
-    patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
+    if (FFlag::LuauCodegenA64FarRefs && FFlag::LuauCodegenProtectData)
+    {
+        patchDataRef(dst, location, pos);
+    }
+    else
+    {
+        placeADR("adr", dst, 0b10000);
+
+        patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
+    }
 }
 
 void AssemblyBuilderA64::adr(RegisterA64 dst, uint64_t value)
@@ -718,9 +728,17 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, uint64_t value)
     uint32_t location = getCodeSize();
 
     writeu64(&data[pos], value);
-    placeADR("adr", dst, 0b10000);
 
-    patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
+    if (FFlag::LuauCodegenA64FarRefs && FFlag::LuauCodegenProtectData)
+    {
+        patchDataRef(dst, location, pos);
+    }
+    else
+    {
+        placeADR("adr", dst, 0b10000);
+
+        patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
+    }
 }
 
 void AssemblyBuilderA64::adr(RegisterA64 dst, float value)
@@ -729,9 +747,17 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, float value)
     uint32_t location = getCodeSize();
 
     writef32(&data[pos], value);
-    placeADR("adr", dst, 0b10000);
 
-    patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
+    if (FFlag::LuauCodegenA64FarRefs && FFlag::LuauCodegenProtectData)
+    {
+        patchDataRef(dst, location, pos);
+    }
+    else
+    {
+        placeADR("adr", dst, 0b10000);
+
+        patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
+    }
 }
 
 void AssemblyBuilderA64::adr(RegisterA64 dst, double value)
@@ -740,9 +766,17 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, double value)
     uint32_t location = getCodeSize();
 
     writef64(&data[pos], value);
-    placeADR("adr", dst, 0b10000);
 
-    patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
+    if (FFlag::LuauCodegenA64FarRefs && FFlag::LuauCodegenProtectData)
+    {
+        patchDataRef(dst, location, pos);
+    }
+    else
+    {
+        placeADR("adr", dst, 0b10000);
+
+        patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
+    }
 }
 
 void AssemblyBuilderA64::adr(RegisterA64 dst, Label& label)
@@ -1516,13 +1550,34 @@ void AssemblyBuilderA64::placeBC(const char* name, Label& label, uint8_t op, uin
     place(cond | (op << 24));
     commit();
 
-    patchLabel(label, Patch::Imm19);
+    if (FFlag::LuauCodegenA64FarRefs && FFlag::LuauCodegenProtectData)
+    {
+        Label skipLabel = patchLabelFar(label, Patch::Imm19, 0);
 
-    if (logText)
-        log(name, label);
+        if (logText)
+        {
+            if (skipLabel.id != 0)
+            {
+                log(textForCondition[cond ^ 1], skipLabel);
+                log("b", label);
+                log(skipLabel);
+            }
+            else
+            {
+                log(name, label);
+            }
+        }
+    }
+    else
+    {
+        patchLabel(label, Patch::Imm19);
+
+        if (logText)
+            log(name, label);
+    }
 }
 
-void AssemblyBuilderA64::placeBCR(const char* name, Label& label, uint8_t op, RegisterA64 cond)
+void AssemblyBuilderA64::placeBCR(const char* name, const char* nameInv, Label& label, uint8_t op, RegisterA64 cond)
 {
     CODEGEN_ASSERT(cond.kind == KindA64::w || cond.kind == KindA64::x);
 
@@ -1531,10 +1586,31 @@ void AssemblyBuilderA64::placeBCR(const char* name, Label& label, uint8_t op, Re
     place(cond.index | (op << 24) | sf);
     commit();
 
-    patchLabel(label, Patch::Imm19);
+    if (FFlag::LuauCodegenA64FarRefs && FFlag::LuauCodegenProtectData)
+    {
+        Label skipLabel = patchLabelFar(label, Patch::Imm19, 24);
 
-    if (logText)
-        log(name, cond, label);
+        if (logText)
+        {
+            if (skipLabel.id != 0)
+            {
+                log(nameInv, cond, skipLabel);
+                log("b", label);
+                log(skipLabel);
+            }
+            else
+            {
+                log(name, cond, label);
+            }
+        }
+    }
+    else
+    {
+        patchLabel(label, Patch::Imm19);
+
+        if (logText)
+            log(name, cond, label);
+    }
 }
 
 void AssemblyBuilderA64::placeBR(const char* name, RegisterA64 src, uint32_t op)
@@ -1548,7 +1624,7 @@ void AssemblyBuilderA64::placeBR(const char* name, RegisterA64 src, uint32_t op)
     commit();
 }
 
-void AssemblyBuilderA64::placeBTR(const char* name, Label& label, uint8_t op, RegisterA64 cond, uint8_t bit)
+void AssemblyBuilderA64::placeBTR(const char* name, const char* nameInv, Label& label, uint8_t op, RegisterA64 cond, uint8_t bit)
 {
     CODEGEN_ASSERT(cond.kind == KindA64::x || cond.kind == KindA64::w);
     CODEGEN_ASSERT(bit < (cond.kind == KindA64::x ? 64 : 32));
@@ -1556,10 +1632,31 @@ void AssemblyBuilderA64::placeBTR(const char* name, Label& label, uint8_t op, Re
     place(cond.index | ((bit & 0x1f) << 19) | (op << 24) | ((bit >> 5) << 31));
     commit();
 
-    patchLabel(label, Patch::Imm14);
+    if (FFlag::LuauCodegenA64FarRefs && FFlag::LuauCodegenProtectData)
+    {
+        Label skipLabel = patchLabelFar(label, Patch::Imm14, 24);
 
-    if (logText)
-        log(name, cond, label, bit);
+        if (logText)
+        {
+            if (skipLabel.id != 0)
+            {
+                log(nameInv, cond, skipLabel, bit);
+                log("b", label);
+                log(skipLabel);
+            }
+            else
+            {
+                log(name, cond, label, bit);
+            }
+        }
+    }
+    else
+    {
+        patchLabel(label, Patch::Imm14);
+
+        if (logText)
+            log(name, cond, label, bit);
+    }
 }
 
 void AssemblyBuilderA64::placeADR(const char* name, RegisterA64 dst, uint8_t op)
@@ -1584,6 +1681,27 @@ void AssemblyBuilderA64::placeADR(const char* name, RegisterA64 dst, uint8_t op,
 
     if (logText)
         log(name, dst, label);
+}
+
+void AssemblyBuilderA64::placeADRP(const char* name, RegisterA64 dst, int32_t pageOffset)
+{
+    if (logText)
+        log(name, dst, pageOffset);
+
+    CODEGEN_ASSERT(dst.kind == KindA64::x);
+
+    if (pageOffset < -(1 << 20) || pageOffset >= (1 << 20))
+    {
+        overflowed = true;
+        return;
+    }
+
+    // adrp encodes the 21 bit immediate across two instruction fields, immLo in bits 30:29 and immHi in bits 23:5
+    uint32_t immLo = uint32_t(pageOffset) & 0x3;
+    uint32_t immHi = (uint32_t(pageOffset) >> 2) & ((1u << 19) - 1);
+
+    place(dst.index | (immHi << 5) | (0b10000u << 24) | (immLo << 29) | (1u << 31));
+    commit();
 }
 
 void AssemblyBuilderA64::placeP(const char* name, RegisterA64 src1, RegisterA64 src2, AddressA64 dst, uint8_t op, uint8_t opc, int sizelog)
@@ -1715,6 +1833,27 @@ void AssemblyBuilderA64::place(uint32_t word)
     *codePos++ = word;
 }
 
+void AssemblyBuilderA64::patchDataRef(RegisterA64 dst, uint32_t location, size_t pos)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenA64FarRefs && FFlag::LuauCodegenProtectData);
+
+    int offset = -int(location) - int((data.size() - pos) / 4);
+
+    if (offset > -(1 << 18) && offset < (1 << 18))
+    {
+        placeADR("adr", dst, 0b10000);
+        patchOffset(location, offset, Patch::Imm19);
+    }
+    else
+    {
+        uint32_t pageOffset = (location * 4) & 0xfff;
+        int64_t targetFromPage = pageOffset + int64_t(offset) * 4;
+
+        placeADRP("adrp", dst, int32_t(targetFromPage >> 12));
+        add(dst, dst, uint16_t(targetFromPage & 0xfff));
+    }
+}
+
 void AssemblyBuilderA64::patchLabel(Label& label, Patch::Kind kind)
 {
     uint32_t location = getCodeSize() - 1;
@@ -1735,6 +1874,44 @@ void AssemblyBuilderA64::patchLabel(Label& label, Patch::Kind kind)
 
         patchOffset(location, value, kind);
     }
+}
+
+Label AssemblyBuilderA64::patchLabelFar(Label& label, Patch::Kind kind, uint32_t invertBit)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenA64FarRefs && FFlag::LuauCodegenProtectData);
+
+    // Labels that have not been placed yet are generated as near jumps
+    if (label.location == ~0u)
+    {
+        patchLabel(label, kind);
+        return Label{};
+    }
+
+    uint32_t location = getCodeSize() - 1;
+
+    // Check if backwards jump label is in range
+    int32_t value = int(label.location) - int(location);
+    int32_t range = (kind == Patch::Imm19) ? (1 << 19) : (1 << 14);
+
+    if (value > -(range >> 1) && value < (range >> 1))
+    {
+        patchLabel(label, kind);
+        return Label{};
+    }
+
+    // Invert condition to just over the trampoline
+    code[location] ^= (1u << invertBit);
+    patchOffset(location, 2, kind);
+
+    // Place an unconditional jump with a larger range (same as placeB but with no log)
+    place(0b0'00101 << 26);
+    commit();
+
+    patchLabel(label, Patch::Imm26);
+
+    Label skipLabel{nextLabel++, getCodeSize()};
+    labelLocations.push_back(skipLabel.location);
+    return skipLabel;
 }
 
 void AssemblyBuilderA64::patchOffset(uint32_t location, int value, Patch::Kind kind)

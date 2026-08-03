@@ -262,6 +262,7 @@ std::optional<Ty> follow(std::optional<Ty> ty)
  */
 bool isLiteral(const AstExpr* expr);
 
+// Clip with LuauRelaxConstraintOrderingForFunctionCheck
 /**
  * Given a function call and a mapping from expression to type, determine
  * whether the type of any argument in said call in depends on a blocked types.
@@ -272,7 +273,7 @@ bool isLiteral(const AstExpr* expr);
  * @param astTypes Mapping from AST node to TypeID
  * @returns A vector of blocked types
  */
-std::vector<TypeId> findBlockedArgTypesIn(AstExprCall* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes);
+std::vector<TypeId> findBlockedArgTypesIn_DEPRECATED(AstExprCall* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes);
 
 /**
  * Given a scope and a free type, find the closest parent that has a present

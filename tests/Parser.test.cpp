@@ -3402,6 +3402,125 @@ TEST_CASE_FIXTURE(Fixture, "class_public_function")
     REQUIRE(result.errors.empty());
 }
 
+TEST_CASE_FIXTURE(Fixture, "class_extends_basic")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+class Animal
+    public species: string
+end
+
+class Cat extends Animal
+    public meowMult: number
+end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    REQUIRE_EQ(result.root->body.size, 2);
+    const AstStatClass* animal = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(animal);
+    CHECK(animal->super == nullptr);
+
+    const AstStatClass* cat = result.root->body.data[1]->as<AstStatClass>();
+    REQUIRE(cat);
+    REQUIRE(cat->super != nullptr);
+
+    const AstExpr* super = cat->super;
+    REQUIRE(super);
+
+    const AstExprGlobal* superGlobal = super->as<AstExprGlobal>();
+    REQUIRE(superGlobal);
+
+    CHECK(superGlobal->name == "Animal");
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_extends_not_a_class")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+class Cat extends "Animal"
+    public meowMult: number
+end
+
+class Dog extends 42
+    public barkMult: number
+end
+    )");
+
+    REQUIRE_EQ(result.errors.size(), 2);
+
+    CHECK_EQ(result.errors[0].getMessage(), R"(Expected identifier when parsing class reference expression, got "Animal")");
+    CHECK_EQ(result.errors[1].getMessage(), R"(Expected identifier when parsing class reference expression, got '42')");
+
+    REQUIRE_EQ(result.root->body.size, 2);
+    const AstStatClass* cat = result.root->body.data[0]->as<AstStatClass>();
+
+    auto m1 = cat->members.data[0].get_if<AstClassProperty>();
+    REQUIRE(m1);
+    CHECK(m1->name == "meowMult");
+
+    const AstStatClass* dog = result.root->body.data[1]->as<AstStatClass>();
+    REQUIRE(dog);
+
+    m1 = dog->members.data[0].get_if<AstClassProperty>();
+    REQUIRE(m1);
+    CHECK(m1->name == "barkMult");
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_extends_imported_class")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+local m = require("module")
+
+class Cat extends m.Animal
+    public meowMult: number
+end
+
+class Dog extends m["Animal"]
+    public barkMult: number
+end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    REQUIRE_EQ(result.root->body.size, 3);
+    const AstStatClass* cat = result.root->body.data[1]->as<AstStatClass>();
+
+    const AstExpr* super = cat->super;
+    REQUIRE(super);
+
+    const AstExprIndexName* superIndex = super->as<AstExprIndexName>();
+    REQUIRE(superIndex);
+
+    const AstExprLocal* superLocal = superIndex->expr->as<AstExprLocal>();
+    REQUIRE(superLocal);
+
+    CHECK(superLocal->local->name == "m");
+    CHECK(superIndex->index == "Animal");
+
+    const AstStatClass* dog = result.root->body.data[2]->as<AstStatClass>();
+
+    super = dog->super;
+    REQUIRE(super);
+
+    const AstExprIndexExpr* superIndexExpr = super->as<AstExprIndexExpr>();
+    REQUIRE(superIndexExpr);
+
+    superLocal = superIndexExpr->expr->as<AstExprLocal>();
+    REQUIRE(superLocal);
+
+    CHECK(superLocal->local->name == "m");
+
+    const AstExprConstantString* superIndexString = superIndexExpr->index->as<AstExprConstantString>();
+    REQUIRE(superIndexString);
+    CHECK(std::string(superIndexString->value.data, superIndexString->value.size) == "Animal");
+}
+
 TEST_CASE_FIXTURE(Fixture, "class_recovery_invalid_body_token")
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};

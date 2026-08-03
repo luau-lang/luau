@@ -18,7 +18,6 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauYieldIter2)
-LUAU_FASTFLAG(LuauCustomYieldablePcalls)
 LUAU_FASTFLAGVARIABLE(LuauXpcallFixMessageYieldPath)
 
 // keep max stack allocation request under 1GB
@@ -418,8 +417,7 @@ static void resume_continue(lua_State* L)
             LUAU_ASSERT(cl->c.cont);
 
             // continuation can use non-protected calls again
-            if (FFlag::LuauCustomYieldablePcalls)
-                L->ci->flags &= ~LUA_CALLINFO_HANDLE;
+            L->ci->flags &= ~LUA_CALLINFO_HANDLE;
 
             // C continuation; we expect this to be followed by Lua continuations
             int n = cl->c.cont(L, 0);
@@ -428,7 +426,7 @@ static void resume_continue(lua_State* L)
             if (L->status == LUA_BREAK || L->status == LUA_YIELD)
                 break;
 
-            if (FFlag::LuauCustomYieldablePcalls && L->status == SCHEDULED_REENTRY)
+            if (L->status == SCHEDULED_REENTRY)
                 continue;
 
             luau_poscall(L, L->top - n);
@@ -571,7 +569,7 @@ static void resume_handle(lua_State* L, void* ud)
         luaD_seterrorobj(L, status, L->top);
 
     // call user-defined error function
-    if (FFlag::LuauCustomYieldablePcalls && ci->errfunc != 0)
+    if (ci->errfunc != 0)
     {
         // save ci pointer - it will be invalidated by callerrfunc call
         ptrdiff_t old_ci = saveci(L, ci);
@@ -600,57 +598,31 @@ static void resume_handle(lua_State* L, void* ud)
         ci->errfunc = 0;
     }
 
-    if (FFlag::LuauCustomYieldablePcalls)
+    if (FFlag::LuauXpcallFixMessageYieldPath)
     {
-        if (FFlag::LuauXpcallFixMessageYieldPath)
-        {
-            // restore nCcalls to base for the continuation
-            L->nCcalls = L->baseCcalls;
-        }
-
-        // restore the stack frame to the frame with continuation
-        L->ci = ci;
-
-        // close eventual pending closures; this means it's now safe to restore stack
-        luaF_close(L, L->ci->base);
-
-        // adjust the stack frame for ci to prepare for cont call
-        L->base = ci->base;
-        ci->top = L->top;
-
-        restore_stack_limit(L);
-
-        int n = cl->c.cont(L, status);
-
-        if (L->status != LUA_OK)
-            return;
-
-        // finish cont call and restore stack to previous ci top
-        luau_poscall(L, L->top - n);
+        // restore nCcalls to base for the continuation
+        L->nCcalls = L->baseCcalls;
     }
-    else
-    {
-        // adjust the stack frame for ci to prepare for cont call
-        L->base = ci->base;
-        ci->top = L->top;
 
-        // save ci pointer - it will be invalidated by cont call!
-        ptrdiff_t old_ci = saveci(L, ci);
+    // restore the stack frame to the frame with continuation
+    L->ci = ci;
 
-        // handle the error in continuation; note that this executes on top of original stack!
-        int n = cl->c.cont(L, status);
+    // close eventual pending closures; this means it's now safe to restore stack
+    luaF_close(L, L->ci->base);
 
-        // restore the stack frame to the frame with continuation
-        L->ci = restoreci(L, old_ci);
+    // adjust the stack frame for ci to prepare for cont call
+    L->base = ci->base;
+    ci->top = L->top;
 
-        // close eventual pending closures; this means it's now safe to restore stack
-        luaF_close(L, L->ci->base);
+    restore_stack_limit(L);
 
-        restore_stack_limit(L);
+    int n = cl->c.cont(L, status);
 
-        // finish cont call and restore stack to previous ci top
-        luau_poscall(L, L->top - n);
-    }
+    if (L->status != LUA_OK)
+        return;
+
+    // finish cont call and restore stack to previous ci top
+    luau_poscall(L, L->top - n);
 
     // run remaining continuations from the stack; typically resumes pcalls
     resume_continue(L);
@@ -701,7 +673,7 @@ static int resume_finish(lua_State* L, int status, int oldnCcalls)
             }
         }
 
-        if (FFlag::LuauCustomYieldablePcalls && FFlag::LuauXpcallFixMessageYieldPath)
+        if (FFlag::LuauXpcallFixMessageYieldPath)
         {
             // restore the baseline we established in resume_start
             L->baseCcalls = oldnCcalls;

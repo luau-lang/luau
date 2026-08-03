@@ -52,6 +52,8 @@ void luaC_validate(lua_State* L);
 #endif
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(LuauCodegenA64FarRefs)
+LUAU_FASTFLAG(LuauCodegenProtectData)
 LUAU_FASTFLAG(LuauBytecodeFold)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
@@ -62,15 +64,20 @@ LUAU_FASTFLAG(LuauUdataDirectAccess6)
 LUAU_FASTFLAG(LuauCodegenBufferInteger)
 LUAU_FASTFLAG(LuauXpcallFixMessageYieldPath)
 LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
+LUAU_FASTFLAG(LuauCodegenDseRestoreHintUpdate)
 LUAU_FASTFLAG(LuauYieldIter2)
-LUAU_FASTFLAG(LuauCustomYieldablePcalls)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
+LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauAutoStack)
 LUAU_FASTFLAG(LuauUdataMetatablePinned)
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_DYNAMIC_FASTFLAG(LuauGcTableStepFix)
 LUAU_FASTFLAG(LuauCodegenFixTwoResA64Builtin)
 LUAU_FASTFLAG(LuauMathRoundNegZero)
+LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauCallFeedback)
+LUAU_FASTFLAG(LuauBytecodeCostModel)
+LUAU_FASTFLAG(LuauVirtualBcBuilder)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -1361,7 +1368,6 @@ TEST_CASE("Literals")
 
 TEST_CASE("Errors")
 {
-    ScopedFastFlag luauCustomYieldablePcalls{FFlag::LuauCustomYieldablePcalls, true};
     ScopedFastFlag luauXpcallFixMessageYieldPath{FFlag::LuauXpcallFixMessageYieldPath, true};
 
     runConformance("errors.luau");
@@ -1760,8 +1766,6 @@ int pcallThenXCallContinuation(lua_State* L, int status)
 
 TEST_CASE("CYield")
 {
-    ScopedFastFlag luauCustomYieldablePcalls{FFlag::LuauCustomYieldablePcalls, true};
-
     runConformance(
         "cyield.luau",
         [](lua_State* L)
@@ -1803,6 +1807,8 @@ TEST_CASE("CYield")
 
 TEST_CASE("Vector")
 {
+    ScopedFastFlag luauCompileEmitVectorDouble{FFlag::LuauCompileEmitVectorDouble, true};
+
     lua_CompileOptions copts = defaultOptions();
     Luau::CodeGen::CompilationOptions nativeOpts = defaultCodegenOptions();
 
@@ -1859,6 +1865,8 @@ TEST_CASE("Vector")
 
 TEST_CASE("VectorLibrary")
 {
+    ScopedFastFlag luauCompileEmitVectorDouble{FFlag::LuauCompileEmitVectorDouble, true};
+
     lua_CompileOptions copts = defaultOptions();
 
     SUBCASE("O0")
@@ -4255,6 +4263,9 @@ TEST_CASE("Native")
 
 TEST_CASE("NativeIntegerSpills")
 {
+    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
+    ScopedFastFlag luauCodegenDseRestoreHintUpdate{FFlag::LuauCodegenDseRestoreHintUpdate, true};
+
     lua_CompileOptions copts = defaultOptions();
 
     SUBCASE("O0")
@@ -4423,6 +4434,10 @@ TEST_CASE("Classes")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
+        {FFlag::LuauCallFeedback, true},
+        {FFlag::LuauEmitCallFeedback, true},
+        {FFlag::LuauBytecodeCostModel, true},
+        {FFlag::LuauVirtualBcBuilder, true}
     };
 
     runConformance("classes.luau");
@@ -4649,6 +4664,79 @@ TEST_CASE("LargeNestedClosure")
     REQUIRE(status == 0);
 
     CHECK(lua_tonumber(L, -1) == kCount);
+}
+
+TEST_CASE("LargeModuleA64")
+{
+    ScopedFastFlag luauCodegenA64FarRefs{FFlag::LuauCodegenA64FarRefs, true};
+    ScopedFastFlag luauCodegenProtectData{FFlag::LuauCodegenProtectData, true};
+
+    std::string source;
+
+    for (int i = 0; i < 60; i++)
+    {
+        source += "function filler" + std::to_string(i) + "(x: number)\n";
+
+        for (int k = 1; k <= 2000; k++)
+            source += "    x = x + " + std::to_string(k) + "\n";
+
+        source += "    return x\nend\n";
+    }
+
+    // Constants are chosen in a way that cannot be lowered for fmov and will allocate in the data section
+    source += "function trigger(x: number)\n";
+    source += "    x = x + 0.1\n";
+    source += "    x = x + 0.3\n";
+    source += "    return x\n";
+    source += "end\n";
+
+    source += "return math.floor(trigger(1) * 100000)\n";
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    if (luau_codegen_supported() != 0)
+        luau_codegen_create(L);
+
+    luaL_openlibs(L);
+
+    lua_CompileOptions opts = defaultOptions();
+    opts.optimizationLevel = 2;
+
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source.data(), source.size(), &opts, &bytecodeSize);
+    int result = luau_load(L, "=LargeModuleA64", bytecode, bytecodeSize, 0);
+    free(bytecode);
+
+    REQUIRE(result == 0);
+
+    if (luau_codegen_supported() != 0)
+    {
+        Luau::CodeGen::AssemblyOptions assemblyOptions;
+        assemblyOptions.compilationOptions.flags = Luau::CodeGen::CodeGen_ColdFunctions;
+        assemblyOptions.includeAssembly = true;
+
+        Luau::CodeGen::LoweringStats stats;
+        stats.functionStatsFlags = Luau::CodeGen::FunctionStatsFlags::FunctionStats_Enable;
+
+        assemblyOptions.target = Luau::CodeGen::AssemblyOptions::A64;
+        std::string a64 = Luau::CodeGen::getAssembly(L, -1, assemblyOptions, &stats);
+        CHECK(!a64.empty());
+
+        CHECK(stats.regAllocErrors == 0);
+        CHECK(stats.loweringErrors == 0);
+    }
+
+    if (codegen && luau_codegen_supported() != 0)
+    {
+        Luau::CodeGen::CompilationOptions nativeOptions{Luau::CodeGen::CodeGen_ColdFunctions};
+        Luau::CodeGen::compile(L, -1, nativeOptions);
+    }
+
+    int status = lua_resume(L, nullptr, 0);
+    REQUIRE(status == 0);
+
+    CHECK(lua_tonumber(L, -1) == 140000);
 }
 
 TEST_CASE("IrInstructionLimit")

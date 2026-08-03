@@ -81,6 +81,7 @@ struct ConstraintGenerator
     std::vector<std::pair<Location, ScopePtr>> scopes;
 
     ModulePtr module;
+    std::shared_ptr<ModuleName> sharedModuleName;
     NotNull<BuiltinTypes> builtinTypes;
     const NotNull<TypeArena> arena;
     // The root scope of the module we're generating constraints for.

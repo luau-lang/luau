@@ -145,6 +145,8 @@ static void errorToString(std::ostream& stream, const T& err)
 
         stream << "}";
     }
+    else if constexpr (std::is_same_v<T, CyclicModuleGraphTooLarge>)
+        stream << "CyclicModuleGraphTooLarge { moduleCount = " << err.moduleCount << " }";
     else if constexpr (std::is_same_v<T, IllegalRequire>)
         stream << "IllegalRequire { " << err.moduleName << ", reason = " << err.reason << " }";
     else if constexpr (std::is_same_v<T, FunctionExitsWithoutReturning>)

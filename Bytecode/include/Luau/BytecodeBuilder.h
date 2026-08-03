@@ -166,6 +166,11 @@ public:
 
     void annotateInstruction(std::string& result, uint32_t fid, uint32_t instpos) const;
 
+    void clearStringTable()
+    {
+        stringTable.clear();
+    }
+
     static uint32_t getImportId(int32_t id0);
     static uint32_t getImportId(int32_t id0, int32_t id1);
     static uint32_t getImportId(int32_t id0, int32_t id1, int32_t id2);

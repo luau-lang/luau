@@ -5,6 +5,7 @@
 #include "Luau/IrUtils.h"
 
 LUAU_FASTFLAG(LuauCodegenDseRestoreHints)
+LUAU_FASTFLAGVARIABLE(LuauCodegenDseRestoreHintUpdate)
 
 namespace Luau
 {
@@ -60,7 +61,21 @@ void IrValueLocationTracking::processStoreLocationHint(const StoreLocationHint* 
         ValueRestoreLocation existingLoc = function.findRestoreLocation(hint->instIdx, /*limitToCurrentBlock*/ false);
 
         if (existingLoc.op.kind != IrOpKind::None)
-            return;
+        {
+            if (FFlag::LuauCodegenDseRestoreHintUpdate && existingLoc.lazy)
+            {
+                int prevReg = vmRegOp(existingLoc.op);
+
+                // Remove previous association for the same value
+                if (vmRegValue[prevReg] == hint->instIdx)
+                    vmRegValue[prevReg] = kInvalidInstIdx;
+            }
+            else
+            {
+                // Location has materialized and can no longer be updated
+                return;
+            }
+        }
 
         if (reg > maxReg)
             maxReg = reg;
@@ -74,7 +89,12 @@ void IrValueLocationTracking::processStoreLocationHint(const StoreLocationHint* 
             function.recordRestoreLocation(hint->instIdx, {hint->op, hint->kind, IrCmd::NOP, /*lazy*/ true});
 
             if (logger && logger->options.includeRegSpills)
-                logger->formatAppendWithPrefix("  ; %%%u has a lazy restore location R%d\n", hint->instIdx, reg);
+            {
+                if (FFlag::LuauCodegenDseRestoreHintUpdate && existingLoc.op.kind != IrOpKind::None)
+                    logger->formatAppendWithPrefix("  ; %%%u has a new lazy restore location R%d\n", hint->instIdx, reg);
+                else
+                    logger->formatAppendWithPrefix("  ; %%%u has a lazy restore location R%d\n", hint->instIdx, reg);
+            }
         }
 
         vmRegValue[reg] = hint->instIdx;

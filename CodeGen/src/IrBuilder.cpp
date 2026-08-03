@@ -675,6 +675,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     // We do not support classes in NCG at the moment, so if we see a class
     // operation then unconditionally exit to the VM.
     case LOP_NEWCLASSMEMBER:
+    case LOP_NEWCLASS:
         inst(IrCmd::JUMP, vmExit(i));
         break;
 
