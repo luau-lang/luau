@@ -3176,6 +3176,60 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_cloner_missing_integer_crashes_copy")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_integer_methods_work")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
+
+    CheckResult result = check(R"(
+        type function getinteger()
+            local ty = types.integer
+            if ty:is("integer") then
+                return ty
+            end
+            -- this should never be returned
+            return types.string
+        end
+        local function ok(idx: getinteger<>): integer return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_integer_is_distinct_from_number")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
+
+    CheckResult result = check(R"(
+        type function pick(arg)
+            if arg:is("integer") then
+                return types.integer
+            end
+            return types.number
+        end
+        local function ok(idx: pick<integer>): integer return idx end
+        local function ok2(idx: pick<number>): number return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_integer_constructor_is_not_number")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
+
+    CheckResult result = check(R"(
+        type function getinteger()
+            return types.integer
+        end
+        local function bad(idx: getinteger<>): number return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setgenerics_wrong_argcount_check")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
