@@ -221,7 +221,7 @@ endif()
 
 if(LUAU_VECTOR_DOUBLE)
     # Enable double-precision mode for vectors here as requested.
-    target_compile_defitions(Luau.VM PUBLIC "LUA_VECTOR_DOUBLE=1")
+    target_compile_definitions(Luau.VM PUBLIC "LUA_VECTOR_DOUBLE=1")
 endif()
 
 if(LUAU_VECTOR_FOUR_WIDE)
