@@ -506,6 +506,15 @@ static int createNumber(lua_State* L)
     return 1;
 }
 
+// Luau: `type.integer`
+// Returns the type instance representing integer
+static int createInteger(lua_State* L)
+{
+    allocTypeUserData(L, TypeFunctionPrimitiveType{TypeFunctionPrimitiveType::Integer});
+
+    return 1;
+}
+
 // Luau: `type.string`
 // Returns the type instance representing string
 static int createString(lua_State* L)
@@ -1944,6 +1953,14 @@ void registerTypesLibrary(lua_State* L)
     {
         l->func(L);
         lua_setfield(L, -2, l->name);
+    }
+
+    // `integer` is only nameable in type annotations when the flag is on, so only expose a
+    // constructor for it under the same condition
+    if (FFlag::LuauIntegerType2)
+    {
+        createInteger(L);
+        lua_setfield(L, -2, "integer");
     }
 
     lua_pop(L, 1);
