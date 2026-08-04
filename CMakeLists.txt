@@ -14,6 +14,10 @@ option(LUAU_STATIC_CRT "Link with the static CRT (/MT)" OFF)
 option(LUAU_EXTERN_C "Use extern C for all APIs" OFF)
 option(LUAU_BUILD_SHARED "Build as a shared library" OFF)
 
+# Compile time options for Luau features
+option(LUAU_VECTOR_DOUBLE "Use 64-bit doubles for vector components" OFF)
+option(LUAU_VECTOR_FOUR_WIDE "Enable four-wide mode for vectors, adding a 'w' component" OFF)
+
 if(LUAU_BUILD_SHARED AND NOT LUAU_EXTERN_C)
     message(FATAL_ERROR "LUAU_BUILD_SHARED requires LUAU_EXTERN_C to be ON")
 endif()
@@ -213,6 +217,16 @@ if(LUAU_EXTERN_C)
         target_compile_definitions(Luau.Compiler PUBLIC "LUACODE_API=extern \"C\"")
         target_compile_definitions(Luau.CodeGen PUBLIC "LUACODEGEN_API=extern \"C\"")
     endif()
+endif()
+
+if(LUAU_VECTOR_DOUBLE)
+    # Enable double-precision mode for vectors here as requested.
+    target_compile_defitions(Luau.VM PUBLIC "LUA_VECTOR_DOUBLE=1")
+endif()
+
+if(LUAU_VECTOR_FOUR_WIDE)
+    # Enable four-wide vectors.
+    target_compile_definitions(Luau.VM PUBLIC "LUA_VECTOR_SIZE=4")
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND MSVC_VERSION GREATER_EQUAL 1924)
