@@ -20,6 +20,7 @@
 
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAGVARIABLE(LuauDifferentiateFreeTypeAndGenericNames)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -206,7 +207,9 @@ struct StringifierState
             seen.erase(ttv);
     }
 
-    std::string getName(TypeId ty)
+    int generatedGenericNamesCount = 0;
+
+    std::string getName(TypeId ty, bool forGeneric = false)
     {
         const size_t s = opts.nameMap.types.size();
         std::string& n = opts.nameMap.types[ty];
@@ -215,7 +218,14 @@ struct StringifierState
 
         for (int count = 0; count < 256; ++count)
         {
-            std::string candidate = generateName(usedNames.size() + count);
+            std::string candidate;
+            if (FFlag::LuauDifferentiateFreeTypeAndGenericNames && forGeneric)
+            {
+                candidate = generateGenericName(generatedGenericNamesCount + count);
+                generatedGenericNamesCount++;
+            }
+            else
+                candidate = generateName(usedNames.size() + count);
             if (!usedNames.contains(candidate))
             {
                 usedNames.insert(candidate);
@@ -224,12 +234,12 @@ struct StringifierState
             }
         }
 
-        return generateName(s);
+        return FFlag::LuauDifferentiateFreeTypeAndGenericNames && forGeneric ? generateGenericName(s) : generateName(s);
     }
 
     int previousNameIndex = 0;
 
-    std::string getName(TypePackId ty)
+    std::string getName(TypePackId ty, bool forGeneric = true)
     {
         const size_t s = opts.nameMap.typePacks.size();
         std::string& n = opts.nameMap.typePacks[ty];
@@ -238,7 +248,11 @@ struct StringifierState
 
         for (int count = 0; count < 256; ++count)
         {
-            std::string candidate = generateName(previousNameIndex + count);
+            std::string candidate;
+            if (FFlag::LuauDifferentiateFreeTypeAndGenericNames && forGeneric)
+                candidate = generateGenericName(previousNameIndex + count);
+            else
+                candidate = generateName(previousNameIndex + count);
             if (!usedNames.contains(candidate))
             {
                 previousNameIndex += count;
@@ -248,7 +262,7 @@ struct StringifierState
             }
         }
 
-        return generateName(s);
+        return FFlag::LuauDifferentiateFreeTypeAndGenericNames && forGeneric ? generateGenericName(s) : generateName(s);
     }
 
     void emit(const std::string& s)
@@ -556,7 +570,7 @@ struct TypeStringifier
             state.emit(gtv.name);
         }
         else
-            state.emit(state.getName(ty));
+            state.emit(state.getName(ty, /* forGeneric = */ true));
 
         if (FInt::DebugLuauVerboseTypeNames >= 1)
             state.emit(gtv.polarity);
@@ -1308,7 +1322,7 @@ struct TypePackStringifier
         }
         else
         {
-            state.emit(state.getName(tp));
+            state.emit(state.getName(tp, /* forGeneric = */ true));
         }
 
         if (FInt::DebugLuauVerboseTypeNames >= 1)
@@ -1928,6 +1942,15 @@ std::string generateName(size_t i)
     n = char('a' + i % 26);
     if (i >= 26)
         n += std::to_string(i / 26);
+    return n;
+}
+
+std::string generateGenericName(size_t i)
+{
+    std::string n;
+    n = char('A' + (i + 19) % 26);
+    if (i >= 26)
+        n += std::to_string(i / 26 + 1);
     return n;
 }
 

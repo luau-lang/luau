@@ -11,6 +11,7 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauDifferentiateFreeTypeAndGenericNames)
 
 TEST_SUITE_BEGIN("TypeTests");
 
@@ -36,6 +37,8 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_parenthesized_if_not_just
 
 TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_parenthesized_if_tail_is_free")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     auto emptyArgumentPack = TypePackVar{TypePack{}};
     auto free = FreeTypePack(TypeLevel());
     auto freePack = TypePackVar{TypePackVariant{free}};
@@ -43,7 +46,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_parenthesized_if_tail_is_
     auto returnsTwo = Type(FunctionType(getFrontend().globals.globalScope->level, &emptyArgumentPack, &returnPack));
 
     std::string res = toString(&returnsTwo);
-    CHECK_EQ(res, "() -> (number, a...)");
+    CHECK_EQ(res, "() -> (number, T...)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "subset_check")

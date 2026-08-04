@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauDontBindOptionalGenericToNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauDifferentiateFreeTypeAndGenericNames)
 
 using namespace Luau;
 
@@ -1141,6 +1142,7 @@ end
 TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 {
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -1185,7 +1187,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
             "Expected this to be exactly\n\t"
             "'(Policies, FieldSpecifier) -> string'"
             "\nbut got\n\t"
-            "'(Policies, FieldSpecifier & { from: number? }) -> ('a, b...)'"
+            "'(Policies, FieldSpecifier & { from: number? }) -> ('a, T...)'"
             "\ncaused by:\n"
             "  Argument #2 type is not compatible.\n"
             "Expected this to be exactly\n\t"

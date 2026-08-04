@@ -25,6 +25,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceVariadics)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauCollapseDirectBoundCycles)
+LUAU_FASTFLAG(LuauDifferentiateFreeTypeAndGenericNames)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -169,6 +170,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_that_function_does_not_return_a_table")
 
 TEST_CASE_FIXTURE(Fixture, "generalize_table_property")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         local T = {}
 
@@ -186,7 +189,7 @@ TEST_CASE_FIXTURE(Fixture, "generalize_table_property")
     const Property& foo = tt->props.at("foo");
     REQUIRE(foo.readTy);
     TypeId fooTy = *foo.readTy;
-    CHECK("<a>(a) -> a" == toString(fooTy));
+    CHECK("<T>(T) -> T" == toString(fooTy));
 }
 
 TEST_CASE_FIXTURE(Fixture, "vararg_functions_should_allow_calls_of_any_types_and_size")
@@ -724,6 +727,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_2")
 TEST_CASE_FIXTURE(Fixture, "higher_order_function_3")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
 
     CheckResult result = check(R"(
         function swap(p)
@@ -753,7 +757,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_3")
     // future via Unifier3, as we'll be able to observe that the upper bound
     // of `p` in `swapTwice` will be `{ 'a }` and not create two indexer
     // upper bounds.
-    CHECK_EQ("<a, b>({a} & {b}) -> {a} & {b}", toString(requireType("swapTwice")));
+    CHECK_EQ("<T, U>({T} & {U}) -> {T} & {U}", toString(requireType("swapTwice")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "higher_order_function_4")
@@ -1246,6 +1250,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_anonymous_function_arguments")
 {
     // FIXME: CLI-116133 bidirectional type inference needs to push expected types in for higher-order function calls
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
 
     // Simple direct arg to arg propagation
     CheckResult result = check(R"(
@@ -1308,7 +1313,7 @@ f(function(a, b, c, ...) return a + b end)
         expected = "Expected this to be\n\t"
                    "'(number, number) -> number'"
                    "\nbut got\n\t"
-                   "'<a>(number, number, a) -> number'"
+                   "'<T>(number, number, T) -> number'"
                    "\ncaused by:\n"
                    "  Argument count mismatch. Function expects 3 arguments, but only 2 are specified";
     }
@@ -1926,6 +1931,8 @@ TEST_CASE_FIXTURE(Fixture, "free_is_not_bound_to_unknown")
 
 TEST_CASE_FIXTURE(Fixture, "dont_infer_parameter_types_for_functions_from_their_call_site")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         local t = {}
 
@@ -1944,7 +1951,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_infer_parameter_types_for_functions_from_their_
     )");
 
 
-    CHECK_EQ("<a>(a) -> a", toString(requireType("f")));
+    CHECK_EQ("<T>(T) -> T", toString(requireType("f")));
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -3213,6 +3220,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "io_manager_oop_ish")
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_function_statement")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type Object = {
@@ -3230,7 +3238,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generic_function_statement")
     CHECK_EQ("number", toString(requireTypeAtPosition({7, 24})));
     CHECK_EQ("string", toString(requireTypeAtPosition({8, 24})));
     // NOTE: This specifically _isn't_ `T` as defined by `Object.foobar`
-    CHECK_EQ("a", toString(requireTypeAtPosition({9, 21})));
+    CHECK_EQ("T", toString(requireTypeAtPosition({9, 21})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_calls_should_not_crash")

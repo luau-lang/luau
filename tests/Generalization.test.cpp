@@ -17,6 +17,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauCollapseDirectBoundCycles)
+LUAU_FASTFLAG(LuauDifferentiateFreeTypeAndGenericNames)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -218,12 +219,14 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "intersection_type_traversal_doesnt_cra
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "('a) -> 'a")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     TypeId freeTy = freshType().first;
     TypeId fnTy = arena.addType(FunctionType{arena.addTypePack({freeTy}), arena.addTypePack({freeTy})});
 
     generalize(fnTy);
 
-    CHECK("<a>(a) -> a" == toString(fnTy));
+    CHECK("<T>(T) -> T" == toString(fnTy));
 }
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a <: (t1 <: 'b) & {number} & {number})")
@@ -260,6 +263,8 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: number | string)) -> string?")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     auto [aTy, aFree] = freshType();
     auto [bTy, bFree] = freshType();
 
@@ -274,11 +279,13 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
 
     // The free type 'b is not replace with unknown because it appears in an
     // invariant context.
-    CHECK("<a>({a}) -> ()" == toString(functionTy));
+    CHECK("<T>({T}) -> ()" == toString(functionTy));
 }
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(('b <: {t1}), ('a <: t1)) -> t1 where t1 = (('a <: t1) <: 'c)")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     auto [aTy, aFree] = freshType();
     auto [bTy, bFree] = freshType();
     auto [cTy, cFree] = freshType();
@@ -295,7 +302,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('b <: {t1}), ('a <: t1)) -> t1 where
 
     generalize(functionTy);
 
-    CHECK("<a>({a}, a) -> a" == toString(functionTy));
+    CHECK("<T>({T}, T) -> T" == toString(functionTy));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_traversal_should_re_traverse_unions_if_they_change_type")

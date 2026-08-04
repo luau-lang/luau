@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauDifferentiateFreeTypeAndGenericNames)
 
 using namespace Luau;
 
@@ -939,6 +940,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiation_clone_has_to_follow")
 TEST_CASE_FIXTURE(Fixture, "unifier3_supertail_covariant_with_sub")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
 
     CheckResult result = check(R"(
         local function fib(n)
@@ -946,7 +948,7 @@ TEST_CASE_FIXTURE(Fixture, "unifier3_supertail_covariant_with_sub")
         end
     )");
 
-    CHECK_EQ("<a>(a) -> t1 where t1 = add<a, t1>", toString(requireType("fib")));
+    CHECK_EQ("<T>(T) -> t1 where t1 = add<T, t1>", toString(requireType("fib")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "respect_partially_annotated_type_packs_1")

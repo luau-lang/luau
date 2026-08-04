@@ -5,6 +5,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauDifferentiateFreeTypeAndGenericNames)
+
 TEST_SUITE_BEGIN("ConstraintSolver");
 
 TEST_CASE_FIXTURE(Fixture, "constraint_basics")
@@ -19,6 +21,8 @@ TEST_CASE_FIXTURE(Fixture, "constraint_basics")
 
 TEST_CASE_FIXTURE(Fixture, "generic_function")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     check(R"(
         local function id(a)
             return a
@@ -26,7 +30,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_function")
     )");
 
 
-    CHECK("<a>(a) -> a" == toString(requireType("id")));
+    CHECK("<T>(T) -> T" == toString(requireType("id")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "proper_let_generalization")

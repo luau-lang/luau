@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauInstantiateFunctionTypeBeforePush)
+LUAU_FASTFLAG(LuauDifferentiateFreeTypeAndGenericNames)
 
 using namespace Luau;
 
@@ -1157,6 +1158,8 @@ wrapper(foo, test2, "3") -- not ok (type mismatch, string instead of number)
 
 TEST_CASE_FIXTURE(Fixture, "generic_function")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         function id(x) return x end
         local a = id(55)
@@ -1165,7 +1168,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
+    CHECK_EQ("<T>(T) -> T", toString(requireType("id")));
     CHECK("number" == toString(requireType("a")));
     CHECK("nil" == toString(requireType("b")));
 }
@@ -1286,6 +1289,8 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_cyclic_generic_function")
 
 TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         function foo(a, b)
             return a(b)
@@ -1308,13 +1313,15 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments")
     // are set, assert that we're getting back the original generic
     // function definition.
     if (FFlag::LuauInstantiateInSubtyping || !FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("<a, b...>((a) -> (b...), a) -> (b...)", toString(tm->givenType));
+        CHECK_EQ("<T, U...>((T) -> (U...), T) -> (U...)", toString(tm->givenType));
     else
         CHECK_EQ("((number) -> number, number) -> number", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments2")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         function foo(a, b)
             return a(b)
@@ -1335,7 +1342,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments2")
     // are set, assert that we're getting back the original generic
     // function definition.
     if (FFlag::LuauInstantiateInSubtyping || !FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("<a, b...>((a) -> (b...), a) -> (b...)", toString(tm->givenType));
+        CHECK_EQ("<T, U...>((T) -> (U...), T) -> (U...)", toString(tm->givenType));
     else
         CHECK_EQ("((string) -> number, string) -> number", toString(*tm->givenType));
 }
@@ -1644,24 +1651,28 @@ TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics3")
 
 TEST_CASE_FIXTURE(Fixture, "quantify_functions_with_no_generics")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         function foo(f, x)
             return f(x)
         end
     )");
 
-    CHECK("<a, b...>((a) -> (b...), a) -> (b...)" == toString(requireType("foo")));
+    CHECK("<T, U...>((T) -> (U...), T) -> (U...)" == toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_generic")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         function foo<X>(f, x: X)
             return f(x)
         end
     )");
 
-    CHECK("<X, a...>((X) -> (a...), X) -> (a...)" == toString(requireType("foo")));
+    CHECK("<X, T...>((X) -> (T...), X) -> (T...)" == toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_extra_quantification_for_generic_functions")
@@ -1782,6 +1793,7 @@ TEST_CASE_FIXTURE(Fixture, "missing_generic_type_parameter")
 TEST_CASE_FIXTURE(Fixture, "generic_implicit_explicit_name_clash")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
 
     auto result = check(R"(
         function apply<a>(func, argument: a)
@@ -1789,7 +1801,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_implicit_explicit_name_clash")
         end
     )");
 
-    CHECK("<a, b...>((a) -> (b...), a) -> (b...)" == toString(requireType("apply")));
+    CHECK("<a, T...>((a) -> (T...), a) -> (T...)" == toString(requireType("apply")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_functions_work_in_subtyping")

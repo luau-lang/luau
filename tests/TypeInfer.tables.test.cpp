@@ -29,6 +29,7 @@ LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
+LUAU_FASTFLAG(LuauDifferentiateFreeTypeAndGenericNames)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -700,6 +701,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_array_2")
 
 TEST_CASE_FIXTURE(Fixture, "indexers_get_quantified_too")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         function swap(p)
             local temp = p[0]
@@ -711,7 +714,7 @@ TEST_CASE_FIXTURE(Fixture, "indexers_get_quantified_too")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK("<a>({a}) -> ()" == toString(requireType("swap")));
+        CHECK("<T>({T}) -> ()" == toString(requireType("swap")));
     else
     {
         const FunctionType* ftv = get<FunctionType>(requireType("swap"));
@@ -3666,6 +3669,8 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         local function f(s)
             return s:absolutely_no_scalar_has_this_method()
@@ -3686,51 +3691,51 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
         TypeMismatch* tm1 = get<TypeMismatch>(result.errors[0]);
         REQUIRE(tm1);
         CHECK("typeof(string)" == toString(tm1->givenType));
-        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (a...) }" == toString(tm1->wantedType));
+        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (T...) }" == toString(tm1->wantedType));
 
         TypeMismatch* tm2 = get<TypeMismatch>(result.errors[1]);
         REQUIRE(tm2);
         CHECK("typeof(string)" == toString(tm2->givenType));
-        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (a...) }" == toString(tm2->wantedType));
+        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (T...) }" == toString(tm2->wantedType));
 
         TypeMismatch* tm3 = get<TypeMismatch>(result.errors[2]);
         REQUIRE(tm3);
         CHECK("typeof(string)" == toString(tm3->givenType));
-        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (a...) }" == toString(tm3->wantedType));
+        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (T...) }" == toString(tm3->wantedType));
 
         TypeMismatch* tm4 = get<TypeMismatch>(result.errors[3]);
         REQUIRE(tm4);
         CHECK("typeof(string)" == toString(tm4->givenType));
-        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (a...) }" == toString(tm4->wantedType));
+        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (T...) }" == toString(tm4->wantedType));
     }
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(3, result);
 
         const std::string expected1 =
-            R"(Expected this to be 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}', but got 'string'
+            R"(Expected this to be 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (T...) -}', but got 'string'
 caused by:
   The given type's metatable does not satisfy the requirements.
-Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (T...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
         CHECK_EQ(expected1, toString(result.errors[0]));
 
         const std::string expected2 =
-            R"(Expected this to be 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}', but got '"bar"'
+            R"(Expected this to be 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (T...) -}', but got '"bar"'
 caused by:
   The given type's metatable does not satisfy the requirements.
-Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (T...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
         CHECK_EQ(expected2, toString(result.errors[1]));
 
         const std::string expected3 = R"(Expected this to be
-	't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+	't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (T...) -}'
 but got
 	'"bar" | "baz"'
 caused by:
   Not all union options are compatible.
-Expected this to be 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}', but got '"bar"'
+Expected this to be 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (T...) -}', but got '"bar"'
 caused by:
   The given type's metatable does not satisfy the requirements.
-Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (T...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
         CHECK_EQ(expected3, toString(result.errors[2]));
     }
 }
@@ -4800,6 +4805,8 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         function oc(player, speaker)
             local head = speaker.Character:FindFirstChild('Head')
@@ -4810,9 +4817,9 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK(
-        "<a>({{ read Character: t1 }}, { Character: t1 }) -> () "
+        "<T>({{ read Character: t1 }}, { Character: t1 }) -> () "
         "where "
-        "t1 = { read FindFirstChild: (t1, string) -> (a, ...unknown) }" == toString(requireType("oc"))
+        "t1 = { read FindFirstChild: (t1, string) -> (T, ...unknown) }" == toString(requireType("oc"))
     );
 }
 
@@ -4837,6 +4844,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tables_can_have_both_metatables_and_indexers
 
 TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         function foo(x, y)
             if x then
@@ -4848,7 +4857,7 @@ TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("<a>({a}, a) -> a" == toString(requireType("foo")));
+    CHECK("<T>({T}, T) -> T" == toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parameter_was_set_an_indexer_and_bounded_by_string")
@@ -5263,8 +5272,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_with_a_metatable_table_path")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
 {
-
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
 
     // This will have one (legitimate) error but previously would crash.
     auto result = check(R"(
@@ -5281,7 +5290,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
     )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(
-        "Cannot add indexer to table '{ @metatable t1, (nil & ~(false?)) | {  } } where t1 = { new: <a>(a) -> { @metatable t1, (a & ~(false?)) | {  "
+        "Cannot add indexer to table '{ @metatable t1, (nil & ~(false?)) | {  } } where t1 = { new: <T>(T) -> { @metatable t1, (T & ~(false?)) | {  "
         "} } }'",
         toString(result.errors[0])
     );

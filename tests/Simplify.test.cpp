@@ -10,6 +10,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
+LUAU_FASTFLAG(LuauDifferentiateFreeTypeAndGenericNames)
 
 namespace
 {
@@ -182,11 +183,13 @@ TEST_CASE_FIXTURE(SimplifyFixture, "boolean_and_truthy_and_falsy")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "any_and_indeterminate_types")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CHECK("'a | *error-type*" == intersectStr(anyTy, freeTy));
     CHECK("'a | *error-type*" == intersectStr(freeTy, anyTy));
 
-    CHECK("*error-type* | b" == intersectStr(anyTy, genericTy));
-    CHECK("*error-type* | b" == intersectStr(genericTy, anyTy));
+    CHECK("*error-type* | T" == intersectStr(anyTy, genericTy));
+    CHECK("*error-type* | T" == intersectStr(genericTy, anyTy));
 
     auto anyRhsBlocked = get<UnionType>(intersect(anyTy, blockedTy));
     auto anyLhsBlocked = get<UnionType>(intersect(blockedTy, anyTy));
@@ -259,11 +262,13 @@ TEST_CASE_FIXTURE(SimplifyFixture, "error_and_other_tops_and_bottom_types")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "error_and_indeterminate_types")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CHECK("'a & *error-type*" == intersectStr(errorTy, freeTy));
     CHECK("'a & *error-type*" == intersectStr(freeTy, errorTy));
 
-    CHECK("*error-type* & b" == intersectStr(errorTy, genericTy));
-    CHECK("*error-type* & b" == intersectStr(genericTy, errorTy));
+    CHECK("*error-type* & T" == intersectStr(errorTy, genericTy));
+    CHECK("*error-type* & T" == intersectStr(genericTy, errorTy));
 
     CHECK(isIntersection(intersect(errorTy, blockedTy)));
     CHECK(isIntersection(intersect(blockedTy, errorTy)));

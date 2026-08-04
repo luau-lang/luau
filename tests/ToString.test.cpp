@@ -13,6 +13,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauDifferentiateFreeTypeAndGenericNames)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -356,6 +357,8 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_is_still_capped_when_exhaust
 
 TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         function f0() end
         function f1(f) return f or f0 end
@@ -370,9 +373,9 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
         o.exhaustive = false;
         o.maxTypeLength = 20;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) ... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ())... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ())... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f1"), o), "<T>(T) -> (() -> ()) ... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f2"), o), "<V>(V) -> (<T>(T) -> (() -> ())... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "<X>(X) -> (<V>(V) -> (<T>(T) -> (() -> ())... *TRUNCATED*");
     }
     else
     {
@@ -390,6 +393,8 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         function f0() end
         function f1(f) return f or f0 end
@@ -405,9 +410,9 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
         o.exhaustive = true;
         o.maxTypeLength = 20;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) ... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ())... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ())... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f1"), o), "<T>(T) -> (() -> ()) ... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f2"), o), "<V>(V) -> (<T>(T) -> (() -> ())... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "<X>(X) -> (<V>(V) -> (<T>(T) -> (() -> ())... *TRUNCATED*");
     }
     else
     {
@@ -530,6 +535,8 @@ local u: Foo
 
 TEST_CASE_FIXTURE(Fixture, "generate_friendly_names_for_inferred_generics")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         function id(x) return x end
 
@@ -540,18 +547,20 @@ TEST_CASE_FIXTURE(Fixture, "generate_friendly_names_for_inferred_generics")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
+    CHECK_EQ("<T>(T) -> T", toString(requireType("id")));
 
     CHECK_EQ(
-        "<a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z, a1, b1, c1, d1>(a, b, c, d, e, f, g, h, i, j, k, l, "
-        "m, n, o, p, q, r, s, t, u, v, w, x, y, z, a1, b1, c1, d1) -> (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, "
-        "x, y, z, a1, b1, c1, d1)",
+        "<T, U, V, W, X, Y, Z, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T2, U2, V2, W2>(T, U, V, W, X, Y, Z, A, B, C, D, E, "
+        "F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T2, U2, V2, W2) -> (T, U, V, W, X, Y, Z, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, "
+        "Q, R, S, T2, U2, V2, W2)",
         toString(requireType("id2"))
     );
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         function id3(a, b, c)
             return a, b, c
@@ -567,7 +576,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 
     REQUIRE(3 == opts.nameMap.types.size());
 
-    REQUIRE_EQ("<a, b, c>(a, b, c) -> (a, b, c)", nameData.name);
+    REQUIRE_EQ("<T, U, V>(T, U, V) -> (T, U, V)", nameData.name);
 
     const FunctionType* ftv = get<FunctionType>(follow(id3Type));
     REQUIRE(ftv != nullptr);
@@ -575,9 +584,9 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
     auto params = flatten(ftv->argTypes).first;
     REQUIRE(3 == params.size());
 
-    CHECK("a" == toString(params[0], opts));
-    CHECK("b" == toString(params[1], opts));
-    CHECK("c" == toString(params[2], opts));
+    CHECK("T" == toString(params[0], opts));
+    CHECK("U" == toString(params[1], opts));
+    CHECK("V" == toString(params[2], opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringErrorPack")
@@ -592,12 +601,14 @@ local function target(callback: nil) return callback(4, "hello") end
 
 TEST_CASE_FIXTURE(Fixture, "toStringGenericPack")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
 function foo(a, b) return a(b) end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("foo")), "<a, b...>((a) -> (b...), a) -> (b...)");
+    CHECK_EQ(toString(requireType("foo")), "<T, U...>((T) -> (U...), T) -> (U...)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_TypePack")
@@ -673,6 +684,8 @@ TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_id")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         local function id(x) return x end
     )");
@@ -680,11 +693,13 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_id")
     TypeId ty = requireType("id");
     const FunctionType* ftv = get<FunctionType>(follow(ty));
 
-    CHECK_EQ("id<a>(x: a): a", toStringNamedFunction("id", *ftv));
+    CHECK_EQ("id<T>(x: T): T", toStringNamedFunction("id", *ftv));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         local function map(arr, fn)
             local t = {}
@@ -699,9 +714,9 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
     const FunctionType* ftv = get<FunctionType>(follow(ty));
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> (b, ...unknown)): {b}", toStringNamedFunction("map", *ftv));
+        CHECK_EQ("map<T, U>(arr: {T}, fn: (T) -> (U, ...unknown)): {U}", toStringNamedFunction("map", *ftv));
     else
-        CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> b): {b}", toStringNamedFunction("map", *ftv));
+        CHECK_EQ("map<T, U>(arr: {T}, fn: (T) -> U): {U}", toStringNamedFunction("map", *ftv));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_generic_pack")
@@ -798,6 +813,8 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_type_params")
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_overrides_param_names")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         local function test(a, b : string, ... : number) return a end
     )");
@@ -807,7 +824,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_overrides_param_names")
 
     ToStringOptions opts;
     opts.namedFunctionOverrideArgNames = {"first", "second", "third"};
-    CHECK_EQ("test<a>(first: a, second: string, ...: number): a", toStringNamedFunction("test", *ftv, opts));
+    CHECK_EQ("test<T>(first: T, second: string, ...: number): T", toStringNamedFunction("test", *ftv, opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_generics")

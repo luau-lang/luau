@@ -20,6 +20,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauConcatDoesntAlwaysReturnString)
+LUAU_FASTFLAG(LuauDifferentiateFreeTypeAndGenericNames)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -779,6 +780,8 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_in_comparison")
 
 TEST_CASE_FIXTURE(Fixture, "concat_op_on_free_lhs_and_string_rhs")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         local function f(x)
             return x .. "y"
@@ -788,7 +791,7 @@ TEST_CASE_FIXTURE(Fixture, "concat_op_on_free_lhs_and_string_rhs")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK("<a>(a) -> concat<a, string>" == toString(requireType("f")));
+        CHECK("<T>(T) -> concat<T, string>" == toString(requireType("f")));
     }
     else
     {
@@ -799,6 +802,8 @@ TEST_CASE_FIXTURE(Fixture, "concat_op_on_free_lhs_and_string_rhs")
 
 TEST_CASE_FIXTURE(Fixture, "concat_op_on_string_lhs_and_free_rhs")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(R"(
         local function f(x)
             return "foo" .. x
@@ -808,7 +813,7 @@ TEST_CASE_FIXTURE(Fixture, "concat_op_on_string_lhs_and_free_rhs")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK("<a>(a) -> concat<string, a>" == toString(requireType("f")));
+        CHECK("<T>(T) -> concat<string, T>" == toString(requireType("f")));
     else
         CHECK_EQ("(string) -> string", toString(requireType("f")));
 }
@@ -1074,6 +1079,8 @@ TEST_CASE_FIXTURE(Fixture, "refine_and_or")
 
 TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(Mode::Strict, R"(
         local function f(x, y)
             return x + y
@@ -1083,7 +1090,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> add<a, b>");
+        CHECK(toString(requireType("f")) == "<T, U>(T, U) -> add<T, U>");
     }
     else
     {
@@ -1106,6 +1113,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_subtraction")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(Mode::Strict, R"(
         local function f(x, y)
             return x - y
@@ -1115,7 +1124,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_subtraction")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> sub<a, b>");
+        CHECK(toString(requireType("f")) == "<T, U>(T, U) -> sub<T, U>");
     }
     else
     {
@@ -1126,6 +1135,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_subtraction")
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_multiplication")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(Mode::Strict, R"(
         local function f(x, y)
             return x * y
@@ -1135,7 +1146,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_multiplication")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> mul<a, b>");
+        CHECK(toString(requireType("f")) == "<T, U>(T, U) -> mul<T, U>");
     }
     else
     {
@@ -1146,6 +1157,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_multiplication")
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_division")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(Mode::Strict, R"(
         local function f(x, y)
             return x / y
@@ -1155,7 +1168,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_division")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> div<a, b>");
+        CHECK(toString(requireType("f")) == "<T, U>(T, U) -> div<T, U>");
     }
     else
     {
@@ -1166,6 +1179,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_division")
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_floor_division")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(Mode::Strict, R"(
         local function f(x, y)
             return x // y
@@ -1175,7 +1190,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_floor_division")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> idiv<a, b>");
+        CHECK(toString(requireType("f")) == "<T, U>(T, U) -> idiv<T, U>");
     }
     else
     {
@@ -1186,6 +1201,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_floor_division")
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_exponentiation")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(Mode::Strict, R"(
         local function f(x, y)
             return x ^ y
@@ -1195,7 +1212,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_exponentiation")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> pow<a, b>");
+        CHECK(toString(requireType("f")) == "<T, U>(T, U) -> pow<T, U>");
     }
     else
     {
@@ -1206,6 +1223,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_exponentiation")
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_modulo")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(Mode::Strict, R"(
         local function f(x, y)
             return x % y
@@ -1215,7 +1234,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_modulo")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> mod<a, b>");
+        CHECK(toString(requireType("f")) == "<T, U>(T, U) -> mod<T, U>");
     }
     else
     {
@@ -1226,6 +1245,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_modulo")
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_concat")
 {
+    ScopedFastFlag differentiateFreeTypesAndGenerics{FFlag::LuauDifferentiateFreeTypeAndGenericNames, true};
+
     CheckResult result = check(Mode::Strict, R"(
         local function f(x, y)
             return x .. y
@@ -1235,7 +1256,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_concat")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> concat<a, b>");
+        CHECK(toString(requireType("f")) == "<T, U>(T, U) -> concat<T, U>");
     }
     else
     {
