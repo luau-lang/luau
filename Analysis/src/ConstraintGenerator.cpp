@@ -283,6 +283,7 @@ ConstraintGenerator::ConstraintGenerator(
     CFG::TypeStateMap* typestate
 )
     : module(module)
+    , sharedModuleName(std::make_shared<ModuleName>(module->name))
     , builtinTypes(builtinTypes)
     , arena(normalizer->arena)
     , rootScope(nullptr)
@@ -359,10 +360,8 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
         GeneralizationConstraint{
             result,
             moduleFnTy,
-            /*interiorTypes*/ std::vector<TypeId>{},
-            /*hasDeprecatedAttribute*/ false,
-            /*deprecatedInfo*/ {},
-            /*noGenerics*/ true
+            /* maybeDeprecatedAttr */ nullptr,
+            /* noGenerics */ true
         }
     );
 
@@ -555,14 +554,17 @@ TypeId ConstraintGenerator::resolveLHSType(const ScopePtr& scope, Location locat
 NotNull<Constraint> ConstraintGenerator::addConstraint(const ScopePtr& scope, const Location& location, ConstraintV cv)
 {
     if (FFlag::DebugLuauCyclicRequireTypeInference)
-        return NotNull{cgraph->constraints.emplace_back(new Constraint{NotNull{scope.get()}, location, std::move(cv)}).get()};
+        return NotNull{cgraph->constraints.emplace_back(new Constraint{NotNull{scope.get()}, location, std::move(cv), sharedModuleName}).get()};
     return NotNull{constraints.emplace_back(new Constraint{NotNull{scope.get()}, location, std::move(cv)}).get()};
 }
 
 NotNull<Constraint> ConstraintGenerator::addConstraint(const ScopePtr& scope, std::unique_ptr<Constraint> c)
 {
     if (FFlag::DebugLuauCyclicRequireTypeInference)
+    {
+        c->moduleName = sharedModuleName;
         return NotNull{cgraph->constraints.emplace_back(std::move(c)).get()};
+    }
     return NotNull{constraints.emplace_back(std::move(c)).get()};
 }
 
@@ -1663,11 +1665,9 @@ static void propagateDeprecatedAttributeToConstraint(ConstraintV& c, const AstEx
 {
     if (GeneralizationConstraint* genConstraint = c.get_if<GeneralizationConstraint>())
     {
-        AstAttr* deprecatedAttribute = func->getAttribute(AstAttr::Type::Deprecated);
-        genConstraint->hasDeprecatedAttribute = deprecatedAttribute != nullptr;
-        if (deprecatedAttribute)
+        if (AstAttr* deprecatedAttribute = func->getAttribute(AstAttr::Type::Deprecated))
         {
-            genConstraint->deprecatedInfo = deprecatedAttribute->deprecatedInfo();
+            genConstraint->maybeDeprecatedAttr = deprecatedAttribute;
         }
     }
 }
@@ -1700,8 +1700,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
     Checkpoint end = checkpoint(this);
 
     NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
-    std::unique_ptr<Constraint> c =
-        std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature});
+    std::unique_ptr<Constraint> c = FFlag::DebugLuauCyclicRequireTypeInference
+        ? std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature}, sharedModuleName)
+        : std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature});
 
     propagateDeprecatedAttributeToConstraint(c->c, function->func);
 
@@ -2101,7 +2102,6 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeFunctio
         GeneralizationConstraint{
             generalizedTy,
             sig.signature,
-            std::vector<TypeId>{},
         }
     );
 
@@ -2466,9 +2466,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
                     Checkpoint end = checkpoint(this);
 
                     NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
-                    std::unique_ptr<Constraint> c = std::make_unique<Constraint>(
-                        constraintScope, method.function->location, GeneralizationConstraint{functionType, sig.signature}
-                    );
+                    std::unique_ptr<Constraint> c = FFlag::DebugLuauCyclicRequireTypeInference
+                        ? std::make_unique<Constraint>(constraintScope, method.function->location, GeneralizationConstraint{functionType, sig.signature}, sharedModuleName)
+                        : std::make_unique<Constraint>(constraintScope, method.function->location, GeneralizationConstraint{functionType, sig.signature});
 
                     propagateDeprecatedAttributeToConstraint(c->c, method.function);
 
@@ -2822,6 +2822,7 @@ InferencePack ConstraintGenerator::checkExprCall(
             std::move(discriminantTypes),
             std::move(explicitTypeIds),
             std::move(explicitTypePackIds),
+            FFlag::DebugLuauCyclicRequireTypeInference ? &module->astTypes : nullptr,
             &module->astOverloadResolvedTypes,
         }
     );
@@ -3158,7 +3159,6 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprFunction* fun
         GeneralizationConstraint{
             generalizedTy,
             sig.signature,
-            std::vector<TypeId>{},
         }
     );
 

@@ -9,6 +9,7 @@
 #include "Luau/Compiler.h"
 #include "Luau/Config.h"
 #include "Luau/Frontend.h"
+#include "Luau/JitInliner.h"
 #include "Luau/Linter.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Parser.h"
@@ -42,6 +43,7 @@ const bool kFuzzVM = getEnvParam("LUAU_FUZZ_VM", true);
 const bool kFuzzPrettyPrint = getEnvParam("LUAU_FUZZ_PRETTY_PRINT", true);
 const bool kFuzzCodegenVM = getEnvParam("LUAU_FUZZ_CODEGEN_VM", true);
 const bool kFuzzCodegenAssembly = getEnvParam("LUAU_FUZZ_CODEGEN_ASM", true);
+const bool kFuzzJitInliner = getEnvParam("LUAU_FUZZ_JIT_INLINER", true);
 
 // Should we generate type annotations?
 const bool kFuzzTypes = getEnvParam("LUAU_FUZZ_GEN_TYPES", true);
@@ -453,6 +455,8 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     if (kFuzzVM || kFuzzCodegenVM)
     {
         static lua_State* globalState = createGlobalState();
+        if (kFuzzJitInliner)
+            Luau::JitInliner::setup(globalState);
 
         auto runCode = [](const std::string& bytecode, bool useCodegen)
         {

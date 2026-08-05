@@ -474,7 +474,8 @@ typedef struct Closure
         {
             lua_CFunction f;
             lua_Continuation cont;
-            const char* debugname;
+            const char* debugname_DEPRECATED;
+            TString* debugname;
             TValue upvals[1];
         } c;
 
@@ -566,9 +567,10 @@ typedef struct LuauClass
     TValue* staticmembers;
 
     // Mapping from member name to offset.
+    // For static members, subtracting numberofinstancemembers from the offset gives the actual index into staticmembers.
     LuaTable* memberstooffset;
 
-    // Mapping from offset to member name.
+    // Mapping from offset to member name. Instance member offsets are stored before static member offsets.
     TString** offsettomember;
 
     // Metatable for this *class object*. At time of writing this only contains

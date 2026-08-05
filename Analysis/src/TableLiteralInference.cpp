@@ -17,6 +17,7 @@
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceVariadics)
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauRelaxConstraintOrderingForFunctionCheck)
 
 namespace Luau
 {
@@ -104,6 +105,16 @@ struct FindFunctionTypeIn : IterativeTypeVisitor
     }
 };
 
+/**
+ * Is this an expression that we can check has an expected type, for now this
+ * is limited to literals (including lambdas, "function literals"), groups
+ * (parenthesized expressions), and if-else expressions.
+ */
+bool isCheckableExpr(const AstExpr* expr)
+{
+    return isLiteral(expr) || expr->is<AstExprGroup>() || expr->is<AstExprIfElse>();
+}
+
 struct BidirectionalTypePusher
 {
 
@@ -157,6 +168,14 @@ struct BidirectionalTypePusher
         expectedType = follow(expectedType);
         exprType = follow(exprType);
 
+        if (FFlag::LuauRelaxConstraintOrderingForFunctionCheck && !isCheckableExpr(expr))
+        {
+            // NOTE: For now we aren't using the result of this function, so
+            // just return the original expression type.
+            return exprType;
+        }
+
+
         // NOTE: We cannot block on free types here, as that trivially means
         // any recursive function would have a cycle, consider:
         //
@@ -195,10 +214,14 @@ struct BidirectionalTypePusher
             return exprType;
         }
 
-        if (!isLiteral(expr))
-            // NOTE: For now we aren't using the result of this function, so
-            // just return the original expression type.
-            return exprType;
+        if (!FFlag::LuauRelaxConstraintOrderingForFunctionCheck)
+        {
+            if (!isLiteral(expr))
+                // NOTE: For now we aren't using the result of this function, so
+                // just return the original expression type.
+                return exprType;
+        }
+
 
         if (expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantBool>() ||
             expr->is<AstExprConstantNil>())

@@ -18,6 +18,8 @@
 #include <limits.h>
 #include <math.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenSkipDeadPredecessorTags)
+
 namespace Luau
 {
 namespace CodeGen
@@ -58,6 +60,7 @@ int getOpLength(LuauOpcode op)
     case LOP_NEWCLASSMEMBER:
     case LOP_CALLFB:
     case LOP_CMPPROTO:
+    case LOP_NEWCLASS:
         return 2;
 
     default:
@@ -1874,6 +1877,9 @@ void propagateTagsFromPredecessors(
 
     for (uint32_t predIdx : preds)
     {
+        if (FFlag::LuauCodegenSkipDeadPredecessorTags && function.blocks[predIdx].kind == IrBlockKind::Dead)
+            continue;
+
         if (predIdx >= numBlockExitTags)
             return;
 
@@ -1886,6 +1892,9 @@ void propagateTagsFromPredecessors(
 
     for (uint32_t predIdx : preds)
     {
+        if (FFlag::LuauCodegenSkipDeadPredecessorTags && function.blocks[predIdx].kind == IrBlockKind::Dead)
+            continue;
+
         const std::vector<uint8_t>& predTags = function.blockExitTags[predIdx];
 
         CODEGEN_ASSERT(minRegsKnown <= predTags.size());

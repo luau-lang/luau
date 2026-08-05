@@ -460,9 +460,10 @@ message StatClass
     required Local name = 1;
     repeated ClassProp props = 2;
     repeated ClassMethod methods = 3;
-    required Local local = 5;
     required ExprClassInst inst = 4;
+    required Local local = 5;
     optional bool is_exported = 6 [ default = false ];
+    optional int32 extends = 7;
 }
 
 message StatRequireIntoLocalHelper

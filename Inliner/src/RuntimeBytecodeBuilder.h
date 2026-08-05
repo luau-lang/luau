@@ -10,6 +10,8 @@
 
 #include <cmath>
 
+LUAU_FASTFLAG(LuauManagedDebugNames)
+
 namespace Luau
 {
 namespace JitInliner
@@ -165,12 +167,21 @@ struct RuntimeBytecodeBuilder : public BytecodeBuilder
 
             const char* debugname = nullptr;
             if (ccl->isC != 0)
-                debugname = ccl->c.debugname;
+            {
+                if (FFlag::LuauManagedDebugNames)
+                {
+                    if (TString* str = ccl->c.debugname)
+                        debugname = getstr(str);
+                }
+                else
+                {
+                    debugname = ccl->c.debugname_DEPRECATED;
+                }
+            }
             else
             {
-                TString* str = ccl->l.p->debugname;
-                if (str != nullptr)
-                    debugname = str->data;
+                if (TString* str = ccl->l.p->debugname)
+                    debugname = getstr(str);
             }
             formatAppend(result, "'%s'", debugname != nullptr ? debugname : "<unknown>");
             break;

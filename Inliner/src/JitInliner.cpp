@@ -10,7 +10,6 @@
 
 #include "BytecodeGraphParser.h"
 #include "BytecodeGraphSerializer.h"
-#include "Luau/VecDeque.h"
 #include "RuntimeBytecodeBuilder.h"
 #include "TValueVmConstImpl.h"
 
@@ -77,6 +76,7 @@ std::optional<std::pair<RuntimeBcFunction, BcOp>> buildGraphFromProto(Proto* p, 
     {
         LUAU_ASSERT(*callPc < insnsPC.size());
         callOp = BcOp{BcOpKind::Inst, insnsPC[*callPc]};
+        LUAU_ASSERT(fn.inst(callOp)->op == LOP_CALLFB);
     }
 
     return {{fn, callOp}};
@@ -110,7 +110,7 @@ std::optional<CodeData> emitCode(lua_State* L, RuntimeBcFunction& graph, std::ve
     for (uint32_t i = 0; i < graph.instructions.size(); i++)
     {
         BcInst& insn = graph.instructions[i];
-        if (insn.op == LOP_CALLFB)
+        if (insn.op == LOP_CALLFB && (graph.blockOp(insn.block).flags & BcBlockFlag::Dead) == 0)
         {
             BcCallFB<TValue*> callFB = graph.template as<BcCallFB<TValue*>>(BcOp{BcOpKind::Inst, i});
             if (callFB.FbSlot() >= 0)
@@ -118,6 +118,7 @@ std::optional<CodeData> emitCode(lua_State* L, RuntimeBcFunction& graph, std::ve
                 uint32_t fbSlot = static_cast<uint32_t>(callFB.FbSlot());
                 if (fbSlot >= res.fbSlotPCs.size())
                     res.fbSlotPCs.resize(fbSlot + 1, kUnassignedPC);
+
                 res.fbSlotPCs[fbSlot] = insnsPC[i];
             }
         }
@@ -326,14 +327,14 @@ Proto* onInlineFunction(lua_State* L, Closure* caller, Closure* target, uint32_t
     memcpy(protos.data(), callerProto->p, callerProto->sizep * sizeof(Proto*));
     memcpy(protos.data() + callerProto->sizep, targetProto->p, targetProto->sizep * sizeof(Proto*));
 
-    std::optional<CodeData> codeData = emitCode(L, callerGraph->first, protos);
-    if (!codeData)
+    if (std::optional<CodeData> codeData = emitCode(L, callerGraph->first, protos))
     {
-        sealAllSlots(callerProto->code, callerProto->sizecode);
-        return nullptr;
+        createInlinedProto(L, callerProto, targetProto, callerGraph->first, *codeData);
     }
 
-    createInlinedProto(L, callerProto, targetProto, callerGraph->first, *codeData);
+    // To prevent triggering of optimizations in already optimized proto sealing all feedback slots.
+    // All hit info was copied to the optimized version and new optimizations will happen there.
+    sealAllSlots(callerProto->code, callerProto->sizecode);
 
     return nullptr;
 }
