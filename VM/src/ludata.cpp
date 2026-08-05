@@ -7,10 +7,12 @@
 
 #include <string.h>
 
+#define MAXUSIZE (INT_MAX - sizeof(Udata))
+
 Udata* luaU_newudata(lua_State* L, size_t s, int tag)
 {
-    if (s > INT_MAX - sizeof(Udata))
-        luaM_toobig(L, "userdata too big");
+    if (s > MAXUSIZE)
+        luaM_toobig(L, "userdata too big", MAXUSIZE);
     Udata* u = luaM_newgco(L, Udata, sizeudata(s), L->activememcat);
     luaC_init(L, u, LUA_TUSERDATA);
     u->len = int(s);
