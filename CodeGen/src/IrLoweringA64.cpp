@@ -1709,6 +1709,44 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         jumpOrFallthrough(blockOp(OP_E(inst)), next);
         break;
     }
+    case IrCmd::JUMP_CMP_INT64:
+    {
+        IrCondition cond = conditionOp(OP_C(inst));
+
+        // Constant propagation can place a constant on either side and every form below compares against the right
+        // operand, so the operands are swapped and the condition inverted, like CMP_INT64 does. Equal and NotEqual
+        // are unchanged by that inversion, so the zero forms below still test the original condition.
+        IrOp lhs = OP_A(inst);
+        IrOp rhs = OP_B(inst);
+        bool swapped = lhs.kind == IrOpKind::Constant;
+
+        if (swapped)
+        {
+            lhs = OP_B(inst);
+            rhs = OP_A(inst);
+        }
+
+        if (cond == IrCondition::Equal && rhs.kind == IrOpKind::Constant && int64Op(rhs) == 0)
+        {
+            build.cbz(regOp(lhs), labelOp(OP_D(inst)));
+        }
+        else if (cond == IrCondition::NotEqual && rhs.kind == IrOpKind::Constant && int64Op(rhs) == 0)
+        {
+            build.cbnz(regOp(lhs), labelOp(OP_D(inst)));
+        }
+        else
+        {
+            if (rhs.kind == IrOpKind::Constant && uint64_t(int64Op(rhs)) <= AssemblyBuilderA64::kMaxImmediate)
+                build.cmp(regOp(lhs), uint16_t(int64Op(rhs)));
+            else
+                build.cmp(regOp(lhs), tempInt64(rhs));
+
+            ConditionA64 cc = getConditionInt64(cond);
+            build.b(swapped ? getInverseCondition(cc) : cc, labelOp(OP_D(inst)));
+        }
+        jumpOrFallthrough(blockOp(OP_E(inst)), next);
+        break;
+    }
     case IrCmd::JUMP_EQ_POINTER:
         build.cmp(regOp(OP_A(inst)), regOp(OP_B(inst)));
         build.b(ConditionA64::Equal, labelOp(OP_C(inst)));
