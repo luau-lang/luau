@@ -29,6 +29,7 @@ LUAU_FASTFLAG(LuauCompileIifeInline)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
+LUAU_FASTFLAG(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
@@ -490,14 +491,38 @@ CONCAT R3 R4 R6
 RETURN R3 1
 )");
 
+    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
+
     CHECK_EQ("\n" + compileFunction0("local a, b, c = ...; return (a .. b) .. c"), R"(
 GETVARARGS R0 3
-MOVE R6 R0
-MOVE R7 R1
-CONCAT R4 R6 R7
+MOVE R5 R0
+MOVE R6 R1
+CONCAT R4 R5 R6
 MOVE R5 R2
 CONCAT R3 R4 R5
 RETURN R3 1
+)");
+}
+
+TEST_CASE("ConcatTopRegisterUse")
+{
+    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
+    
+    CHECK_EQ("\n" + compileFunction0("local a, b = ...; return '{a=' .. tostring(a) .. ' b=' .. tostring(b) .. '}'"), R"(
+GETVARARGS R0 2
+LOADK R3 K0 ['{a=']
+FASTCALL1 63 R0 L0
+MOVE R5 R0
+GETIMPORT R4 2 [tostring]
+CALL R4 1 1
+L0: LOADK R5 K3 [' b=']
+FASTCALL1 63 R1 L1
+MOVE R7 R1
+GETIMPORT R6 2 [tostring]
+CALL R6 1 1
+L1: LOADK R7 K4 ['}']
+CONCAT R2 R3 R7
+RETURN R2 1
 )");
 }
 
