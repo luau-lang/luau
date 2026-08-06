@@ -10,7 +10,7 @@
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauVirtualBcBuilder)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
 LUAU_FLAGVERSION(LuauBytecodeCostModel, 2)
@@ -1960,7 +1960,7 @@ void BytecodeBuilder::validateInstructions() const
             VREG(LUAU_INSN_A(insn));
             VREG(LUAU_INSN_B(insn));
             VCONST(LUAU_INSN_AUX_KV16(insns[i + 1]), String);
-            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALL);
+            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALL || LUAU_INSN_OP(insns[i + 2]) == LOP_CALLFB);
             break;
 
         case LOP_CMPPROTO:

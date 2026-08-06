@@ -251,6 +251,10 @@ LUA_API void lua_call(lua_State* L, int nargs, int nresults);
 LUA_API int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc);
 LUA_API int lua_cpcall(lua_State* L, lua_CFunction func, void* ud);
 
+// wrapper for making calls from yieldable C functions
+LUA_API int lua_callyieldable(lua_State* L, int nargs, int nresults);
+LUA_API int lua_pcallyieldable(lua_State* L, int nargs, int nresults, int errfunc);
+
 /*
 ** coroutine functions
 */

@@ -19,7 +19,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
-LUAU_FASTFLAG(LuauConcatDoesntAlwaysReturnString)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -1617,7 +1616,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compare_singleton_string_to_string")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "no_infinite_expansion_of_free_type" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(BuiltinsFixture, "no_infinite_expansion_of_free_type" * doctest::timeout(LUAU_TIMEOUT))
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     check(R"(
@@ -1672,8 +1671,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "overload_concat")
 {
-    ScopedFastFlag sff{FFlag::LuauConcatDoesntAlwaysReturnString, true};
-
     CheckResult result = check(R"(
         type classData = {
             b:buffer;

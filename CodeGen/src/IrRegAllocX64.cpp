@@ -11,8 +11,6 @@
 
 LUAU_FASTFLAG(DebugCodegenLimitRegs)
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenNoEcbData)
-
 namespace Luau
 {
 namespace CodeGen
@@ -353,49 +351,18 @@ void IrRegAllocX64::preserve(IrInst& inst)
     {
         unsigned i = findSpillStackSlot(spill.valueKind);
 
-        if (!FFlag::LuauCodegenNoEcbData && isExtraSpillSlot_DEPRECATED(i))
-        {
-            int extraOffset = getExtraSpillAddressOffset_DEPRECATED(i);
-
-            // Tricky situation, no registers left, but need a register to calculate an address
-            // We will try to take r11 unless it's actually the register being spilled
-            RegisterX64 emergencyTemp = inst.regX64.size == SizeX64::xmmword || inst.regX64.index != 11 ? r11 : r10;
-
-            build.mov(qword[sTemporarySlot + 0], emergencyTemp);
-
-            build.mov(emergencyTemp, qword[rState + offsetof(lua_State, global)]);
-            build.lea(emergencyTemp, addr[emergencyTemp + offsetof(global_State, ecbdata) + extraOffset]);
-
-            if (spill.valueKind == IrValueKind::Tvalue)
-                build.vmovups(xmmword[emergencyTemp], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Double)
-                build.vmovsd(qword[emergencyTemp], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Pointer || spill.valueKind == IrValueKind::Int64)
-                build.mov(qword[emergencyTemp], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int)
-                build.mov(dword[emergencyTemp], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Float)
-                build.vmovss(dword[emergencyTemp], inst.regX64);
-            else
-                CODEGEN_ASSERT(!"Unsupported value kind");
-
-            build.mov(emergencyTemp, qword[sTemporarySlot + 0]);
-        }
+        if (spill.valueKind == IrValueKind::Tvalue)
+            build.vmovups(xmmword[sSpillArea + i * 4], inst.regX64);
+        else if (spill.valueKind == IrValueKind::Double)
+            build.vmovsd(qword[sSpillArea + i * 4], inst.regX64);
+        else if (spill.valueKind == IrValueKind::Pointer || spill.valueKind == IrValueKind::Int64)
+            build.mov(qword[sSpillArea + i * 4], inst.regX64);
+        else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int)
+            build.mov(dword[sSpillArea + i * 4], inst.regX64);
+        else if (spill.valueKind == IrValueKind::Float)
+            build.vmovss(dword[sSpillArea + i * 4], inst.regX64);
         else
-        {
-            if (spill.valueKind == IrValueKind::Tvalue)
-                build.vmovups(xmmword[sSpillArea + i * 4], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Double)
-                build.vmovsd(qword[sSpillArea + i * 4], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Pointer || spill.valueKind == IrValueKind::Int64)
-                build.mov(qword[sSpillArea + i * 4], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int)
-                build.mov(dword[sSpillArea + i * 4], inst.regX64);
-            else if (spill.valueKind == IrValueKind::Float)
-                build.vmovss(dword[sSpillArea + i * 4], inst.regX64);
-            else
-                CODEGEN_ASSERT(!"Unsupported value kind");
-        }
+            CODEGEN_ASSERT(!"Unsupported value kind");
 
         unsigned end = i + kValueDwordSize[int(spill.valueKind)];
 
@@ -500,32 +467,13 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
 
             OperandX64 restoreAddr = noreg;
 
-            RegisterX64 emergencyTemp = reg.size == SizeX64::xmmword ? r11 : qwordReg(reg);
-
             // Previous call might have relocated the spill vector, so this reference can't be taken earlier
             const IrSpillX64& spill = spills[i];
 
             if (spill.stackSlot != kNoStackSlot)
             {
-                if (!FFlag::LuauCodegenNoEcbData && isExtraSpillSlot_DEPRECATED(spill.stackSlot))
-                {
-                    int extraOffset = getExtraSpillAddressOffset_DEPRECATED(spill.stackSlot);
-
-                    // Need to calculate an address, but everything might be taken
-                    if (reg.size == SizeX64::xmmword)
-                        build.mov(qword[sTemporarySlot + 0], emergencyTemp);
-
-                    build.mov(emergencyTemp, qword[rState + offsetof(lua_State, global)]);
-                    build.lea(emergencyTemp, addr[emergencyTemp + offsetof(global_State, ecbdata) + extraOffset]);
-
-                    restoreAddr = addr[emergencyTemp];
-                    restoreAddr.memSize = reg.size;
-                }
-                else
-                {
-                    restoreAddr = addr[sSpillArea + spill.stackSlot * 4];
-                    restoreAddr.memSize = reg.size;
-                }
+                restoreAddr = addr[sSpillArea + spill.stackSlot * 4];
+                restoreAddr.memSize = reg.size;
 
                 if (spill.valueKind == IrValueKind::Double || spill.valueKind == IrValueKind::Int64)
                     restoreAddr.memSize = SizeX64::qword;
@@ -572,12 +520,6 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
             else
             {
                 CODEGEN_ASSERT(!"value kind not supported for restore");
-            }
-
-            if (spill.stackSlot != kNoStackSlot && (!FFlag::LuauCodegenNoEcbData && isExtraSpillSlot_DEPRECATED(spill.stackSlot)))
-            {
-                if (reg.size == SizeX64::xmmword)
-                    build.mov(emergencyTemp, qword[sTemporarySlot + 0]);
             }
 
             if (logger && logger->options.includeRegSpills)
@@ -655,23 +597,10 @@ unsigned IrRegAllocX64::findSpillStackSlot(IrValueKind valueKind)
     }
     else
     {
-        unsigned numHalves = kValueDwordSize[int(valueKind)];
-        unsigned boundary = kSpillSlots_DEPRECATED * 2;
-
         // Find a free stack slot. Four consecutive slots might be required for 16 byte TValues, so '- 3' is used
         // For 8 and 16 byte types we search in steps of 2 to return slot indices aligned by 2
         for (unsigned i = 0; i < unsigned(usedSpillSlotHalfs.size() - 3); i += 2)
         {
-            if (!FFlag::LuauCodegenNoEcbData)
-            {
-                // Prevent large value from allocating at stack/extra spill storage boundary
-                if (i < boundary && i + numHalves > boundary)
-                {
-                    i = boundary - 2;
-                    continue;
-                }
-            }
-
             if (usedSpillSlotHalfs.test(i) || usedSpillSlotHalfs.test(i + 1))
                 continue;
 
@@ -753,22 +682,6 @@ uint32_t IrRegAllocX64::findInstructionWithFurthestNextUse(const std::array<uint
     }
 
     return furthestUseTarget;
-}
-
-bool IrRegAllocX64::isExtraSpillSlot_DEPRECATED(unsigned slot) const
-{
-    CODEGEN_ASSERT(!FFlag::LuauCodegenNoEcbData);
-    CODEGEN_ASSERT(slot != kNoStackSlot);
-
-    return slot >= kSpillSlots_DEPRECATED * 2;
-}
-
-int IrRegAllocX64::getExtraSpillAddressOffset_DEPRECATED(unsigned slot) const
-{
-    CODEGEN_ASSERT(!FFlag::LuauCodegenNoEcbData);
-    CODEGEN_ASSERT(isExtraSpillSlot_DEPRECATED(slot));
-
-    return (slot - kSpillSlots_DEPRECATED * 2) * 4;
 }
 
 void IrRegAllocX64::assertFree(RegisterX64 reg) const

@@ -97,7 +97,7 @@ struct ConstraintSolver
     std::vector<NotNull<Constraint>> constraints;
     NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction;
     NotNull<Scope> rootScope;
-    ModulePtr module; // Clip with DebugLuauCyclicRequireTypeInference
+    ModulePtr module; // Clip with LuauCyclicRequireTypeInference
     // Used for solver-scoped errors not attributable to a specific constraint
     // (e.g. ConstraintSolvingIncompleteError, time limits).
     std::shared_ptr<ModuleName> representativeModuleName;
@@ -335,7 +335,7 @@ public:
      **/
     NotNull<Constraint> pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv, std::shared_ptr<ModuleName> moduleName);
 
-    // Clip with DebugLuauCyclicRequireTypeInference
+    // Clip with LuauCyclicRequireTypeInference
     NotNull<Constraint> DEPRECATED_pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv);
 
     /**
@@ -351,7 +351,7 @@ public:
 
     void reportError(TypeErrorData&& data, const Location& location, const ModuleName& errorModule);
 
-    // Clip with DebugLuauCyclicRequireTypeInference
+    // Clip with LuauCyclicRequireTypeInference
     TypeId DEPRECATED_resolveModule(const ModuleInfo& info, const Location& location);
     void DEPRECATED_reportError(TypeErrorData&& data, const Location& location);
     void DEPRECATED_reportError(TypeError e);
@@ -400,7 +400,7 @@ public:
      **/
     void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst, const std::shared_ptr<ModuleName>& moduleName);
 
-    // Clip with DebugLuauCyclicRequireTypeInference
+    // Clip with LuauCyclicRequireTypeInference
     void DEPRECATED_reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);
 
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
