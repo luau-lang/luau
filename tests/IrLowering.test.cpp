@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauCodegenA64ExitUseCheck)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAG(LuauCodegenConstVectorBufferRead)
+LUAU_FASTFLAG(LuauCodegenIntegerCompare)
 
 #define ensureVectorSize3() \
     if constexpr (LUA_VECTOR_SIZE != 3) \
@@ -8495,6 +8496,7 @@ TEST_CASE_FIXTURE(LoweringFixture, "IntegerCompare")
     ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
     ScopedFastFlag LuauCodegenInteger3{FFlag::LuauCodegenInteger3, true};
     ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
+    ScopedFastFlag luauCodegenIntegerCompare{FFlag::LuauCodegenIntegerCompare, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -8545,6 +8547,7 @@ TEST_CASE_FIXTURE(LoweringFixture, "IntegerCompareConstLhs")
     ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
     ScopedFastFlag luauCodegenBufferInteger{FFlag::LuauCodegenBufferInteger, true};
     ScopedFastFlag luauIntegerBufferFastcalls{FFlag::LuauIntegerBufferFastcalls, true};
+    ScopedFastFlag luauCodegenIntegerCompare{FFlag::LuauCodegenIntegerCompare, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(

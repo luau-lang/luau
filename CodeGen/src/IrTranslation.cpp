@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBuilinDeadRange)
+LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerCompare)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 
 namespace Luau
@@ -207,7 +208,7 @@ void translateInstJumpIfEq(IrBuilder& build, const Instruction* pc, int pcpos, b
         build.beginBlock(fallback);
     }
     // fast-path: integer (when both operands are expected to be an integer or are unknown)
-    else if (FFlag::LuauCodegenInteger3 && isExpectedOrUnknownBytecodeType(bcTypes.a, LBC_TYPE_INTEGER) &&
+    else if (FFlag::LuauCodegenInteger3 && FFlag::LuauCodegenIntegerCompare && isExpectedOrUnknownBytecodeType(bcTypes.a, LBC_TYPE_INTEGER) &&
              isExpectedOrUnknownBytecodeType(bcTypes.b, LBC_TYPE_INTEGER))
     {
         IrOp fallback = build.fallbackBlock(pcpos);
