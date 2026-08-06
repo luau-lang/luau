@@ -33,6 +33,7 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionArglistSuggestion)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteSkipErrorTypeInUnion)
 LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
+LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
 
 static constexpr std::array<std::string_view, 12> kStatementStartingKeywords_DEPRECATED =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -139,12 +140,34 @@ static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* n
         if ((exprCall->args.size == 0 && exprCall->argLocation.contains(position)) ||
             (exprCall->args.size > 0 && (*exprCall->args.begin())->as<AstExprError>()))
         {
-            auto it = module.astTypes.find(exprCall->func);
+            const FunctionType* ftv = nullptr;
 
-            if (!it)
-                return std::nullopt;
+            if (FFlag::LuauUseExplicitTypeArgsInGenerics)
+            {
+                TypeId funcType = nullptr;
 
-            const FunctionType* ftv = get<FunctionType>(follow(*it));
+                if (const TypeId* resolvedType = module.astOverloadResolvedTypes.find(exprCall))
+                    funcType = *resolvedType;
+
+                if (!funcType)
+                {
+                    auto it = module.astTypes.find(exprCall->func);
+                    if (!it)
+                        return std::nullopt;
+                    funcType = *it;
+                }
+
+                ftv = get<FunctionType>(follow(funcType));
+            }
+            else
+            {
+                auto it = module.astTypes.find(exprCall->func);
+
+                if (!it)
+                    return std::nullopt;
+
+                ftv = get<FunctionType>(follow(*it));
+            }
 
             if (!ftv)
                 return std::nullopt;
@@ -1968,11 +1991,34 @@ static std::optional<AutocompleteEntry> makeAnonymousAutofilled(
     if (!call->location.containsClosed(position) || call->func->location.containsClosed(position))
         return std::nullopt;
 
-    TypeId* typeIter = module->astTypes.find(call->func);
-    if (!typeIter)
-        return std::nullopt;
+    const FunctionType* outerFunction = nullptr;
 
-    const FunctionType* outerFunction = get<FunctionType>(follow(*typeIter));
+    if (FFlag::LuauUseExplicitTypeArgsInGenerics)
+    {
+        TypeId funcType = nullptr;
+
+        if (const TypeId* resolvedType = module->astOverloadResolvedTypes.find(call))
+            funcType = *resolvedType;
+
+        if (!funcType)
+        {
+            TypeId* typeIter = module->astTypes.find(call->func);
+            if (!typeIter)
+                return std::nullopt;
+            funcType = *typeIter;
+        }
+
+        outerFunction = get<FunctionType>(follow(funcType));
+    }
+    else
+    {
+        TypeId* typeIter = module->astTypes.find(call->func);
+        if (!typeIter)
+            return std::nullopt;
+
+        outerFunction = get<FunctionType>(follow(*typeIter));
+    }
+
     if (!outerFunction)
         return std::nullopt;
 

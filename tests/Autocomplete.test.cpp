@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauAutocompleteSkipErrorTypeInUnion)
 LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
+LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
 
 using namespace Luau;
 
@@ -3864,7 +3865,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "require_by_string")
     checkEntries(acResult.entryMap, {{"..", "../.."}, {"Folder", "../Folder"}, {"ParentDependency", "../ParentDependency"}});
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_response_perf1" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_response_perf1" * doctest::timeout(LUAU_TIMEOUT))
 {
     if (!FFlag::DebugLuauForceOldSolver)
         return; // FIXME: This test is just barely at the threshhold which makes it very flaky under the new solver
@@ -5701,6 +5702,28 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_on_nonexistent_table")
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("Animator"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "type_correct_suggestion_with_explicit_type_args_on_method_call")
+{
+    ScopedFastFlag sff{FFlag::LuauUseExplicitTypeArgsInGenerics, true};
+
+    check(R"(
+local ModuleTable = {}
+function ModuleTable:GenericFunctionInsideATable<T>(value: T): T
+    return value
+end
+
+local myString = "hello"
+local myNumber = 42
+ModuleTable:GenericFunctionInsideATable<<string>>(@1)
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("myString"));
+    CHECK(ac.entryMap["myString"].typeCorrect == TypeCorrectKind::Correct);
+    CHECK(ac.entryMap["myNumber"].typeCorrect == TypeCorrectKind::None);
 }
 
 TEST_SUITE_END();

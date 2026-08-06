@@ -325,7 +325,7 @@ TEST_CASE("yielded_configuration")
     CHECK(*error == "configuration execution cannot yield");
 }
 
-TEST_CASE("interrupt_execution" * doctest::timeout(2))
+TEST_CASE("interrupt_execution" * doctest::timeout(LUAU_TIMEOUT))
 {
     std::string source = R"(
         while true do end

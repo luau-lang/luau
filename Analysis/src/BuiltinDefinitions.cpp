@@ -24,7 +24,7 @@
 #include <algorithm>
 #include <string_view>
 
-LUAU_FASTFLAG(DebugLuauCyclicRequireTypeInference)
+LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -713,7 +713,7 @@ bool MagicFormat::infer(const MagicFunctionCallContext& context)
 
     if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
     {
-        if (FFlag::DebugLuauCyclicRequireTypeInference)
+        if (FFlag::LuauCyclicRequireTypeInference)
             context.solver->reportError(CountMismatch{numExpectedParams, std::nullopt, numActualParams}, context.callSite->location, *context.constraint->moduleName);
         else
             context.solver->DEPRECATED_reportError(TypeError{context.callSite->location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
@@ -1326,7 +1326,7 @@ bool MagicSelect::infer(const MagicFunctionCallContext& context)
 {
     if (context.callSite->args.size <= 0)
     {
-        if (FFlag::DebugLuauCyclicRequireTypeInference)
+        if (FFlag::LuauCyclicRequireTypeInference)
             context.solver->reportError(GenericError{"select should take 1 or more arguments"}, context.callSite->location, *context.constraint->moduleName);
         else
             context.solver->DEPRECATED_reportError(TypeError{context.callSite->location, GenericError{"select should take 1 or more arguments"}});
@@ -1627,7 +1627,7 @@ bool MagicClone::infer(const MagicFunctionCallContext& context)
     const auto& [paramTypes, paramTail] = flatten(context.arguments);
     if (paramTypes.empty() || context.callSite->args.size == 0)
     {
-        if (FFlag::DebugLuauCyclicRequireTypeInference)
+        if (FFlag::LuauCyclicRequireTypeInference)
             context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation, *context.constraint->moduleName);
         else
             context.solver->DEPRECATED_reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
@@ -1871,7 +1871,7 @@ static bool checkRequirePathNewSolver(NotNull<ConstraintSolver> solver, AstExpr*
     return good;
 }
 
-// Clip with DebugLuauCyclicRequireTypeInference
+// Clip with LuauCyclicRequireTypeInference
 static bool DEPRECATED_checkRequirePathDcr(NotNull<ConstraintSolver> solver, AstExpr* expr)
 {
     // require(foo.parent.bar) will technically work, but it depends on legacy goop that
@@ -1898,14 +1898,14 @@ bool MagicRequire::infer(const MagicFunctionCallContext& context)
 {
     if (context.callSite->args.size != 1)
     {
-        if (FFlag::DebugLuauCyclicRequireTypeInference)
+        if (FFlag::LuauCyclicRequireTypeInference)
             context.solver->reportError(GenericError{"require takes 1 argument"}, context.callSite->location, *context.constraint->moduleName);
         else
             context.solver->DEPRECATED_reportError(GenericError{"require takes 1 argument"}, context.callSite->location);
         return false;
     }
 
-    if (FFlag::DebugLuauCyclicRequireTypeInference)
+    if (FFlag::LuauCyclicRequireTypeInference)
     {
         if (!checkRequirePathNewSolver(context.solver, context.callSite->args.data[0], *context.constraint->moduleName))
             return false;
@@ -1916,13 +1916,13 @@ bool MagicRequire::infer(const MagicFunctionCallContext& context)
             return false;
     }
 
-    const ModuleName& resolveFrom = FFlag::DebugLuauCyclicRequireTypeInference
+    const ModuleName& resolveFrom = FFlag::LuauCyclicRequireTypeInference
         ? *context.constraint->moduleName
         : context.solver->module->name;
 
     if (auto moduleInfo = context.solver->moduleResolver->resolveModuleInfo(resolveFrom, *context.callSite))
     {
-        TypeId moduleType = FFlag::DebugLuauCyclicRequireTypeInference
+        TypeId moduleType = FFlag::LuauCyclicRequireTypeInference
             ? context.solver->resolveModule(*moduleInfo, context.callSite->location, *context.constraint->moduleName)
             : context.solver->DEPRECATED_resolveModule(*moduleInfo, context.callSite->location);
         TypePackId moduleResult = context.solver->arena->addTypePack({moduleType});

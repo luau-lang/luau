@@ -282,7 +282,7 @@ static int luaB_pcally(lua_State* L)
 {
     luaL_checkany(L, 1);
 
-    return luaL_pcallyieldable(L, lua_gettop(L) - 1, LUA_MULTRET, 0);
+    return lua_pcallyieldable(L, lua_gettop(L) - 1, LUA_MULTRET, 0);
 }
 
 static int luaB_pcallcont(lua_State* L, int status)
@@ -314,7 +314,7 @@ static int luaB_xpcally(lua_State* L)
     lua_replace(L, 2);
     // at this point the stack looks like err, f, args
 
-    return luaL_pcallyieldable(L, lua_gettop(L) - 2, LUA_MULTRET, 1);
+    return lua_pcallyieldable(L, lua_gettop(L) - 2, LUA_MULTRET, 1);
 }
 
 static int luaB_xpcallcont(lua_State* L, int status)

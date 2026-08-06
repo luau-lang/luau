@@ -5,6 +5,7 @@
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/SmallVector.h"
 
+#include <algorithm>
 #include <list>
 #include <optional>
 #include <vector>

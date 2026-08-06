@@ -19,6 +19,7 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
+LUAU_FASTFLAGVARIABLE(LuauCheckReadTyWhenRelatingExtern)
 
 namespace Luau
 {
@@ -186,7 +187,14 @@ Relation relateTableToExternType(const TableType* table, const ExternType* cls, 
     {
         if (auto propInExternType = lookupExternTypeProp(cls, name))
         {
-            LUAU_ASSERT(prop.readTy && propInExternType->readTy);
+            if (FFlag::LuauCheckReadTyWhenRelatingExtern)
+            {
+                // If either of these properties are disjoint read-write or write-only, bail.
+                if (!(prop.isReadOnly() || prop.isShared()) || !(propInExternType->isReadOnly() || propInExternType->isShared()))
+                    return Relation::Intersects;
+            }
+            else
+                LUAU_ASSERT(prop.readTy && propInExternType->readTy);
             // For all examples, consider:
             //
             //  declare extern type Foobar with
