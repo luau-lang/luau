@@ -291,7 +291,8 @@ static int tmove(lua_State* L)
 
         bool sparsemove = DFFlag::LuauTableMoveTimeoutFix && shouldsparsemove(hvalue(L->base), dst, n);
 
-        if (t > 0 && (t - 1) <= dst->sizearray && (t - 1 + n) > dst->sizearray)
+        // sparse moves store the elements in the hash part, so growing the array is not required
+        if (!sparsemove && t > 0 && (t - 1) <= dst->sizearray && (t - 1 + n) > dst->sizearray)
         { // grow the destination table array
             luaH_resizearray(L, dst, t - 1 + n);
         }

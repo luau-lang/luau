@@ -132,8 +132,15 @@ do
 
   -- a huge sparse move starting at destination index 1 must not allocate the full range
   a = {}
+  local bytes = gcinfo()
   table.move({[1] = "first", [10000000] = "last"}, 1, 10000000, 1, a)
+  assert(gcinfo() - bytes < 10000)
   eqT(a, {[1] = "first", [10000000] = "last"})
+
+  -- a sparse move is not bounded by the array size limit as only the moved elements are stored
+  a = {}
+  table.move({[1] = "first", [100000000] = "last"}, 1, 100000000, 1, a)
+  eqT(a, {[1] = "first", [100000000] = "last"})
 
   -- sparse moving on the fringes
   a = table.move({[maxI - 100] = 1, [maxI - 50] = 2, [maxI] = 3},
