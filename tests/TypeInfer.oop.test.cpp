@@ -16,7 +16,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAG(LuauFixPropReadsOnMetatableTypes)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -464,7 +463,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cycle_between_object_constructor_and_alias")
     CHECK_MESSAGE(get<MetatableType>(follow(aliasType)), "Expected metatable type but got: " << toString(aliasType));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::timeout(2))
+TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::timeout(LUAU_TIMEOUT))
 {
     getFrontend().options.retainFullTypeGraphs = false;
 
@@ -786,7 +785,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assign_to_prop_of_intersection_of_metatables")
 {
-    ScopedFastFlag sff{FFlag::LuauFixPropReadsOnMetatableTypes, true};
     if (FFlag::DebugLuauForceOldSolver)
         return;
 

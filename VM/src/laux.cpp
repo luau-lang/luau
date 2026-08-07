@@ -388,63 +388,6 @@ const char* luaL_typename(lua_State* L, int idx)
     return obj ? luaT_objtypename(L, obj) : "no value";
 }
 
-int luaL_callyieldable(lua_State* L, int nargs, int nresults)
-{
-    api_check(L, iscfunction(L->ci->func));
-    Closure* cl = clvalue(L->ci->func);
-    api_check(L, cl->c.cont);
-
-    lua_call(L, nargs, nresults);
-
-    // yielding means we need to propagate yield; resume will call continuation function later
-    if (isyielded(L))
-        return C_CALL_YIELD;
-
-    return cl->c.cont(L, LUA_OK);
-}
-
-int luaL_pcallyieldable(lua_State* L, int nargs, int nresults, int errfunc)
-{
-    api_check(L, iscfunction(L->ci->func));
-    Closure* cl = clvalue(L->ci->func);
-    api_check(L, cl->c.cont);
-    api_check(L, nargs + 1 <= L->top - L->base);
-    api_check(L, errfunc >= 0 && errfunc <= L->top - L->base);
-
-    L->ci->errfunc = errfunc; // 0 means no error function
-    L->ci->flags |= LUA_CALLINFO_HANDLE;
-
-    struct CallContext
-    {
-        StkId func;
-        int nresults;
-
-        static void run(lua_State* L, void* ud)
-        {
-            CallContext* ctx = (CallContext*)ud;
-
-            luaD_callint(L, ctx->func, ctx->nresults, lua_isyieldable(L) != 0);
-        }
-    } ctx = {L->top - (nargs + 1), nresults};
-
-    ptrdiff_t savedfunc = savestack(L, ctx.func);
-    ptrdiff_t savederrfunc = errfunc != 0 ? savestack(L, L->base + (errfunc - 1)) : 0;
-
-    int status = luaD_pcall(L, &CallContext::run, &ctx, savedfunc, savederrfunc);
-
-    // necessary to accommodate functions that return lots of values
-    expandstacklimit(L, L->top);
-
-    // yielding means we need to propagate yield; resume will call continuation function later
-    if (status == 0 && isyielded(L))
-        return C_CALL_YIELD;
-
-    // the called function has completed synchronously, continuation can use non-protected calls again
-    L->ci->flags &= ~LUA_CALLINFO_HANDLE;
-
-    return cl->c.cont(L, status);
-}
-
 void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level)
 {
     api_check(L, level >= 0);

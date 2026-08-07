@@ -499,7 +499,7 @@ TEST_CASE_FIXTURE(TypePathFixture, "pack_slice_type")
     CHECK(result == std::nullopt);
 }
 
-TEST_CASE_FIXTURE(TypePathFixture, "cycles" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(TypePathFixture, "cycles" * doctest::timeout(LUAU_TIMEOUT))
 {
     // This will fail an occurs check, but it's a quick example of a cyclic type
     // where there _is_ no traversal.

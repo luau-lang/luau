@@ -35,9 +35,8 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAGVARIABLE(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(DebugLuauNoInline)
-LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauOptimizeExportTable)
-
 
 namespace Luau
 {

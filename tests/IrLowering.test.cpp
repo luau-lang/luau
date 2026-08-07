@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauCodegenA64ExitUseCheck)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAG(LuauCodegenConstVectorBufferRead)
+LUAU_FASTFLAG(LuauCodegenStoreTagCheck)
 LUAU_FASTFLAG(LuauCodegenIntegerCompare)
 
 #define ensureVectorSize3() \
@@ -8490,6 +8491,57 @@ bb_bytecode_1:
 )"
     );
 }
+
+TEST_CASE_FIXTURE(LoweringFixture, "BufferWriteChecksExtraArgs")
+{
+    ScopedFastFlag luauCodegenStoreTagCheck{FFlag::LuauCodegenStoreTagCheck, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(b: buffer, offset: number, val)
+    return buffer.writeu32(b, offset, val, 0) -- unused extra argument
+end
+)",
+                   true,
+                   1,
+                   2
+               ),
+        R"(
+; function foo($arg0, $arg1, $arg2) line 2
+; R0: buffer [argument]
+; R1: number [argument]
+bb_0:
+  CHECK_TAG R0, tbuffer, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %6 = LOAD_TVALUE R0, 0i, tbuffer
+  STORE_TVALUE R4, %6
+  %8 = LOAD_TVALUE R1, 0i, tnumber
+  STORE_TVALUE R5, %8
+  %10 = LOAD_TVALUE R2
+  STORE_TVALUE R6, %10
+  STORE_DOUBLE R7, 0
+  STORE_TAG R7, tnumber
+  CHECK_TAG R2, tnumber, exit(5)
+  %21 = LOAD_POINTER R0
+  %22 = LOAD_DOUBLE R1
+  %23 = NUM_TO_INT %22
+  CHECK_BUFFER_LEN %21, %23, 0i, 4i, undef, exit(5)
+  %25 = LOAD_DOUBLE R2
+  %26 = NUM_TO_UINT %25
+  BUFFER_WRITEI32 %21, %23, %26, tbuffer
+  ADJUST_STACK_TO_REG R3, 0i
+  INTERRUPT 8u
+  RETURN R3, -1i
+)"
+    );
+}
+
 
 TEST_CASE_FIXTURE(LoweringFixture, "IntegerCompare")
 {

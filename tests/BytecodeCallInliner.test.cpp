@@ -1439,4 +1439,32 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "graph_builds_loop_exit_phi_for_downst
         }
 }
 
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_inlinee_with_vararg")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(a, ...)
+        end
+
+        local function caller()
+            return {inlinee, (inlinee())}
+        end
+    )"),
+        R"(
+NEWTABLE R0 0 2
+GETUPVAL R1 0
+GETUPVAL R2 0
+CMPPROTO R2 #0 L0
+LOADNIL R3
+LOADNIL R2
+JUMP L1
+L0: CALLFB R2 0 1 [-1]
+L1: SETLIST R0 R1 2 [1]
+RETURN R0 1
+)"
+    );
+}
+
 TEST_SUITE_END();
