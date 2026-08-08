@@ -502,4 +502,301 @@ expectpass("stack reallocation in creation", function()
     assert(f.z == 300)
 end)
 
+expectpass("hoisting: read before declaration is nil", function()
+    assert(typeof(Hoisted) == "nil")
+end)
+
+class Hoisted
+    public x
+end
+
+expectpass("hoisting: read after declaration is class", function()
+    assert(typeof(Hoisted) == "class")
+    local h = Hoisted({ x = 1 })
+    assert(h.x == 1)
+end)
+
+class Parent
+    public children: {Child}
+
+    function createChild(self)
+        local child = Child({parent = self}) -- forward reference to Child
+        table.insert(self.children, child)
+        return child
+    end
+end
+
+class Child
+    public parent: Parent
+
+    function createParent(self)
+        local p = Parent({children = {self}})
+        return p
+    end
+end
+
+expectpass("hoisting: mutually referential classes work via capture by ref", function()
+    local p = Parent({children = {}})
+    local c = p:createChild()
+    assert(class.isinstance(c, Child))
+    assert(c.parent == p)
+    assert(#p.children == 1)
+    assert(p.children[1] == c)
+
+    local p2 = c:createParent()
+    assert(class.isinstance(p2, Parent))
+end)
+
+local function makeWidget(id)
+    return Widget({ id = id }) -- forward reference to Widget
+end
+
+class Widget
+    public id
+end
+
+expectpass("hoisting: function defined before class works via capture by ref", function()
+    local w = makeWidget(42)
+    assert(class.isinstance(w, Widget))
+    assert(w.id == 42)
+end)
+
+class Animal
+	public species: string
+	
+	function __tostring(self)
+		return "I am an animal."
+	end
+	
+	function live(self)
+		return "I am alive"
+	end
+end
+
+class Cat extends Animal
+	public breed: string
+	
+	function __tostring(self): string
+		return `{Animal.__tostring(self)} I am a {self.breed} cat.`
+	end
+end
+
+expectpass("class inheritance basic fields and methods", function()
+    local c = Cat { species = "Felis catus", breed = "Siamese" }
+    assert(c.species == "Felis catus")
+    assert(c.breed == "Siamese")
+    assert(c:live() == "I am alive")
+    assert(tostring(c) == "I am an animal. I am a Siamese cat.")
+end)
+
+expectpass("class inheritance nil fields", function()
+    local c = Cat {}
+    assert(c.species == nil)
+    assert(c.breed == nil)
+    assert(c:live() == "I am alive")
+    assert(tostring(c) == "I am an animal. I am a nil cat.")
+end)
+
+expectpass("class inheritance classof returns most specific class", function()
+    local c = Cat { species = "Felis catus", breed = "Siamese" }
+    assert(class.classof(c) == Cat)
+end)
+
+class EmptyAnimal extends Animal
+end
+
+expectpass("class inheritance empty child", function() 
+    local ea = EmptyAnimal { species = "Unknown" }
+    assert(ea.species == "Unknown")
+    assert(ea:live() == "I am alive")
+    assert(tostring(ea) == "I am an animal.")
+end)
+
+expectpass("class inheritance static method accessible on child", function()
+    assert(Cat.live ~= nil)
+    assert(typeof(Cat.live) == "function")
+    local c = Cat { species = "Felis catus", breed = "Tabby" }
+    assert(Cat.live(c) == "I am alive")
+end)
+
+class Kitten extends Cat
+    public name: string
+
+    function __tostring(self): string
+        return `{Cat.__tostring(self)} My name is {self.name}.`
+    end
+end
+
+expectpass("class inheritance multi-level (grandchild)", function()
+    local k = Kitten { species = "Felis catus", breed = "Persian", name = "Whiskers" }
+    assert(k.species == "Felis catus")
+    assert(k.breed == "Persian")
+    assert(k.name == "Whiskers")
+    assert(k:live() == "I am alive")
+    assert(tostring(k) == "I am an animal. I am a Persian cat. My name is Whiskers.")
+end)
+
+expectpass("class inheritance multi-level classof", function()
+    local k = Kitten { species = "Felis catus", breed = "Persian", name = "Whiskers" }
+    assert(class.classof(k) == Kitten)
+    assert(class.classof(k) ~= Cat)
+    assert(class.classof(k) ~= Animal)
+end)
+
+class Vehicle
+    public speed: number
+
+    function __add(self, other)
+        return Vehicle { speed = self.speed + other.speed }
+    end
+
+    function __lt(self, other)
+        return self.speed < other.speed
+    end
+
+    function __tostring(self)
+        return `Vehicle(speed={self.speed})`
+    end
+
+    function describe(self)
+        return "I am a vehicle."
+    end
+end
+
+class Car extends Vehicle
+    public doors: number
+
+    function describe(self)
+        return "I am a car."
+    end
+end
+
+class Truck extends Vehicle
+    public payload: number
+
+    function __tostring(self)
+        return `Truck(speed={self.speed}, payload={self.payload})`
+    end
+end
+
+expectpass("class inheritance operator overload inherited", function()
+    local c1 = Car { speed = 60, doors = 4 }
+    local c2 = Car { speed = 40, doors = 2 }
+    local combined = c1 + c2
+    assert(combined.speed == 100)
+    assert(c1 > c2)
+    assert(c2 < c1)
+end)
+
+expectpass("class inheritance operator overload overridden", function()
+    local t = Truck { speed = 80, payload = 5000 }
+    assert(tostring(t) == "Truck(speed=80, payload=5000)")
+    -- __lt and __add should still be inherited from Vehicle
+    local t2 = Truck { speed = 60, payload = 3000 }
+    assert(t2 < t)
+    local combined = t + t2
+    assert(combined.speed == 140)
+end)
+
+expectpass("class inheritance method override", function()
+    local v = Vehicle { speed = 50 }
+    local c = Car { speed = 70, doors = 4 }
+    assert(v:describe() == "I am a vehicle.")
+    assert(c:describe() == "I am a car.")
+end)
+
+class Shape
+    public sides: number
+
+    function perimeter(self)
+        return self.sides * self:sideLength()
+    end
+
+    function sideLength(self)
+        return 1
+    end
+end
+
+class RegularPolygon extends Shape
+    public length: number
+
+    function sideLength(self)
+        return self.length
+    end
+end
+
+expectpass("class inheritance virtual dispatch via self", function()
+    local rp = RegularPolygon { sides = 6, length = 5 }
+    -- perimeter() is inherited from Shape, but it calls self:sideLength()
+    -- which should dispatch to RegularPolygon's override
+    assert(rp:perimeter() == 30)
+end)
+
+class IterParent
+    function __iter(self)
+        return next, {10, 20, 30}
+    end
+end
+
+class IterChild extends IterParent
+    public tag: string
+end
+
+expectpass("class inheritance __iter inherited", function()
+    local ic = IterChild { tag = "test" }
+    local sum = 0
+    for _, v in ic do
+        sum += v
+    end
+    assert(sum == 60)
+    assert(ic.tag == "test")
+end)
+
+class EqParent
+    public val: number
+
+    function __eq(self, other)
+        return self.val == other.val
+    end
+end
+
+class EqChild extends EqParent
+    public label: string
+end
+
+expectpass("class inheritance __eq inherited", function()
+    local a = EqChild { val = 42, label = "a" }
+    local b = EqChild { val = 42, label = "b" }
+    local c = EqChild { val = 99, label = "a" }
+    assert(a == b)
+    assert(a ~= c)
+end)
+
+expectpass("class inheritance GC stress", function()
+    for i = 1, 100 do
+        local c = Cat { species = "species" .. tostring(i), breed = "breed" .. tostring(i) }
+        assert(c:live() == "I am alive")
+        if i % 10 == 0 then
+            collectgarbage()
+        end
+    end
+    collectgarbage()
+    -- Verify objects created after GC still work
+    local c = Cat { species = "final", breed = "test" }
+    assert(c.species == "final")
+    assert(c:live() == "I am alive")
+end)
+
+expectpass("class inheritance GC stress multi-level", function()
+    for i = 1, 50 do
+        local k = Kitten { species = "s" .. tostring(i), breed = "b" .. tostring(i), name = "n" .. tostring(i) }
+        assert(k:live() == "I am alive")
+        assert(k.name == "n" .. tostring(i))
+    end
+    collectgarbage()
+    local k = Kitten { species = "post-gc", breed = "test", name = "survivor" }
+    assert(k.name == "survivor")
+    assert(tostring(k) == "I am an animal. I am a test cat. My name is survivor.")
+end)
+
 return 'OK'

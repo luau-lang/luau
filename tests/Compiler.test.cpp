@@ -25,13 +25,15 @@ LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerFastcalls)
+LUAU_FASTFLAG(LuauCompileIifeInline)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
+LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
+LUAU_FASTFLAG(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
-LUAU_FASTFLAG(LuauCompileNewTableMutationTracker)
-LUAU_FASTFLAG(LuauCompileInlineTableFunctions)
+LUAU_FASTFLAG(LuauOptimizeExportTable)
 
 using namespace Luau;
 
@@ -489,14 +491,38 @@ CONCAT R3 R4 R6
 RETURN R3 1
 )");
 
+    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
+
     CHECK_EQ("\n" + compileFunction0("local a, b, c = ...; return (a .. b) .. c"), R"(
 GETVARARGS R0 3
-MOVE R6 R0
-MOVE R7 R1
-CONCAT R4 R6 R7
+MOVE R5 R0
+MOVE R6 R1
+CONCAT R4 R5 R6
 MOVE R5 R2
 CONCAT R3 R4 R5
 RETURN R3 1
+)");
+}
+
+TEST_CASE("ConcatTopRegisterUse")
+{
+    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
+    
+    CHECK_EQ("\n" + compileFunction0("local a, b = ...; return '{a=' .. tostring(a) .. ' b=' .. tostring(b) .. '}'"), R"(
+GETVARARGS R0 2
+LOADK R3 K0 ['{a=']
+FASTCALL1 63 R0 L0
+MOVE R5 R0
+GETIMPORT R4 2 [tostring]
+CALL R4 1 1
+L0: LOADK R5 K3 [' b=']
+FASTCALL1 63 R1 L1
+MOVE R7 R1
+GETIMPORT R6 2 [tostring]
+CALL R6 1 1
+L1: LOADK R7 K4 ['}']
+CONCAT R2 R3 R7
+RETURN R2 1
 )");
 }
 
@@ -7722,6 +7748,52 @@ L0: MOVE R3 R2
 RETURN R3 1
 )"
     );
+
+    ScopedFastFlag luauCompileIifeInline{FFlag::LuauCompileIifeInline, true};
+
+    // IIFE with a function exceeding regular inline complexity
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+function test(x)
+    local a, b, c = x + 1, x + 2, x + 3
+    local r = (function()
+        for i in 0, a do
+            for j in 0, b do
+                if i + j >= c then return 42 end
+            end
+        end
+        return 67
+    end)()
+    return r + 5
+end
+)",
+                   1,
+                   2
+               ),
+        R"(
+ADDK R1 R0 K0 [1]
+ADDK R2 R0 K1 [2]
+ADDK R3 R0 K2 [3]
+LOADN R5 0
+MOVE R6 R1
+LOADNIL R7
+FORGPREP R5 L3
+L0: LOADN R10 0
+MOVE R11 R2
+LOADNIL R12
+FORGPREP R10 L2
+L1: ADD R15 R8 R13
+JUMPIFNOTLE R3 R15 L2
+LOADN R4 42
+JUMP L4
+L2: FORGLOOP R10 L1 1
+L3: FORGLOOP R5 L0 1
+LOADN R4 67
+L4: ADDK R5 R4 K3 [5]
+RETURN R5 1
+)"
+    );
 }
 
 TEST_CASE("InlineRecurseArguments")
@@ -8710,9 +8782,6 @@ RETURN R0 0
 
 TEST_CASE("InlineTableFunction")
 {
-    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-    ScopedFastFlag luauCompileInlineTableFunctions{FFlag::LuauCompileInlineTableFunctions, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -8797,23 +8866,23 @@ RETURN R1 1
 
     CHECK_EQ(
         "\n" + compileFunction(
-            R"(
+                   R"(
 local t = {
     f = function(x) return x + 1 end
 }
 return t.f<<number>>(100)
 )",
-1,
-2
-),
-R"(
+                   1,
+                   2
+               ),
+        R"(
 DUPTABLE R0 1
 DUPCLOSURE R1 K2 ['f']
 SETTABLEKS R1 R0 K0 ['f']
 LOADN R1 101
 RETURN R1 1
 )"
-);
+    );
 
     // cannot inline if the table escapes
     CHECK_EQ(
@@ -11060,7 +11129,8 @@ TEST_CASE("ClassDeclBasic")
     )";
     auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
     CHECK(R"(
-LOADKX R0 K3 [class Point (props: 2, methods: 0)]
+LOADNIL R0
+NEWCLASS R0 R255 K3 [class Point (props: 2, methods: 0)]
 GETGLOBAL R1 K4 ['print']
 MOVE R2 R0
 CALL R1 1 0
@@ -11095,7 +11165,8 @@ RETURN R1 1
 )" == res0);
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(R"(
-LOADKX R0 K4 [class Point (props: 2, methods: 1)]
+LOADNIL R0
+NEWCLASS R0 R255 K4 [class Point (props: 2, methods: 1)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 ['magnitude']
 GETGLOBAL R1 K5 ['print']
@@ -11136,7 +11207,8 @@ RETURN R0 0
 )" == res0);
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(R"(
-LOADKX R0 K4 [class Point (props: 2, methods: 1)]
+LOADNIL R0
+NEWCLASS R0 R255 K4 [class Point (props: 2, methods: 1)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 ['print']
 DUPTABLE R1 5
@@ -11144,6 +11216,78 @@ LOADK R2 K0 ['Point']
 SETTABLE R0 R1 R2
 RETURN R1 1
 )" == res1);
+}
+
+TEST_CASE("ClassDeclHoistingForwardReference")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        local ref = Point
+        class Point
+            public x
+        end
+    )";
+
+    auto res = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+LOADNIL R0
+MOVE R1 R0
+NEWCLASS R0 R255 K2 [class Point (props: 1, methods: 0)]
+RETURN R0 0
+)" == res);
+}
+
+TEST_CASE("ClassDeclHoistingNestedFunctionUpvalCapture")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        class Point
+            public x
+        end
+        local function usePoint()
+            return Point
+        end
+    )";
+
+    auto inner = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+GETUPVAL R0 0
+RETURN R0 1
+)" == inner);
+    auto outer = "\n" + compileFunction(source.c_str(), 1, 0, 0);
+    CHECK(R"(
+LOADNIL R0
+NEWCLASS R0 R255 K2 [class Point (props: 1, methods: 0)]
+NEWCLOSURE R1 P0
+CAPTURE REF R0
+CLOSEUPVALS R0
+RETURN R0 0
+)" == outer);
+}
+
+TEST_CASE("ClassDeclHoistingForwardWriteProducesError")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+        Point = nil
+        class Point
+        public x
+        end
+    )";
+
+    try
+    {
+        compileFunction(source.c_str(), 0, 0, 0);
+        FAIL("Expected compile error");
+    }
+    catch (const std::exception& e)
+    {
+        std::string msg = e.what();
+        CHECK(msg == "'Point' refers to a class and cannot be used as a variable name (defined on line 3)");
+    }
 }
 
 TEST_CASE("IntegerType")
@@ -11300,8 +11444,6 @@ RETURN R1 1
 
 TEST_CASE("FoldConstTableProps")
 {
-    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -11547,14 +11689,17 @@ RETURN R1 1
 
     // table used as a key in another table that escapes allows mutation through iteration
     CHECK_EQ(
-        "\n" + compileFunction(R"(
+        "\n" + compileFunction(
+                   R"(
 local function id(x) return x end
 local t = { x = 1 }
 local u = { [t] = true }
 id(u)
 return t.x
-)", 1),
-R"(
+)",
+                   1
+               ),
+        R"(
 DUPCLOSURE R0 K0 ['id']
 DUPTABLE R1 3
 NEWTABLE R2 1 0
@@ -11566,17 +11711,20 @@ CALL R3 1 0
 GETTABLEKS R3 R1 K1 ['x']
 RETURN R3 1
 )"
-);
+    );
 
     CHECK_EQ(
-        "\n" + compileFunction(R"(
+        "\n" + compileFunction(
+                   R"(
 local function id(x) return x end
 local t = { x = 1 }
 u[t] = 100
 id(u)
 return t.x
-)", 1),
-R"(
+)",
+                   1
+               ),
+        R"(
 DUPCLOSURE R0 K0 ['id']
 DUPTABLE R1 3
 GETIMPORT R2 5 [u]
@@ -11588,17 +11736,20 @@ CALL R2 1 0
 GETTABLEKS R2 R1 K1 ['x']
 RETURN R2 1
 )"
-);
+    );
 
     CHECK_EQ(
-        "\n" + compileFunction(R"(
+        "\n" + compileFunction(
+                   R"(
 local function id(x) return x end
 local t = { x = 1 }
 u[t] += 100
 id(u)
 return t.x
-)", 1),
-R"(
+)",
+                   1
+               ),
+        R"(
 DUPCLOSURE R0 K0 ['id']
 DUPTABLE R1 3
 GETIMPORT R2 5 [u]
@@ -11611,7 +11762,7 @@ CALL R2 1 0
 GETTABLEKS R2 R1 K1 ['x']
 RETURN R2 1
 )"
-);
+    );
 
     // empty key name is used
     CHECK_EQ(
@@ -11665,8 +11816,6 @@ RETURN R1 1
 
 TEST_CASE("FoldConstTablePropsOrAnd")
 {
-    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-
     // handle 'or'
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -11737,7 +11886,6 @@ RETURN R1 1
 TEST_CASE("FoldConstTablePropsReturnLocal")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -11779,8 +11927,6 @@ RETURN R0 1
 
 TEST_CASE("FoldConstTablePropsReturnUpvalue")
 {
-    ScopedFastFlag luauCompileNewTableMutationTracker{FFlag::LuauCompileNewTableMutationTracker, true};
-
     // returning a table is an 'escape' if we also provide a separate way of observing the same table
     CHECK_EQ(
         "\n" + compileFunction(
@@ -11862,19 +12008,17 @@ L0: RETURN R0 0
 
 TEST_CASE("ExportLocalBytecode")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauOptimizeExportTable, true}};
 
     // basic exported local: value is stored into the export table, then table is frozen and returned
     CHECK_EQ(
         "\n" + compileFunction0("export local x = 5"),
         R"(
-LOADN R0 5
-NEWTABLE R1 0 0
-SETTABLEKS R0 R1 K0 ['x']
-GETIMPORT R2 3 [table.freeze]
-MOVE R3 R1
-CALL R2 1 1
-RETURN R2 1
+DUPTABLE R0 2
+GETIMPORT R1 5 [table.freeze]
+MOVE R2 R0
+CALL R1 1 1
+RETURN R1 1
 )"
     );
 
@@ -11882,15 +12026,11 @@ RETURN R2 1
     CHECK_EQ(
         "\n" + compileFunction0("export local x = 5\nexport local y = 10"),
         R"(
-LOADN R0 5
-NEWTABLE R1 0 0
-SETTABLEKS R0 R1 K0 ['x']
-LOADN R2 10
-SETTABLEKS R2 R1 K1 ['y']
-GETIMPORT R3 4 [table.freeze]
-MOVE R4 R1
-CALL R3 1 1
-RETURN R3 1
+DUPTABLE R0 4
+GETIMPORT R1 7 [table.freeze]
+MOVE R2 R0
+CALL R1 1 1
+RETURN R1 1
 )"
     );
 
@@ -11899,16 +12039,56 @@ RETURN R3 1
         "\n" + compileFunction0("export local x = 5\nx = 10"),
         R"(
 LOADN R0 5
-NEWTABLE R1 0 0
+DUPTABLE R1 1
 SETTABLEKS R0 R1 K0 ['x']
 LOADN R2 10
 SETTABLEKS R2 R1 K0 ['x']
-GETIMPORT R2 3 [table.freeze]
+GETIMPORT R2 4 [table.freeze]
 MOVE R3 R1
 CALL R2 1 1
 RETURN R2 1
 )"
     );
+
+    CHECK_EQ(
+        "\n" + compileFunction("export function t() end\n t()", 1),
+        R"(
+DUPCLOSURE R0 K2 ['t']
+MOVE R1 R0
+CALL R1 0 0
+DUPTABLE R1 1
+SETTABLEKS R0 R1 K0 ['t']
+GETIMPORT R2 5 [table.freeze]
+MOVE R3 R1
+CALL R2 1 1
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE("ExportLocalBytecodeManyExports")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauOptimizeExportTable, true}};
+
+    // 33 exports exceeds TableShape::kMaxLength (32), so DUPTABLE cannot be used and we fall back to NEWTABLE
+    // All 33 constant-exported locals must still be written via SETTABLEKS
+    std::string source;
+    for (int i = 0; i < 33; i++)
+        source += "export local v" + std::to_string(i) + " = " + std::to_string(i) + "\n";
+
+    std::string result = compileFunction0(source.c_str());
+    CHECK(result.find("NEWTABLE") != std::string::npos);
+    CHECK(result.find("DUPTABLE") == std::string::npos);
+
+    // Every exported local must be present in the returned table
+    size_t settableksCount = 0;
+    size_t pos = 0;
+    while ((pos = result.find("SETTABLEKS", pos)) != std::string::npos)
+    {
+        ++settableksCount;
+        ++pos;
+    }
+    CHECK_EQ(settableksCount, 33u);
 }
 
 TEST_CASE("ExportSyntaxRegression")
@@ -11951,8 +12131,9 @@ TEST_CASE("LBCConstantRegressionTest")
     CHECK_EQ(LBC_CONSTANT_TABLE_WITH_CONSTANTS, 8);
     CHECK_EQ(LBC_CONSTANT_INTEGER, 9);
     CHECK_EQ(LBC_CONSTANT_CLASS_SHAPE, 10);
+    CHECK_EQ(LBC_CONSTANT_VECTORD, 11);
 
-    CHECK_EQ(LBC_CONSTANT__COUNT, 11);
+    CHECK_EQ(LBC_CONSTANT__COUNT, 12);
 }
 
 TEST_CASE("ExportClass")
@@ -11970,8 +12151,9 @@ export class Point
 end
 )"),
         R"(
+LOADNIL R0
 NEWTABLE R1 0 0
-LOADKX R0 K3 [class Point (props: 2, methods: 0)]
+NEWCLASS R0 R255 K3 [class Point (props: 2, methods: 0)]
 SETTABLEKS R0 R1 K0 ['Point']
 GETIMPORT R2 6 [table.freeze]
 MOVE R3 R1
@@ -11999,8 +12181,9 @@ end
                    2
                ),
         R"(
+LOADNIL R0
 NEWTABLE R1 0 0
-LOADKX R0 K7 [class Point (props: 2, methods: 2)]
+NEWCLASS R0 R255 K7 [class Point (props: 2, methods: 2)]
 DUPCLOSURE R2 K3 ['getX']
 NEWCLASSMEMBER R0 R2 ['getX']
 DUPCLOSURE R2 K5 ['getY']
@@ -12027,8 +12210,9 @@ local p = Point {x = 1, y = 2}
                    2
                ),
         R"(
+LOADNIL R0
 NEWTABLE R1 0 0
-LOADKX R0 K3 [class Point (props: 2, methods: 0)]
+NEWCLASS R0 R255 K3 [class Point (props: 2, methods: 0)]
 MOVE R2 R0
 DUPTABLE R3 6
 CALL R2 1 1
@@ -12037,6 +12221,272 @@ GETIMPORT R3 9 [table.freeze]
 MOVE R4 R1
 CALL R3 1 1
 RETURN R3 1
+)"
+    );
+}
+
+TEST_CASE("VectorOptionsDefault")
+{
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
+
+    Luau::CompileOptions opts;
+    opts.optimizationLevel = 2;
+    Luau::compileOrThrow(bcb, "return vector.create(1, 1/2^32, 1/2^256)", opts);
+
+    CHECK_EQ(
+        "\n" + bcb.dumpFunction(0),
+        R"(
+K0: 1, 2.32830644e-10, 0
+LOADK R0 K0 [1, 2.32830644e-10, 0]
+RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE("VectorOptionsDoubleUnsupported")
+{
+    // Until flag is enabled, bytecode is the same for vectors of any precision
+    ScopedFastFlag luauCompileEmitVectorDouble{FFlag::LuauCompileEmitVectorDouble, false};
+
+    std::string bytecode1, bytecode2;
+
+    {
+        Luau::BytecodeBuilder bcb;
+        bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
+
+        Luau::CompileOptions opts;
+        opts.optimizationLevel = 2;
+        Luau::compileOrThrow(bcb, "return vector.create(1, 1/2^32, 1/2^256)", opts);
+
+        bytecode1 = bcb.getBytecode();
+
+        CHECK_EQ(
+            "\n" + bcb.dumpFunction(0),
+            R"(
+K0: 1, 2.32830644e-10, 0
+LOADK R0 K0 [1, 2.32830644e-10, 0]
+RETURN R0 1
+)"
+        );
+    }
+
+    {
+        Luau::BytecodeBuilder bcb;
+        bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
+
+        Luau::CompileOptions opts;
+        opts.optimizationLevel = 2;
+        opts.vectorPrecision = 1;
+        Luau::compileOrThrow(bcb, "return vector.create(1, 1/2^32, 1/2^256)", opts);
+
+        bytecode2 = bcb.getBytecode();
+
+        CHECK_EQ(
+            "\n" + bcb.dumpFunction(0),
+            R"(
+K0: 1, 2.32830644e-10, 0
+LOADK R0 K0 [1, 2.32830644e-10, 0]
+RETURN R0 1
+)"
+        );
+    }
+
+    CHECK(bytecode1 == bytecode2);
+}
+
+TEST_CASE("VectorOptionsDouble")
+{
+    ScopedFastFlag luauCompileEmitVectorDouble{FFlag::LuauCompileEmitVectorDouble, true};
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
+
+    Luau::CompileOptions opts;
+    opts.optimizationLevel = 2;
+    opts.vectorPrecision = 1;
+    Luau::compileOrThrow(bcb, "return vector.create(1, 1/2^32, 1/2^256)", opts);
+
+    CHECK_EQ(
+        "\n" + bcb.dumpFunction(0),
+        R"(
+K0: 1, 2.3283064365386963e-10, 8.6361685550944446e-78
+LOADK R0 K0 [1, 2.3283064365386963e-10, 8.6361685550944446e-78]
+RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE("ClassInheritanceBasic")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+class Animal
+    public species: string
+end
+
+class Cat extends Animal
+    public breed: string
+end
+
+print(Cat)
+    )";
+
+    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+LOADNIL R0
+LOADNIL R1
+NEWCLASS R0 R255 K2 [class Animal (props: 1, methods: 0)]
+NEWCLASS R1 R0 K5 [class Cat (props: 1, methods: 0)]
+GETGLOBAL R2 K6 ['print']
+MOVE R3 R1
+CALL R2 1 0
+RETURN R0 0
+)" == res0);
+}
+
+TEST_CASE("ClassInheritanceWithMethods")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+class Animal
+    public species: string
+
+    function live(self)
+        return "I am alive"
+    end
+end
+
+class Cat extends Animal
+    public breed: string
+
+    function describe(self)
+        return self.breed
+    end
+end
+
+print(Cat)
+    )";
+
+    // Function 0: Animal.live
+    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+LOADK R1 K0 ['I am alive']
+RETURN R1 1
+)" == res0);
+
+    // Function 1: Cat.describe
+    auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
+    CHECK(R"(
+GETTABLEKS R1 R0 K0 ['breed']
+RETURN R1 1
+)" == res1);
+
+    // Function 2: main chunk
+    auto res2 = "\n" + compileFunction(source.c_str(), 2, 0, 0);
+    CHECK(R"(
+LOADNIL R0
+LOADNIL R1
+NEWCLASS R0 R255 K3 [class Animal (props: 1, methods: 1)]
+NEWCLOSURE R2 P0
+NEWCLASSMEMBER R0 R2 ['live']
+NEWCLASS R1 R0 K7 [class Cat (props: 1, methods: 1)]
+NEWCLOSURE R2 P1
+NEWCLASSMEMBER R1 R2 ['describe']
+GETGLOBAL R2 K8 ['print']
+MOVE R3 R1
+CALL R2 1 0
+RETURN R0 0
+)" == res2);
+}
+
+TEST_CASE("ClassInheritanceMultiLevel")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+class A
+    public x: number
+end
+
+class B extends A
+    public y: number
+end
+
+class C extends B
+    public z: number
+end
+
+print(C)
+    )";
+
+    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+LOADNIL R0
+LOADNIL R1
+LOADNIL R2
+NEWCLASS R0 R255 K2 [class A (props: 1, methods: 0)]
+NEWCLASS R1 R0 K5 [class B (props: 1, methods: 0)]
+NEWCLASS R2 R1 K8 [class C (props: 1, methods: 0)]
+GETGLOBAL R3 K9 ['print']
+MOVE R4 R2
+CALL R3 1 0
+RETURN R0 0
+)" == res0);
+}
+
+TEST_CASE("ExportClassInheritance")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+    };
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+class Animal
+    public species: string
+end
+
+export class Cat extends Animal
+    public breed: string
+end
+)"),
+        R"(
+LOADNIL R0
+LOADNIL R1
+NEWCLASS R0 R255 K2 [class Animal (props: 1, methods: 0)]
+NEWTABLE R2 0 0
+NEWCLASS R1 R0 K5 [class Cat (props: 1, methods: 0)]
+SETTABLEKS R1 R2 K3 ['Cat']
+GETIMPORT R3 8 [table.freeze]
+MOVE R4 R2
+CALL R3 1 1
+RETURN R3 1
+)"
+    );
+}
+
+TEST_CASE("ExtendShadowedClass")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+class _ end
+local _
+class l0 extends _
+end
+)"),
+        R"(
+LOADNIL R0
+LOADNIL R1
+NEWCLASS R0 R255 K1 [class _ (props: 0, methods: 0)]
+LOADNIL R2
+NEWCLASS R1 R2 K3 [class l0 (props: 0, methods: 0)]
+RETURN R0 0
 )"
     );
 }

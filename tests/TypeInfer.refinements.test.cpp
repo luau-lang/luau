@@ -12,6 +12,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauIndexingIntoErrorGivesError);
+LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 
 using namespace Luau;
 
@@ -41,7 +42,7 @@ struct MagicInstanceIsA final : MagicFunction
             return std::nullopt;
 
         ModulePtr module = typeChecker.currentModule;
-        TypePackId booleanPack = module->internalTypes.addTypePack({typeChecker.booleanType});
+        TypePackId booleanPack = module->internalTypes->addTypePack({typeChecker.booleanType});
         return WithPredicate<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
     }
 
@@ -2448,7 +2449,7 @@ end)
 )"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "refinements_table_intersection_limits" * doctest::timeout(1.5))
+TEST_CASE_FIXTURE(Fixture, "refinements_table_intersection_limits" * doctest::timeout(LUAU_TIMEOUT))
 {
     CheckResult result = check(R"(
 --!strict
@@ -2774,7 +2775,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1835")
     CHECK(get<OptionalValueAccess>(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "limit_complexity_of_arithmetic_type_functions" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(Fixture, "limit_complexity_of_arithmetic_type_functions" * doctest::timeout(LUAU_TIMEOUT))
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
@@ -3097,7 +3098,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_conditional_context_in_if_should_not_ref
     CHECK_EQ("Type 'table' does not have key 'foo'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_function_reduction_with_union_type_application" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(Fixture, "type_function_reduction_with_union_type_application" * doctest::timeout(LUAU_TIMEOUT))
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
@@ -3243,6 +3244,57 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_into_error_gives_error")
             return tostring(index)
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cli_181894_refinement_cancelled_by_for_loop")
+{
+    ScopedFastFlag _{FFlag::LuauAvoidTrivialPhis, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type LightingChanger = { [string]: number, Instances: LightingChanger }
+
+        local lightingChangers: { LightingChanger } = nil :: any
+
+        local closestChanger: LightingChanger?
+        if #lightingChangers == 1 then
+            closestChanger = lightingChangers[1]
+        end
+        if closestChanger == nil then
+            return
+        end
+
+        for _, _ in closestChanger do
+        end
+
+        local _ = closestChanger.Instances
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "unification_with_refinements_doesnt_impact_freevars")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local keys: { unknown } = {}
+
+        local function sorter(a, b): boolean
+            if type(a) == "number" and type(b) == "number" then
+                return a < b
+            end
+
+            return tostring(a) < tostring(b)
+        end
+
+        table.sort(keys, sorter)
+    )"));
+
+    CHECK_EQ("(unknown, unknown) -> boolean", toString(requireType("sorter")));
 }
 
 TEST_SUITE_END();

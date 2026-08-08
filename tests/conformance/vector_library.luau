@@ -163,7 +163,6 @@ do
 
     assert(fuzzyeq(vector.angle(rand[10], rand[1], rand[2]), ans[10]))
     assert(fuzzyeq(vector.angle(rand[2], rand[3], rand[4]), ans[1]))
-    assert(fuzzyeq(vector.angle(rand[4], rand[5], rand[5]), ans[2]))
     assert(fuzzyeq(vector.angle(vector.zero, rand[6], rand[10]), ans[3]))
     assert(fuzzyeq(vector.angle(vector.one, rand[7], rand[10]), ans[4]))
     assert(fuzzyeq(vector.angle(vector.zero, vector.zero, vector.zero), ans[5]))

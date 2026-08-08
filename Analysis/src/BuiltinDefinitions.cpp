@@ -24,6 +24,8 @@
 #include <algorithm>
 #include <string_view>
 
+LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
  * Some of them require richer generics than we have.  For instance, we do not yet have a way to talk
@@ -620,7 +622,7 @@ std::optional<WithPredicate<TypePackId>> MagicFormat::handleOldSolver(
 {
     auto [paramPack, _predicates] = std::move(withPredicate);
 
-    TypeArena& arena = typechecker.currentModule->internalTypes;
+    TypeArena& arena = *typechecker.currentModule->internalTypes;
 
     AstExprConstantString* fmt = nullptr;
     if (auto index = expr.func->as<AstExprIndexName>(); index && expr.self)
@@ -710,7 +712,12 @@ bool MagicFormat::infer(const MagicFunctionCallContext& context)
     size_t numExpectedParams = expected.size() + 1; // + 1 for the format string
 
     if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
-        context.solver->reportError(TypeError{context.callSite->location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
+    {
+        if (FFlag::LuauCyclicRequireTypeInference)
+            context.solver->reportError(CountMismatch{numExpectedParams, std::nullopt, numActualParams}, context.callSite->location, *context.constraint->moduleName);
+        else
+            context.solver->DEPRECATED_reportError(TypeError{context.callSite->location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
+    }
 
     // This is invoked at solve time, so we just need to provide a type for the result of :/.format
     TypePackId resultPack = arena->addTypePack({context.solver->builtinTypes->stringType});
@@ -871,7 +878,7 @@ std::optional<WithPredicate<TypePackId>> MagicGmatch::handleOldSolver(
     if (params.size() != 2)
         return std::nullopt;
 
-    TypeArena& arena = typechecker.currentModule->internalTypes;
+    TypeArena& arena = *typechecker.currentModule->internalTypes;
 
     AstExprConstantString* pattern = nullptr;
     size_t index = expr.self ? 0 : 1;
@@ -940,7 +947,7 @@ std::optional<WithPredicate<TypePackId>> MagicMatch::handleOldSolver(
     if (params.size() < 2 || params.size() > 3)
         return std::nullopt;
 
-    TypeArena& arena = typechecker.currentModule->internalTypes;
+    TypeArena& arena = *typechecker.currentModule->internalTypes;
 
     AstExprConstantString* pattern = nullptr;
     size_t patternIndex = expr.self ? 0 : 1;
@@ -1016,7 +1023,7 @@ std::optional<WithPredicate<TypePackId>> MagicFind::handleOldSolver(
     if (params.size() < 2 || params.size() > 4)
         return std::nullopt;
 
-    TypeArena& arena = typechecker.currentModule->internalTypes;
+    TypeArena& arena = *typechecker.currentModule->internalTypes;
 
     AstExprConstantString* pattern = nullptr;
     size_t patternIndex = expr.self ? 0 : 1;
@@ -1298,7 +1305,7 @@ std::optional<WithPredicate<TypePackId>> MagicSelect::handleOldSolver(
             if (size_t(offset) < v.size())
             {
                 std::vector<TypeId> result(v.begin() + offset, v.end());
-                return WithPredicate<TypePackId>{typechecker.currentModule->internalTypes.addTypePack(TypePack{std::move(result), tail})};
+                return WithPredicate<TypePackId>{typechecker.currentModule->internalTypes->addTypePack(TypePack{std::move(result), tail})};
             }
             else if (tail)
                 return WithPredicate<TypePackId>{*tail};
@@ -1309,7 +1316,7 @@ std::optional<WithPredicate<TypePackId>> MagicSelect::handleOldSolver(
     else if (AstExprConstantString* str = arg1->as<AstExprConstantString>())
     {
         if (str->value.size == 1 && str->value.data[0] == '#')
-            return WithPredicate<TypePackId>{typechecker.currentModule->internalTypes.addTypePack({typechecker.numberType})};
+            return WithPredicate<TypePackId>{typechecker.currentModule->internalTypes->addTypePack({typechecker.numberType})};
     }
 
     return std::nullopt;
@@ -1319,7 +1326,10 @@ bool MagicSelect::infer(const MagicFunctionCallContext& context)
 {
     if (context.callSite->args.size <= 0)
     {
-        context.solver->reportError(TypeError{context.callSite->location, GenericError{"select should take 1 or more arguments"}});
+        if (FFlag::LuauCyclicRequireTypeInference)
+            context.solver->reportError(GenericError{"select should take 1 or more arguments"}, context.callSite->location, *context.constraint->moduleName);
+        else
+            context.solver->DEPRECATED_reportError(TypeError{context.callSite->location, GenericError{"select should take 1 or more arguments"}});
         return false;
     }
 
@@ -1372,7 +1382,7 @@ std::optional<WithPredicate<TypePackId>> MagicSetMetatable::handleOldSolver(
     if (size(paramPack) < 2 && finite(paramPack))
         return std::nullopt;
 
-    TypeArena& arena = typechecker.currentModule->internalTypes;
+    TypeArena& arena = *typechecker.currentModule->internalTypes;
 
     std::vector<TypeId> expectedArgs = typechecker.unTypePack(scope, paramPack, 2, expr.location);
 
@@ -1456,7 +1466,7 @@ std::optional<WithPredicate<TypePackId>> MagicAssert::handleOldSolver(
 {
     auto [paramPack, predicates] = std::move(withPredicate);
 
-    TypeArena& arena = typechecker.currentModule->internalTypes;
+    TypeArena& arena = *typechecker.currentModule->internalTypes;
 
     auto [head, tail] = flatten(paramPack);
     if (head.empty() && tail)
@@ -1495,7 +1505,7 @@ std::optional<WithPredicate<TypePackId>> MagicPack::handleOldSolver(
 {
     auto [paramPack, _predicates] = std::move(withPredicate);
 
-    TypeArena& arena = typechecker.currentModule->internalTypes;
+    TypeArena& arena = *typechecker.currentModule->internalTypes;
 
     const auto& [paramTypes, paramTail] = flatten(paramPack);
 
@@ -1580,7 +1590,7 @@ std::optional<WithPredicate<TypePackId>> MagicClone::handleOldSolver(
 {
     auto [paramPack, _predicates] = std::move(withPredicate);
 
-    TypeArena& arena = typechecker.currentModule->internalTypes;
+    TypeArena& arena = *typechecker.currentModule->internalTypes;
 
     // in the old solver, nonstrict in particular is really bad about inferring `...any` for things that are definitely present
     // and the only real way for us to deal with this is to just be more permissive here
@@ -1617,7 +1627,10 @@ bool MagicClone::infer(const MagicFunctionCallContext& context)
     const auto& [paramTypes, paramTail] = flatten(context.arguments);
     if (paramTypes.empty() || context.callSite->args.size == 0)
     {
-        context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
+        if (FFlag::LuauCyclicRequireTypeInference)
+            context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation, *context.constraint->moduleName);
+        else
+            context.solver->DEPRECATED_reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
         return false;
     }
 
@@ -1776,7 +1789,7 @@ bool MagicFreeze::typeCheck(const MagicFunctionTypeCheckContext& ctx)
     {
         // If we can't get a type from the type or type pack, we testIsSubtype against the entire context's argument type pack to report a Type Pack
         // Mismatch error.
-        TypePackId tableTyPack = ctx.typechecker->module->internalTypes.addTypePack({ctx.typechecker->builtinTypes->tableType});
+        TypePackId tableTyPack = ctx.typechecker->module->internalTypes->addTypePack({ctx.typechecker->builtinTypes->tableType});
         ctx.typechecker->testIsSubtype(follow(ctx.arguments), tableTyPack, ctx.callSite->location);
         return true;
     }
@@ -1819,7 +1832,7 @@ std::optional<WithPredicate<TypePackId>> MagicRequire::handleOldSolver(
     WithPredicate<TypePackId> withPredicate
 )
 {
-    TypeArena& arena = typechecker.currentModule->internalTypes;
+    TypeArena& arena = *typechecker.currentModule->internalTypes;
 
     if (expr.args.size != 1)
     {
@@ -1836,7 +1849,7 @@ std::optional<WithPredicate<TypePackId>> MagicRequire::handleOldSolver(
     return std::nullopt;
 }
 
-static bool checkRequirePathDcr(NotNull<ConstraintSolver> solver, AstExpr* expr)
+static bool checkRequirePathNewSolver(NotNull<ConstraintSolver> solver, AstExpr* expr, const ModuleName& moduleName)
 {
     // require(foo.parent.bar) will technically work, but it depends on legacy goop that
     // Luau does not and could not support without a bunch of work.  It's deprecated anyway, so
@@ -1848,7 +1861,30 @@ static bool checkRequirePathDcr(NotNull<ConstraintSolver> solver, AstExpr* expr)
     {
         if (indexExpr->index == "parent")
         {
-            solver->reportError(DeprecatedApiUsed{"parent", "Parent"}, indexExpr->indexLocation);
+            solver->reportError(DeprecatedApiUsed{"parent", "Parent"}, indexExpr->indexLocation, moduleName);
+            good = false;
+        }
+
+        indexExpr = indexExpr->expr->as<AstExprIndexName>();
+    }
+
+    return good;
+}
+
+// Clip with LuauCyclicRequireTypeInference
+static bool DEPRECATED_checkRequirePathDcr(NotNull<ConstraintSolver> solver, AstExpr* expr)
+{
+    // require(foo.parent.bar) will technically work, but it depends on legacy goop that
+    // Luau does not and could not support without a bunch of work.  It's deprecated anyway, so
+    // we'll warn here if we see it.
+    bool good = true;
+    AstExprIndexName* indexExpr = expr->as<AstExprIndexName>();
+
+    while (indexExpr)
+    {
+        if (indexExpr->index == "parent")
+        {
+            solver->DEPRECATED_reportError(DeprecatedApiUsed{"parent", "Parent"}, indexExpr->indexLocation);
             good = false;
         }
 
@@ -1862,16 +1898,33 @@ bool MagicRequire::infer(const MagicFunctionCallContext& context)
 {
     if (context.callSite->args.size != 1)
     {
-        context.solver->reportError(GenericError{"require takes 1 argument"}, context.callSite->location);
+        if (FFlag::LuauCyclicRequireTypeInference)
+            context.solver->reportError(GenericError{"require takes 1 argument"}, context.callSite->location, *context.constraint->moduleName);
+        else
+            context.solver->DEPRECATED_reportError(GenericError{"require takes 1 argument"}, context.callSite->location);
         return false;
     }
 
-    if (!checkRequirePathDcr(context.solver, context.callSite->args.data[0]))
-        return false;
-
-    if (auto moduleInfo = context.solver->moduleResolver->resolveModuleInfo(context.solver->module->name, *context.callSite))
+    if (FFlag::LuauCyclicRequireTypeInference)
     {
-        TypeId moduleType = context.solver->resolveModule(*moduleInfo, context.callSite->location);
+        if (!checkRequirePathNewSolver(context.solver, context.callSite->args.data[0], *context.constraint->moduleName))
+            return false;
+    }
+    else
+    {
+        if (!DEPRECATED_checkRequirePathDcr(context.solver, context.callSite->args.data[0]))
+            return false;
+    }
+
+    const ModuleName& resolveFrom = FFlag::LuauCyclicRequireTypeInference
+        ? *context.constraint->moduleName
+        : context.solver->module->name;
+
+    if (auto moduleInfo = context.solver->moduleResolver->resolveModuleInfo(resolveFrom, *context.callSite))
+    {
+        TypeId moduleType = FFlag::LuauCyclicRequireTypeInference
+            ? context.solver->resolveModule(*moduleInfo, context.callSite->location, *context.constraint->moduleName)
+            : context.solver->DEPRECATED_resolveModule(*moduleInfo, context.callSite->location);
         TypePackId moduleResult = context.solver->arena->addTypePack({moduleType});
         asMutable(context.result)->ty.emplace<BoundTypePack>(moduleResult);
 

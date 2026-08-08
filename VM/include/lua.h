@@ -75,7 +75,11 @@ enum lua_Type
     LUA_TLIGHTUSERDATA,
     LUA_TNUMBER,
     LUA_TINTEGER,
+
+    // When vector components are 'float', vector fits into the TValue
+#if LUA_VECTOR_DOUBLE == 0
     LUA_TVECTOR,
+#endif
 
     LUA_TSTRING, // all types above this must be value types, all types below this must be GC types - see iscollectable
 
@@ -86,6 +90,11 @@ enum lua_Type
     LUA_TBUFFER,
     LUA_TCLASS,
     LUA_TOBJECT,
+
+    // When vector components are 'double', it is a GCObject with heap-allocated data
+#if LUA_VECTOR_DOUBLE == 1
+    LUA_TVECTOR,
+#endif
 
     // values below this line are used in GCObject tags but may never show up in TValue type tags
 
@@ -157,7 +166,7 @@ LUA_API int lua_lessthan(lua_State* L, int idx1, int idx2);
 LUA_API double lua_tonumberx(lua_State* L, int idx, int* isnum);
 LUA_API int lua_tointegerx(lua_State* L, int idx, int* isnum);
 LUA_API unsigned lua_tounsignedx(lua_State* L, int idx, int* isnum);
-LUA_API const float* lua_tovector(lua_State* L, int idx);
+LUA_API const LUA_VECTOR_TYPE* lua_tovector(lua_State* L, int idx);
 LUA_API int lua_toboolean(lua_State* L, int idx);
 LUA_API int64_t lua_tointeger64(lua_State* L, int idx, int* isinteger);
 LUA_API const char* lua_tolstring(lua_State* L, int idx, size_t* len);
@@ -185,9 +194,9 @@ LUA_API void lua_pushinteger(lua_State* L, int n);
 LUA_API void lua_pushinteger64(lua_State* L, int64_t n);
 LUA_API void lua_pushunsigned(lua_State* L, unsigned n);
 #if LUA_VECTOR_SIZE == 4
-LUA_API void lua_pushvector(lua_State* L, float x, float y, float z, float w);
+LUA_API void lua_pushvector(lua_State* L, LUA_VECTOR_TYPE x, LUA_VECTOR_TYPE y, LUA_VECTOR_TYPE z, LUA_VECTOR_TYPE w);
 #else
-LUA_API void lua_pushvector(lua_State* L, float x, float y, float z);
+LUA_API void lua_pushvector(lua_State* L, LUA_VECTOR_TYPE x, LUA_VECTOR_TYPE y, LUA_VECTOR_TYPE z);
 #endif
 LUA_API void lua_pushlstring(lua_State* L, const char* s, size_t l);
 LUA_API void lua_pushstring(lua_State* L, const char* s);
@@ -241,6 +250,10 @@ LUA_API int luau_load(lua_State* L, const char* chunkname, const char* data, siz
 LUA_API void lua_call(lua_State* L, int nargs, int nresults);
 LUA_API int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc);
 LUA_API int lua_cpcall(lua_State* L, lua_CFunction func, void* ud);
+
+// wrapper for making calls from yieldable C functions
+LUA_API int lua_callyieldable(lua_State* L, int nargs, int nresults);
+LUA_API int lua_pcallyieldable(lua_State* L, int nargs, int nresults, int errfunc);
 
 /*
 ** coroutine functions
@@ -304,9 +317,18 @@ enum lua_GCOp
     LUA_GCSETGOAL,
     LUA_GCSETSTEPMUL,
     LUA_GCSETSTEPSIZE,
+
+    // return 1 if GC is in a paused state; making a GC step in a paused state will unpause the GC
+    LUA_GCISPAUSED,
 };
 
 LUA_API int lua_gc(lua_State* L, int what, int data);
+
+typedef const char* (*lua_CategoryName)(lua_State* L, uint8_t memcat);
+
+// write a Luau memory dump to a FILE in JSON format
+// categoryName callback, when provided, will be called to record a name associated with the category
+LUA_API void lua_memorydump(lua_State* L, void* file, lua_CategoryName categoryName);
 
 /*
 ** memory statistics
@@ -315,6 +337,10 @@ LUA_API int lua_gc(lua_State* L, int what, int data);
 
 LUA_API void lua_setmemcat(lua_State* L, int category);
 LUA_API size_t lua_totalbytes(lua_State* L, int category);
+
+// measure the allocation rate in bytes/sec
+// returns -1 if allocation rate cannot be measured
+LUA_API int64_t lua_allocationrate(lua_State* L);
 
 /*
 ** miscellaneous functions
@@ -327,6 +353,7 @@ LUA_API int lua_rawiter(lua_State* L, int idx, int iter);
 
 LUA_API void lua_concat(lua_State* L, int n);
 
+LUA_API void lua_setpointerencodekey(lua_State* L, uint64_t a, uint64_t b, uint64_t c, uint64_t d);
 LUA_API uintptr_t lua_encodepointer(lua_State* L, uintptr_t p);
 
 LUA_API double lua_clock();
@@ -337,6 +364,53 @@ typedef void (*lua_Destructor)(lua_State* L, void* userdata);
 
 LUA_API void lua_setuserdatadtor(lua_State* L, int tag, lua_Destructor dtor);
 LUA_API lua_Destructor lua_getuserdatadtor(lua_State* L, int tag);
+
+// Embedder GC integration APIs
+//
+// Luau -> embedder (lua_setuserdatamark): when the GC marks a tagged userdata,
+// the registered callback fires so the embedder can mark the corresponding
+// native object as reachable.
+//
+// Embedder -> Luau (lua_setembeddergc): the GC calls this each cycle.
+// Two cases:
+// 1. Cycle reset (markref == NULL): clear accumulated information about marked
+//      native objects.
+// 2. Mark phase (markref != NULL): embedder must call markref for each new ref
+//      that is reachable from a marked native object.
+//
+// Together, these are used to implement a fixed-point reachability algorithm
+// across both heaps.
+//
+// Note: because these functions are called during garbage collection, they
+// must not perform any reentrant operations on the lua_State. Only truly
+// read-only APIs like lua_getthreaddata are safe to call from here.
+typedef void (*lua_UserdataMark)(lua_State* L, void* ud);
+LUA_API void lua_setuserdatamark(lua_State* L, int tag, lua_UserdataMark markfn);
+typedef void (*lua_EmbedderMark)(lua_State* L, int ref);
+typedef void (*lua_EmbedderGc)(lua_State* L, lua_EmbedderMark markref);
+LUA_API void lua_setembeddergc(lua_State* L, lua_EmbedderGc fn);
+
+// APIs for interacting with embedder-managed weak references.
+//
+// Unlike lua_ref, these do not prevent collection on their own; the embedder
+// must call markref(L, ref) inside lua_EmbedderGc to keep them alive. If the
+// lua_getweakref API returns nil when the embedder expects the object to be
+// alive, it indicates a bug in the embedder's logic.
+//
+// Bugs in the embedder's marking logic can manifest in two ways:
+// - the native object owning a ref was not marked (Luau -> embedder), or
+// - if the native object was marked, the ref was not marked (embedder -> Luau).
+//
+// Otherwise, a non-marking-related bug could simply be that the embedder is
+// trying to access a ref that was correctly collected. Specifically, if a
+// native object that logically owns a ref is destroyed, then the embedder
+// should not be trying to access that ref anymore.
+//
+// In any case, asserting on the return value of lua_getweakref is a good way
+// for embedders to catch bugs in their own marking logic.
+LUA_API int lua_weakref(lua_State* L, int idx);
+LUA_API int lua_weakunref(lua_State* L, int ref);
+LUA_API int lua_getweakref(lua_State* L, int ref); // returns the type of the value pushed onto the stack
 
 // alternative access for metatables already registered with luaL_newmetatable (remove this restriction with FFlagLuauUdataMetatablePinned)
 // used by lua_newuserdatataggedwithmetatable to create tagged userdata with the associated metatable assigned
@@ -377,9 +451,9 @@ LUA_API void lua_registeruserdatadirectfieldget(lua_State* L, int tag, const cha
 // Helpers for writing result values from a direct field handler.
 LUA_API void lua_userdatadirectfield_setnumber(void* result, double n);
 #if LUA_VECTOR_SIZE == 4
-LUA_API void lua_userdatadirectfield_setvector(void* result, float x, float y, float z, float w);
+LUA_API void lua_userdatadirectfield_setvector(void* result, LUA_VECTOR_TYPE x, LUA_VECTOR_TYPE y, LUA_VECTOR_TYPE z, LUA_VECTOR_TYPE w);
 #else
-LUA_API void lua_userdatadirectfield_setvector(void* result, float x, float y, float z);
+LUA_API void lua_userdatadirectfield_setvector(void* result, LUA_VECTOR_TYPE x, LUA_VECTOR_TYPE y, LUA_VECTOR_TYPE z);
 #endif
 LUA_API void lua_userdatadirectfield_setboolean(void* result, int b);
 LUA_API void lua_userdatadirectfield_setinteger64(void* result, int64_t n);
@@ -389,6 +463,7 @@ LUA_API void lua_setlightuserdataname(lua_State* L, int tag, const char* name);
 LUA_API const char* lua_getlightuserdataname(lua_State* L, int tag);
 
 LUA_API void lua_clonefunction(lua_State* L, int idx);
+LUA_API int lua_usesexport(lua_State* L, int idx);
 
 LUA_API void lua_cleartable(lua_State* L, int idx);
 LUA_API void lua_clonetable(lua_State* L, int idx);
@@ -402,7 +477,7 @@ LUA_API lua_Alloc lua_getallocf(lua_State* L, void** ud);
 #define LUA_REFNIL 0
 
 LUA_API int lua_ref(lua_State* L, int idx);
-LUA_API void lua_unref(lua_State* L, int ref);
+LUA_API int lua_unref(lua_State* L, int ref);
 
 #define lua_getref(L, ref) lua_rawgeti(L, LUA_REGISTRYINDEX, (ref))
 
@@ -462,6 +537,10 @@ typedef struct lua_Debug lua_Debug; // activation record
 // Functions to be called by the debugger in specific events
 typedef void (*lua_Hook)(lua_State* L, lua_Debug* ar);
 
+// invoke a debug hook on a thread in break/yield state
+// userdata is passed to hook through lua_Debug::userdata field
+LUA_API void lua_callhook(lua_State* L, lua_Hook hook, void* userdata);
+
 LUA_API int lua_stackdepth(lua_State* L);
 LUA_API int lua_getinfo(lua_State* L, int level, const char* what, lua_Debug* ar);
 LUA_API int lua_getargument(lua_State* L, int level, int n);
@@ -470,20 +549,14 @@ LUA_API const char* lua_setlocal(lua_State* L, int level, int n);
 LUA_API const char* lua_getupvalue(lua_State* L, int funcindex, int n);
 LUA_API const char* lua_setupvalue(lua_State* L, int funcindex, int n);
 
+LUA_API int lua_hascustomexecution(lua_State* L, int level); // function has custom execution data set
+LUA_API int lua_incustomexecution(lua_State* L, int level);  // function is running using custom execution
+
 LUA_API void lua_singlestep(lua_State* L, int enabled);
 LUA_API int lua_breakpoint(lua_State* L, int funcindex, int line, int enabled);
 
-typedef void (*lua_Coverage)(void* context, const char* function, int linedefined, int depth, const int* hits, size_t size);
-
-LUA_API void lua_getcoverage(lua_State* L, int funcindex, void* context, lua_Coverage callback);
-
-typedef void (*lua_CounterFunction)(void* context, const char* function, int linedefined);
-typedef void (*lua_CounterValue)(void* context, int kind, int line, uint64_t hits);
-
-// Unlike 'lua_getcoverage', counters are customizable in ways which prevent merging them together
-// 'lua_getcounters' will visit the specified function and all nested functions
-// 'functionvisit' is called first to establish a function, then multiple calls of 'countervisit' are made for each counter in that function
-LUA_API void lua_getcounters(lua_State* L, int funcindex, void* context, lua_CounterFunction functionvisit, lua_CounterValue countervisit);
+// returns 1 if execution is currently at a breakpoint; should only be called from debug callbacks
+LUA_API int lua_atbreakpoint(lua_State* L);
 
 // Warning: this function is not thread-safe since it stores the result in a shared global array! Only use for debugging.
 LUA_API const char* lua_debugtrace(lua_State* L);
@@ -499,10 +572,22 @@ struct lua_Debug
     unsigned char nupvals; // (u) number of upvalues
     unsigned char nparams; // (a) number of parameters
     char isvararg;         // (a)
-    void* userdata;        // only valid in luau_callhook
+    void* userdata; // only valid in lua_callhook
 
     char ssbuf[LUA_IDSIZE];
 };
+
+typedef void (*lua_Coverage)(void* context, const char* function, int linedefined, int depth, const int* hits, size_t size);
+
+LUA_API void lua_getcoverage(lua_State* L, int funcindex, void* context, lua_Coverage callback);
+
+typedef void (*lua_CounterFunction)(void* context, const char* function, int linedefined);
+typedef void (*lua_CounterValue)(void* context, int kind, int line, uint64_t hits);
+
+// Unlike 'lua_getcoverage', counters are customizable in ways which prevent merging them together
+// 'lua_getcounters' will visit the specified function and all nested functions
+// 'functionvisit' is called first to establish a function, then multiple calls of 'countervisit' are made for each counter in that function
+LUA_API void lua_getcounters(lua_State* L, int funcindex, void* context, lua_CounterFunction functionvisit, lua_CounterValue countervisit);
 
 // }======================================================================
 

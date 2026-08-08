@@ -25,6 +25,17 @@ struct LogBuilder
         va_end(args);
     }
 
+    void formatAppendWithPrefix(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3)
+    {
+        if (options.includeIrPrefix == IncludeIrPrefix::Yes)
+            append("# ");
+
+        va_list args;
+        va_start(args, fmt);
+        Luau::vformatAppend(text, fmt, args);
+        va_end(args);
+    }
+
     void vformatAppend(const char* fmt, va_list args)
     {
         Luau::vformatAppend(text, fmt, args);
@@ -40,5 +51,5 @@ struct LogBuilder
     std::string text;
 };
 
-}
-}
+} // namespace CodeGen
+} // namespace Luau

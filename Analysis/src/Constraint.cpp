@@ -4,16 +4,24 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAGVARIABLE(LuauConstraintGraph)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 namespace Luau
 {
 
+// Clip with LuauCyclicRequireTypeInference
 Constraint::Constraint(NotNull<Scope> scope, const Location& location, ConstraintV&& c)
     : scope(scope)
     , location(location)
     , c(std::move(c))
+{
+}
+
+Constraint::Constraint(NotNull<Scope> scope, const Location& location, ConstraintV&& c, std::shared_ptr<ModuleName> moduleName)
+    : scope(scope)
+    , location(location)
+    , c(std::move(c))
+    , moduleName(std::move(moduleName))
 {
 }
 
@@ -64,21 +72,15 @@ bool ReferenceCountInitializer::visit(TypeId, const TypeFunctionInstanceType& tf
 
 bool ReferenceCountInitializer::visit(TypePackId tp, const BlockedTypePack&)
 {
-    if (FFlag::LuauConstraintGraph)
-    {
-        LUAU_ASSERT(mutatedTypePacks);
-        mutatedTypePacks->insert(tp);
-    }
+    LUAU_ASSERT(mutatedTypePacks);
+    mutatedTypePacks->insert(tp);
     return true;
 }
 
 bool ReferenceCountInitializer::visit(TypePackId tp, const FreeTypePack&)
 {
-    if (FFlag::LuauConstraintGraph)
-    {
-        LUAU_ASSERT(mutatedTypePacks);
-        mutatedTypePacks->insert(tp);
-    }
+    LUAU_ASSERT(mutatedTypePacks);
+    mutatedTypePacks->insert(tp);
     return true;
 }
 

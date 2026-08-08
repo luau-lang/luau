@@ -864,13 +864,7 @@ void AstStatFunction::visit(AstVisitor* visitor)
     }
 }
 
-AstStatLocalFunction::AstStatLocalFunction(
-    const Location& location,
-    AstLocal* name,
-    AstExprFunction* func,
-    bool isConst,
-    Position constKeywordBegin
-)
+AstStatLocalFunction::AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func, bool isConst, Position constKeywordBegin)
     : AstStat(ClassIndex(), location)
     , name(name)
     , func(func)
@@ -985,9 +979,10 @@ AstStatDeclareFunction::AstStatDeclareFunction(
 {
 }
 
-AstStatClass::AstStatClass(const Location& location, AstLocal* name, AstArray<AstClassMember> members, bool exported)
+AstStatClass::AstStatClass(const Location& location, AstLocal* name, AstExpr* super, AstArray<AstClassMember> members, bool exported)
     : AstStat(ClassIndex(), location)
     , name(name)
+    , super(super)
     , members(members)
     , exported(exported)
 {
@@ -999,6 +994,9 @@ void AstStatClass::visit(AstVisitor* visitor)
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
     if (visitor->visit(this))
     {
+        if (super)
+            super->visit(visitor);
+
         for (const auto& member : members)
         {
             Luau::visit(

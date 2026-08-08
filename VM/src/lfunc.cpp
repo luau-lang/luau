@@ -7,6 +7,7 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauCIProto)
+LUAU_FASTFLAG(LuauManagedDebugNames)
 LUAU_FASTINTVARIABLE(LuauInlineHitsThreshold, 32)
 
 Proto* luaF_newproto(lua_State* L)
@@ -92,6 +93,8 @@ Closure* luaF_newCclosure(lua_State* L, int nelems, LuaTable* e)
     c->c.f = NULL;
     c->c.cont = NULL;
     c->c.debugname = NULL;
+    c->c.debugname_DEPRECATED = NULL;
+
     return c;
 }
 

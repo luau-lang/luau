@@ -16,6 +16,7 @@ using std::nullopt;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
+LUAU_FASTFLAG(LuauAllowIntersectionOfOneTableWithExtern)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -676,7 +677,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 
         if (!FFlag::DebugLuauForceOldSolver)
         {
-            const std::string expected = "Expected this to be 'number | string', but got 'boolean'" ;
+            const std::string expected = "Expected this to be 'number | string', but got 'boolean'";
             CHECK_LONG_STRINGS_EQ(expected, toString(result.errors[0]));
         }
         else
@@ -1235,6 +1236,50 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_2")
     LUAU_CHECK_NO_ERRORS(result);
 
     CHECK_EQ("Instance & { brushes: Instance }", toString(requireTypeAtPosition({2, 18})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_1")
+{
+    ScopedFastFlag _{FFlag::LuauAllowIntersectionOfOneTableWithExtern, true};
+
+    loadDefinition(R"(
+        declare extern type Frame with
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type BIG_FRAME = {something: Frame} & Frame
+        type context<O> = {_object: O}
+
+        local big_context: context<BIG_FRAME>
+
+        local function fn<O>(p: context<O>)
+        end
+
+        fn(big_context)
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_2")
+{
+    ScopedFastFlag _{FFlag::LuauAllowIntersectionOfOneTableWithExtern, true};
+
+    loadDefinition(R"(
+        declare extern type Folder with
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local World : { [number]: { PlayerData: { Settings: { Audio: {} & Folder } } } }
+
+        local function Spread(Id: number)
+            local Ownership = World[Id]
+            assert(Ownership)
+            return Ownership
+        end
+    )"));
+
+    CHECK_EQ("(number) -> { PlayerData: { Settings: { Audio: Folder & {  } } } }", toString(requireType("Spread")));
 }
 
 TEST_SUITE_END();

@@ -195,10 +195,13 @@ void write(JsonEmitter& emitter, const GeneralizeStepSnapshot& eg)
 
 void write(JsonEmitter& emitter, const StepSnapshot& snap)
 {
-    visit([&](const auto& s)
-    {
-        write(emitter, s);
-    }, snap);
+    visit(
+        [&](const auto& s)
+        {
+            write(emitter, s);
+        },
+        snap
+    );
 }
 
 void write(JsonEmitter& emitter, const TypeSolveLog& log)

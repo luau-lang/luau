@@ -37,6 +37,7 @@ std::ostream& operator<<(std::ostream& lhs, const FunctionExitsWithoutReturning&
 std::ostream& operator<<(std::ostream& lhs, const MissingProperties& error);
 std::ostream& operator<<(std::ostream& lhs, const IllegalRequire& error);
 std::ostream& operator<<(std::ostream& lhs, const ModuleHasCyclicDependency& error);
+std::ostream& operator<<(std::ostream& lhs, const CyclicModuleGraphTooLarge& error);
 std::ostream& operator<<(std::ostream& lhs, const DuplicateGenericParameter& error);
 std::ostream& operator<<(std::ostream& lhs, const CannotInferBinaryOperation& error);
 std::ostream& operator<<(std::ostream& lhs, const SwappedGenericTypeParameter& error);

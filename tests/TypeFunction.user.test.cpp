@@ -17,8 +17,8 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
 LUAU_FASTFLAG(LuauTypeFunctionTableIndexerIsReadOnly)
-LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
+LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 
@@ -1584,6 +1584,32 @@ local b: Test.concat<'third', 'fourth'>
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     CHECK(toString(requireType("b")) == R"("thirdfourth")");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export_zero_arg")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauCloneTypeFunctionFromForeignArena, true};
+
+    fileResolver.source["game/A"] = R"(
+        export type function foo()
+            return types.number
+        end
+        return nil
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = check(R"(
+        local udtfs = require(game.A);
+        local x: udtfs.foo<> = 5
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+    CHECK(toString(requireType("x")) == "number");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error")
@@ -3406,7 +3432,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_table_indexer")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauUdtfTypeIsSubtypeOf, true}, {FFlag::LuauTypeFunctionTableIndexerIsReadOnly, true}, {FFlag::LuauReadOnlyIndexers, true}
+        {FFlag::LuauUdtfTypeIsSubtypeOf, true}, {FFlag::LuauTypeFunctionTableIndexerIsReadOnly, true}
     };
 
     CheckResult results = check(R"(

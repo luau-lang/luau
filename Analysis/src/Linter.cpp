@@ -252,7 +252,7 @@ private:
         std::optional<const char*> deprecated;
     };
 
-    LintContext* context;
+    LintContext* context = nullptr;
 
     DenseHashMap<AstName, Global> globals;
     std::vector<AstExprGlobal*> globalRefs;

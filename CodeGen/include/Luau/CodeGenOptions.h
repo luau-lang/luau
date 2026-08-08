@@ -185,6 +185,7 @@ struct AssemblyOptions
     bool includeIr = false;
     bool includeOutlinedCode = false;
     bool includeIrTypes = false;
+    bool includeRegSpills = false;
 
     IncludeIrPrefix includeIrPrefix = IncludeIrPrefix::Yes;
     IncludeUseInfo includeUseInfo = IncludeUseInfo::Yes;

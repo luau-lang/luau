@@ -140,7 +140,7 @@ static void displayHelp(const char* argv0)
     printf("  --formatter=plain: report analysis errors in Luacheck-compatible format\n");
     printf("  --formatter=gnu: report analysis errors in GNU-compatible format\n");
     printf("  --mode=strict: default to strict mode when typechecking\n");
-    printf("  --solver={new|old}: selects which typechecker to use (defaults to the new solver)");
+    printf("  --solver={new|old}: selects which typechecker to use (defaults to the new solver)\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
 }
 

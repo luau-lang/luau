@@ -97,7 +97,10 @@ struct ConstraintSolver
     std::vector<NotNull<Constraint>> constraints;
     NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction;
     NotNull<Scope> rootScope;
-    ModulePtr module;
+    ModulePtr module; // Clip with LuauCyclicRequireTypeInference
+    // Used for solver-scoped errors not attributable to a specific constraint
+    // (e.g. ConstraintSolvingIncompleteError, time limits).
+    std::shared_ptr<ModuleName> representativeModuleName;
 
     // The dataflow graph of the program, used in constraint generation and for magic functions.
     NotNull<const DataFlowGraph> dfg;
@@ -115,42 +118,12 @@ struct ConstraintSolver
     // A constraint can be both blocked and unsolved, for instance.
     std::vector<NotNull<const Constraint>> unsolvedConstraints;
 
-    // Clip with LuauConstraintGraph
-    // A mapping of constraint pointer to how many things the constraint is
-    // blocked on. Can be empty or 0 for constraints that are not blocked on
-    // anything.
-    std::unordered_map<NotNull<const Constraint>, size_t> DEPRECATED_blockedConstraints;
-
-    // Clip with LuauConstraintGraph
-    // A mapping of type/pack pointers to the constraints they block.
-    std::unordered_map<BlockedConstraintId, DenseHashSet<const Constraint*>, HashBlockedConstraintId> DEPRECATED_blocked;
-
     // Memoized instantiations of type aliases.
     DenseHashMap<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases{{}};
     // Breadcrumbs for where a free type's upper bound was expanded. We use
     // these to provide more helpful error messages when a free type is solved
     // as never unexpectedly.
     DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors{nullptr};
-
-    /**
-     * A mapping from reference counted types (blocked types, free types,
-     * unsealed table types, etc.) to the constraints that may mutate them.
-     * When this set is empty, we can eagerly generalize the respective key.
-     *
-     * NOTE: Preferrably this would be a DenseHashMap rather than an
-     * unordered_map, but DenseHashMaps require that their elements are
-     * trivially constructable.
-     */
-    std::unordered_map<TypeId, Set<const Constraint*>> DEPRECATED_typeToConstraintSet;
-
-
-    // Clip with LuauConstraintGraph
-    /**
-     * A mapping from constraints to the types that they mutate. We
-     * use this set to keep track of what constraints to remove
-     * from the values in the typeToConstraintSet.
-     */
-    DenseHashMap<const Constraint*, TypeIds> DEPRECATED_constraintToMutatedTypes{nullptr};
 
     // Irreducible/uninhabited type functions or type pack functions.
     DenseHashSet<const void*> uninhabitedTypeFunctions{{}};
@@ -182,7 +155,7 @@ struct ConstraintSolver
         NotNull<const DataFlowGraph> dfg,
         TypeCheckLimits limits,
         ConstraintSet constraintSet,
-        ConstraintGraph* cgraph,
+        NotNull<ConstraintGraph> cgraph,
         NotNull<Subtyping> subtyping
     );
 
@@ -199,7 +172,7 @@ struct ConstraintSolver
         DcrLogger* logger,
         NotNull<const DataFlowGraph> dfg,
         TypeCheckLimits limits,
-        ConstraintGraph* cgraph,
+        NotNull<ConstraintGraph> cgraph,
         NotNull<Subtyping> subtyping
     );
 
@@ -344,9 +317,6 @@ public:
      */
     void inheritBlocks(NotNull<const Constraint> source, NotNull<const Constraint> addition);
 
-    // Clip with LuauConstraintGraph
-    void DEPRECATED_unblock(NotNull<const Constraint> progressed);
-
     void unblock(TypeId ty, Location location);
     void unblock(TypePackId progressed, Location location);
 
@@ -360,17 +330,13 @@ public:
      */
     bool isBlocked(TypePackId tp) const;
 
-    // Clip with LuauConstraintGraph
-    /**
-     * Returns whether the constraint is blocked on anything.
-     * @param constraint the constraint to check.
-     */
-    bool DEPRECATED_isBlocked(NotNull<const Constraint> constraint) const;
-
     /** Pushes a new solver constraint to the solver.
      * @param cv the body of the constraint.
      **/
-    NotNull<Constraint> pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv);
+    NotNull<Constraint> pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv, std::shared_ptr<ModuleName> moduleName);
+
+    // Clip with LuauCyclicRequireTypeInference
+    NotNull<Constraint> DEPRECATED_pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv);
 
     /**
      * Attempts to resolve a module from its module information. Returns the
@@ -381,20 +347,15 @@ public:
      * @param location the location where the require is taking place; used for
      * error locations.
      **/
-    TypeId resolveModule(const ModuleInfo& info, const Location& location);
+    TypeId resolveModule(const ModuleInfo& info, const Location& location, const ModuleName& moduleName);
 
-    void reportError(TypeErrorData&& data, const Location& location);
-    void reportError(TypeError e);
+    void reportError(TypeErrorData&& data, const Location& location, const ModuleName& errorModule);
 
-    // Clip with LuauConstraintGraph
-    /**
-     * Shifts the count of references from `source` to `target`. This should be paired
-     * with any instance of binding a free type in order to maintain accurate refcounts.
-     * If `target` is not a free type, this is a noop.
-     * @param source the free type which is being bound
-     * @param target the type which the free type is being bound to
-     */
-    void DEPRECATED_shiftReferences(TypeId source, TypeId target);
+    // Clip with LuauCyclicRequireTypeInference
+    TypeId DEPRECATED_resolveModule(const ModuleInfo& info, const Location& location);
+    void DEPRECATED_reportError(TypeErrorData&& data, const Location& location);
+    void DEPRECATED_reportError(TypeError e);
+    void DEPRECATED_reportError(TypeError e, const ModuleName& errorModule);
 
     /**
      * Bind a type variable to another type.
@@ -432,31 +393,15 @@ public:
     template<typename TID>
     bool unify(NotNull<const Constraint> constraint, TID subTy, TID superTy);
 
-    // Clip with LuauConstraintGraph
-    /**
-     * Marks a constraint as being blocked on a type or type pack. The constraint
-     * solver will not attempt to dispatch blocked constraints until their
-     * dependencies have made progress.
-     * @param target the type or type pack pointer that the constraint is blocked on.
-     * @param constraint the constraint to block.
-     **/
-    bool DEPRECATED_block_(BlockedConstraintId target, NotNull<const Constraint> constraint);
-
-    // Clip with LuauConstraintGraph
-    /**
-     * Informs the solver that progress has been made on a type or type pack. The
-     * solver will wake up all constraints that are blocked on the type or type pack,
-     * and will resume attempting to dispatch them.
-     * @param progressed the type or type pack pointer that has progressed.
-     **/
-    void DEPRECATED_unblock_(BlockedConstraintId progressed);
-
     /**
      * Reproduces any constraints necessary for new types that are copied when applying a substitution.
      * At the time of writing, this pertains only to type functions.
      * @param subst the substitution that was applied
      **/
-    void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);
+    void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst, const std::shared_ptr<ModuleName>& moduleName);
+
+    // Clip with LuauCyclicRequireTypeInference
+    void DEPRECATED_reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);
 
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
 
@@ -479,8 +424,7 @@ public:
 
     ToStringOptions opts;
 
-    // Make non-optional with LuauConstraintGraph
-    ConstraintGraph* cgraph;
+    NotNull<ConstraintGraph> cgraph;
 
     NotNull<Subtyping> subtyping;
 

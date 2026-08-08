@@ -957,13 +957,7 @@ class AstStatLocalFunction : public AstStat
 public:
     LUAU_RTTI(AstStatLocalFunction)
 
-    AstStatLocalFunction(
-        const Location& location,
-        AstLocal* name,
-        AstExprFunction* func,
-        bool isConst,
-        Position constKeywordBegin
-    );
+    AstStatLocalFunction(const Location& location, AstLocal* name, AstExprFunction* func, bool isConst, Position constKeywordBegin);
 
     void visit(AstVisitor* visitor) override;
 
@@ -1129,10 +1123,11 @@ public:
     LUAU_RTTI(AstStatClass)
 
     AstLocal* name;
+    AstExpr* super;
     AstArray<AstClassMember> members;
     bool exported;
 
-    AstStatClass(const Location& location, AstLocal* name, AstArray<AstClassMember> members, bool exported);
+    AstStatClass(const Location& location, AstLocal* name, AstExpr* super, AstArray<AstClassMember> members, bool exported);
 
     void visit(AstVisitor* visitor) override;
 };

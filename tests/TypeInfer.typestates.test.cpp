@@ -512,7 +512,7 @@ TEST_CASE_FIXTURE(Fixture, "typestate_unknown_global")
     CHECK(get<UnknownSymbol>(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_normalized_type_variables_are_bad" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_normalized_type_variables_are_bad" * doctest::timeout(LUAU_TIMEOUT))
 {
     // We do not care about the errors here, only that this finishes typing
     // in a sensible amount of time.
@@ -860,7 +860,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_table_freeze_in_conditional_expr")
     CHECK(err1);
     CHECK_EQ(1, err1->expected);
     CHECK_EQ(2, err1->actual);
-
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_depends_on_sub_expression")
@@ -880,8 +879,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_depends_on_sub_expression")
 
     auto err = get<TypeMismatch>(result.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("{ @metatable { bar: number }, { foo: number } }", toString(err->wantedType, { /* exhaustive */ true}));
-    CHECK_EQ("{ foo: number }", toString(err->givenType, { /* exhaustive */ true}));
+    CHECK_EQ("{ @metatable { bar: number }, { foo: number } }", toString(err->wantedType, {/* exhaustive */ true}));
+    CHECK_EQ("{ foo: number }", toString(err->givenType, {/* exhaustive */ true}));
 }
 
 TEST_SUITE_END();
