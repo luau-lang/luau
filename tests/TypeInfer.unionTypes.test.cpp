@@ -12,6 +12,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 LUAU_FASTFLAG(LuauSubtypeUnionsTogether)
 LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
+LUAU_FASTFLAG(LuauBetterMissingPropertiesTypeError)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -517,6 +518,8 @@ local oh : boolean = t.y
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_union_part")
 {
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
+
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
@@ -574,6 +577,8 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_optional")
 {
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
+
     CheckResult result = check(R"(
 type X = { x: number }
 

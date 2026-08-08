@@ -18,6 +18,7 @@
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTFLAGVARIABLE(LuauTweakAccessViolationReporting)
+LUAU_FASTFLAGVARIABLE(LuauBetterMissingPropertiesTypeError)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -496,6 +497,40 @@ struct ErrorConverter
 
     std::string operator()(const Luau::MissingProperties& e) const
     {
+        if (!FFlag::LuauBetterMissingPropertiesTypeError)
+        {
+            std::string s =
+                "Table type '" + toString(e.subType) + "' not compatible with type '" + toString(e.superType) + "' because the former";
+
+            switch (e.context)
+            {
+            case MissingProperties::Missing:
+                s += " is missing field";
+                break;
+            case MissingProperties::Extra:
+                s += " has extra field";
+                break;
+            }
+
+            if (e.properties.size() > 1)
+                s += "s";
+
+            s += " ";
+
+            for (size_t i = 0; i < e.properties.size(); ++i)
+            {
+                if (i > 0)
+                    s += ", ";
+
+                if (i > 0 && i == e.properties.size() - 1)
+                    s += "and ";
+
+                s += "'" + e.properties[i] + "'";
+            }
+
+            return s;
+        }
+
         std::string s;
         std::string afterFieldList;
         std::string pluralSuffix = e.properties.size() > 1 ? "s " : " ";

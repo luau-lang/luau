@@ -10,6 +10,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauConstraintGraph)
 LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
+LUAU_FASTFLAG(LuauBetterMissingPropertiesTypeError)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -382,6 +383,7 @@ TEST_CASE_FIXTURE(Fixture, "indexer_can_be_union_of_singletons")
 TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -397,6 +399,8 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_string")
 {
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
+
     CheckResult result = check(R"(
 type Cat = { tag: 'cat', catfood: string }
 type Dog = { tag: 'dog', dogfood: string }
@@ -422,6 +426,8 @@ required field 'catfood' not found in type 'a' from expected type 'Cat')";
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_bool")
 {
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
+
     CheckResult result = check(R"(
 type Good = { success: true, result: string }
 type Bad = { success: false, error: string }
@@ -450,6 +456,7 @@ required field 'error' not found in type 'a' from expected type 'Bad')";
 TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
 
     CheckResult result = check(R"(
         type Ok<T> = {success: true, result: T}

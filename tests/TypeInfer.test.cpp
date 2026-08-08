@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauDontBindOptionalGenericToNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauBetterMissingPropertiesTypeError)
 
 using namespace Luau;
 
@@ -1142,6 +1143,7 @@ end
 TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 {
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
 
     CheckResult result = check(R"(
         --!strict

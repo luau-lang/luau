@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(LuauDontBindOptionalGenericToNil)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauBetterMissingPropertiesTypeError)
 
 namespace
 {
@@ -923,6 +924,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
 
 TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_full_type_graph_is_discarded")
 {
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
+
     Frontend fe{!FFlag::DebugLuauForceOldSolver ? SolverMode::New : SolverMode::Old, &fileResolver, &configResolver, {false}};
     fileResolver.source["Module/A"] = R"(
         --!strict

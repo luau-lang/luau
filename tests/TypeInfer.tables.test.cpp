@@ -29,6 +29,7 @@ LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauReadOnlyIndexers)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauBetterMissingPropertiesTypeError)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -2597,6 +2598,8 @@ a.p = { x = 9 }
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_error")
 {
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
+
     CheckResult result = check(R"(
 --!strict
 type Super = { x : number }
@@ -3666,6 +3669,8 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
+
     CheckResult result = check(R"(
         local function f(s)
             return s:absolutely_no_scalar_has_this_method()
@@ -3753,6 +3758,8 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compati
 
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_compatible")
 {
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
+
     CheckResult result = check(R"(
         local function f(s): string
             local foo = s:absolutely_no_scalar_has_this_method()
@@ -5676,6 +5683,7 @@ TEST_CASE_FIXTURE(Fixture, "deeply_nested_classish_inference")
 TEST_CASE_FIXTURE(Fixture, "bigger_nested_table_causes_big_type_error")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
 
     auto result = check(R"(
         type File = {

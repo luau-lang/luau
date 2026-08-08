@@ -25,6 +25,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceVariadics)
 LUAU_FASTFLAG(LuauConstraintGraph)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
+LUAU_FASTFLAG(LuauBetterMissingPropertiesTypeError)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -2247,6 +2248,8 @@ TEST_CASE_FIXTURE(Fixture, "function_exprs_are_generalized_at_signature_scope_no
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_but_their_arguments_are_incompatible")
 {
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
+
     CheckResult result = check(R"(
         local function foo<a>(x: a, y: a?)
             return x
