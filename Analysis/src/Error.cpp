@@ -499,8 +499,7 @@ struct ErrorConverter
     {
         if (!FFlag::LuauBetterMissingPropertiesTypeError)
         {
-            std::string s =
-                "Table type '" + toString(e.subType) + "' not compatible with type '" + toString(e.superType) + "' because the former";
+            std::string s = "Table type '" + toString(e.subType) + "' not compatible with type '" + toString(e.superType) + "' because the former";
 
             switch (e.context)
             {
