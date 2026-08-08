@@ -721,8 +721,8 @@ private:
         unsigned int scopeDepth = 0;
         bool function = false;
         bool import = false;
-        bool used = false;
-        bool softUsed = false;
+        bool usedOutsideSelf = false;
+        bool usedRecursively = false;
         bool arg = false;
     };
 
@@ -748,7 +748,7 @@ private:
     {
         for (auto& l : locals)
         {
-            if (l.second.used)
+            if (l.second.usedOutsideSelf)
                 reportUsedLocal(l.first, l.second);
             else if (l.second.defined)
                 reportUnusedLocal(l.first, l.second);
@@ -812,7 +812,7 @@ private:
         if (info.function)
         {
             warning = LintWarning::Code_FunctionUnused;
-            if (info.softUsed)
+            if (info.usedRecursively)
                 msg = "Function '%s' is never used outside its own body; prefix with '_' to silence";
             else
                 msg = "Function '%s' is never used; prefix with '_' to silence";
@@ -903,9 +903,9 @@ private:
         Local& l = locals[node->local];
 
         if (FFlag::LuauFunctionUnusedRecursiveLinting && l.function && l.scopeDepth > 0)
-            l.softUsed = true;
+            l.usedRecursively = true;
         else
-            l.used = true;
+            l.usedOutsideSelf = true;
 
         return true;
     }
@@ -942,7 +942,7 @@ private:
         AstLocal* astLocal = imports[*node->prefix];
         Local& local = locals[astLocal];
         LUAU_ASSERT(local.import);
-        local.used = true;
+        local.usedOutsideSelf = true;
 
         return true;
     }
@@ -979,8 +979,8 @@ private:
     {
         unsigned int scopeDepth = 0;
         bool func = false;
-        bool used = false;
-        bool softUsed = false;
+        bool usedOutsideSelf = false;
+        bool usedRecursively = false;
 
         Location nameLocation;
     };
@@ -996,11 +996,11 @@ private:
     {
         for (auto& g : globals)
         {
-            if (!g.second.func || g.second.used || g.first.value[0] == '_')
+            if (!g.second.func || g.second.usedOutsideSelf || g.first.value[0] == '_')
                 continue;
 
             const char* msg;
-            if (g.second.softUsed)
+            if (g.second.usedRecursively)
                 msg = "Function '%s' is never used outside its own body; prefix with '_' to silence";
             else
                 msg = "Function '%s' is never used; prefix with '_' to silence";
@@ -1031,9 +1031,9 @@ private:
         Global& g = globals[node->name];
 
         if (FFlag::LuauFunctionUnusedRecursiveLinting && g.func && g.scopeDepth > 0)
-            g.softUsed = true;
+            g.usedRecursively = true;
         else
-            g.used = true;
+            g.usedOutsideSelf = true;
 
         return true;
     }
