@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
+LUAU_FASTFLAG(LuauFunctionUnusedRecursiveLinting)
 
 using namespace Luau;
 
@@ -401,6 +402,8 @@ local _Roact = require(game.Packages.Roact)
 
 TEST_CASE_FIXTURE(Fixture, "FunctionUnused")
 {
+    ScopedFastFlag sff{FFlag::LuauFunctionUnusedRecursiveLinting, true};
+
     LintResult result = lint(R"(
 function bar()
 end

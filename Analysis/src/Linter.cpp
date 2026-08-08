@@ -14,6 +14,7 @@
 #include <climits>
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
+LUAU_FASTFLAGVARIABLE(LuauFunctionUnusedRecursiveLinting)
 
 namespace Luau
 {
@@ -901,7 +902,7 @@ private:
     {
         Local& l = locals[node->local];
 
-        if (l.function && l.scopeDepth > 0)
+        if (FFlag::LuauFunctionUnusedRecursiveLinting && l.function && l.scopeDepth > 0)
             l.softUsed = true;
         else
             l.used = true;
@@ -1029,7 +1030,7 @@ private:
     {
         Global& g = globals[node->name];
 
-        if (g.func && g.scopeDepth > 0)
+        if (FFlag::LuauFunctionUnusedRecursiveLinting && g.func && g.scopeDepth > 0)
             g.softUsed = true;
         else
             g.used = true;
