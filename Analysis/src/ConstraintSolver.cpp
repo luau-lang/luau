@@ -878,7 +878,7 @@ void ConstraintSolver::bind(NotNull<const Constraint> constraint, TypeId ty, Typ
 
     // This follow shouldn't be needed, but if for some reason we end up
     // with a bound type, we want to also follow it when doing this
-    // occurence check.
+    // occurrence check.
     if (follow(ty) == boundTo)
     {
         auto freshTy = freshType(arena, builtinTypes, constraint->scope, Polarity::Mixed);
