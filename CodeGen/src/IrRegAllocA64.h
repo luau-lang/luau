@@ -102,9 +102,6 @@ struct IrRegAllocA64
 
     uint32_t findInstructionWithFurthestNextUse(Set& set) const;
 
-    bool isExtraSpillSlot_DEPRECATED(unsigned slot) const;
-    int getExtraSpillAddressOffset_DEPRECATED(unsigned slot) const;
-
     Set& getSet(KindA64 kind);
 
     uint32_t getAllocToken() const

@@ -23,8 +23,8 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
-LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 namespace Luau
 {
@@ -155,13 +155,9 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
     // NOTE: It's a little odd that we are doing something non-exceptional for
     // the core of unification but not for occurs check, which may throw an
     // exception. It would be nice if, in the future, this were unified.
-    std::optional<NonExceptionalRecursionLimiter> nerl;
-    if (FFlag::LuauLimitUnificationRecursion)
-    {
-        nerl.emplace(&recursionCount);
-        if (!nerl->isOk(recursionLimit))
-            return UnifyResult::TooComplex;
-    }
+    NonExceptionalRecursionLimiter nerl{&recursionCount};
+    if (!nerl.isOk(recursionLimit))
+        return UnifyResult::TooComplex;
 
     subTy = follow(subTy);
     superTy = follow(superTy);
@@ -225,7 +221,10 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
 
     auto subIntersection = get<IntersectionType>(subTy);
     auto superIntersection = get<IntersectionType>(superTy);
-    if (subIntersection)
+
+    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier && subIntersection && superIntersection)
+        return unify_(subIntersection, superIntersection);
+    else if (subIntersection)
         return unify_(subIntersection, superTy);
     else if (superIntersection)
         return unify_(subTy, superIntersection);
@@ -469,6 +468,35 @@ UnifyResult Unifier2::unify_(TypeId subTy, const UnionType* superUnion)
     return result;
 }
 
+UnifyResult Unifier2::unify_(const IntersectionType* subIntersection, const IntersectionType* superIntersection)
+{
+    TypeIds superIntersectionMembers;
+    superIntersectionMembers.insert(begin(superIntersection), end(superIntersection));
+
+    TypeIds sharedMembers;
+    sharedMembers.insert(begin(subIntersection), end(subIntersection));
+
+    sharedMembers.retain(superIntersectionMembers);
+
+    UnifyResult result = UnifyResult::Ok;
+
+    for (auto subPart : subIntersection)
+    {
+        if (sharedMembers.contains(subPart))
+            continue;
+
+        for (auto superPart : superIntersection)
+        {
+            if (sharedMembers.contains(superPart))
+                continue;
+
+            result &= unify_(subPart, superPart);
+        }
+    }
+
+    return result;
+}
+
 UnifyResult Unifier2::unify_(const IntersectionType* subIntersection, TypeId superTy)
 {
     superTy = follow(superTy);
@@ -672,13 +700,9 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
     // NOTE: It's a little odd that we are doing something non-exceptional for
     // the core of unification but not for occurs check, which may throw an
     // exception. It would be nice if, in the future, this were unified.
-    std::optional<NonExceptionalRecursionLimiter> nerl;
-    if (FFlag::LuauLimitUnificationRecursion)
-    {
-        nerl.emplace(&recursionCount);
-        if (!nerl->isOk(recursionLimit))
-            return UnifyResult::TooComplex;
-    }
+    NonExceptionalRecursionLimiter nerl{&recursionCount};
+    if (!nerl.isOk(recursionLimit))
+        return UnifyResult::TooComplex;
 
     subTp = follow(subTp);
     superTp = follow(superTp);

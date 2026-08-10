@@ -10,7 +10,6 @@
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauInstantiateFunctionTypeBeforePush)
 LUAU_FASTFLAG(LuauBetterPackAndVariadicMismatchErrors)
 
 using namespace Luau;
@@ -2162,8 +2161,6 @@ TEST_CASE_FIXTURE(Fixture, "id_function_do_not_leak_generic")
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pushing")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauInstantiateFunctionTypeBeforePush, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         export type Parent = {

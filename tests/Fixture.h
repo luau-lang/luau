@@ -41,6 +41,13 @@ LUAU_FASTFLAG(LuauDisallowExternClassInTypeDefinitions)
 
 #define DOES_NOT_PASS_OLD_SOLVER_GUARD() DOES_NOT_PASS_OLD_SOLVER_GUARD_IMPL(__LINE__)
 
+// If CALLGRIND is on, then disable the timeout (doctest treats a timeout of 0 as disabled).
+#ifdef CALLGRIND
+constexpr double LUAU_TIMEOUT = 0.0;
+#else
+constexpr double LUAU_TIMEOUT = 4.0;
+#endif
+
 
 
 namespace Luau

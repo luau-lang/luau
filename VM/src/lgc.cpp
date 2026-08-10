@@ -24,6 +24,7 @@ LUAU_FASTFLAGVARIABLE(LuauGcTraceUdata)
 LUAU_FLAGVERSION(LuauGcTraceUdata, 2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcMarkUdataAccess, false)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
+LUAU_FASTFLAG(LuauManagedDebugNames)
 
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
@@ -427,6 +428,12 @@ static void traverseclosure(global_State* g, Closure* cl)
     markobject(g, cl->env);
     if (cl->isC)
     {
+        if (FFlag::LuauManagedDebugNames)
+        {
+            if (TString* str = cl->c.debugname)
+                stringmark(str);
+        }
+
         int i;
         for (i = 0; i < cl->nupvalues; i++) // mark its upvalues
             markvalue(g, &cl->c.upvals[i]);

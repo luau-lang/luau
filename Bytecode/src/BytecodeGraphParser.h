@@ -660,7 +660,13 @@ struct BytecodeGraphParser
             case LOP_GETTABLEKS:
                 addVmRegInput(node, LUAU_INSN_B(insn));
                 addImmInput(node, static_cast<int32_t>(LUAU_INSN_C(insn)));
-                addVmConstInput(node, aux);
+                if (op == LOP_GETUDATAKS)
+                {
+                    addVmConstInput(node, LUAU_INSN_AUX_KV16(aux));
+                    addImmInput(node, static_cast<int32_t>(LUAU_INSN_AUX_SLOT(aux)));
+                }
+                else
+                    addVmConstInput(node, aux);
                 addProducer(LUAU_INSN_A(insn), nodeOp);
                 break;
 
@@ -669,7 +675,13 @@ struct BytecodeGraphParser
                 addVmRegInput(node, LUAU_INSN_A(insn));
                 addVmRegInput(node, LUAU_INSN_B(insn));
                 addImmInput(node, static_cast<int32_t>(LUAU_INSN_C(insn)));
-                addVmConstInput(node, aux);
+                if (op == LOP_SETUDATAKS)
+                {
+                    addVmConstInput(node, LUAU_INSN_AUX_KV16(aux));
+                    addImmInput(node, static_cast<int32_t>(LUAU_INSN_AUX_SLOT(aux)));
+                }
+                else
+                    addVmConstInput(node, aux);
                 break;
 
             case LOP_GETTABLEN:
@@ -693,7 +705,13 @@ struct BytecodeGraphParser
             case LOP_NAMECALL:
                 addVmRegInput(node, LUAU_INSN_B(insn));
                 addImmInput(node, static_cast<int32_t>(LUAU_INSN_C(insn)));
-                addVmConstInput(node, aux);
+                if (op == LOP_NAMECALLUDATA)
+                {
+                    addVmConstInput(node, LUAU_INSN_AUX_KV16(aux));
+                    addImmInput(node, static_cast<int32_t>(LUAU_INSN_AUX_SLOT(aux)));
+                }
+                else
+                    addVmConstInput(node, aux);
                 func.regs[nodeOp] = LUAU_INSN_A(insn);
                 addProducer(LUAU_INSN_A(insn), func.addProj(nodeOp, 0));
                 addProducer(LUAU_INSN_A(insn) + 1, func.addProj(nodeOp, 1));
@@ -1003,7 +1021,15 @@ struct BytecodeGraphParser
             case LOP_NEWCLASSMEMBER:
                 LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
                 addVmRegInput(node, LUAU_INSN_A(insn));
+                addVmRegInput(node, LUAU_INSN_C(insn));
                 addVmConstInput(node, aux);
+                break;
+
+            case LOP_NEWCLASS:
+                LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+                addVmRegInput(node, LUAU_INSN_B(insn));
+                addVmConstInput(node, aux);
+                addProducer(LUAU_INSN_A(insn), nodeOp);
                 break;
 
 

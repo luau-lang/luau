@@ -17,6 +17,9 @@
 #include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
+
+LUAU_FASTINTVARIABLE(LuauCyclicSccWarningDisplayLimit, 10)
+LUAU_FASTINT(LuauCyclicSccWarningThreshold)
 LUAU_FASTFLAG(LuauBetterPackAndVariadicMismatchErrors)
 
 static std::string wrongNumberOfArgsString(
@@ -480,6 +483,29 @@ struct ErrorConverter
             else
                 s += name;
         }
+
+        return s;
+    }
+
+    std::string operator()(const Luau::CyclicModuleGraphTooLarge& e) const
+    {
+        std::string s = "This module is part of a cycle of " + std::to_string(e.moduleCount) + " modules that require each other. Consider reducing the number of cyclic dependencies: ";
+
+        size_t cyclicModuleDisplayLimit = std::min(e.moduleCount, static_cast<size_t>(FInt::LuauCyclicSccWarningDisplayLimit));
+
+        for (size_t i = 0; i < cyclicModuleDisplayLimit; i++)
+        {
+            if (i > 0)
+                s += ", ";
+
+            if (fileResolver != nullptr)
+                s += fileResolver->getHumanReadableModuleName(e.members[i]);
+            else
+                s += e.members[i];
+        }
+
+        if (cyclicModuleDisplayLimit < e.members.size())
+            s += ", ...";
 
         return s;
     }
@@ -1253,6 +1279,11 @@ bool ModuleHasCyclicDependency::operator==(const ModuleHasCyclicDependency& rhs)
     return cycle.size() == rhs.cycle.size() && std::equal(cycle.begin(), cycle.end(), rhs.cycle.begin());
 }
 
+bool CyclicModuleGraphTooLarge::operator==(const CyclicModuleGraphTooLarge& rhs) const
+{
+    return moduleCount == rhs.moduleCount;
+}
+
 bool IllegalRequire::operator==(const IllegalRequire& rhs) const
 {
     return moduleName == rhs.moduleName && reason == rhs.reason;
@@ -1562,6 +1593,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
     }
     else if constexpr (std::is_same_v<T, ModuleHasCyclicDependency>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, CyclicModuleGraphTooLarge>)
     {
     }
     else if constexpr (std::is_same_v<T, IllegalRequire>)

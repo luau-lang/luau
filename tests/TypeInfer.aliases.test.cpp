@@ -12,8 +12,9 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauAvoidCascadingRecursiveConstraintViolationError)
-LUAU_FASTFLAG(LuauFixInfiniteTypeRedundantBind)
 LUAU_FASTFLAG(LuauDoNotEmplaceAnnotatedType)
+
+LUAU_FASTFLAG(LuauInstantiationCheckArguments)
 LUAU_FASTFLAG(LuauBetterPackAndVariadicMismatchErrors)
 
 TEST_SUITE_BEGIN("TypeAliases");
@@ -702,8 +703,6 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_ok")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
 {
-    ScopedFastFlag _{FFlag::LuauFixInfiniteTypeRedundantBind, true};
-
     CheckResult result = check(R"(
         -- OK because forwarded types are used with their parameters.
         type Tree<T> = { data: T, children: Forest<T> }
@@ -715,8 +714,6 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_2")
 {
-    ScopedFastFlag _{FFlag::LuauFixInfiniteTypeRedundantBind, true};
-
     CheckResult result = check(R"(
         -- Not OK because forwarded types are used with different types than their parameters.
         type Forest<T> = {Tree<{T}>}
@@ -738,8 +735,6 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_ok")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_not_ok")
 {
-    ScopedFastFlag _{FFlag::LuauFixInfiniteTypeRedundantBind, true};
-
     CheckResult result = check(R"(
         type Tree1<T,U> = { data: T, children: {Tree2<U,T>} }
         type Tree2<T,U> = { data: U, children: {Tree1<T,U>} }
@@ -1382,7 +1377,6 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_type_alias_through_generic_does_not_assert")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauFixInfiniteTypeRedundantBind, true},
     };
 
     // We had an issue where a generic type alias cycle caused the system to
@@ -1417,6 +1411,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unpack_doesnt_emplace_typeof_type")
 
         Obj.Foo = {}
         Obj.Foo.Bar = 42
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "unused_type_arguments")
+{
+    ScopedFastFlag _{FFlag::LuauInstantiationCheckArguments, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Foo<T> = {}
+        export type Export<T> = {Foo<Foo<T>>}
     )"));
 }
 

@@ -2,7 +2,9 @@
 #include "TValueVmConstImpl.h"
 
 #include "lnumutils.h"
+#include "lgc.h"
 #include "lobject.h"
+#include "lvector.h"
 
 #include <algorithm>
 #include <cmath>
@@ -29,9 +31,9 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
         }
         else if (ttisvector(lhs) && ttisvector(rhs))
         {
-            const float* lv = vvalue(lhs);
-            const float* rv = vvalue(rhs);
-            setvvalue(nullptr, tv, lv[0] + rv[0], lv[1] + rv[1], lv[2] + rv[2], lv[3] + rv[3]);
+            const LUA_VECTOR_TYPE* lv = vvalue(lhs);
+            const LUA_VECTOR_TYPE* rv = vvalue(rhs);
+            setvvalue(backing.L, tv, lv[0] + rv[0], lv[1] + rv[1], lv[2] + rv[2], lv[3] + rv[3]);
         }
         else
         {
@@ -46,9 +48,9 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
         }
         else if (ttisvector(lhs) && ttisvector(rhs))
         {
-            const float* lv = vvalue(lhs);
-            const float* rv = vvalue(rhs);
-            setvvalue(nullptr, tv, lv[0] - rv[0], lv[1] - rv[1], lv[2] - rv[2], lv[3] - rv[3]);
+            const LUA_VECTOR_TYPE* lv = vvalue(lhs);
+            const LUA_VECTOR_TYPE* rv = vvalue(rhs);
+            setvvalue(backing.L, tv, lv[0] - rv[0], lv[1] - rv[1], lv[2] - rv[2], lv[3] - rv[3]);
         }
         else
         {
@@ -63,21 +65,21 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
         }
         else if (ttisvector(lhs) && ttisnumber(rhs))
         {
-            const float* vb = vvalue(lhs);
-            float vc = cast_to(float, nvalue(rhs));
-            setvvalue(nullptr, tv, vb[0] * vc, vb[1] * vc, vb[2] * vc, vb[3] * vc);
+            const LUA_VECTOR_TYPE* vb = vvalue(lhs);
+            LUA_VECTOR_TYPE vc = cast_to(LUA_VECTOR_TYPE, nvalue(rhs));
+            setvvalue(backing.L, tv, vb[0] * vc, vb[1] * vc, vb[2] * vc, vb[3] * vc);
         }
         else if (ttisvector(lhs) && ttisvector(rhs))
         {
-            const float* vb = vvalue(lhs);
-            const float* vc = vvalue(rhs);
-            setvvalue(nullptr, tv, vb[0] * vc[0], vb[1] * vc[1], vb[2] * vc[2], vb[3] * vc[3]);
+            const LUA_VECTOR_TYPE* vb = vvalue(lhs);
+            const LUA_VECTOR_TYPE* vc = vvalue(rhs);
+            setvvalue(backing.L, tv, vb[0] * vc[0], vb[1] * vc[1], vb[2] * vc[2], vb[3] * vc[3]);
         }
         else if (ttisnumber(lhs) && ttisvector(rhs))
         {
-            float vb = cast_to(float, nvalue(lhs));
-            const float* vc = vvalue(rhs);
-            setvvalue(nullptr, tv, vb * vc[0], vb * vc[1], vb * vc[2], vb * vc[3]);
+            LUA_VECTOR_TYPE vb = cast_to(LUA_VECTOR_TYPE, nvalue(lhs));
+            const LUA_VECTOR_TYPE* vc = vvalue(rhs);
+            setvvalue(backing.L, tv, vb * vc[0], vb * vc[1], vb * vc[2], vb * vc[3]);
         }
         else
         {
@@ -92,21 +94,21 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
         }
         else if (ttisvector(lhs) && ttisnumber(rhs))
         {
-            const float* vb = vvalue(lhs);
-            float vc = cast_to(float, nvalue(rhs));
-            setvvalue(nullptr, tv, vb[0] / vc, vb[1] / vc, vb[2] / vc, vb[3] / vc);
+            const LUA_VECTOR_TYPE* vb = vvalue(lhs);
+            LUA_VECTOR_TYPE vc = cast_to(LUA_VECTOR_TYPE, nvalue(rhs));
+            setvvalue(backing.L, tv, vb[0] / vc, vb[1] / vc, vb[2] / vc, vb[3] / vc);
         }
         else if (ttisvector(lhs) && ttisvector(rhs))
         {
-            const float* vb = vvalue(lhs);
-            const float* vc = vvalue(rhs);
-            setvvalue(nullptr, tv, vb[0] / vc[0], vb[1] / vc[1], vb[2] / vc[2], vb[3] / vc[3]);
+            const LUA_VECTOR_TYPE* vb = vvalue(lhs);
+            const LUA_VECTOR_TYPE* vc = vvalue(rhs);
+            setvvalue(backing.L, tv, vb[0] / vc[0], vb[1] / vc[1], vb[2] / vc[2], vb[3] / vc[3]);
         }
         else if (ttisnumber(lhs) && ttisvector(rhs))
         {
-            float vb = cast_to(float, nvalue(lhs));
-            const float* vc = vvalue(rhs);
-            setvvalue(nullptr, tv, vb / vc[0], vb / vc[1], vb / vc[2], vb / vc[3]);
+            LUA_VECTOR_TYPE vb = cast_to(LUA_VECTOR_TYPE, nvalue(lhs));
+            const LUA_VECTOR_TYPE* vc = vvalue(rhs);
+            setvvalue(backing.L, tv, vb / vc[0], vb / vc[1], vb / vc[2], vb / vc[3]);
         }
         else
         {
@@ -121,10 +123,10 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
         }
         else if (ttisvector(lhs) && ttisnumber(rhs))
         {
-            const float* vb = vvalue(lhs);
-            float vc = cast_to(float, nvalue(rhs));
+            const LUA_VECTOR_TYPE* vb = vvalue(lhs);
+            LUA_VECTOR_TYPE vc = cast_to(LUA_VECTOR_TYPE, nvalue(rhs));
             setvvalue(
-                nullptr, tv, float(luai_numidiv(vb[0], vc)), float(luai_numidiv(vb[1], vc)), float(luai_numidiv(vb[2], vc)), float(luai_numidiv(vb[3], vc))
+                backing.L, tv, float(luai_numidiv(vb[0], vc)), float(luai_numidiv(vb[1], vc)), float(luai_numidiv(vb[2], vc)), float(luai_numidiv(vb[3], vc))
             );
         }
         else

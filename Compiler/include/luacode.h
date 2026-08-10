@@ -52,7 +52,7 @@ struct lua_CompileOptions
 
     // 0 - 32-bit float vector components
     // 1 - 64-bit double vector components
-    int vectorPrecision;
+    int vectorPrecision; // default=0
 
     // null-terminated array of globals that are mutable; disables the import optimization for fields accessed through these
     const char* const* mutableGlobals;

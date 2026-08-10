@@ -45,7 +45,6 @@
 #include <signal.h>
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
-LUAU_FASTFLAG(LuauAutoStack)
 
 constexpr int MaxTraversalLimit = 50;
 
@@ -233,18 +232,12 @@ void setupState(lua_State* L)
 
 void setupArguments(lua_State* L, int argc, char** argv)
 {
-    if (!FFlag::LuauAutoStack)
-        lua_checkstack(L, argc);
-
     for (int i = 0; i < argc; ++i)
         lua_pushstring(L, argv[i]);
 }
 
 std::string runCode(lua_State* L, const std::string& source)
 {
-    if (!FFlag::LuauAutoStack)
-        lua_checkstack(L, LUA_MINSTACK);
-
     std::string bytecode = Luau::compile(source, copts());
 
     if (luau_load(L, "=stdin", bytecode.data(), bytecode.size(), 0) != 0)
@@ -419,9 +412,6 @@ static void completeIndexer(lua_State* L, const std::string& editBuffer, const A
 {
     std::string_view lookup = editBuffer;
     bool completeOnlyFunctions = false;
-
-    if (!FFlag::LuauAutoStack)
-        lua_checkstack(L, LUA_MINSTACK);
 
     // Push the global variable table to begin the search
     lua_pushvalue(L, LUA_GLOBALSINDEX);

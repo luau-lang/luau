@@ -80,7 +80,7 @@ Luau::Require::NavigationContext::ConfigBehavior FileNavigationContext::getConfi
     return Luau::Require::NavigationContext::ConfigBehavior::GetConfig;
 }
 
-std::optional<std::string> FileNavigationContext::getAlias(const std::string& alias) const
+std::optional<std::string> FileNavigationContext::getAlias(const std::string& alias)
 {
     return std::nullopt;
 }
