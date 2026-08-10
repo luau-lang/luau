@@ -13,7 +13,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauAvoidCascadingRecursiveConstraintViolationError)
 LUAU_FASTFLAG(LuauDoNotEmplaceAnnotatedType)
-
 LUAU_FASTFLAG(LuauInstantiationCheckArguments)
 LUAU_FASTFLAG(LuauBetterPackAndVariadicMismatchErrors)
 
