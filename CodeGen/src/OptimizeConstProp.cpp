@@ -28,6 +28,7 @@ LUAU_FLAGVERSION(LuauCodegenLinearNoCall, 2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSubstituteReplacements)
 LUAU_FASTFLAGVARIABLE(LuauCodegenConstVectorBufferRead)
 LUAU_FASTFLAGVARIABLE(LuauCodegenOriginVerifyMatch)
+LUAU_FASTFLAGVARIABLE(LuauCodegenNarrowRegisterCopy)
 
 namespace Luau
 {
@@ -124,6 +125,23 @@ static uint8_t tryGetTagForTypename(std::string_view name, bool forTypeof)
         return LUA_TBUFFER;
 
     return 0xff;
+}
+
+// Narrower load that reads a TValue's value alone, or NOP when a TValue load cannot be narrowed for this tag.
+// Vectors have none: their value is the whole TValue, so the TValue load already reads exactly the value.
+static IrCmd getNarrowedTValueLoadCmdForTag(uint8_t tag)
+{
+    switch (tag)
+    {
+    case LUA_TBOOLEAN:
+        return IrCmd::LOAD_INT;
+    case LUA_TNUMBER:
+        return IrCmd::LOAD_DOUBLE;
+    case LUA_TINTEGER:
+        return IrCmd::LOAD_INT64;
+    default:
+        return isGCO(tag) ? IrCmd::LOAD_POINTER : IrCmd::NOP;
+    }
 }
 
 // Check if we can treat double as an integer in addition and subtraction
@@ -418,6 +436,10 @@ struct ConstPropState
     {
         if (uint32_t* prevIdx = valueMap.find(inst))
         {
+            // Invalidated entry: the instruction no longer computes this value
+            if (*prevIdx == kInvalidInstIdx)
+                return nullptr;
+
             IrInst& inst = function.instructions[*prevIdx];
 
             // Previous load might have been removed as unused
@@ -1595,6 +1617,32 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     state.invalidateRegistersFrom(firstReturnReg);
 }
 
+// A register copy loads a whole TValue and stores it back, leaving the destination value only in memory so the next
+// read of it returns to the stack. With a known tag the load can read just the value instead.
+static IrCmd tryNarrowVmRegTValueLoad(ConstPropState& state, IrFunction& function, IrBlock& block, uint32_t loadIdx, uint8_t tag)
+{
+    IrCmd loadCmd = getNarrowedTValueLoadCmdForTag(tag);
+
+    if (loadCmd == IrCmd::NOP)
+        return IrCmd::NOP;
+
+    IrInst& load = function.instructions[loadIdx];
+    IrOp vmReg = OP_A(load);
+
+    // The load is rewritten in place, so the asking store has to be its only user
+    if (load.useCount != 1 || function.cfg.captured.regs.test(vmRegOp(vmReg)))
+        return IrCmd::NOP;
+
+    // A later TValue load of this register version must miss, or it would reuse the bare payload as a TValue
+    state.valueMap[state.versionedVmRegLoad(IrCmd::LOAD_TVALUE, vmReg)] = kInvalidInstIdx;
+
+    replace(function, block, loadIdx, IrInst{loadCmd, {vmReg}});
+
+    state.valueMap[state.versionedVmRegLoad(loadCmd, vmReg)] = loadIdx;
+
+    return loadCmd;
+}
+
 static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction& function, IrBlock& block, IrInst& inst, uint32_t index)
 {
     state.instPos++;
@@ -2046,6 +2094,16 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 if (IrInst* arg = function.asInstOp(OP_B(inst)); arg && arg->cmd == IrCmd::LOAD_TVALUE && OP_A(arg).kind == IrOpKind::VmReg)
                 {
                     std::tie(activeLoadCmd, activeLoadValue) = state.getPreviousVersionedLoadForTag(tag, OP_A(arg));
+
+                    // With no narrower load of the source to reuse, the copy's own TValue load can become one
+                    if (FFlag::LuauCodegenNarrowRegisterCopy && activeLoadValue == kInvalidInstIdx)
+                    {
+                        if (IrCmd loadCmd = tryNarrowVmRegTValueLoad(state, function, block, OP_B(inst).index, tag); loadCmd != IrCmd::NOP)
+                        {
+                            activeLoadCmd = loadCmd;
+                            activeLoadValue = OP_B(inst).index;
+                        }
+                    }
 
                     if (activeLoadValue != kInvalidInstIdx)
                         value = IrOp{IrOpKind::Inst, activeLoadValue};
