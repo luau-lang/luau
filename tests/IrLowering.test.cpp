@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAG(LuauCodegenConstVectorBufferRead)
 LUAU_FASTFLAG(LuauCodegenStoreTagCheck)
 LUAU_FASTFLAG(LuauCodegenIntegerCompare)
+LUAU_FASTFLAG(LuauCodegenNarrowRegisterCopy)
 
 #define ensureVectorSize3() \
     if constexpr (LUA_VECTOR_SIZE != 3) \
@@ -2009,6 +2010,8 @@ bb_bytecode_4:
 
 TEST_CASE_FIXTURE(LoweringFixture, "EntryBlockChecksWithOptional1")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -2041,8 +2044,8 @@ bb_6:
   INTERRUPT 3u
   RETURN R2, 1i
 bb_bytecode_2:
-  %21 = LOAD_TVALUE R1, 0i, tnumber
-  STORE_TVALUE R2, %21
+  %21 = LOAD_DOUBLE R1
+  STORE_SPLIT_TVALUE R2, tnumber, %21
   INTERRUPT 5u
   RETURN R2, 1i
 )"
@@ -2051,6 +2054,8 @@ bb_bytecode_2:
 
 TEST_CASE_FIXTURE(LoweringFixture, "EntryBlockChecksWithOptional2")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -2081,8 +2086,8 @@ bb_5:
   INTERRUPT 3u
   RETURN R2, 1i
 bb_bytecode_2:
-  %20 = LOAD_TVALUE R0, 0i, tnumber
-  STORE_TVALUE R2, %20
+  %20 = LOAD_DOUBLE R0
+  STORE_SPLIT_TVALUE R2, tnumber, %20
   INTERRUPT 5u
   RETURN R2, 1i
 )"
@@ -3011,6 +3016,8 @@ bb_linear_11:
 
 TEST_CASE_FIXTURE(LoweringFixture, "LoadEnvReuse")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
+
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -3038,15 +3045,15 @@ bb_bytecode_1:
   %7 = GET_SLOT_NODE_ADDR %6, 0u, K0 ('x')
   CHECK_SLOT_MATCH %7, K0 ('x'), bb_fallback_3
   CHECK_READONLY %6, bb_fallback_3
-  %10 = LOAD_TVALUE R0, 0i, tnumber
-  STORE_TVALUE %7, %10, 0i
+  %10 = LOAD_DOUBLE R0
+  STORE_SPLIT_TVALUE %7, tnumber, %10, 0i
   JUMP bb_linear_9
 bb_linear_9:
   %39 = GET_SLOT_NODE_ADDR %6, 2u, K1 ('y')
   CHECK_SLOT_MATCH %39, K1 ('y'), bb_fallback_5
-  %42 = LOAD_TVALUE R1, 0i, tnumber
-  STORE_TVALUE %39, %42, 0i
-  STORE_TVALUE %7, %42, 0i
+  %42 = LOAD_DOUBLE R1
+  STORE_SPLIT_TVALUE %39, tnumber, %42, 0i
+  STORE_SPLIT_TVALUE %7, tnumber, %42, 0i
   INTERRUPT 6u
   RETURN R0, 0i
 )"
@@ -3885,6 +3892,8 @@ end
 
 TEST_CASE_FIXTURE(LoweringFixture, "ForInManualAnnotation")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
+
     ensureVectorFloat();
 
     ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
@@ -3924,8 +3933,8 @@ bb_bytecode_1:
   STORE_DOUBLE R1, 0
   STORE_TAG R1, tnumber
   GET_CACHED_IMPORT R2, K1 (nil), 1073741824u ('ipairs'), 2u
-  %8 = LOAD_TVALUE R0, 0i, ttable
-  STORE_TVALUE R3, %8
+  %8 = LOAD_POINTER R0
+  STORE_SPLIT_TVALUE R3, ttable, %8
   INTERRUPT 4u
   SET_SAVEDPC 6u
   CALL R2, 1i, 3i
@@ -4173,6 +4182,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "CustomUserdataNamecall1")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
+
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
@@ -4197,19 +4208,18 @@ bb_0:
 bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
-  %6 = LOAD_TVALUE R1, 0i, tuserdata
-  STORE_TVALUE R4, %6
+  %6 = LOAD_POINTER R1
+  STORE_SPLIT_TVALUE R4, tuserdata, %6
   %10 = LOAD_POINTER R0
   CHECK_USERDATA_TAG %10, 12i, exit(1)
-  %14 = LOAD_POINTER R1
-  CHECK_USERDATA_TAG %14, 12i, exit(1)
+  CHECK_USERDATA_TAG %6, 12i, exit(1)
   %16 = BUFFER_READF32 %10, 0i, tuserdata
-  %17 = BUFFER_READF32 %14, 0i, tuserdata
+  %17 = BUFFER_READF32 %6, 0i, tuserdata
   %18 = FLOAT_TO_NUM %16
   %19 = FLOAT_TO_NUM %17
   %20 = MUL_NUM %18, %19
   %21 = BUFFER_READF32 %10, 4i, tuserdata
-  %22 = BUFFER_READF32 %14, 4i, tuserdata
+  %22 = BUFFER_READF32 %6, 4i, tuserdata
   %23 = FLOAT_TO_NUM %21
   %24 = FLOAT_TO_NUM %22
   %25 = MUL_NUM %23, %24
@@ -4225,6 +4235,8 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "CustomUserdataNamecall2")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
+
     // This test requires runtime component to be present
     if (!Luau::CodeGen::isSupported())
         return;
@@ -4249,19 +4261,18 @@ bb_0:
 bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
-  %6 = LOAD_TVALUE R1, 0i, tuserdata
-  STORE_TVALUE R4, %6
+  %6 = LOAD_POINTER R1
+  STORE_SPLIT_TVALUE R4, tuserdata, %6
   %10 = LOAD_POINTER R0
   CHECK_USERDATA_TAG %10, 12i, exit(1)
-  %14 = LOAD_POINTER R1
-  CHECK_USERDATA_TAG %14, 12i, exit(1)
+  CHECK_USERDATA_TAG %6, 12i, exit(1)
   %16 = BUFFER_READF32 %10, 0i, tuserdata
-  %17 = BUFFER_READF32 %14, 0i, tuserdata
+  %17 = BUFFER_READF32 %6, 0i, tuserdata
   %18 = FLOAT_TO_NUM %16
   %19 = FLOAT_TO_NUM %17
   %20 = MIN_NUM %18, %19
   %21 = BUFFER_READF32 %10, 4i, tuserdata
-  %22 = BUFFER_READF32 %14, 4i, tuserdata
+  %22 = BUFFER_READF32 %6, 4i, tuserdata
   %23 = FLOAT_TO_NUM %21
   %24 = FLOAT_TO_NUM %22
   %25 = MIN_NUM %23, %24
@@ -4441,6 +4452,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "CustomUserdataMapping")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
     ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
 
@@ -4468,8 +4480,8 @@ bb_2:
 bb_bytecode_1:
   implicit CHECK_SAFE_ENV exit(0)
   GET_CACHED_IMPORT R1, K1 (nil), 1073741824u ('print'), 1u
-  %6 = LOAD_TVALUE R0, 0i, tuserdata
-  STORE_TVALUE R2, %6
+  %6 = LOAD_POINTER R0
+  STORE_SPLIT_TVALUE R2, tuserdata, %6
   GET_CACHED_IMPORT R3, K4 (nil), 2149583872u ('vec2'.'create'), 4u
   STORE_DOUBLE R4, 0
   STORE_TAG R4, tnumber
@@ -5361,6 +5373,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "BufferRelatedIndicesPositiveLoopRangeBase")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
     ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag luauBackedgeHeapCheck{FFlag::LuauBackedgeHeapCheck, true};
@@ -5392,8 +5405,8 @@ bb_bytecode_1:
   STORE_DOUBLE R5, 0
   STORE_TAG R5, tnumber
   GET_CACHED_IMPORT R6, K3 (nil), 2148534272u ('buffer'.'len'), 3u
-  %12 = LOAD_TVALUE R0, 0i, tbuffer
-  STORE_TVALUE R7, %12
+  %12 = LOAD_POINTER R0
+  STORE_SPLIT_TVALUE R7, tbuffer, %12
   INTERRUPT 5u
   SET_SAVEDPC 7u
   CALL R6, 1i, 1i
@@ -6334,6 +6347,8 @@ bb_bytecode_0:
 
 TEST_CASE_FIXTURE(LoweringFixture, "OldStyleConditional")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
+
     // TODO: opportunity - this can be done in two SELECT_IF_TRUTHY, but we cannot match such complex sequences right now
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -6354,12 +6369,12 @@ bb_4:
 bb_bytecode_1:
   JUMP_IF_FALSY R0, bb_bytecode_2, bb_5
 bb_5:
-  %9 = LOAD_TVALUE R1, 0i, tnumber
-  STORE_TVALUE R3, %9
+  %9 = LOAD_DOUBLE R1
+  STORE_SPLIT_TVALUE R3, tnumber, %9
   JUMP bb_bytecode_3
 bb_bytecode_2:
-  %12 = LOAD_TVALUE R2, 0i, tnumber
-  STORE_TVALUE R3, %12
+  %12 = LOAD_DOUBLE R2
+  STORE_SPLIT_TVALUE R3, tnumber, %12
   JUMP bb_bytecode_3
 bb_bytecode_3:
   CHECK_TAG R3, tnumber, exit(4)
@@ -6375,6 +6390,8 @@ bb_bytecode_3:
 
 TEST_CASE_FIXTURE(LoweringFixture, "NewStyleConditional")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
+
     // TODO: opportunity - this can be done in one SELECT_IF_TRUTHY, but this is also hard to detect in current system
     CHECK_EQ(
         "\n" + getCodegenAssembly(R"(
@@ -6395,12 +6412,12 @@ bb_4:
 bb_bytecode_1:
   JUMP_IF_FALSY R0, bb_bytecode_2, bb_5
 bb_5:
-  %9 = LOAD_TVALUE R1, 0i, tnumber
-  STORE_TVALUE R3, %9
+  %9 = LOAD_DOUBLE R1
+  STORE_SPLIT_TVALUE R3, tnumber, %9
   JUMP bb_bytecode_3
 bb_bytecode_2:
-  %12 = LOAD_TVALUE R2, 0i, tnumber
-  STORE_TVALUE R3, %12
+  %12 = LOAD_DOUBLE R2
+  STORE_SPLIT_TVALUE R3, tnumber, %12
   JUMP bb_bytecode_3
 bb_bytecode_3:
   CHECK_TAG R3, tnumber, exit(4)
@@ -7605,6 +7622,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "LoopStepDetection1")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
     ScopedFastFlag luauBackedgeHeapCheck{FFlag::LuauBackedgeHeapCheck, true};
 
     assemblyOptions.includeRegFlowInfo = Luau::CodeGen::IncludeRegFlowInfo::Yes;
@@ -7639,12 +7657,11 @@ bb_bytecode_1:
   STORE_TAG R1, tnumber
   STORE_DOUBLE R4, 1
   STORE_TAG R4, tnumber
-  %8 = LOAD_TVALUE R0, 0i, tnumber
-  STORE_TVALUE R2, %8
+  %8 = LOAD_DOUBLE R0
+  STORE_SPLIT_TVALUE R2, tnumber, %8
   STORE_DOUBLE R3, 1
   STORE_TAG R3, tnumber
-  %16 = LOAD_DOUBLE R0
-  JUMP_CMP_NUM 1, %16, not_le, bb_bytecode_3, bb_bytecode_2
+  JUMP_CMP_NUM 1, %8, not_le, bb_bytecode_3, bb_bytecode_2
 bb_bytecode_2:
 ; in regs: R1, R2, R3, R4
 ; out regs: R1, R2, R3, R4
@@ -8494,6 +8511,7 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "BufferWriteChecksExtraArgs")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
     ScopedFastFlag luauCodegenStoreTagCheck{FFlag::LuauCodegenStoreTagCheck, true};
 
     CHECK_EQ(
@@ -8519,22 +8537,20 @@ bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
   implicit CHECK_SAFE_ENV exit(0)
-  %6 = LOAD_TVALUE R0, 0i, tbuffer
-  STORE_TVALUE R4, %6
-  %8 = LOAD_TVALUE R1, 0i, tnumber
-  STORE_TVALUE R5, %8
+  %6 = LOAD_POINTER R0
+  STORE_SPLIT_TVALUE R4, tbuffer, %6
+  %8 = LOAD_DOUBLE R1
+  STORE_SPLIT_TVALUE R5, tnumber, %8
   %10 = LOAD_TVALUE R2
   STORE_TVALUE R6, %10
   STORE_DOUBLE R7, 0
   STORE_TAG R7, tnumber
   CHECK_TAG R2, tnumber, exit(5)
-  %21 = LOAD_POINTER R0
-  %22 = LOAD_DOUBLE R1
-  %23 = NUM_TO_INT %22
-  CHECK_BUFFER_LEN %21, %23, 0i, 4i, undef, exit(5)
+  %23 = NUM_TO_INT %8
+  CHECK_BUFFER_LEN %6, %23, 0i, 4i, undef, exit(5)
   %25 = LOAD_DOUBLE R2
   %26 = NUM_TO_UINT %25
-  BUFFER_WRITEI32 %21, %23, %26, tbuffer
+  BUFFER_WRITEI32 %6, %23, %26, tbuffer
   ADJUST_STACK_TO_REG R3, 0i
   INTERRUPT 8u
   RETURN R3, -1i

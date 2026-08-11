@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauCodegenSkipDeadPredecessorTags)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauCodegenSubstituteReplacements)
 LUAU_FASTFLAG(LuauCodegenLinearNoCall)
+LUAU_FASTFLAG(LuauCodegenNarrowRegisterCopy)
 LUAU_FASTFLAG(LuauCodegenOriginVerifyMatch)
 
 using namespace Luau::CodeGen;
@@ -3434,6 +3435,8 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "InvalidateReglinkVersion")
 {
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
+
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.fallbackBlock(0u);
 
@@ -3460,13 +3463,56 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "InvalidateReglinkVersion")
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
    STORE_TAG R2, tstring
-   %1 = LOAD_TVALUE R2, 0i, tstring
-   STORE_TVALUE R1, %1
+   %1 = LOAD_POINTER R2
+   STORE_SPLIT_TVALUE R1, tstring, %1
    %3 = NEW_TABLE 0u, 0u
    STORE_POINTER R2, %3
    STORE_TAG R2, ttable
-   STORE_TVALUE R0, %1
+   STORE_SPLIT_TVALUE R0, tstring, %1
    JUMP bb_fallback_1
+
+bb_fallback_1:
+   RETURN 1u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "CopyOfKnownTagRegisterLoadsValueOnly")
+{
+    ScopedFastFlag splitRegisterCopy{FFlag::LuauCodegenNarrowRegisterCopy, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.fallbackBlock(0u);
+
+    build.beginBlock(block);
+
+    // Check establishes the tag without establishing a value, which is the shape a typed argument arrives in
+    IrOp tag = build.inst(IrCmd::LOAD_TAG, build.vmReg(2));
+    build.inst(IrCmd::CHECK_TAG, tag, build.constTag(tnumber), fallback);
+
+    IrOp copy = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(2));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(1), copy);
+
+    // A second copy of the same register version must not reuse the retyped load as a TValue
+    IrOp recopy = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(2));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(0), recopy);
+
+    build.inst(IrCmd::RETURN, build.constUint(0));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::RETURN, build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   %0 = LOAD_TAG R2
+   CHECK_TAG %0, tnumber, bb_fallback_1
+   %2 = LOAD_DOUBLE R2
+   STORE_SPLIT_TVALUE R1, tnumber, %2
+   STORE_SPLIT_TVALUE R0, tnumber, %2
+   RETURN 0u
 
 bb_fallback_1:
    RETURN 1u
