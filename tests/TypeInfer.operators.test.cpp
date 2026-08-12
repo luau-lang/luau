@@ -18,6 +18,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
@@ -1699,6 +1700,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "overload_concat")
     )");
 
     LUAU_CHECK_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "negated_integer_literal_is_a_constant")
+{
+    ScopedFastFlag sff{FFlag::LuauIntegerType2, true};
+
+    // compileExprUnary folds this into one negative constant, so it never negates anything at runtime.
+    CheckResult result = check(R"(
+        --!strict
+        local a = -4194626i
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("integer" == toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "negating_a_non_literal_integer_is_an_error")
+{
+    ScopedFastFlag sff{FFlag::LuauIntegerType2, true};
+
+    // Only the literal is folded. This one reaches the runtime, where integer has no __unm.
+    CheckResult result = check(R"(
+        --!strict
+        local b = 5i
+        local c = -b
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_SUITE_END();
