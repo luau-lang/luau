@@ -9,7 +9,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 LUAU_FASTFLAG(LuauSubtypeUnionsTogether)
 LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAG(LuauBetterMissingPropertiesTypeError)
@@ -1034,8 +1033,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_union_bounds")
     /*
      * When unifying 'a <: T | nil in a context where T substituted for 't, we must constrain the lower bound of 't by 'a.
      */
-    ScopedFastFlag sff{FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds, true};
-
     CheckResult result = check(R"(
         local function unwrap<T>(a: T?): T
             if a == nil then

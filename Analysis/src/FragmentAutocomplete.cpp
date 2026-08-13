@@ -31,7 +31,8 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauConstraintGraph)
+LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+LUAU_FASTFLAGVARIABLE(LuauFragmentACEnableTypeFunctionEvaluation)
 
 namespace Luau
 {
@@ -1128,16 +1129,16 @@ FragmentTypeCheckResult typecheckFragment_(
 )
 {
     LUAU_TIMETRACE_SCOPE("Luau::typecheckFragment_", "FragmentAutocomplete");
-    freeze(stale->internalTypes);
+    freeze(*stale->internalTypes);
     freeze(stale->interfaceTypes);
-    ModulePtr incrementalModule = std::make_shared<Module>();
+    ModulePtr incrementalModule = std::make_shared<Module>(std::make_shared<TypeArena>());
     incrementalModule->name = stale->name;
     incrementalModule->humanReadableName = "Incremental$" + stale->humanReadableName;
-    incrementalModule->internalTypes.owningModule = incrementalModule.get();
+    incrementalModule->internalTypes->owningModule = incrementalModule.get();
     incrementalModule->interfaceTypes.owningModule = incrementalModule.get();
     incrementalModule->allocator = std::move(astAllocator);
     incrementalModule->checkedInNewSolver = true;
-    unfreeze(incrementalModule->internalTypes);
+    unfreeze(*incrementalModule->internalTypes);
     unfreeze(incrementalModule->interfaceTypes);
 
     /// Setup typecheck limits
@@ -1156,16 +1157,16 @@ FragmentTypeCheckResult typecheckFragment_(
     unifierState.counters.iterationLimit = limits.unifierIterationLimit.value_or(FInt::LuauTypeInferIterationLimit);
 
     /// Initialize the normalizer
-    Normalizer normalizer{&incrementalModule->internalTypes, frontend.builtinTypes, NotNull{&unifierState}, SolverMode::New};
+    Normalizer normalizer{incrementalModule->internalTypes.get(), frontend.builtinTypes, NotNull{&unifierState}, SolverMode::New};
 
     /// User defined type functions runtime
     TypeFunctionRuntime typeFunctionRuntime(iceHandler, NotNull{&limits});
 
     Subtyping subtyping{
-        frontend.builtinTypes, NotNull{&incrementalModule->internalTypes}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler
+        frontend.builtinTypes, NotNull{incrementalModule->internalTypes.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler
     };
 
-    typeFunctionRuntime.allowEvaluation = false;
+    typeFunctionRuntime.allowEvaluation = FFlag::LuauFragmentACEnableTypeFunctionEvaluation;
 
     /// Create a DataFlowGraph just for the surrounding context
     DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
@@ -1184,9 +1185,7 @@ FragmentTypeCheckResult typecheckFragment_(
     FrontendModuleResolver& resolver = getModuleResolver(frontend, opts);
     std::shared_ptr<Scope> freshChildOfNearestScope = std::make_shared<Scope>(nullptr);
 
-    std::unique_ptr<ConstraintGraph> cgraph;
-    if (FFlag::LuauConstraintGraph)
-        cgraph = std::make_unique<ConstraintGraph>(frontend.builtinTypes);
+    std::unique_ptr<ConstraintGraph> cgraph = std::make_unique<ConstraintGraph>(frontend.builtinTypes);
 
     /// Contraint Generator
     ConstraintGenerator cg{
@@ -1202,7 +1201,7 @@ FragmentTypeCheckResult typecheckFragment_(
         nullptr,
         NotNull{&dfg},
         {},
-        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
+        NotNull{cgraph.get()},
     };
 
     CloneState cloneState{frontend.builtinTypes};
@@ -1221,7 +1220,7 @@ FragmentTypeCheckResult typecheckFragment_(
         cloneState,
         closestScope.get(),
         stale,
-        NotNull{&incrementalModule->internalTypes},
+        NotNull{incrementalModule->internalTypes.get()},
         NotNull{&dfg},
         frontend.builtinTypes,
         root,
@@ -1242,15 +1241,15 @@ FragmentTypeCheckResult typecheckFragment_(
         NotNull{&normalizer},
         NotNull{&typeFunctionRuntime},
         NotNull(cg.rootScope),
-        borrowConstraints(cg.constraints),
-        NotNull{&cg.scopeToFunction},
+        borrowConstraints(FFlag::LuauCyclicRequireTypeInference ? cg.cgraph->constraints : cg.constraints),
+        NotNull{FFlag::LuauCyclicRequireTypeInference ? &cg.cgraph->scopeToFunction : &cg.scopeToFunction},
         incrementalModule,
         NotNull{&resolver},
         {},
         nullptr,
         NotNull{&dfg},
         std::move(limits),
-        FFlag::LuauConstraintGraph ? cgraph.get() : nullptr,
+        NotNull{cgraph.get()},
         NotNull{&subtyping}
     };
 
@@ -1274,7 +1273,7 @@ FragmentTypeCheckResult typecheckFragment_(
         NotNull{&incrementalModule->astExpectedTypes},
         NotNull{&incrementalModule->astResolvedTypes},
         NotNull{&incrementalModule->astOverloadResolvedTypes},
-        NotNull{&incrementalModule->internalTypes},
+        NotNull{incrementalModule->internalTypes.get()},
         frontend.builtinTypes,
         NotNull{freshChildOfNearestScope.get()}
     };
@@ -1284,7 +1283,8 @@ FragmentTypeCheckResult typecheckFragment_(
     // In frontend we would forbid internal types
     // because this is just for autocomplete, we don't actually care
     // We also don't even need to typecheck - just synthesize types as best as we can
-    freeze(incrementalModule->internalTypes);
+    LUAU_ASSERT(incrementalModule->internalTypes.use_count() == 1);
+    freeze(*incrementalModule->internalTypes);
     freeze(incrementalModule->interfaceTypes);
     freshChildOfNearestScope->parent = closestScope;
     return {std::move(incrementalModule), std::move(freshChildOfNearestScope)};
@@ -1396,11 +1396,11 @@ FragmentAutocompleteResult fragmentAutocomplete(
     auto globalScope = (opts && opts->forAutocomplete) ? frontend.globalsForAutocomplete.globalScope.get() : frontend.globals.globalScope.get();
     if (FFlag::DebugLogFragmentsFromAutocomplete)
         logLuau("Fragment Autocomplete Source Script", src);
-    unfreeze(tcResult.incrementalModule->internalTypes);
+    unfreeze(*tcResult.incrementalModule->internalTypes);
     auto result = Luau::autocomplete_(
         tcResult.incrementalModule,
         frontend.builtinTypes,
-        &tcResult.incrementalModule->internalTypes,
+        tcResult.incrementalModule->internalTypes.get(),
         tcResult.ancestry,
         globalScope,
         tcResult.freshScope,
@@ -1409,7 +1409,7 @@ FragmentAutocompleteResult fragmentAutocomplete(
         std::move(callback),
         isInHotComment
     );
-    freeze(tcResult.incrementalModule->internalTypes);
+    freeze(*tcResult.incrementalModule->internalTypes);
     reportWaypoint(reporter, FragmentAutocompleteWaypoint::AutocompleteEnd);
     return {std::move(tcResult.incrementalModule), tcResult.freshScope.get(), std::move(result)};
 }

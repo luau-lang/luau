@@ -11,6 +11,7 @@
 
 LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufferInteger)
+LUAU_FASTFLAGVARIABLE(LuauCodegenStoreTagCheck)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
@@ -316,17 +317,50 @@ static BuiltinImplResult translateBuiltinVectorLerp(IrBuilder& build, int nparam
     build.loadAndCheckTag(args, LUA_TVECTOR, build.vmExit(pcpos));
     builtinCheckDouble(build, arg3, pcpos);
 
-    IrOp a = build.inst(IrCmd::LOAD_TVALUE, arg1);
-    IrOp b = build.inst(IrCmd::LOAD_TVALUE, args);
-    IrOp t = builtinLoadDouble(build, arg3);
+    if constexpr (LUA_VECTOR_DOUBLE == 1)
+    {
+        IrOp aptr = build.inst(IrCmd::LOAD_POINTER, arg1);
+        IrOp ax = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp ay = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp az = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
-    IrOp tvec = build.inst(IrCmd::FLOAT_TO_VEC, build.inst(IrCmd::NUM_TO_FLOAT, t));
-    IrOp one = build.inst(IrCmd::FLOAT_TO_VEC, build.constDouble(1.0));
-    IrOp diff = build.inst(IrCmd::SUB_VEC, b, a);
+        IrOp bptr = build.inst(IrCmd::LOAD_POINTER, args);
+        IrOp bx = build.inst(IrCmd::BUFFER_READF64, bptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp by = build.inst(IrCmd::BUFFER_READF64, bptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp bz = build.inst(IrCmd::BUFFER_READF64, bptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
-    IrOp res = build.inst(IrCmd::MULADD_VEC, diff, tvec, a);
-    IrOp ret = build.inst(IrCmd::SELECT_VEC, res, b, tvec, one);
-    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+        IrOp t = builtinLoadDouble(build, arg3);
+
+        IrOp dx = build.inst(IrCmd::SUB_NUM, bx, ax);
+        IrOp dy = build.inst(IrCmd::SUB_NUM, by, ay);
+        IrOp dz = build.inst(IrCmd::SUB_NUM, bz, az);
+
+        IrOp lx = build.inst(IrCmd::ADD_NUM, build.inst(IrCmd::MUL_NUM, dx, t), ax);
+        IrOp ly = build.inst(IrCmd::ADD_NUM, build.inst(IrCmd::MUL_NUM, dy, t), ay);
+        IrOp lz = build.inst(IrCmd::ADD_NUM, build.inst(IrCmd::MUL_NUM, dz, t), az);
+
+        IrOp one = build.constDouble(1.0);
+        IrOp rx = build.inst(IrCmd::SELECT_NUM, lx, bx, t, one);
+        IrOp ry = build.inst(IrCmd::SELECT_NUM, ly, by, t, one);
+        IrOp rz = build.inst(IrCmd::SELECT_NUM, lz, bz, t, one);
+
+        build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, rx, ry, rz));
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
+    }
+    else
+    {
+        IrOp a = build.inst(IrCmd::LOAD_TVALUE, arg1);
+        IrOp b = build.inst(IrCmd::LOAD_TVALUE, args);
+        IrOp t = builtinLoadDouble(build, arg3);
+
+        IrOp tvec = build.inst(IrCmd::FLOAT_TO_VEC, build.inst(IrCmd::NUM_TO_FLOAT, t));
+        IrOp one = build.inst(IrCmd::FLOAT_TO_VEC, build.constDouble(1.0));
+        IrOp diff = build.inst(IrCmd::SUB_VEC, b, a);
+
+        IrOp res = build.inst(IrCmd::MULADD_VEC, diff, tvec, a);
+        IrOp ret = build.inst(IrCmd::SELECT_VEC, res, b, tvec, one);
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+    }
 
     return {BuiltinImplType::Full, 1};
 }
@@ -796,10 +830,17 @@ static BuiltinImplResult translateBuiltinVector(IrBuilder& build, int nparams, i
         IrOp x = builtinLoadDouble(build, build.vmReg(arg));
         IrOp y = builtinLoadDouble(build, args);
 
-        IrOp xf = build.inst(IrCmd::NUM_TO_FLOAT, x);
-        IrOp yf = build.inst(IrCmd::NUM_TO_FLOAT, y);
+        if constexpr (LUA_VECTOR_DOUBLE == 1)
+        {
+            build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, x, y, build.constDouble(0.0)));
+        }
+        else
+        {
+            IrOp xf = build.inst(IrCmd::NUM_TO_FLOAT, x);
+            IrOp yf = build.inst(IrCmd::NUM_TO_FLOAT, y);
 
-        build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xf, yf, build.constDouble(0.0));
+            build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xf, yf, build.constDouble(0.0));
+        }
     }
     else
     {
@@ -811,11 +852,19 @@ static BuiltinImplResult translateBuiltinVector(IrBuilder& build, int nparams, i
         IrOp y = builtinLoadDouble(build, args);
         IrOp z = builtinLoadDouble(build, arg3);
 
-        IrOp xf = build.inst(IrCmd::NUM_TO_FLOAT, x);
-        IrOp yf = build.inst(IrCmd::NUM_TO_FLOAT, y);
-        IrOp zf = build.inst(IrCmd::NUM_TO_FLOAT, z);
+        if constexpr (LUA_VECTOR_DOUBLE == 1)
+        {
+            build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, x, y, z));
+        }
+        else
+        {
 
-        build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xf, yf, zf);
+            IrOp xf = build.inst(IrCmd::NUM_TO_FLOAT, x);
+            IrOp yf = build.inst(IrCmd::NUM_TO_FLOAT, y);
+            IrOp zf = build.inst(IrCmd::NUM_TO_FLOAT, z);
+
+            build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xf, yf, zf);
+        }
     }
 
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
@@ -893,10 +942,23 @@ static void translateBufferArgsAndCheckBounds(
     build.loadAndCheckTag(build.vmReg(arg), LUA_TBUFFER, build.vmExit(pcpos));
     builtinCheckDouble(build, args, pcpos);
 
-    if (nparams == 3 && loadInt64)
-        builtinCheckInt64(build, arg3, pcpos);
-    else if (nparams == 3)
-        builtinCheckDouble(build, arg3, pcpos);
+    if (FFlag::LuauCodegenStoreTagCheck)
+    {
+        if (nparams >= 3)
+        {
+            if (loadInt64)
+                builtinCheckInt64(build, arg3, pcpos);
+            else
+                builtinCheckDouble(build, arg3, pcpos);
+        }
+    }
+    else
+    {
+        if (nparams == 3 && loadInt64)
+            builtinCheckInt64(build, arg3, pcpos);
+        else if (nparams == 3)
+            builtinCheckDouble(build, arg3, pcpos);
+    }
 
     buf = build.inst(IrCmd::LOAD_POINTER, build.vmReg(arg));
 
@@ -982,15 +1044,35 @@ static BuiltinImplResult translateBuiltinVectorMagnitude(
 
     build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
 
-    IrOp a = build.inst(IrCmd::LOAD_TVALUE, arg1, build.constInt(0));
+    if constexpr (LUA_VECTOR_DOUBLE == 1)
+    {
+        IrOp aptr = build.inst(IrCmd::LOAD_POINTER, arg1);
+        IrOp ax = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp ay = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp az = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
-    IrOp sum = build.inst(IrCmd::DOT_VEC, a, a);
-    IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
+        IrOp xx = build.inst(IrCmd::MUL_NUM, ax, ax);
+        IrOp yy = build.inst(IrCmd::MUL_NUM, ay, ay);
+        IrOp zz = build.inst(IrCmd::MUL_NUM, az, az);
+        IrOp sum = build.inst(IrCmd::ADD_NUM, xx, build.inst(IrCmd::ADD_NUM, yy, zz));
 
-    mag = build.inst(IrCmd::FLOAT_TO_NUM, mag);
+        IrOp mag = build.inst(IrCmd::SQRT_NUM, sum);
 
-    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), mag);
-    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+        build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), mag);
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+    }
+    else
+    {
+        IrOp a = build.inst(IrCmd::LOAD_TVALUE, arg1, build.constInt(0));
+
+        IrOp sum = build.inst(IrCmd::DOT_VEC, a, a);
+        IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
+
+        mag = build.inst(IrCmd::FLOAT_TO_NUM, mag);
+
+        build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), mag);
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+    }
 
     return {BuiltinImplType::Full, 1};
 }
@@ -1013,18 +1095,43 @@ static BuiltinImplResult translateBuiltinVectorNormalize(
 
     build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
 
-    IrOp a = build.inst(IrCmd::LOAD_TVALUE, arg1, build.constInt(0));
-    IrOp sum = build.inst(IrCmd::DOT_VEC, a, a);
+    if constexpr (LUA_VECTOR_DOUBLE == 1)
+    {
+        IrOp aptr = build.inst(IrCmd::LOAD_POINTER, arg1);
+        IrOp ax = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp ay = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp az = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
-    IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
-    IrOp inv = build.inst(IrCmd::DIV_FLOAT, build.constDouble(1.0f), mag);
-    IrOp invvec = build.inst(IrCmd::FLOAT_TO_VEC, inv);
+        IrOp xx = build.inst(IrCmd::MUL_NUM, ax, ax);
+        IrOp yy = build.inst(IrCmd::MUL_NUM, ay, ay);
+        IrOp zz = build.inst(IrCmd::MUL_NUM, az, az);
+        IrOp sum = build.inst(IrCmd::ADD_NUM, xx, build.inst(IrCmd::ADD_NUM, yy, zz));
 
-    IrOp result = build.inst(IrCmd::MUL_VEC, a, invvec);
+        IrOp mag = build.inst(IrCmd::SQRT_NUM, sum);
+        IrOp inv = build.inst(IrCmd::DIV_NUM, build.constDouble(1.0), mag);
 
-    result = build.inst(IrCmd::TAG_VECTOR, result);
+        IrOp rx = build.inst(IrCmd::MUL_NUM, ax, inv);
+        IrOp ry = build.inst(IrCmd::MUL_NUM, ay, inv);
+        IrOp rz = build.inst(IrCmd::MUL_NUM, az, inv);
 
-    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
+        build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, rx, ry, rz));
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
+    }
+    else
+    {
+        IrOp a = build.inst(IrCmd::LOAD_TVALUE, arg1, build.constInt(0));
+        IrOp sum = build.inst(IrCmd::DOT_VEC, a, a);
+
+        IrOp mag = build.inst(IrCmd::SQRT_FLOAT, sum);
+        IrOp inv = build.inst(IrCmd::DIV_FLOAT, build.constDouble(1.0f), mag);
+        IrOp invvec = build.inst(IrCmd::FLOAT_TO_VEC, inv);
+
+        IrOp result = build.inst(IrCmd::MUL_VEC, a, invvec);
+
+        result = build.inst(IrCmd::TAG_VECTOR, result);
+
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
+    }
 
     return {BuiltinImplType::Full, 1};
 }
@@ -1039,28 +1146,60 @@ static BuiltinImplResult translateBuiltinVectorCross(IrBuilder& build, int npara
     build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
     build.loadAndCheckTag(args, LUA_TVECTOR, build.vmExit(pcpos));
 
-    IrOp x1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(0));
-    IrOp x2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(0));
+    if constexpr (LUA_VECTOR_DOUBLE == 1)
+    {
+        IrOp aptr = build.inst(IrCmd::LOAD_POINTER, arg1);
+        IrOp bptr = build.inst(IrCmd::LOAD_POINTER, args);
 
-    IrOp y1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(4));
-    IrOp y2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(4));
+        IrOp x1 = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp x2 = build.inst(IrCmd::BUFFER_READF64, bptr, build.constInt(0), build.constTag(LUA_TVECTOR));
 
-    IrOp z1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
-    IrOp z2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(8));
+        IrOp y1 = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp y2 = build.inst(IrCmd::BUFFER_READF64, bptr, build.constInt(8), build.constTag(LUA_TVECTOR));
 
-    IrOp y1z2 = build.inst(IrCmd::MUL_FLOAT, y1, z2);
-    IrOp z1y2 = build.inst(IrCmd::MUL_FLOAT, z1, y2);
-    IrOp xr = build.inst(IrCmd::SUB_FLOAT, y1z2, z1y2);
+        IrOp z1 = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(16), build.constTag(LUA_TVECTOR));
+        IrOp z2 = build.inst(IrCmd::BUFFER_READF64, bptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
-    IrOp z1x2 = build.inst(IrCmd::MUL_FLOAT, z1, x2);
-    IrOp x1z2 = build.inst(IrCmd::MUL_FLOAT, x1, z2);
-    IrOp yr = build.inst(IrCmd::SUB_FLOAT, z1x2, x1z2);
+        IrOp y1z2 = build.inst(IrCmd::MUL_NUM, y1, z2);
+        IrOp z1y2 = build.inst(IrCmd::MUL_NUM, z1, y2);
+        IrOp xr = build.inst(IrCmd::SUB_NUM, y1z2, z1y2);
 
-    IrOp x1y2 = build.inst(IrCmd::MUL_FLOAT, x1, y2);
-    IrOp y1x2 = build.inst(IrCmd::MUL_FLOAT, y1, x2);
-    IrOp zr = build.inst(IrCmd::SUB_FLOAT, x1y2, y1x2);
+        IrOp z1x2 = build.inst(IrCmd::MUL_NUM, z1, x2);
+        IrOp x1z2 = build.inst(IrCmd::MUL_NUM, x1, z2);
+        IrOp yr = build.inst(IrCmd::SUB_NUM, z1x2, x1z2);
 
-    build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xr, yr, zr);
+        IrOp x1y2 = build.inst(IrCmd::MUL_NUM, x1, y2);
+        IrOp y1x2 = build.inst(IrCmd::MUL_NUM, y1, x2);
+        IrOp zr = build.inst(IrCmd::SUB_NUM, x1y2, y1x2);
+
+        build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, xr, yr, zr));
+    }
+    else
+    {
+        IrOp x1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(0));
+        IrOp x2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(0));
+
+        IrOp y1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(4));
+        IrOp y2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(4));
+
+        IrOp z1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
+        IrOp z2 = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(8));
+
+        IrOp y1z2 = build.inst(IrCmd::MUL_FLOAT, y1, z2);
+        IrOp z1y2 = build.inst(IrCmd::MUL_FLOAT, z1, y2);
+        IrOp xr = build.inst(IrCmd::SUB_FLOAT, y1z2, z1y2);
+
+        IrOp z1x2 = build.inst(IrCmd::MUL_FLOAT, z1, x2);
+        IrOp x1z2 = build.inst(IrCmd::MUL_FLOAT, x1, z2);
+        IrOp yr = build.inst(IrCmd::SUB_FLOAT, z1x2, x1z2);
+
+        IrOp x1y2 = build.inst(IrCmd::MUL_FLOAT, x1, y2);
+        IrOp y1x2 = build.inst(IrCmd::MUL_FLOAT, y1, x2);
+        IrOp zr = build.inst(IrCmd::SUB_FLOAT, x1y2, y1x2);
+
+        build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xr, yr, zr);
+    }
+
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
 
     return {BuiltinImplType::Full, 1};
@@ -1076,15 +1215,39 @@ static BuiltinImplResult translateBuiltinVectorDot(IrBuilder& build, int nparams
     build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
     build.loadAndCheckTag(args, LUA_TVECTOR, build.vmExit(pcpos));
 
-    IrOp a = build.inst(IrCmd::LOAD_TVALUE, arg1, build.constInt(0));
-    IrOp b = build.inst(IrCmd::LOAD_TVALUE, args, build.constInt(0));
+    if constexpr (LUA_VECTOR_DOUBLE == 1)
+    {
+        IrOp aptr = build.inst(IrCmd::LOAD_POINTER, arg1);
+        IrOp ax = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp ay = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp az = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
-    IrOp sum = build.inst(IrCmd::DOT_VEC, a, b);
+        IrOp bptr = build.inst(IrCmd::LOAD_POINTER, args);
+        IrOp bx = build.inst(IrCmd::BUFFER_READF64, bptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp by = build.inst(IrCmd::BUFFER_READF64, bptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp bz = build.inst(IrCmd::BUFFER_READF64, bptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
-    sum = build.inst(IrCmd::FLOAT_TO_NUM, sum);
+        IrOp xx = build.inst(IrCmd::MUL_NUM, ax, bx);
+        IrOp yy = build.inst(IrCmd::MUL_NUM, ay, by);
+        IrOp zz = build.inst(IrCmd::MUL_NUM, az, bz);
 
-    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), sum);
-    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+        IrOp sum = build.inst(IrCmd::ADD_NUM, xx, build.inst(IrCmd::ADD_NUM, yy, zz));
+
+        build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), sum);
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+    }
+    else
+    {
+        IrOp a = build.inst(IrCmd::LOAD_TVALUE, arg1, build.constInt(0));
+        IrOp b = build.inst(IrCmd::LOAD_TVALUE, args, build.constInt(0));
+
+        IrOp sum = build.inst(IrCmd::DOT_VEC, a, b);
+
+        sum = build.inst(IrCmd::FLOAT_TO_NUM, sum);
+
+        build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), sum);
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+    }
 
     return {BuiltinImplType::Full, 1};
 }
@@ -1108,10 +1271,27 @@ static BuiltinImplResult translateBuiltinVectorMap1x4(
 
     build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
 
-    IrOp value = build.inst(IrCmd::LOAD_TVALUE, arg1);
-    IrOp ret = build.inst(cmd, value);
+    if constexpr (LUA_VECTOR_DOUBLE == 1)
+    {
+        IrOp aptr = build.inst(IrCmd::LOAD_POINTER, arg1);
+        IrOp ax = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp ay = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp az = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
-    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+        IrOp rx = build.inst(cmd, ax);
+        IrOp ry = build.inst(cmd, ay);
+        IrOp rz = build.inst(cmd, az);
+
+        build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, rx, ry, rz));
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
+    }
+    else
+    {
+        IrOp value = build.inst(IrCmd::LOAD_TVALUE, arg1);
+        IrOp ret = build.inst(cmd, value);
+
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+    }
 
     return {BuiltinImplType::Full, 1};
 }
@@ -1135,15 +1315,32 @@ static BuiltinImplResult translateBuiltinVectorMap1(
 
     build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
 
-    IrOp x1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(0));
-    IrOp y1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(4));
-    IrOp z1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
+    if constexpr (LUA_VECTOR_DOUBLE == 1)
+    {
+        IrOp aptr = build.inst(IrCmd::LOAD_POINTER, arg1);
+        IrOp x1 = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp y1 = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp z1 = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
-    IrOp xr = build.inst(cmd, x1);
-    IrOp yr = build.inst(cmd, y1);
-    IrOp zr = build.inst(cmd, z1);
+        IrOp xr = build.inst(cmd, x1);
+        IrOp yr = build.inst(cmd, y1);
+        IrOp zr = build.inst(cmd, z1);
 
-    build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xr, yr, zr);
+        build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, xr, yr, zr));
+    }
+    else
+    {
+        IrOp x1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(0));
+        IrOp y1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(4));
+        IrOp z1 = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
+
+        IrOp xr = build.inst(cmd, x1);
+        IrOp yr = build.inst(cmd, y1);
+        IrOp zr = build.inst(cmd, z1);
+
+        build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xr, yr, zr);
+    }
+
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
 
     return {BuiltinImplType::Full, 1};
@@ -1174,40 +1371,85 @@ static BuiltinImplResult translateBuiltinVectorClamp(
     IrOp block2 = build.block(IrBlockKind::Internal);
     IrOp block3 = build.block(IrBlockKind::Internal);
 
-    IrOp x = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(0));
-    IrOp xmin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(0));
-    IrOp xmax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(0));
+    if constexpr (LUA_VECTOR_DOUBLE == 1)
+    {
+        IrOp valptr = build.inst(IrCmd::LOAD_POINTER, arg1);
+        IrOp vminptr = build.inst(IrCmd::LOAD_POINTER, args);
+        IrOp vmaxptr = build.inst(IrCmd::LOAD_POINTER, arg3);
 
-    build.inst(IrCmd::JUMP_CMP_FLOAT, xmin, xmax, build.cond(IrCondition::NotLessEqual), fallback, block1);
+        IrOp x = build.inst(IrCmd::BUFFER_READF64, valptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp xmin = build.inst(IrCmd::BUFFER_READF64, vminptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp xmax = build.inst(IrCmd::BUFFER_READF64, vmaxptr, build.constInt(0), build.constTag(LUA_TVECTOR));
 
-    build.beginBlock(block1);
+        build.inst(IrCmd::JUMP_CMP_NUM, xmin, xmax, build.cond(IrCondition::NotLessEqual), fallback, block1);
 
-    IrOp y = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(4));
-    IrOp ymin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(4));
-    IrOp ymax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(4));
+        build.beginBlock(block1);
 
-    build.inst(IrCmd::JUMP_CMP_FLOAT, ymin, ymax, build.cond(IrCondition::NotLessEqual), fallback, block2);
+        IrOp y = build.inst(IrCmd::BUFFER_READF64, valptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp ymin = build.inst(IrCmd::BUFFER_READF64, vminptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp ymax = build.inst(IrCmd::BUFFER_READF64, vmaxptr, build.constInt(8), build.constTag(LUA_TVECTOR));
 
-    build.beginBlock(block2);
+        build.inst(IrCmd::JUMP_CMP_NUM, ymin, ymax, build.cond(IrCondition::NotLessEqual), fallback, block2);
 
-    IrOp z = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
-    IrOp zmin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(8));
-    IrOp zmax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(8));
+        build.beginBlock(block2);
 
-    build.inst(IrCmd::JUMP_CMP_FLOAT, zmin, zmax, build.cond(IrCondition::NotLessEqual), fallback, block3);
+        IrOp z = build.inst(IrCmd::BUFFER_READF64, valptr, build.constInt(16), build.constTag(LUA_TVECTOR));
+        IrOp zmin = build.inst(IrCmd::BUFFER_READF64, vminptr, build.constInt(16), build.constTag(LUA_TVECTOR));
+        IrOp zmax = build.inst(IrCmd::BUFFER_READF64, vmaxptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
-    build.beginBlock(block3);
+        build.inst(IrCmd::JUMP_CMP_NUM, zmin, zmax, build.cond(IrCondition::NotLessEqual), fallback, block3);
 
-    IrOp xtemp = build.inst(IrCmd::MAX_FLOAT, xmin, x);
-    IrOp xclamped = build.inst(IrCmd::MIN_FLOAT, xmax, xtemp);
+        build.beginBlock(block3);
 
-    IrOp ytemp = build.inst(IrCmd::MAX_FLOAT, ymin, y);
-    IrOp yclamped = build.inst(IrCmd::MIN_FLOAT, ymax, ytemp);
+        IrOp xtemp = build.inst(IrCmd::MAX_NUM, xmin, x);
+        IrOp xclamped = build.inst(IrCmd::MIN_NUM, xmax, xtemp);
 
-    IrOp ztemp = build.inst(IrCmd::MAX_FLOAT, zmin, z);
-    IrOp zclamped = build.inst(IrCmd::MIN_FLOAT, zmax, ztemp);
+        IrOp ytemp = build.inst(IrCmd::MAX_NUM, ymin, y);
+        IrOp yclamped = build.inst(IrCmd::MIN_NUM, ymax, ytemp);
 
-    build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xclamped, yclamped, zclamped);
+        IrOp ztemp = build.inst(IrCmd::MAX_NUM, zmin, z);
+        IrOp zclamped = build.inst(IrCmd::MIN_NUM, zmax, ztemp);
+
+        build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, xclamped, yclamped, zclamped));
+    }
+    else
+    {
+        IrOp x = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(0));
+        IrOp xmin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(0));
+        IrOp xmax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(0));
+
+        build.inst(IrCmd::JUMP_CMP_FLOAT, xmin, xmax, build.cond(IrCondition::NotLessEqual), fallback, block1);
+
+        build.beginBlock(block1);
+
+        IrOp y = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(4));
+        IrOp ymin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(4));
+        IrOp ymax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(4));
+
+        build.inst(IrCmd::JUMP_CMP_FLOAT, ymin, ymax, build.cond(IrCondition::NotLessEqual), fallback, block2);
+
+        build.beginBlock(block2);
+
+        IrOp z = build.inst(IrCmd::LOAD_FLOAT, arg1, build.constInt(8));
+        IrOp zmin = build.inst(IrCmd::LOAD_FLOAT, args, build.constInt(8));
+        IrOp zmax = build.inst(IrCmd::LOAD_FLOAT, arg3, build.constInt(8));
+
+        build.inst(IrCmd::JUMP_CMP_FLOAT, zmin, zmax, build.cond(IrCondition::NotLessEqual), fallback, block3);
+
+        build.beginBlock(block3);
+
+        IrOp xtemp = build.inst(IrCmd::MAX_FLOAT, xmin, x);
+        IrOp xclamped = build.inst(IrCmd::MIN_FLOAT, xmax, xtemp);
+
+        IrOp ytemp = build.inst(IrCmd::MAX_FLOAT, ymin, y);
+        IrOp yclamped = build.inst(IrCmd::MIN_FLOAT, ymax, ytemp);
+
+        IrOp ztemp = build.inst(IrCmd::MAX_FLOAT, zmin, z);
+        IrOp zclamped = build.inst(IrCmd::MIN_FLOAT, zmax, ztemp);
+
+        build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), xclamped, yclamped, zclamped);
+    }
+
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
 
     return {BuiltinImplType::UsesFallback, 1};
@@ -1233,12 +1475,36 @@ static BuiltinImplResult translateBuiltinVectorMinMax(
     build.loadAndCheckTag(arg1, LUA_TVECTOR, build.vmExit(pcpos));
     build.loadAndCheckTag(args, LUA_TVECTOR, build.vmExit(pcpos));
 
-    IrOp value1 = build.inst(IrCmd::LOAD_TVALUE, arg1);
-    IrOp value2 = build.inst(IrCmd::LOAD_TVALUE, args);
+    if constexpr (LUA_VECTOR_DOUBLE == 1)
+    {
+        IrOp aptr = build.inst(IrCmd::LOAD_POINTER, arg1);
+        IrOp ax = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp ay = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp az = build.inst(IrCmd::BUFFER_READF64, aptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
-    IrOp ret = build.inst(cmd, value2, value1); // Swapped arguments are required for consistency with VM builtins
+        IrOp bptr = build.inst(IrCmd::LOAD_POINTER, args);
+        IrOp bx = build.inst(IrCmd::BUFFER_READF64, bptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+        IrOp by = build.inst(IrCmd::BUFFER_READF64, bptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+        IrOp bz = build.inst(IrCmd::BUFFER_READF64, bptr, build.constInt(16), build.constTag(LUA_TVECTOR));
 
-    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+        // Swapped arguments are required for consistency with VM builtins
+        IrOp rx = build.inst(cmd, bx, ax);
+        IrOp ry = build.inst(cmd, by, ay);
+        IrOp rz = build.inst(cmd, bz, az);
+
+        build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, rx, ry, rz));
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
+    }
+    else
+    {
+        IrOp value1 = build.inst(IrCmd::LOAD_TVALUE, arg1);
+        IrOp value2 = build.inst(IrCmd::LOAD_TVALUE, args);
+
+        // Swapped arguments are required for consistency with VM builtins
+        IrOp ret = build.inst(cmd, value2, value1);
+
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), build.inst(IrCmd::TAG_VECTOR, ret));
+    }
 
     return {BuiltinImplType::Full, 1};
 }
@@ -1949,19 +2215,21 @@ BuiltinImplResult translateBuiltin(
     case LBF_VECTOR_DOT:
         return translateBuiltinVectorDot(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_FLOOR:
-        return translateBuiltinVectorMap1x4(build, IrCmd::FLOOR_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinVectorMap1x4(
+            build, condvectordouble(IrCmd::FLOOR_NUM, IrCmd::FLOOR_VEC), nparams, ra, arg, args, arg3, nresults, pcpos
+        );
     case LBF_VECTOR_CEIL:
-        return translateBuiltinVectorMap1x4(build, IrCmd::CEIL_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinVectorMap1x4(build, condvectordouble(IrCmd::CEIL_NUM, IrCmd::CEIL_VEC), nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_ABS:
-        return translateBuiltinVectorMap1x4(build, IrCmd::ABS_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinVectorMap1x4(build, condvectordouble(IrCmd::ABS_NUM, IrCmd::ABS_VEC), nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_SIGN:
-        return translateBuiltinVectorMap1(build, IrCmd::SIGN_FLOAT, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinVectorMap1(build, condvectordouble(IrCmd::SIGN_NUM, IrCmd::SIGN_FLOAT), nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_CLAMP:
         return translateBuiltinVectorClamp(build, nparams, ra, arg, args, arg3, nresults, fallback, pcpos);
     case LBF_VECTOR_MIN:
-        return translateBuiltinVectorMinMax(build, IrCmd::MIN_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinVectorMinMax(build, condvectordouble(IrCmd::MIN_NUM, IrCmd::MIN_VEC), nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_MAX:
-        return translateBuiltinVectorMinMax(build, IrCmd::MAX_VEC, nparams, ra, arg, args, arg3, nresults, pcpos);
+        return translateBuiltinVectorMinMax(build, condvectordouble(IrCmd::MAX_NUM, IrCmd::MAX_VEC), nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_VECTOR_LERP:
         return translateBuiltinVectorLerp(build, nparams, ra, arg, args, arg3, nresults, pcpos);
     case LBF_MATH_LERP:

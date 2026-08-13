@@ -23,9 +23,11 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
-LUAU_FASTFLAGVARIABLE(LuauCodegenLoadPropagateOrigin)
-LUAU_FASTFLAGVARIABLE(LuauCodegenRecordAllBlockExitInfo)
+LUAU_FASTFLAGVARIABLE(LuauCodegenLinearNoCall)
+LUAU_FLAGVERSION(LuauCodegenLinearNoCall, 2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSubstituteReplacements)
+LUAU_FASTFLAGVARIABLE(LuauCodegenConstVectorBufferRead)
+LUAU_FASTFLAGVARIABLE(LuauCodegenOriginVerifyMatch)
 
 namespace Luau
 {
@@ -451,7 +453,7 @@ struct ConstPropState
                 if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_INT64, vmReg))
                     return std::make_pair(IrCmd::LOAD_INT64, *prevIdx);
             }
-            else if (tag == LUA_TVECTOR)
+            else if (LUA_VECTOR_DOUBLE == 0 && tag == LUA_TVECTOR)
             {
                 if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_FLOAT, vmReg))
                     return std::make_pair(IrCmd::LOAD_FLOAT, *prevIdx);
@@ -605,14 +607,31 @@ struct ConstPropState
             if (tvalueLoad.cmd != IrCmd::LOAD_TVALUE || OP_A(tvalueLoad).kind != IrOpKind::VmReg)
                 return false;
 
-            if (vmRegOp(OP_A(tvalueLoad)) == vmRegOp(OP_A(loadInst)))
-                return false;
+            if (FFlag::LuauCodegenOriginVerifyMatch)
+            {
+                uint8_t prevLoadReg = vmRegOp(OP_A(tvalueLoad));
 
-            if (tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}) == nullptr)
-                return false;
+                if (prevLoadReg == vmRegOp(OP_A(loadInst)))
+                    return false;
 
-            replace(function, OP_A(loadInst), OP_A(tvalueLoad));
-            return true;
+                // Previous load is still linked to the same register
+                if (RegisterLink* link = tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}); link && link->reg == prevLoadReg)
+                {
+                    replace(function, OP_A(loadInst), OP_A(tvalueLoad));
+                    return true;
+                }
+            }
+            else
+            {
+                if (vmRegOp(OP_A(tvalueLoad)) == vmRegOp(OP_A(loadInst)))
+                    return false;
+
+                if (tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}) == nullptr)
+                    return false;
+
+                replace(function, OP_A(loadInst), OP_A(tvalueLoad));
+                return true;
+            }
         }
 
         return false;
@@ -890,6 +909,50 @@ struct ConstPropState
         int offset = function.intOp(OP_B(loadInst));
         uint8_t tag = function.tagOp(OP_C(loadInst));
 
+        if (loadInst.cmd == IrCmd::BUFFER_READF64 && OP_A(loadInst).kind == IrOpKind::Inst)
+        {
+            IrInst& addrInst = function.instructions[OP_A(loadInst).index];
+
+            // Forward component reads from NEW_VECTOR directly
+            if (addrInst.cmd == IrCmd::NEW_VECTOR)
+            {
+                IrOp component;
+
+                if (offset == 0)
+                    component = OP_A(addrInst);
+                else if (offset == 8)
+                    component = OP_B(addrInst);
+                else if (offset == 16)
+                    component = OP_C(addrInst);
+
+                if (component.kind != IrOpKind::None)
+                {
+                    substitute(function, loadInst, component);
+                    return;
+                }
+            }
+
+            // Forward component reads from a constant vector pointer
+            if (FFlag::LuauCodegenConstVectorBufferRead && addrInst.cmd == IrCmd::LOAD_POINTER && OP_A(addrInst).kind == IrOpKind::VmReg &&
+                function.proto)
+            {
+                if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_TVALUE, OP_A(addrInst)))
+                {
+                    IrInst& tvalueLoad = function.instructions[*prevIdx];
+
+                    if (tvalueLoad.cmd == IrCmd::LOAD_TVALUE && OP_A(tvalueLoad).kind == IrOpKind::VmConst)
+                    {
+                        TValue* tv = &function.proto->k[vmConstOp(OP_A(tvalueLoad))];
+
+                        if (ttisvector(tv) && offset % 8 == 0 && unsigned(offset) / 8 < LUA_VECTOR_SIZE)
+                        {
+                            substitute(function, loadInst, build.constDouble(vvalue(tv)[offset / 8]));
+                            return;
+                        }
+                    }
+                }
+            }
+        }
         // Find if we have data for this kind of load
         for (BufferLoadStoreInfo& info : bufferLoadStoreInfo)
         {
@@ -1067,7 +1130,8 @@ struct ConstPropState
                 const IrInst& infoPtr = function.instOp(info.address);
 
                 // Pointers from separate allocations cannot be the same
-                if (currPtr.cmd == IrCmd::NEW_USERDATA && infoPtr.cmd == IrCmd::NEW_USERDATA && OP_A(storeInst) != info.address)
+                if ((currPtr.cmd == IrCmd::NEW_USERDATA || currPtr.cmd == IrCmd::NEW_VECTOR) &&
+                    (infoPtr.cmd == IrCmd::NEW_USERDATA || infoPtr.cmd == IrCmd::NEW_VECTOR) && OP_A(storeInst) != info.address)
                 {
                     i++;
                     continue;
@@ -1547,8 +1611,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (state.substituteTagLoadWithTValueData(build, inst))
                 break;
 
-            if (FFlag::LuauCodegenLoadPropagateOrigin)
-                state.tryRedirectVmRegLoadToTValueOrigin(inst);
+            state.tryRedirectVmRegLoadToTValueOrigin(inst);
 
             state.substituteOrRecordVmRegLoad(inst);
         }
@@ -1559,8 +1622,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (state.substituteOrRecordValueLoadWithTValueData(build, inst))
                 break;
 
-            if (FFlag::LuauCodegenLoadPropagateOrigin)
-                state.tryRedirectVmRegLoadToTValueOrigin(inst);
+            state.tryRedirectVmRegLoadToTValueOrigin(inst);
 
             state.substituteOrRecordVmRegLoad(inst);
         }
@@ -1578,8 +1640,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (state.substituteOrRecordValueLoadWithTValueData(build, inst))
                 break;
 
-            if (FFlag::LuauCodegenLoadPropagateOrigin)
-                state.tryRedirectVmRegLoadToTValueOrigin(inst);
+            state.tryRedirectVmRegLoadToTValueOrigin(inst);
 
             state.substituteOrRecordVmRegLoad(inst);
         }
@@ -1598,8 +1659,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (state.substituteOrRecordValueLoadWithTValueData(build, inst))
                 break;
 
-            if (FFlag::LuauCodegenLoadPropagateOrigin)
-                state.tryRedirectVmRegLoadToTValueOrigin(inst);
+            state.tryRedirectVmRegLoadToTValueOrigin(inst);
 
             state.substituteOrRecordVmRegLoad(inst);
         }
@@ -1618,8 +1678,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (state.substituteOrRecordValueLoadWithTValueData(build, inst))
                 break;
 
-            if (FFlag::LuauCodegenLoadPropagateOrigin)
-                state.tryRedirectVmRegLoadToTValueOrigin(inst);
+            state.tryRedirectVmRegLoadToTValueOrigin(inst);
 
             state.substituteOrRecordVmRegLoad(inst);
         }
@@ -1662,7 +1721,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
                     if (ttisvector(tv))
                     {
-                        const float* v = vvalue(tv);
+                        const LUA_VECTOR_TYPE* v = vvalue(tv);
                         substitute(function, inst, build.constDouble(v[component]));
                         break;
                     }
@@ -2095,6 +2154,20 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     {
         std::optional<int> valueA = function.asIntOp(OP_A(inst).kind == IrOpKind::Constant ? OP_A(inst) : state.tryGetValue(OP_A(inst)));
         std::optional<int> valueB = function.asIntOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst)));
+
+        if (valueA && valueB)
+        {
+            if (compare(*valueA, *valueB, conditionOp(OP_C(inst))))
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
+            else
+                replace(function, block, index, {IrCmd::JUMP, {OP_E(inst)}});
+        }
+        break;
+    }
+    case IrCmd::JUMP_CMP_INT64:
+    {
+        std::optional<int64_t> valueA = function.asInt64Op(OP_A(inst).kind == IrOpKind::Constant ? OP_A(inst) : state.tryGetValue(OP_A(inst)));
+        std::optional<int64_t> valueB = function.asInt64Op(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst)));
 
         if (valueA && valueB)
         {
@@ -2900,6 +2973,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (int(state.useradataTagCache.size()) < FInt::LuauCodeGenReuseUdataTagLimit)
             state.useradataTagCache.push_back(index);
         break;
+    case IrCmd::NEW_VECTOR:
+        break;
     case IrCmd::INT64_TO_NUM:
     case IrCmd::INT_TO_NUM:
         state.substituteOrRecord(inst, index);
@@ -3508,8 +3583,6 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
     const uint32_t startSortkey = block->sortkey;
     uint32_t chainPos = 0;
 
-    IrBlock* lastBlock = nullptr;
-
     while (block)
     {
         uint32_t blockIdx = function.getBlockIndex(*block);
@@ -3554,19 +3627,26 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
             }
         }
 
-        if (FFlag::LuauCodegenRecordAllBlockExitInfo)
-            saveBlockExitState(function, *block, state);
-        else
-            lastBlock = block;
+        saveBlockExitState(function, *block, state);
 
         block = nextBlock;
     }
+}
 
-    if (!FFlag::LuauCodegenRecordAllBlockExitInfo)
+static bool includeBlockInLinearPath(IrFunction& function, const IrBlock& block)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenLinearNoCall);
+
+    for (uint32_t index = block.start; index <= block.finish; index++)
     {
-        if (lastBlock)
-            saveBlockExitState(function, *lastBlock, state);
+        const IrInst& inst = function.instructions[index];
+
+        // Call cannot return to the linear block upon completion, so it cannot be included in a linear path clone
+        if (inst.cmd == IrCmd::CALL)
+            return false;
     }
+
+    return true;
 }
 
 // Note that blocks in the collected path are marked as visited
@@ -3597,14 +3677,20 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
 
             if (!visited[targetIdx] && target.kind == IrBlockKind::Internal)
             {
-                // Additional restriction is that to join a block, it cannot produce values that are used in other blocks
+                // Additional restriction is that to join a block chain, it cannot produce values that are used in other blocks
                 // And it also can't use values produced in other blocks
-                auto [liveIns, liveOuts] = getLiveInOutValueCount(function, target, true);
+                auto [liveIns, liveOuts] = getLiveInOutValueCount(function, target, /* visitChain */ true);
 
                 if (liveIns == 0 && liveOuts == 0)
                 {
+                    SmallVector<uint32_t, 8> chain;
+
                     visited[targetIdx] = true;
-                    path.push_back(targetIdx);
+
+                    if (FFlag::LuauCodegenLinearNoCall)
+                        chain.push_back(targetIdx);
+                    else
+                        path.push_back(targetIdx);
 
                     nextBlock = &target;
 
@@ -3615,7 +3701,11 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
                             uint32_t nextInChainIdx = function.getBlockIndex(*nextInChain);
 
                             visited[nextInChainIdx] = true;
-                            path.push_back(nextInChainIdx);
+
+                            if (FFlag::LuauCodegenLinearNoCall)
+                                chain.push_back(nextInChainIdx);
+                            else
+                                path.push_back(nextInChainIdx);
 
                             nextBlock = nextInChain;
                         }
@@ -3623,6 +3713,24 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
                         {
                             break;
                         }
+                    }
+
+                    // Check that the block chain is valid to include in the linear path
+                    if (FFlag::LuauCodegenLinearNoCall)
+                    {
+                        bool allValidForInclusion = std::all_of(
+                            chain.begin(),
+                            chain.end(),
+                            [&](uint32_t blockIdx)
+                            {
+                                return includeBlockInLinearPath(function, function.blocks[blockIdx]);
+                            }
+                        );
+
+                        if (!allValidForInclusion)
+                            break;
+
+                        path.insert(path.end(), chain.begin(), chain.end());
                     }
                 }
             }

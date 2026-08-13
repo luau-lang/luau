@@ -19,6 +19,8 @@
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTFLAGVARIABLE(LuauTweakAccessViolationReporting)
 LUAU_FASTFLAGVARIABLE(LuauBetterMissingPropertiesTypeError)
+LUAU_FASTINTVARIABLE(LuauCyclicSccWarningDisplayLimit, 10)
+LUAU_FASTINT(LuauCyclicSccWarningThreshold)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -485,6 +487,29 @@ struct ErrorConverter
         return s;
     }
 
+    std::string operator()(const Luau::CyclicModuleGraphTooLarge& e) const
+    {
+        std::string s = "This module is part of a cycle of " + std::to_string(e.moduleCount) + " modules that require each other. Consider reducing the number of cyclic dependencies: ";
+
+        size_t cyclicModuleDisplayLimit = std::min(e.moduleCount, static_cast<size_t>(FInt::LuauCyclicSccWarningDisplayLimit));
+
+        for (size_t i = 0; i < cyclicModuleDisplayLimit; i++)
+        {
+            if (i > 0)
+                s += ", ";
+
+            if (fileResolver != nullptr)
+                s += fileResolver->getHumanReadableModuleName(e.members[i]);
+            else
+                s += e.members[i];
+        }
+
+        if (cyclicModuleDisplayLimit < e.members.size())
+            s += ", ...";
+
+        return s;
+    }
+
     std::string operator()(const Luau::FunctionExitsWithoutReturning& e) const
     {
         return "Not all codepaths in this function return '" + toString(e.expectedReturnType) + "'.";
@@ -809,27 +834,14 @@ struct ErrorConverter
     std::string operator()(const PropertyAccessViolation& e) const
     {
         const std::string stringKey = isIdentifier(e.key) ? e.key : "\"" + e.key + "\"";
-        if (FFlag::LuauTweakAccessViolationReporting)
-        {
-            const std::string kind = getTableType(e.table) ? "table" : "type";
+        const std::string kind = getTableType(e.table) ? "table" : "type";
 
-            switch (e.context)
-            {
-            case PropertyAccessViolation::CannotRead:
-                return "Property " + stringKey + " of " + kind + " '" + toString(e.table) + "' is write-only";
-            case PropertyAccessViolation::CannotWrite:
-                return "Property " + stringKey + " of " + kind + " '" + toString(e.table) + "' is read-only";
-            }
-        }
-        else
+        switch (e.context)
         {
-            switch (e.context)
-            {
-            case PropertyAccessViolation::CannotRead:
-                return "Property " + stringKey + " of table '" + toString(e.table) + "' is write-only";
-            case PropertyAccessViolation::CannotWrite:
-                return "Property " + stringKey + " of table '" + toString(e.table) + "' is read-only";
-            }
+        case PropertyAccessViolation::CannotRead:
+            return "Property " + stringKey + " of " + kind + " '" + toString(e.table) + "' is write-only";
+        case PropertyAccessViolation::CannotWrite:
+            return "Property " + stringKey + " of " + kind + " '" + toString(e.table) + "' is read-only";
         }
 
         LUAU_UNREACHABLE();
@@ -1287,6 +1299,11 @@ bool ModuleHasCyclicDependency::operator==(const ModuleHasCyclicDependency& rhs)
     return cycle.size() == rhs.cycle.size() && std::equal(cycle.begin(), cycle.end(), rhs.cycle.begin());
 }
 
+bool CyclicModuleGraphTooLarge::operator==(const CyclicModuleGraphTooLarge& rhs) const
+{
+    return moduleCount == rhs.moduleCount;
+}
+
 bool IllegalRequire::operator==(const IllegalRequire& rhs) const
 {
     return moduleName == rhs.moduleName && reason == rhs.reason;
@@ -1596,6 +1613,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
     }
     else if constexpr (std::is_same_v<T, ModuleHasCyclicDependency>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, CyclicModuleGraphTooLarge>)
     {
     }
     else if constexpr (std::is_same_v<T, IllegalRequire>)

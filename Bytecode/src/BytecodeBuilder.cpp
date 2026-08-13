@@ -9,11 +9,13 @@
 #include <climits>
 
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAGVARIABLE(LuauCompileUdataDirect)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauVirtualBcBuilder)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
+LUAU_FLAGVERSION(LuauBytecodeCostModel, 2)
+LUAU_FASTFLAGVARIABLE(LuauCompileEmitVectorDouble)
+LUAU_FLAGVERSION(LuauCompileEmitVectorDouble, 2)
 
 namespace Luau
 {
@@ -98,10 +100,10 @@ size_t BytecodeBuilder::StringRefHash::operator()(const StringRef& v) const
 
 size_t BytecodeBuilder::ConstantKeyHash::operator()(const ConstantKey& key) const
 {
-    if (key.type == Constant::Type_Vector)
+    if (key.type == Constant::Type_Vectorf)
     {
         uint32_t i[4];
-        static_assert(sizeof(key.value) + sizeof(key.extra) == sizeof(i), "Expecting vector to have four 32-bit components");
+        static_assert(sizeof(key.value) + sizeof(key.extra1) == sizeof(i), "Expecting vector to have four 32-bit components");
         memcpy(i, &key.value, sizeof(i));
 
         // scramble bits to make sure that integer coordinates have entropy in lower bits
@@ -112,6 +114,26 @@ size_t BytecodeBuilder::ConstantKeyHash::operator()(const ConstantKey& key) cons
 
         // Optimized Spatial Hashing for Collision Detection of Deformable Objects
         uint32_t h = (i[0] * 73856093) ^ (i[1] * 19349663) ^ (i[2] * 83492791) ^ (i[3] * 39916801);
+
+        return size_t(h);
+    }
+    else if (key.type == Constant::Type_Vectord)
+    {
+        uint64_t i[4];
+        static_assert(
+            sizeof(key.value) + sizeof(key.extra1) + sizeof(key.extra2) + sizeof(key.extra3) == sizeof(i),
+            "Expecting vector to have four 64-bit components"
+        );
+        memcpy(i, &key.value, sizeof(i));
+
+        // scramble bits to make sure that integer coordinates have entropy in lower bits
+        i[0] ^= i[0] >> 32;
+        i[1] ^= i[1] >> 32;
+        i[2] ^= i[2] >> 32;
+        i[3] ^= i[3] >> 32;
+
+        // Optimized Spatial Hashing for Collision Detection of Deformable Objects
+        uint32_t h = uint32_t(i[0] * 73856093) ^ uint32_t(i[1] * 19349663) ^ uint32_t(i[2] * 83492791) ^ uint32_t(i[3] * 39916801);
 
         return size_t(h);
     }
@@ -365,22 +387,43 @@ int32_t BytecodeBuilder::addConstantInteger(int64_t value)
     return addConstant(k, c);
 }
 
-int32_t BytecodeBuilder::addConstantVector(float x, float y, float z, float w)
+int32_t BytecodeBuilder::addConstantVectorf(float x, float y, float z, float w)
 {
-    Constant c = {Constant::Type_Vector};
-    c.valueVector[0] = x;
-    c.valueVector[1] = y;
-    c.valueVector[2] = z;
-    c.valueVector[3] = w;
+    Constant c = {Constant::Type_Vectorf};
+    c.valueVectorf[0] = x;
+    c.valueVectorf[1] = y;
+    c.valueVectorf[2] = z;
+    c.valueVectorf[3] = w;
 
-    ConstantKey k = {Constant::Type_Vector};
+    ConstantKey k = {Constant::Type_Vectorf};
     static_assert(
-        sizeof(k.value) == sizeof(x) + sizeof(y) && sizeof(k.extra) == sizeof(z) + sizeof(w), "Expecting vector to have four 32-bit components"
+        sizeof(k.value) == sizeof(x) + sizeof(y) && sizeof(k.extra1) == sizeof(z) + sizeof(w), "Expecting vector to have four 32-bit components"
     );
     memcpy(&k.value, &x, sizeof(x));
     memcpy((char*)&k.value + sizeof(x), &y, sizeof(y));
-    memcpy(&k.extra, &z, sizeof(z));
-    memcpy((char*)&k.extra + sizeof(z), &w, sizeof(w));
+    memcpy(&k.extra1, &z, sizeof(z));
+    memcpy((char*)&k.extra1 + sizeof(z), &w, sizeof(w));
+
+    return addConstant(k, c);
+}
+
+int32_t BytecodeBuilder::addConstantVectord(double x, double y, double z, double w)
+{
+    Constant c = {Constant::Type_Vectord};
+    c.valueVectord[0] = x;
+    c.valueVectord[1] = y;
+    c.valueVectord[2] = z;
+    c.valueVectord[3] = w;
+
+    ConstantKey k = {Constant::Type_Vectord};
+    static_assert(
+        sizeof(k.value) == sizeof(x) && sizeof(k.extra1) == sizeof(y) && sizeof(k.extra2) == sizeof(z) && sizeof(k.extra3) == sizeof(w),
+        "Expecting vector to have four 64-bit components"
+    );
+    memcpy(&k.value, &x, sizeof(x));
+    memcpy(&k.extra1, &y, sizeof(y));
+    memcpy(&k.extra2, &z, sizeof(z));
+    memcpy(&k.extra3, &w, sizeof(w));
 
     return addConstant(k, c);
 }
@@ -720,7 +763,7 @@ void BytecodeBuilder::finalize()
 
     // assemble final bytecode blob
     uint8_t version = getVersion();
-    LUAU_ASSERT(version >= LBC_VERSION_MIN && version <= LBC_VERSION_MAX);
+    LUAU_ASSERT((version >= LBC_VERSION_MIN && version <= LBC_VERSION_MAX) || version == LBC_VERSION_CLASSES);
 
     bytecode = char(version);
 
@@ -749,7 +792,7 @@ void BytecodeBuilder::finalize()
 
     for (const Function& func : functions)
     {
-        if (FFlag::LuauBytecodeCostModel)
+        if (FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::DebugLuauUserDefinedClasses)
             writeVarInt(bytecode, func.data.size());
         bytecode += func.data;
     }
@@ -842,12 +885,31 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
             }
             break;
 
-        case Constant::Type_Vector:
+        case Constant::Type_Vectorf:
             writeByte(ss, LBC_CONSTANT_VECTOR);
-            writeFloat(ss, c.valueVector[0]);
-            writeFloat(ss, c.valueVector[1]);
-            writeFloat(ss, c.valueVector[2]);
-            writeFloat(ss, c.valueVector[3]);
+            writeFloat(ss, c.valueVectorf[0]);
+            writeFloat(ss, c.valueVectorf[1]);
+            writeFloat(ss, c.valueVectorf[2]);
+            writeFloat(ss, c.valueVectorf[3]);
+            break;
+
+        case Constant::Type_Vectord:
+            if (FFlag::LuauCompileEmitVectorDouble)
+            {
+                writeByte(ss, LBC_CONSTANT_VECTORD);
+                writeDouble(ss, c.valueVectord[0]);
+                writeDouble(ss, c.valueVectord[1]);
+                writeDouble(ss, c.valueVectord[2]);
+                writeDouble(ss, c.valueVectord[3]);
+            }
+            else
+            {
+                writeByte(ss, LBC_CONSTANT_VECTOR);
+                writeFloat(ss, float(c.valueVectord[0]));
+                writeFloat(ss, float(c.valueVectord[1]));
+                writeFloat(ss, float(c.valueVectord[2]));
+                writeFloat(ss, float(c.valueVectord[3]));
+            }
             break;
 
         case Constant::Type_String:
@@ -967,11 +1029,13 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
             writeVarInt(ss, pc);
         }
     }
-
-    if (FFlag::LuauBytecodeCostModel && (flags & LPF_INLINABLE) != 0)
+    else if (FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::DebugLuauUserDefinedClasses)
     {
-        if (!FFlag::LuauEmitCallFeedback)
-            writeVarInt(ss, 0);
+        writeVarInt(ss, 0); // Empty feedback vector
+    }
+
+    if ((FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::DebugLuauUserDefinedClasses) && (flags & LPF_INLINABLE) != 0)
+    {
         writeVarInt(ss, cost);
     }
 }
@@ -1413,20 +1477,16 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
+    if (FFlag::DebugLuauUserDefinedClasses)
+        return LBC_VERSION_CLASSES;
+
+    if (FFlag::LuauCompileEmitVectorDouble)
+        return 13;
     if (FFlag::LuauBytecodeCostModel)
         return 12;
+
     if (FFlag::LuauEmitCallFeedback)
         return 11;
-
-    if (FFlag::DebugLuauUserDefinedClasses)
-        return 10;
-
-    if (FFlag::LuauCompileUdataDirect)
-        return 9;
-
-    // LBC_CONSTANT_INTEGER requires version 8
-    if (FFlag::LuauIntegerType2)
-        return 8;
 
     return LBC_VERSION_TARGET;
 }
@@ -1474,7 +1534,9 @@ void BytecodeBuilder::validateInstructions() const
 #define VREG(v) LUAU_ASSERT(unsigned(v) < func.maxstacksize)
 #define VREGRANGE(v, count) LUAU_ASSERT(unsigned(v + (count < 0 ? 0 : count)) <= func.maxstacksize)
 #define VUPVAL(v) LUAU_ASSERT(unsigned(v) < func.numupvalues)
-#define VCONST(v, kind) FFlag::LuauVirtualBcBuilder ? validateConst(v, Constant::Type_##kind) : LUAU_ASSERT(unsigned(v) < constants.size() && constants[v].type == Constant::Type_##kind)
+#define VCONST(v, kind) \
+    FFlag::LuauVirtualBcBuilder ? validateConst(v, Constant::Type_##kind) \
+                                : LUAU_ASSERT(unsigned(v) < constants.size() && constants[v].type == Constant::Type_##kind)
 #define VCONSTANY(v) FFlag::LuauVirtualBcBuilder ? validateConst(v) : LUAU_ASSERT(unsigned(v) < constants.size())
 #define VJUMP(v) LUAU_ASSERT(size_t(i + 1 + v) < insns.size() && insnvalid[i + 1 + v])
 
@@ -1898,13 +1960,24 @@ void BytecodeBuilder::validateInstructions() const
             VREG(LUAU_INSN_A(insn));
             VREG(LUAU_INSN_B(insn));
             VCONST(LUAU_INSN_AUX_KV16(insns[i + 1]), String);
-            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALL);
+            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALL || LUAU_INSN_OP(insns[i + 2]) == LOP_CALLFB);
             break;
 
         case LOP_CMPPROTO:
             VREG(LUAU_INSN_A(insn));
             VJUMP(LUAU_INSN_D(insn));
             break;
+
+        case LOP_NEWCLASS:
+        {
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+            VREG(LUAU_INSN_A(insn));
+            uint8_t super = LUAU_INSN_B(insn);
+            LUAU_ASSERT(super == 0xff || (unsigned(super) < func.maxstacksize));
+            LUAU_ASSERT(LUAU_INSN_C(insn) == 0);
+            VCONST(insns[i + 1], ClassShape);
+        }
+        break;
 
         default:
             LUAU_ASSERT(!"Unsupported opcode");
@@ -2080,12 +2153,39 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k, bool detailed) co
     case Constant::Type_Integer:
         formatAppend(result, "%lld", (long long)(int64_t)data.valueInteger64);
         break;
-    case Constant::Type_Vector:
+    case Constant::Type_Vectorf:
         // 3-vectors is the most common configuration, so truncate to three components if possible
-        if (data.valueVector[3] == 0.0)
-            formatAppend(result, "%.9g, %.9g, %.9g", data.valueVector[0], data.valueVector[1], data.valueVector[2]);
+        if (data.valueVectorf[3] == 0.0f)
+            formatAppend(result, "%.9g, %.9g, %.9g", data.valueVectorf[0], data.valueVectorf[1], data.valueVectorf[2]);
         else
-            formatAppend(result, "%.9g, %.9g, %.9g, %.9g", data.valueVector[0], data.valueVector[1], data.valueVector[2], data.valueVector[3]);
+            formatAppend(result, "%.9g, %.9g, %.9g, %.9g", data.valueVectorf[0], data.valueVectorf[1], data.valueVectorf[2], data.valueVectorf[3]);
+        break;
+    case Constant::Type_Vectord:
+        if (FFlag::LuauCompileEmitVectorDouble)
+        {
+            // 3-vectors is the most common configuration, so truncate to three components if possible
+            if (data.valueVectord[3] == 0.0)
+                formatAppend(result, "%.17g, %.17g, %.17g", data.valueVectord[0], data.valueVectord[1], data.valueVectord[2]);
+            else
+                formatAppend(
+                    result, "%.17g, %.17g, %.17g, %.17g", data.valueVectord[0], data.valueVectord[1], data.valueVectord[2], data.valueVectord[3]
+                );
+        }
+        else
+        {
+            // 3-vectors is the most common configuration, so truncate to three components if possible
+            if (data.valueVectord[3] == 0.0f)
+                formatAppend(result, "%.9g, %.9g, %.9g", float(data.valueVectord[0]), float(data.valueVectord[1]), float(data.valueVectord[2]));
+            else
+                formatAppend(
+                    result,
+                    "%.9g, %.9g, %.9g, %.9g",
+                    float(data.valueVectord[0]),
+                    float(data.valueVectord[1]),
+                    float(data.valueVectord[2]),
+                    float(data.valueVectord[3])
+                );
+        }
         break;
     case Constant::Type_String:
     {
@@ -2665,6 +2765,13 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
 
     case LOP_CMPPROTO:
         formatAppend(result, "CMPPROTO R%d #%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        break;
+
+    case LOP_NEWCLASS:
+        formatAppend(result, "NEWCLASS R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code);
+        dumpConstant(result, *code, false);
+        result.append("]\n");
+        code++;
         break;
 
     default:

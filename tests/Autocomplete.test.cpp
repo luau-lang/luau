@@ -20,6 +20,12 @@ LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauAutocompleteFunctionArglistSuggestion)
 LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
+LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
+LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
+LUAU_FASTFLAG(LuauAutocompleteSkipErrorTypeInUnion)
+LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
+LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
+LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
 
 using namespace Luau;
 
@@ -3861,7 +3867,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "require_by_string")
     checkEntries(acResult.entryMap, {{"..", "../.."}, {"Folder", "../Folder"}, {"ParentDependency", "../ParentDependency"}});
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_response_perf1" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_response_perf1" * doctest::timeout(LUAU_TIMEOUT))
 {
     if (!FFlag::DebugLuauForceOldSolver)
         return; // FIXME: This test is just barely at the threshhold which makes it very flaky under the new solver
@@ -4728,6 +4734,25 @@ end
     CHECK_EQ(ac.entryMap.count("number"), 1);
 }
 
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "type_function_string_singleton_union")
+{
+    // Type functions are only handled in the new solver
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+
+    check(R"(
+type function test(ty: type)
+    return types.unionof(types.singleton("test"), types.singleton("test2"))
+end
+
+local a: test<number> = "@1"
+)");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+    CHECK_EQ(ac.entryMap.count("test"), 1);
+    CHECK_EQ(ac.entryMap.count("test2"), 1);
+}
+
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_assignment")
 {
     check(R"(
@@ -5144,6 +5169,172 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_using_indexer_with_singleton_keys")
     CHECK_EQ(ac.entryMap.count("Val3"), 1);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_function")
+{
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+    check(R"(
+        \@deprecated
+        function foo()
+        end
+
+        @1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_local_function")
+{
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+    check(R"(
+        \@deprecated
+        local function foo()
+        end
+
+        @1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_anonymous_function")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauCheckTypeForDeprecated, true}, {FFlag::LuauDeprecatedAttributeOnAnonymousFunctions, true}};
+
+    check(R"(
+        local foo = \@deprecated function()
+        end
+
+        @1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_function_in_table")
+{
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+    check(R"(
+        local t = {}
+
+        \@deprecated
+        function t.foo()
+        end
+
+        t.@1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_global_function")
+{
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+
+    loadDefinition(R"(
+        @deprecated
+        declare function foo(): ()
+    )");
+
+    check(R"(
+        @1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_extern_member_function")
+{
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+
+    loadDefinition(R"(
+        declare extern type MyClass with
+            @deprecated
+            function foo(self): ()
+        end
+    )");
+
+    check(R"(
+        local x: MyClass
+        x.@1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_overloaded_extern_member_function")
+{
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+
+    loadDefinition(R"(
+        declare extern type MyClass with
+            @deprecated
+            function foo(self, val: string): ()
+            @deprecated
+            function foo(self, val: number): ()
+        end
+    )");
+
+    check(R"(
+        local x: MyClass
+        x.@1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK(entry.deprecated);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_not_deprecated_on_overloaded_extern_member_function")
+{
+    ScopedFastFlag _{FFlag::LuauCheckTypeForDeprecated, true};
+
+    loadDefinition(R"(
+        declare extern type MyClass with
+            function foo(self, val: string): ()
+            @deprecated
+            function foo(self, val: number): ()
+        end
+    )");
+
+    check(R"(
+        local x: MyClass
+        x.@1
+    )");
+
+    auto ac = autocomplete('1');
+    REQUIRE_EQ(ac.entryMap.count("foo"), 1);
+
+    auto entry = ac.entryMap["foo"];
+    CHECK_FALSE(entry.deprecated);
+}
+
 TEST_CASE_FIXTURE(ACFixture, "we_know_the_fields_of_a_class_instance")
 {
     ScopedFastFlag sffs[] = {
@@ -5493,6 +5684,48 @@ TEST_CASE_FIXTURE(ACFixture, "class_autocomplete_classname_inside_method")
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("Bar"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_on_nonexistent_table")
+{
+    ScopedFastFlag _{FFlag::LuauAutocompleteSkipErrorTypeInUnion, true};
+
+    check(R"(
+        local mygame = {}
+
+        local char = (nil :: any) :: {
+            Humanoid: {
+                Animator: number
+            }
+        } & typeof(mygame.interesting)
+
+        char.Humanoid.@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("Animator"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "type_correct_suggestion_with_explicit_type_args_on_method_call")
+{
+    ScopedFastFlag sff{FFlag::LuauUseExplicitTypeArgsInGenerics, true};
+
+    check(R"(
+local ModuleTable = {}
+function ModuleTable:GenericFunctionInsideATable<T>(value: T): T
+    return value
+end
+
+local myString = "hello"
+local myNumber = 42
+ModuleTable:GenericFunctionInsideATable<<string>>(@1)
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("myString"));
+    CHECK(ac.entryMap["myString"].typeCorrect == TypeCorrectKind::Correct);
+    CHECK(ac.entryMap["myNumber"].typeCorrect == TypeCorrectKind::None);
 }
 
 TEST_SUITE_END();

@@ -21,9 +21,11 @@ static const char* registeredCacheTableKey = "_REGISTEREDMODULES";
 // Stores the results of require calls.
 static const char* requiredCacheTableKey = "_MODULES";
 
-// Stores placeholders for currently-loading modules, keyed by module chunkname.
-// Populated just before a module's chunk executes; removed after it completes.
-static const char* modulePlaceholdersKey = "_MODULEPLACEHOLDERS";
+// Sentinel address used as a unique registry key for the shared placeholder metatable.
+static char cyclicPlaceholderMetatableSentinel = 0;
+
+// Tracks which placeholders were actually returned to a cyclic requirer.
+static const char* cyclicPlaceholderProvidedKey = "_CYCLIC_PLACEHOLDER_PROVIDED";
 
 struct ResolvedRequire
 {
@@ -56,6 +58,25 @@ static bool isCached(lua_State* L, const std::string& key)
     luaL_findtable(L, LUA_REGISTRYINDEX, requiredCacheTableKey, 1);
     lua_getfield(L, -1, key.c_str());
     bool cached = !lua_isnil(L, -1);
+
+    if (FFlag::LuauCyclicRequireShortCircuit && cached && lua_istable(L, -1))
+    {
+        // Check if the cached value is a placeholder (has the shared placeholder metatable).
+        if (lua_getmetatable(L, -1) == 1)
+        {
+            lua_rawgetp(L, LUA_REGISTRYINDEX, &cyclicPlaceholderMetatableSentinel);
+            if (lua_rawequal(L, -1, -2) == 1)
+            {
+                // A cyclic require is accessing this placeholder — mark it as provided.
+                luaL_findtable(L, LUA_REGISTRYINDEX, cyclicPlaceholderProvidedKey, 1);
+                lua_pushboolean(L, 1);
+                lua_setfield(L, -2, key.c_str());
+                lua_pop(L, 1);
+            }
+            lua_pop(L, 2); // pop both metatables
+        }
+    }
+
     lua_pop(L, 2);
 
     return cached;
@@ -143,97 +164,140 @@ static int CyclicDependencyNewIndexError(lua_State* L)
     luaL_error(L, "Cannot set the exported field '%s' because it has a cyclic dependency on its requiring module", key ? key : "unknown");
 }
 
-static void invalidateModulePlaceholder(lua_State* L, int idx)
+// Returns the shared placeholder metatable, creating it on first use.
+static void pushCyclicPlaceholderMetatable(lua_State* L)
 {
-    idx = lua_absindex(L, idx);
+    lua_rawgetp(L, LUA_REGISTRYINDEX, &cyclicPlaceholderMetatableSentinel);
+    if (!lua_isnil(L, -1))
+        return;
+    lua_pop(L, 1);
+
     lua_newtable(L);
-    if (lua_getmetatable(L, idx))
-        lua_setfield(L, -2, "__prev_metatable");
     lua_pushcfunction(L, CyclicDependencyIndexError, "CyclicDependencyIndexError");
     lua_setfield(L, -2, "__index");
     lua_pushcfunction(L, CyclicDependencyNewIndexError, "CyclicDependencyNewIndexError");
     lua_setfield(L, -2, "__newindex");
     lua_pushliteral(L, "The metatable is locked");
     lua_setfield(L, -2, "__metatable");
-    lua_setmetatable(L, idx);
+
+    lua_pushvalue(L, -1);
+    lua_rawsetp(L, LUA_REGISTRYINDEX, &cyclicPlaceholderMetatableSentinel);
 }
 
-// Fixed stack slots below the load results (LuauCyclicRequireShortCircuit on):
-//   (1) path, (2) cacheKey, (3) chunkname, (4) loadname,
-//   (5) requirer's chunkname, (6) module placeholder
-static const int kRequireStackValues = 6;
-static const int kRequireStackValues_DEPRECATED = 4;
+void lockPlaceholder(lua_State* L, int idx)
+{
+    idx = lua_absindex(L, idx);
+    pushCyclicPlaceholderMetatable(L);
+    lua_setmetatable(L, idx);
+    lua_setreadonly(L, idx, 1);
+}
+
+void createPlaceholder(lua_State* L)
+{
+    const char* cacheKey = luaL_checkstring(L, 2);
+
+    lua_newtable(L);
+    lockPlaceholder(L, -1);
+
+    luaL_findtable(L, LUA_REGISTRYINDEX, requiredCacheTableKey, 1);
+    lua_pushvalue(L, -2);
+    lua_setfield(L, -2, cacheKey);
+    lua_pop(L, 2);
+}
+
+void populatePlaceholder(lua_State* L, int placeholderIdx, int resultIdx)
+{
+    placeholderIdx = lua_absindex(L, placeholderIdx);
+    resultIdx = lua_absindex(L, resultIdx);
+
+    // Unfreeze so we can write to the placeholder
+    lua_setreadonly(L, placeholderIdx, 0);
+
+    // Copy all fields from the result table into the placeholder
+    for (int iter = 0; (iter = lua_rawiter(L, resultIdx, iter)) != -1;)
+    {
+        // key at -2, value at -1
+        lua_rawset(L, placeholderIdx);
+    }
+
+    // Copy the metatable from the result (if any)
+    if (lua_getmetatable(L, resultIdx) == 0)
+        lua_pushnil(L);
+    lua_setmetatable(L, placeholderIdx);
+
+    // Freeze the populated placeholder.
+    lua_setreadonly(L, placeholderIdx, 1);
+}
+
+// Fixed stack slots below the load results:
+//   (1) path, (2) cacheKey, (3) chunkname, (4) loadname
+static const int kRequireStackValues = 4;
 
 int lua_requirecont(lua_State* L, int status)
 {
-    // LuauCyclicRequireShortCircuit on: 6 fixed slots (path, cacheKey, chunkname, loadname, requirer's chunkname, module placeholder).
-    // off: 4 fixed slots (path, cacheKey, chunkname, loadname).
-    const int numFixedSlots = FFlag::LuauCyclicRequireShortCircuit ? kRequireStackValues : kRequireStackValues_DEPRECATED;
-    LUAU_ASSERT(lua_gettop(L) >= numFixedSlots);
-    const int numResults = lua_gettop(L) - numFixedSlots;
+    LUAU_ASSERT(lua_gettop(L) >= kRequireStackValues);
+    const int numResults = lua_gettop(L) - kRequireStackValues;
     const char* cacheKey = luaL_checkstring(L, 2);
-    const char* chunkname = luaL_checkstring(L, 3);
 
     if (numResults > 1)
         luaL_error(L, "module must return a single value");
 
-    if (FFlag::LuauCyclicRequireShortCircuit)
+    if (FFlag::LuauCyclicRequireShortCircuit && numResults == 1)
     {
-        const char* requirerChunkname = luaL_checkstring(L, 5);
+        const int resultIdx = kRequireStackValues + 1;
 
-        // Slot 6 holds the module placeholder; results (if any) start at slot 7.
-        const int modulePlaceholderIdx = kRequireStackValues;
+        // Check if the placeholder was actually provided to a cyclic requirer.
+        luaL_findtable(L, LUA_REGISTRYINDEX, cyclicPlaceholderProvidedKey, 1);
+        lua_getfield(L, -1, cacheKey);
+        bool wasProvided = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
 
-        // Check whether the module returned the module placeholder; if not, invalidate it,
-        // freeze it, and update the cache with the actual result.
-        if (numResults != 1 || lua_rawequal(L, modulePlaceholderIdx, modulePlaceholderIdx + 1) == 0)
-        {
-            invalidateModulePlaceholder(L, modulePlaceholderIdx);
-            lua_setreadonly(L, modulePlaceholderIdx, 1);
-
-            luaL_findtable(L, LUA_REGISTRYINDEX, requiredCacheTableKey, 1);
-            numResults == 1 ? lua_pushvalue(L, modulePlaceholderIdx + 1) : lua_pushnil(L);
-            lua_setfield(L, -2, cacheKey);
-            lua_pop(L, 1);
-        }
-
-        luaL_findtable(L, LUA_REGISTRYINDEX, modulePlaceholdersKey, 1);
-
-        // Deregister the loaded module now that loading is complete.
+        // Clear the placeholder from the cache to reset the state.
         lua_pushnil(L);
-        lua_setfield(L, -2, chunkname);
+        lua_setfield(L, -2, cacheKey);
+        lua_pop(L, 1);
 
-        // Restore the requirer's module placeholder now that the cycle is resolved.
-        lua_getfield(L, -1, requirerChunkname);
-        if (!lua_isnil(L, -1))
+        if (wasProvided)
         {
-            if (lua_getmetatable(L, -1))
-            {
-                lua_getfield(L, -1, "__prev_metatable");
-                lua_setmetatable(L, -3);
-                lua_pop(L, 1);
-            }
-        }
-        lua_pop(L, 2);
-    }
-    else
-    {
-        if (numResults == 1)
-        {
-            // Initial stack state
-            // (-1) result
-            lua_getfield(L, LUA_REGISTRYINDEX, requiredCacheTableKey);
-            // (-2) result, (-1) cache table
+            LUAU_ASSERT(lua_istable(L, resultIdx));
 
-            lua_pushvalue(L, -2);
-            // (-3) result, (-2) cache table, (-1) result
+            // Retrieve the placeholder from the cache.
+            luaL_findtable(L, LUA_REGISTRYINDEX, requiredCacheTableKey, 1);
+            lua_getfield(L, -1, cacheKey);
 
-            lua_setfield(L, -2, cacheKey);
-            // (-2) result, (-1) cache table
+            // Populate the placeholder with the module's result.
+            // Cyclic importers already hold the placeholder, so they see the result.
+            populatePlaceholder(L, -1, resultIdx);
 
+            // Replace the result with the populated placeholder so the initial caller
+            // gets the same object that cyclic importers and future cache hits receive.
+            lua_replace(L, resultIdx);
             lua_pop(L, 1);
-            // (-1) result
         }
+        else
+        {
+            // Cache the result normally (no cycle occurred).
+            luaL_findtable(L, LUA_REGISTRYINDEX, requiredCacheTableKey, 1);
+            lua_pushvalue(L, resultIdx);
+            lua_setfield(L, -2, cacheKey);
+            lua_pop(L, 1);
+        }
+    }
+    else if (numResults == 1)
+    {
+        // Initial stack state
+        // (-1) result
+        lua_getfield(L, LUA_REGISTRYINDEX, requiredCacheTableKey);
+        // (-2) result, (-1) cache table
+
+        lua_pushvalue(L, -2);
+        // (-3) result, (-2) cache table, (-1) result
+
+        lua_setfield(L, -2, cacheKey);
+        // (-2) result, (-1) cache table
+
+        lua_pop(L, 1);
+        // (-1) result
     }
 
     return numResults;
@@ -282,46 +346,15 @@ int lua_requireinternal(lua_State* L, const char* requirerChunkname)
     if (resolveError)
         lua_error(L); // Error already on top of the stack
 
-    const char* chunkname = FFlag::LuauCyclicRequireShortCircuit ? lua_tostring(L, 3) : lua_tostring(L, -2);
+    const char* chunkname = lua_tostring(L, 3);
+    const char* loadname = lua_tostring(L, 4);
 
-    if (FFlag::LuauCyclicRequireShortCircuit)
-    {
-        const char* cacheKey = lua_tostring(L, 2);
-
-        // (5) requirer's chunkname — needed by lua_requirecont to restore the requirer's placeholder after loading.
-        lua_pushstring(L, requirerChunkname);
-
-        // Don't allow reads and writes to a module's exports table if it has a cyclic dependency on its requiring module.
-        luaL_findtable(L, LUA_REGISTRYINDEX, modulePlaceholdersKey, 1);
-        lua_getfield(L, -1, requirerChunkname);
-        if (!lua_isnil(L, -1))
-            invalidateModulePlaceholder(L, -1);
-        lua_pop(L, 2);
-
-        // Pre-populate the cache so cyclic requires short-circuit instead of re-entering module loading.
-        lua_newtable(L); // (6) module placeholder
-
-        luaL_findtable(L, LUA_REGISTRYINDEX, requiredCacheTableKey, 1);
-        lua_pushvalue(L, kRequireStackValues);
-        lua_setfield(L, -2, cacheKey);
-        lua_pop(L, 1);
-
-        // Register the module placeholder so it can be used by cyclic importers and cleaned up after loading completes.
-        luaL_findtable(L, LUA_REGISTRYINDEX, modulePlaceholdersKey, 1);
-        lua_pushvalue(L, kRequireStackValues);
-        lua_setfield(L, -2, chunkname);
-        lua_pop(L, 1);
-    }
-
-    int stackValues = lua_gettop(L);
-    LUAU_ASSERT(stackValues == (FFlag::LuauCyclicRequireShortCircuit ? kRequireStackValues : kRequireStackValues_DEPRECATED));
-
-    const char* loadname = FFlag::LuauCyclicRequireShortCircuit ? lua_tostring(L, 4) : lua_tostring(L, -1);
+    LUAU_ASSERT(lua_gettop(L) == kRequireStackValues);
 
     int numResults = lrc->load(L, ctx, path, chunkname, loadname);
     if (numResults == -1)
     {
-        if (lua_gettop(L) != stackValues)
+        if (lua_gettop(L) != kRequireStackValues)
             luaL_error(L, "stack cannot be modified when require yields");
 
         return lua_yield(L, 0);

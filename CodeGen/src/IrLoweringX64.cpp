@@ -34,8 +34,8 @@ IrLoweringX64::IrLoweringX64(LogBuilder* logger, AssemblyBuilderX64& build, Modu
     , helpers(helpers)
     , function(function)
     , stats(stats)
-    , regs(build, function, stats)
-    , valueTracker(function)
+    , regs(logger, build, function, stats)
+    , valueTracker(logger, function)
     , exitHandlerMap(~0u)
 {
     valueTracker.setRestoreCallback(
@@ -1767,6 +1767,28 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         break;
     }
+    case IrCmd::JUMP_CMP_INT64:
+    {
+        IrCondition cond = conditionOp(OP_C(inst));
+
+        ConditionX64 cc = getConditionInt(cond);
+
+        // Constant propagation can place a constant on either side and there is no form comparing an immediate
+        // against a register, so the operands are swapped and the condition inverted, like CMP_INT64 does
+        if (OP_A(inst).kind == IrOpKind::Constant)
+        {
+            build.cmp(regOp(OP_B(inst)), memRegInt64Op(OP_A(inst)));
+            cc = getInverseCondition(cc);
+        }
+        else
+        {
+            build.cmp(regOp(OP_A(inst)), memRegInt64Op(OP_B(inst)));
+        }
+
+        build.jcc(cc, labelOp(OP_D(inst)));
+        jumpOrFallthrough(blockOp(OP_E(inst)), next);
+        break;
+    }
     case IrCmd::JUMP_EQ_POINTER:
         build.cmp(regOp(OP_A(inst)), regOp(OP_B(inst)));
 
@@ -1921,6 +1943,17 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         callWrap.addArgument(SizeX64::qword, intOp(OP_A(inst)));
         callWrap.addArgument(SizeX64::dword, intOp(OP_B(inst)));
         callWrap.call(qword[rNativeContext + offsetof(NativeContext, newUserdata)]);
+        inst.regX64 = regs.takeReg(rax, index);
+        break;
+    }
+    case IrCmd::NEW_VECTOR:
+    {
+        IrCallWrapperX64 callWrap(regs, build, index);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(OP_A(inst)), OP_A(inst));
+        callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(OP_B(inst)), OP_B(inst));
+        callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(OP_C(inst)), OP_C(inst));
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, newVector)]);
         inst.regX64 = regs.takeReg(rax, index);
         break;
     }
@@ -3749,16 +3782,8 @@ void IrLoweringX64::finishFunction()
 
     if (stats)
     {
-        if (FFlag::LuauCodegenNoEcbData)
-        {
-            if (regs.maxUsedSlot > kSpillSlots)
-                stats->regAllocErrors++;
-        }
-        else
-        {
-            if (regs.maxUsedSlot > kSpillSlots_DEPRECATED + kExtraSpillSlots_DEPRECATED)
-                stats->regAllocErrors++;
-        }
+        if (regs.maxUsedSlot > kSpillSlots)
+            stats->regAllocErrors++;
 
         if (regs.maxUsedSlot > stats->maxSpillSlotsUsed)
             stats->maxSpillSlotsUsed = regs.maxUsedSlot;
@@ -3768,16 +3793,8 @@ void IrLoweringX64::finishFunction()
 bool IrLoweringX64::hasError() const
 {
     // If register allocator had to use more stack slots than we have available, this function can't run natively
-    if (FFlag::LuauCodegenNoEcbData)
-    {
-        if (regs.maxUsedSlot > kSpillSlots)
-            return true;
-    }
-    else
-    {
-        if (regs.maxUsedSlot > kSpillSlots_DEPRECATED + kExtraSpillSlots_DEPRECATED)
-            return true;
-    }
+    if (regs.maxUsedSlot > kSpillSlots)
+        return true;
 
     return false;
 }
@@ -4086,8 +4103,8 @@ RegisterX64 IrLoweringX64::regOp(IrOp op)
 
 OperandX64 IrLoweringX64::bufferAddrOp(IrOp bufferOp, IrOp indexOp, uint8_t tag)
 {
-    CODEGEN_ASSERT(tag == LUA_TUSERDATA || tag == LUA_TBUFFER);
-    int dataOffset = tag == LUA_TBUFFER ? offsetof(Buffer, data) : offsetof(Udata, data);
+    CODEGEN_ASSERT(tag == LUA_TUSERDATA || tag == LUA_TBUFFER || tag == LUA_TVECTOR);
+    int dataOffset = tag == LUA_TBUFFER ? offsetof(Buffer, data) : tag == LUA_TVECTOR ? offsetof(LuauVector, v) : offsetof(Udata, data);
 
     if (indexOp.kind == IrOpKind::Inst)
     {

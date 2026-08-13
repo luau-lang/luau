@@ -439,7 +439,6 @@ end
     {
         CHECK("(any, any) -> any" == toString(requireType("foo")));
     }
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "cast_to_table_of_any")

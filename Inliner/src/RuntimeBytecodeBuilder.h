@@ -10,6 +10,8 @@
 
 #include <cmath>
 
+LUAU_FASTFLAG(LuauManagedDebugNames)
+
 namespace Luau
 {
 namespace JitInliner
@@ -56,7 +58,8 @@ struct RuntimeBytecodeBuilder : public BytecodeBuilder
             return LUA_TNUMBER;
         case Constant::Type_Integer:
             return LUA_TINTEGER;
-        case Constant::Type_Vector:
+        case Constant::Type_Vectorf:
+        case Constant::Type_Vectord:
             return LUA_TVECTOR;
         case Constant::Type_String:
             return LUA_TSTRING;
@@ -121,7 +124,7 @@ struct RuntimeBytecodeBuilder : public BytecodeBuilder
             break;
         case LUA_TVECTOR:
         {
-            float* vec = vvalue(c);
+            const LUA_VECTOR_TYPE* vec = vvalue(c);
             formatAppend(result, "%.9g, %.9g, %.9g", vec[0], vec[1], vec[2]);
             break;
         }
@@ -164,12 +167,21 @@ struct RuntimeBytecodeBuilder : public BytecodeBuilder
 
             const char* debugname = nullptr;
             if (ccl->isC != 0)
-                debugname = ccl->c.debugname;
+            {
+                if (FFlag::LuauManagedDebugNames)
+                {
+                    if (TString* str = ccl->c.debugname)
+                        debugname = getstr(str);
+                }
+                else
+                {
+                    debugname = ccl->c.debugname_DEPRECATED;
+                }
+            }
             else
             {
-                TString* str = ccl->l.p->debugname;
-                if (str != nullptr)
-                    debugname = str->data;
+                if (TString* str = ccl->l.p->debugname)
+                    debugname = getstr(str);
             }
             formatAppend(result, "'%s'", debugname != nullptr ? debugname : "<unknown>");
             break;
@@ -209,8 +221,8 @@ struct RuntimeBytecodeBuilder : public BytecodeBuilder
 
         // Pack line info.
         int span = calcLinesSpan();
-        result.linegaplog2 = std::log2(span);
-        int intervals = ((insns.size() - 1) >> result.linegaplog2) + 1;
+        result.linegaplog2 = int(std::log2(span));
+        int intervals = ((int(insns.size()) - 1) >> result.linegaplog2) + 1;
         int absoffset = (insns.size() + 3) & ~3;
 
         const int sizelineinfo = absoffset + intervals * sizeof(int);

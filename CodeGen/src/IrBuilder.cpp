@@ -13,6 +13,7 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauCallFeedback)
+LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 
 namespace Luau
 {
@@ -590,6 +591,10 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
             IrOp fallback = fallbackBlock(i);
 
             inst(IrCmd::INTERRUPT, constUint(i));
+
+            if (FFlag::LuauBackedgeHeapCheck)
+                inst(IrCmd::CHECK_GC);
+
             loadAndCheckTag(vmReg(ra), LUA_TNIL, fallback);
 
             inst(IrCmd::FORGLOOP, vmReg(ra), constInt(aux), loopRepeat, loopExit);
@@ -670,6 +675,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     // We do not support classes in NCG at the moment, so if we see a class
     // operation then unconditionally exit to the VM.
     case LOP_NEWCLASSMEMBER:
+    case LOP_NEWCLASS:
         inst(IrCmd::JUMP, vmExit(i));
         break;
 

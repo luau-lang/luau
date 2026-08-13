@@ -8,6 +8,8 @@ import sys
 import re
 import json
 
+import influxbench
+
 # Taken from rotest
 from color import colored, Color
 from tabulate import TablePrinter, Alignment
@@ -380,8 +382,8 @@ def analyzeResult(subdir, main, comparisons):
             'Driver': main.shortVm
         })
 
-    if influxReporter != None:
-        influxReporter.report_result(subdir, main.name, main.filename, "SUCCESS", main.min, main.avg, main.max, main.sampleConfidenceInterval, main.shortVm, main.vm)
+    if reporter != None:
+        reporter.report_result(subdir, main.name, main.filename, "SUCCESS", main.min, main.avg, main.max, main.sampleConfidenceInterval, main.shortVm, main.vm)
 
     print(colored(Color.GREEN, 'SUCCESS') + ': {:<40}'.format(main.name) + ": " + '{:8.3f}'.format(main.avg) + "ms +/- " +
         '{:6.3f}'.format(main.sampleConfidenceInterval / main.avg * 100) + "% on " + main.shortVm)
@@ -427,8 +429,8 @@ def analyzeResult(subdir, main, comparisons):
 
             resultPrinter.add_row({ 'Test': main.name, 'Min': "", 'Average': "FAILED", 'StdDev%': "", 'Driver': compare.shortVm, 'Speedup': "", 'Significance': "", 'P(T<=t)': "" })
 
-            if influxReporter != None:
-                influxReporter.report_result(subdir, main.filename, main.filename, "FAILED", 0.0, 0.0, 0.0, 0.0, compare.shortVm, compare.vm)
+            if reporter != None:
+                reporter.report_result(subdir, main.filename, main.filename, "FAILED", 0.0, 0.0, 0.0, 0.0, compare.shortVm, compare.vm)
 
             if arguments.speedup:
                 plotValueLists[0].pop()
@@ -484,8 +486,8 @@ def analyzeResult(subdir, main, comparisons):
             '{:6.3f}'.format(compare.sampleConfidenceInterval / compare.avg * 100) + "% on " + compare.shortVm +
             ' ({:+7.3f}%, '.format(speedup * 100) + verdict + ")")
 
-        if influxReporter != None:
-            influxReporter.report_result(subdir, main.name, main.filename, "SUCCESS", compare.min, compare.avg, compare.max, compare.sampleConfidenceInterval, compare.shortVm, compare.vm)
+        if reporter != None:
+            reporter.report_result(subdir, main.name, main.filename, "SUCCESS", compare.min, compare.avg, compare.max, compare.sampleConfidenceInterval, compare.shortVm, compare.vm)
 
         if arguments.speedup:
             oldValue = plotValueLists[0].pop()
@@ -521,8 +523,8 @@ def runTest(subdir, filename, filepath):
         else:
             resultPrinter.add_row({ 'Test': filepath, 'Min': "", 'Average': "FAILED", 'StdDev%': "", 'Driver': getShortVmName(mainVm) })
 
-        if influxReporter != None:
-            influxReporter.report_result(subdir, filename, filename, "FAILED", 0.0, 0.0, 0.0, 0.0, getShortVmName(mainVm), mainVm)
+        if reporter != None:
+            reporter.report_result(subdir, filename, filename, "FAILED", 0.0, 0.0, 0.0, 0.0, getShortVmName(mainVm), mainVm)
         return
 
     compareResultSets = []
@@ -698,6 +700,53 @@ def graph():
     if arguments.window:
         plt.show()
 
+def computeGeomean(vmIndex):
+    """Compute per-iteration geometric means across all benchmarks for a given VM index.
+
+    Returns (TestResult, None) on success, (None, errorString) on failure."""
+    if len(allResults) == 0:
+        return None, None
+
+    # Gather the values arrays for the given VM index across all benchmarks
+    valuesPerBenchmark = []
+    for resultSet in allResults:
+        if vmIndex >= len(resultSet):
+            continue
+        result = resultSet[vmIndex]
+        if result.min is None or len(result.values) == 0:
+            continue
+        valuesPerBenchmark.append(result.values)
+
+    if len(valuesPerBenchmark) == 0:
+        return None, None
+
+    # All benchmarks must have the same iteration count
+    n = len(valuesPerBenchmark[0])
+    for values in valuesPerBenchmark:
+        if len(values) != n:
+            counts = sorted(set(len(v) for v in valuesPerBenchmark))
+            return None, "inconsistent iteration counts ({})".format(", ".join(str(c) for c in counts))
+
+    # Compute per-iteration geometric means
+    geomeanValues = []
+    numBenchmarks = len(valuesPerBenchmark)
+    for k in range(n):
+        product = 1.0
+        for values in valuesPerBenchmark:
+            product *= values[k]
+        geomeanValues.append(product ** (1.0 / numBenchmarks))
+
+    geomeanResult = TestResult()
+    geomeanResult.filename = "<geomean>"
+    geomeanResult.vm = allResults[0][vmIndex].vm if vmIndex < len(allResults[0]) else ""
+    geomeanResult.shortVm = allResults[0][vmIndex].shortVm if vmIndex < len(allResults[0]) else ""
+    geomeanResult.name = "Geomean"
+    geomeanResult.values = geomeanValues
+    geomeanResult.count = len(geomeanValues)
+
+    finalizeResult(geomeanResult)
+    return geomeanResult, None
+
 def addTotalsToTable():
     if len(vmTotalMin) == 0:
         return
@@ -740,6 +789,73 @@ def addTotalsToTable():
             'Driver': getShortVmName(os.path.abspath(arguments.vm))
         })
 
+def addGeomeanToTable():
+    mainGeomean, mainError = computeGeomean(0)
+    if mainGeomean is None and mainError is None:
+        return
+
+    if mainError is not None:
+        if arguments.vmNext != None:
+            resultPrinter.add_row({
+                'Test': 'Geomean',
+                'Min': "",
+                'Average': colored(Color.RED, mainError),
+                'StdDev%': "",
+                'Driver': getShortVmName(os.path.abspath(arguments.vm)),
+                'Speedup': "",
+                'Significance': "",
+                'P(T<=t)': ""
+            })
+        else:
+            resultPrinter.add_row({
+                'Test': 'Geomean',
+                'Min': "",
+                'Average': colored(Color.RED, mainError),
+                'StdDev%': "",
+                'Driver': getShortVmName(os.path.abspath(arguments.vm))
+            })
+        return
+
+    if arguments.vmNext != None:
+        resultPrinter.add_row({
+            'Test': 'Geomean',
+            'Min': '{:8.3f}ms'.format(mainGeomean.min),
+            'Average': '{:8.3f}ms'.format(mainGeomean.avg),
+            'StdDev%': '{:8.3f}%'.format(mainGeomean.sampleConfidenceInterval / mainGeomean.avg * 100),
+            'Driver': mainGeomean.shortVm,
+            'Speedup': "",
+            'Significance': "",
+            'P(T<=t)': ""
+        })
+
+        index = 0
+        for compareVm in arguments.vmNext:
+            index = index + 1
+            compareGeomean, compareError = computeGeomean(index)
+            if compareGeomean is None:
+                continue
+
+            speedup = mainGeomean.avg / compareGeomean.avg * 100 - 100
+
+            resultPrinter.add_row({
+                'Test': 'Geomean',
+                'Min': '{:8.3f}ms'.format(compareGeomean.min),
+                'Average': '{:8.3f}ms'.format(compareGeomean.avg),
+                'StdDev%': '{:8.3f}%'.format(compareGeomean.sampleConfidenceInterval / compareGeomean.avg * 100),
+                'Driver': compareGeomean.shortVm,
+                'Speedup': colored(Color.RED if speedup < 0 else Color.GREEN if speedup > 0 else Color.YELLOW, '{:8.3f}%'.format(speedup)),
+                'Significance': "",
+                'P(T<=t)': ""
+            })
+    else:
+        resultPrinter.add_row({
+            'Test': 'Geomean',
+            'Min': '{:8.3f}ms'.format(mainGeomean.min),
+            'Average': '{:8.3f}ms'.format(mainGeomean.avg),
+            'StdDev%': '{:8.3f}%'.format(mainGeomean.sampleConfidenceInterval / mainGeomean.avg * 100),
+            'Driver': mainGeomean.shortVm
+        })
+
 def writeResultsToFile():
     class TestResultEncoder(json.JSONEncoder):
         def default(self, obj):
@@ -753,8 +869,8 @@ def writeResultsToFile():
     except:
         print("Failed to write results to a file")
 
-def run(args, argsubcb):
-    global arguments, resultPrinter, influxReporter, argumentSubstituionCallback, allResults
+def run(args, argsubcb, reporter_factory=None):
+    global arguments, resultPrinter, reporter, argumentSubstituionCallback, allResults
     arguments = args
     argumentSubstituionCallback = argsubcb
 
@@ -762,11 +878,12 @@ def run(args, argsubcb):
         print(f"{colored(Color.RED, 'ERROR')}: --callgrind is not supported on Windows.  Please consider using this option on another OS, or Linux using WSL.")
         sys.exit(1)
 
-    if arguments.report_metrics or arguments.print_influx_debugging:
-        import influxbench
-        influxReporter = influxbench.InfluxReporter(arguments)
+    if reporter_factory:
+        reporter = reporter_factory(arguments)
+    elif arguments.report_metrics or arguments.print_influx_debugging:
+        reporter = influxbench.InfluxReporter(arguments)
     else:
-        influxReporter = None
+        reporter = None
 
     if matplotlib == None:
         arguments.absolute = 0
@@ -890,6 +1007,8 @@ def run(args, argsubcb):
         for filepath in sorted(all_files):
             subdir, filename = os.path.split(filepath)
             if filename.endswith(".lua"):
+                if os.path.isfile(os.path.join(subdir, "bench_resource_directory")):
+                    continue
                 if arguments.run_test == None or re.match(arguments.run_test, filename[:-4]):
                     runTest(subdir, filename, filepath)
 
@@ -904,6 +1023,7 @@ def run(args, argsubcb):
 
     if arguments.print_final_summary:
         addTotalsToTable()
+        addGeomeanToTable()
 
         print()
         print(colored(Color.YELLOW, '==================================================RESULTS=================================================='))
@@ -929,9 +1049,9 @@ def run(args, argsubcb):
 
     writeResultsToFile()
 
-    if influxReporter != None:
-        influxReporter.report_result(arguments.folder, "Total", "all", "SUCCESS", mainTotalMin, mainTotalAverage, mainTotalMax, 0.0, getShortVmName(arguments.vm), os.path.abspath(arguments.vm))
-        influxReporter.flush(0)
+    if reporter != None:
+        reporter.report_result(arguments.folder, "Total", "all", "SUCCESS", mainTotalMin, mainTotalAverage, mainTotalMax, 0.0, getShortVmName(arguments.vm), os.path.abspath(arguments.vm))
+        reporter.flush(0)
 
 
 if __name__ == "__main__":

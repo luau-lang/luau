@@ -417,6 +417,13 @@ enum class IrCmd : uint8_t
     // E: block (if false)
     JUMP_CMP_INT,
 
+    // Perform a conditional jump based on the result of int64 comparison
+    // A, B: int64
+    // C: condition
+    // D: block (if true)
+    // E: block (if false)
+    JUMP_CMP_INT64,
+
     // Jump if pointers are equal
     // A, B: pointer (*)
     // C: block (if true)
@@ -489,6 +496,12 @@ enum class IrCmd : uint8_t
     // A: int (size)
     // B: int (tag)
     NEW_USERDATA,
+
+    // Create new heap-allocated vector
+    // A: double (x)
+    // B: double (y)
+    // C: double (z)
+    NEW_VECTOR,
 
     // Convert integer into a double number
     // A: int

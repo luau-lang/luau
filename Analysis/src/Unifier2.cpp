@@ -23,9 +23,8 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
-LUAU_FASTFLAGVARIABLE(LuauLimitUnificationRecursion)
-LUAU_FASTFLAGVARIABLE(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 namespace Luau
 {
@@ -156,13 +155,9 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
     // NOTE: It's a little odd that we are doing something non-exceptional for
     // the core of unification but not for occurs check, which may throw an
     // exception. It would be nice if, in the future, this were unified.
-    std::optional<NonExceptionalRecursionLimiter> nerl;
-    if (FFlag::LuauLimitUnificationRecursion)
-    {
-        nerl.emplace(&recursionCount);
-        if (!nerl->isOk(recursionLimit))
-            return UnifyResult::TooComplex;
-    }
+    NonExceptionalRecursionLimiter nerl{&recursionCount};
+    if (!nerl.isOk(recursionLimit))
+        return UnifyResult::TooComplex;
 
     subTy = follow(subTy);
     superTy = follow(superTy);
@@ -226,7 +221,10 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
 
     auto subIntersection = get<IntersectionType>(subTy);
     auto superIntersection = get<IntersectionType>(superTy);
-    if (subIntersection)
+
+    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier && subIntersection && superIntersection)
+        return unify_(subIntersection, superIntersection);
+    else if (subIntersection)
         return unify_(subIntersection, superTy);
     else if (superIntersection)
         return unify_(subTy, superIntersection);
@@ -339,33 +337,30 @@ UnifyResult Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
     // free-type members. Without this, `freeA <: 'T | nil` (or `freeA <: 'T & C`) never
     // constrains 'T, because the FreeType path intercepts before structural dispatch.
     // Members may be GenericTypes that map to FreeTypes via genericSubstitutions.
-    if (FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
+    auto propagateToFreeMembers = [&](auto memberRange)
     {
-        auto propagateToFreeMembers = [&](auto memberRange)
+        for (TypeId member : memberRange)
         {
-            for (TypeId member : memberRange)
+            TypeId m = follow(member);
+            if (auto subst = genericSubstitutions.find(m))
+                m = follow(*subst);
+            if (FreeType* memberFree = getMutable<FreeType>(m))
             {
-                TypeId m = follow(member);
-                if (auto subst = genericSubstitutions.find(m))
-                    m = follow(*subst);
-                if (FreeType* memberFree = getMutable<FreeType>(m))
-                {
-                    memberFree->lowerBound = mkUnion(memberFree->lowerBound, instantiateWithBoundTypes(subTy));
-                }
+                memberFree->lowerBound = mkUnion(memberFree->lowerBound, instantiateWithBoundTypes(subTy));
             }
-        };
-
-        if (const UnionType* superUnion = get<UnionType>(superTy))
-        {
-            propagateToFreeMembers(superUnion->options);
-            return doDefault();
         }
+    };
 
-        if (const IntersectionType* superIntersection = get<IntersectionType>(superTy))
-        {
-            propagateToFreeMembers(superIntersection->parts);
-            return doDefault();
-        }
+    if (const UnionType* superUnion = get<UnionType>(superTy))
+    {
+        propagateToFreeMembers(superUnion->options);
+        return doDefault();
+    }
+
+    if (const IntersectionType* superIntersection = get<IntersectionType>(superTy))
+    {
+        propagateToFreeMembers(superIntersection->parts);
+        return doDefault();
     }
 
     const FunctionType* superFunction = get<FunctionType>(superTy);
@@ -468,6 +463,35 @@ UnifyResult Unifier2::unify_(TypeId subTy, const UnionType* superUnion)
     {
         if (areCompatible(subTy, superOption))
             result &= unify_(subTy, superOption);
+    }
+
+    return result;
+}
+
+UnifyResult Unifier2::unify_(const IntersectionType* subIntersection, const IntersectionType* superIntersection)
+{
+    TypeIds superIntersectionMembers;
+    superIntersectionMembers.insert(begin(superIntersection), end(superIntersection));
+
+    TypeIds sharedMembers;
+    sharedMembers.insert(begin(subIntersection), end(subIntersection));
+
+    sharedMembers.retain(superIntersectionMembers);
+
+    UnifyResult result = UnifyResult::Ok;
+
+    for (auto subPart : subIntersection)
+    {
+        if (sharedMembers.contains(subPart))
+            continue;
+
+        for (auto superPart : superIntersection)
+        {
+            if (sharedMembers.contains(superPart))
+                continue;
+
+            result &= unify_(subPart, superPart);
+        }
     }
 
     return result;
@@ -676,13 +700,9 @@ UnifyResult Unifier2::unify_(TypePackId subTp, TypePackId superTp)
     // NOTE: It's a little odd that we are doing something non-exceptional for
     // the core of unification but not for occurs check, which may throw an
     // exception. It would be nice if, in the future, this were unified.
-    std::optional<NonExceptionalRecursionLimiter> nerl;
-    if (FFlag::LuauLimitUnificationRecursion)
-    {
-        nerl.emplace(&recursionCount);
-        if (!nerl->isOk(recursionLimit))
-            return UnifyResult::TooComplex;
-    }
+    NonExceptionalRecursionLimiter nerl{&recursionCount};
+    if (!nerl.isOk(recursionLimit))
+        return UnifyResult::TooComplex;
 
     subTp = follow(subTp);
     superTp = follow(superTp);

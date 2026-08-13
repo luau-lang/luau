@@ -99,4 +99,13 @@ std::optional<std::string> extractLuauConfig(
     InterruptCallbacks callbacks
 );
 
+// Extracts a Luau::Config from pre-compiled bytecode data. Creates its own
+// sandboxed Luau VM, loads the bytecode, executes it, and parses the config.
+std::optional<std::string> extractLuauConfigFromBytecode(
+    const std::string& bytecode,
+    Config& config,
+    std::optional<ConfigOptions::AliasOptions> aliasOptions,
+    InterruptCallbacks callbacks
+);
+
 } // namespace Luau

@@ -12,9 +12,8 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauAvoidCascadingRecursiveConstraintViolationError)
-LUAU_FASTFLAG(LuauConstraintGraph)
-LUAU_FASTFLAG(LuauFixInfiniteTypeRedundantBind)
 LUAU_FASTFLAG(LuauDoNotEmplaceAnnotatedType)
+LUAU_FASTFLAG(LuauInstantiationCheckArguments)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -271,7 +270,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_errors")
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes, getBuiltins());
     freeze(module->interfaceTypes);
-    module->internalTypes.clear();
+    module->internalTypes->clear();
     module->astTypes.clear();
 
     // Make sure the error strings don't include "VALUELESS"
@@ -1373,8 +1372,6 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_type_alias_through_generic_does_not_assert")
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauConstraintGraph, true},
-        {FFlag::LuauFixInfiniteTypeRedundantBind, true},
     };
 
     // We had an issue where a generic type alias cycle caused the system to
@@ -1409,6 +1406,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unpack_doesnt_emplace_typeof_type")
 
         Obj.Foo = {}
         Obj.Foo.Bar = 42
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "unused_type_arguments")
+{
+    ScopedFastFlag _{FFlag::LuauInstantiationCheckArguments, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Foo<T> = {}
+        export type Export<T> = {Foo<Foo<T>>}
     )"));
 }
 

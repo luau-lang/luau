@@ -12,8 +12,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauReplacerIsSolverAgnostic)
-LUAU_FASTFLAGVARIABLE(LuauInstantiationUsesPolarity)
 
 namespace Luau
 {
@@ -154,38 +152,15 @@ TypeId ReplaceGenerics::clean(TypeId ty)
 {
     LUAU_ASSERT(isDirty(ty));
 
-    if (FFlag::LuauReplacerIsSolverAgnostic)
+    if (const TableType* ttv = log->getMutable<TableType>(ty))
     {
-        if (const TableType* ttv = log->getMutable<TableType>(ty))
-        {
-            TableType clone = TableType{ttv->props, ttv->indexer, level, scope, TableState::Free};
-            clone.definitionModuleName = ttv->definitionModuleName;
-            clone.definitionLocation = ttv->definitionLocation;
-            return addType(std::move(clone));
-        }
-        else
-            return arena->freshType(builtinTypes, scope, level);
+        TableType clone = TableType{ttv->props, ttv->indexer, level, scope, TableState::Free};
+        clone.definitionModuleName = ttv->definitionModuleName;
+        clone.definitionLocation = ttv->definitionLocation;
+        return addType(std::move(clone));
     }
     else
-    {
-        if (const TableType* ttv = log->getMutable<TableType>(ty))
-        {
-            TableType clone = TableType{ttv->props, ttv->indexer, level, scope, TableState::Free};
-            clone.definitionModuleName = ttv->definitionModuleName;
-            clone.definitionLocation = ttv->definitionLocation;
-            return addType(std::move(clone));
-        }
-        else if (FFlag::LuauSolverV2)
-        {
-            TypeId res = freshType(NotNull{arena}, builtinTypes, scope);
-            getMutable<FreeType>(res)->level = level;
-            return res;
-        }
-        else
-        {
-            return arena->freshType(builtinTypes, scope, level);
-        }
-    }
+        return arena->freshType(builtinTypes, scope, level);
 }
 
 TypePackId ReplaceGenerics::clean(TypePackId tp)
@@ -214,27 +189,16 @@ std::optional<TypeId> instantiate(
     DenseHashMap<TypeId, TypeId> replacements{nullptr};
     DenseHashMap<TypePackId, TypePackId> replacementPacks{nullptr};
 
-    if (FFlag::LuauInstantiationUsesPolarity)
+    for (TypeId g : ft->generics)
     {
-        for (TypeId g : ft->generics)
-        {
-            if (auto gen = get<GenericType>(follow(g)))
-                replacements[g] = freshType(arena, builtinTypes, scope, gen->polarity);
-        }
-
-        for (TypePackId g : ft->genericPacks)
-        {
-            if (auto gen = get<GenericTypePack>(follow(g)))
-                replacementPacks[g] = arena->freshTypePack(scope, gen->polarity);
-        }
+        if (auto gen = get<GenericType>(follow(g)))
+            replacements[g] = freshType(arena, builtinTypes, scope, gen->polarity);
     }
-    else
-    {
-        for (TypeId g : ft->generics)
-            replacements[g] = freshType(arena, builtinTypes, scope);
 
-        for (TypePackId g : ft->genericPacks)
-            replacementPacks[g] = arena->freshTypePack(scope);
+    for (TypePackId g : ft->genericPacks)
+    {
+        if (auto gen = get<GenericTypePack>(follow(g)))
+            replacementPacks[g] = arena->freshTypePack(scope, gen->polarity);
     }
 
     Replacer r{arena, NotNull{&replacements}, NotNull{&replacementPacks}};

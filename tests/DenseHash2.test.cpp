@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/DenseHash2.h"
+#include "Luau/NotNull.h"
 
 #include "doctest.h"
 
@@ -498,6 +499,48 @@ TEST_CASE("map_erase_chain")
     // Even elements should be gone
     for (int i = 0; i < 50; i += 2)
         CHECK(m.find(i) == nullptr);
+}
+
+TEST_CASE("set_erase_destroys_element_destructor")
+{
+    // A single element in the set will be at the end of its probe chain,
+    // so erase won't backward-shift anything — it just marks the bit as empty.
+    // If the erased element's destructor isn't called, the shared_ptr refcount stays elevated.
+    auto p = std::make_shared<int>(42);
+    CHECK(p.use_count() == 1);
+
+    {
+        Luau::DenseHashSet2<std::shared_ptr<int>> s;
+        s.insert(p);
+        CHECK(p.use_count() == 2);
+
+        s.erase(p);
+        CHECK(p.use_count() == 1);
+    }
+}
+
+TEST_CASE("map_erase_destroys_value_destructor")
+{
+    auto p = std::make_shared<int>(42);
+    CHECK(p.use_count() == 1);
+
+    {
+        Luau::DenseHashMap2<int, std::shared_ptr<int>> m;
+        m[1] = p;
+        CHECK(p.use_count() == 2);
+
+        m.erase(1);
+        CHECK(p.use_count() == 1);
+    }
+}
+
+TEST_CASE("map_usable_with_Luau_notnull")
+{
+    Luau::DenseHashMap2<Luau::NotNull<int>, int> map;
+    int x = 1;
+    Luau::NotNull<int> i{&x};
+    map[i] = x;
+    CHECK(map.contains(i));
 }
 
 TEST_SUITE_END();
