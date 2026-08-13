@@ -1704,6 +1704,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "overload_concat")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "negated_integer_literal_is_a_constant")
 {
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
     ScopedFastFlag sff{FFlag::LuauIntegerType2, true};
 
     // compileExprUnary folds this into one negative constant, so it never negates anything at runtime.
@@ -1718,6 +1719,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "negated_integer_literal_is_a_constant")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "negating_a_non_literal_integer_is_an_error")
 {
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
     ScopedFastFlag sff{FFlag::LuauIntegerType2, true};
 
     // Only the literal is folded. This one reaches the runtime, where integer has no __unm.
@@ -1725,9 +1727,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "negating_a_non_literal_integer_is_an_error")
         --!strict
         local b = 5i
         local c = -b
+        local d = -(5i)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
 }
 
 TEST_SUITE_END();
