@@ -381,8 +381,10 @@ TEST_CASE_FIXTURE(Fixture, "indexer_can_be_union_of_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBetterMissingPropertiesTypeError, true},
+    };
 
     CheckResult result = check(R"(
         --!strict
