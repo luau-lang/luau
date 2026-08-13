@@ -2375,6 +2375,33 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_wi
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_argument_types")
+{
+    CheckResult result = check(R"(
+        type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, number) -> string }))
+        local f = (nil :: any) :: Callable
+
+        local ok: string = f(1)
+        local bad: string = f("wrong")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_variadic_argument_types")
+{
+    CheckResult result = check(R"(
+        type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
+        local f = (nil :: any) :: Callable
+
+        f(1, 2, 3)
+        f(1, "wrong")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
