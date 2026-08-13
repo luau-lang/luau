@@ -17,6 +17,8 @@
 #include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
+LUAU_FASTFLAGVARIABLE(LuauTweakAccessViolationReporting)
+LUAU_FASTFLAGVARIABLE(LuauBetterMissingPropertiesTypeError)
 LUAU_FASTINTVARIABLE(LuauCyclicSccWarningDisplayLimit, 10)
 LUAU_FASTINT(LuauCyclicSccWarningThreshold)
 
@@ -520,22 +522,52 @@ struct ErrorConverter
 
     std::string operator()(const Luau::MissingProperties& e) const
     {
-        std::string s = "Table type '" + toString(e.subType) + "' not compatible with type '" + toString(e.superType) + "' because the former";
+        if (!FFlag::LuauBetterMissingPropertiesTypeError)
+        {
+            std::string s = "Table type '" + toString(e.subType) + "' not compatible with type '" + toString(e.superType) + "' because the former";
 
+            switch (e.context)
+            {
+            case MissingProperties::Missing:
+                s += " is missing field";
+                break;
+            case MissingProperties::Extra:
+                s += " has extra field";
+                break;
+            }
+
+            if (e.properties.size() > 1)
+                s += "s";
+
+            s += " ";
+
+            for (size_t i = 0; i < e.properties.size(); ++i)
+            {
+                if (i > 0)
+                    s += ", ";
+
+                if (i > 0 && i == e.properties.size() - 1)
+                    s += "and ";
+
+                s += "'" + e.properties[i] + "'";
+            }
+
+            return s;
+        }
+
+        std::string s;
+        std::string afterFieldList;
+        std::string pluralSuffix = e.properties.size() > 1 ? "s " : " ";
         switch (e.context)
         {
         case MissingProperties::Missing:
-            s += " is missing field";
+            s += "required field" + pluralSuffix;
+            afterFieldList = " not";
             break;
         case MissingProperties::Extra:
-            s += " has extra field";
+            s += "extra field" + pluralSuffix;
             break;
         }
-
-        if (e.properties.size() > 1)
-            s += "s";
-
-        s += " ";
 
         for (size_t i = 0; i < e.properties.size(); ++i)
         {
@@ -547,6 +579,8 @@ struct ErrorConverter
 
             s += "'" + e.properties[i] + "'";
         }
+
+        s += afterFieldList + " found in type '" + toString(e.subType) + "' from expected type '" + toString(e.superType) + "'";
 
         return s;
     }
