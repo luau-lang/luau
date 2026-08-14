@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Error.h"
 #include "Luau/TypeFwd.h"
 
@@ -41,12 +41,12 @@ struct UnifierSharedState
 
     InternalErrorReporter* iceHandler;
 
-    DenseHashMap<TypeId, bool> skipCacheForType{nullptr};
-    DenseHashSet<std::pair<TypeId, TypeId>, TypeIdPairHash> cachedUnify{{nullptr, nullptr}};
-    DenseHashMap<std::pair<TypeId, TypeId>, TypeErrorData, TypeIdPairHash> cachedUnifyError{{nullptr, nullptr}};
+    DenseHashMap2<TypeId, bool> skipCacheForType;
+    DenseHashSet2<std::pair<TypeId, TypeId>, TypeIdPairHash> cachedUnify;
+    DenseHashMap2<std::pair<TypeId, TypeId>, TypeErrorData, TypeIdPairHash> cachedUnifyError;
 
-    DenseHashSet<TypeId> tempSeenTy{nullptr};
-    DenseHashSet<TypePackId> tempSeenTp{nullptr};
+    DenseHashSet2<TypeId> tempSeenTy;
+    DenseHashSet2<TypePackId> tempSeenTp;
 
     UnifierCounters counters;
 

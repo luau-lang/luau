@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeFunctionReductionGuesser.h"
 
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Normalize.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeFunction.h"
@@ -19,8 +19,8 @@ struct InstanceCollector2 : TypeOnceVisitor
 {
     VecDeque<TypeId> tys;
     VecDeque<TypePackId> tps;
-    DenseHashSet<TypeId> cyclicInstance{nullptr};
-    DenseHashSet<TypeId> instanceArguments{nullptr};
+    DenseHashSet2<TypeId> cyclicInstance;
+    DenseHashSet2<TypeId> instanceArguments;
 
     InstanceCollector2()
         : TypeOnceVisitor("InstanceCollector2", /* skipBoundTypes */ true)
@@ -76,7 +76,7 @@ TypeFunctionReductionGuesser::TypeFunctionReductionGuesser(NotNull<TypeArena> ar
 {
 }
 
-bool TypeFunctionReductionGuesser::isFunctionGenericsSaturated(const FunctionType& ftv, DenseHashSet<TypeId>& argsUsed)
+bool TypeFunctionReductionGuesser::isFunctionGenericsSaturated(const FunctionType& ftv, DenseHashSet2<TypeId>& argsUsed)
 {
     bool sameSize = ftv.generics.size() == argsUsed.size();
     bool allGenericsAppear = true;

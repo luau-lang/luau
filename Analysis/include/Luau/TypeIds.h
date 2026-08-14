@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/OrderedSet.h"
 #include "Luau/TypeFwd.h"
 
@@ -17,7 +17,7 @@ namespace Luau
 class TypeIds
 {
 private:
-    DenseHashMap<TypeId, bool> types{nullptr};
+    DenseHashMap2<TypeId, bool> types;
     std::vector<TypeId> order;
     std::size_t hash = 0;
 

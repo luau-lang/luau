@@ -4,7 +4,7 @@
 #include "Luau/Ast.h"
 #include "Luau/Constraint.h"
 #include "Luau/ControlFlowGraph.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 
 #include "Luau/NotNull.h"
 #include "Luau/TypeFwd.h"
@@ -44,12 +44,12 @@ private:
     void handleInstruction(InstrId id);
     TypeId getDiscriminantOf(const Refine& refine);
 
-    DenseHashMap<Definition*, TypeId> defTypes{nullptr};
+    DenseHashMap2<Definition*, TypeId> defTypes;
 
     // Mapping from types to the constraints they require to be solved
     // Join instructions will require simplification constraints
     // Refine instructions will require refinement constraints
-    DenseHashMap<TypeId, ConstraintV> typesRequiringConstraint{nullptr};
+    DenseHashMap2<TypeId, ConstraintV> typesRequiringConstraint;
 
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtinTypes;

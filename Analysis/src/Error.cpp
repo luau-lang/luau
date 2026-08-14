@@ -487,7 +487,8 @@ struct ErrorConverter
 
     std::string operator()(const Luau::CyclicModuleGraphTooLarge& e) const
     {
-        std::string s = "This module is part of a cycle of " + std::to_string(e.moduleCount) + " modules that require each other. Consider reducing the number of cyclic dependencies: ";
+        std::string s = "This module is part of a cycle of " + std::to_string(e.moduleCount) +
+                        " modules that require each other. Consider reducing the number of cyclic dependencies: ";
 
         size_t cyclicModuleDisplayLimit = std::min(e.moduleCount, static_cast<size_t>(FInt::LuauCyclicSccWarningDisplayLimit));
 

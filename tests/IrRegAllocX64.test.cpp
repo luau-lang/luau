@@ -3,8 +3,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauCodegenSharedLog)
-
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::X64;
 
@@ -12,7 +10,7 @@ class IrRegAllocX64Fixture
 {
 public:
     IrRegAllocX64Fixture()
-        : build(&logger, true, ABIX64::Windows, /* features */ 0)
+        : build(&logger, ABIX64::Windows, /* features */ 0)
         , regs(&logger, build, function, nullptr)
     {
     }
@@ -21,7 +19,7 @@ public:
     {
         build.finalize();
 
-        CHECK("\n" + (FFlag::LuauCodegenSharedLog ? logger.text : build.text) == expected);
+        CHECK("\n" + logger.text == expected);
     }
 
     AssemblyOptions options;

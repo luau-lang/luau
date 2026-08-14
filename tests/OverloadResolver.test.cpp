@@ -39,8 +39,8 @@ struct OverloadResolverFixture : Fixture
         };
     }
 
-    DenseHashSet<TypeId> kEmptySet{nullptr};
-    NotNull<DenseHashSet<TypeId>> emptySet{&kEmptySet};
+    DenseHashSet2<TypeId> kEmptySet;
+    NotNull<DenseHashSet2<TypeId>> emptySet{&kEmptySet};
     Location kDummyLocation;
     AstExprConstantNil kDummyExpr{kDummyLocation};
     std::vector<AstExpr*> kEmptyExprs;

@@ -2,7 +2,7 @@
 #include "IrLoweringX64.h"
 
 #include "Luau/CodeGenOptions.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/IrCallWrapperX64.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
@@ -19,7 +19,6 @@
 LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
 LUAU_FASTFLAG(LuauYieldIter2)
 LUAU_FASTFLAG(LuauCIProto)
-LUAU_FASTFLAG(LuauCodegenSharedLog)
 
 namespace Luau
 {
@@ -36,7 +35,7 @@ IrLoweringX64::IrLoweringX64(LogBuilder* logger, AssemblyBuilderX64& build, Modu
     , stats(stats)
     , regs(logger, build, function, stats)
     , valueTracker(logger, function)
-    , exitHandlerMap(~0u)
+
 {
     valueTracker.setRestoreCallback(
         &regs,
@@ -3737,10 +3736,8 @@ void IrLoweringX64::finishBlock(const IrBlock& curr, const IrBlock& next)
 
 void IrLoweringX64::finishFunction()
 {
-    if (FFlag::LuauCodegenSharedLog && logger && logger->options.includeAssembly)
+    if (logger && logger->options.includeAssembly)
         logger->formatAppend("; interrupt handlers\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; interrupt handlers\n");
 
     for (InterruptHandler& handler : interruptHandlers)
     {
@@ -3750,10 +3747,8 @@ void IrLoweringX64::finishFunction()
         build.jmp(helpers.interrupt);
     }
 
-    if (FFlag::LuauCodegenSharedLog && logger && logger->options.includeAssembly)
+    if (logger && logger->options.includeAssembly)
         logger->formatAppend("; exit handlers\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; exit handlers\n");
 
     for (ExitHandler& handler : exitHandlers)
     {
@@ -3959,10 +3954,8 @@ void IrLoweringX64::allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcp
     if (!function.recordCounters)
         return;
 
-    if (FFlag::LuauCodegenSharedLog && logger && logger->options.includeAssembly)
+    if (logger && logger->options.includeAssembly)
         logger->formatAppend("; counter kind %u at pcpos %d\n", unsigned(kind), pcpos);
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; counter kind %u at pcpos %d\n", unsigned(kind), pcpos);
 
     // {uint32_t, uint32_t, uint64_t}
     function.extraNativeData.push_back(unsigned(kind));

@@ -1,4 +1,4 @@
-export class LivingThing
+export open class LivingThing
     public alive: boolean
 
     function isAlive(self): boolean
@@ -6,7 +6,7 @@ export class LivingThing
     end
 end
 
-export class Animal extends LivingThing
+export open class Animal extends LivingThing
     public species: string
 
     function describe(self): string

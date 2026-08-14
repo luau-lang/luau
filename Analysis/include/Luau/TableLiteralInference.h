@@ -4,7 +4,7 @@
 
 #include "Luau/Ast.h"
 #include "Luau/ConstraintSolver.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/NotNull.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeArena.h"
@@ -26,11 +26,11 @@ struct PushTypeResult
 };
 
 PushTypeResult pushTypeInto(
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
+    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes,
+    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes,
     NotNull<ConstraintSolver> solver,
     NotNull<const Constraint> constraint,
-    NotNull<DenseHashSet<const void*>> genericTypesAndPacks,
+    NotNull<DenseHashSet2<const void*>> genericTypesAndPacks,
     NotNull<Unifier2> unifier,
     NotNull<Subtyping> subtyping,
     TypeId expectedType,

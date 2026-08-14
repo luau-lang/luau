@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 
 #include "ConstantFolding.h"
 
@@ -11,14 +11,14 @@ namespace Luau
 namespace Compile
 {
 
-inline bool isConstantTrue(const DenseHashMap<AstExpr*, Constant>& constants, AstExpr* node)
+inline bool isConstantTrue(const DenseHashMap2<AstExpr*, Constant>& constants, AstExpr* node)
 {
     const Constant* cv = constants.find(node);
 
     return cv && cv->type != Constant::Type_Unknown && cv->isTruthful();
 }
 
-inline bool isConstantFalse(const DenseHashMap<AstExpr*, Constant>& constants, AstExpr* node)
+inline bool isConstantFalse(const DenseHashMap2<AstExpr*, Constant>& constants, AstExpr* node)
 {
     const Constant* cv = constants.find(node);
 
@@ -27,7 +27,7 @@ inline bool isConstantFalse(const DenseHashMap<AstExpr*, Constant>& constants, A
 
 // true iff all execution paths through node subtree result in return/break/continue
 // note: because this function doesn't visit loop nodes, it (correctly) only detects break/continue that refer to the outer control flow
-inline bool alwaysTerminates(const DenseHashMap<AstExpr*, Constant>& constants, AstStat* node)
+inline bool alwaysTerminates(const DenseHashMap2<AstExpr*, Constant>& constants, AstStat* node)
 {
     if (AstStatBlock* stat = node->as<AstStatBlock>())
     {

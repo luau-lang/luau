@@ -38,7 +38,7 @@ SubtypingUnifier::Result SubtypingUnifier::dispatchConstraints(
     // easier to read.
     std::vector<ConstraintV> outstandingConstraints;
     outstandingConstraints.reserve(assumedConstraints.size());
-    UpperBounds upperBounds{nullptr};
+    UpperBounds upperBounds;
     for (auto& cv : assumedConstraints)
     {
         const auto& [unified, dispatched] = dispatchOneConstraint(constraint, cv, upperBounds);

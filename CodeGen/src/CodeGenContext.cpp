@@ -596,10 +596,10 @@ template<typename AssemblyBuilder>
 
 #if defined(CODEGEN_TARGET_A64)
     static unsigned int cpuFeatures = getCpuFeaturesA64();
-    A64::AssemblyBuilderA64 build(/* logger= */ nullptr, false, cpuFeatures);
+    A64::AssemblyBuilderA64 build(/* logger= */ nullptr, cpuFeatures);
 #else
     static unsigned int cpuFeatures = getCpuFeaturesX64();
-    X64::AssemblyBuilderX64 build(/* logger= */ nullptr, false, cpuFeatures);
+    X64::AssemblyBuilderX64 build(/* logger= */ nullptr, cpuFeatures);
 #endif
 
     ModuleHelpers helpers;

@@ -14,7 +14,6 @@
 
 LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck)
 LUAU_FASTFLAG(LuauCIProto)
-LUAU_FASTFLAG(LuauCodegenSharedLog)
 
 namespace Luau
 {
@@ -286,7 +285,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
 
 bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
 {
-    AssemblyBuilderA64 build(/* logger= */ nullptr, false, /* features= */ 0);
+    AssemblyBuilderA64 build(/* logger= */ nullptr, /* features= */ 0);
     UnwindBuilder& unwind = *codeGenContext.unwindBuilder.get();
 
     unwind.startInfo(UnwindBuilder::A64);
@@ -320,52 +319,38 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
 
 void assembleHelpers(LogBuilder* logger, AssemblyBuilderA64& build, ModuleHelpers& helpers)
 {
-    if (FFlag::LuauCodegenSharedLog && logger)
+    if (logger)
         logger->append("; updatePcAndContinueInVm\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; updatePcAndContinueInVm\n");
     build.setLabel(helpers.updatePcAndContinueInVm);
     emitUpdatePcForExit(build);
 
-    if (FFlag::LuauCodegenSharedLog && logger)
+    if (logger)
         logger->append("; exitContinueVmClearNativeFlag\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; exitContinueVmClearNativeFlag\n");
     build.setLabel(helpers.exitContinueVmClearNativeFlag);
     emitClearNativeFlag(build);
 
-    if (FFlag::LuauCodegenSharedLog && logger)
+    if (logger)
         logger->append("; exitContinueVm\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; exitContinueVm\n");
     build.setLabel(helpers.exitContinueVm);
     emitExit(build, /* continueInVm */ true);
 
-    if (FFlag::LuauCodegenSharedLog && logger)
+    if (logger)
         logger->append("; exitNoContinueVm\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; exitNoContinueVm\n");
     build.setLabel(helpers.exitNoContinueVm);
     emitExit(build, /* continueInVm */ false);
 
-    if (FFlag::LuauCodegenSharedLog && logger)
+    if (logger)
         logger->append("; interrupt\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; interrupt\n");
     build.setLabel(helpers.interrupt);
     emitInterrupt(build);
 
-    if (FFlag::LuauCodegenSharedLog && logger)
+    if (logger)
         logger->append("; return\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; return\n");
     build.setLabel(helpers.return_);
     emitReturn(build, helpers);
 
-    if (FFlag::LuauCodegenSharedLog && logger)
+    if (logger)
         logger->append("; continueCall\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; continueCall\n");
     build.setLabel(helpers.continueCall);
     emitContinueCall(build, helpers);
 }

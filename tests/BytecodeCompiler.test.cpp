@@ -36,25 +36,10 @@ struct BytecodeCompilerFixture
 {
     BytecodeCompilerFixture() {}
 
-    std::optional<Bytecode::CompTimeBcFunction> buildBytecode(std::string_view src, int optimizationLevel = 0)
+    ParseResult parseCode(std::string_view src, Allocator& allocator, AstNameTable& names)
     {
-        auto bytecode = getFunctionBytecode(src, optimizationLevel);
-        if (bytecode)
-        {
-            strings = bytecode->second;
-            std::vector<std::string_view> table;
-            for (std::string& s : strings)
-                table.push_back(s);
-            return {Bytecode::fromFunctionBytecode(bytecode->first, table)};
-        }
-        return {};
-    }
-
-    std::optional<std::pair<std::string, std::vector<std::string>>> getFunctionBytecode(std::string_view src, int optimizationLevel = 0)
-    {
-        Allocator allocator;
-        AstNameTable names(allocator);
         ParseResult result = Parser::parse(src.data(), src.size(), names, allocator, ParseOptions{});
+
         if (!result.errors.empty())
         {
             std::string message;
@@ -69,22 +54,39 @@ struct BytecodeCompilerFixture
 
             printf("Parse error: %s\n", message.c_str());
         }
-        BytecodeBuilder bcb;
-        bcb.setDumpFlags(BytecodeBuilder::Dump_Code);
+
+        return result;
+    }
+
+    bool compileCode(
+        BytecodeBuilder& bcb,
+        ParseResult& result,
+        AstNameTable& names,
+        uint32_t dumpFlags,
+        int optimizationLevel,
+        bool ignoreCompilationErrors
+    )
+    {
+        bcb.setDumpFlags(dumpFlags);
+
         try
         {
             CompileOptions opts;
             opts.optimizationLevel = optimizationLevel;
             compileOrThrow(bcb, result, names, opts);
-            return {{bcb.getFunctionData(0), extractStringTable(bcb)}};
+            return true;
         }
         catch (CompileError& e)
         {
-            std::string error = format(":%d: %s", e.getLocation().begin.line + 1, e.what());
-            BytecodeBuilder::getError(error);
-            printf("Compilation error: %s\n", error.c_str());
+            if (!ignoreCompilationErrors)
+            {
+                std::string error = format(":%d: %s", e.getLocation().begin.line + 1, e.what());
+                BytecodeBuilder::getError(error);
+                printf("Compilation error: %s\n", error.c_str());
+            }
         }
-        return {};
+
+        return false;
     }
 
     std::vector<std::string> extractStringTable(BytecodeBuilder& bcb)
@@ -105,51 +107,78 @@ struct BytecodeCompilerFixture
         return result;
     }
 
+    std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string fnData, std::vector<std::string>& strings)
+    {
+        std::vector<std::string_view> table;
+        for (std::string& s : strings)
+            table.push_back(s);
+
+        return Bytecode::fromFunctionBytecode(fnData, table);
+    }
+
+    std::optional<std::pair<std::string, std::vector<std::string>>> getFunctionBytecode(
+        std::string_view src,
+        int optimizationLevel = 0,
+        uint32_t functionId = 0
+    )
+    {
+        Allocator allocator;
+        AstNameTable names(allocator);
+        ParseResult result = parseCode(src, allocator, names);
+        BytecodeBuilder bcb;
+
+        if (compileCode(bcb, result, names, BytecodeBuilder::Dump_Code, optimizationLevel, false))
+            return {{bcb.getFunctionData(functionId), extractStringTable(bcb)}};
+
+        return {};
+    }
+
+    std::optional<Bytecode::CompTimeBcFunction> buildBytecode(std::string_view src, int optimizationLevel = 0, uint32_t functionId = 0)
+    {
+        auto bytecode = getFunctionBytecode(src, optimizationLevel, functionId);
+        if (bytecode)
+            return {fromFunctionBytecode(bytecode->first, bytecode->second)};
+
+        return {};
+    }
+
+    std::string getRoundtripFunctionBytecode(std::string_view src, uint32_t dumpFlags, int optimizationLevel = 0, uint32_t functionId = 0)
+    {
+        Allocator allocator;
+        AstNameTable names(allocator);
+        ParseResult result = parseCode(src, allocator, names);
+        BytecodeBuilder bcb;
+        bool compiled = compileCode(bcb, result, names, BytecodeBuilder::Dump_Code, optimizationLevel, false);
+        REQUIRE(compiled);
+
+        BytecodeBuilder reserializer;
+        reserializer.setDumpFlags(dumpFlags);
+
+        std::vector<std::string> strings = extractStringTable(bcb);
+
+        for (uint32_t fi = 0; fi <= functionId; fi++)
+        {
+            std::optional<CompTimeBcFunction> fn = fromFunctionBytecode(bcb.getFunctionData(fi), strings);
+            REQUIRE(fn);
+            Bytecode::toFunctionBytecode(reserializer, *fn);
+            reserializer.clearStrings();
+        }
+
+        return reserializer.dumpFunction(functionId);
+    }
+
     void checkRoundtrip(std::string_view snippet, bool ignoreCompilationErrors = false)
     {
         Allocator allocator;
         AstNameTable names(allocator);
-        ParseResult result = Parser::parse(snippet.data(), snippet.size(), names, allocator, ParseOptions{});
-        if (!result.errors.empty())
-        {
-            std::string message;
-
-            for (const auto& error : result.errors)
-            {
-                if (!message.empty())
-                    message += "\n";
-
-                message += error.what();
-            }
-
-            printf("Parse error: %s\n", message.c_str());
-        }
+        ParseResult result = parseCode(snippet, allocator, names);
 
         for (int optLevel = 0; optLevel <= 2; optLevel++)
         {
             BytecodeBuilder bcb;
-            bcb.setDumpFlags(BytecodeBuilder::Dump_Code);
-            try
-            {
-                CompileOptions opts;
-                opts.optimizationLevel = optLevel;
-                compileOrThrow(bcb, result, names, opts);
-            }
-            catch (CompileError& e)
-            {
-                if (!ignoreCompilationErrors)
-                {
-                    std::string error = format(":%d: %s", e.getLocation().begin.line + 1, e.what());
-                    BytecodeBuilder::getError(error);
-                    printf("Compilation error: %s\n", error.c_str());
-                }
-            }
+            compileCode(bcb, result, names, BytecodeBuilder::Dump_Code, optLevel, true);
 
-            strings = extractStringTable(bcb);
-            std::vector<std::string_view> table;
-            table.reserve(strings.size());
-            for (std::string& s : strings)
-                table.push_back(s);
+            std::vector<std::string> strings = extractStringTable(bcb);
 
             // We share a single BytecodeBuilder for reserializing every function, since serializing NEWCLOSURE requires functions that were
             // previously serialized
@@ -157,18 +186,16 @@ struct BytecodeCompilerFixture
             for (uint32_t fi = 0; fi < bcb.getFunctionCount(); fi++)
             {
                 std::string fnData = bcb.getFunctionData(fi);
-                std::optional<CompTimeBcFunction> fn = Bytecode::fromFunctionBytecode(fnData, table);
+                std::optional<CompTimeBcFunction> fn = fromFunctionBytecode(fnData, strings);
                 REQUIRE(fn);
                 std::string orig = extractCode(fnData);
                 std::string dumped = extractCode(Bytecode::toFunctionBytecode(reserializer, *fn));
                 REQUIRE_EQ(orig, dumped);
                 // The StringRefs added to reserializer's string table are invalidated when fn goes out of scope
-                reserializer.clearStringTable();
+                reserializer.clearStrings();
             }
         }
     }
-
-    std::vector<std::string> strings;
 };
 
 } // namespace
@@ -1091,31 +1118,85 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "inheriting_classes_bytecode_roundtri
 {
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
-    checkRoundtrip(R"(
-class Animal
-	public species: string
-	
-	function __tostring(self)
-		return "I am an animal."
-	end
-	
-	function live(self)
-		return "I am alive"
-	end
+    std::string_view source = R"(
+open class Animal
+    public species: string
+
+    function __tostring(self)
+        return "I am an animal."
+    end
+
+    function live(self)
+        return "I am alive"
+    end
 end
 
 class Cat extends Animal
-	public breed: string
-	
-	function __tostring(self): string
-		return `{Animal.__tostring(self)} I am a {self.breed} cat.`
-	end
+    public breed: string
+
+    function __tostring(self): string
+        return `{Animal.__tostring(self)} I am a {self.breed} cat.`
+    end
 end
 
 print(Cat)
 
 return { Animal = Animal, Cat = Cat }
-    )");
+    )";
+
+    checkRoundtrip(source);
+
+    std::string dump = getRoundtripFunctionBytecode(source, BytecodeBuilder::Dump_Code | BytecodeBuilder::Dump_Constants, 1, 3);
+
+    CHECK_EQ("\n" + dump, R"(
+K0: 'Animal'
+K1: 'species'
+K2: function __tostring
+K3: '__tostring'
+K4: function live
+K5: 'live'
+K6: 'new'
+K7: '__init'
+K8: class Animal (props: 1, methods: 4)
+  props:
+    K1 ['species']
+  methods:
+    K3 ['__tostring']
+    K5 ['live']
+    K6 ['new']
+    K7 ['__init']
+K9: 'Cat'
+K10: 'breed'
+K11: class Cat (props: 1, methods: 3)
+  props:
+    K10 ['breed']
+  methods:
+    K3 ['__tostring']
+    K6 ['new']
+    K7 ['__init']
+K12: 'print'
+K13: print
+K14: {['Animal'] #1, ['Cat'] #0} sizenode=2
+LOADNIL R0
+LOADNIL R1
+NEWCLASS R0 no_base K8 1 [class Animal (props: 1, methods: 4)]
+DUPCLOSURE R2 K2 ['__tostring']
+NEWCLASSMEMBER R0 R2 ['__tostring']
+DUPCLOSURE R2 K4 ['live']
+NEWCLASSMEMBER R0 R2 ['live']
+NEWCLASS R1 R0 K11 0 [class Cat (props: 1, methods: 3)]
+NEWCLOSURE R2 P2
+CAPTURE REF R0
+NEWCLASSMEMBER R1 R2 ['__tostring']
+GETIMPORT R2 13 [print]
+MOVE R3 R1
+CALL R2 1 0
+DUPTABLE R2 14
+SETTABLEKS R0 R2 K0 ['Animal']
+SETTABLEKS R1 R2 K9 ['Cat']
+CLOSEUPVALS R0
+RETURN R2 1
+)");
 }
 
 TEST_SUITE_END();
