@@ -89,7 +89,11 @@ void luaL_sandbox(lua_State* L)
 
     if (FFlag::LuauSandboxFreezesVectorMetatable)
     {
-        lua_pushvector(L, 0.f, 0.f, 0.f);
+#if LUA_VECTOR_SIZE == 4
+        lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
+#else
+        lua_pushvector(L, 0.0f, 0.0f, 0.0f);
+#endif
         if (lua_getmetatable(L, -1))
         {
             lua_setreadonly(L, -1, true);

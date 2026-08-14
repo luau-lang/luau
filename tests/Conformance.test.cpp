@@ -5029,7 +5029,11 @@ TEST_CASE("SandboxFreezesVectorMetatable")
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
-    lua_pushvector(L, 0.f, 0.f, 0.f);
+#if LUA_VECTOR_SIZE == 4
+    lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
+#else
+    lua_pushvector(L, 0.0f, 0.0f, 0.0f);
+#endif
 
     luaL_newmetatable(L, "Vector7");
     lua_pushboolean(L, true);
@@ -5039,7 +5043,11 @@ TEST_CASE("SandboxFreezesVectorMetatable")
 
     luaL_sandbox(L);
 
-    lua_pushvector(L, 0.f, 0.f, 0.f);
+#if LUA_VECTOR_SIZE == 4
+    lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
+#else
+    lua_pushvector(L, 0.0f, 0.0f, 0.0f);
+#endif
     CHECK(lua_getmetatable(L, -1));
     CHECK(lua_getreadonly(L, -1));
 }
