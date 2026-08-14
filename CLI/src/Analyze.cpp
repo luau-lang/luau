@@ -433,18 +433,6 @@ int main(int argc, char** argv)
             basePath = std::string{argv[i] + 10};
         else if (strcmp(argv[i], "--solver=old") == 0)
             solverMode = Luau::SolverMode::Old;
-        else if (strcmp(argv[i], "--list-fflags") == 0)
-        {
-            for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
-            {
-                //if (skipFastFlag(flag->name))
-                //    continue;
-
-                printf("%sFFlag%s\n", flag->dynamic ? "D" : "", flag->name);
-            }
-
-            return 0;
-        }
     }
 
 #if !defined(LUAU_ENABLE_TIME_TRACE)
