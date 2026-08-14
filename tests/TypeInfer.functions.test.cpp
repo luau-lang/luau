@@ -21,6 +21,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
+LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauBidirectionalInferenceVariadics)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
@@ -2377,6 +2378,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_wi
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_argument_types")
 {
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
     CheckResult result = check(R"(
         type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, number) -> string }))
         local f = (nil :: any) :: Callable
@@ -2391,6 +2394,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_argument_types")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_variadic_argument_types")
 {
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
     CheckResult result = check(R"(
         type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
         local f = (nil :: any) :: Callable

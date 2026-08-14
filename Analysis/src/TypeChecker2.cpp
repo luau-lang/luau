@@ -35,6 +35,7 @@
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
@@ -1559,35 +1560,6 @@ static void reportAvailableOverloads(ErrorVec& errors, Location location, const 
     errors.emplace_back(location, moduleName, ExtraInformation{s.str()});
 }
 
-// The function a call invokes, and how many of its parameters are filled before the
-// arguments written at the call site. A callable table invokes its __call metamethod, which
-// takes the callee as its first argument.
-struct CalleeSignature
-{
-    const FunctionType* fn = nullptr;
-    size_t leadingParams = 0;
-};
-
-static CalleeSignature getCalleeSignature(NotNull<BuiltinTypes> builtinTypes, TypeId fnTy, AstExprCall* call)
-{
-    if (const FunctionType* fn = get<FunctionType>(fnTy))
-        return {fn, call->self ? 1u : 0u};
-
-    // A method call already fills the first parameter with the receiver, so a callable table
-    // reached that way would need two and is left alone.
-    if (call->self)
-        return {};
-
-    ErrorVec ignored;
-    if (std::optional<TypeId> callMetamethod = findMetatableEntry(builtinTypes, ignored, fnTy, "__call", call->func->location))
-    {
-        if (const FunctionType* fn = get<FunctionType>(follow(*callMetamethod)))
-            return {fn, 1};
-    }
-
-    return {};
-}
-
 void TypeChecker2::visitCall(AstExprCall* call)
 {
     TypePack args;
@@ -1660,11 +1632,9 @@ void TypeChecker2::visitCall(AstExprCall* call)
 
     // FIXME: Similar to bidirectional inference prior, this does not support
     // overloaded functions nor generic typeArguments (yet).
-    const CalleeSignature callee = getCalleeSignature(builtinTypes, fnTy, call);
-
-    if (const FunctionType* fty = callee.fn; fty && fty->generics.empty() && fty->genericPacks.empty() && call->args.size > 0)
+    if (auto fty = get<FunctionType>(fnTy); fty && fty->generics.empty() && fty->genericPacks.empty() && call->args.size > 0)
     {
-        const size_t selfOffset = callee.leadingParams;
+        size_t selfOffset = call->self ? 1 : 0;
 
         std::vector<TypeId> paramsHead = extendTypePack(*module->internalTypes, builtinTypes, fty->argTypes, call->args.size + selfOffset).head;
 
@@ -1781,7 +1751,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
             TypePackId reportedArgs = argsPack;
             std::vector<AstExpr*> reportedExprs = argExprs;
 
-            if (result2.metamethods.contains(ty))
+            if (FFlag::LuauFixCallMetamethodErrorReporting && result2.metamethods.contains(ty))
             {
                 reportedArgs = module->internalTypes->addTypePack(TypePack{{fnTy}, argsPack});
                 reportedExprs.insert(reportedExprs.begin(), call->func);
