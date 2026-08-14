@@ -80,9 +80,10 @@ struct SourceNode
     ModuleName name;
     std::string humanReadableName;
     std::weak_ptr<ModuleSCC> scc;
-    DenseHashSet<ModuleName> requireSet{{}};
+    DenseHashSet2<ModuleName> requireSet;
+
     std::vector<std::pair<ModuleName, Location>> requireLocations;
-    Set<ModuleName> dependents{{}};
+    Set<ModuleName> dependents;
 
     bool dirtySourceModule = true;
     bool dirtyModule = true;
@@ -285,7 +286,7 @@ private:
         std::vector<BuildQueueItem>& items,
         std::vector<ModuleName>& buildQueue,
         bool cycleDetected,
-        DenseHashSet<Luau::ModuleName>& seen,
+        DenseHashSet2<Luau::ModuleName>& seen,
         const FrontendOptions& frontendOptions
     );
     void computeSCCs(const std::vector<ModuleName>& buildQueue);

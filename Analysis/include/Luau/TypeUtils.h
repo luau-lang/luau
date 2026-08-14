@@ -99,12 +99,7 @@ std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, 
 
 // Extend the provided pack to at least `length` types.
 // Returns a temporary TypePack that contains those types plus a tail.
-TypePack extendTypePack(
-    TypeArena& arena,
-    NotNull<BuiltinTypes> builtinTypes,
-    TypePackId pack,
-    size_t length
-);
+TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, TypePackId pack, size_t length);
 
 /**
  * Reduces a union by decomposing to the any/error type if it appears in the
@@ -272,7 +267,8 @@ bool isLiteral(const AstExpr* expr);
  * @param astTypes Mapping from AST node to TypeID
  * @returns A vector of blocked types
  */
-std::vector<TypeId> findBlockedArgTypesIn_DEPRECATED(AstExprCall* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes);
+
+std::vector<TypeId> findBlockedArgTypesIn_DEPRECATED(AstExprCall* expr, NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes);
 
 /**
  * Given a scope and a free type, find the closest parent that has a present
@@ -403,8 +399,8 @@ TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, st
 /**
  * @returns if `ty` contains a generic in the set `generics`.
  */
-bool containsGeneric(TypeId ty, NotNull<DenseHashSet<const void*>> generics);
-bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics);
+bool containsGeneric(TypeId ty, NotNull<DenseHashSet2<const void*>> generics);
+bool containsGeneric(TypePackId ty, NotNull<DenseHashSet2<const void*>> generics);
 
 /**
  * @return Whether `ty` is a type that cannot be unified with another type,

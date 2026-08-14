@@ -54,7 +54,7 @@ struct Reducer
     ParseOptions parseOptions;
 
     ParseResult parseResult;
-    CstNodeMap cstNodeMap{nullptr};
+    CstNodeMap cstNodeMap;
     AstStatBlock* root;
 
     std::string scriptName;

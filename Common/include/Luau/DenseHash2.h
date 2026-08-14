@@ -763,6 +763,13 @@ public:
         return *impl.insert_unsafe(key);
     }
 
+    bool try_insert(const Key& key)
+    {
+        const size_t oldSize = impl.size();
+        insert(key);
+        return impl.size() != oldSize;
+    }
+
     const Key* find(const Key& key) const
     {
         return impl.find(key);

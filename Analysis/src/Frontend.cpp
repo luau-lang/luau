@@ -280,7 +280,7 @@ ErrorVec accumulateErrors(
     const ModuleName& name
 )
 {
-    DenseHashSet<ModuleName> seen{{}};
+    DenseHashSet2<ModuleName> seen;
     std::vector<ModuleName> queue{name};
 
     ErrorVec result;
@@ -360,7 +360,7 @@ std::vector<RequireCycle> getRequireCycles(
 {
     std::vector<RequireCycle> result;
 
-    DenseHashSet<const SourceNode*> seen(nullptr);
+    DenseHashSet2<const SourceNode*> seen;
     std::vector<const SourceNode*> stack;
     std::vector<const SourceNode*> path;
 
@@ -509,7 +509,7 @@ void Frontend::parseModules(const std::vector<ModuleName>& names)
 {
     LUAU_TIMETRACE_SCOPE("Frontend::parseModules", "Frontend");
 
-    DenseHashSet<Luau::ModuleName> seen{{}};
+    DenseHashSet2<Luau::ModuleName> seen;
 
     for (const ModuleName& name : names)
     {
@@ -555,14 +555,15 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     if (FFlag::LuauCyclicRequireTypeInference)
         computeSCCs(buildQueue);
 
-    DenseHashSet<Luau::ModuleName> seen{{}};
+    DenseHashSet2<Luau::ModuleName> seen;
     std::vector<BuildQueueItem> buildQueueItems;
     addBuildQueueItems(buildQueueItems, buildQueue, cycleDetected, seen, frontendOptions);
     LUAU_ASSERT(!buildQueueItems.empty());
 
     if (FFlag::DebugLuauLogSolverToJson)
     {
-        // TODO CLI-215634: Consider how to best represent cycles in the timetravel debugger. For now, we just log the first module in the cycle, which isn't ideal but at least gives some visibility.
+        // TODO CLI-215634: Consider how to best represent cycles in the timetravel debugger. For now, we just log the first module in the cycle,
+        // which isn't ideal but at least gives some visibility.
         LUAU_ASSERT(buildQueueItems.back().modules[0].name == name);
         buildQueueItems.back().recordJsonLog = true;
     }
@@ -636,7 +637,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
     std::vector<ModuleName> currModuleQueue;
     std::swap(currModuleQueue, moduleQueue);
 
-    DenseHashSet<Luau::ModuleName> seen{{}};
+    DenseHashSet2<Luau::ModuleName> seen;
 
     std::shared_ptr<BuildQueueWorkState> state = std::make_shared<BuildQueueWorkState>();
 
@@ -965,7 +966,7 @@ bool Frontend::parseGraph(
         Permanent
     };
 
-    DenseHashMap<SourceNode*, Mark> seen(nullptr);
+    DenseHashMap2<SourceNode*, Mark> seen;
     std::vector<SourceNode*> stack;
     std::vector<SourceNode*> path;
     bool cyclic = false;
@@ -1119,8 +1120,8 @@ static std::vector<ModuleSCCPtr> computeTarjanSCCs(
 
     struct TarjanNode
     {
-        int index = -1; // discovery order (-1 = unvisited)
-        int lowlink = 0; // lowest index reachable from this vertex's DFS subtree
+        int index = -1;       // discovery order (-1 = unvisited)
+        int lowlink = 0;      // lowest index reachable from this vertex's DFS subtree
         bool onStack = false; // currently on the SCC candidate stack
     };
 
@@ -1262,7 +1263,7 @@ void Frontend::addBuildQueueItems(
     std::vector<BuildQueueItem>& items,
     std::vector<ModuleName>& buildQueue,
     bool cycleDetected,
-    DenseHashSet<Luau::ModuleName>& seen,
+    DenseHashSet2<Luau::ModuleName>& seen,
     const FrontendOptions& frontendOptions
 )
 {
@@ -1317,7 +1318,8 @@ void Frontend::addBuildQueueItems(
                     {
                         scc->sharedArena = std::make_shared<TypeArena>();
 
-                        // Register placeholder modules so require() of SCC peers resolves to a BlockedType during constraint generation (later updated to its actual type during constraint solving)
+                        // Register placeholder modules so require() of SCC peers resolves to a BlockedType during constraint generation (later
+                        // updated to its actual type during constraint solving)
                         for (const ModuleName& member : scc->members)
                         {
                             TypeId placeholderReturnType = scc->sharedArena->addType(BlockedType{});
@@ -1506,9 +1508,9 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
         NotNull{rootScope.get()},
         {},
         {},
-        DenseHashMap<Scope*, TypeId>{nullptr},
+        DenseHashMap2<Scope*, TypeId>{},
         {},
-        std::move(mergedDeferredConstraints)
+        std::move(mergedDeferredConstraints),
     };
 
     Subtyping subtyping{builtinTypes, NotNull{scc->sharedArena.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceHandler}};
@@ -1657,9 +1659,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
     // Emit a warning on the first SCC member if the cycle is large enough.
     if (FInt::LuauCyclicSccWarningThreshold > 0 && scc->members.size() >= static_cast<size_t>(FInt::LuauCyclicSccWarningThreshold))
     {
-        item.modules[0].module->errors.emplace_back(
-            Location{}, item.modules[0].name, CyclicModuleGraphTooLarge{scc->members.size(), scc->members}
-        );
+        item.modules[0].module->errors.emplace_back(Location{}, item.modules[0].name, CyclicModuleGraphTooLarge{scc->members.size(), scc->members});
     }
 }
 
@@ -1747,7 +1747,14 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     }
 
     ModulePtr module = check(
-        sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, moduleInfo.stats, std::move(typeCheckLimits)
+        sourceModule,
+        mode,
+        requireCycles,
+        environmentScope,
+        /*forAutocomplete*/ false,
+        item.recordJsonLog,
+        moduleInfo.stats,
+        std::move(typeCheckLimits)
     );
 
     double duration = getTimestamp() - timestamp;
@@ -2222,7 +2229,8 @@ ModulePtr check(
             printf("%s", dumpCFG(*cfg).c_str());
         if (FFlag::DebugLuauDumpCFGJson)
             printf("%s\n", dumpCFGJson(*cfg).c_str());
-        state = std::make_unique<CFG::TypeStateMap>(NotNull{module->internalTypes.get()}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
+        state =
+            std::make_unique<CFG::TypeStateMap>(NotNull{module->internalTypes.get()}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
         state->computeTypes();
     }
 

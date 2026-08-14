@@ -126,7 +126,12 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
             const LUA_VECTOR_TYPE* vb = vvalue(lhs);
             LUA_VECTOR_TYPE vc = cast_to(LUA_VECTOR_TYPE, nvalue(rhs));
             setvvalue(
-                backing.L, tv, float(luai_numidiv(vb[0], vc)), float(luai_numidiv(vb[1], vc)), float(luai_numidiv(vb[2], vc)), float(luai_numidiv(vb[3], vc))
+                backing.L,
+                tv,
+                float(luai_numidiv(vb[0], vc)),
+                float(luai_numidiv(vb[1], vc)),
+                float(luai_numidiv(vb[2], vc)),
+                float(luai_numidiv(vb[3], vc))
             );
         }
         else
@@ -237,7 +242,7 @@ int TValueVmConstImpl::cmp(const BcOp& lhsOp, const BcImm& rhs) const
             return (bvalue(lhs) == static_cast<int>(rhs.valueBoolean)) ? 0 : 1;
     }
 
-    LUAU_ASSERT(!"incompatible types for VmConstImpl<TValue*>::cmp");
+    // BcImms are only either Int, Boolean or Import, and we are not doing import comparions, so return false
     return 0;
 }
 

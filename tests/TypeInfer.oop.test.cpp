@@ -915,7 +915,7 @@ TEST_CASE_FIXTURE(Fixture, "point_class")
                 return 100
             end
 
-            function new()
+            function create()
                 return Point { x = 0, y = 0 }
             end
         end
@@ -923,7 +923,7 @@ TEST_CASE_FIXTURE(Fixture, "point_class")
         local p = Point { x = 2, y = 3 }
         local len = p:length()
 
-        local p2 = Point.new()
+        local p2 = Point.create()
     )");
 
     LUAU_CHECK_NO_ERRORS(result);

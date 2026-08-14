@@ -460,7 +460,7 @@ enum LuauOpcode
     // NEWCLASS: reify a class object
     // A: target register of class
     // B: source register of superclass, or 0xFF if no superclass
-    // C: reserved
+    // C: bottom bit is 1 if the class is open, else 0; upper 7 bits are reserved
     // AUX: constant table index of unreified class object
     LOP_NEWCLASS,
 

@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/AssemblyBuilderX64.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/IrData.h"
 #include "Luau/RegisterX64.h"
 #include "Luau/SmallVector.h"
@@ -111,7 +111,7 @@ struct IrRegAllocX64
     unsigned nextSpillId = 1;
     std::vector<IrSpillX64> spills;
 
-    DenseHashMap<uint32_t, ExitSyncArgsX64> exitSyncArgs{~0u};
+    DenseHashMap2<uint32_t, ExitSyncArgsX64> exitSyncArgs;
 
     uint32_t allocActionCount = 0;
 };

@@ -19,6 +19,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
@@ -29,6 +30,10 @@ LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
+LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
+LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
+
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -921,9 +926,12 @@ TEST_CASE_FIXTURE(Fixture, "sealed_table_indexers_must_unify")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        std::string expected = "Expected this to be '{string}', but got '{number}'; \n"
-                               "the result of indexing is `number` in the latter type and `string` in the former type, "
-                               "and `number` is not exactly `string`";
+        std::string expected = FFlag::LuauNewTypePathErrorMessages
+                                   ? "Expected this to be '{string}', but got '{number}'; \n"
+                                     "Expected the indexer result to be exactly `string`, but got `number`"
+                                   : "Expected this to be '{string}', but got '{number}'; \n"
+                                     "the result of indexing is `number` in the latter type and `string` in the former type, "
+                                     "and `number` is not exactly `string`";
         auto actual = toString(result.errors[0]);
         CHECK_EQ(expected, actual);
     }
@@ -2398,11 +2406,17 @@ local b: B = a
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK(
-            "Expected this to be 'B', but got 'A'; \n"
-            "accessing `y` results in `number` in the latter type and `string` in the former type, and `number` is not exactly "
-            "`string`" == toString(result.errors.at(0))
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK(
+                "Expected this to be 'B', but got 'A'; \n"
+                "Expected property `y` to be exactly `string`, but got `number`" == toString(result.errors.at(0))
+            );
+        else
+            CHECK(
+                "Expected this to be 'B', but got 'A'; \n"
+                "accessing `y` results in `number` in the latter type and `string` in the former type, and `number` is not exactly `string`" ==
+                toString(result.errors.at(0))
+            );
     }
     else
     {
@@ -2431,11 +2445,17 @@ local b: B = a
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK(
-            "Expected this to be 'B', but got 'A'; \n"
-            "accessing `b.y` results in `number` in the latter type and `string` in the former type, and `number` is not exactly "
-            "`string`" == toString(result.errors.at(0))
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK(
+                "Expected this to be 'B', but got 'A'; \n"
+                "Expected property `b.y` to be exactly `string`, but got `number`" == toString(result.errors.at(0))
+            );
+        else
+            CHECK(
+                "Expected this to be 'B', but got 'A'; \n"
+                "accessing `b.y` results in `number` in the latter type and `string` in the former type, and `number` is not exactly `string`" ==
+                toString(result.errors.at(0))
+            );
     }
     else
     {
@@ -2500,11 +2520,17 @@ but got
         //
         // Second, nil <: unknown, so we consider that parameter to be optional.
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK(
-            "Expected this to be 'a1', but got 'b1'; \n"
-            "in the table portion, accessing `y` results in `string` in the latter type and `number` in the former type, and "
-            "`string` is not exactly `number`" == toString(result.errors[0])
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK(
+                "Expected this to be 'a1', but got 'b1'; \n"
+                "Expected property `y` of the table portion to be exactly `number`, but got `string`" == toString(result.errors[0])
+            );
+        else
+            CHECK(
+                "Expected this to be 'a1', but got 'b1'; \n"
+                "in the table portion, accessing `y` results in `string` in the latter type and `number` in the former type, and "
+                "`string` is not exactly `number`" == toString(result.errors[0])
+            );
     }
     else if (FFlag::LuauInstantiateInSubtyping)
     {
@@ -2534,11 +2560,17 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_key")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK(
-            "Expected this to be 'B', but got 'A'; \n"
-            "the index type is `number` in the latter type and `string` in the former type, and `number` is not exactly `string`" ==
-            toString(result.errors[0])
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK(
+                "Expected this to be 'B', but got 'A'; \n"
+                "Expected the indexer key type to be exactly `string`, but got `number`" == toString(result.errors[0])
+            );
+        else
+            CHECK(
+                "Expected this to be 'B', but got 'A'; \n"
+                "the index type is `number` in the latter type and `string` in the former type, and `number` is not exactly `string`" ==
+                toString(result.errors[0])
+            );
     }
     else
     {
@@ -2564,11 +2596,17 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK(
-            "Expected this to be 'B', but got 'A'; \n"
-            "the result of indexing is `number` in the latter type and `string` in the former type, and `number` is not exactly `string`" ==
-            toString(result.errors[0])
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK(
+                "Expected this to be 'B', but got 'A'; \n"
+                "Expected the indexer result to be exactly `string`, but got `number`" == toString(result.errors[0])
+            );
+        else
+            CHECK(
+                "Expected this to be 'B', but got 'A'; \n"
+                "the result of indexing is `number` in the latter type and `string` in the former type, and `number` is not exactly `string`" ==
+                toString(result.errors[0])
+            );
     }
     else
     {
@@ -2614,11 +2652,17 @@ local y: number = tmp.p.y
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK(
-            "Expected this to be 'HasSuper', but got 'tmp'; \n"
-            "accessing `p` results in `{ x: number, y: number }` in the latter type and `Super` in the former type, and `{ x: "
-            "number, y: number }` is not exactly `Super`" == toString(result.errors[0])
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK(
+                "Expected this to be 'HasSuper', but got 'tmp'; \n"
+                "Expected property `p` to be exactly `Super`, but got `{ x: number, y: number }`" == toString(result.errors[0])
+            );
+        else
+            CHECK(
+                "Expected this to be 'HasSuper', but got 'tmp'; \n"
+                "accessing `p` results in `{ x: number, y: number }` in the latter type and `Super` in the former type, and `{ x: "
+                "number, y: number }` is not exactly `Super`" == toString(result.errors[0])
+            );
     }
     else
     {
@@ -3666,6 +3710,7 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
+    ScopedFastFlag sff{FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks, true};
     CheckResult result = check(R"(
         local function f(s)
             return s:absolutely_no_scalar_has_this_method()
@@ -3695,12 +3740,12 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
 
         TypeMismatch* tm3 = get<TypeMismatch>(result.errors[2]);
         REQUIRE(tm3);
-        CHECK("typeof(string)" == toString(tm3->givenType));
+        CHECK("\"bar\" | \"baz\"" == toString(tm3->givenType));
         CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (a...) }" == toString(tm3->wantedType));
 
         TypeMismatch* tm4 = get<TypeMismatch>(result.errors[3]);
         REQUIRE(tm4);
-        CHECK("typeof(string)" == toString(tm4->givenType));
+        CHECK("\"bar\" | \"baz\"" == toString(tm4->givenType));
         CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (a...) }" == toString(tm4->wantedType));
     }
     else
@@ -4385,6 +4430,29 @@ TEST_CASE_FIXTURE(Fixture, "new_solver_supports_read_write_properties")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "nested_write_property_mismatch_describes_the_assigned_value")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        type A = { write outer: { read inner: number } }
+        type B = { write outer: { read inner: string } }
+        local a: A
+        local b: B = a
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    const std::string expected =
+        FFlag::LuauNewTypePathErrorMessages
+            ? "Expected this to be 'B', but got 'A'; \n"
+              "Expected property `inner` of a value assigned to property `outer` to be a supertype of `string`, but got `number`"
+            : "Expected this to be 'B', but got 'A'; \n"
+              "writing to `outer.inner` results in `number` in the latter type and `string` in the former type, and `number` is "
+              "not a supertype of `string`";
+    CHECK_EQ(expected, toString(result.errors[0]));
+}
+
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_error_suppression")
 {
     CheckResult result = check(R"(
@@ -4511,7 +4579,10 @@ TEST_CASE_FIXTURE(Fixture, "read_only_property_with_type_mismatch_reports_both_e
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     const std::string msg = toString(result.errors[0]);
-    CHECK(msg.find("accessing `woof` results in `string` in the latter type and `number` in the former type") != std::string::npos);
+    if (FFlag::LuauNewTypePathErrorMessages)
+        CHECK(msg.find("Expected property `woof` to be `number`, but got `string`") != std::string::npos);
+    else
+        CHECK(msg.find("accessing `woof` results in `string` in the latter type and `number` in the former type") != std::string::npos);
     CHECK(msg.find("`woof` is a read-only property in the latter type, but the former type requires a read-write property") != std::string::npos);
 }
 
@@ -5254,11 +5325,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_with_a_metatable_table_path")
     CHECK(result.errors.at(2).location == Location{{3, 8}, {5, 11}});
     CHECK("Type function instance setmetatable<unknown, unknown> is uninhabited" == toString(result.errors.at(2)));
 
-    CHECK(
-        "Expected this to be 'setmetatable<unknown, unknown>', but got '{ @metatable {  }, {  } & {  } }'; \n"
-        "the 1st entry in the type pack is `{ @metatable {  }, {  } & {  } }` and in the 1st entry in the type packreduces to "
-        "`never`, and `{ @metatable {  }, {  } & {  } }` is not a subtype of `never`" == toString(result.errors.at(3))
-    );
+    if (FFlag::LuauNewTypePathErrorMessages)
+        CHECK(
+            "Expected this to be 'setmetatable<unknown, unknown>', but got '{ @metatable {  }, {  } & {  } }'; \n"
+            "the 1st type pack entry is `{ @metatable {  }, {  } & {  } }` and the reduced form of the 1st type pack entry is "
+            "`never`, and `{ @metatable {  }, {  } & {  } }` is not a subtype of `never`" == toString(result.errors.at(3))
+        );
+    else
+        CHECK(
+            "Expected this to be 'setmetatable<unknown, unknown>', but got '{ @metatable {  }, {  } & {  } }'; \n"
+            "the 1st entry in the type pack is `{ @metatable {  }, {  } & {  } }` and in the 1st entry in the type packreduces to "
+            "`never`, and `{ @metatable {  }, {  } & {  } }` is not a subtype of `never`" == toString(result.errors.at(3))
+        );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
@@ -7290,6 +7368,26 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_indexers_3")
     CHECK_EQ("boolean | number | string", toString(requireType("val")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_mismatch")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauNewTypePathErrorMessages, true},
+        {FFlag::LuauPropertyModifierMismatchErrors, true},
+    };
+
+    CheckResult result = check(R"(
+        local x: { read string } = {}
+        local y: { string } = x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(
+        "Expected this to be '{string}', but got '{read string}'; \n"
+        "the indexer is read-only in the latter type, but the former type requires a read-write indexer" == toString(result.errors[0])
+    );
+}
+
 TEST_CASE_FIXTURE(Fixture, "test_indexing_into_unsealed_table")
 {
     ScopedFastFlag sffs[] = {
@@ -7346,6 +7444,76 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "normalization_always_intersects_table")
             end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2597_constraint_forcing_bad_refinement")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDontBlockRefinementUnconditionally, true},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        const MyClass = {
+            __index = {},
+        }
+
+        type MyClass<T> = setmetatable<{ _t: T }, typeof(MyClass)>
+
+        type MyFunction<T> = (class: MyClass<T>) -> () | {
+            fn: ((class: MyClass<T>) -> ())?,
+        }
+
+        function MyClass.__index.call<T>(self: MyClass<T>, f: MyFunction<T>): ()
+            if type(f) == "function" then
+                f(self)
+            elseif f.fn then
+                const thevalue = f.fn
+                local _ = thevalue
+                f.fn(self)
+            end
+        end
+    )"));
+
+    CHECK_EQ("({ @metatable MyClass, { _t: T } }) -> ()", toString(requireTypeAtPosition({16, 28})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_1")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {{FFlag::LuauIterableConstraintMutatesIterator, true}, {FFlag::DebugLuauAssertOnForcedConstraint, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function setupRootMappingMove(rootMapping)
+            -- Prior, the new solver would eagerly generalize `rootMapping.RootToDescendantCountMap`
+            -- to unknown, which is clearly not correct.
+            for root, childCount in rootMapping.RootToDescendantCountMap do
+                   string.len(root)
+                   math.abs(childCount)
+            end
+        end
+    )"));
+
+    CHECK_EQ("({ read RootToDescendantCountMap: { [string]: number } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {{FFlag::LuauIterableConstraintMutatesIterator, true}, {FFlag::DebugLuauAssertOnForcedConstraint, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function setupRootMappingMove(rootMapping)
+            for root, childCount in rootMapping.RootToDescendantCountMap do
+            end
+        end
+    )"));
+
+    CHECK_EQ("<a, b>({ read RootToDescendantCountMap: { [a]: b } }) -> ()", toString(requireType("setupRootMappingMove")));
 }
 
 TEST_SUITE_END();

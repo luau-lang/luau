@@ -1028,6 +1028,7 @@ struct BytecodeGraphParser
             case LOP_NEWCLASS:
                 LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
                 addVmRegInput(node, LUAU_INSN_B(insn));
+                addImmInput(node, static_cast<uint32_t>(LUAU_INSN_C(insn)));
                 addVmConstInput(node, aux);
                 addProducer(LUAU_INSN_A(insn), nodeOp);
                 break;

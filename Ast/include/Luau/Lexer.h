@@ -4,7 +4,7 @@
 #include "Luau/Allocator.h"
 #include "Luau/Ast.h"
 #include "Luau/Location.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Common.h"
 
 #include <vector>
@@ -155,7 +155,7 @@ private:
         size_t operator()(const Entry& e) const;
     };
 
-    DenseHashSet<Entry, EntryHash> data;
+    DenseHashSet2<Entry, EntryHash> data;
 
     Allocator& allocator;
 };

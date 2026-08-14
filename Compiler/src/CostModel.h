@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 
 namespace Luau
 {
@@ -16,8 +16,8 @@ uint64_t modelCost(
     AstNode* root,
     AstLocal* const* vars,
     size_t varCount,
-    const DenseHashMap<AstExprCall*, int>& builtins,
-    const DenseHashMap<AstExpr*, Constant>& constants
+    const DenseHashMap2<AstExprCall*, int>& builtins,
+    const DenseHashMap2<AstExpr*, Constant>& constants
 );
 // when additional data is not available, used to test the cost model
 uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount);

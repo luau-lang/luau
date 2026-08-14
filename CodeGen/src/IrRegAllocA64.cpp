@@ -13,7 +13,6 @@
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
 LUAU_FASTFLAGVARIABLE(DebugCodegenLimitRegs)
-LUAU_FASTFLAGVARIABLE(LuauCodegenA64ExitUseCheck)
 
 namespace Luau
 {
@@ -606,7 +605,7 @@ void IrRegAllocA64::spill(Set& set, uint32_t index, uint32_t targetInstIdx)
     CODEGEN_ASSERT(!def.spilled);
     CODEGEN_ASSERT(!def.needsReload);
 
-    if (def.lastUse == index && (!FFlag::LuauCodegenA64ExitUseCheck || !isUsedInVmExitSync(function, index, targetInstIdx)))
+    if (def.lastUse == index && !isUsedInVmExitSync(function, index, targetInstIdx))
     {
         // instead of spilling the register to never reload it, we assume the register is not needed anymore
     }

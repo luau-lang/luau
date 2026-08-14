@@ -4,7 +4,7 @@
 
 #include "Luau/Anyification.h"
 #include "Luau/Common.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
@@ -12,11 +12,13 @@
 #include "Luau/TypePack.h"
 #include "Luau/TypeOrPack.h"
 
+#include <algorithm>
 #include <functional>
 #include <optional>
 #include <sstream>
 
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal
@@ -276,6 +278,39 @@ PathBuilder& PathBuilder::mappedGenericPack(TypePackId mappedType)
 
 namespace
 {
+
+bool isSingletonTypePack(TypePackId pack)
+{
+    LUAU_ASSERT(FFlag::LuauNewTypePathErrorMessages);
+
+    DenseHashSet2<TypePackId> seen;
+    bool foundElement = false;
+    int steps = 0;
+
+    while (pack && ++steps <= DFInt::LuauTypePathMaximumTraverseSteps)
+    {
+        // if we've already seen it, we can early return
+        if (!seen.try_insert(pack))
+            return false;
+
+        if (const auto* bound = get<Unifiable::Bound<TypePackId>>(pack))
+        {
+            pack = bound->boundTo;
+            continue;
+        }
+
+        const TypePack* typePack = get<TypePack>(pack);
+        if (!typePack || typePack->head.size() > 1 || (foundElement && !typePack->head.empty()))
+            return false;
+
+        foundElement = foundElement || !typePack->head.empty();
+        if (!typePack->tail)
+            return foundElement;
+        pack = *typePack->tail;
+    }
+
+    return false;
+}
 
 struct TraversalState
 {
@@ -637,7 +672,68 @@ struct TraversalState
     }
 };
 
+bool traverse(TraversalState& state, const Path& path, TypePathRenderMetadata* renderMetadata = nullptr)
+{
+    auto step = [&state](auto&& component)
+    {
+        return state.traverse(component);
+    };
+
+    for (size_t i = 0; i < path.components.size(); ++i)
+    {
+        if (renderMetadata)
+        {
+            // We should only ever compute render metadata when the flag is enabled, so we assert that here.
+            LUAU_ASSERT(FFlag::LuauNewTypePathErrorMessages);
+
+            if (i > 0)
+            {
+                const auto* field = get_if<TypePath::PackField>(&path.components[i - 1]);
+                const auto* index = get_if<TypePath::Index>(&path.components[i]);
+                if (field && *field == TypePath::PackField::Returns && index && index->variant == TypePath::Index::Variant::Pack && index->index == 0)
+                {
+                    if (const TypePackId* pack = get_if<TypePackId>(&state.current))
+                        renderMetadata->returnTypePacks.try_insert(i, TypePathRenderMetadata::ReturnTypePackInfo{*pack, isSingletonTypePack(*pack)});
+                }
+            }
+
+            const auto* typeField = get_if<TypePath::TypeField>(&path.components[i]);
+            if (i + 1 == path.components.size() && typeField && *typeField == TypePath::TypeField::Negated)
+            {
+                if (const TypeId* type = get_if<TypeId>(&state.current); type && get<NegationType>(follow(*type)))
+                    renderMetadata->enclosingNegation = *type;
+            }
+        }
+
+        if (!visit(step, path.components[i]))
+            return false;
+    }
+
+    return true;
+}
+
+template<typename TID>
+TypePathRenderMetadata deriveRenderMetadataImpl(TID root, const TypePath::Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena)
+{
+    LUAU_ASSERT(FFlag::LuauNewTypePathErrorMessages);
+
+    TraversalState state{follow(root), builtinTypes, arena};
+    TypePathRenderMetadata options;
+    traverse(state, path, &options);
+    return options;
+}
+
 } // namespace
+
+TypePathRenderMetadata deriveRenderMetadata(TypeId root, const TypePath::Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena)
+{
+    return deriveRenderMetadataImpl(root, path, builtinTypes, arena);
+}
+
+TypePathRenderMetadata deriveRenderMetadata(TypePackId root, const TypePath::Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena)
+{
+    return deriveRenderMetadataImpl(root, path, builtinTypes, arena);
+}
 
 std::string toString(const TypePath::Path& path, bool prefixDot)
 {
@@ -739,7 +835,465 @@ std::string toString(const TypePath::Path& path, bool prefixDot)
     return result.str();
 }
 
-std::string toStringHuman(const TypePath::Path& path)
+namespace
+{
+struct RenderTypePath
+{
+    explicit RenderTypePath(const TypePathRenderMetadata& options)
+        : options(&options)
+    {
+    }
+
+    enum class Kind
+    {
+        None,
+        Property,
+        Metatable,
+        Table,
+        IndexMember,
+        PackEntry,
+        Parameter,
+        ReturnValue,
+        ReturnType,
+        ParameterTypes,
+        ReturnTypes,
+        Tail,
+        Variadic,
+        PackSlice,
+        Reduction,
+        MappedPack,
+        IndexerResult,
+        Other,
+    };
+
+    struct Phrase
+    {
+        Kind kind = Kind::None;
+        std::string text;
+        // Write properties need an alternate form when another phrase is
+        // built on top of them ("a value assigned to ...").
+        std::string nestedText;
+        bool propertyIsRead = true;
+        std::string propertyPrefix;
+        std::string propertyName;
+        std::string functionOwner;
+        std::optional<TypePath::PackField> tailOwner;
+        std::string mappedPackEntryOwner;
+        bool mappedPackIsTail = false;
+        bool plural = false;
+        std::string terminalOverride;
+    };
+
+    NotNull<const TypePathRenderMetadata> options;
+    Phrase current;
+    size_t componentIndex = 0;
+
+    void render(const TypePath::Component& component, size_t index)
+    {
+        componentIndex = index;
+        visit(
+            [this](const auto& component)
+            {
+                render(component);
+            },
+            component
+        );
+    }
+
+    void render(const TypePath::Property& property)
+    {
+        Phrase next;
+        next.kind = Kind::Property;
+        next.propertyIsRead = property.isRead;
+
+        if (current.kind == Kind::Property && current.propertyIsRead)
+        {
+            next.propertyPrefix = current.propertyPrefix;
+            next.propertyName = current.propertyName + "." + property.name;
+        }
+        else
+        {
+            next.propertyName = property.name;
+            if (current.kind == Kind::Metatable)
+                next.propertyPrefix = "in " + current.text;
+            else if (current.kind == Kind::IndexMember || current.kind == Kind::IndexerResult)
+                next.propertyPrefix = "in " + current.text;
+            else if (current.kind != Kind::None)
+                next.propertyPrefix = "of " + (current.nestedText.empty() ? current.text : current.nestedText);
+        }
+
+        next.text = "property `" + next.propertyName + "`";
+        if (!next.propertyPrefix.empty())
+            next.text += " " + next.propertyPrefix;
+
+        next.nestedText = next.text;
+        if (!next.propertyIsRead)
+            next.nestedText = "a value assigned to " + next.text;
+
+        current = std::move(next);
+    }
+
+    void render(const TypePath::Index& index)
+    {
+        if (index.variant != TypePath::Index::Variant::Pack)
+            return;
+
+        Phrase next;
+        const std::string position = toHumanReadableIndex(index.index);
+        const std::string context = current.nestedText.empty() ? current.text : current.nestedText;
+
+        switch (current.kind)
+        {
+        case Kind::ParameterTypes:
+            next.kind = Kind::Parameter;
+            next.text = "the " + position + " parameter";
+
+            if (!current.functionOwner.empty())
+                next.text += " of " + current.functionOwner;
+
+            break;
+
+        case Kind::ReturnTypes:
+        {
+            const TypePathRenderMetadata::ReturnTypePackInfo* returnTypePack = options->returnTypePacks.find(componentIndex);
+            if (returnTypePack && returnTypePack->isSingular)
+            {
+                next.kind = Kind::ReturnType;
+                next.text = "the return type";
+            }
+            else
+            {
+                next.kind = Kind::ReturnValue;
+                next.text = "the " + position + " return value";
+            }
+
+            if (!current.functionOwner.empty())
+                next.text += " of " + current.functionOwner;
+
+            break;
+        }
+
+        case Kind::MappedPack:
+            next.kind = Kind::PackEntry;
+            next.text = "the " + position + " entry of " + current.mappedPackEntryOwner;
+            break;
+
+        default:
+            next.kind = Kind::PackEntry;
+            next.text = "the " + position + " type pack entry";
+
+            if (!context.empty())
+                next.text += " of " + context;
+
+            break;
+        }
+
+        next.nestedText = next.text;
+        current = std::move(next);
+    }
+
+    void render(TypePath::TypeField field)
+    {
+        Phrase next;
+        const std::string context = current.nestedText.empty() ? current.text : current.nestedText;
+        switch (field)
+        {
+        case TypePath::TypeField::Table:
+            next.kind = Kind::Table;
+            next.text = "the table portion" + (context.empty() ? "" : " of " + context);
+            break;
+
+        case TypePath::TypeField::Metatable:
+            next.kind = Kind::Metatable;
+            next.text = "the metatable" + (context.empty() ? "" : " of " + context);
+
+            if (current.kind == Kind::Property)
+                next.terminalOverride = current.text + (current.propertyIsRead ? " has metatable " : " accepts values with metatable ");
+
+            break;
+
+        case TypePath::TypeField::LowerBound:
+            next.kind = Kind::Other;
+            next.text = "the lower bound" + (context.empty() ? "" : " of " + context);
+            break;
+
+        case TypePath::TypeField::UpperBound:
+            next.kind = Kind::Other;
+            next.text = "the upper bound" + (context.empty() ? "" : " of " + context);
+            break;
+
+        case TypePath::TypeField::IndexLookup:
+            next.kind = Kind::Other;
+            next.text = "the indexer key type" + (context.empty() ? "" : " of " + context);
+            break;
+
+        case TypePath::TypeField::IndexResult:
+            next.kind = Kind::IndexerResult;
+            next.text = "the indexer result" + (context.empty() ? "" : " of " + context);
+            break;
+
+        case TypePath::TypeField::Negated:
+            next.kind = Kind::Other;
+            next.text = "the negated type" + (context.empty() ? "" : " in " + context);
+            break;
+
+        case TypePath::TypeField::Variadic:
+            next.kind = Kind::Variadic;
+            next.functionOwner = current.functionOwner;
+
+            if (current.kind == Kind::Tail && current.tailOwner == TypePath::PackField::Arguments)
+                next.text = "the variadic parameter";
+            else if (current.kind == Kind::Tail && current.tailOwner == TypePath::PackField::Returns)
+                next.text = "the variadic return value";
+            else
+                next.text = "the variadic tail";
+
+            if (!next.functionOwner.empty())
+                next.text += " of " + next.functionOwner;
+
+            break;
+        }
+
+        next.nestedText = next.text;
+        current = std::move(next);
+    }
+
+    void render(TypePath::PackField field)
+    {
+        Phrase next;
+        const std::string context = current.nestedText.empty() ? current.text : current.nestedText;
+        switch (field)
+        {
+        case TypePath::PackField::Tail:
+            next.kind = Kind::Tail;
+            if (current.kind == Kind::ParameterTypes)
+                next.tailOwner = TypePath::PackField::Arguments;
+            else if (current.kind == Kind::ReturnTypes)
+                next.tailOwner = TypePath::PackField::Returns;
+
+            next.functionOwner = current.functionOwner;
+
+            if (next.tailOwner == TypePath::PackField::Arguments)
+                next.text = "the parameter type pack tail" + (next.functionOwner.empty() ? "" : " of " + next.functionOwner);
+            else if (next.tailOwner == TypePath::PackField::Returns)
+                next.text = "the return type pack tail" + (next.functionOwner.empty() ? "" : " of " + next.functionOwner);
+            else
+                next.text = "the type pack's tail" + (context.empty() ? "" : " of " + context);
+
+            break;
+
+        case TypePath::PackField::Arguments:
+            next.kind = Kind::ParameterTypes;
+            next.text = "the parameter types";
+            break;
+
+        case TypePath::PackField::Returns:
+            next.kind = Kind::ReturnTypes;
+            next.text = "the return types";
+            break;
+        }
+
+        if (field != TypePath::PackField::Tail)
+        {
+            if (current.kind == Kind::Metatable)
+                next.functionOwner = "the metatable function";
+            else if (current.kind == Kind::Property && !current.propertyIsRead)
+            {
+                next.functionOwner = "a function assigned to `" + current.propertyName + "`";
+                if (!current.propertyPrefix.empty())
+                    next.functionOwner += " " + current.propertyPrefix;
+            }
+            else if (current.kind == Kind::ReturnType)
+                next.functionOwner = "the function returned by this function";
+            else if (current.kind != Kind::None)
+                next.functionOwner = context;
+
+            if (!next.functionOwner.empty())
+                next.text += " of " + next.functionOwner;
+        }
+
+        next.nestedText = next.text;
+        current = std::move(next);
+    }
+
+    void render(const TypePath::PackSlice& slice)
+    {
+        Phrase next;
+        next.kind = Kind::PackSlice;
+
+        const std::string position = toHumanReadableIndex(slice.start_index);
+        switch (current.kind)
+        {
+        case Kind::ParameterTypes:
+            next.plural = true;
+            if (current.functionOwner == "the metatable function")
+                next.text = "the metatable function's parameters from the " + position + " onward";
+            else
+            {
+                next.text = "the parameters";
+                if (!current.functionOwner.empty())
+                    next.text += " of " + current.functionOwner;
+                next.text += " from the " + position + " onward";
+            }
+            break;
+
+        case Kind::ReturnTypes:
+            next.plural = true;
+            if (current.functionOwner == "the metatable function")
+                next.text = "the metatable function's return values from the " + position + " onward";
+            else
+            {
+                next.text = "the return values";
+                if (!current.functionOwner.empty())
+                    next.text += " of " + current.functionOwner;
+                next.text += " from the " + position + " onward";
+            }
+            break;
+
+        case Kind::MappedPack:
+            if (current.tailOwner == TypePath::PackField::Arguments)
+                next.text = "the substituted parameter tail";
+            else if (current.tailOwner == TypePath::PackField::Returns)
+                next.text = "the substituted return tail";
+            else if (current.mappedPackIsTail)
+                next.text = "the substituted type pack tail";
+            else
+                next.text = "the substituted type pack";
+
+            if (!current.functionOwner.empty())
+                next.text += " for " + current.functionOwner;
+            next.text += ", from its " + position + " entry onward,";
+            break;
+
+        default:
+            next.text = "the type pack from its " + position + " entry onward";
+        }
+
+        next.nestedText = next.text;
+        current = std::move(next);
+    }
+
+    void render(const TypePath::Reduction&)
+    {
+        Phrase next;
+
+        next.kind = Kind::Reduction;
+
+        if (current.nestedText.empty())
+            next.text = "the reduced type";
+        else
+            next.text = "the reduced form of " + current.nestedText;
+
+        next.nestedText = next.text;
+        current = std::move(next);
+    }
+
+    void render(const TypePath::GenericPackMapping&)
+    {
+        Phrase next;
+        next.kind = Kind::MappedPack;
+
+        switch (current.kind)
+        {
+        case Kind::Tail:
+        {
+            next.mappedPackIsTail = true;
+            next.tailOwner = current.tailOwner;
+            next.functionOwner = current.functionOwner;
+
+            if (current.tailOwner == TypePath::PackField::Arguments)
+            {
+                next.text = "the parameter type pack tail" + (next.functionOwner.empty() ? "" : " of " + next.functionOwner);
+                next.mappedPackEntryOwner =
+                    "the substituted parameter type pack tail" + (next.functionOwner.empty() ? "" : " of " + next.functionOwner);
+            }
+            else if (current.tailOwner == TypePath::PackField::Returns)
+            {
+                next.text = "the return type pack tail" + (next.functionOwner.empty() ? "" : " of " + next.functionOwner);
+                next.mappedPackEntryOwner = "the substituted return type pack tail" + (next.functionOwner.empty() ? "" : " of " + next.functionOwner);
+            }
+            else
+            {
+                next.text = "the type pack tail";
+                next.mappedPackEntryOwner = "the substituted type pack tail";
+            }
+
+            break;
+        }
+
+        default:
+            next.text = "the generic type pack";
+            next.mappedPackEntryOwner = "the substituted type pack";
+            break;
+        }
+
+        next.nestedText = next.text;
+        current = std::move(next);
+    }
+
+    RenderedTypePath finalize()
+    {
+        std::string subject = current.text;
+        if (current.kind == Kind::Property && !current.propertyIsRead)
+            subject = "values assigned to " + current.text;
+
+        if (!current.terminalOverride.empty())
+            return {std::move(subject), std::move(current.terminalOverride)};
+
+        switch (current.kind)
+        {
+        case Kind::None:
+            return {};
+
+        case Kind::Property:
+            if (current.propertyIsRead)
+                return {std::move(subject), current.text + " has type "};
+            else
+                return {std::move(subject), current.text + " accepts values of type "};
+
+        case Kind::Parameter:
+        case Kind::ReturnValue:
+            return {std::move(subject), current.text + " has type "};
+
+        case Kind::ParameterTypes:
+        case Kind::ReturnTypes:
+            return {std::move(subject), current.text + " are "};
+
+        case Kind::PackSlice:
+            if (current.plural)
+                return {std::move(subject), current.text + " are "};
+            else
+                return {std::move(subject), current.text + " is "};
+
+        case Kind::Variadic:
+            if (current.text == "the variadic tail")
+                return {std::move(subject), current.text + " has element type "};
+            else
+                return {std::move(subject), current.text + " has type "};
+
+        case Kind::MappedPack:
+            return {std::move(subject), current.text + " is substituted with "};
+
+        default:
+            return {std::move(subject), current.text + " is "};
+        }
+    }
+};
+} // namespace
+
+RenderedTypePath renderTypePath(const TypePath::Path& path, const TypePathRenderMetadata& options)
+{
+    RenderTypePath renderer{options};
+    for (size_t componentIndex = 0; componentIndex < path.components.size(); ++componentIndex)
+        renderer.render(path.components[componentIndex], componentIndex);
+
+    RenderedTypePath result = renderer.finalize();
+    result.enclosingNegation = options.enclosingNegation;
+    return result;
+}
+
+/// Remove with FFlag::LuauNewTypePathErrorMessages
+std::string toStringHuman_DEPRECATED(const TypePath::Path& path)
 {
     enum class State
     {
@@ -966,24 +1520,12 @@ std::string toStringHuman(const TypePath::Path& path)
     return result.str();
 }
 
-static bool traverse(TraversalState& state, const Path& path)
-{
-    auto step = [&state](auto&& c)
-    {
-        return state.traverse(c);
-    };
-
-    for (const TypePath::Component& component : path.components)
-    {
-        bool stepSuccess = visit(step, component);
-        if (!stepSuccess)
-            return false;
-    }
-
-    return true;
-}
-
-std::optional<TypeOrPack> traverse(const TypePackId root, const Path& path, const NotNull<BuiltinTypes> builtinTypes, const NotNull<TypeArena> arena)
+std::optional<TypeOrPack> traverse_DEPRECATED(
+    const TypePackId root,
+    const Path& path,
+    const NotNull<BuiltinTypes> builtinTypes,
+    const NotNull<TypeArena> arena
+)
 {
     TraversalState state(follow(root), builtinTypes, arena);
     if (traverse(state, path))
@@ -996,10 +1538,53 @@ std::optional<TypeOrPack> traverse(const TypePackId root, const Path& path, cons
         return std::nullopt;
 }
 
-std::optional<TypeOrPack> traverse(const TypeId root, const Path& path, const NotNull<BuiltinTypes> builtinTypes, const NotNull<TypeArena> arena)
+std::optional<TypeOrPack> traverse(
+    const TypePackId root,
+    const Path& path,
+    const NotNull<BuiltinTypes> builtinTypes,
+    const NotNull<TypeArena> arena,
+    TypePathRenderMetadata* renderMetadata
+)
+{
+    LUAU_ASSERT(FFlag::LuauNewTypePathErrorMessages);
+
+    TraversalState state(follow(root), builtinTypes, arena);
+    if (traverse(state, path, renderMetadata))
+    {
+        if (state.encounteredErrorSuppression)
+            return builtinTypes->errorType;
+        return state.current;
+    }
+    else
+        return std::nullopt;
+}
+
+std::optional<TypeOrPack> traverse_DEPRECATED(
+    const TypeId root,
+    const Path& path,
+    const NotNull<BuiltinTypes> builtinTypes,
+    const NotNull<TypeArena> arena
+)
 {
     TraversalState state(follow(root), builtinTypes, arena);
     if (traverse(state, path))
+        return state.current;
+    else
+        return std::nullopt;
+}
+
+std::optional<TypeOrPack> traverse(
+    const TypeId root,
+    const Path& path,
+    const NotNull<BuiltinTypes> builtinTypes,
+    const NotNull<TypeArena> arena,
+    TypePathRenderMetadata* renderMetadata
+)
+{
+    LUAU_ASSERT(FFlag::LuauNewTypePathErrorMessages);
+
+    TraversalState state(follow(root), builtinTypes, arena);
+    if (traverse(state, path, renderMetadata))
         return state.current;
     else
         return std::nullopt;
