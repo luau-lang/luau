@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 
 #include <vector>
 
@@ -30,23 +30,23 @@ struct Variable
     bool constant = false;   // is the variable's value a compile-time constant? filled by constantFold
 };
 
-void assignMutable(DenseHashMap<AstName, Global>& globals, const AstNameTable& names, const char* const* mutableGlobals);
+void assignMutable(DenseHashMap2<AstName, Global>& globals, const AstNameTable& names, const char* const* mutableGlobals);
 void trackValues(
-    DenseHashMap<AstName, Global>& globals,
-    DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstName, AstLocal*>& classLocals,
-    DenseHashSet<AstLocal*>& exportedFunctions,
+    DenseHashMap2<AstName, Global>& globals,
+    DenseHashMap2<AstLocal*, Variable>& variables,
+    DenseHashMap2<AstName, AstLocal*>& classLocals,
+    DenseHashSet2<AstLocal*>& exportedFunctions,
     std::vector<AstLocal*>& exportedVariables,
     AstNode* root
 );
 void trackValues_DEPRECATED(
-    DenseHashMap<AstName, Global>& globals,
-    DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstName, AstLocal*>& classLocals,
+    DenseHashMap2<AstName, Global>& globals,
+    DenseHashMap2<AstLocal*, Variable>& variables,
+    DenseHashMap2<AstName, AstLocal*>& classLocals,
     AstNode* root
 );
 
-inline Global getGlobalState(const DenseHashMap<AstName, Global>& globals, AstName name)
+inline Global getGlobalState(const DenseHashMap2<AstName, Global>& globals, AstName name)
 {
     const Global* it = globals.find(name);
 

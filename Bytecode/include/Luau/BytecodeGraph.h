@@ -3,6 +3,7 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/BytecodeBuilder.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/SmallVector.h"
 
 #include <algorithm>

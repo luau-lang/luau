@@ -728,7 +728,7 @@ LOADK R6 K4 [2]
 MOVE R7 R1
 MOVE R8 R2
 MOVE R9 R3
-SETLIST R4 R5 6 [1]
+SETLIST R4 R5 5 [1]
 LOADK R6 K5 [3]
 GETTABLE R5 R4 R6
 MOVE R0 R5
@@ -786,7 +786,7 @@ LOADK R6 K3 [1]
 MOVE R7 R1
 MOVE R8 R2
 MOVE R9 R3
-SETLIST R5 R6 5 [1]
+SETLIST R5 R6 4 [1]
 LOADK R7 K4 [3]
 GETTABLE R6 R5 R7
 MOVE R0 R6
@@ -1463,6 +1463,101 @@ JUMP L1
 L0: CALLFB R2 0 1 [-1]
 L1: SETLIST R0 R1 2 [1]
 RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_varargs_sequence_in_setlist")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(...)
+            return {...}
+        end
+
+        local function caller()
+            inlinee()
+        end
+    )"),
+        R"(
+GETUPVAL R0 0
+CMPPROTO R0 #0 L0
+NEWTABLE R1 0 0
+MOVE R0 R1
+RETURN R0 0
+L0: CALLFB R0 0 0 [-1]
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_varargs_sequence_in_for_loop")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(a, ...)
+            for _ in ... do
+                pcall += _
+            end
+        end
+
+        local function caller()
+            inlinee()
+        end
+    )"),
+        R"(
+GETUPVAL R0 0
+CMPPROTO R0 #0 L2
+LOADNIL R1
+LOADNIL R3
+LOADNIL R4
+LOADNIL R5
+FORGPREP R3 L1
+L0: GETGLOBAL R8 K0 ['pcall']
+ADD R8 R8 R6
+SETGLOBAL R8 K0 ['pcall']
+L1: FORGLOOP R3 L0 1
+RETURN R0 0
+L2: CALLFB R0 0 0 [-1]
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_in_loops_phi")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+            local function inlinee(...)
+                repeat
+                    local a = ...
+                    while a do break end
+                until false
+            end
+
+            local function caller()
+                inlinee()
+            end
+    )"),
+        R"(
+GETUPVAL R0 0
+CMPPROTO R0 #0 L3
+L0: LOADNIL R1
+L1: JUMPIFNOT R1 L2
+JUMP L2
+JUMPBACK L1
+L2: LOADB R2 0
+JUMPIF R2 L4
+JUMPBACK L0
+RETURN R0 0
+L3: CALLFB R0 0 0 [-1]
+L4: RETURN R0 0
 )"
     );
 }

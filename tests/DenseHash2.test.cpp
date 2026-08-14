@@ -276,6 +276,15 @@ TEST_CASE("set_duplicate_insert")
     CHECK(s.contains(1));
 }
 
+TEST_CASE("set_try_insert")
+{
+    Luau::DenseHashSet2<int> s;
+
+    CHECK(s.try_insert(1));
+    CHECK(!s.try_insert(1));
+    CHECK(s.size() == 1);
+}
+
 TEST_CASE("set_clear")
 {
     Luau::DenseHashSet2<int> s;

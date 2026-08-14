@@ -5,7 +5,7 @@
 #include "Luau/Lexer.h"
 #include "Luau/ParseOptions.h"
 #include "Luau/ParseResult.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Common.h"
 #include "Luau/Cst.h"
 
@@ -191,7 +191,7 @@ private:
     // type Name `=' Type
     AstStat* parseTypeAlias(const Location& start, bool exported, Position typeKeywordPosition);
 
-    AstStat* parseClassStat(const Location& start, bool exported);
+    AstStat* parseClassStat(const Location& start, bool exported, bool open);
 
     // type function Name ... end
     AstStat* parseTypeFunction(const Location& start, bool exported, Position typeKeywordPosition);
@@ -543,15 +543,15 @@ private:
     std::vector<Function> functionStack;
     size_t typeFunctionDepth = 0;
 
-    DenseHashMap<AstName, AstLocal*> localMap;
+    DenseHashMap2<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
-    DenseHashMap<AstName, AstStatClass*> classesWithinModule{{}};
+    DenseHashMap2<AstName, AstStatClass*> classesWithinModule;
 
     std::vector<ParseError> parseErrors;
 
     std::vector<unsigned int> matchRecoveryStopOnToken;
 
-    DenseHashMap<AstName, Location> declaredExportBindings;
+    DenseHashMap2<AstName, Location> declaredExportBindings;
     bool hasModuleReturn = false;
 
     std::vector<AstAttr*> scratchAttr;

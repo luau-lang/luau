@@ -158,8 +158,8 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
 }
 
 Tarjan::Tarjan()
-    : typeToIndex(nullptr, FInt::LuauTarjanPreallocationSize)
-    , packToIndex(nullptr, FInt::LuauTarjanPreallocationSize)
+    : typeToIndex(FInt::LuauTarjanPreallocationSize)
+    , packToIndex(FInt::LuauTarjanPreallocationSize)
 {
     nodes.reserve(FInt::LuauTarjanPreallocationSize);
     stack.reserve(FInt::LuauTarjanPreallocationSize);

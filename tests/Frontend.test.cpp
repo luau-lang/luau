@@ -2,7 +2,7 @@
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Frontend.h"
 #include "Luau/Parser.h"
 #include "Luau/RequireTracer.h"
@@ -1760,7 +1760,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_dependents_stored_on_node_as_graph_upda
 
     auto validateMatchesRequireLists = [&](const std::string& message)
     {
-        DenseHashMap<ModuleName, std::vector<ModuleName>> dependents{{}};
+        DenseHashMap2<ModuleName, std::vector<ModuleName>> dependents;
         for (const auto& module : getFrontend().sourceNodes)
         {
             for (const auto& dep : module.second->requireSet)
@@ -2964,7 +2964,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "nocheck_export_cycle_produces_error_type")
     std::optional<TypeId> cExports = first(cModule->returnType);
     REQUIRE(bool(cExports));
 
-    // SCC path runs constraint solving before module-level generalization, so the free types in A and B are constrained to be the same type. The unconstrained free type generalizes to unknown.
+    // SCC path runs constraint solving before module-level generalization, so the free types in A and B are constrained to be the same type. The
+    // unconstrained free type generalizes to unknown.
     std::string result_str = toString(*cExports);
     CHECK(result_str == "{ a: { read hello: unknown }, b: { read hello: unknown } }");
 }

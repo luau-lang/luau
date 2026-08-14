@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "lua.h"
 
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 
 #include <thread>
 #include <atomic>
@@ -24,7 +24,7 @@ struct Profiler
     std::string stackScratch;
 
     // statistics, updated by trigger
-    Luau::DenseHashMap<std::string, uint64_t> data{""};
+    Luau::DenseHashMap2<std::string, uint64_t> data;
     uint64_t gc[16] = {};
 } gProfiler;
 

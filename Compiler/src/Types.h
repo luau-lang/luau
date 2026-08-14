@@ -4,7 +4,7 @@
 #include "Luau/Ast.h"
 #include "Luau/Bytecode.h"
 #include "Luau/Compiler.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "ValueTracking.h"
 
 #include <string>
@@ -31,15 +31,15 @@ struct BuiltinAstTypes
 };
 
 void buildTypeMap(
-    DenseHashMap<AstExprFunction*, std::string>& functionTypes,
-    DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes,
-    DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes,
+    DenseHashMap2<AstExprFunction*, std::string>& functionTypes,
+    DenseHashMap2<AstLocal*, LuauBytecodeType>& localTypes,
+    DenseHashMap2<AstExpr*, LuauBytecodeType>& exprTypes,
     AstNode* root,
     const char* hostVectorType,
-    const DenseHashMap<AstName, uint8_t>& userdataTypes,
+    const DenseHashMap2<AstName, uint8_t>& userdataTypes,
     const BuiltinAstTypes& builtinTypes,
-    const DenseHashMap<AstExprCall*, int>& builtinCalls,
-    const DenseHashMap<AstName, Compile::Global>& globals,
+    const DenseHashMap2<AstExprCall*, int>& builtinCalls,
+    const DenseHashMap2<AstName, Compile::Global>& globals,
     LibraryMemberTypeCallback libraryMemberTypeCb,
     BytecodeBuilder& bytecode
 );

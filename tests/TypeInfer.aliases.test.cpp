@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
-LUAU_FASTFLAG(LuauAvoidCascadingRecursiveConstraintViolationError)
 LUAU_FASTFLAG(LuauDoNotEmplaceAnnotatedType)
 LUAU_FASTFLAG(LuauInstantiationCheckArguments)
 
@@ -1344,8 +1343,6 @@ TEST_CASE_FIXTURE(Fixture, "only_report_single_error_for_missing_generics_1")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauAvoidCascadingRecursiveConstraintViolationError, true};
-
     CheckResult results = check(R"(
         type t0<A> = {[t0]: t0<A>}
     )");
@@ -1357,8 +1354,6 @@ TEST_CASE_FIXTURE(Fixture, "only_report_single_error_for_missing_generics_1")
 TEST_CASE_FIXTURE(Fixture, "only_report_single_error_for_missing_generics_2")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag _{FFlag::LuauAvoidCascadingRecursiveConstraintViolationError, true};
 
     CheckResult results = check(R"(
         type Tree<A> = { [string]: Tree }

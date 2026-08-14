@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/IrData.h"
 #include "Luau/RegisterA64.h"
 
@@ -123,7 +123,7 @@ struct IrRegAllocA64
     // which 8-byte slots are free
     uint64_t freeSpillSlots = 0;
 
-    DenseHashMap<uint32_t, ExitSyncArgsA64> exitSyncArgs{~0u};
+    DenseHashMap2<uint32_t, ExitSyncArgsA64> exitSyncArgs;
 
     uint32_t allocActionCount = 0;
 

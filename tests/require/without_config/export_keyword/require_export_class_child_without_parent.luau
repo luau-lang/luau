@@ -1,6 +1,6 @@
 local module = require("./export_class_child_without_parent")
 
-local myCat = module.Cat {species = "Felis catus", breed = "Siamese"}
+local myCat = module.Cat.new({species = "Felis catus", breed = "Siamese"})
 
 assert(class.isinstance(myCat, module.Cat), "expected myCat to be an instance of module.Cat")
 assert(myCat.species == "Felis catus", "expected myCat.species to be 'Felis catus'")

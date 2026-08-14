@@ -311,7 +311,7 @@ struct TypeFunctionRuntime
     StateRef state;
 
     // Set of functions which have their environment table initialized
-    DenseHashSet<AstStatTypeFunction*> initialized{nullptr};
+    DenseHashSet2<AstStatTypeFunction*> initialized;
 
     // Evaluation of type functions should only be performed in the absence of parse errors in the source module
     bool allowEvaluation = true;

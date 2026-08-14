@@ -26,7 +26,7 @@ enum FeaturesA64
 class AssemblyBuilderA64
 {
 public:
-    explicit AssemblyBuilderA64(LogBuilder* logger, bool logText_DEPRECATED, unsigned int features);
+    explicit AssemblyBuilderA64(LogBuilder* logger, unsigned int features);
     ~AssemblyBuilderA64();
 
     // Moves
@@ -222,9 +222,6 @@ public:
         return label.location * 4;
     }
 
-    // Make private with FFlagLuauCodegenSharedLog removal
-    void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
-
     // Code size is measured in 'code' array units - uint8_t on x64 and uint32_t on arm64
     uint32_t getCodeSize() const;
 
@@ -234,12 +231,6 @@ public:
     // The *end* of 'data' has to be aligned to 16 bytes, this will also align 'code'
     std::vector<uint8_t> data;
     std::vector<uint32_t> code;
-
-    // Remove with FFlagLuauCodegenSharedLog
-    std::string text;
-
-    // Make private with FFlagLuauCodegenSharedLog removal
-    const bool logText = false;
 
     const unsigned int features = 0;
 
@@ -324,7 +315,10 @@ private:
     LUAU_NOINLINE void log(RegisterA64 reg);
     LUAU_NOINLINE void log(AddressA64 addr);
 
+    void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
+
     LogBuilder* logger = nullptr;
+    const bool logText = false;
 
     uint32_t nextLabel = 1;
     std::vector<Patch> pendingLabels;

@@ -5,7 +5,7 @@
 #include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Common.h"
 #include "Luau/StructuralTypeEquality.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Error.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/StringUtils.h"
@@ -444,7 +444,7 @@ bool maybeSingleton(TypeId ty)
     return false;
 }
 
-bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
+bool hasLength(TypeId ty, DenseHashSet2<TypeId>& seen, int* recursionCount)
 {
     RecursionLimiter _rl("Type::hasLength", recursionCount, FInt::LuauTypeInferRecursionLimit);
 

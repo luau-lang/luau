@@ -1126,8 +1126,9 @@ public:
     AstExpr* super;
     AstArray<AstClassMember> members;
     bool exported;
+    bool open;
 
-    AstStatClass(const Location& location, AstLocal* name, AstExpr* super, AstArray<AstClassMember> members, bool exported);
+    AstStatClass(const Location& location, AstLocal* name, AstExpr* super, AstArray<AstClassMember> members, bool exported, bool open);
 
     void visit(AstVisitor* visitor) override;
 };

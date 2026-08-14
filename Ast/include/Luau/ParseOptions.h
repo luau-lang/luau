@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 
 #include <vector>
 
@@ -19,7 +19,7 @@ enum class Mode
 
 struct FragmentParseResumeSettings
 {
-    DenseHashMap<AstName, AstLocal*> localMap{AstName()};
+    DenseHashMap2<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
     Position resumePosition;
 };

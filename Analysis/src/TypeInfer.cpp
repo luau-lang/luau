@@ -223,7 +223,7 @@ TypeChecker::TypeChecker(const ScopePtr& globalScope, ModuleResolver* resolver, 
     , anyTypePack(builtinTypes->anyTypePack)
     , neverTypePack(builtinTypes->neverTypePack)
     , uninhabitableTypePack(builtinTypes->uninhabitableTypePack)
-    , duplicateTypeAliases{{false, {}}}
+    , duplicateTypeAliases{}
 {
 }
 
@@ -2547,7 +2547,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         if (get<AnyType>(operandType) || get<ErrorType>(operandType) || get<NeverType>(operandType))
             return WithPredicate{numberType};
 
-        DenseHashSet<TypeId> seen{nullptr};
+        DenseHashSet2<TypeId> seen;
 
         if (typeCouldHaveMetatable(operandType))
         {
@@ -3703,7 +3703,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
 
         if (value)
         {
-            DenseHashSet<TypeId> propTypes{{}};
+            DenseHashSet2<TypeId> propTypes;
 
             for (auto table : tableTypes)
             {
@@ -3744,7 +3744,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             }
         }
 
-        DenseHashSet<TypeId> resultTypes{{}};
+        DenseHashSet2<TypeId> resultTypes;
 
         for (auto table : tableTypes)
         {
