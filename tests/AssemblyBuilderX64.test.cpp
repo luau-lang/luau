@@ -7,7 +7,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenSharedLog)
 LUAU_FASTFLAG(LuauCodegenRexWidth)
 
 using namespace Luau::CodeGen;
@@ -28,7 +27,7 @@ class AssemblyBuilderX64Fixture
 public:
     bool check(void (*f)(AssemblyBuilderX64& build), std::vector<uint8_t> code, std::vector<uint8_t> data = {})
     {
-        AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
+        AssemblyBuilderX64 build(/* logger= */ nullptr, /* features= */ 0);
 
         f(build);
 
@@ -380,7 +379,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentOverflow")
 {
     // Test that alignment correctly resizes the code buffer
     {
-        AssemblyBuilderX64 build(/* logger */ nullptr, false, /* features= */ 0);
+        AssemblyBuilderX64 build(/* logger */ nullptr, /* features= */ 0);
 
         build.ret();
         build.align(8192, AlignmentDataX64::Nop);
@@ -388,7 +387,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentOverflow")
     }
 
     {
-        AssemblyBuilderX64 build(/* logger */ nullptr, false, /* features= */ 0);
+        AssemblyBuilderX64 build(/* logger */ nullptr, /* features= */ 0);
 
         build.ret();
         build.align(8192, AlignmentDataX64::Int3);
@@ -396,7 +395,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentOverflow")
     }
 
     {
-        AssemblyBuilderX64 build(/* logger */ nullptr, false, /* features= */ 0);
+        AssemblyBuilderX64 build(/* logger */ nullptr, /* features= */ 0);
 
         for (int i = 0; i < 8192; i++)
             build.int3();
@@ -404,7 +403,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentOverflow")
     }
 
     {
-        AssemblyBuilderX64 build(/* logger */ nullptr, false, /* features= */ 0);
+        AssemblyBuilderX64 build(/* logger */ nullptr, /* features= */ 0);
 
         build.ret();
         build.align(8192, AlignmentDataX64::Ud2);
@@ -647,7 +646,7 @@ TEST_CASE("LogTest")
 {
     AssemblyOptions options;
     LogBuilder logger(options);
-    AssemblyBuilderX64 build(/* logger= */ &logger, true, /* features= */ 0);
+    AssemblyBuilderX64 build(/* logger= */ &logger, /* features= */ 0);
 
     build.push(r12);
     build.align(8);
@@ -744,7 +743,7 @@ TEST_CASE("LogTest")
  nop         word ptr[rax+rax] ; 9-byte nop
 )";
 
-    CHECK("\n" + (FFlag::LuauCodegenSharedLog ? logger.text : build.text) == expected);
+    CHECK("\n" + logger.text == expected);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "Constants")
@@ -791,7 +790,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "Constants")
 
 TEST_CASE("ConstantStorage")
 {
-    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, /* features= */ 0);
 
     for (int i = 0; i <= 3000; i++)
         build.vaddss(xmm0, xmm0, build.i32(i));
@@ -811,7 +810,7 @@ TEST_CASE("ConstantStorage")
 
 TEST_CASE("ConstantStorageDedup")
 {
-    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, /* features= */ 0);
 
     for (int i = 0; i <= 3000; i++)
         build.vaddss(xmm0, xmm0, build.f32(1.0f));
@@ -828,7 +827,7 @@ TEST_CASE("ConstantStorageDedup")
 
 TEST_CASE("ConstantCaching")
 {
-    AssemblyBuilderX64 build(/* logger= */ nullptr, false, /* features= */ 0);
+    AssemblyBuilderX64 build(/* logger= */ nullptr, /* features= */ 0);
 
     OperandX64 two = build.f64(2);
 

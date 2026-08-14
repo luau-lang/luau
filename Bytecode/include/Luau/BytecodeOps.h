@@ -61,6 +61,15 @@ struct BcInstHelper
         block->ops.insert(it, inst.op);
     }
 
+    void detach()
+    {
+        if (inst->block.kind != BcOpKind::Block)
+            return;
+        BcRef<BcBlock> block = graph.block(inst->block);
+        block->ops.remove(inst.op);
+        inst->block = BcOp{};
+    }
+
     void setOutReg(Reg out)
     {
         graph.regs[inst.op] = out;
@@ -309,7 +318,8 @@ struct BcSetList : public BcInstHelper<VmConst, BcSetList<VmConst>>
     static const LuauOpcode opcode = LOP_SETLIST;
     INT_IMM(StartIndex, 0)
     INT_IMM(Count, 1)
-    static const uint32_t kParamStartInput = 2;
+    BC_OP(Target, 2)
+    static const uint32_t kParamStartInput = 3;
     std::vector<BcOp> params()
     {
         return this->sliceInputs(kParamStartInput);

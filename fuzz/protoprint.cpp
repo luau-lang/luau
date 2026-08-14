@@ -321,7 +321,7 @@ struct ProtoToLuau
         std::vector<const luau::Name*> props;
     };
 
-    std::string source = "class _ end\n";
+    std::string source = "open class _ end\n";
     std::vector<Function> functions;
     std::vector<Class> classes;
     bool types = false;
@@ -769,14 +769,14 @@ struct ProtoToLuau
     void print(const luau::ExprClassInst& expr, std::optional<size_t> classIndex = std::nullopt)
     {
         if (classes.size() == 0)
-            source += "_ { }";
+            source += "_.new() { }";
 
         size_t index = classIndex.value_or(size_t(expr.index()) % classes.size());
         const Class& cls = classes[index];
 
         print(*cls.name);
 
-        source += " { ";
+        source += ".new { ";
 
         const int generatedArgsSize = 1 + expr.otherargs_size();
         for (int i = 0; i < int(cls.props.size()); ++i)
@@ -1224,6 +1224,9 @@ struct ProtoToLuau
     {
         if (stat.is_exported())
             source += "export ";
+
+        if (stat.is_open())
+            source += "open ";
 
         source += "class ";
         print(stat.name());

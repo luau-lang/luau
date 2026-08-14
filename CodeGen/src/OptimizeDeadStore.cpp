@@ -654,7 +654,7 @@ struct RemoveDeadStoreState
     // Have there been any object allocations which might remain unused
     bool hasAllocations = false;
 
-    DenseHashSet<uint32_t> nonPropagatingStore{kInvalidInstIdx};
+    DenseHashSet2<uint32_t> nonPropagatingStore;
     std::vector<uint32_t> recordedVmExitSyncs;
 };
 
@@ -1486,12 +1486,12 @@ static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& 
     IrFunction& function = build.function;
 
     // Values that are only used inside exit sync blocks store instructions or sunk operations
-    DenseHashSet<uint32_t> exitSyncPrivateInst{~0u};
+    DenseHashSet2<uint32_t> exitSyncPrivateInst;
 
     if (FFlag::LuauCodegenVmExitSyncMultiUse)
     {
         // Tracking the use count from exit blocks, if instruction exit use count equals overall use count, it's only used in the exit
-        DenseHashMap<uint32_t, uint32_t> exitInstUseCounts{~0u};
+        DenseHashMap2<uint32_t, uint32_t> exitInstUseCounts;
         SmallVector<uint32_t, 8> worklist;
 
         auto recordExitUse = [&](IrOp op)
@@ -1550,7 +1550,7 @@ static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& 
         SmallVector<uint32_t, 8> argInstructions;
 
         // Set of inputs we already sunk inside
-        DenseHashSet<uint32_t> sunkInstructions{~0u};
+        DenseHashSet2<uint32_t> sunkInstructions;
 
         std::vector<std::pair<IrOp, uint32_t>> inputs;
 
@@ -1632,7 +1632,7 @@ static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& 
         function.blockToVmExitMap[syncInfo.block.index] = vmExitSyncLocation;
         build.beginBlock(syncInfo.block);
 
-        DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
+        DenseHashMap2<uint32_t, uint32_t> instRedir;
 
         auto redirect = [&instRedir, &inputs](IrOp& op)
         {

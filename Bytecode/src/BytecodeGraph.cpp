@@ -179,8 +179,8 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
             uint32_t numProps = readVarInt(data, offset);
             uint32_t numMethods = readVarInt(data, offset);
 
-            shape.propertyNames.resize(numProps);
-            shape.methodNames.resize(numMethods);
+            shape.propertyNames.reserve(numProps);
+            shape.methodNames.reserve(numMethods);
 
             for (uint32_t i = 0; i < numProps; ++i)
                 shape.propertyNames.emplace_back(readVarInt(data, offset));

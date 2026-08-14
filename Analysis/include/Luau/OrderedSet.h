@@ -3,7 +3,7 @@
 #pragma once
 
 #include <vector>
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 
 namespace Luau
 {
@@ -63,7 +63,7 @@ struct OrderedSet
 
 private:
     std::vector<T> elements;
-    DenseHashSet<T> elementSet{nullptr};
+    DenseHashSet2<T> elementSet;
 };
 
 } // namespace Luau

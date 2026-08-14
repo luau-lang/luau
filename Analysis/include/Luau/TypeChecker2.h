@@ -81,7 +81,7 @@ struct TypeChecker2
     std::vector<NotNull<Scope>> stack;
     std::vector<TypeId> functionDeclStack;
 
-    DenseHashSet<TypeId> seenTypeFunctionInstances{nullptr};
+    DenseHashSet2<TypeId> seenTypeFunctionInstances;
 
     Normalizer normalizer;
     Subtyping _subtyping;
@@ -221,13 +221,13 @@ private:
         const std::string& prop,
         ValueContext context,
         const Location& location,
-        DenseHashSet<TypeId>& seen,
+        DenseHashSet2<TypeId>& seen,
         TypeId astIndexExprType,
         std::vector<TypeError>& errors
     );
 
     // Avoid duplicate warnings being emitted for the same global variable.
-    DenseHashSet<std::string> warnedGlobals{""};
+    DenseHashSet2<std::string> warnedGlobals;
 
     void suggestAnnotations(AstExprFunction* expr, TypeId ty);
 

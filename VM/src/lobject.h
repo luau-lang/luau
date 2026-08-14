@@ -563,6 +563,9 @@ typedef struct LuauClass
 
     TString* name;
 
+    // The superclass of this class. NULL if this class doesn't inherit.
+    LuauClass* super;
+
     // Mapping from offset to static members (only methods for now).
     TValue* staticmembers;
 
@@ -595,6 +598,14 @@ typedef struct LuauClass
     // instance or static members, creating class instances).
     uint32_t numberofallmembers;
 
+    // Can this class be extended?
+    bool isopen;
+
+    // True if this class or any of its ancestors defines an __init method.
+    // If a class's ancestors define an __init method, it must itself also define an __init method.
+    // We cannot determine this statically, so we track it here to error at runtime if the invariant is violated.
+    // The default constructor errors if this is true, which works because the default constructor is overriden if a class defines an __init method.
+    bool hasuserinitinchain;
 } LuauClass;
 
 typedef struct LuauObject

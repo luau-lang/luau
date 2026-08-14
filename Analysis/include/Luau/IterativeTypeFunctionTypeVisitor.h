@@ -87,7 +87,7 @@ private:
 
     void processWorkQueue();
 
-    SeenSet seen{nullptr};
+    SeenSet seen;
 
     std::vector<WorkItem> workQueue;
     int32_t parentCursor = -1;

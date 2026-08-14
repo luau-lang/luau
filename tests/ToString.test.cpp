@@ -13,6 +13,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -849,12 +850,17 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
 
     std::string expected;
     if (!FFlag::DebugLuauForceOldSolver)
-        expected = "Expected this to be\n\t"
-                   "'{ a: number, b: string, c: { d: number } }'\n"
-                   "but got\n\t"
-                   "'{ a: number, b: string, c: { d: string } }'; \n"
-                   "accessing `c.d` results in `string` in the latter type and `number` in the former "
-                   "type, and `string` is not exactly `number`";
+        expected = FFlag::LuauNewTypePathErrorMessages ? "Expected this to be\n\t"
+                                                         "'{ a: number, b: string, c: { d: number } }'\n"
+                                                         "but got\n\t"
+                                                         "'{ a: number, b: string, c: { d: string } }'; \n"
+                                                         "Expected property `c.d` to be exactly `number`, but got `string`"
+                                                       : "Expected this to be\n\t"
+                                                         "'{ a: number, b: string, c: { d: number } }'\n"
+                                                         "but got\n\t"
+                                                         "'{ a: number, b: string, c: { d: string } }'; \n"
+                                                         "accessing `c.d` results in `string` in the latter type and `number` in the former "
+                                                         "type, and `string` is not exactly `number`";
     else
         expected = "Expected this to be exactly\n\t"
                    "'{ a: number, b: string, c: { d: number } }'\n"

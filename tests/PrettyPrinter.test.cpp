@@ -11,6 +11,7 @@
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauPrettyPrintVisualizeIndexerAccess)
 
 using namespace Luau;
 
@@ -2119,8 +2120,9 @@ class Point
     function length(self)
         return 100
     end
-    function new()
-        return Point { x = 0, y = 0 }
+    function __init(self)
+        self.x = 0
+        self.y = 0
     end
 end
     )";
@@ -2137,8 +2139,9 @@ class Point
         return 100
     end
     public x
-    function new(): Point
-        return Point { x = 0, y = 0 }
+    function __init(self)
+        self.x = 0
+        self.y = 0
     end
     public y
 end
@@ -2156,8 +2159,9 @@ class Point
         return 100
     end
     public x
-    public function new(): Point
-        return Point { x = 0, y = 0 }
+    public function __init(self)
+        self.x = 0
+        self.y = 0
     end
     public y
 end
@@ -2630,6 +2634,18 @@ TEST_CASE("pretty_print_incomplete_attr_args")
     function oldApi()
     end
     )=";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE("pretty_print_readonly_indexer")
+{
+    ScopedFastFlag visualizeIndexerAccess{FFlag::LuauPrettyPrintVisualizeIndexerAccess, true};
+
+    std::string code = R"(
+        local _t: { read number } = {}
+        local _u: { read [string]: boolean }
+    )";
 
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
 }

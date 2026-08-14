@@ -12,6 +12,7 @@
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAGVARIABLE(LuauPrettyPrintVisualizeIndexerAccess)
 
 namespace
 {
@@ -1885,6 +1886,17 @@ struct Printer
             {
                 if (a->props.size == 0 && indexType && indexType->name == "number")
                 {
+                    if (FFlag::LuauPrettyPrintVisualizeIndexerAccess)
+                    {
+                        if (a->indexer->access != AstTableAccess::ReadWrite)
+                        {
+                            if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
+                                advance(accessLocation->begin);
+
+                            writer.keyword(a->indexer->access == AstTableAccess::Read ? "read" : "write");
+                        }
+                    }
+
                     visualizeTypeAnnotation(*a->indexer->resultType);
                 }
                 else
@@ -1905,6 +1917,20 @@ struct Printer
                     if (a->indexer)
                     {
                         comma();
+
+                        if (FFlag::LuauPrettyPrintVisualizeIndexerAccess)
+                        {
+                            if (a->indexer->access != AstTableAccess::ReadWrite)
+                            {
+                                if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
+                                    advance(accessLocation->begin);
+
+                                writer.keyword(a->indexer->access == AstTableAccess::Read ? "read" : "write");
+                            }
+
+                            advance(a->indexer->location.begin);
+                        }
+
                         writer.symbol("[");
                         visualizeTypeAnnotation(*a->indexer->indexType);
                         writer.symbol("]");
@@ -2119,7 +2145,7 @@ std::string toString(AstNode* node)
     StringWriter writer;
     writer.pos = node->location.begin;
 
-    Printer printer(writer, CstNodeMap{nullptr});
+    Printer printer(writer, CstNodeMap{});
     printer.writeTypes = true;
 
     if (auto statNode = node->asStat())
@@ -2146,7 +2172,7 @@ std::string prettyPrint(AstStatBlock& block, const CstNodeMap& cstNodeMap)
 
 std::string prettyPrint(AstStatBlock& block)
 {
-    return prettyPrint(block, CstNodeMap{nullptr});
+    return prettyPrint(block, CstNodeMap{});
 }
 
 std::string prettyPrintWithTypes(AstStatBlock& block, const CstNodeMap& cstNodeMap)
@@ -2160,7 +2186,7 @@ std::string prettyPrintWithTypes(AstStatBlock& block, const CstNodeMap& cstNodeM
 
 std::string prettyPrintWithTypes(AstStatBlock& block)
 {
-    return prettyPrintWithTypes(block, CstNodeMap{nullptr});
+    return prettyPrintWithTypes(block, CstNodeMap{});
 }
 
 PrettyPrintResult prettyPrint(std::string_view source, ParseOptions options, bool withTypes, bool ignoreParseErrors)

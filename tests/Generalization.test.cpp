@@ -27,8 +27,8 @@ struct GeneralizationFixture
     ScopePtr scope = std::make_shared<Scope>(globalScope);
     ToStringOptions opts;
 
-    DenseHashSet<TypeId> generalizedTypes_{nullptr};
-    NotNull<DenseHashSet<TypeId>> generalizedTypes{&generalizedTypes_};
+    DenseHashSet2<TypeId> generalizedTypes_;
+    NotNull<DenseHashSet2<TypeId>> generalizedTypes{&generalizedTypes_};
 
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 

@@ -29,6 +29,7 @@ LUAU_FASTFLAG(LuauCompileIifeInline)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
+LUAU_FASTFLAG(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
@@ -103,14 +104,19 @@ static std::string compileFunction0(const char* source)
     return bcb.dumpFunction(0);
 }
 
-static std::string compileFunction0Constants(const char* source)
+static std::string compileFunctionConstants(const char* source, uint32_t id)
 {
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
 
     Luau::compileOrThrow(bcb, source);
 
-    return bcb.dumpFunction(0);
+    return bcb.dumpFunction(id);
+}
+
+static std::string compileFunction0Constants(const char* source)
+{
+    return compileFunctionConstants(source, 0);
 }
 
 static std::string compileFunction0Coverage(const char* source, int level)
@@ -473,6 +479,8 @@ RETURN R0 0
 
 TEST_CASE("ConcatChainOptimization")
 {
+    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
+
     CHECK_EQ("\n" + compileFunction0("local a, b = ...; return a .. b"), R"(
 GETVARARGS R0 2
 MOVE R3 R0
@@ -492,12 +500,55 @@ RETURN R3 1
 
     CHECK_EQ("\n" + compileFunction0("local a, b, c = ...; return (a .. b) .. c"), R"(
 GETVARARGS R0 3
-MOVE R6 R0
-MOVE R7 R1
-CONCAT R4 R6 R7
+MOVE R5 R0
+MOVE R6 R1
+CONCAT R4 R5 R6
 MOVE R5 R2
 CONCAT R3 R4 R5
 RETURN R3 1
+)");
+}
+
+TEST_CASE("ConcatTopRegisterUse")
+{
+    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
+
+    CHECK_EQ("\n" + compileFunction0("local a, b = ...; return '{a=' .. tostring(a) .. ' b=' .. tostring(b) .. '}'"), R"(
+GETVARARGS R0 2
+LOADK R3 K0 ['{a=']
+FASTCALL1 63 R0 L0
+MOVE R5 R0
+GETIMPORT R4 2 [tostring]
+CALL R4 1 1
+L0: LOADK R5 K3 [' b=']
+FASTCALL1 63 R1 L1
+MOVE R7 R1
+GETIMPORT R6 2 [tostring]
+CALL R6 1 1
+L1: LOADK R7 K4 ['}']
+CONCAT R2 R3 R7
+RETURN R2 1
+)");
+}
+
+TEST_CASE("ConcatTopRegisterUseShorthand")
+{
+    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
+
+    CHECK_EQ("\n" + compileFunction0("local a = \"hello \" local b, c = ...; a ..= tostring(a) .. tostring(b) return a"), R"(
+LOADK R0 K0 ['hello ']
+GETVARARGS R1 2
+MOVE R3 R0
+FASTCALL1 63 R0 L0
+MOVE R5 R0
+GETIMPORT R4 2 [tostring]
+CALL R4 1 1
+L0: FASTCALL1 63 R1 L1
+MOVE R6 R1
+GETIMPORT R5 2 [tostring]
+CALL R5 1 1
+L1: CONCAT R0 R3 R5
+RETURN R0 1
 )");
 }
 
@@ -897,6 +948,76 @@ DUPTABLE R0 6
 DUPTABLE R1 9
 DUPTABLE R2 16
 RETURN R0 3
+)"
+    );
+}
+
+TEST_CASE("DumpConstantClass")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunctionConstants(
+                   R"(
+open class Animal
+    public species: string
+
+    function live(self)
+        return "I am alive"
+    end
+end
+
+class Cat extends Animal
+    public breed: string
+
+    function describe(self)
+        return self.breed
+    end
+end
+
+print(Cat)
+    )",
+                   2
+               ),
+        R"(
+K0: 'Animal'
+K1: 'species'
+K2: function live
+K3: 'live'
+K4: 'new'
+K5: '__init'
+K6: class Animal (props: 1, methods: 3)
+  props:
+    K1 ['species']
+  methods:
+    K3 ['live']
+    K4 ['new']
+    K5 ['__init']
+K7: 'Cat'
+K8: 'breed'
+K9: function describe
+K10: 'describe'
+K11: class Cat (props: 1, methods: 3)
+  props:
+    K8 ['breed']
+  methods:
+    K10 ['describe']
+    K4 ['new']
+    K5 ['__init']
+K12: 'print'
+K13: print
+LOADNIL R0
+LOADNIL R1
+NEWCLASS R0 no_base K6 1 [class Animal (props: 1, methods: 3)]
+DUPCLOSURE R2 K2 ['live']
+NEWCLASSMEMBER R0 R2 ['live']
+NEWCLASS R1 R0 K11 0 [class Cat (props: 1, methods: 3)]
+DUPCLOSURE R2 K9 ['describe']
+NEWCLASSMEMBER R1 R2 ['describe']
+GETIMPORT R2 13 [print]
+MOVE R3 R1
+CALL R2 1 0
+RETURN R0 0
 )"
     );
 }
@@ -11105,8 +11226,8 @@ TEST_CASE("ClassDeclBasic")
     auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
     CHECK(R"(
 LOADNIL R0
-NEWCLASS R0 R255 K3 [class Point (props: 2, methods: 0)]
-GETGLOBAL R1 K4 ['print']
+NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
+GETGLOBAL R1 K6 ['print']
 MOVE R2 R0
 CALL R1 1 0
 RETURN R0 0
@@ -11141,10 +11262,10 @@ RETURN R1 1
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(R"(
 LOADNIL R0
-NEWCLASS R0 R255 K4 [class Point (props: 2, methods: 1)]
+NEWCLASS R0 no_base K6 0 [class Point (props: 2, methods: 3)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 ['magnitude']
-GETGLOBAL R1 K5 ['print']
+GETGLOBAL R1 K7 ['print']
 MOVE R2 R0
 CALL R1 1 0
 RETURN R0 0
@@ -11181,16 +11302,54 @@ CALLFB R1 1 0 [0]
 RETURN R0 0
 )" == res0);
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
-    CHECK(R"(
+    CHECK(res1 == R"(
 LOADNIL R0
-NEWCLASS R0 R255 K4 [class Point (props: 2, methods: 1)]
+NEWCLASS R0 no_base K6 0 [class Point (props: 2, methods: 3)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 ['print']
-DUPTABLE R1 5
+DUPTABLE R1 7
 LOADK R2 K0 ['Point']
 SETTABLE R0 R1 R2
 RETURN R1 1
-)" == res1);
+)");
+}
+
+TEST_CASE("ClassDeclWithExplicitCtor")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCompileStringInterpTargetTop, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauEmitCallFeedback, true},
+    };
+
+    std::string source = R"(
+        class Point
+            public x: number
+            public y: number
+            function __init(self, x, y)
+                self.x = x
+                self.y = y
+            end
+        end
+        return { Point = Point }
+    )";
+    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+SETTABLEKS R1 R0 K0 ['x']
+SETTABLEKS R2 R0 K1 ['y']
+RETURN R0 0
+)" == res0);
+    auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
+    CHECK(res1 == R"(
+LOADNIL R0
+NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
+NEWCLOSURE R1 P0
+NEWCLASSMEMBER R0 R1 ['__init']
+DUPTABLE R1 6
+LOADK R2 K0 ['Point']
+SETTABLE R0 R1 R2
+RETURN R1 1
+)");
 }
 
 TEST_CASE("ClassDeclHoistingForwardReference")
@@ -11208,7 +11367,7 @@ TEST_CASE("ClassDeclHoistingForwardReference")
     CHECK(R"(
 LOADNIL R0
 MOVE R1 R0
-NEWCLASS R0 R255 K2 [class Point (props: 1, methods: 0)]
+NEWCLASS R0 no_base K4 0 [class Point (props: 1, methods: 2)]
 RETURN R0 0
 )" == res);
 }
@@ -11232,14 +11391,14 @@ GETUPVAL R0 0
 RETURN R0 1
 )" == inner);
     auto outer = "\n" + compileFunction(source.c_str(), 1, 0, 0);
-    CHECK(R"(
+    CHECK(outer == R"(
 LOADNIL R0
-NEWCLASS R0 R255 K2 [class Point (props: 1, methods: 0)]
+NEWCLASS R0 no_base K4 0 [class Point (props: 1, methods: 2)]
 NEWCLOSURE R1 P0
 CAPTURE REF R0
 CLOSEUPVALS R0
 RETURN R0 0
-)" == outer);
+)");
 }
 
 TEST_CASE("ClassDeclHoistingForwardWriteProducesError")
@@ -12128,9 +12287,9 @@ end
         R"(
 LOADNIL R0
 NEWTABLE R1 0 0
-NEWCLASS R0 R255 K3 [class Point (props: 2, methods: 0)]
+NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
 SETTABLEKS R0 R1 K0 ['Point']
-GETIMPORT R2 6 [table.freeze]
+GETIMPORT R2 8 [table.freeze]
 MOVE R3 R1
 CALL R2 1 1
 RETURN R2 1
@@ -12158,13 +12317,13 @@ end
         R"(
 LOADNIL R0
 NEWTABLE R1 0 0
-NEWCLASS R0 R255 K7 [class Point (props: 2, methods: 2)]
+NEWCLASS R0 no_base K9 0 [class Point (props: 2, methods: 4)]
 DUPCLOSURE R2 K3 ['getX']
 NEWCLASSMEMBER R0 R2 ['getX']
 DUPCLOSURE R2 K5 ['getY']
 NEWCLASSMEMBER R0 R2 ['getY']
 SETTABLEKS R0 R1 K0 ['Point']
-GETIMPORT R2 10 [table.freeze]
+GETIMPORT R2 12 [table.freeze]
 MOVE R3 R1
 CALL R2 1 1
 RETURN R2 1
@@ -12179,7 +12338,7 @@ export class Point
     public y: number
 end
 
-local p = Point {x = 1, y = 2}
+local p = Point.new({x = 1, y = 2})
 )",
                    0,
                    2
@@ -12187,12 +12346,12 @@ local p = Point {x = 1, y = 2}
         R"(
 LOADNIL R0
 NEWTABLE R1 0 0
-NEWCLASS R0 R255 K3 [class Point (props: 2, methods: 0)]
-MOVE R2 R0
-DUPTABLE R3 6
+NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
+GETTABLEKS R2 R0 K3 ['new']
+DUPTABLE R3 8
 CALL R2 1 1
 SETTABLEKS R0 R1 K0 ['Point']
-GETIMPORT R3 9 [table.freeze]
+GETIMPORT R3 11 [table.freeze]
 MOVE R4 R1
 CALL R3 1 1
 RETURN R3 1
@@ -12297,7 +12456,7 @@ TEST_CASE("ClassInheritanceBasic")
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     std::string source = R"(
-class Animal
+open class Animal
     public species: string
 end
 
@@ -12312,9 +12471,9 @@ print(Cat)
     CHECK(R"(
 LOADNIL R0
 LOADNIL R1
-NEWCLASS R0 R255 K2 [class Animal (props: 1, methods: 0)]
-NEWCLASS R1 R0 K5 [class Cat (props: 1, methods: 0)]
-GETGLOBAL R2 K6 ['print']
+NEWCLASS R0 no_base K4 1 [class Animal (props: 1, methods: 2)]
+NEWCLASS R1 R0 K7 0 [class Cat (props: 1, methods: 2)]
+GETGLOBAL R2 K8 ['print']
 MOVE R3 R1
 CALL R2 1 0
 RETURN R0 0
@@ -12326,7 +12485,7 @@ TEST_CASE("ClassInheritanceWithMethods")
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     std::string source = R"(
-class Animal
+open class Animal
     public species: string
 
     function live(self)
@@ -12364,13 +12523,13 @@ RETURN R1 1
     CHECK(R"(
 LOADNIL R0
 LOADNIL R1
-NEWCLASS R0 R255 K3 [class Animal (props: 1, methods: 1)]
+NEWCLASS R0 no_base K5 1 [class Animal (props: 1, methods: 3)]
 NEWCLOSURE R2 P0
 NEWCLASSMEMBER R0 R2 ['live']
-NEWCLASS R1 R0 K7 [class Cat (props: 1, methods: 1)]
+NEWCLASS R1 R0 K9 0 [class Cat (props: 1, methods: 3)]
 NEWCLOSURE R2 P1
 NEWCLASSMEMBER R1 R2 ['describe']
-GETGLOBAL R2 K8 ['print']
+GETGLOBAL R2 K10 ['print']
 MOVE R3 R1
 CALL R2 1 0
 RETURN R0 0
@@ -12382,11 +12541,11 @@ TEST_CASE("ClassInheritanceMultiLevel")
     ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
 
     std::string source = R"(
-class A
+open class A
     public x: number
 end
 
-class B extends A
+open class B extends A
     public y: number
 end
 
@@ -12402,10 +12561,10 @@ print(C)
 LOADNIL R0
 LOADNIL R1
 LOADNIL R2
-NEWCLASS R0 R255 K2 [class A (props: 1, methods: 0)]
-NEWCLASS R1 R0 K5 [class B (props: 1, methods: 0)]
-NEWCLASS R2 R1 K8 [class C (props: 1, methods: 0)]
-GETGLOBAL R3 K9 ['print']
+NEWCLASS R0 no_base K4 1 [class A (props: 1, methods: 2)]
+NEWCLASS R1 R0 K7 1 [class B (props: 1, methods: 2)]
+NEWCLASS R2 R1 K10 0 [class C (props: 1, methods: 2)]
+GETGLOBAL R3 K11 ['print']
 MOVE R4 R2
 CALL R3 1 0
 RETURN R0 0
@@ -12421,7 +12580,7 @@ TEST_CASE("ExportClassInheritance")
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
-class Animal
+open class Animal
     public species: string
 end
 
@@ -12432,11 +12591,11 @@ end
         R"(
 LOADNIL R0
 LOADNIL R1
-NEWCLASS R0 R255 K2 [class Animal (props: 1, methods: 0)]
+NEWCLASS R0 no_base K4 1 [class Animal (props: 1, methods: 2)]
 NEWTABLE R2 0 0
-NEWCLASS R1 R0 K5 [class Cat (props: 1, methods: 0)]
-SETTABLEKS R1 R2 K3 ['Cat']
-GETIMPORT R3 8 [table.freeze]
+NEWCLASS R1 R0 K7 0 [class Cat (props: 1, methods: 2)]
+SETTABLEKS R1 R2 K5 ['Cat']
+GETIMPORT R3 10 [table.freeze]
 MOVE R4 R2
 CALL R3 1 1
 RETURN R3 1
@@ -12458,9 +12617,9 @@ end
         R"(
 LOADNIL R0
 LOADNIL R1
-NEWCLASS R0 R255 K1 [class _ (props: 0, methods: 0)]
+NEWCLASS R0 no_base K3 0 [class _ (props: 0, methods: 2)]
 LOADNIL R2
-NEWCLASS R1 R2 K3 [class l0 (props: 0, methods: 0)]
+NEWCLASS R1 R2 K5 0 [class l0 (props: 0, methods: 2)]
 RETURN R0 0
 )"
     );

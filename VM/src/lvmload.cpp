@@ -17,7 +17,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauUdataDirectAccess6)
 LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauCostModel)
 
@@ -617,7 +616,7 @@ static int loadsafe(
 
                 membersToOffset->readonly = true;
 
-                LuauClass* lco = luaR_newclass(L, tsvalue(classname), membersToOffset, offsetToMember, numProperties, numMethods);
+                LuauClass* lco = luaR_newclass(L, tsvalue(classname), membersToOffset, offsetToMember, numProperties, numMethods, envt);
                 setclassvalue(L, &p->k[j], lco);
                 break;
             }
@@ -635,46 +634,43 @@ static int loadsafe(
             }
         }
 
-        if (FFlag::LuauUdataDirectAccess6)
+        for (Instruction* instruction = p->code; instruction < p->code + p->sizecode;)
         {
-            for (Instruction* instruction = p->code; instruction < p->code + p->sizecode;)
+            int targetOp = -1;
+
+            switch (LUAU_INSN_OP(*instruction))
             {
-                int targetOp = -1;
+            case LOP_GETTABLEKS:
+                targetOp = LOP_GETUDATAKS;
+                break;
 
-                switch (LUAU_INSN_OP(*instruction))
-                {
-                case LOP_GETTABLEKS:
-                    targetOp = LOP_GETUDATAKS;
-                    break;
+            case LOP_SETTABLEKS:
+                targetOp = LOP_SETUDATAKS;
+                break;
 
-                case LOP_SETTABLEKS:
-                    targetOp = LOP_SETUDATAKS;
-                    break;
-
-                case LOP_NAMECALL:
-                    targetOp = LOP_NAMECALLUDATA;
-                    break;
-                }
-
-                if (targetOp != -1)
-                {
-                    LUAU_ASSERT(instruction[1] < uint32_t(sizek));
-
-                    // We take over the upper 16 bits of AUX - so no constants with big indices.
-                    if (instruction[1] < 0x10000)
-                    {
-                        TValue* k = &p->k[instruction[1]];
-                        TString* s = tsvalue(k);
-
-                        luaS_updateatom(L, s);
-
-                        if (s->atom >= 0)
-                            *instruction = (*instruction & 0xffffff00) | targetOp;
-                    }
-                }
-
-                instruction += Luau::getOpLength(LuauOpcode(LUAU_INSN_OP(*instruction)));
+            case LOP_NAMECALL:
+                targetOp = LOP_NAMECALLUDATA;
+                break;
             }
+
+            if (targetOp != -1)
+            {
+                LUAU_ASSERT(instruction[1] < uint32_t(sizek));
+
+                // We take over the upper 16 bits of AUX - so no constants with big indices.
+                if (instruction[1] < 0x10000)
+                {
+                    TValue* k = &p->k[instruction[1]];
+                    TString* s = tsvalue(k);
+
+                    luaS_updateatom(L, s);
+
+                    if (s->atom >= 0)
+                        *instruction = (*instruction & 0xffffff00) | targetOp;
+                }
+            }
+
+            instruction += Luau::getOpLength(LuauOpcode(LUAU_INSN_OP(*instruction)));
         }
 
         const int sizep = readVarInt(data, size, offset);
