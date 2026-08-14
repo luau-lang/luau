@@ -1881,7 +1881,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "negation")
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
-
     CHECK(
         result.reasoning == std::vector{SubtypingReasoning{
                                 /* subPath */ TypePath::kEmpty,
