@@ -7,7 +7,8 @@
 #include "Luau/Common.h"
 #include "ScopedFlags.h"
 
-LUAU_FASTFLAG(LuauFixNegationTypePathsInCovarianceChecks)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixSuperNegationTypePaths)
 
 using namespace Luau;
 
@@ -79,16 +80,19 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(NegationFixture, "covariant_reasoning_has_no_negated_typefield_path")
+TEST_CASE_FIXTURE(NegationFixture, "subtyping_handles_super_negation")
 {
-    ScopedFastFlag fixTypePaths{FFlag::LuauFixNegationTypePathsInCovarianceChecks, true};
+    ScopedFastFlag newErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
+    ScopedFastFlag fixTypePaths{FFlag::LuauFixSuperNegationTypePaths, true};
 
     CheckResult result = check(R"(
-        local a: Not<number> = 5
+        local a: Not<false?> = false
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Expected this to be '~number', but got 'number'");
+    const std::string error = toString(result.errors[0]);
+    CHECK_EQ(error == "Expected this to be '~(false?)', but got 'false'; \n`false` cannot be `~(false?)`"
+        || error == "Expected this to be '~(false?)', but got 'boolean'; \n`boolean` cannot be `~(false?)`", true);
 }
 
 TEST_SUITE_END();
