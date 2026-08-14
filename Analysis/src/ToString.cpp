@@ -3,7 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/Constraint.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Location.h"
 #include "Luau/Scope.h"
 #include "Luau/Set.h"
@@ -57,8 +57,8 @@ struct FindCyclicTypes final : TypeVisitor
     FindCyclicTypes& operator=(const FindCyclicTypes&) = delete;
 
     bool exhaustive = false;
-    Luau::Set<TypeId> visited{{}};
-    Luau::Set<TypePackId> visitedPacks{{}};
+    Luau::Set<TypeId> visited;
+    Luau::Set<TypePackId> visitedPacks;
     std::set<TypeId> cycles;
     std::set<TypePackId> cycleTPs;
 
@@ -164,12 +164,12 @@ struct StringifierState
     ToStringOptions& opts;
     ToStringResult& result;
 
-    DenseHashMap<TypeId, std::string> cycleNames{{}};
-    DenseHashMap<TypePackId, std::string> cycleTpNames{{}};
-    Set<void*> seen{{}};
+    DenseHashMap2<TypeId, std::string> cycleNames;
+    DenseHashMap2<TypePackId, std::string> cycleTpNames;
+    Set<void*> seen;
     // `$$$` was chosen as the tombstone for `usedNames` since it is not a valid name syntactically and is relatively short for string comparison
     // reasons.
-    DenseHashSet<std::string> usedNames{"$$$"};
+    DenseHashSet2<std::string> usedNames;
     size_t indentation = 0;
 
     bool exhaustive;
@@ -1397,8 +1397,8 @@ void TypeStringifier::stringify(TypePackId tpid, const std::vector<std::optional
 static void assignCycleNames(
     const std::set<TypeId>& cycles,
     const std::set<TypePackId>& cycleTPs,
-    DenseHashMap<TypeId, std::string>& cycleNames,
-    DenseHashMap<TypePackId, std::string>& cycleTpNames,
+    DenseHashMap2<TypeId, std::string>& cycleNames,
+    DenseHashMap2<TypePackId, std::string>& cycleTpNames,
     bool exhaustive
 )
 {
@@ -1879,7 +1879,7 @@ std::string dump(const std::vector<TypePackId>& typePacks)
     return toStringVector(typePacks, dumpOptions());
 }
 
-std::string dump(DenseHashMap<TypeId, TypeId>& types)
+std::string dump(DenseHashMap2<TypeId, TypeId>& types)
 {
     std::string s = "{";
     ToStringOptions& opts = dumpOptions();
@@ -1893,7 +1893,7 @@ std::string dump(DenseHashMap<TypeId, TypeId>& types)
     return s;
 }
 
-std::string dump(DenseHashMap<TypePackId, TypePackId>& types)
+std::string dump(DenseHashMap2<TypePackId, TypePackId>& types)
 {
     std::string s = "{";
     ToStringOptions& opts = dumpOptions();

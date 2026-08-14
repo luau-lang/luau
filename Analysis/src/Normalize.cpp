@@ -401,7 +401,7 @@ static bool isShallowInhabited(const NormalizedType& norm)
 
 NormalizationResult Normalizer::isInhabited(const NormalizedType* norm)
 {
-    Set<TypeId> seen{nullptr};
+    Set<TypeId> seen;
     try
     {
         FuelInitializer fi{NotNull{this}};
@@ -461,7 +461,7 @@ NormalizationResult Normalizer::isInhabited(TypeId ty)
             return *result ? NormalizationResult::True : NormalizationResult::False;
     }
 
-    Set<TypeId> seen{nullptr};
+    Set<TypeId> seen;
     try
     {
         FuelInitializer fi{NotNull{this}};
@@ -540,8 +540,8 @@ NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
 
 NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId right)
 {
-    Set<TypeId> seen{nullptr};
-    SeenTablePropPairs seenTablePropPairs{{nullptr, nullptr}};
+    Set<TypeId> seen;
+    SeenTablePropPairs seenTablePropPairs;
     try
     {
         FuelInitializer fi{NotNull{this}};
@@ -923,7 +923,7 @@ static bool isCacheable(TypeId ty, Set<TypeId>& seen)
 
 static bool isCacheable(TypeId ty)
 {
-    Set<TypeId> seen{nullptr};
+    Set<TypeId> seen;
     return isCacheable(ty, seen);
 }
 
@@ -937,8 +937,8 @@ std::shared_ptr<const NormalizedType> Normalizer::normalize(TypeId ty)
         return found->second;
 
     NormalizedType norm{builtinTypes};
-    Set<TypeId> seenSetTypes{nullptr};
-    SeenTablePropPairs seenTablePropPairs{{nullptr, nullptr}};
+    Set<TypeId> seenSetTypes;
+    SeenTablePropPairs seenTablePropPairs;
 
     try
     {
@@ -2973,8 +2973,8 @@ void Normalizer::intersectTables(TypeIds& heres, const TypeIds& theres)
     {
         for (TypeId there : theres)
         {
-            Set<TypeId> seenSetTypes{nullptr};
-            SeenTablePropPairs seenTablePropPairs{{nullptr, nullptr}};
+            Set<TypeId> seenSetTypes;
+            SeenTablePropPairs seenTablePropPairs;
             if (std::optional<TypeId> inter = intersectionOfTables(here, there, seenTablePropPairs, seenSetTypes))
                 tmp.insert(*inter);
         }
@@ -3413,7 +3413,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
             NormalizedExternType nct = std::move(here.externTypes);
             TypeIds tables = std::move(here.tables);
             clearNormal(here);
-            // FIXME CLI-214308: The representation of NormalizedExternType 
+            // FIXME CLI-214308: The representation of NormalizedExternType
             // does not support an intersection like ...
             //
             //  ExternType & (Tbl1 | Tbl2 | Tbl3)
@@ -3593,7 +3593,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     return NormalizationResult::True;
 }
 
-void makeTableShared(TypeId ty, DenseHashSet<TypeId>& seen)
+void makeTableShared(TypeId ty, DenseHashSet2<TypeId>& seen)
 {
     ty = follow(ty);
     if (seen.contains(ty))
@@ -3613,7 +3613,7 @@ void makeTableShared(TypeId ty, DenseHashSet<TypeId>& seen)
 
 void makeTableShared(TypeId ty)
 {
-    DenseHashSet<TypeId> seen{nullptr};
+    DenseHashSet2<TypeId> seen;
     makeTableShared(ty, seen);
 }
 

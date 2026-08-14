@@ -121,7 +121,7 @@ Unifier2::Unifier2(
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Scope> scope,
     NotNull<InternalErrorReporter> ice,
-    DenseHashSet<const void*>* uninhabitedTypeFunctions
+    DenseHashSet2<const void*>* uninhabitedTypeFunctions
 )
     : arena(arena)
     , builtinTypes(builtinTypes)

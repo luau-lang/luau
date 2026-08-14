@@ -118,25 +118,25 @@ bool isCheckableExpr(const AstExpr* expr)
 struct BidirectionalTypePusher
 {
 
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
+    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes;
+    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes;
 
     NotNull<ConstraintSolver> solver;
     NotNull<const Constraint> constraint;
-    NotNull<DenseHashSet<const void*>> genericTypesAndPacks;
+    NotNull<DenseHashSet2<const void*>> genericTypesAndPacks;
     NotNull<Unifier2> unifier;
     NotNull<Subtyping> subtyping;
 
     std::vector<IncompleteInference> incompleteInferences;
 
-    DenseHashSet<std::pair<TypeId, const AstExpr*>, PairHash<TypeId, const AstExpr*>> seen{{nullptr, nullptr}};
+    DenseHashSet2<std::pair<TypeId, const AstExpr*>, PairHash<TypeId, const AstExpr*>> seen;
 
     BidirectionalTypePusher(
-        NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
-        NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
+        NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes,
+        NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes,
         NotNull<ConstraintSolver> solver,
         NotNull<const Constraint> constraint,
-        NotNull<DenseHashSet<const void*>> genericTypesAndPacks,
+        NotNull<DenseHashSet2<const void*>> genericTypesAndPacks,
         NotNull<Unifier2> unifier,
         NotNull<Subtyping> subtyping
     )
@@ -432,11 +432,11 @@ struct BidirectionalTypePusher
 } // namespace
 
 PushTypeResult pushTypeInto(
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
+    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes,
+    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes,
     NotNull<ConstraintSolver> solver,
     NotNull<const Constraint> constraint,
-    NotNull<DenseHashSet<const void*>> genericTypesAndPacks,
+    NotNull<DenseHashSet2<const void*>> genericTypesAndPacks,
     NotNull<Unifier2> unifier,
     NotNull<Subtyping> subtyping,
     TypeId expectedType,

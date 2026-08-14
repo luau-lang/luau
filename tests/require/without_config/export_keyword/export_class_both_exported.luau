@@ -1,4 +1,4 @@
-export class Animal
+export open class Animal
     public species: string
 
     function live(self): string

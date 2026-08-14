@@ -66,17 +66,12 @@ T* getMutable(PendingTypePack* pending)
 struct TxnLog
 {
     explicit TxnLog()
-        : typeVarChanges(nullptr)
-        , typePackChanges(nullptr)
-        , ownedSeen()
-        , sharedSeen(&ownedSeen)
+        : sharedSeen(&ownedSeen)
     {
     }
 
     explicit TxnLog(TxnLog* parent)
-        : typeVarChanges(nullptr)
-        , typePackChanges(nullptr)
-        , parent(parent)
+        : parent(parent)
     {
         if (parent)
         {
@@ -89,9 +84,7 @@ struct TxnLog
     }
 
     explicit TxnLog(std::vector<std::pair<TypeOrPackId, TypeOrPackId>>* sharedSeen)
-        : typeVarChanges(nullptr)
-        , typePackChanges(nullptr)
-        , sharedSeen(sharedSeen)
+        : sharedSeen(sharedSeen)
     {
     }
 
@@ -272,8 +265,8 @@ private:
     // unique_ptr is used to give us stable pointers across insertions into the
     // map. Otherwise, it would be really easy to accidentally invalidate the
     // pointers returned from queue/pending.
-    DenseHashMap<TypeId, std::unique_ptr<PendingType>> typeVarChanges;
-    DenseHashMap<TypePackId, std::unique_ptr<PendingTypePack>> typePackChanges;
+    DenseHashMap2<TypeId, std::unique_ptr<PendingType>> typeVarChanges;
+    DenseHashMap2<TypePackId, std::unique_ptr<PendingTypePack>> typePackChanges;
 
     TxnLog* parent = nullptr;
 

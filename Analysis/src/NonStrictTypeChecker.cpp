@@ -168,9 +168,9 @@ struct NonStrictTypeChecker
     Normalizer normalizer;
     Subtyping subtyping;
     NotNull<const DataFlowGraph> dfg;
-    DenseHashSet<TypeId> noTypeFunctionErrors{nullptr};
+    DenseHashSet2<TypeId> noTypeFunctionErrors;
     std::vector<NotNull<Scope>> stack;
-    DenseHashMap<TypeId, TypeId> cachedNegations{nullptr};
+    DenseHashMap2<TypeId, TypeId> cachedNegations;
 
     const NotNull<TypeCheckLimits> limits;
 
@@ -1148,7 +1148,7 @@ struct NonStrictTypeChecker
 
     void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks)
     {
-        DenseHashSet<AstName> seen{AstName{}};
+        DenseHashSet2<AstName> seen;
 
         for (const auto* g : generics)
         {

@@ -4,7 +4,7 @@
 
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/StringUtils.h"
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
@@ -22,7 +22,6 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
-LUAU_FASTFLAG(LuauTypeFunctionTableIndexerIsReadOnly)
 
 namespace Luau
 {
@@ -30,8 +29,8 @@ namespace Luau
 // Forked version of Clone.cpp
 class TypeFunctionSerializer
 {
-    using SeenTypes = DenseHashMap<TypeId, TypeFunctionTypeId>;
-    using SeenTypePacks = DenseHashMap<TypePackId, TypeFunctionTypePackId>;
+    using SeenTypes = DenseHashMap2<TypeId, TypeFunctionTypeId>;
+    using SeenTypePacks = DenseHashMap2<TypePackId, TypeFunctionTypePackId>;
 
     TypeFunctionRuntimeBuilderState* state = nullptr;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
@@ -420,9 +419,7 @@ private:
         if (t1->indexer)
         {
             t2->indexer = TypeFunctionTableIndexer(
-                shallowSerialize(t1->indexer->indexType),
-                shallowSerialize(t1->indexer->indexResultType),
-                FFlag::LuauTypeFunctionTableIndexerIsReadOnly ? t1->indexer->isReadOnly : false
+                shallowSerialize(t1->indexer->indexType), shallowSerialize(t1->indexer->indexResultType), t1->indexer->isReadOnly
             );
         }
     }
@@ -558,8 +555,8 @@ struct SerializedFunctionScope
 // Complete inverse of TypeFunctionSerializer
 class TypeFunctionDeserializer
 {
-    using SeenTypes = DenseHashMap<TypeFunctionTypeId, TypeId>;
-    using SeenTypePacks = DenseHashMap<TypeFunctionTypePackId, TypePackId>;
+    using SeenTypes = DenseHashMap2<TypeFunctionTypeId, TypeId>;
+    using SeenTypePacks = DenseHashMap2<TypeFunctionTypePackId, TypePackId>;
 
     TypeFunctionRuntimeBuilderState* state = nullptr;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
@@ -982,13 +979,7 @@ private:
         }
 
         if (t2->indexer.has_value())
-        {
-            t1->indexer = TableIndexer(
-                shallowDeserialize(t2->indexer->keyType),
-                shallowDeserialize(t2->indexer->valueType),
-                FFlag::LuauTypeFunctionTableIndexerIsReadOnly ? t2->indexer->isReadOnly : false
-            );
-        }
+            t1->indexer = TableIndexer(shallowDeserialize(t2->indexer->keyType), shallowDeserialize(t2->indexer->valueType), t2->indexer->isReadOnly);
     }
 
     void deserializeChildren(TypeFunctionTableType* m2, MetatableType* m1)

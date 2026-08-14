@@ -3713,6 +3713,7 @@ reentry:
                 setobj2s(L, ra, kv);
 
                 LuauClass* newcls = classvalue(ra);
+                newcls->isopen = (LUAU_INSN_C(insn) & 0x1u) != 0; // bottom bit of C is the isopen flag
 
                 if (super != 0xff)
                 {

@@ -27,8 +27,10 @@ LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauSubtypeUnionsTogether)
 LUAU_FASTFLAGVARIABLE(LuauDropUnionSubtypeReasoning)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+
 
 namespace Luau
 {
@@ -46,7 +48,7 @@ size_t SubtypingReasoningHash::operator()(const SubtypingReasoning& r) const
 }
 
 MappedGenericEnvironment::MappedGenericFrame::MappedGenericFrame(
-    DenseHashMap<TypePackId, std::optional<TypePackId>> mappings,
+    DenseHashMap2<TypePackId, std::optional<TypePackId>> mappings,
     const std::optional<size_t> parentScopeIndex
 )
     : mappings(std::move(mappings))
@@ -103,7 +105,7 @@ MappedGenericEnvironment::LookupResult MappedGenericEnvironment::lookupGenericPa
 
 void MappedGenericEnvironment::pushFrame(const std::vector<TypePackId>& genericTps)
 {
-    DenseHashMap<TypePackId, std::optional<TypePackId>> mappings{nullptr};
+    DenseHashMap2<TypePackId, std::optional<TypePackId>> mappings;
 
     for (TypePackId tp : genericTps)
         mappings[tp] = std::nullopt;
@@ -160,8 +162,17 @@ static void assertReasoningValid_DEPRECATED(TID subTy, TID superTy, const Subtyp
 
     for (const SubtypingReasoning& reasoning : result.reasoning)
     {
-        LUAU_ASSERT(traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes));
-        LUAU_ASSERT(traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes));
+        if (FFlag::LuauNewTypePathErrorMessages)
+        {
+            TypePathRenderMetadata renderMetadata;
+            LUAU_ASSERT(traverse(subTy, reasoning.subPath, builtinTypes, &renderMetadata));
+            LUAU_ASSERT(traverse(superTy, reasoning.superPath, builtinTypes, &renderMetadata));
+        }
+        else
+        {
+            LUAU_ASSERT(traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes));
+            LUAU_ASSERT(traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes));
+        }
     }
 }
 
@@ -173,14 +184,14 @@ static void assertReasoningValid(TID subTy, TID superTy, const SubtypingResult& 
 
     for (const SubtypingReasoning& reasoning : result.reasoning)
     {
-        LUAU_ASSERT(traverse(subTy, reasoning.subPath, builtinTypes, arena));
-        LUAU_ASSERT(traverse(superTy, reasoning.superPath, builtinTypes, arena));
+        LUAU_ASSERT(traverse_DEPRECATED(subTy, reasoning.subPath, builtinTypes, arena));
+        LUAU_ASSERT(traverse_DEPRECATED(superTy, reasoning.superPath, builtinTypes, arena));
     }
 }
 
 static SubtypingReasonings mergeReasonings(const SubtypingReasonings& a, const SubtypingReasonings& b)
 {
-    SubtypingReasonings result{kEmptyReasoning};
+    SubtypingReasonings result;
 
     for (const SubtypingReasoning& r : a)
     {
@@ -2500,17 +2511,24 @@ SubtypingResult Subtyping::isCovariantWith(
 {
     SubtypingResult result{false};
     if (subIndexer.isReadOnly && !superIndexer.isReadOnly)
-        return result.withBothComponent(TypePath::TypeField::IndexResult);
+    {
+        result.withBothComponent(TypePath::TypeField::IndexResult);
+        if (FFlag::LuauPropertyModifierMismatchErrors && FFlag::LuauNewTypePathErrorMessages)
+            result.withPropertyModifierViolation();
+        return result;
+    }
 
     result = isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope).withBothComponent(TypePath::TypeField::IndexLookup);
 
     // Value-type variance: read-only super → covariant; read-write super → invariant.
     if (superIndexer.isReadOnly)
-        result.andAlso(isCovariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope)
-                           .withBothComponent(TypePath::TypeField::IndexResult));
+        result.andAlso(
+            isCovariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope).withBothComponent(TypePath::TypeField::IndexResult)
+        );
     else
-        result.andAlso(isInvariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope)
-                           .withBothComponent(TypePath::TypeField::IndexResult));
+        result.andAlso(
+            isInvariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope).withBothComponent(TypePath::TypeField::IndexResult)
+        );
 
     return result;
 }

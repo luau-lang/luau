@@ -180,11 +180,7 @@ size_t BytecodeBuilder::TableShapeHash::operator()(const TableShape& v) const
 }
 
 BytecodeBuilder::BytecodeBuilder(BytecodeEncoder* encoder)
-    : constantMap({Constant::Type_Nil, ~0ull})
-    , tableShapeMap(TableShape())
-    , protoMap(~0u)
-    , stringTable({nullptr, 0})
-    , encoder(encoder)
+    : encoder(encoder)
 {
     LUAU_ASSERT(stringTable.find(StringRef{"", 0}) == nullptr);
 
@@ -1974,7 +1970,8 @@ void BytecodeBuilder::validateInstructions() const
             VREG(LUAU_INSN_A(insn));
             uint8_t super = LUAU_INSN_B(insn);
             LUAU_ASSERT(super == 0xff || (unsigned(super) < func.maxstacksize));
-            LUAU_ASSERT(LUAU_INSN_C(insn) == 0);
+            uint8_t flags = LUAU_INSN_C(insn);
+            LUAU_ASSERT(flags == 0 || flags == 1);
             VCONST(insns[i + 1], ClassShape);
         }
         break;
@@ -2313,8 +2310,18 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k, bool detailed) co
     {
         const Function& func = functions[data.valueClosure];
 
-        if (!func.dumpname.empty())
-            formatAppend(result, "'%s'", func.dumpname.c_str());
+        if (detailed)
+        {
+            if (!func.dumpname.empty())
+                formatAppend(result, "function %s", func.dumpname.c_str());
+            else
+                formatAppend(result, "function");
+        }
+        else
+        {
+            if (!func.dumpname.empty())
+                formatAppend(result, "'%s'", func.dumpname.c_str());
+        }
         break;
     }
     case Constant::Type_ClassShape:
@@ -2327,6 +2334,32 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k, bool detailed) co
         // valid Luau identifier!
         LUAU_ASSERT(printableStringConstant(str.data, str.length));
         formatAppend(result, "class %.*s (props: %zu, methods: %zu)", int(str.length), str.data, cs.propertyNames.size(), cs.methodNames.size());
+
+        if (detailed)
+        {
+            if (!cs.propertyNames.empty())
+            {
+                formatAppend(result, "\n  props:");
+                for (size_t i = 0; i < cs.propertyNames.size(); ++i)
+                {
+                    formatAppend(result, "\n    K%d [", cs.propertyNames[i]);
+                    dumpConstant(result, cs.propertyNames[i], false);
+                    result.append("]");
+                }
+            }
+
+            if (!cs.methodNames.empty())
+            {
+                formatAppend(result, "\n  methods:");
+                for (size_t i = 0; i < cs.methodNames.size(); ++i)
+                {
+                    formatAppend(result, "\n    K%d [", cs.methodNames[i]);
+                    dumpConstant(result, cs.methodNames[i], false);
+                    result.append("]");
+                }
+            }
+        }
+        break;
     }
     }
 }
@@ -2768,7 +2801,11 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_NEWCLASS:
-        formatAppend(result, "NEWCLASS R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code);
+        if (LUAU_INSN_B(insn) == 0xff)
+            formatAppend(result, "NEWCLASS R%d no_base K%d %d [", LUAU_INSN_A(insn), *code, LUAU_INSN_C(insn));
+        else
+            formatAppend(result, "NEWCLASS R%d R%d K%d %d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code, LUAU_INSN_C(insn));
+
         dumpConstant(result, *code, false);
         result.append("]\n");
         code++;

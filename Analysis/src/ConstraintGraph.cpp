@@ -402,7 +402,7 @@ void ConstraintGraph::repairTypeReferences(T ty)
 
     // This is a strong guard against a self bound cylic type, but we
     // hopefully threw an exception above if this were the case.
-    DenseHashSet<T> seen{nullptr};
+    DenseHashSet2<T> seen;
     seen.insert(root);
 
     while (!seen.contains(ty))
