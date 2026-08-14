@@ -512,7 +512,7 @@ TEST_CASE_FIXTURE(Fixture, "typestate_unknown_global")
     CHECK(get<UnknownSymbol>(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_normalized_type_variables_are_bad" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_normalized_type_variables_are_bad" * doctest::timeout(LUAU_TIMEOUT))
 {
     // We do not care about the errors here, only that this finishes typing
     // in a sensible amount of time.

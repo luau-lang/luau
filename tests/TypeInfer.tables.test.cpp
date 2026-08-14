@@ -5896,7 +5896,7 @@ TEST_CASE_FIXTURE(Fixture, "large_table_inference_does_not_bleed")
         CHECK(err.location.begin.line == 2);
 }
 
-TEST_CASE_FIXTURE(Fixture, "extremely_large_table" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(Fixture, "extremely_large_table" * doctest::timeout(LUAU_TIMEOUT))
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
@@ -6171,7 +6171,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1914_access_after_assignment_with_assert
     CHECK_EQ("number", toString(requireType("myAge")));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "cli_162179_avoid_exponential_blowup_in_normalization" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_162179_avoid_exponential_blowup_in_normalization" * doctest::timeout(LUAU_TIMEOUT))
 {
     const std::string source = format(
         R"(

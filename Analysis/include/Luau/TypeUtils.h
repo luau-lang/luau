@@ -103,8 +103,7 @@ TypePack extendTypePack(
     TypeArena& arena,
     NotNull<BuiltinTypes> builtinTypes,
     TypePackId pack,
-    size_t length,
-    std::vector<std::optional<TypeId>> overrides = {}
+    size_t length
 );
 
 /**
@@ -400,25 +399,6 @@ private:
 
 TypeId addIntersection(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
 TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
-
-// Clip with LuauInstantiateFunctionTypeBeforePush
-struct ContainsAnyGeneric_DEPRECATED final : public TypeOnceVisitor
-{
-    bool found = false;
-
-    explicit ContainsAnyGeneric_DEPRECATED();
-
-    bool visit(TypeId ty) override;
-    bool visit(TypePackId ty) override;
-
-    bool visit(TypeId ty, const ExternType&) override;
-
-    /**
-     * @returns if there is _any_ generic in `ty`
-     */
-    static bool hasAnyGeneric(TypeId ty);
-    static bool hasAnyGeneric(TypePackId tp);
-};
 
 /**
  * @returns if `ty` contains a generic in the set `generics`.

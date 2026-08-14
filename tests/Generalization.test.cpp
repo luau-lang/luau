@@ -16,7 +16,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauCollapseDirectBoundCycles)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -470,8 +469,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_fuzzer_crash")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "collapse_two_type_direct_cycle")
 {
-    ScopedFastFlag sff2{FFlag::LuauCollapseDirectBoundCycles, true};
-
     auto [t1, ft1] = freshType();
     auto [t2, ft2] = freshType();
 
@@ -489,8 +486,6 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "collapse_two_type_direct_cycle")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "collapse_cycle_with_external_bound")
 {
-    ScopedFastFlag sff2{FFlag::LuauCollapseDirectBoundCycles, true};
-
     auto [t1, ft1] = freshType();
     auto [t2, ft2] = freshType();
 
@@ -510,8 +505,6 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "collapse_cycle_with_external_bound")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "collapse_cycle_with_external_bound_in_union")
 {
-    ScopedFastFlag sff2{FFlag::LuauCollapseDirectBoundCycles, true};
-
     auto [t1, ft1] = freshType();
     auto [t2, ft2] = freshType();
 
@@ -532,8 +525,6 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "collapse_cycle_with_external_bound_in_
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "no_spurious_cycle_through_intersection")
 {
-    ScopedFastFlag sff2{FFlag::LuauCollapseDirectBoundCycles, true};
-
     TableType tt;
     tt.indexer = TableIndexer{builtinTypes.numberType, builtinTypes.numberType};
     TypeId numberArray = arena.addType(TableType{tt});

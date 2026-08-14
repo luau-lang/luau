@@ -432,6 +432,7 @@ enum LuauOpcode
     // Atom-based userdata field access acceleration
     // These are equivalent to their GETTABLEKS/SETTABLEKS/NAMECALL counterparts, except tailored towards userdata field accesses
     // If the user has registered metamethods for a userdata tag, callbacks will be called by these instructions
+    // NOTE: it uses only lower 2 bytes in AUX for constant index. Higher bytes are used for runtime cache.
     LOP_GETUDATAKS,
     LOP_SETUDATAKS,
     LOP_NAMECALLUDATA,

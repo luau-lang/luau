@@ -417,6 +417,13 @@ enum class IrCmd : uint8_t
     // E: block (if false)
     JUMP_CMP_INT,
 
+    // Perform a conditional jump based on the result of int64 comparison
+    // A, B: int64
+    // C: condition
+    // D: block (if true)
+    // E: block (if false)
+    JUMP_CMP_INT64,
+
     // Jump if pointers are equal
     // A, B: pointer (*)
     // C: block (if true)
