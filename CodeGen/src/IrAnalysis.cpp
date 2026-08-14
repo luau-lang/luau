@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrAnalysis.h"
 
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 #include "Luau/IrVisitUseDef.h"
@@ -12,8 +12,6 @@
 #include <bitset>
 
 #include <stddef.h>
-
-LUAU_FASTFLAG(LuauCodegenA64ExitUseCheck)
 
 namespace Luau
 {
@@ -164,26 +162,7 @@ static bool isInstUseForOp(IrFunction& function, uint32_t instIdx, uint32_t targ
 
     if (op.kind == IrOpKind::Block && function.blockOp(op).kind == IrBlockKind::ExitSync)
     {
-        if (FFlag::LuauCodegenA64ExitUseCheck)
-        {
-            return inVmExitSync = isUsedInVmExitSync(function, instIdx, targetInstIdx);
-        }
-        else
-        {
-            if (VmExitSyncInfo* syncInfo = function.vmExitInfo.find(instIdx))
-            {
-                for (auto argOp : syncInfo->argOps)
-                {
-                    CODEGEN_ASSERT(argOp.kind == IrOpKind::Inst);
-
-                    if (argOp.index == targetInstIdx)
-                    {
-                        inVmExitSync = true;
-                        return true;
-                    }
-                }
-            }
-        }
+        return inVmExitSync = isUsedInVmExitSync(function, instIdx, targetInstIdx);
     }
 
     return false;

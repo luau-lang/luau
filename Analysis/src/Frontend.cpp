@@ -55,12 +55,12 @@ LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauExportValueTypecheck)
 LUAU_FLAGVERSION(LuauExportValueTypecheck, 2)
+LUAU_FASTFLAGVARIABLE(LuauCyclicRequireTypeInference)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauCFG)
 LUAU_FASTFLAG(DebugLuauLogCFG)
 LUAU_FASTFLAG(DebugLuauDumpCFGJson)
-LUAU_FASTFLAGVARIABLE(DebugLuauCyclicRequireTypeInference)
 
 namespace Luau
 {
@@ -280,7 +280,7 @@ ErrorVec accumulateErrors(
     const ModuleName& name
 )
 {
-    DenseHashSet<ModuleName> seen{{}};
+    DenseHashSet2<ModuleName> seen;
     std::vector<ModuleName> queue{name};
 
     ErrorVec result;
@@ -360,7 +360,7 @@ std::vector<RequireCycle> getRequireCycles(
 {
     std::vector<RequireCycle> result;
 
-    DenseHashSet<const SourceNode*> seen(nullptr);
+    DenseHashSet2<const SourceNode*> seen;
     std::vector<const SourceNode*> stack;
     std::vector<const SourceNode*> path;
 
@@ -509,7 +509,7 @@ void Frontend::parseModules(const std::vector<ModuleName>& names)
 {
     LUAU_TIMETRACE_SCOPE("Frontend::parseModules", "Frontend");
 
-    DenseHashSet<Luau::ModuleName> seen{{}};
+    DenseHashSet2<Luau::ModuleName> seen;
 
     for (const ModuleName& name : names)
     {
@@ -552,17 +552,18 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
     std::vector<ModuleName> buildQueue;
     bool cycleDetected = parseGraph(buildQueue, name, makeTypeCheckLimits(frontendOptions), frontendOptions.forAutocomplete);
-    if (FFlag::DebugLuauCyclicRequireTypeInference)
+    if (FFlag::LuauCyclicRequireTypeInference)
         computeSCCs(buildQueue);
 
-    DenseHashSet<Luau::ModuleName> seen{{}};
+    DenseHashSet2<Luau::ModuleName> seen;
     std::vector<BuildQueueItem> buildQueueItems;
     addBuildQueueItems(buildQueueItems, buildQueue, cycleDetected, seen, frontendOptions);
     LUAU_ASSERT(!buildQueueItems.empty());
 
     if (FFlag::DebugLuauLogSolverToJson)
     {
-        // TODO CLI-215634: Consider how to best represent cycles in the timetravel debugger. For now, we just log the first module in the cycle, which isn't ideal but at least gives some visibility.
+        // TODO CLI-215634: Consider how to best represent cycles in the timetravel debugger. For now, we just log the first module in the cycle,
+        // which isn't ideal but at least gives some visibility.
         LUAU_ASSERT(buildQueueItems.back().modules[0].name == name);
         buildQueueItems.back().recordJsonLog = true;
     }
@@ -574,7 +575,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
     for (const BuildQueueItem& item : buildQueueItems)
     {
-        if (FFlag::DebugLuauCyclicRequireTypeInference)
+        if (FFlag::LuauCyclicRequireTypeInference)
         {
             for (const BuildQueueModuleInfo& moduleInfo : item.modules)
             {
@@ -636,7 +637,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
     std::vector<ModuleName> currModuleQueue;
     std::swap(currModuleQueue, moduleQueue);
 
-    DenseHashSet<Luau::ModuleName> seen{{}};
+    DenseHashSet2<Luau::ModuleName> seen;
 
     std::shared_ptr<BuildQueueWorkState> state = std::make_shared<BuildQueueWorkState>();
 
@@ -663,7 +664,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
             }
         );
 
-        if (FFlag::DebugLuauCyclicRequireTypeInference)
+        if (FFlag::LuauCyclicRequireTypeInference)
             computeSCCs(queue);
         addBuildQueueItems(state->buildQueueItems, queue, cycleDetected, seen, frontendOptions);
     }
@@ -676,7 +677,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
 
     for (size_t i = 0; i < state->buildQueueItems.size(); i++)
     {
-        if (FFlag::DebugLuauCyclicRequireTypeInference)
+        if (FFlag::LuauCyclicRequireTypeInference)
         {
             for (const BuildQueueModuleInfo& moduleInfo : state->buildQueueItems[i].modules)
             {
@@ -708,7 +709,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
     {
         BuildQueueItem& item = state->buildQueueItems[i];
 
-        if (FFlag::DebugLuauCyclicRequireTypeInference)
+        if (FFlag::LuauCyclicRequireTypeInference)
         {
             for (const BuildQueueModuleInfo& moduleInfo : item.modules)
             {
@@ -790,7 +791,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
                 if (item.exception)
                     itemWithException = i;
 
-                if (FFlag::DebugLuauCyclicRequireTypeInference)
+                if (FFlag::LuauCyclicRequireTypeInference)
                 {
                     if (!itemWithException && !cancelled)
                     {
@@ -871,7 +872,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
 
     for (size_t i = 0; i < state->buildQueueItems.size(); i++)
     {
-        if (FFlag::DebugLuauCyclicRequireTypeInference)
+        if (FFlag::LuauCyclicRequireTypeInference)
         {
             for (BuildQueueModuleInfo& moduleInfo : state->buildQueueItems[i].modules)
             {
@@ -965,7 +966,7 @@ bool Frontend::parseGraph(
         Permanent
     };
 
-    DenseHashMap<SourceNode*, Mark> seen(nullptr);
+    DenseHashMap2<SourceNode*, Mark> seen;
     std::vector<SourceNode*> stack;
     std::vector<SourceNode*> path;
     bool cyclic = false;
@@ -1119,8 +1120,8 @@ static std::vector<ModuleSCCPtr> computeTarjanSCCs(
 
     struct TarjanNode
     {
-        int index = -1; // discovery order (-1 = unvisited)
-        int lowlink = 0; // lowest index reachable from this vertex's DFS subtree
+        int index = -1;       // discovery order (-1 = unvisited)
+        int lowlink = 0;      // lowest index reachable from this vertex's DFS subtree
         bool onStack = false; // currently on the SCC candidate stack
     };
 
@@ -1216,7 +1217,7 @@ static std::vector<ModuleSCCPtr> computeTarjanSCCs(
 
 void Frontend::computeSCCs(const std::vector<ModuleName>& buildQueue)
 {
-    LUAU_ASSERT(FFlag::DebugLuauCyclicRequireTypeInference);
+    LUAU_ASSERT(FFlag::LuauCyclicRequireTypeInference);
 
     // Clear stale SCC data
     for (const ModuleName& name : buildQueue)
@@ -1262,7 +1263,7 @@ void Frontend::addBuildQueueItems(
     std::vector<BuildQueueItem>& items,
     std::vector<ModuleName>& buildQueue,
     bool cycleDetected,
-    DenseHashSet<Luau::ModuleName>& seen,
+    DenseHashSet2<Luau::ModuleName>& seen,
     const FrontendOptions& frontendOptions
 )
 {
@@ -1304,7 +1305,7 @@ void Frontend::addBuildQueueItems(
         sourceModule->cyclic = !moduleInfo.requireCycles.empty();
 
         // Check if this module belongs to an SCC that should be grouped
-        if (FFlag::DebugLuauCyclicRequireTypeInference)
+        if (FFlag::LuauCyclicRequireTypeInference)
         {
             if (ModuleSCCPtr* sccPtr = sccs.find(moduleName))
             {
@@ -1317,7 +1318,8 @@ void Frontend::addBuildQueueItems(
                     {
                         scc->sharedArena = std::make_shared<TypeArena>();
 
-                        // Register placeholder modules so require() of SCC peers resolves to a BlockedType during constraint generation (later updated to its actual type during constraint solving)
+                        // Register placeholder modules so require() of SCC peers resolves to a BlockedType during constraint generation (later
+                        // updated to its actual type during constraint solving)
                         for (const ModuleName& member : scc->members)
                         {
                             TypeId placeholderReturnType = scc->sharedArena->addType(BlockedType{});
@@ -1407,6 +1409,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
     std::unique_ptr<ConstraintGraph> cgraph = std::make_unique<ConstraintGraph>(builtinTypes);
 
     std::vector<TypeError> mergedErrors;
+    std::vector<ConstraintPtr> mergedDeferredConstraints;
 
     // Run constraint generation for each module
     for (size_t i = 0; i < item.modules.size(); i++)
@@ -1467,10 +1470,12 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
             NotNull{cgraph.get()}
         };
 
-        cg.visitModuleRoot(sourceModule.root);
+        ConstraintSet cgResult = cg.run(sourceModule.root);
         module->constraintGenerationDidNotComplete = cg.recursionLimitMet;
 
         cgData[i].cgScopes = std::move(cg.scopes);
+        for (auto& deferred : cgResult.deferredConstraints)
+            mergedDeferredConstraints.push_back(std::move(deferred));
 
         // Bind the placeholder BlockedType to the actual return type so subsequent
         // modules in this SCC see real types when they require() this one.
@@ -1492,7 +1497,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
             }
         }
 
-        mergedErrors.insert(mergedErrors.end(), std::make_move_iterator(cg.errors.begin()), std::make_move_iterator(cg.errors.end()));
+        mergedErrors.insert(mergedErrors.end(), std::make_move_iterator(cgResult.errors.begin()), std::make_move_iterator(cgResult.errors.end()));
         moduleInfo.module = std::move(module);
     }
 
@@ -1503,8 +1508,9 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
         NotNull{rootScope.get()},
         {},
         {},
-        DenseHashMap<Scope*, TypeId>{nullptr},
-        {}
+        DenseHashMap2<Scope*, TypeId>{},
+        {},
+        std::move(mergedDeferredConstraints),
     };
 
     Subtyping subtyping{builtinTypes, NotNull{scc->sharedArena.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceHandler}};
@@ -1653,15 +1659,13 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
     // Emit a warning on the first SCC member if the cycle is large enough.
     if (FInt::LuauCyclicSccWarningThreshold > 0 && scc->members.size() >= static_cast<size_t>(FInt::LuauCyclicSccWarningThreshold))
     {
-        item.modules[0].module->errors.emplace_back(
-            Location{}, item.modules[0].name, CyclicModuleGraphTooLarge{scc->members.size(), scc->members}
-        );
+        item.modules[0].module->errors.emplace_back(Location{}, item.modules[0].name, CyclicModuleGraphTooLarge{scc->members.size(), scc->members});
     }
 }
 
 void Frontend::checkBuildQueueItem(BuildQueueItem& item)
 {
-    if (FFlag::DebugLuauCyclicRequireTypeInference && item.scc && item.modules.size() > 1)
+    if (FFlag::LuauCyclicRequireTypeInference && item.scc && item.modules.size() > 1)
     {
         checkSCCBuildQueueItem(item);
         return;
@@ -1743,7 +1747,14 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     }
 
     ModulePtr module = check(
-        sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, moduleInfo.stats, std::move(typeCheckLimits)
+        sourceModule,
+        mode,
+        requireCycles,
+        environmentScope,
+        /*forAutocomplete*/ false,
+        item.recordJsonLog,
+        moduleInfo.stats,
+        std::move(typeCheckLimits)
     );
 
     double duration = getTimestamp() - timestamp;
@@ -1840,7 +1851,7 @@ void Frontend::checkBuildQueueItems(std::vector<BuildQueueItem>& items)
     {
         checkBuildQueueItem(item);
 
-        if (FFlag::DebugLuauCyclicRequireTypeInference)
+        if (FFlag::LuauCyclicRequireTypeInference)
         {
             bool cancelled = false;
             for (const BuildQueueModuleInfo& moduleInfo : item.modules)
@@ -1919,7 +1930,7 @@ void Frontend::recordItemResult(const BuildQueueItem& item)
         stats.dynamicConstraintsCreated += moduleInfo.stats.dynamicConstraintsCreated;
     };
 
-    if (FFlag::DebugLuauCyclicRequireTypeInference)
+    if (FFlag::LuauCyclicRequireTypeInference)
     {
         for (const BuildQueueModuleInfo& moduleInfo : item.modules)
             recordModuleInfo(moduleInfo);
@@ -2218,7 +2229,8 @@ ModulePtr check(
             printf("%s", dumpCFG(*cfg).c_str());
         if (FFlag::DebugLuauDumpCFGJson)
             printf("%s\n", dumpCFGJson(*cfg).c_str());
-        state = std::make_unique<CFG::TypeStateMap>(NotNull{module->internalTypes.get()}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
+        state =
+            std::make_unique<CFG::TypeStateMap>(NotNull{module->internalTypes.get()}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
         state->computeTypes();
     }
 
@@ -2874,7 +2886,7 @@ TypeId Frontend::parseType(
 
     TypeId t = cg.resolveType(globals.globalScope, parseResult.root, false);
 
-    bool hasConstraints = FFlag::DebugLuauCyclicRequireTypeInference ? !cg.cgraph->constraints.empty() : !cg.constraints.empty();
+    bool hasConstraints = FFlag::LuauCyclicRequireTypeInference ? !cg.cgraph->constraints.empty() : !cg.constraints.empty();
     if (hasConstraints)
     {
         iceHandler->ice("Not yet implemented: parseType cannot reduce other type aliases");

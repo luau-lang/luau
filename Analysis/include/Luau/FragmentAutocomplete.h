@@ -4,7 +4,7 @@
 #include "Luau/Ast.h"
 #include "Luau/Parser.h"
 #include "Luau/AutocompleteTypes.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Module.h"
 #include "Luau/Frontend.h"
 
@@ -45,7 +45,7 @@ enum class FragmentTypeCheckStatus
 
 struct FragmentAutocompleteAncestryResult
 {
-    DenseHashMap<AstName, AstLocal*> localMap{AstName()};
+    DenseHashMap2<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
     std::vector<AstNode*> ancestry;
     AstStat* nearestStatement = nullptr;

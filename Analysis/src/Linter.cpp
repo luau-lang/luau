@@ -31,13 +31,12 @@ struct LintContext
     AstStat* root;
 
     AstName placeholder;
-    DenseHashMap<AstName, Global> builtinGlobals;
+    DenseHashMap2<AstName, Global> builtinGlobals;
     ScopePtr scope;
     const Module* module;
 
     LintContext()
         : root(nullptr)
-        , builtinGlobals(AstName())
         , module(nullptr)
     {
     }
@@ -232,7 +231,7 @@ private:
         }
 
         AstExprFunction* ast;
-        DenseHashSet<AstName> dominatedGlobals;
+        DenseHashSet2<AstName> dominatedGlobals;
         bool conditionalExecution;
     };
 
@@ -250,17 +249,14 @@ private:
         std::optional<const char*> deprecated;
     };
 
-    LintContext* context;
+    LintContext* context = nullptr;
 
-    DenseHashMap<AstName, Global> globals;
+    DenseHashMap2<AstName, Global> globals;
     std::vector<AstExprGlobal*> globalRefs;
     std::vector<FunctionInfo> functionStack;
 
 
-    LintGlobalLocal()
-        : globals(AstName())
-    {
-    }
+    LintGlobalLocal() = default;
 
     void report()
     {
@@ -729,16 +725,11 @@ private:
         AstExprGlobal* firstRef;
     };
 
-    DenseHashMap<AstLocal*, Local> locals;
-    DenseHashMap<AstName, AstLocal*> imports;
-    DenseHashMap<AstName, Global> globals;
+    DenseHashMap2<AstLocal*, Local> locals;
+    DenseHashMap2<AstName, AstLocal*> imports;
+    DenseHashMap2<AstName, Global> globals;
 
-    LintLocalHygiene()
-        : locals(NULL)
-        , imports(AstName())
-        , globals(AstName())
-    {
-    }
+    LintLocalHygiene() = default;
 
     void report()
     {
@@ -964,12 +955,9 @@ private:
         bool used;
     };
 
-    DenseHashMap<AstName, Global> globals;
+    DenseHashMap2<AstName, Global> globals;
 
-    LintUnusedFunction()
-        : globals(AstName())
-    {
-    }
+    LintUnusedFunction() = default;
 
     void report()
     {
@@ -1913,8 +1901,8 @@ private:
             if (item.kind == AstExprTable::Item::Kind::List)
                 count++;
 
-        DenseHashMap<AstArray<char>*, int, AstArrayPredicate, AstArrayPredicate> names(nullptr);
-        DenseHashMap<int, int> indices(-1);
+        DenseHashMap2<AstArray<char>*, int, AstArrayPredicate, AstArrayPredicate> names;
+        DenseHashMap2<int, int> indices;
 
         for (const AstExprTable::Item& item : node->items)
         {
@@ -1990,7 +1978,7 @@ private:
 
         if (context->module->checkedInNewSolver)
         {
-            DenseHashMap<AstName, Rec> names(AstName{});
+            DenseHashMap2<AstName, Rec> names;
 
             for (const AstTableProp& item : node->props)
             {
@@ -2049,7 +2037,7 @@ private:
             return true;
         }
 
-        DenseHashMap<AstName, int> names(AstName{});
+        DenseHashMap2<AstName, int> names;
 
         for (const AstTableProp& item : node->props)
         {
@@ -2108,12 +2096,9 @@ private:
     };
 
     LintContext* context;
-    DenseHashMap<AstLocal*, Local> locals;
+    DenseHashMap2<AstLocal*, Local> locals;
 
-    LintUninitializedLocal()
-        : locals(NULL)
-    {
-    }
+    LintUninitializedLocal() = default;
 
     void report()
     {
@@ -2207,11 +2192,10 @@ public:
 
 private:
     LintContext* context;
-    DenseHashMap<std::string, Location> defns;
+    DenseHashMap2<std::string, Location> defns;
 
     LintDuplicateFunction(LintContext* context)
         : context(context)
-        , defns("")
     {
     }
 
@@ -2998,12 +2982,9 @@ public:
 private:
     LintContext* context;
 
-    DenseHashMap<AstLocal*, AstNode*> locals;
+    DenseHashMap2<AstLocal*, AstNode*> locals;
 
-    LintDuplicateLocal()
-        : locals(nullptr)
-    {
-    }
+    LintDuplicateLocal() = default;
 
     bool visit(AstStatLocal* node) override
     {

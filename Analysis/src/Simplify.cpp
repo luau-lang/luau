@@ -5,7 +5,7 @@
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Set.h"
 #include "Luau/Type.h"
@@ -19,6 +19,7 @@
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
+LUAU_FASTFLAGVARIABLE(LuauCheckReadTyWhenRelatingExtern)
 
 namespace Luau
 {
@@ -30,7 +31,7 @@ struct TypeSimplifier
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
 
-    DenseHashSet<TypeId> blockedTypes{nullptr};
+    DenseHashSet2<TypeId> blockedTypes;
 
     int recursionDepth = 0;
 
@@ -64,15 +65,15 @@ struct TypeSimplifier
 
     TypeId simplify(TypeId ty);
 
-    TypeId simplify(TypeId ty, DenseHashSet<TypeId>& seen);
+    TypeId simplify(TypeId ty, DenseHashSet2<TypeId>& seen);
 
     std::optional<TypeId> intersectOne(TypeId target, TypeId discriminant) const;
 
     std::optional<TypeId> subtractOne(TypeId target, TypeId discriminant) const;
 
-    std::optional<Property> intersectProperty(const Property& target, const Property& discriminant, DenseHashSet<TypeId>& seen) const;
+    std::optional<Property> intersectProperty(const Property& target, const Property& discriminant, DenseHashSet2<TypeId>& seen) const;
 
-    std::optional<TypeId> intersectWithSimpleDiscriminant(TypeId target, TypeId discriminant, DenseHashSet<TypeId>& seen) const;
+    std::optional<TypeId> intersectWithSimpleDiscriminant(TypeId target, TypeId discriminant, DenseHashSet2<TypeId>& seen) const;
 
     std::optional<TypeId> intersectWithSimpleDiscriminant(TypeId target, TypeId discriminant) const;
 };
@@ -186,7 +187,14 @@ Relation relateTableToExternType(const TableType* table, const ExternType* cls, 
     {
         if (auto propInExternType = lookupExternTypeProp(cls, name))
         {
-            LUAU_ASSERT(prop.readTy && propInExternType->readTy);
+            if (FFlag::LuauCheckReadTyWhenRelatingExtern)
+            {
+                // If either of these properties are disjoint read-write or write-only, bail.
+                if (!(prop.isReadOnly() || prop.isShared()) || !(propInExternType->isReadOnly() || propInExternType->isShared()))
+                    return Relation::Intersects;
+            }
+            else
+                LUAU_ASSERT(prop.readTy && propInExternType->readTy);
             // For all examples, consider:
             //
             //  declare extern type Foobar with
@@ -683,7 +691,7 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
 // A cheap and approximate subtype test
 Relation relate(TypeId left, TypeId right)
 {
-    SimplifierSeenSet seen{{}};
+    SimplifierSeenSet seen;
     return relate(left, right, seen);
 }
 
@@ -1661,11 +1669,11 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
 
 TypeId TypeSimplifier::simplify(TypeId ty)
 {
-    DenseHashSet<TypeId> seen{nullptr};
+    DenseHashSet2<TypeId> seen;
     return simplify(ty, seen);
 }
 
-TypeId TypeSimplifier::simplify(TypeId ty, DenseHashSet<TypeId>& seen)
+TypeId TypeSimplifier::simplify(TypeId ty, DenseHashSet2<TypeId>& seen)
 {
     RecursionLimiter limiter("TypeSimplifier::simplify", &recursionDepth, 60);
 
@@ -1708,7 +1716,7 @@ TypeId TypeSimplifier::simplify(TypeId ty, DenseHashSet<TypeId>& seen)
 namespace
 {
 
-bool isSimpleDiscriminant(TypeId ty, DenseHashSet<TypeId>& seen)
+bool isSimpleDiscriminant(TypeId ty, DenseHashSet2<TypeId>& seen)
 {
     ty = follow(ty);
     // If we *ever* see a recursive type, bail right away, clearly that is
@@ -1740,7 +1748,7 @@ bool isSimpleDiscriminant(TypeId ty, DenseHashSet<TypeId>& seen)
  */
 bool isSimpleDiscriminant(TypeId ty)
 {
-    DenseHashSet<TypeId> seenSet{nullptr};
+    DenseHashSet2<TypeId> seenSet;
     return isSimpleDiscriminant(ty, seenSet);
 }
 
@@ -1786,7 +1794,7 @@ std::optional<TypeId> TypeSimplifier::subtractOne(TypeId target, TypeId discrimi
     }
 }
 
-std::optional<Property> TypeSimplifier::intersectProperty(const Property& target, const Property& discriminant, DenseHashSet<TypeId>& seen) const
+std::optional<Property> TypeSimplifier::intersectProperty(const Property& target, const Property& discriminant, DenseHashSet2<TypeId>& seen) const
 {
     // NOTE: I invite the reader to refactor the below code as a fun coding
     // exercise. It looks ugly to me, but I don't think we can make it
@@ -1825,7 +1833,7 @@ std::optional<Property> TypeSimplifier::intersectProperty(const Property& target
     return {prop};
 }
 
-std::optional<TypeId> TypeSimplifier::intersectWithSimpleDiscriminant(TypeId target, TypeId discriminant, DenseHashSet<TypeId>& seen) const
+std::optional<TypeId> TypeSimplifier::intersectWithSimpleDiscriminant(TypeId target, TypeId discriminant, DenseHashSet2<TypeId>& seen) const
 {
     if (seen.contains(target))
         return std::nullopt;
@@ -1974,7 +1982,7 @@ std::optional<TypeId> TypeSimplifier::intersectWithSimpleDiscriminant(TypeId tar
 
 std::optional<TypeId> TypeSimplifier::intersectWithSimpleDiscriminant(TypeId target, TypeId discriminant) const
 {
-    DenseHashSet<TypeId> seenSet{nullptr};
+    DenseHashSet2<TypeId> seenSet;
     return intersectWithSimpleDiscriminant(target, discriminant, seenSet);
 }
 

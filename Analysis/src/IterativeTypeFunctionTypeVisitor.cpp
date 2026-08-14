@@ -49,12 +49,12 @@ bool IterativeTypeFunctionTypeVisitor::WorkItem::operator==(TypeFunctionTypePack
 }
 
 IterativeTypeFunctionTypeVisitor::IterativeTypeFunctionTypeVisitor(std::string visitorName)
-    : IterativeTypeFunctionTypeVisitor(std::move(visitorName), SeenSet{nullptr}, /*visitOnce*/ true)
+    : IterativeTypeFunctionTypeVisitor(std::move(visitorName), SeenSet{}, /*visitOnce*/ true)
 {
 }
 
 IterativeTypeFunctionTypeVisitor::IterativeTypeFunctionTypeVisitor(std::string visitorName, bool visitOnce)
-    : IterativeTypeFunctionTypeVisitor(std::move(visitorName), SeenSet{nullptr}, visitOnce)
+    : IterativeTypeFunctionTypeVisitor(std::move(visitorName), SeenSet{}, visitOnce)
 {
 }
 

@@ -35,9 +35,8 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAGVARIABLE(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(DebugLuauNoInline)
-LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauOptimizeExportTable)
-
 
 namespace Luau
 {
@@ -124,18 +123,6 @@ struct Compiler
     Compiler(BytecodeBuilder& bytecode, const CompileOptions& options, AstNameTable& names)
         : bytecode(bytecode)
         , options(options)
-        , functions(nullptr)
-        , locals(nullptr)
-        , globals(AstName())
-        , variables(nullptr)
-        , constants(nullptr)
-        , locstants(nullptr)
-        , tableShapes(nullptr)
-        , builtins(nullptr)
-        , userdataTypes(AstName())
-        , functionTypes(nullptr)
-        , localTypes(nullptr)
-        , exprTypes(nullptr)
         , builtinTypes(options.vectorType)
         , names(names)
         , exports(AstLocal(names.getOrAdd("__EXP"), Location(), nullptr, 0, 0, nullptr, true))
@@ -1598,6 +1585,9 @@ struct Compiler
 
         RegScope _(this);
 
+        // The bottom bit of the C slot indicates whether the class is open.
+        uint8_t instrCVal = decl->open ? 1u : 0u;
+
         if (decl->super)
         {
             // If the superclass is already in a local register, we can reference it directly
@@ -1605,15 +1595,15 @@ struct Compiler
             uint8_t superDest = allocReg(decl, decl->super && superReg < 0 ? 1u : 0u);
 
             if (superReg >= 0)
-                bytecode.emitABC(LOP_NEWCLASS, dest, uint8_t(superReg), 0);
+                bytecode.emitABC(LOP_NEWCLASS, dest, uint8_t(superReg), instrCVal);
             else
             {
                 compileExpr(decl->super, superDest);
-                bytecode.emitABC(LOP_NEWCLASS, dest, superDest, 0);
+                bytecode.emitABC(LOP_NEWCLASS, dest, superDest, instrCVal);
             }
         }
         else // The range of valid registers is 0-254, so we use 0xFF (255) to indicate the absence of a superclass.
-            bytecode.emitABC(LOP_NEWCLASS, dest, kInvalidReg, 0);
+            bytecode.emitABC(LOP_NEWCLASS, dest, kInvalidReg, instrCVal);
 
         // We want to load the class constant up front, but in order to load
         // the class constant we need to build it first. To avoid a second
@@ -1633,9 +1623,10 @@ struct Compiler
         // N registers.
         auto temp = allocReg(decl, 1u);
 
+        bool hasExplicitConstructor = false;
+
         for (const auto& member : decl->members)
         {
-
             Luau::visit(
                 overloaded{
                     [&](const AstClassProperty& prop)
@@ -1662,10 +1653,25 @@ struct Compiler
                         shape.methodNames.emplace_back(methodNameCid);
                         bytecode.emitABC(LOP_NEWCLASSMEMBER, dest, 0, temp);
                         bytecode.emitAux(methodNameCid);
+
+                        if (method.functionName == "__init")
+                            hasExplicitConstructor = true;
                     }
                 },
                 member
             );
+        }
+
+        // All classes have `new` and `__init` methods.
+        int newCid = bytecode.addConstantString(sref(names.getOrAdd("new")));
+        checkConstant(newCid, decl->location);
+        shape.methodNames.emplace_back(newCid);
+
+        if (!hasExplicitConstructor)
+        {
+            int initCid = bytecode.addConstantString(sref(names.getOrAdd("__init")));
+            checkConstant(newCid, decl->location);
+            shape.methodNames.emplace_back(initCid);
         }
 
         // Finally, we create the class constant and patch the AUX slot
@@ -3775,8 +3781,7 @@ struct Compiler
             if (!v || !v->constant)
                 return false;
 
-            if (FFlag::LuauExportValueSyntax && local->isExported &&
-                (!FFlag::LuauOptimizeExportTable || exports.exportedTableCid == -1))
+            if (FFlag::LuauExportValueSyntax && local->isExported && (!FFlag::LuauOptimizeExportTable || exports.exportedTableCid == -1))
             {
                 // exported locals must be written to the export table
                 return false;
@@ -4905,7 +4910,6 @@ struct Compiler
         UndefinedLocalVisitor(Compiler* self)
             : self(self)
             , undef(nullptr)
-            , locals(nullptr)
         {
         }
 
@@ -4941,7 +4945,7 @@ struct Compiler
 
         Compiler* self;
         AstLocal* undef;
-        DenseHashSet<AstLocal*> locals;
+        DenseHashSet2<AstLocal*> locals;
     };
 
     struct ConstUpvalueVisitor : AstVisitor
@@ -5094,23 +5098,24 @@ struct Compiler
 
     CompileOptions options;
 
-    DenseHashMap<AstExprFunction*, Function> functions;
-    DenseHashMap<AstLocal*, Local> locals;
-    DenseHashMap<AstName, Global> globals;
-    DenseHashMap<AstLocal*, Variable> variables;
-    DenseHashMap<AstExpr*, Constant> constants;
-    DenseHashMap<AstLocal*, Constant> locstants;
-    DenseHashMap<AstLocal*, TableConstantKind> tableConstants{nullptr};
-    DenseHashMap<AstExprTable*, TableShape> tableShapes;
-    DenseHashMap<AstExprCall*, int> builtins;
-    DenseHashMap<AstName, uint8_t> userdataTypes;
-    DenseHashMap<AstExprFunction*, std::string> functionTypes;
-    DenseHashMap<AstLocal*, LuauBytecodeType> localTypes;
-    DenseHashMap<AstExpr*, LuauBytecodeType> exprTypes;
-    DenseHashMap<AstName, AstLocal*> classLocals{AstName{}};
 
-    DenseHashMap<AstExprCall*, int> inlineBuiltins{nullptr};
-    DenseHashMap<AstExprCall*, int> inlineBuiltinsBackup{nullptr};
+    DenseHashMap2<AstExprFunction*, Function> functions;
+    DenseHashMap2<AstLocal*, Local> locals;
+    DenseHashMap2<AstName, Global> globals;
+    DenseHashMap2<AstLocal*, Variable> variables;
+    DenseHashMap2<AstExpr*, Constant> constants;
+    DenseHashMap2<AstLocal*, Constant> locstants;
+    DenseHashMap2<AstLocal*, TableConstantKind> tableConstants;
+    DenseHashMap2<AstExprTable*, TableShape> tableShapes;
+    DenseHashMap2<AstExprCall*, int> builtins;
+    DenseHashMap2<AstName, uint8_t> userdataTypes;
+    DenseHashMap2<AstExprFunction*, std::string> functionTypes;
+    DenseHashMap2<AstLocal*, LuauBytecodeType> localTypes;
+    DenseHashMap2<AstExpr*, LuauBytecodeType> exprTypes;
+    DenseHashMap2<AstName, AstLocal*> classLocals{};
+
+    DenseHashMap2<AstExprCall*, int> inlineBuiltins;
+    DenseHashMap2<AstExprCall*, int> inlineBuiltinsBackup;
 
     Compile::ExprConstantChangeLog exprChanges;
     Compile::LocalConstantChangeLog localChanges;
@@ -5118,7 +5123,7 @@ struct Compiler
     BuiltinAstTypes builtinTypes;
     AstNameTable& names;
 
-    const DenseHashMap<AstExprCall*, int>* builtinsFold = nullptr;
+    const DenseHashMap2<AstExprCall*, int>* builtinsFold = nullptr;
     bool builtinsFoldLibraryK = false;
 
     // compileFunction state, gets reset for every function
@@ -5144,8 +5149,8 @@ struct Compiler
     struct Exports
     {
         AstLocal exportTableLocal;
-        DenseHashMap<AstLocal*, uint8_t> exportedClasses{nullptr};
-        DenseHashSet<AstLocal*> exportedFunctions{nullptr};
+        DenseHashMap2<AstLocal*, uint8_t> exportedClasses;
+        DenseHashSet2<AstLocal*> exportedFunctions;
         std::vector<AstLocal*> exportedVariables;
         int32_t exportedTableCid = -1;
         bool hasExports = false;

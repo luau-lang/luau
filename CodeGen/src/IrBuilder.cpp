@@ -24,7 +24,6 @@ constexpr unsigned kNoAssociatedBlockIndex = ~0u;
 
 IrBuilder::IrBuilder(const HostIrHooks& hostHooks)
     : hostHooks(hostHooks)
-    , constantMap({IrConstKind::Tag, ~0ull})
 {
 }
 
@@ -749,7 +748,7 @@ void IrBuilder::checkSafeEnv(int pcpos)
 
 void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator)
 {
-    DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
+    DenseHashMap2<uint32_t, uint32_t> instRedir;
 
     auto redirect = [&instRedir](IrOp& op)
     {

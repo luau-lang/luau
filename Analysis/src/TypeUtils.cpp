@@ -200,13 +200,7 @@ std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, 
         return {minCount, minCount + optionalCount};
 }
 
-TypePack extendTypePack(
-    TypeArena& arena,
-    NotNull<BuiltinTypes> builtinTypes,
-    TypePackId pack,
-    size_t length,
-    std::vector<std::optional<TypeId>> overrides
-)
+TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, TypePackId pack, size_t length)
 {
     TypePack result;
 
@@ -272,24 +266,15 @@ TypePack extendTypePack(
             trackInteriorFreeTypePack(ftp->scope, *newPack.tail);
 
             result.tail = newPack.tail;
-            size_t overridesIndex = 0;
             while (result.head.size() < length)
             {
                 TypeId t;
-                if (overridesIndex < overrides.size() && overrides[overridesIndex])
-                {
-                    t = *overrides[overridesIndex];
-                }
-                else
-                {
-                    FreeType ft{ftp->scope, builtinTypes->neverType, builtinTypes->unknownType, ftp->polarity};
-                    t = arena.addType(ft);
-                    trackInteriorFreeType(ftp->scope, t);
-                }
+                FreeType ft{ftp->scope, builtinTypes->neverType, builtinTypes->unknownType, ftp->polarity};
+                t = arena.addType(ft);
+                trackInteriorFreeType(ftp->scope, t);
 
                 newPack.head.push_back(t);
                 result.head.push_back(newPack.head.back());
-                overridesIndex++;
             }
 
             asMutable(pack)->ty.emplace<TypePack>(std::move(newPack));
@@ -483,7 +468,7 @@ bool isLiteral(const AstExpr* expr)
 class BlockedTypeInLiteralVisitor : public AstVisitor
 {
 public:
-    explicit BlockedTypeInLiteralVisitor(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, NotNull<std::vector<TypeId>> toBlock)
+    explicit BlockedTypeInLiteralVisitor(NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes, NotNull<std::vector<TypeId>> toBlock)
         : astTypes_{astTypes}
         , toBlock_{toBlock}
     {
@@ -504,11 +489,11 @@ public:
     }
 
 private:
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes_;
+    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes_;
     NotNull<std::vector<TypeId>> toBlock_;
 };
 
-std::vector<TypeId> findBlockedArgTypesIn_DEPRECATED(AstExprCall* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes)
+std::vector<TypeId> findBlockedArgTypesIn_DEPRECATED(AstExprCall* expr, NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes)
 {
     std::vector<TypeId> toBlock;
     BlockedTypeInLiteralVisitor v{astTypes, NotNull{&toBlock}};
@@ -961,47 +946,11 @@ TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, st
     return ub.build();
 }
 
-ContainsAnyGeneric_DEPRECATED::ContainsAnyGeneric_DEPRECATED()
-    : TypeOnceVisitor("ContainsAnyGeneric", /* skipBoundTypes */ true)
-{
-}
-
-bool ContainsAnyGeneric_DEPRECATED::visit(TypeId ty, const ExternType&)
-{
-    return false;
-}
-
-bool ContainsAnyGeneric_DEPRECATED::visit(TypeId ty)
-{
-    found = found || is<GenericType>(ty);
-    return !found;
-}
-
-bool ContainsAnyGeneric_DEPRECATED::visit(TypePackId ty)
-{
-    found = found || is<GenericTypePack>(follow(ty));
-    return !found;
-}
-
-bool ContainsAnyGeneric_DEPRECATED::hasAnyGeneric(TypeId ty)
-{
-    ContainsAnyGeneric_DEPRECATED cg;
-    cg.traverse(ty);
-    return cg.found;
-}
-
-bool ContainsAnyGeneric_DEPRECATED::hasAnyGeneric(TypePackId tp)
-{
-    ContainsAnyGeneric_DEPRECATED cg;
-    cg.traverse(tp);
-    return cg.found;
-}
-
 struct ContainsGenerics : public IterativeTypeVisitor
 {
-    NotNull<DenseHashSet<const void*>> generics;
+    NotNull<DenseHashSet2<const void*>> generics;
 
-    explicit ContainsGenerics(NotNull<DenseHashSet<const void*>> generics)
+    explicit ContainsGenerics(NotNull<DenseHashSet2<const void*>> generics)
         : IterativeTypeVisitor("ContainsGenerics", /* skipBoundTypes */ true)
         , generics{generics}
     {
@@ -1032,14 +981,14 @@ struct ContainsGenerics : public IterativeTypeVisitor
     }
 };
 
-bool containsGeneric(TypeId ty, NotNull<DenseHashSet<const void*>> generics)
+bool containsGeneric(TypeId ty, NotNull<DenseHashSet2<const void*>> generics)
 {
     ContainsGenerics cg{generics};
     cg.run(ty);
     return cg.found;
 }
 
-bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics)
+bool containsGeneric(TypePackId ty, NotNull<DenseHashSet2<const void*>> generics)
 {
     ContainsGenerics cg{generics};
     cg.run(ty);
@@ -1056,7 +1005,7 @@ bool isBlocked(TypeId ty)
     return is<BlockedType, PendingExpansionType>(ty);
 }
 
-std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty, DenseHashSet<TypeId>& seen)
+std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty, DenseHashSet2<TypeId>& seen)
 {
     ty = follow(ty);
     if (seen.contains(ty))
@@ -1075,7 +1024,7 @@ std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty, Den
 
 std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty)
 {
-    DenseHashSet<TypeId> seen{nullptr};
+    DenseHashSet2<TypeId> seen;
     return getApproximateReturnTypeForFunctionCall(ty, seen);
 }
 

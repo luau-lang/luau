@@ -11,7 +11,7 @@
 #include "Luau/ControlFlowGraph.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/Def.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/IterativeTypeVisitor.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Normalize.h"
@@ -41,14 +41,17 @@ LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
+LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauDoNotEmplaceAnnotatedType)
 LUAU_FASTFLAGVARIABLE(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-LUAU_FLAGVERSION(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, 2)
+LUAU_FLAGVERSION(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, 3)
 LUAU_FASTFLAGVARIABLE(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAGVARIABLE(DebugLuauCFG)
-LUAU_FASTFLAG(DebugLuauCyclicRequireTypeInference)
+LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+LUAU_FASTFLAGVARIABLE(LuauUdtfPopulateEnv)
+LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
 {
@@ -104,7 +107,7 @@ namespace
 
 Checkpoint checkpoint(const ConstraintGenerator* cg)
 {
-    if (FFlag::DebugLuauCyclicRequireTypeInference)
+    if (FFlag::LuauCyclicRequireTypeInference)
         return Checkpoint{cg->cgraph->constraints.size()};
     return Checkpoint{cg->constraints.size()};
 }
@@ -112,7 +115,7 @@ Checkpoint checkpoint(const ConstraintGenerator* cg)
 template<typename F>
 void forEachConstraint(const Checkpoint& start, const Checkpoint& end, const ConstraintGenerator* cg, F f)
 {
-    if (FFlag::DebugLuauCyclicRequireTypeInference)
+    if (FFlag::LuauCyclicRequireTypeInference)
     {
         for (size_t i = start.offset; i < end.offset; ++i)
         {
@@ -250,16 +253,33 @@ bool hasFreeType(TypeId ty)
 
 struct GlobalNameCollector : public AstVisitor
 {
-    DenseHashSet<AstName> names;
+    DenseHashSet2<AstName> names;
 
-    GlobalNameCollector()
-        : names(AstName())
-    {
-    }
+    GlobalNameCollector() = default;
 
     bool visit(AstExprGlobal* node) override
     {
         names.insert(node->name);
+        return true;
+    }
+};
+
+struct TypeFunctionEnvGlobalBinder : AstVisitor
+{
+    NotNull<Scope> environmentScope;
+    NotNull<const DataFlowGraph> dfg;
+
+    TypeFunctionEnvGlobalBinder(NotNull<Scope> environmentScope, NotNull<const DataFlowGraph> dfg)
+        : environmentScope(environmentScope)
+        , dfg(dfg)
+    {
+    }
+
+    bool visit(AstExprGlobal* global) override
+    {
+        if (auto ty = environmentScope->lookup(global->name))
+            environmentScope->lvalueTypes[dfg->getDef(global)] = *ty;
+
         return true;
     }
 };
@@ -307,8 +327,17 @@ ConstraintSet ConstraintGenerator::run(AstStatBlock* block)
 {
     visitModuleRoot(block);
 
-    if (FFlag::DebugLuauCyclicRequireTypeInference)
-        return ConstraintSet{NotNull{rootScope}, {}, {}, DenseHashMap<Scope*, TypeId>{nullptr}, std::move(errors)};
+    if (FFlag::LuauCyclicRequireTypeInference)
+    {
+        std::vector<ConstraintPtr> deferred;
+        if (moduleGeneralizationConstraint)
+            deferred.push_back(std::move(moduleGeneralizationConstraint));
+
+        // constraints, freeTypes, and ScopeToFunction are empty with LuauCyclicRequireTypeInference because they're added to ConstraintGraph instead
+        // of ConstraintSet
+        return ConstraintSet{NotNull{rootScope}, {}, {}, DenseHashMap2<Scope*, TypeId>{}, std::move(errors), std::move(deferred)};
+    }
+
     return ConstraintSet{NotNull{rootScope}, std::move(constraints), std::move(freeTypes), std::move(scopeToFunction), std::move(errors)};
 }
 
@@ -316,8 +345,8 @@ ConstraintSet ConstraintGenerator::runOnFragment(const ScopePtr& resumeScope, As
 {
     visitFragmentRoot(resumeScope, block);
 
-    if (FFlag::DebugLuauCyclicRequireTypeInference)
-        return ConstraintSet{NotNull{rootScope}, {}, {}, DenseHashMap<Scope*, TypeId>{nullptr}, std::move(errors)};
+    if (FFlag::LuauCyclicRequireTypeInference)
+        return ConstraintSet{NotNull{rootScope}, {}, {}, DenseHashMap2<Scope*, TypeId>{}, std::move(errors)};
     return ConstraintSet{NotNull{rootScope}, std::move(constraints), std::move(freeTypes), std::move(scopeToFunction), std::move(errors)};
 }
 
@@ -354,23 +383,33 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
     Checkpoint end = checkpoint(this);
 
     TypeId result = arena->addType(BlockedType{});
-    NotNull<Constraint> genConstraint = addConstraint(
-        scope,
-        block->location,
-        GeneralizationConstraint{
-            result,
-            moduleFnTy,
-            /* maybeDeprecatedAttr */ nullptr,
-            /* noGenerics */ true
-        }
-    );
+
+    if (FFlag::LuauCyclicRequireTypeInference)
+    {
+        moduleGeneralizationConstraint = std::make_unique<Constraint>(
+            NotNull{scope.get()}, block->location, GeneralizationConstraint{result, moduleFnTy, nullptr, true}, sharedModuleName
+        );
+        getMutable<BlockedType>(result)->setOwner(NotNull{moduleGeneralizationConstraint.get()});
+        addAllAsDependencies(start, end, this, NotNull{moduleGeneralizationConstraint.get()});
+    }
+    else
+    {
+        NotNull<Constraint> genConstraint = addConstraint(
+            scope,
+            block->location,
+            GeneralizationConstraint{
+                result,
+                moduleFnTy,
+                /* maybeDeprecatedAttr */ nullptr,
+                /* noGenerics */ true
+            }
+        );
+        getMutable<BlockedType>(result)->setOwner(genConstraint);
+        addAllAsDependencies(start, end, this, genConstraint);
+    }
 
     scope->interiorFreeTypes = std::move(interiorFreeTypes.back().types);
     scope->interiorFreeTypePacks = std::move(interiorFreeTypes.back().typePacks);
-
-    getMutable<BlockedType>(result)->setOwner(genConstraint);
-
-    addAllAsDependencies(start, end, this, genConstraint);
 
     interiorFreeTypes.pop_back();
 
@@ -438,7 +477,7 @@ TypeId ConstraintGenerator::freshType(const ScopePtr& scope, Polarity polarity)
 {
     const TypeId ft = Luau::freshType(arena, builtinTypes, scope.get(), polarity);
     interiorFreeTypes.back().types.push_back(ft);
-    if (FFlag::DebugLuauCyclicRequireTypeInference)
+    if (FFlag::LuauCyclicRequireTypeInference)
         cgraph->freeTypes.insert(ft);
     else
         freeTypes.insert(ft);
@@ -553,14 +592,14 @@ TypeId ConstraintGenerator::resolveLHSType(const ScopePtr& scope, Location locat
 
 NotNull<Constraint> ConstraintGenerator::addConstraint(const ScopePtr& scope, const Location& location, ConstraintV cv)
 {
-    if (FFlag::DebugLuauCyclicRequireTypeInference)
+    if (FFlag::LuauCyclicRequireTypeInference)
         return NotNull{cgraph->constraints.emplace_back(new Constraint{NotNull{scope.get()}, location, std::move(cv), sharedModuleName}).get()};
     return NotNull{constraints.emplace_back(new Constraint{NotNull{scope.get()}, location, std::move(cv)}).get()};
 }
 
 NotNull<Constraint> ConstraintGenerator::addConstraint(const ScopePtr& scope, std::unique_ptr<Constraint> c)
 {
-    if (FFlag::DebugLuauCyclicRequireTypeInference)
+    if (FFlag::LuauCyclicRequireTypeInference)
     {
         c->moduleName = sharedModuleName;
         return NotNull{cgraph->constraints.emplace_back(std::move(c)).get()};
@@ -864,7 +903,7 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
  */
 void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstStatBlock* block)
 {
-    DenseHashMap<Name, Location> typeNameLocations{Name{}};
+    DenseHashMap2<Name, Location> typeNameLocations;
 
     bool hasTypeFunction = false;
     ScopePtr typeFunctionEnvScope;
@@ -1034,7 +1073,7 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
             TableType::Props staticProps;
             ExternType::Props props;
             TableType::Props instanceMetatableProps;
-            DenseHashMap<AstName, TypeId> memberTypes{AstName{""}};
+            DenseHashMap2<AstName, TypeId> memberTypes;
 
             TypeId ctorArgTy = arena->addType(TableType{TableType::Props{}, std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed});
             TableType* ctorArgTable = getMutable<TableType>(ctorArgTy);
@@ -1131,7 +1170,7 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
         typeFunctionEnvScope = std::make_shared<Scope>(typeFunctionRuntime->rootScope);
 
     std::vector<TypeFunctionInstanceType*> createdTypeFunctions;
-    DenseHashMap<AstStatTypeFunction*, const TypeFunctionInstanceType*> referencedTypeFunctions{nullptr};
+    DenseHashMap2<AstStatTypeFunction*, const TypeFunctionInstanceType*> referencedTypeFunctions;
 
     // Additional pass for user-defined type functions to fill in their environments completely
     for (AstStat* stat : block->body)
@@ -1218,6 +1257,17 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
                     level++;
                 }
             }
+        }
+    }
+
+    if (FFlag::LuauUdtfPopulateEnv && typeFunctionEnvScope)
+    {
+        TypeFunctionEnvGlobalBinder binder{NotNull{typeFunctionEnvScope.get()}, dfg};
+
+        for (AstStat* stat : block->body)
+        {
+            if (auto function = stat->as<AstStatTypeFunction>())
+                function->body->visit(&binder);
         }
     }
 
@@ -1411,7 +1461,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
     std::vector<TypeId> deferredTypes;
     auto [head, tail] = flatten(rvaluePack);
 
-    DenseHashSet<BlockedType*> freshBlockedTypes{nullptr};
+    DenseHashSet2<BlockedType*> freshBlockedTypes;
 
     for (size_t i = 0; i < statLocal->vars.size; ++i)
     {
@@ -1600,8 +1650,13 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forI
     const DefId keyDef = dfg->getDef(keyVar);
     const TypeId loopVar = loopScope->lvalueTypes[keyDef];
 
-    const TypeId intersectionTy =
-        createTypeFunctionInstance(builtinTypes->typeFunctions->intersectFunc, {loopVar, builtinTypes->notNilType}, {}, loopScope, keyVar->location);
+    const TypeId intersectionTy = createTypeFunctionInstance(
+        FFlag::LuauIterableConstraintMutatesIterator ? builtinTypes->typeFunctions->refineFunc : builtinTypes->typeFunctions->intersectFunc,
+        {loopVar, builtinTypes->notNilType},
+        {},
+        loopScope,
+        keyVar->location
+    );
 
     loopScope->bindings[keyVar] = Binding{intersectionTy, keyVar->location};
     loopScope->lvalueTypes[keyDef] = intersectionTy;
@@ -1700,9 +1755,12 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
     Checkpoint end = checkpoint(this);
 
     NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
-    std::unique_ptr<Constraint> c = FFlag::DebugLuauCyclicRequireTypeInference
-        ? std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature}, sharedModuleName)
-        : std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature});
+    std::unique_ptr<Constraint> c =
+        FFlag::LuauCyclicRequireTypeInference
+            ? std::make_unique<Constraint>(
+                  constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature}, sharedModuleName
+              )
+            : std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature});
 
     propagateDeprecatedAttributeToConstraint(c->c, function->func);
 
@@ -2466,9 +2524,14 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
                     Checkpoint end = checkpoint(this);
 
                     NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
-                    std::unique_ptr<Constraint> c = FFlag::DebugLuauCyclicRequireTypeInference
-                        ? std::make_unique<Constraint>(constraintScope, method.function->location, GeneralizationConstraint{functionType, sig.signature}, sharedModuleName)
-                        : std::make_unique<Constraint>(constraintScope, method.function->location, GeneralizationConstraint{functionType, sig.signature});
+                    std::unique_ptr<Constraint> c =
+                        FFlag::LuauCyclicRequireTypeInference
+                            ? std::make_unique<Constraint>(
+                                  constraintScope, method.function->location, GeneralizationConstraint{functionType, sig.signature}, sharedModuleName
+                              )
+                            : std::make_unique<Constraint>(
+                                  constraintScope, method.function->location, GeneralizationConstraint{functionType, sig.signature}
+                              );
 
                     propagateDeprecatedAttributeToConstraint(c->c, method.function);
 
@@ -2822,7 +2885,7 @@ InferencePack ConstraintGenerator::checkExprCall(
             std::move(discriminantTypes),
             std::move(explicitTypeIds),
             std::move(explicitTypePackIds),
-            FFlag::DebugLuauCyclicRequireTypeInference ? &module->astTypes : nullptr,
+            FFlag::LuauCyclicRequireTypeInference ? &module->astTypes : nullptr,
             &module->astOverloadResolvedTypes,
         }
     );
@@ -3204,6 +3267,11 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprUnary* unary)
     }
     case AstExprUnary::Op::Minus:
     {
+        // compileExprUnary folds `-1i` into one negative constant, so a negated integer literal is a value rather than
+        // an operation. A non-literal integer still reaches the runtime, which has no __unm, so it keeps the check.
+        if (FFlag::LuauIntegerType2 && unary->expr->is<AstExprConstantInteger>())
+            return Inference{builtinTypes->integerType, std::move(refinement)};
+
         TypeId resultType = createTypeFunctionInstance(builtinTypes->typeFunctions->unmFunc, {operandType}, {}, scope, unary->location);
         return Inference{resultType, std::move(refinement)};
     }
@@ -4061,7 +4129,7 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
     if (expectedType && get<FreeType>(*expectedType))
         bindFreeType(*expectedType, actualFunctionType);
 
-    if (FFlag::DebugLuauCyclicRequireTypeInference)
+    if (FFlag::LuauCyclicRequireTypeInference)
         cgraph->scopeToFunction[signatureScope.get()] = actualFunctionType;
     else
         scopeToFunction[signatureScope.get()] = actualFunctionType;
@@ -4688,7 +4756,7 @@ struct GlobalPrepopulator : AstVisitor
     const NotNull<TypeArena> arena;
     const NotNull<const DataFlowGraph> dfg;
 
-    DenseHashSet<AstName> uninitializedGlobals{{}};
+    DenseHashSet2<AstName> uninitializedGlobals;
 
     GlobalPrepopulator(NotNull<Scope> globalScope, NotNull<TypeArena> arena, NotNull<const DataFlowGraph> dfg)
         : globalScope(globalScope)
@@ -4784,7 +4852,7 @@ void ConstraintGenerator::prepopulateGlobalScope(const ScopePtr& globalScope, As
 
 bool ConstraintGenerator::recordPropertyAssignment(TypeId ty)
 {
-    DenseHashSet<TypeId> seen{nullptr};
+    DenseHashSet2<TypeId> seen;
     VecDeque<TypeId> queue;
 
     queue.push_back(ty);

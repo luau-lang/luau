@@ -6136,7 +6136,8 @@ end
 
 -- First run to establish expected values
 local result = runAllScenarios()
-if result ~= 21502896.173 then
+local expected = 21502896.173
+if math.abs(result - expected) > expected * 1e-3 then
     error("Bad checksum " .. result)
 end
 

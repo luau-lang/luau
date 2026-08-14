@@ -1,4 +1,4 @@
-class Parent
+open class Parent
     public x: number
 end
 

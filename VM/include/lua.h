@@ -251,6 +251,10 @@ LUA_API void lua_call(lua_State* L, int nargs, int nresults);
 LUA_API int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc);
 LUA_API int lua_cpcall(lua_State* L, lua_CFunction func, void* ud);
 
+// wrapper for making calls from yieldable C functions
+LUA_API int lua_callyieldable(lua_State* L, int nargs, int nresults);
+LUA_API int lua_pcallyieldable(lua_State* L, int nargs, int nresults, int errfunc);
+
 /*
 ** coroutine functions
 */
@@ -408,7 +412,7 @@ LUA_API int lua_weakref(lua_State* L, int idx);
 LUA_API int lua_weakunref(lua_State* L, int ref);
 LUA_API int lua_getweakref(lua_State* L, int ref); // returns the type of the value pushed onto the stack
 
-// alternative access for metatables already registered with luaL_newmetatable (remove this restriction with FFlagLuauUdataMetatablePinned)
+// alternative access for userdata metatables
 // used by lua_newuserdatataggedwithmetatable to create tagged userdata with the associated metatable assigned
 LUA_API void lua_setuserdatametatable(lua_State* L, int tag);
 LUA_API void lua_getuserdatametatable(lua_State* L, int tag);

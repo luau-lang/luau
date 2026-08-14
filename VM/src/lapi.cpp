@@ -20,8 +20,6 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauDirectFieldGet)
-LUAU_FASTFLAGVARIABLE(LuauAutoStack)
-LUAU_FASTFLAGVARIABLE(LuauCloneTableFix)
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_FASTFLAGVARIABLE(LuauManagedDebugNames)
 
@@ -58,7 +56,7 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2024 Roblox Corporation $\n"
 
 #define ensure_stack_impl(L, errorL, size) \
     { \
-        if (FFlag::LuauAutoStack && L->top + (size) > L->ci->top && !lua_checkstack(L, (size))) \
+        if (L->top + (size) > L->ci->top && !lua_checkstack(L, (size))) \
         { \
             luaO_pushfstring(errorL, "stack overflow"); \
             lua_error(errorL); \
@@ -79,7 +77,7 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2024 Roblox Corporation $\n"
         L->top = p; \
     }
 
-static LuaTable* getcurrenv(lua_State* L)
+LuaTable* getcurrenv(lua_State* L)
 {
     if (L->ci == L->base_ci) // no enclosing function?
         return L->gt;        // use global table as environment
@@ -1227,6 +1225,63 @@ int lua_cpcall(lua_State* L, lua_CFunction func, void* ud)
     return luaD_pcall(L, f_Ccall, &c, savestack(L, L->top), 0);
 }
 
+int lua_callyieldable(lua_State* L, int nargs, int nresults)
+{
+    api_check(L, iscfunction(L->ci->func));
+    Closure* cl = clvalue(L->ci->func);
+    api_check(L, cl->c.cont);
+
+    lua_call(L, nargs, nresults);
+
+    // yielding means we need to propagate yield; resume will call continuation function later
+    if (isyielded(L))
+        return C_CALL_YIELD;
+
+    return cl->c.cont(L, LUA_OK);
+}
+
+int lua_pcallyieldable(lua_State* L, int nargs, int nresults, int errfunc)
+{
+    api_check(L, iscfunction(L->ci->func));
+    Closure* cl = clvalue(L->ci->func);
+    api_check(L, cl->c.cont);
+    api_check(L, nargs + 1 <= L->top - L->base);
+    api_check(L, errfunc >= 0 && errfunc <= L->top - L->base);
+
+    L->ci->errfunc = errfunc; // 0 means no error function
+    L->ci->flags |= LUA_CALLINFO_HANDLE;
+
+    struct CallContext
+    {
+        StkId func;
+        int nresults;
+
+        static void run(lua_State* L, void* ud)
+        {
+            CallContext* ctx = (CallContext*)ud;
+
+            luaD_callint(L, ctx->func, ctx->nresults, lua_isyieldable(L) != 0);
+        }
+    } ctx = {L->top - (nargs + 1), nresults};
+
+    ptrdiff_t savedfunc = savestack(L, ctx.func);
+    ptrdiff_t savederrfunc = errfunc != 0 ? savestack(L, L->base + (errfunc - 1)) : 0;
+
+    int status = luaD_pcall(L, &CallContext::run, &ctx, savedfunc, savederrfunc);
+
+    // necessary to accommodate functions that return lots of values
+    expandstacklimit(L, L->top);
+
+    // yielding means we need to propagate yield; resume will call continuation function later
+    if (status == 0 && isyielded(L))
+        return C_CALL_YIELD;
+
+    // the called function has completed synchronously, continuation can use non-protected calls again
+    L->ci->flags &= ~LUA_CALLINFO_HANDLE;
+
+    return cl->c.cont(L, status);
+}
+
 int lua_status(lua_State* L)
 {
     return L->status;
@@ -1960,11 +2015,8 @@ void lua_cleartable(lua_State* L, int idx)
 
 void lua_clonetable(lua_State* L, int idx)
 {
-    if (FFlag::LuauCloneTableFix)
-    {
-        luaC_checkGC(L);
-        luaC_threadbarrier(L);
-    }
+    luaC_checkGC(L);
+    luaC_threadbarrier(L);
 
     ensure_stack(L, 1);
     StkId t = index2addr(L, idx);

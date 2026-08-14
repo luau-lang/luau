@@ -3,7 +3,7 @@
 
 #include "Luau/AssemblyBuilderA64.h"
 #include "Luau/CodeGenOptions.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/IrData.h"
 
 #include "IrRegAllocA64.h"
@@ -99,7 +99,7 @@ struct IrLoweringA64
 
     std::vector<InterruptHandler> interruptHandlers;
     std::vector<ExitHandler> exitHandlers;
-    DenseHashMap<uint32_t, uint32_t> exitHandlerMap;
+    DenseHashMap2<uint32_t, uint32_t> exitHandlerMap;
 
     uint32_t exitSyncAllocToken = 0;
     uint32_t exitSyncInstIdx = kInvalidInstIdx;
