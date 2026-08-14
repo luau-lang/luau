@@ -34,6 +34,7 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
+LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
@@ -2236,7 +2237,11 @@ void TypeChecker2::visit(AstExprUnary* expr)
     }
     else if (expr->op == AstExprUnary::Op::Minus)
     {
-        testIsSubtype(operandType, builtinTypes->numberType, expr->location);
+        // A negated integer literal is folded into one constant by the compiler, so it never negates anything.
+        if (FFlag::LuauIntegerType2 && expr->expr->is<AstExprConstantInteger>())
+            testIsSubtype(operandType, builtinTypes->integerType, expr->location);
+        else
+            testIsSubtype(operandType, builtinTypes->numberType, expr->location);
     }
     else if (expr->op == AstExprUnary::Op::Not)
     {

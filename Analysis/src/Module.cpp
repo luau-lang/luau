@@ -15,6 +15,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAGVARIABLE(LuauDoNotExportBrokenTypeFunction)
+LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 
 namespace Luau
 {
@@ -203,6 +204,11 @@ struct ClonePublicInterface : Substitution
             else if (auto genericty = getMutable<GenericType>(result))
             {
                 genericty->scope = nullptr;
+            }
+            else if (FFlag::LuauCloneTypeFunctionFromForeignArena)
+            {
+                if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state == TypeFunctionInstanceState::Stuck)
+                    result = arena->addType(ErrorType{ty});
             }
             else if (auto tfit = get<TypeFunctionInstanceType>(ty);
                      FFlag::LuauDoNotExportBrokenTypeFunction && tfit && tfit->state != TypeFunctionInstanceState::Solved)

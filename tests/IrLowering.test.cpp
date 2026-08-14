@@ -18,13 +18,18 @@
 
 LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauCodegenInteger3)
+LUAU_FASTFLAG(LuauCodegenLinearNoCall)
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAG(LuauCodegenBufferInteger)
+LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCodegenVmExitSyncMultiUse)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauCodegenA64ExitUseCheck)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAG(LuauCodegenConstVectorBufferRead)
+LUAU_FASTFLAG(LuauCodegenStoreTagCheck)
+LUAU_FASTFLAG(LuauCodegenIntegerCompare)
 
 #define ensureVectorSize3() \
     if constexpr (LUA_VECTOR_SIZE != 3) \
@@ -7013,6 +7018,37 @@ end
     );
 }
 
+TEST_CASE_FIXTURE(LoweringFixture, "FuzzTest27")
+{
+    assemblyOptions.compilationOptions.flags = Luau::CodeGen::CodeGen_ColdFunctions;
+
+    CHECK(
+        getCodegenAssembly(
+            R"(
+for _ in 1,10 do
+    _ /= _
+    while math.acos(...,math.modf,{[_]=_,[169877609]=math.sinh,["z"]=169877609,},_) do
+        _()
+    end
+end
+)"
+        )
+            .size() > 0
+    );
+
+    CHECK(
+        getCodegenAssembly(
+            R"(
+local _ = ...
+bit32.replace(_ + _ + _ + _,_,_,_);
+bit32.replace(0,bit32.replace(_,_,_,_),28257,_);
+(0)(28257,bit32.replace(_,bit32.replace((_),_ + _,(_),_,_),_,_ + _),_);
+)"
+        )
+            .size() > 0
+    );
+}
+
 TEST_CASE_FIXTURE(LoweringFixture, "UpvalueAccessLoadStore1")
 {
     CHECK_EQ(
@@ -7967,6 +8003,7 @@ TEST_CASE_FIXTURE(LoweringFixture, "TableOperationTagSuggestion2")
 {
     ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+    ScopedFastFlag luauCodegenLinearNoCall{FFlag::LuauCodegenLinearNoCall, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -8033,6 +8070,64 @@ bb_linear_19:
   CHECK_SLOT_MATCH %149, K1 ('id'), bb_fallback_17
   %151 = LOAD_TVALUE %149, 0i
   STORE_TVALUE R6, %151
+  JUMP bb_18
+bb_4:
+  %18 = LOAD_POINTER R1
+  %19 = GET_SLOT_NODE_ADDR %18, 2u, K1 ('id')
+  CHECK_SLOT_MATCH %19, K1 ('id'), bb_fallback_5
+  %21 = LOAD_TVALUE %19, 0i
+  STORE_TVALUE R4, %21
+  JUMP bb_6
+bb_6:
+  CHECK_TAG R0, ttable, bb_fallback_7
+  %28 = LOAD_POINTER R0
+  %29 = GET_SLOT_NODE_ADDR %28, 4u, K0 ('map')
+  CHECK_SLOT_MATCH %29, K0 ('map'), bb_fallback_7
+  %31 = LOAD_TVALUE %29, 0i
+  STORE_TVALUE R7, %31
+  JUMP bb_8
+bb_8:
+  %38 = LOAD_POINTER R1
+  %39 = GET_SLOT_NODE_ADDR %38, 6u, K1 ('id')
+  CHECK_SLOT_MATCH %39, K1 ('id'), bb_fallback_9
+  %41 = LOAD_TVALUE %39, 0i
+  STORE_TVALUE R8, %41
+  JUMP bb_10
+bb_10:
+  SET_SAVEDPC 9u
+  GET_TABLE R6, R7, R8
+  CHECK_TAG R6, tnumber, bb_fallback_11
+  %52 = LOAD_DOUBLE R6
+  %54 = ADD_NUM %52, R2
+  STORE_DOUBLE R5, %54
+  STORE_TAG R5, tnumber
+  JUMP bb_12
+bb_12:
+  SET_SAVEDPC 11u
+  SET_TABLE R5, R3, R4
+  CHECK_TAG R0, ttable, bb_fallback_13
+  %65 = LOAD_POINTER R0
+  %66 = GET_SLOT_NODE_ADDR %65, 11u, K2 ('foo')
+  CHECK_SLOT_MATCH %66, K2 ('foo'), bb_fallback_13
+  %68 = LOAD_TVALUE %66, 0i
+  STORE_TVALUE R3, %68
+  JUMP bb_14
+bb_14:
+  CHECK_TAG R0, ttable, bb_fallback_15
+  %75 = LOAD_POINTER R0
+  %76 = GET_SLOT_NODE_ADDR %75, 13u, K0 ('map')
+  CHECK_SLOT_MATCH %76, K0 ('map'), bb_fallback_15
+  %78 = LOAD_TVALUE %76, 0i
+  STORE_TVALUE R5, %78
+  JUMP bb_16
+bb_16:
+  %85 = LOAD_POINTER R1
+  %86 = GET_SLOT_NODE_ADDR %85, 15u, K1 ('id')
+  CHECK_SLOT_MATCH %86, K1 ('id'), bb_fallback_17
+  %88 = LOAD_TVALUE %86, 0i
+  STORE_TVALUE R6, %88
+  JUMP bb_18
+bb_18:
   SET_SAVEDPC 18u
   GET_TABLE R4, R5, R6
   INTERRUPT 18u
@@ -8393,6 +8488,166 @@ bb_bytecode_1:
   STORE_TAG R1, tinteger
   INTERRUPT 7u
   RETURN R1, 1i
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "BufferWriteChecksExtraArgs")
+{
+    ScopedFastFlag luauCodegenStoreTagCheck{FFlag::LuauCodegenStoreTagCheck, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(b: buffer, offset: number, val)
+    return buffer.writeu32(b, offset, val, 0) -- unused extra argument
+end
+)",
+                   true,
+                   1,
+                   2
+               ),
+        R"(
+; function foo($arg0, $arg1, $arg2) line 2
+; R0: buffer [argument]
+; R1: number [argument]
+bb_0:
+  CHECK_TAG R0, tbuffer, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %6 = LOAD_TVALUE R0, 0i, tbuffer
+  STORE_TVALUE R4, %6
+  %8 = LOAD_TVALUE R1, 0i, tnumber
+  STORE_TVALUE R5, %8
+  %10 = LOAD_TVALUE R2
+  STORE_TVALUE R6, %10
+  STORE_DOUBLE R7, 0
+  STORE_TAG R7, tnumber
+  CHECK_TAG R2, tnumber, exit(5)
+  %21 = LOAD_POINTER R0
+  %22 = LOAD_DOUBLE R1
+  %23 = NUM_TO_INT %22
+  CHECK_BUFFER_LEN %21, %23, 0i, 4i, undef, exit(5)
+  %25 = LOAD_DOUBLE R2
+  %26 = NUM_TO_UINT %25
+  BUFFER_WRITEI32 %21, %23, %26, tbuffer
+  ADJUST_STACK_TO_REG R3, 0i
+  INTERRUPT 8u
+  RETURN R3, -1i
+)"
+    );
+}
+
+
+TEST_CASE_FIXTURE(LoweringFixture, "IntegerCompare")
+{
+    ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
+    ScopedFastFlag LuauCodegenInteger3{FFlag::LuauCodegenInteger3, true};
+    ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
+    ScopedFastFlag luauCodegenIntegerCompare{FFlag::LuauCodegenIntegerCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(x: integer, y: integer)
+    if x == y then
+        return 1
+    end
+    return 2
+end
+)",
+                   true,
+                   1,
+                   2
+               ),
+        R"(
+; function foo($arg0, $arg1) line 2
+; R0: integer [argument]
+; R1: integer [argument]
+bb_0:
+  CHECK_TAG R0, tinteger, exit(entry)
+  CHECK_TAG R1, tinteger, exit(entry)
+  JUMP bb_3
+bb_3:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %10 = LOAD_INT64 R0
+  %11 = LOAD_INT64 R1
+  JUMP_CMP_INT64 %10, %11, not_eq, bb_bytecode_2, bb_4
+bb_4:
+  STORE_DOUBLE R2, 1
+  STORE_TAG R2, tnumber
+  INTERRUPT 3u
+  RETURN R2, 1i
+bb_bytecode_2:
+  STORE_DOUBLE R2, 2
+  STORE_TAG R2, tnumber
+  INTERRUPT 5u
+  RETURN R2, 1i
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "IntegerCompareConstLhs")
+{
+    ScopedFastFlag luauIntegerFastcalls{FFlag::LuauIntegerFastcalls, true};
+    ScopedFastFlag LuauCodegenInteger3{FFlag::LuauCodegenInteger3, true};
+    ScopedFastFlag luauIntegerType{FFlag::LuauIntegerType2, true};
+    ScopedFastFlag luauCodegenBufferInteger{FFlag::LuauCodegenBufferInteger, true};
+    ScopedFastFlag luauIntegerBufferFastcalls{FFlag::LuauIntegerBufferFastcalls, true};
+    ScopedFastFlag luauCodegenIntegerCompare{FFlag::LuauCodegenIntegerCompare, true};
+
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(b: buffer, x: integer)
+    -- bytecode compiler is unlikely to constant-fold this
+    buffer.writeinteger(b, 0, 2i)
+    local lhs = buffer.readinteger(b, 0)
+
+    if lhs == x then
+        return 1
+    end
+    return 2
+end
+)",
+                   true,
+                   1,
+                   2
+               ),
+        R"(
+; function foo($arg0, $arg1) line 2
+; R0: buffer [argument]
+; R1: integer [argument]
+; R2: integer from 8 to 21
+bb_0:
+  CHECK_TAG R0, tbuffer, exit(entry)
+  CHECK_TAG R1, tinteger, exit(entry)
+  JUMP bb_3
+bb_3:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  implicit CHECK_SAFE_ENV exit(0)
+  %17 = LOAD_POINTER R0
+  CHECK_BUFFER_LEN %17, 0i, 0i, 8i, undef, bb_exit_8
+   ; exit sync: R5, R4, {}
+  BUFFER_WRITEI64 %17, 0i, 2i, tbuffer
+  %39 = LOAD_INT64 R1
+  JUMP_CMP_INT64 2i, %39, not_eq, bb_bytecode_2, bb_6
+bb_6:
+  STORE_DOUBLE R3, 1
+  STORE_TAG R3, tnumber
+  INTERRUPT 18u
+  RETURN R3, 1i
+bb_bytecode_2:
+  STORE_DOUBLE R3, 2
+  STORE_TAG R3, tnumber
+  INTERRUPT 20u
+  RETURN R3, 1i
 )"
     );
 }

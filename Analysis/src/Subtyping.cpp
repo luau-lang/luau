@@ -27,7 +27,6 @@ LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauSubtypeUnionsTogether)
 LUAU_FASTFLAGVARIABLE(LuauDropUnionSubtypeReasoning)
-LUAU_FASTFLAGVARIABLE(LuauDontBindOptionalGenericToNil)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 
@@ -1621,15 +1620,12 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 
     SubtypingResult result{false};
 
-    if (FFlag::LuauDontBindOptionalGenericToNil)
+    // First pass: If the union already includes subTy, stop.  Do not
+    // attempt to bind any generics.
+    for (TypeId ty : superUnion)
     {
-        // First pass: If the union already includes subTy, stop.  Do not
-        // attempt to bind any generics.
-        for (TypeId ty : superUnion)
-        {
-            if (follow(ty) == subTy)
-                return {true};
-        }
+        if (follow(ty) == subTy)
+            return {true};
     }
 
     size_t index = 0;

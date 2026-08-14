@@ -382,7 +382,7 @@ struct CallInliner
                     if (!replaceReturn(nextBlock, callerBlockOp, op))
                         return false;
                 }
-                else
+                else if (inst.op != LOP_PREPVARARGS)
                 {
                     BcOp callerInstOp = mapInstOp(op);
                     callerBlock.appendInstruction(callerInstOp);
@@ -536,7 +536,7 @@ struct CallInliner
             BcRef<BcInst> targetInst = target.inst(targetInsnOp);
             BcRef<BcInst> callerInst = caller.inst(callerInsnOp);
 
-            if (targetInst->op == LOP_RETURN || targetInst->op == LOP_GETVARARGS)
+            if (targetInst->op == LOP_RETURN || targetInst->op == LOP_GETVARARGS || targetInst->op == LOP_PREPVARARGS)
                 continue;
 
             callerInst->op = targetInst->op;
@@ -574,7 +574,11 @@ struct CallInliner
                 // Feedback slots are concatenated in optimized version: caller's slots + target's slots.
                 // So all target's slot should be increased by caller's slots count.
                 BcCallFB<VmConst> fbcall = BcCallFB<VmConst>::from(caller, callerInst);
-                fbcall.setFbSlot(fbcall.FbSlot() + callerFbVecSize);
+
+                // do not migrate sealed fbcalls
+                if (fbcall.FbSlot() != -1)
+                    fbcall.setFbSlot(fbcall.FbSlot() + callerFbVecSize);
+
                 break;
             }
             default:
@@ -610,13 +614,6 @@ struct CallInliner
         for (uint32_t i = 0; i < caller.phis.size(); i++)
             if (std::find(returnOps.begin(), returnOps.end(), BcOp{BcOpKind::Phi, i}) == returnOps.end())
                 replaceCallUsagesInOps(BcOp{BcOpKind::Phi, i}, caller.phis[i].ops);
-    }
-
-    void dropPrepVarArgsInInlinedPath()
-    {
-        BcRef<BcBlock> inlinedEntryBlock = caller.block(mapBlockOp(target.entryBlock));
-        if (inlinedEntryBlock->ops.size() > 0 && caller.instOp(inlinedEntryBlock->ops.front()).op == LOP_PREPVARARGS)
-            inlinedEntryBlock->ops.pop_front();
     }
 
     void allocateGraphEntitiesForTarget()
@@ -728,8 +725,6 @@ struct CallInliner
         for (BcOp retOp : returnOps)
             if (retOp.kind == BcOpKind::Phi)
                 nextBlock->phis.push_back(retOp);
-
-        dropPrepVarArgsInInlinedPath();
 
         LUAU_ASSERT(validate());
 

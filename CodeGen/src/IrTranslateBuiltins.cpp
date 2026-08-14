@@ -11,6 +11,7 @@
 
 LUAU_FASTFLAG(LuauCodegenInteger3)
 LUAU_FASTFLAGVARIABLE(LuauCodegenBufferInteger)
+LUAU_FASTFLAGVARIABLE(LuauCodegenStoreTagCheck)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
@@ -941,10 +942,23 @@ static void translateBufferArgsAndCheckBounds(
     build.loadAndCheckTag(build.vmReg(arg), LUA_TBUFFER, build.vmExit(pcpos));
     builtinCheckDouble(build, args, pcpos);
 
-    if (nparams == 3 && loadInt64)
-        builtinCheckInt64(build, arg3, pcpos);
-    else if (nparams == 3)
-        builtinCheckDouble(build, arg3, pcpos);
+    if (FFlag::LuauCodegenStoreTagCheck)
+    {
+        if (nparams >= 3)
+        {
+            if (loadInt64)
+                builtinCheckInt64(build, arg3, pcpos);
+            else
+                builtinCheckDouble(build, arg3, pcpos);
+        }
+    }
+    else
+    {
+        if (nparams == 3 && loadInt64)
+            builtinCheckInt64(build, arg3, pcpos);
+        else if (nparams == 3)
+            builtinCheckDouble(build, arg3, pcpos);
+    }
 
     buf = build.inst(IrCmd::LOAD_POINTER, build.vmReg(arg));
 

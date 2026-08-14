@@ -81,6 +81,7 @@ struct ConstraintGenerator
     std::vector<std::pair<Location, ScopePtr>> scopes;
 
     ModulePtr module;
+    std::shared_ptr<ModuleName> sharedModuleName;
     NotNull<BuiltinTypes> builtinTypes;
     const NotNull<TypeArena> arena;
     // The root scope of the module we're generating constraints for.
@@ -104,7 +105,7 @@ struct ConstraintGenerator
     // See the functions recordInferredBinding and fillInInferredBindings.
     DenseHashMap<Symbol, InferredBinding> inferredBindings{{}};
 
-    // Remove constraints, freeTypes, and scopeToFunction with DebugLuauCyclicRequireTypeInference: these move to ConstraintGraph (cgraph).
+    // Remove constraints, freeTypes, and scopeToFunction with LuauCyclicRequireTypeInference: these move to ConstraintGraph (cgraph).
     // Constraints that go straight to the solver.
     std::vector<ConstraintPtr> constraints;
 
@@ -154,6 +155,9 @@ struct ConstraintGenerator
     bool recursionLimitMet = false;
 
     NotNull<ConstraintGraph> cgraph;
+
+    // Defer module-level generalization constraints to the solver so that we can generalize them after all other constraints have been solved.
+    ConstraintPtr moduleGeneralizationConstraint;
 
     CFG::TypeStateMap* typestate = nullptr;
     ConstraintGenerator(

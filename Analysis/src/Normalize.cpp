@@ -23,6 +23,7 @@ LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauAllowIntersectionOfOneTableWithExtern)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
+LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
 
 namespace Luau
 {
@@ -3630,7 +3631,19 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
 
     if (isTop(builtinTypes, norm.externTypes))
     {
-        result.push_back(builtinTypes->externType);
+        if (FFlag::LuauIncludeExternTypeExtensionsWithTopExternType && !norm.externTypes.shapeExtensions.empty())
+        {
+            std::vector<TypeId> intersection;
+            intersection.reserve(norm.externTypes.shapeExtensions.size() + 1);
+            intersection.emplace_back(builtinTypes->externType);
+            for (TypeId shape : norm.externTypes.shapeExtensions)
+                intersection.emplace_back(shape);
+            result.emplace_back(arena->addType(IntersectionType{std::move(intersection)}));
+        }
+        else
+        {
+            result.push_back(builtinTypes->externType);
+        }
     }
     else if (!norm.externTypes.isNever())
     {
