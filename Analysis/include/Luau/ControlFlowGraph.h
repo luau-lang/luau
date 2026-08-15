@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/NotNull.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypedAllocator.h"
@@ -250,7 +250,7 @@ private:
     std::vector<InstrId> instructions;
     std::vector<BlockId> predecessors;
     std::vector<BlockId> successors;
-    DenseHashMap<Symbol, Definition*> reachingDefinitions{Symbol{}};
+    DenseHashMap2<Symbol, Definition*> reachingDefinitions;
 
     friend struct CFGBuilder;
 };
@@ -299,9 +299,9 @@ struct ControlFlowGraph
     }
 
 private:
-    DenseHashMap<AstExpr*, Definition*> useDefs{nullptr};
-    DenseHashMap<LValue, Definition*, LValueHash> lhsDefs{LValue{}};
-    DenseHashMap<Definition*, Definition*> forwards{nullptr};
+    DenseHashMap2<AstExpr*, Definition*> useDefs;
+    DenseHashMap2<LValue, Definition*, LValueHash> lhsDefs;
+    DenseHashMap2<Definition*, Definition*> forwards;
 
     BlockId newBlock(BlockKind kind, std::string debugName = "");
     void computeRPO();
@@ -407,12 +407,12 @@ private:
     std::unique_ptr<ControlFlowGraph> cfg;
     NotNull<CFGAllocator> allocator;
     NotNull<Block> currentBlock;
-    DenseHashSet<Block*> sealedBlocks{nullptr};
-    DenseHashMap<Block*, DenseHashSet<Instruction*>> incompleteJoins;
-    DenseHashMap<Symbol, size_t> versionCounter{Symbol{}};
+    DenseHashSet2<Block*> sealedBlocks;
+    DenseHashMap2<Block*, DenseHashSet2<Instruction*>> incompleteJoins;
+    DenseHashMap2<Symbol, size_t> versionCounter;
 
     // Maps defs to the Instructions that use them
-    DenseHashMap<Definition*, Set<Instruction*>> usingInstructions;
+    DenseHashMap2<Definition*, Set<Instruction*>> usingInstructions;
 };
 
 } // namespace Luau::CFG

@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/AssemblyBuilderX64.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/IrData.h"
 #include "Luau/RegisterX64.h"
 #include "Luau/SmallVector.h"
@@ -83,9 +83,6 @@ struct IrRegAllocX64
 
     uint32_t findInstructionWithFurthestNextUse(const std::array<uint32_t, 16>& regInstUsers) const;
 
-    bool isExtraSpillSlot_DEPRECATED(unsigned slot) const;
-    int getExtraSpillAddressOffset_DEPRECATED(unsigned slot) const;
-
     uint32_t getAllocToken() const
     {
         return allocActionCount;
@@ -114,7 +111,7 @@ struct IrRegAllocX64
     unsigned nextSpillId = 1;
     std::vector<IrSpillX64> spills;
 
-    DenseHashMap<uint32_t, ExitSyncArgsX64> exitSyncArgs{~0u};
+    DenseHashMap2<uint32_t, ExitSyncArgsX64> exitSyncArgs;
 
     uint32_t allocActionCount = 0;
 };

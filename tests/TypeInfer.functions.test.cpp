@@ -24,7 +24,7 @@ LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauBidirectionalInferenceVariadics)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
-LUAU_FASTFLAG(LuauCollapseDirectBoundCycles)
+LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1427,7 +1427,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauCollapseDirectBoundCycles, true},
         {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
     };
 
@@ -4366,6 +4365,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pass_generic_function_to_pcall")
     LUAU_CHECK_NO_ERRORS(result);
 
     CHECK("number" == toString(requireType("result")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "call_with_any_arg_and_optional_return_arg")
+{
+    ScopedFastFlag sff{FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks, true};
+    auto result = check(R"(
+        --!strict
+        local hrp : any = true
+        local boo : () -> number? = (nil ::any)
+        local bad : (x : number, y : number) -> () = (nil :: any)
+        bad(hrp, boo())
+    )");
+    LUAU_CHECK_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("number", toString(err->wantedType));
+    CHECK_EQ("number?", toString(err->givenType));
+    CHECK_EQ(result.errors[0].location, Location{{5, 17}, {5, 22}});
 }
 
 TEST_SUITE_END();

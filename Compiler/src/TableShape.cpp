@@ -34,18 +34,15 @@ struct ShapeVisitor : AstVisitor
         }
     };
 
-    DenseHashMap<AstExprTable*, TableShape>& shapes;
+    DenseHashMap2<AstExprTable*, TableShape>& shapes;
 
-    DenseHashMap<AstLocal*, AstExprTable*> tables;
-    DenseHashSet<std::pair<AstExprTable*, AstName>, Hasher> fields;
+    DenseHashMap2<AstLocal*, AstExprTable*> tables;
+    DenseHashSet2<std::pair<AstExprTable*, AstName>, Hasher> fields;
 
-    DenseHashMap<AstLocal*, unsigned int> loops; // iterator => upper bound for 1..k
+    DenseHashMap2<AstLocal*, unsigned int> loops; // iterator => upper bound for 1..k
 
-    ShapeVisitor(DenseHashMap<AstExprTable*, TableShape>& shapes)
+    ShapeVisitor(DenseHashMap2<AstExprTable*, TableShape>& shapes)
         : shapes(shapes)
-        , tables(nullptr)
-        , fields(std::pair<AstExprTable*, AstName>())
-        , loops(nullptr)
     {
     }
 
@@ -148,7 +145,7 @@ struct ShapeVisitor : AstVisitor
     }
 };
 
-void predictTableShapes(DenseHashMap<AstExprTable*, TableShape>& shapes, AstNode* root)
+void predictTableShapes(DenseHashMap2<AstExprTable*, TableShape>& shapes, AstNode* root)
 {
     ShapeVisitor visitor{shapes};
     root->visit(&visitor);

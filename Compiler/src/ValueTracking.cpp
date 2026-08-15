@@ -3,6 +3,8 @@
 
 #include "Luau/Lexer.h"
 
+LUAU_FASTFLAG(LuauOptimizeExportTable)
+
 namespace Luau
 {
 namespace Compile
@@ -10,14 +12,38 @@ namespace Compile
 
 struct ValueVisitor : AstVisitor
 {
-    DenseHashMap<AstName, Global>& globals;
-    DenseHashMap<AstLocal*, Variable>& variables;
-    DenseHashMap<AstName, AstLocal*>& classLocals;
 
-    ValueVisitor(DenseHashMap<AstName, Global>& globals, DenseHashMap<AstLocal*, Variable>& variables, DenseHashMap<AstName, AstLocal*>& classLocals)
+    DenseHashMap2<AstName, Global>& globals;
+    DenseHashMap2<AstLocal*, Variable>& variables;
+    DenseHashMap2<AstName, AstLocal*>& classLocals;
+    DenseHashSet2<AstLocal*>* exportedFunctions = nullptr;
+    std::vector<AstLocal*>* exportedVariables = nullptr;
+
+
+    // with LuauOptimizeExportTable, remove this constructor
+    ValueVisitor(
+        DenseHashMap2<AstName, Global>& globals,
+        DenseHashMap2<AstLocal*, Variable>& variables,
+        DenseHashMap2<AstName, AstLocal*>& classLocals
+    )
         : globals(globals)
         , variables(variables)
         , classLocals(classLocals)
+    {
+    }
+
+    ValueVisitor(
+        DenseHashMap2<AstName, Global>& globals,
+        DenseHashMap2<AstLocal*, Variable>& variables,
+        DenseHashMap2<AstName, AstLocal*>& classLocals,
+        DenseHashSet2<AstLocal*>* exportedFunctions,
+        std::vector<AstLocal*>* exportedVariables
+    )
+        : globals(globals)
+        , variables(variables)
+        , classLocals(classLocals)
+        , exportedFunctions(exportedFunctions)
+        , exportedVariables(exportedVariables)
     {
     }
 
@@ -46,6 +72,18 @@ struct ValueVisitor : AstVisitor
         for (size_t i = node->values.size; i < node->vars.size; ++i)
             variables[node->vars.data[i]].init = nullptr;
 
+        if (FFlag::LuauOptimizeExportTable && exportedVariables)
+        {
+            for (size_t i = 0; i < node->vars.size; ++i)
+            {
+                AstLocal* local = node->vars.data[i];
+                if (local->isExported)
+                {
+                    exportedVariables->push_back(local);
+                }
+            }
+        }
+
         return true;
     }
 
@@ -71,6 +109,12 @@ struct ValueVisitor : AstVisitor
     bool visit(AstStatLocalFunction* node) override
     {
         variables[node->name].init = node->func;
+
+        if (FFlag::LuauOptimizeExportTable && exportedFunctions && node->name->isExported)
+        {
+            exportedFunctions->insert(node->name);
+            exportedVariables->push_back(node->name);
+        }
 
         return true;
     }
@@ -103,7 +147,7 @@ struct ValueVisitor : AstVisitor
     }
 };
 
-void assignMutable(DenseHashMap<AstName, Global>& globals, const AstNameTable& names, const char* const* mutableGlobals)
+void assignMutable(DenseHashMap2<AstName, Global>& globals, const AstNameTable& names, const char* const* mutableGlobals)
 {
     if (AstName name = names.get("_G"); name.value)
         globals[name] = Global::Mutable;
@@ -115,9 +159,21 @@ void assignMutable(DenseHashMap<AstName, Global>& globals, const AstNameTable& n
 }
 
 void trackValues(
-    DenseHashMap<AstName, Global>& globals,
-    DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstName, AstLocal*>& classLocals,
+    DenseHashMap2<AstName, Global>& globals,
+    DenseHashMap2<AstLocal*, Variable>& variables,
+    DenseHashMap2<AstName, AstLocal*>& classLocals,
+    DenseHashSet2<AstLocal*>& exportedFunctions,
+    std::vector<AstLocal*>& exportedVariables,
+    AstNode* root
+)
+{
+    ValueVisitor visitor{globals, variables, classLocals, &exportedFunctions, &exportedVariables};
+    root->visit(&visitor);
+}
+void trackValues_DEPRECATED(
+    DenseHashMap2<AstName, Global>& globals,
+    DenseHashMap2<AstLocal*, Variable>& variables,
+    DenseHashMap2<AstName, AstLocal*>& classLocals,
     AstNode* root
 )
 {

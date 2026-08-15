@@ -15,6 +15,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAGVARIABLE(LuauDoNotExportBrokenTypeFunction)
+LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 
 namespace Luau
 {
@@ -204,6 +205,11 @@ struct ClonePublicInterface : Substitution
             {
                 genericty->scope = nullptr;
             }
+            else if (FFlag::LuauCloneTypeFunctionFromForeignArena)
+            {
+                if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state == TypeFunctionInstanceState::Stuck)
+                    result = arena->addType(ErrorType{ty});
+            }
             else if (auto tfit = get<TypeFunctionInstanceType>(ty);
                      FFlag::LuauDoNotExportBrokenTypeFunction && tfit && tfit->state != TypeFunctionInstanceState::Solved)
             {
@@ -391,7 +397,7 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
         return builtinTypes->errorType;
     };
 
-    DenseHashSet<AstLocal*> exportedLocals{nullptr};
+    DenseHashSet2<AstLocal*> exportedLocals;
 
     for (AstStat* statement : module->root->body)
     {

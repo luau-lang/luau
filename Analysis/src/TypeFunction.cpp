@@ -4,7 +4,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/ConstraintSolver.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
 #include "Luau/OverloadResolver.h"
@@ -36,15 +36,15 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 namespace Luau
 {
 
-using TypeOrTypePackIdSet = DenseHashSet<const void*>;
+using TypeOrTypePackIdSet = DenseHashSet2<const void*>;
 
 struct InstanceCollector : TypeOnceVisitor
 {
-    DenseHashSet<TypeId> recordedTys{nullptr};
+    DenseHashSet2<TypeId> recordedTys;
     VecDeque<TypeId> tys;
-    DenseHashSet<TypePackId> recordedTps{nullptr};
+    DenseHashSet2<TypePackId> recordedTps;
     VecDeque<TypePackId> tps;
-    TypeOrTypePackIdSet shouldGuess{nullptr};
+    TypeOrTypePackIdSet shouldGuess;
     std::vector<const void*> typeFunctionInstanceStack;
     std::vector<TypeId> cyclicInstance;
 
@@ -204,7 +204,7 @@ struct TypeFunctionReducer
     VecDeque<TypePackId> queuedTps;
     TypeOrTypePackIdSet shouldGuess;
     std::vector<TypeId> cyclicTypeFunctions;
-    TypeOrTypePackIdSet irreducible{nullptr};
+    TypeOrTypePackIdSet irreducible;
     FunctionGraphReductionResult result;
     bool force = false;
 
@@ -258,7 +258,7 @@ struct TypeFunctionReducer
     SkipTestResult testForSkippability(TypeId ty)
     {
         VecDeque<TypeId> queue;
-        DenseHashSet<TypeId> seen{nullptr};
+        DenseHashSet2<TypeId> seen;
 
         queue.push_back(follow(ty));
 

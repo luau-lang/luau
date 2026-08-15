@@ -14,7 +14,8 @@
 #include <stdio.h>
 
 LUAU_FASTFLAG(LuauCIProto)
-LUAU_FASTFLAGVARIABLE(LuauActivationRecordStopDeadnaming)
+LUAU_FASTFLAG(LuauManagedDebugNames)
+LUAU_FASTFLAGVARIABLE(LuauIsNotLua)
 
 static const char* getfuncname(Closure* cl);
 
@@ -136,7 +137,7 @@ static Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closur
             {
                 TString* source = (FFlag::LuauCIProto && ci != nullptr ? ci->p : f->l.p)->source;
                 ar->source = getstr(source);
-                if (FFlag::LuauActivationRecordStopDeadnaming)
+                if (FFlag::LuauIsNotLua)
                     ar->what = "Luau";
                 else
                     ar->what = "Lua";
@@ -247,9 +248,17 @@ static const char* getfuncname(Closure* cl)
 {
     if (cl->isC)
     {
-        if (cl->c.debugname)
+        if (FFlag::LuauManagedDebugNames)
         {
-            return cl->c.debugname;
+            if (TString* str = cl->c.debugname)
+                return getstr(str);
+        }
+        else
+        {
+            if (cl->c.debugname_DEPRECATED)
+            {
+                return cl->c.debugname_DEPRECATED;
+            }
         }
     }
     else

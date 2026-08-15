@@ -3,6 +3,7 @@
 
 #include "Luau/Config.h"
 #include "Luau/ConfigResolver.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/GlobalTypes.h"
 #include "Luau/Module.h"
 #include "Luau/ModuleResolver.h"
@@ -44,6 +45,13 @@ struct LoadDefinitionFileResult
 
 std::optional<Mode> parseMode(const std::vector<HotComment>& hotcomments);
 
+struct ModuleSCC
+{
+    std::vector<ModuleName> members;
+    std::shared_ptr<TypeArena> sharedArena;
+};
+using ModuleSCCPtr = std::shared_ptr<ModuleSCC>;
+
 struct SourceNode
 {
     bool hasDirtySourceModule() const
@@ -71,9 +79,11 @@ struct SourceNode
 
     ModuleName name;
     std::string humanReadableName;
-    DenseHashSet<ModuleName> requireSet{{}};
+    std::weak_ptr<ModuleSCC> scc;
+    DenseHashSet2<ModuleName> requireSet;
+
     std::vector<std::pair<ModuleName, Location>> requireLocations;
-    Set<ModuleName> dependents{{}};
+    Set<ModuleName> dependents;
 
     bool dirtySourceModule = true;
     bool dirtyModule = true;
@@ -276,9 +286,11 @@ private:
         std::vector<BuildQueueItem>& items,
         std::vector<ModuleName>& buildQueue,
         bool cycleDetected,
-        DenseHashSet<Luau::ModuleName>& seen,
+        DenseHashSet2<Luau::ModuleName>& seen,
         const FrontendOptions& frontendOptions
     );
+    void computeSCCs(const std::vector<ModuleName>& buildQueue);
+    void checkSCCBuildQueueItem(BuildQueueItem& item);
     void checkBuildQueueItem(BuildQueueItem& item);
     void checkBuildQueueItems(std::vector<BuildQueueItem>& items);
     void recordItemResult(const BuildQueueItem& item);
@@ -314,6 +326,7 @@ public:
     std::unordered_map<ModuleName, std::shared_ptr<SourceNode>> sourceNodes;
     std::unordered_map<ModuleName, std::shared_ptr<SourceModule>> sourceModules;
     std::unordered_map<ModuleName, RequireTraceResult> requireTrace;
+    DenseHashMap2<ModuleName, ModuleSCCPtr> sccs;
 
     Stats stats = {};
 

@@ -25,6 +25,7 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauTrackPrefixLocal)
 
 LUAU_FASTFLAG(LuauNoDuplicateBinaryPrefix)
+LUAU_FASTFLAG(LuauFunctionReturnTypePackLessTypeGroups)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
@@ -2957,8 +2958,10 @@ TEST_CASE_FIXTURE(Fixture, "parse_nested_ast_type_group")
     CHECK(group2->type->is<AstTypeReference>());
 }
 
-TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_group")
+TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_pack_explicit")
 {
+    ScopedFastFlag sff{FFlag::LuauFunctionReturnTypePackLessTypeGroups, true};
+
     AstStatBlock* stat = parse(R"(
         type Foo = () -> (string)
     )");
@@ -2975,7 +2978,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_group")
     REQUIRE(returnTypePack);
     REQUIRE_EQ(1, returnTypePack->typeList.types.size);
     REQUIRE(!returnTypePack->typeList.tailType);
-    CHECK(returnTypePack->typeList.types.data[0]->is<AstTypeGroup>());
+    CHECK(returnTypePack->typeList.types.data[0]->is<AstTypeReference>());
 }
 
 TEST_CASE_FIXTURE(Fixture, "inner_and_outer_scope_of_functions_have_correct_end_position")
@@ -3340,6 +3343,53 @@ TEST_CASE_FIXTURE(Fixture, "class_declaration")
     CHECK(global->name == first->name->name);
 }
 
+TEST_CASE_FIXTURE(Fixture, "classes_cannot_define_new_method")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult res = tryParse(R"(
+        class Point2
+            public x: number
+            public y: number
+
+            function new(x: number, y: number) end
+        end
+    )");
+
+    REQUIRE(1 == res.errors.size());
+    CHECK_EQ(res.errors[0].getMessage(), R"(Class methods cannot be named 'new'.  Name it '__init' to define a constructor.)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "classes_can_define_new_prefixed_method")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult res = tryParse(R"(
+        class Point2
+            public x: number
+            public y: number
+
+            function newb(x: number, y: number) end
+        end
+    )");
+
+    REQUIRE(res.errors.empty());
+}
+
+TEST_CASE_FIXTURE(Fixture, "classes_cannot_define_new_prop")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult res = tryParse(R"(
+        class Point2
+            public new
+        end
+    )");
+
+    REQUIRE(1 == res.errors.size());
+    CHECK_EQ(res.errors[0].getMessage(), R"(Class properties cannot be named 'new'. Define a method named '__init' to define a constructor.)");
+}
+
 TEST_CASE_FIXTURE(Fixture, "class_parse_errors")
 {
     tryParse(R"( class Hello )");
@@ -3400,6 +3450,170 @@ TEST_CASE_FIXTURE(Fixture, "class_public_function")
     )");
 
     REQUIRE(result.errors.empty());
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_extends_basic")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+open class Animal
+    public species: string
+end
+
+class Cat extends Animal
+    public meowMult: number
+end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    REQUIRE_EQ(result.root->body.size, 2);
+    const AstStatClass* animal = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(animal);
+    CHECK(animal->super == nullptr);
+    CHECK(animal->open);
+
+    const AstStatClass* cat = result.root->body.data[1]->as<AstStatClass>();
+    REQUIRE(cat);
+    REQUIRE(cat->super != nullptr);
+    CHECK(!cat->open);
+
+    const AstExpr* super = cat->super;
+    REQUIRE(super);
+
+    const AstExprGlobal* superGlobal = super->as<AstExprGlobal>();
+    REQUIRE(superGlobal);
+
+    CHECK(superGlobal->name == "Animal");
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_exported_open")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    matchParseError(
+        R"(
+export open Animal
+    public species: string
+end
+        )",
+        "Incomplete statement: expected a class definition after 'open'"
+    );
+
+    matchParseError(
+        R"(
+open Animal
+    public species: string
+end
+        )",
+        "Incomplete statement: expected a class definition after 'open'"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "no_class_after_open")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+export open class Animal
+    public species: string
+end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    REQUIRE_EQ(result.root->body.size, 1);
+    const AstStatClass* animal = result.root->body.data[0]->as<AstStatClass>();
+    REQUIRE(animal);
+    CHECK(animal->super == nullptr);
+    CHECK(animal->exported);
+    CHECK(animal->open);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_extends_not_a_class")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+class Cat extends "Animal"
+    public meowMult: number
+end
+
+class Dog extends 42
+    public barkMult: number
+end
+    )");
+
+    REQUIRE_EQ(result.errors.size(), 2);
+
+    CHECK_EQ(result.errors[0].getMessage(), R"(Expected identifier when parsing class reference expression, got "Animal")");
+    CHECK_EQ(result.errors[1].getMessage(), R"(Expected identifier when parsing class reference expression, got '42')");
+
+    REQUIRE_EQ(result.root->body.size, 2);
+    const AstStatClass* cat = result.root->body.data[0]->as<AstStatClass>();
+
+    auto m1 = cat->members.data[0].get_if<AstClassProperty>();
+    REQUIRE(m1);
+    CHECK(m1->name == "meowMult");
+
+    const AstStatClass* dog = result.root->body.data[1]->as<AstStatClass>();
+    REQUIRE(dog);
+
+    m1 = dog->members.data[0].get_if<AstClassProperty>();
+    REQUIRE(m1);
+    CHECK(m1->name == "barkMult");
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_extends_imported_class")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    ParseResult result = tryParse(R"(
+local m = require("module")
+
+class Cat extends m.Animal
+    public meowMult: number
+end
+
+class Dog extends m["Animal"]
+    public barkMult: number
+end
+    )");
+
+    REQUIRE(result.errors.empty());
+
+    REQUIRE_EQ(result.root->body.size, 3);
+    const AstStatClass* cat = result.root->body.data[1]->as<AstStatClass>();
+
+    const AstExpr* super = cat->super;
+    REQUIRE(super);
+
+    const AstExprIndexName* superIndex = super->as<AstExprIndexName>();
+    REQUIRE(superIndex);
+
+    const AstExprLocal* superLocal = superIndex->expr->as<AstExprLocal>();
+    REQUIRE(superLocal);
+
+    CHECK(superLocal->local->name == "m");
+    CHECK(superIndex->index == "Animal");
+
+    const AstStatClass* dog = result.root->body.data[2]->as<AstStatClass>();
+
+    super = dog->super;
+    REQUIRE(super);
+
+    const AstExprIndexExpr* superIndexExpr = super->as<AstExprIndexExpr>();
+    REQUIRE(superIndexExpr);
+
+    superLocal = superIndexExpr->expr->as<AstExprLocal>();
+    REQUIRE(superLocal);
+
+    CHECK(superLocal->local->name == "m");
+
+    const AstExprConstantString* superIndexString = superIndexExpr->index->as<AstExprConstantString>();
+    REQUIRE(superIndexString);
+    CHECK(std::string(superIndexString->value.data, superIndexString->value.size) == "Animal");
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_recovery_invalid_body_token")
@@ -3675,13 +3889,10 @@ TEST_CASE_FIXTURE(Fixture, "large_classes_example")
             public health: number
             public level: number
 
-            -- Static 'Constructor'
-            function new(name: string)
-                return PlayerStats {
-                    name = name,
-                    health = 100,
-                    level = 1
-                }
+            function __init(self, name: string)
+                self.name = name
+                self.health = 100
+                self.level = 1
             end
 
             -- Method
@@ -3960,6 +4171,36 @@ TEST_CASE_FIXTURE(Fixture, "type_group_with_cst")
     const auto cstNode = (*baseCstNode)->as<CstTypeGroup>();
     REQUIRE(cstNode);
     CHECK_EQ(cstNode->closePosition, Position{1, 24});
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_pack_explicit_with_cst")
+{
+    ScopedFastFlag sff{FFlag::LuauFunctionReturnTypePackLessTypeGroups, true};
+
+    ParseOptions parseOptions;
+    parseOptions.storeCstData = true;
+
+    ParseResult result = parseEx("type T = () -> (number, ...string)", parseOptions);
+    REQUIRE(result.root);
+
+    REQUIRE_EQ(result.root->body.size, 1);
+    auto typeAlias = result.root->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(typeAlias);
+    auto funcType = typeAlias->type->as<AstTypeFunction>();
+    REQUIRE(funcType);
+    auto typePack = funcType->returnTypes->as<AstTypePackExplicit>();
+    REQUIRE(typePack);
+    REQUIRE_EQ(typePack->typeList.types.size, 1);
+    REQUIRE(typePack->typeList.tailType);
+
+    const auto baseCstNode = result.cstNodeMap.find(typePack);
+    REQUIRE(baseCstNode);
+    const auto cstNode = (*baseCstNode)->as<CstTypePackExplicit>();
+    REQUIRE(cstNode);
+    CHECK_EQ(cstNode->openParenthesesPosition, Position{0, 15});
+    CHECK_EQ(cstNode->closeParenthesesPosition, Position{0, 33});
+    REQUIRE_EQ(cstNode->commaPositions.size, 1);
+    CHECK_EQ(cstNode->commaPositions.data[0], Position{0, 22});
 }
 
 TEST_SUITE_END();
@@ -5861,7 +6102,7 @@ export local answer = 42
         R"(
 export class Player
     public health: number
-    
+
     function setHealth(self, health: number)
         self.health = health
         return self

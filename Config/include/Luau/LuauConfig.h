@@ -3,7 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/Config.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Variant.h"
 
 #include <string>
@@ -66,12 +66,9 @@ struct VariantHashDefault
 // Forward declaration
 struct ConfigValue;
 
-struct ConfigTable : public DenseHashMap<ConfigTableKey, ConfigValue, VariantHashDefault<ConfigTableKey>>
+struct ConfigTable : public DenseHashMap2<ConfigTableKey, ConfigValue, VariantHashDefault<ConfigTableKey>>
 {
-    ConfigTable()
-        : DenseHashMap<ConfigTableKey, ConfigValue, VariantHashDefault<ConfigTableKey>>({})
-    {
-    }
+    ConfigTable() = default;
 };
 
 struct ConfigValue : public Variant<std::string, double, bool, ConfigTable>
@@ -94,6 +91,15 @@ std::optional<ConfigTable> extractConfig(const std::string& source, const Interr
 // `source`, returning an error message if extraction fails.
 std::optional<std::string> extractLuauConfig(
     const std::string& source,
+    Config& config,
+    std::optional<ConfigOptions::AliasOptions> aliasOptions,
+    InterruptCallbacks callbacks
+);
+
+// Extracts a Luau::Config from pre-compiled bytecode data. Creates its own
+// sandboxed Luau VM, loads the bytecode, executes it, and parses the config.
+std::optional<std::string> extractLuauConfigFromBytecode(
+    const std::string& bytecode,
     Config& config,
     std::optional<ConfigOptions::AliasOptions> aliasOptions,
     InterruptCallbacks callbacks

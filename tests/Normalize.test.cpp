@@ -16,6 +16,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
+LUAU_FASTFLAG(LuauIncludeExternTypeExtensionsWithTopExternType)
 
 using namespace Luau;
 
@@ -1146,7 +1147,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "free_type_intersection_ordering")
     CHECK_EQ("'a & string", toString(typeFromNormal(*normB)));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "tyvar_limit_one_sided_intersection" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(NormalizeFixture, "tyvar_limit_one_sided_intersection" * doctest::timeout(LUAU_TIMEOUT))
 {
     std::vector<TypeId> options;
     for (auto i = 0; i < 120; i++)
@@ -1176,7 +1177,10 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_table_and_truthy")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauAlwaysIntersectTablesWithTables, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauAlwaysIntersectTablesWithTables, true},
+        {FFlag::LuauIncludeExternTypeExtensionsWithTopExternType, true},
+    };
 
     TableType tt{{{"x", Property::rw(getBuiltins()->numberType)}}, std::nullopt, {}, TableState::Sealed};
     TypeId tbl = arena.addType(std::move(tt));
@@ -1189,10 +1193,13 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_table_and_truthy")
     REQUIRE(norm);
     TypeId ty = typeFromNormal(*norm);
 
-    // CLI-214308: This does not seem correct, we should be saying ...
+    // This looks a little funky, because it is! You can think of this as being
+    // equivalent to ...
     //
-    //  (userdata & { x: number }) | { x: number }
-    CHECK("userdata | { x: number }" == toString(ty));
+    //  (userdata & { x: number }) | (table & { x: number })
+    //
+    // ... but Luau simplifies `table & { x: number }` to just mean `table`.
+    CHECK("(userdata & { x: number }) | { x: number }" == toString(ty));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalizer_should_be_able_to_detect_cyclic_tables_and_not_stack_overflow")
