@@ -561,7 +561,7 @@ static int createSingleton(lua_State* L)
     }
 
     if (FFlag::LuauUdtfCreateSingletonFixErrorMessage)
-        luaL_error(L, "types.singleton: can't create a singleton from a %s", luaL_typename(L, 1));
+        luaL_error(L, "types.singleton: can't create a singleton from a %s", luaL_typeof(L, 1));
     else
         luaL_error(L, "types.singleton: can't create singleton from `%s` type", lua_typename(L, 1));
 }

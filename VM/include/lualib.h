@@ -59,7 +59,7 @@ LUALIB_API lua_State* luaL_newstate(void);
 
 LUALIB_API const char* luaL_findtable(lua_State* L, int idx, const char* fname, int szhint);
 
-LUALIB_API const char* luaL_typename(lua_State* L, int idx);
+LUALIB_API const char* luaL_typeof(lua_State* L, int idx);
 
 LUALIB_API void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level);
 

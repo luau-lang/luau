@@ -382,7 +382,7 @@ const char* luaL_findtable(lua_State* L, int idx, const char* fname, int szhint)
     return NULL;
 }
 
-const char* luaL_typename(lua_State* L, int idx)
+const char* luaL_typeof(lua_State* L, int idx)
 {
     const TValue* obj = luaA_toobject(L, idx);
     return obj ? luaT_objtypename(L, obj) : "no value";
@@ -682,7 +682,7 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
     {
         const void* ptr = lua_topointer(L, idx);
         unsigned long long enc = lua_encodepointer(L, uintptr_t(ptr));
-        lua_pushfstring(L, "%s: 0x%016llx", luaL_typename(L, idx), enc);
+        lua_pushfstring(L, "%s: 0x%016llx", luaL_typeof(L, idx), enc);
         break;
     }
     }

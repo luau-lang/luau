@@ -2904,17 +2904,17 @@ TEST_CASE("ApiType")
     lua_State* L = globalState.get();
 
     lua_pushnumber(L, 2);
-    CHECK(strcmp(luaL_typename(L, -1), "number") == 0);
-    CHECK(strcmp(luaL_typename(L, 1), "number") == 0);
+    CHECK(strcmp(luaL_typeof(L, -1), "number") == 0);
+    CHECK(strcmp(luaL_typeof(L, 1), "number") == 0);
     CHECK(lua_type(L, -1) == LUA_TNUMBER);
     CHECK(lua_type(L, 1) == LUA_TNUMBER);
 
-    CHECK(strcmp(luaL_typename(L, 2), "no value") == 0);
+    CHECK(strcmp(luaL_typeof(L, 2), "no value") == 0);
     CHECK(lua_type(L, 2) == LUA_TNONE);
     CHECK(strcmp(lua_typename(L, lua_type(L, 2)), "no value") == 0);
 
     lua_newuserdata(L, 0);
-    CHECK(strcmp(luaL_typename(L, -1), "userdata") == 0);
+    CHECK(strcmp(luaL_typeof(L, -1), "userdata") == 0);
     CHECK(lua_type(L, -1) == LUA_TUSERDATA);
 
     lua_newtable(L);
@@ -2922,7 +2922,7 @@ TEST_CASE("ApiType")
     lua_setfield(L, -2, "__type");
     lua_setmetatable(L, -2);
 
-    CHECK(strcmp(luaL_typename(L, -1), "hello") == 0);
+    CHECK(strcmp(luaL_typeof(L, -1), "hello") == 0);
     CHECK(lua_type(L, -1) == LUA_TUSERDATA);
 }
 
@@ -2940,7 +2940,7 @@ TEST_CASE("ApiBuffer")
 
     CHECK(strcmp(lua_typename(L, LUA_TBUFFER), "buffer") == 0);
 
-    CHECK(strcmp(luaL_typename(L, -1), "buffer") == 0);
+    CHECK(strcmp(luaL_typeof(L, -1), "buffer") == 0);
 
     void* p1 = lua_tobuffer(L, -1, nullptr);
 
@@ -3945,7 +3945,7 @@ TEST_CASE("LightuserdataApi")
     lua_setlightuserdataname(L, 1, "id");
     CHECK(!lua_getlightuserdataname(L, 0));
     CHECK(strcmp(lua_getlightuserdataname(L, 1), "id") == 0);
-    CHECK(strcmp(luaL_typename(L, -1), "id") == 0);
+    CHECK(strcmp(luaL_typeof(L, -1), "id") == 0);
     lua_pop(L, 1);
 
     lua_pushlightuserdatatagged(L, value, 0);
@@ -3979,14 +3979,14 @@ TEST_CASE("LightuserdataApi")
 
     // Still possible to rename the global lightuserdata name using a metatable
     lua_pushlightuserdata(L, value);
-    CHECK(strcmp(luaL_typename(L, -1), "userdata") == 0);
+    CHECK(strcmp(luaL_typeof(L, -1), "userdata") == 0);
 
     lua_createtable(L, 0, 1);
     lua_pushstring(L, "luserdata");
     lua_setfield(L, -2, "__type");
     lua_setmetatable(L, -2);
 
-    CHECK(strcmp(luaL_typename(L, -1), "luserdata") == 0);
+    CHECK(strcmp(luaL_typeof(L, -1), "luserdata") == 0);
     lua_pop(L, 1);
 
     globalState.reset();

@@ -205,7 +205,7 @@ static int luaB_typeof(lua_State* L)
 {
     luaL_checkany(L, 1);
     // resulting name returns __type if specified unless the input is a newproxy-created userdata
-    lua_pushstring(L, luaL_typename(L, 1));
+    lua_pushstring(L, luaL_typeof(L, 1));
     return 1;
 }
 

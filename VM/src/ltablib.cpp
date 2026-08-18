@@ -313,7 +313,7 @@ static void addfield(lua_State* L, luaL_Strbuf* b, int i, LuaTable* t)
     {
         int tt = lua_rawgeti(L, 1, i);
         if (tt != LUA_TSTRING && tt != LUA_TNUMBER)
-            luaL_error(L, "invalid value (%s) at index %d in table for 'concat'", luaL_typename(L, -1), i);
+            luaL_error(L, "invalid value (%s) at index %d in table for 'concat'", luaL_typeof(L, -1), i);
         luaL_addvalue(b);
     }
 }
