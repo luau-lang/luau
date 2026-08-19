@@ -2408,6 +2408,46 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_variadic_argument_typ
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
+// A variadic parameter has no index of its own, so the argument index is recovered from
+// the superPath. Without that, the error lands on the last argument rather than the bad one.
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_the_offending_argument")
+{
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
+    CheckResult result = check(R"(
+        type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
+        local f = (nil :: any) :: Callable
+
+        f(1, "wrong", 3)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+
+    // Check if the type error was reported on the second argument ("wrong")
+    CHECK_EQ(result.errors[0].location, Location{{4, 13}, {4, 20}});
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_each_offending_argument")
+{
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
+    CheckResult result = check(R"(
+        type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
+        local f = (nil :: any) :: Callable
+
+        f("a", 2, "b")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK_EQ(result.errors[0].location, Location{{4, 18}, {4, 21}});
+
+    CHECK(get<TypeMismatch>(result.errors[1]));
+    CHECK_EQ(result.errors[1].location, Location{{4, 10}, {4, 13}});
+}
+
 TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
