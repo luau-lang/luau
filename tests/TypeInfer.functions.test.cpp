@@ -13,6 +13,8 @@
 #include "ScopedFlags.h"
 #include "doctest.h"
 
+#include <algorithm>
+
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
@@ -2441,11 +2443,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_each_offendi
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    CHECK(get<TypeMismatch>(result.errors[0]));
-    CHECK_EQ(result.errors[0].location, Location{{4, 18}, {4, 21}});
+    // The two errors arrive in an order that differs between standard libraries, so sort them by
+    // location first, which is what the frontend does before anyone sees them.
+    std::vector<TypeError> errors = result.errors;
+    std::sort(
+        errors.begin(),
+        errors.end(),
+        [](const TypeError& lhs, const TypeError& rhs)
+        {
+            return lhs.location.begin < rhs.location.begin;
+        }
+    );
 
-    CHECK(get<TypeMismatch>(result.errors[1]));
-    CHECK_EQ(result.errors[1].location, Location{{4, 10}, {4, 13}});
+    CHECK(get<TypeMismatch>(errors[0]));
+    CHECK_EQ(errors[0].location, Location{{4, 10}, {4, 13}});
+
+    CHECK(get<TypeMismatch>(errors[1]));
+    CHECK_EQ(errors[1].location, Location{{4, 18}, {4, 21}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
