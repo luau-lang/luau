@@ -3528,13 +3528,6 @@ private:
             return true;  // anything that can be nil is a valid condition
         if (const auto utv = get<UnionType>(follow(type)))
             return std::any_of(begin(utv), end(utv), isBoolean); // anything union with boolean or true or false is a valid condition
-        // Several unit tests fail without this check, but only on the old solver:
-        // UnreachableCodeIfMerge, UnreachableCodeErrorReturnSilent, UnreachableCodeErrorReturnSilent,UnreachableCodeErrorReturnNonSilentBranch, UnreachableCodeErrorReturnPropagate
-        // They all test an untyped function argument
-        if (FFlag::LuauSolverV2 && get<GenericType>(follow(type)))
-            return true;
-        //auto id = get<TypeId>(follow(type));
-        //auto tid = type.value()->ty.getTypeId<>()
 
         if (isNumber(*type))
         {
