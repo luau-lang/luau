@@ -2390,16 +2390,15 @@ TEST_CASE_FIXTURE(Fixture, "WrongCommentMuteSelf")
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsIfStatAndExpr")
 {
-    LintResult result = lint(R"(
-a = true; b = true; c = false; d = true; e = false; f = true
-if if b then c else d then
-elseif if b then c else d then
-elseif if a then f else e then
+    LintResult result = lint(R"(--!nolint MisleadingCondition
+if if 1 then 2 else 3 then
+elseif if 1 then 2 else 3 then
+elseif if 0 then 5 else 4 then
 end
 )");
 
     REQUIRE(1 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 3");
+    CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 2");
 }
 
 TEST_CASE_FIXTURE(Fixture, "WrongCommentOptimize")
