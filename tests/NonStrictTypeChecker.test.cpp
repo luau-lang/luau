@@ -20,7 +20,6 @@ LUAU_DYNAMIC_FASTINT(LuauConstraintGeneratorRecursionLimit)
 LUAU_FASTINT(LuauNonStrictTypeCheckerRecursionLimit)
 LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(LuauAddRecursionCounterToNonStrictTypeChecker)
-LUAU_FASTFLAG(LuauTidyTypePrototyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 using namespace Luau;
@@ -899,7 +898,6 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "typecheck_class_method_bodies")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauTidyTypePrototyping, true},
     };
 
     CheckResult result = checkNonStrict(R"(

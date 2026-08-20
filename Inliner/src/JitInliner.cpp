@@ -2,13 +2,16 @@
 #include "Luau/JitInliner.h"
 
 #include "Luau/Bytecode.h"
-#include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeCallInliner.h"
+#include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeUtils.h"
+#include "Luau/Common.h"
+#include "Luau/Sccp.h"
 
 #include "BytecodeGraphParser.h"
 #include "BytecodeGraphSerializer.h"
 #include "RuntimeBytecodeBuilder.h"
+#include "TValueVmConstImpl.h"
 
 #include "lfunc.h"
 #include "lgc.h"
@@ -23,6 +26,8 @@ LUAU_FASTINTVARIABLE(LuauJitInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauJitInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauJitInlineSmallFunSize, 128)
 LUAU_FASTINTVARIABLE(LuauJitInlineTooLongFunSize, 0xFFFF);
+
+LUAU_FASTFLAGVARIABLE(LuauBytecodeFold)
 
 using namespace Luau::Bytecode;
 
@@ -71,6 +76,7 @@ std::optional<std::pair<RuntimeBcFunction, BcOp>> buildGraphFromProto(Proto* p, 
     {
         LUAU_ASSERT(*callPc < insnsPC.size());
         callOp = BcOp{BcOpKind::Inst, insnsPC[*callPc]};
+        LUAU_ASSERT(fn.inst(callOp)->op == LOP_CALLFB);
     }
 
     return {{fn, callOp}};
@@ -104,7 +110,7 @@ std::optional<CodeData> emitCode(lua_State* L, RuntimeBcFunction& graph, std::ve
     for (uint32_t i = 0; i < graph.instructions.size(); i++)
     {
         BcInst& insn = graph.instructions[i];
-        if (insn.op == LOP_CALLFB)
+        if (insn.op == LOP_CALLFB && (graph.blockOp(insn.block).flags & BcBlockFlag::Dead) == 0)
         {
             BcCallFB<TValue*> callFB = graph.template as<BcCallFB<TValue*>>(BcOp{BcOpKind::Inst, i});
             if (callFB.FbSlot() >= 0)
@@ -112,6 +118,7 @@ std::optional<CodeData> emitCode(lua_State* L, RuntimeBcFunction& graph, std::ve
                 uint32_t fbSlot = static_cast<uint32_t>(callFB.FbSlot());
                 if (fbSlot >= res.fbSlotPCs.size())
                     res.fbSlotPCs.resize(fbSlot + 1, kUnassignedPC);
+
                 res.fbSlotPCs[fbSlot] = insnsPC[i];
             }
         }
@@ -137,18 +144,18 @@ Proto* createInlinedProto(lua_State* L, Proto* caller, Proto* target, RuntimeBcF
     p->linedefined = caller->linedefined;
 
     p->k = luaM_newarray(L, graph.constants.size(), TValue, L->activememcat);
-    p->sizek = graph.constants.size();
+    p->sizek = int(graph.constants.size());
     for (int i = 0; i < p->sizek; i++)
         p->k[i] = *graph.constants[i];
 
     p->p = luaM_newarray(L, graph.protos.size(), Proto*, L->activememcat);
-    p->sizep = graph.protos.size();
+    p->sizep = int(graph.protos.size());
     LUAU_ASSERT(p->sizep == (caller->sizep + target->sizep));
     memcpy(p->p, caller->p, caller->sizep * sizeof(Proto*));
     memcpy(p->p + caller->sizep, target->p, target->sizep * sizeof(Proto*));
 
     p->code = luaM_newarray(L, codeData.code.size(), Instruction, L->activememcat);
-    p->sizecode = codeData.code.size();
+    p->sizecode = int(codeData.code.size());
     memcpy(p->code, codeData.code.data(), p->sizecode * sizeof(Instruction));
     // Lineinfo data is preallocated by emitCode
     p->linegaplog2 = codeData.linegaplog2;
@@ -165,7 +172,7 @@ Proto* createInlinedProto(lua_State* L, Proto* caller, Proto* target, RuntimeBcF
     memcpy(p->feedbackvec, caller->feedbackvec, caller->feedbackvecsize * sizeof(FeedbackVectorSlot));
     memcpy(p->feedbackvec + caller->feedbackvecsize, target->feedbackvec, target->feedbackvecsize * sizeof(FeedbackVectorSlot));
 
-    for (uint32_t i = 0; i < std::min<uint32_t>(p->feedbackvecsize, codeData.fbSlotPCs.size()); i++)
+    for (uint32_t i = 0; i < std::min<uint32_t>(p->feedbackvecsize, uint32_t(codeData.fbSlotPCs.size())); i++)
         if (codeData.fbSlotPCs[i] != kUnassignedPC)
         {
             LUAU_ASSERT(p->feedbackvec[i].kind == FeedbackVectorSlotKind::CALL_TARGET);
@@ -222,6 +229,25 @@ bool isConstOp(RuntimeBcFunction& graph, BcOp op)
             return isConstOp(graph, inst.ops[0]);
         default:
             return false;
+        }
+    }
+    return false;
+}
+
+bool hasFoldableConstants(const RuntimeBcFunction& func)
+{
+    for (const BcInst& inst : func.instructions)
+    {
+        switch (inst.op)
+        {
+        case LOP_LOADK:
+        case LOP_LOADKX:
+        case LOP_LOADN:
+        case LOP_LOADB:
+        case LOP_LOADNIL:
+            return true;
+        default:
+            break;
         }
     }
     return false;
@@ -288,19 +314,27 @@ Proto* onInlineFunction(lua_State* L, Closure* caller, Closure* target, uint32_t
     if (!inlineCall(callerGraph->first, targetGraph->first, callerGraph->second, targetProto->funid, callerProto->feedbackvecsize))
         return nullptr;
 
+    // impl must outlive emitCode and createInlinedProto
+    std::optional<TValueVmConstImpl> impl;
+    if (FFlag::LuauBytecodeFold && hasFoldableConstants(callerGraph->first))
+    {
+        impl.emplace(L, callerGraph->first);
+        foldConstants(callerGraph->first, *impl);
+    }
+
     std::vector<Proto*> protos;
     protos.resize(callerProto->sizep + targetProto->sizep);
     memcpy(protos.data(), callerProto->p, callerProto->sizep * sizeof(Proto*));
     memcpy(protos.data() + callerProto->sizep, targetProto->p, targetProto->sizep * sizeof(Proto*));
 
-    std::optional<CodeData> codeData = emitCode(L, callerGraph->first, protos);
-    if (!codeData)
+    if (std::optional<CodeData> codeData = emitCode(L, callerGraph->first, protos))
     {
-        sealAllSlots(callerProto->code, callerProto->sizecode);
-        return nullptr;
+        createInlinedProto(L, callerProto, targetProto, callerGraph->first, *codeData);
     }
 
-    createInlinedProto(L, callerProto, targetProto, callerGraph->first, *codeData);
+    // To prevent triggering of optimizations in already optimized proto sealing all feedback slots.
+    // All hit info was copied to the optimized version and new optimizations will happen there.
+    sealAllSlots(callerProto->code, callerProto->sizecode);
 
     return nullptr;
 }

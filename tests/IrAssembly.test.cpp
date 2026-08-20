@@ -2,6 +2,7 @@
 #include "Luau/CodeGen.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/IrBuilder.h"
+#include "Luau/IrDump.h"
 
 #include "doctest.h"
 #include "ScopedFlags.h"
@@ -9,7 +10,7 @@
 #include <regex>
 
 LUAU_FASTFLAG(LuauCodegenDseRestoreHints)
-LUAU_FASTFLAG(LuauCodegenForwardRematerialize)
+LUAU_FASTFLAG(LuauCodegenDseRestoreHintUpdate)
 
 using namespace Luau::CodeGen;
 
@@ -106,24 +107,22 @@ public:
     AssemblyOptions options;
 
     // Luau.VM headers are not accessible
-    static const int tnil = 0;
-    static const int tboolean = 1;
-    static const int tnumber = 3;
-    static const int tinteger = 4;
-    static const int tvector = 5;
-    static const int tstring = 6;
-    static const int ttable = 7;
-    static const int tfunction = 8;
-    static const int tuserdata = 9;
-    static const int tbuffer = 11;
+    int tnil = parseTagName("tnil");
+    int tboolean = parseTagName("tboolean");
+    int tnumber = parseTagName("tnumber");
+    int tinteger = parseTagName("tinteger");
+    int tvector = parseTagName("tvector");
+    int tstring = parseTagName("tstring");
+    int ttable = parseTagName("ttable");
+    int tfunction = parseTagName("tfunction");
+    int tuserdata = parseTagName("tuserdata");
+    int tbuffer = parseTagName("tbuffer");
 };
 
 TEST_SUITE_BEGIN("IrAssembly");
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "PreserveIntChainedFromDoubleVmReg")
 {
-    ScopedFastFlag luauCodegenForwardRematerialize{FFlag::LuauCodegenForwardRematerialize, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -169,8 +168,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "PreserveIntChainedFromDoubleVmRegBoth")
 {
-    ScopedFastFlag luauCodegenForwardRematerialize{FFlag::LuauCodegenForwardRematerialize, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -272,7 +269,6 @@ bb_0:
 TEST_CASE_FIXTURE(IrAssemblyFixture, "DseHintMaterializesIntIntoDeadVmReg")
 {
     ScopedFastFlag luauCodegenDseRestoreHints{FFlag::LuauCodegenDseRestoreHints, true};
-    ScopedFastFlag luauCodegenForwardRematerialize{FFlag::LuauCodegenForwardRematerialize, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);
     build.beginBlock(entry);
@@ -428,8 +424,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "MultiNumToXSharedSourceStrandsRestore")
 {
-    ScopedFastFlag luauCodegenForwardRematerialize{FFlag::LuauCodegenForwardRematerialize, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     build.beginBlock(entry);
 
@@ -504,6 +498,83 @@ bb_0:
  vmovups     xmmword ptr [rdi+020h],xmm0
  add         rdi,30h
  mov         ecx,3
+ jmp         .L7
+
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(IrAssemblyFixture, "DseHintUpdateRedirectsLazyRestoreToLaterReg")
+{
+    ScopedFastFlag luauCodegenDseRestoreHints{FFlag::LuauCodegenDseRestoreHints, true};
+    ScopedFastFlag luauCodegenDseRestoreHintUpdate{FFlag::LuauCodegenDseRestoreHintUpdate, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+    build.beginBlock(entry);
+
+    IrOp d = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
+    IrOp i = build.inst(IrCmd::NUM_TO_INT, d);
+
+    // Kill R1 as a potential non-lazy restore location for 'd'
+    IrOp doubled = build.inst(IrCmd::ADD_NUM, d, d);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), doubled);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.constTag(tnumber));
+
+    IrOp roundtrip = build.inst(IrCmd::INT_TO_NUM, i);
+
+    // Two dead stores in R4 and R5, final lazy restore location should be R5
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(4), roundtrip);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(4), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(5), roundtrip);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(5), build.constTag(tnumber));
+
+    build.inst(IrCmd::INTERRUPT, build.constUint(0));
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), roundtrip);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(2));
+    updateUseCounts(build.function);
+
+    // INTERRUPT spills to R5 at [r14+050h]
+    CHECK_EQ(
+        "\n" + lower(),
+        R"(
+; align 32 using ud2
+bb_0:
+.L11:
+  %0 = LOAD_DOUBLE R1
+ vmovsd      xmm0,qword ptr [r14+010h]
+  %1 = NUM_TO_INT %0
+ vcvttsd2si  eax,xmm0
+  %2 = ADD_NUM %0, %0
+ vaddsd      xmm0,xmm0,xmm0
+  STORE_DOUBLE R1, %2
+ vmovsd      qword ptr [r14+010h],xmm0
+  STORE_TAG R1, tnumber
+ mov         dword ptr [r14+01Ch],3
+  %5 = INT_TO_NUM %1
+ vcvtsi2sd   xmm0,xmm0,eax
+  INTERRUPT 0u
+ vmovsd      qword ptr [r14+050h],xmm0
+ mov         dword ptr [r14+05Ch],0
+ mov         rax,qword ptr [r15+<offset>]
+ cmp         qword ptr [rax+<offset>],0
+ jne         .L12
+.L13:
+  STORE_DOUBLE R2, %5
+ vmovsd      xmm0,qword ptr [r14+050h]
+ vmovsd      qword ptr [r14+020h],xmm0
+  STORE_TAG R2, tnumber
+ mov         dword ptr [r14+02Ch],3
+  RETURN R1, 2i
+ lea         rdi,[r14-010h]
+ vmovups     xmm0,xmmword ptr [r14+010h]
+ vmovups     xmmword ptr [rdi],xmm0
+ vmovups     xmm0,xmmword ptr [r14+020h]
+ vmovups     xmmword ptr [rdi+010h],xmm0
+ add         rdi,20h
+ mov         ecx,2
  jmp         .L7
 
 )"

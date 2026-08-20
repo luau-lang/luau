@@ -67,7 +67,7 @@ std::optional<TypeId> generalize(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Scope> scope,
-    NotNull<DenseHashSet<TypeId>> cachedTypes,
+    NotNull<DenseHashSet2<TypeId>> cachedTypes,
     TypeId ty,
     std::optional<TypeId> generalizationTarget = {}
 );
@@ -76,7 +76,7 @@ void pruneUnnecessaryGenerics(
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Scope> scope,
-    NotNull<DenseHashSet<TypeId>> cachedTypes,
+    NotNull<DenseHashSet2<TypeId>> cachedTypes,
     TypeId ty
 );
 

@@ -9,9 +9,9 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauPropagateFreeTypesIntoUnionAndIntersectionBounds)
 LUAU_FASTFLAG(LuauSubtypeUnionsTogether)
 LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -533,14 +533,24 @@ end
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK_EQ(
-            toString(result.errors[0]),
-            "Expected this to be '{ w: number }', but got 'X | Y | Z'; \n"
-            "this is because \n\t"
-            " * the 1st component of the union is `X`, which is not a subtype of `{ w: number }`\n\t"
-            " * the 2nd component of the union is `Y`, which is not a subtype of `{ w: number }`\n\t"
-            " * the 3rd component of the union is `Z`, which is not a subtype of `{ w: number }`"
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK_EQ(
+                toString(result.errors[0]),
+                "Expected this to be '{ w: number }', but got 'X | Y | Z'; \n"
+                "this is because \n\t"
+                " * `X` is not a subtype of `{ w: number }`\n\t"
+                " * `Y` is not a subtype of `{ w: number }`\n\t"
+                " * `Z` is not a subtype of `{ w: number }`"
+            );
+        else
+            CHECK_EQ(
+                toString(result.errors[0]),
+                "Expected this to be '{ w: number }', but got 'X | Y | Z'; \n"
+                "this is because \n\t"
+                " * the 1st component of the union is `X`, which is not a subtype of `{ w: number }`\n\t"
+                " * the 2nd component of the union is `Y`, which is not a subtype of `{ w: number }`\n\t"
+                " * the 3rd component of the union is `Z`, which is not a subtype of `{ w: number }`"
+            );
     }
     else
     {
@@ -1029,8 +1039,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_union_bounds")
     /*
      * When unifying 'a <: T | nil in a context where T substituted for 't, we must constrain the lower bound of 't by 'a.
      */
-    ScopedFastFlag sff{FFlag::LuauPropagateFreeTypesIntoUnionAndIntersectionBounds, true};
-
     CheckResult result = check(R"(
         local function unwrap<T>(a: T?): T
             if a == nil then

@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Bytecode.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/StringUtils.h"
 
 #include <string>
@@ -67,7 +67,8 @@ public:
     int32_t addConstantBoolean(bool value);
     int32_t addConstantNumber(double value);
     int32_t addConstantInteger(int64_t value);
-    int32_t addConstantVector(float x, float y, float z, float w);
+    int32_t addConstantVectorf(float x, float y, float z, float w);
+    int32_t addConstantVectord(double x, double y, double z, double w);
     int32_t addConstantString(StringRef value);
     int32_t addImport(uint32_t iid);
     int32_t addConstantTable(const TableShape& shape);
@@ -165,6 +166,12 @@ public:
 
     void annotateInstruction(std::string& result, uint32_t fid, uint32_t instpos) const;
 
+    void clearStrings()
+    {
+        debugStrings.clear();
+        stringTable.clear();
+    }
+
     static uint32_t getImportId(int32_t id0);
     static uint32_t getImportId(int32_t id0, int32_t id1);
     static uint32_t getImportId(int32_t id0, int32_t id1, int32_t id2);
@@ -187,7 +194,8 @@ protected:
             Type_Boolean,
             Type_Number,
             Type_Integer,
-            Type_Vector,
+            Type_Vectorf,
+            Type_Vectord,
             Type_String,
             Type_Import,
             Type_Table,
@@ -201,7 +209,8 @@ protected:
             bool valueBoolean;
             double valueNumber;
             int64_t valueInteger64;
-            float valueVector[4];
+            float valueVectorf[4];
+            double valueVectord[4];
             unsigned int valueString; // index into string table
             uint32_t valueImport;     // 10-10-10-2 encoded import id
             uint32_t valueTable;      // index into tableShapes[]
@@ -214,13 +223,16 @@ protected:
     {
         Constant::Type type;
         // Note: this stores value* from Constant; when type is Type_Number, this stores the same bits as double does but in uint64_t.
-        // For Type_Vector, x and y are stored in 'value' and z and w are stored in 'extra'.
+        // For Type_Vectorf, x and y are stored in 'value' and z and w are stored in 'extra1'.
+        // For Type_Vectord, x is stored in 'value', y, z and w are stored in 'extra1/2/3' accordingly.
         uint64_t value;
-        uint64_t extra = 0;
+        uint64_t extra1 = 0;
+        uint64_t extra2 = 0;
+        uint64_t extra3 = 0;
 
         bool operator==(const ConstantKey& key) const
         {
-            return type == key.type && value == key.value && extra == key.extra;
+            return type == key.type && value == key.value && extra1 == key.extra1 && extra2 == key.extra2 && extra3 == key.extra3;
         }
     };
 
@@ -315,9 +327,9 @@ protected:
 
     bool hasLongJumps = false;
 
-    DenseHashMap<ConstantKey, int32_t, ConstantKeyHash> constantMap;
-    DenseHashMap<TableShape, int32_t, TableShapeHash> tableShapeMap;
-    DenseHashMap<uint32_t, int16_t> protoMap;
+    DenseHashMap2<ConstantKey, int32_t, ConstantKeyHash> constantMap;
+    DenseHashMap2<TableShape, int32_t, TableShapeHash> tableShapeMap;
+    DenseHashMap2<uint32_t, int16_t> protoMap;
 
     int debugLine = 0;
 
@@ -329,7 +341,7 @@ protected:
 
     std::vector<UserdataType> userdataTypes;
 
-    DenseHashMap<StringRef, unsigned int, StringRefHash> stringTable;
+    DenseHashMap2<StringRef, unsigned int, StringRefHash> stringTable;
     std::vector<StringRef> debugStrings;
 
     std::vector<std::pair<uint32_t, uint32_t>> debugRemarks;

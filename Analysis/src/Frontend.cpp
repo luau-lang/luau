@@ -6,9 +6,11 @@
 #include "Luau/Clone.h"
 #include "Luau/Config.h"
 #include "Luau/ConstraintGenerator.h"
+#include "Luau/ConstraintSet.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/ControlFlowGraph.h"
 #include "Luau/DataFlowGraph.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/DumpCFG.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/ExpectedTypeVisitor.h"
@@ -17,9 +19,13 @@
 #include "Luau/NotNull.h"
 #include "Luau/Parser.h"
 #include "Luau/Scope.h"
+#include "Luau/Subtyping.h"
 #include "Luau/TimeTrace.h"
+#include "Luau/Type.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeCheckLimits.h"
+#include "Luau/TypePack.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeStateMap.h"
@@ -35,7 +41,10 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
+LUAU_FASTINTVARIABLE(LuauCyclicSccWarningThreshold, 4)
+
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
+LUAU_FASTFLAGVARIABLE(LuauFrontendSourceNodeErase)
 LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile)
@@ -45,6 +54,8 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauExportValueTypecheck)
+LUAU_FLAGVERSION(LuauExportValueTypecheck, 2)
+LUAU_FASTFLAGVARIABLE(LuauCyclicRequireTypeInference)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauCFG)
@@ -76,6 +87,8 @@ struct BuildQueueItem
     FrontendOptions options;
     bool recordJsonLog = false;
 
+    // Modules that form a cyclic dependency are grouped into a single strongly connected component (SCC) and checked together.
+    ModuleSCCPtr scc;
     std::vector<BuildQueueModuleInfo> modules;
 
     // Queue state
@@ -267,7 +280,7 @@ ErrorVec accumulateErrors(
     const ModuleName& name
 )
 {
-    DenseHashSet<ModuleName> seen{{}};
+    DenseHashSet2<ModuleName> seen;
     std::vector<ModuleName> queue{name};
 
     ErrorVec result;
@@ -347,7 +360,7 @@ std::vector<RequireCycle> getRequireCycles(
 {
     std::vector<RequireCycle> result;
 
-    DenseHashSet<const SourceNode*> seen(nullptr);
+    DenseHashSet2<const SourceNode*> seen;
     std::vector<const SourceNode*> stack;
     std::vector<const SourceNode*> path;
 
@@ -496,7 +509,7 @@ void Frontend::parseModules(const std::vector<ModuleName>& names)
 {
     LUAU_TIMETRACE_SCOPE("Frontend::parseModules", "Frontend");
 
-    DenseHashSet<Luau::ModuleName> seen{{}};
+    DenseHashSet2<Luau::ModuleName> seen;
 
     for (const ModuleName& name : names)
     {
@@ -539,14 +552,18 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
     std::vector<ModuleName> buildQueue;
     bool cycleDetected = parseGraph(buildQueue, name, makeTypeCheckLimits(frontendOptions), frontendOptions.forAutocomplete);
+    if (FFlag::LuauCyclicRequireTypeInference)
+        computeSCCs(buildQueue);
 
-    DenseHashSet<Luau::ModuleName> seen{{}};
+    DenseHashSet2<Luau::ModuleName> seen;
     std::vector<BuildQueueItem> buildQueueItems;
     addBuildQueueItems(buildQueueItems, buildQueue, cycleDetected, seen, frontendOptions);
     LUAU_ASSERT(!buildQueueItems.empty());
 
     if (FFlag::DebugLuauLogSolverToJson)
     {
+        // TODO CLI-215634: Consider how to best represent cycles in the timetravel debugger. For now, we just log the first module in the cycle,
+        // which isn't ideal but at least gives some visibility.
         LUAU_ASSERT(buildQueueItems.back().modules[0].name == name);
         buildQueueItems.back().recordJsonLog = true;
     }
@@ -558,19 +575,39 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
     for (const BuildQueueItem& item : buildQueueItems)
     {
-        const BuildQueueModuleInfo& moduleInfo = item.modules[0];
+        if (FFlag::LuauCyclicRequireTypeInference)
+        {
+            for (const BuildQueueModuleInfo& moduleInfo : item.modules)
+            {
+                if (moduleInfo.module->timeout)
+                    checkResult.timeoutHits.push_back(moduleInfo.name);
 
-        if (moduleInfo.module->timeout)
-            checkResult.timeoutHits.push_back(moduleInfo.name);
+                // If check was manually cancelled, do not return partial results
+                if (moduleInfo.module->cancelled)
+                    return {};
 
-        // If check was manually cancelled, do not return partial results
-        if (moduleInfo.module->cancelled)
-            return {};
+                checkResult.errors.insert(checkResult.errors.end(), moduleInfo.module->errors.begin(), moduleInfo.module->errors.end());
 
-        checkResult.errors.insert(checkResult.errors.end(), moduleInfo.module->errors.begin(), moduleInfo.module->errors.end());
+                if (moduleInfo.name == name)
+                    checkResult.lintResult = moduleInfo.module->lintResult;
+            }
+        }
+        else
+        {
+            const BuildQueueModuleInfo& moduleInfo = item.modules[0];
 
-        if (moduleInfo.name == name)
-            checkResult.lintResult = moduleInfo.module->lintResult;
+            if (moduleInfo.module->timeout)
+                checkResult.timeoutHits.push_back(moduleInfo.name);
+
+            // If check was manually cancelled, do not return partial results
+            if (moduleInfo.module->cancelled)
+                return {};
+
+            checkResult.errors.insert(checkResult.errors.end(), moduleInfo.module->errors.begin(), moduleInfo.module->errors.end());
+
+            if (moduleInfo.name == name)
+                checkResult.lintResult = moduleInfo.module->lintResult;
+        }
     }
 
     return checkResult;
@@ -600,7 +637,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
     std::vector<ModuleName> currModuleQueue;
     std::swap(currModuleQueue, moduleQueue);
 
-    DenseHashSet<Luau::ModuleName> seen{{}};
+    DenseHashSet2<Luau::ModuleName> seen;
 
     std::shared_ptr<BuildQueueWorkState> state = std::make_shared<BuildQueueWorkState>();
 
@@ -627,6 +664,8 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
             }
         );
 
+        if (FFlag::LuauCyclicRequireTypeInference)
+            computeSCCs(queue);
         addBuildQueueItems(state->buildQueueItems, queue, cycleDetected, seen, frontendOptions);
     }
 
@@ -638,8 +677,18 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
 
     for (size_t i = 0; i < state->buildQueueItems.size(); i++)
     {
-        BuildQueueItem& item = state->buildQueueItems[i];
-        moduleNameToQueue[item.modules[0].name] = i;
+        if (FFlag::LuauCyclicRequireTypeInference)
+        {
+            for (const BuildQueueModuleInfo& moduleInfo : state->buildQueueItems[i].modules)
+            {
+                moduleNameToQueue[moduleInfo.name] = i;
+            }
+        }
+        else
+        {
+            BuildQueueItem& item = state->buildQueueItems[i];
+            moduleNameToQueue[item.modules[0].name] = i;
+        }
     }
 
     // Default task execution is single-threaded and immediate
@@ -660,15 +709,38 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
     {
         BuildQueueItem& item = state->buildQueueItems[i];
 
-        for (const ModuleName& dep : item.modules[0].sourceNode->requireSet)
+        if (FFlag::LuauCyclicRequireTypeInference)
         {
-            if (auto it = sourceNodes.find(dep); it != sourceNodes.end())
+            for (const BuildQueueModuleInfo& moduleInfo : item.modules)
             {
-                if (it->second->hasDirtyModule(frontendOptions.forAutocomplete))
+                for (const ModuleName& dep : moduleInfo.sourceNode->requireSet)
                 {
-                    item.dirtyDependencies++;
-
-                    state->buildQueueItems[moduleNameToQueue[dep]].reverseDeps.push_back(i);
+                    if (auto it = sourceNodes.find(dep); it != sourceNodes.end())
+                    {
+                        if (it->second->hasDirtyModule(frontendOptions.forAutocomplete))
+                        {
+                            auto queueIt = moduleNameToQueue.find(dep);
+                            if (queueIt != moduleNameToQueue.end() && queueIt->second != i)
+                            {
+                                item.dirtyDependencies++;
+                                state->buildQueueItems[queueIt->second].reverseDeps.push_back(i);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            for (const ModuleName& dep : item.modules[0].sourceNode->requireSet)
+            {
+                if (auto it = sourceNodes.find(dep); it != sourceNodes.end())
+                {
+                    if (it->second->hasDirtyModule(frontendOptions.forAutocomplete))
+                    {
+                        item.dirtyDependencies++;
+                        state->buildQueueItems[moduleNameToQueue[dep]].reverseDeps.push_back(i);
+                    }
                 }
             }
         }
@@ -719,8 +791,25 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
                 if (item.exception)
                     itemWithException = i;
 
-                if (item.modules[0].module && item.modules[0].module->cancelled)
-                    cancelled = true;
+                if (FFlag::LuauCyclicRequireTypeInference)
+                {
+                    if (!itemWithException && !cancelled)
+                    {
+                        for (const BuildQueueModuleInfo& moduleInfo : item.modules)
+                        {
+                            if (moduleInfo.module && moduleInfo.module->cancelled)
+                            {
+                                cancelled = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    if (item.modules[0].module && item.modules[0].module->cancelled)
+                        cancelled = true;
+                }
 
                 if (itemWithException || cancelled)
                     break;
@@ -782,7 +871,19 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
     checkedModules.reserve(state->buildQueueItems.size());
 
     for (size_t i = 0; i < state->buildQueueItems.size(); i++)
-        checkedModules.push_back(std::move(state->buildQueueItems[i].modules[0].name));
+    {
+        if (FFlag::LuauCyclicRequireTypeInference)
+        {
+            for (BuildQueueModuleInfo& moduleInfo : state->buildQueueItems[i].modules)
+            {
+                checkedModules.push_back(std::move(moduleInfo.name));
+            }
+        }
+        else
+        {
+            checkedModules.push_back(std::move(state->buildQueueItems[i].modules[0].name));
+        }
+    }
 
     return checkedModules;
 }
@@ -865,7 +966,7 @@ bool Frontend::parseGraph(
         Permanent
     };
 
-    DenseHashMap<SourceNode*, Mark> seen(nullptr);
+    DenseHashMap2<SourceNode*, Mark> seen;
     std::vector<SourceNode*> stack;
     std::vector<SourceNode*> path;
     bool cyclic = false;
@@ -961,14 +1062,214 @@ bool Frontend::parseGraph(
     return cyclic;
 }
 
+static bool moduleHasExports(const SourceModule& sourceModule)
+{
+    if (!sourceModule.root)
+        return false;
+
+    for (AstStat* stat : sourceModule.root->body)
+    {
+        if (AstStatLocal* local = stat->as<AstStatLocal>())
+        {
+            if (local->isExported)
+                return true;
+        }
+        else if (AstStatLocalFunction* func = stat->as<AstStatLocalFunction>())
+        {
+            if (func->name->isExported)
+                return true;
+        }
+    }
+
+    return false;
+}
+
+// Iterative Tarjan's SCC algorithm over the require graph.
+// Returns a list of SCCs that have more than one member or a self-loop.
+static std::vector<ModuleSCCPtr> computeTarjanSCCs(
+    const std::vector<ModuleName>& buildQueue,
+    const std::unordered_map<ModuleName, std::shared_ptr<SourceNode>>& sourceNodes
+)
+{
+    const size_t N = buildQueue.size();
+    if (N == 0)
+        return {};
+
+    DenseHashMap2<ModuleName, size_t> nameToVertex;
+    for (size_t i = 0; i < N; i++)
+        nameToVertex[buildQueue[i]] = i;
+
+    // Adjacency list: edges[] stores concatenated lists of outgoing edges for each vertex, and edgeStart[] indexes into it
+    std::vector<size_t> edges;
+    std::vector<size_t> edgeStart(N + 1, 0);
+
+    for (size_t v = 0; v < N; v++)
+    {
+        edgeStart[v] = edges.size();
+        auto nodeIt = sourceNodes.find(buildQueue[v]);
+        if (nodeIt != sourceNodes.end())
+        {
+            for (const ModuleName& dep : nodeIt->second->requireSet)
+            {
+                if (size_t* idx = nameToVertex.find(dep))
+                    edges.push_back(*idx);
+            }
+        }
+    }
+    edgeStart[N] = edges.size();
+
+    struct TarjanNode
+    {
+        int index = -1;       // discovery order (-1 = unvisited)
+        int lowlink = 0;      // lowest index reachable from this vertex's DFS subtree
+        bool onStack = false; // currently on the SCC candidate stack
+    };
+
+    // Simulates a recursive call frame: which vertex we're visiting
+    // and how far through its edge list we've progressed.
+    struct TarjanFrame
+    {
+        size_t vertex;
+        size_t edgeCursor; // next edge to explore for this vertex (index into edges[])
+    };
+
+    std::vector<TarjanNode> nodes(N);
+    std::vector<TarjanFrame> worklist;
+    std::vector<size_t> moduleStack; // vertices that may be part of the current SCC
+    int nextIndex = 0;
+
+    std::vector<ModuleSCCPtr> result;
+
+    for (size_t start = 0; start < N; start++)
+    {
+        if (nodes[start].index != -1)
+            continue;
+
+        // Begin DFS from an unvisited vertex
+        worklist.push_back(TarjanFrame{start, edgeStart[start]});
+        nodes[start].index = nodes[start].lowlink = nextIndex++;
+        nodes[start].onStack = true;
+        moduleStack.push_back(start);
+
+        while (!worklist.empty())
+        {
+            TarjanFrame& frame = worklist.back();
+            size_t v = frame.vertex;
+
+            if (frame.edgeCursor < edgeStart[v + 1])
+            {
+                // Explore next outgoing edge
+                size_t w = edges[frame.edgeCursor++];
+
+                if (nodes[w].index == -1)
+                {
+                    // Tree edge: w is unvisited, recurse into it
+                    worklist.push_back(TarjanFrame{w, edgeStart[w]});
+                    nodes[w].index = nodes[w].lowlink = nextIndex++;
+                    nodes[w].onStack = true;
+                    moduleStack.push_back(w);
+                }
+                else if (nodes[w].onStack)
+                {
+                    // Back edge: w is on the current search path, update lowlink
+                    nodes[v].lowlink = std::min(nodes[v].lowlink, nodes[w].index);
+                }
+            }
+            else
+            {
+                // All edges explored. If lowlink == index, v is the root of an SCC.
+                if (nodes[v].lowlink == nodes[v].index)
+                {
+                    auto scc = std::make_shared<ModuleSCC>();
+                    size_t w;
+                    do
+                    {
+                        w = moduleStack.back();
+                        moduleStack.pop_back();
+                        nodes[w].onStack = false;
+                        scc->members.push_back(buildQueue[w]);
+                    } while (w != v);
+
+                    if (scc->members.size() > 1)
+                    {
+                        result.push_back(scc);
+                    }
+                    else if (scc->members.size() == 1)
+                    {
+                        // Single-member SCC is only cyclic if it has a self-loop
+                        const ModuleName& only = scc->members[0];
+                        auto nodeIt = sourceNodes.find(only);
+                        if (nodeIt != sourceNodes.end() && nodeIt->second->requireSet.contains(only))
+                            result.push_back(scc);
+                    }
+                }
+
+                // "Return" from DFS: propagate lowlink to parent frame
+                worklist.pop_back();
+                if (!worklist.empty())
+                    nodes[worklist.back().vertex].lowlink = std::min(nodes[worklist.back().vertex].lowlink, nodes[v].lowlink);
+            }
+        }
+    }
+
+    return result;
+}
+
+void Frontend::computeSCCs(const std::vector<ModuleName>& buildQueue)
+{
+    LUAU_ASSERT(FFlag::LuauCyclicRequireTypeInference);
+
+    // Clear stale SCC data
+    for (const ModuleName& name : buildQueue)
+    {
+        auto it = sourceNodes.find(name);
+        if (it != sourceNodes.end())
+            it->second->scc.reset();
+    }
+    sccs.clear();
+
+    std::vector<ModuleSCCPtr> foundSCCs = computeTarjanSCCs(buildQueue, sourceNodes);
+
+    for (const ModuleSCCPtr& scc : foundSCCs)
+    {
+        // Only register SCCs where all members use `export` — those have runtime
+        // placeholder support for cyclic requires. Mixed SCCs with non-export modules
+        // will crash at runtime, so they go through the old per-module path.
+        bool allMembersUseExport = true;
+        for (const ModuleName& member : scc->members)
+        {
+            auto it = sourceModules.find(member);
+            if (it == sourceModules.end() || !it->second || !moduleHasExports(*it->second))
+            {
+                allMembersUseExport = false;
+                break;
+            }
+        }
+
+        if (!allMembersUseExport)
+            continue;
+
+        for (const ModuleName& member : scc->members)
+        {
+            sccs[member] = scc;
+            auto nodeIt = sourceNodes.find(member);
+            LUAU_ASSERT(nodeIt != sourceNodes.end());
+            nodeIt->second->scc = scc;
+        }
+    }
+}
+
 void Frontend::addBuildQueueItems(
     std::vector<BuildQueueItem>& items,
     std::vector<ModuleName>& buildQueue,
     bool cycleDetected,
-    DenseHashSet<Luau::ModuleName>& seen,
+    DenseHashSet2<Luau::ModuleName>& seen,
     const FrontendOptions& frontendOptions
 )
 {
+    // Map SCC pointer to item index for grouping SCC members into a single BuildQueueItem
+    DenseHashMap2<ModuleSCC*, size_t> sccToItemIndex;
+
     for (const ModuleName& moduleName : buildQueue)
     {
         if (seen.contains(moduleName))
@@ -1003,6 +1304,68 @@ void Frontend::addBuildQueueItems(
         // This is used by the type checker to replace the resulting type of cyclic modules with any
         sourceModule->cyclic = !moduleInfo.requireCycles.empty();
 
+        // Check if this module belongs to an SCC that should be grouped
+        if (FFlag::LuauCyclicRequireTypeInference)
+        {
+            if (ModuleSCCPtr* sccPtr = sccs.find(moduleName))
+            {
+                ModuleSCCPtr scc = *sccPtr;
+
+                if (getLuauSolverMode() == SolverMode::New && !FFlag::DebugLuauForceOldSolver)
+                {
+                    // Create shared arena on first encounter of this SCC
+                    if (!scc->sharedArena)
+                    {
+                        scc->sharedArena = std::make_shared<TypeArena>();
+
+                        // Register placeholder modules so require() of SCC peers resolves to a BlockedType during constraint generation (later
+                        // updated to its actual type during constraint solving)
+                        for (const ModuleName& member : scc->members)
+                        {
+                            TypeId placeholderReturnType = scc->sharedArena->addType(BlockedType{});
+                            TypePackId placeholderPack = scc->sharedArena->addTypePack({placeholderReturnType});
+
+                            ModulePtr placeholderModule = std::make_shared<Module>(scc->sharedArena);
+                            placeholderModule->name = member;
+                            placeholderModule->humanReadableName = fileResolver->getHumanReadableModuleName(member);
+                            placeholderModule->type = SourceCode::Type::Module;
+                            placeholderModule->mode = Mode::Strict;
+
+                            placeholderModule->returnType = placeholderPack;
+
+                            ScopePtr placeholderScope = std::make_shared<Scope>(builtinTypes->anyTypePack);
+                            placeholderScope->returnType = placeholderPack;
+                            placeholderModule->scopes.emplace_back(Location{}, placeholderScope);
+
+                            moduleResolver.setModule(member, std::move(placeholderModule));
+                        }
+                    }
+
+                    moduleInfo.requireCycles.clear();
+
+                    // Add this module to the SCC's BuildQueueItem.
+                    // All SCC members share one item so they're checked together.
+                    if (size_t* existingIdx = sccToItemIndex.find(scc.get()))
+                    {
+                        items[*existingIdx].modules.emplace_back(std::move(moduleInfo));
+                    }
+                    else
+                    {
+                        BuildQueueItem data;
+                        data.options = frontendOptions;
+                        data.recordJsonLog = FFlag::DebugLuauLogSolverToJson;
+                        data.scc = scc;
+                        data.modules.emplace_back(std::move(moduleInfo));
+
+                        sccToItemIndex[scc.get()] = items.size();
+                        items.push_back(std::move(data));
+                    }
+                    continue;
+                }
+            }
+        }
+
+        // Separate BuildQueueItem for non-cyclic module or when SCC not possible
         BuildQueueItem data;
         data.options = frontendOptions;
         data.recordJsonLog = FFlag::DebugLuauLogSolverToJson;
@@ -1019,8 +1382,295 @@ static void applyInternalLimitScaling(SourceNode& sourceNode, const ModulePtr mo
         sourceNode.autocompleteLimitsMult = std::min(sourceNode.autocompleteLimitsMult * 2.0, 1.0);
 }
 
+void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
+{
+    ModuleSCCPtr scc = item.scc;
+    LUAU_ASSERT(scc->sharedArena);
+
+    TypeCheckLimits typeCheckLimits = makeTypeCheckLimits(item.options);
+
+    UnifierSharedState unifierState{NotNull{&iceHandler}};
+    unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
+    unifierState.counters.iterationLimit = typeCheckLimits.unifierIterationLimit.value_or(FInt::LuauTypeInferIterationLimit);
+
+    Normalizer normalizer{scc->sharedArena.get(), builtinTypes, NotNull{&unifierState}, SolverMode::New};
+    TypeFunctionRuntime typeFunctionRuntime{NotNull{&iceHandler}, NotNull{&typeCheckLimits}};
+    typeFunctionRuntime.allowEvaluation = true;
+
+    // Per-module ConstraintGenerator data for this SCC that needs to be preserved for later use in the ConstraintSolver
+    struct SCCModuleCGData
+    {
+        std::unique_ptr<DataFlowGraph> dfg;
+        std::vector<std::pair<Location, ScopePtr>> cgScopes;
+    };
+    std::vector<SCCModuleCGData> cgData(item.modules.size());
+
+    // Single shared dependency graph for all modules in this SCC
+    std::unique_ptr<ConstraintGraph> cgraph = std::make_unique<ConstraintGraph>(builtinTypes);
+
+    std::vector<TypeError> mergedErrors;
+    std::vector<ConstraintPtr> mergedDeferredConstraints;
+
+    // Run constraint generation for each module
+    for (size_t i = 0; i < item.modules.size(); i++)
+    {
+        BuildQueueModuleInfo& moduleInfo = item.modules[i];
+        const SourceModule& sourceModule = *moduleInfo.sourceModule;
+        const Config& config = moduleInfo.config;
+
+        Mode mode;
+        if (FFlag::DebugLuauForceStrictMode)
+            mode = Mode::Strict;
+        else if (FFlag::DebugLuauForceNonStrictMode)
+            mode = Mode::Nonstrict;
+        else
+            mode = sourceModule.mode.value_or(config.mode);
+
+        moduleInfo.sourceModule->mode = {mode};
+
+        // Create module with shared arena
+        ModulePtr module = std::make_shared<Module>(scc->sharedArena);
+        module->checkedInNewSolver = true;
+        module->name = sourceModule.name;
+        module->humanReadableName = sourceModule.humanReadableName;
+        module->mode = mode;
+        module->internalTypes->owningModule = module.get();
+        module->interfaceTypes.owningModule = module.get();
+        module->allocator = sourceModule.allocator;
+        module->names = sourceModule.names;
+        module->root = sourceModule.root;
+
+        iceHandler.moduleName = sourceModule.name;
+
+        cgData[i].dfg = std::make_unique<DataFlowGraph>(
+            DataFlowGraphBuilder::build(sourceModule.root, NotNull{&module->defArena}, NotNull{&module->keyArena}, NotNull{&iceHandler})
+        );
+
+        ScopePtr environmentScope = moduleInfo.environmentScope;
+
+        auto prepareModuleScopeWrap = [this](const ModuleName& name, const ScopePtr& scope)
+        {
+            if (prepareModuleScope)
+                prepareModuleScope(name, scope, false);
+        };
+
+        ConstraintGenerator cg{
+            module,
+            NotNull{&normalizer},
+            NotNull{&typeFunctionRuntime},
+            NotNull{&moduleResolver},
+            builtinTypes,
+            NotNull{&iceHandler},
+            environmentScope ? environmentScope : globals.globalScope,
+            globals.globalTypeFunctionScope,
+            std::move(prepareModuleScopeWrap),
+            nullptr, // logger
+            NotNull{cgData[i].dfg.get()},
+            moduleInfo.requireCycles,
+            NotNull{cgraph.get()}
+        };
+
+        ConstraintSet cgResult = cg.run(sourceModule.root);
+        module->constraintGenerationDidNotComplete = cg.recursionLimitMet;
+
+        cgData[i].cgScopes = std::move(cg.scopes);
+        for (auto& deferred : cgResult.deferredConstraints)
+            mergedDeferredConstraints.push_back(std::move(deferred));
+
+        // Bind the placeholder BlockedType to the actual return type so subsequent
+        // modules in this SCC see real types when they require() this one.
+        TypePackId actualReturnType = cgData[i].cgScopes[0].second->returnType;
+        ModulePtr placeholderModule = moduleResolver.getModule(moduleInfo.name);
+        if (placeholderModule && placeholderModule.get() != module.get())
+        {
+            TypePackId placeholderPack = placeholderModule->returnType;
+            auto placeholderHead = first(placeholderPack);
+
+            std::optional<TypeId> actualHead;
+            TypePack headPack = extendTypePack(*scc->sharedArena, builtinTypes, actualReturnType, 1);
+            if (!headPack.head.empty())
+                actualHead = headPack.head[0];
+
+            if (placeholderHead && actualHead && get<BlockedType>(*placeholderHead))
+            {
+                emplaceType<BoundType>(asMutable(*placeholderHead), *actualHead);
+            }
+        }
+
+        mergedErrors.insert(mergedErrors.end(), std::make_move_iterator(cgResult.errors.begin()), std::make_move_iterator(cgResult.errors.end()));
+        moduleInfo.module = std::move(module);
+    }
+
+    LUAU_ASSERT(!cgData.empty() && !cgData[0].cgScopes.empty());
+    ScopePtr rootScope = cgData[0].cgScopes[0].second;
+
+    ConstraintSet constraintSet{
+        NotNull{rootScope.get()},
+        {},
+        {},
+        DenseHashMap2<Scope*, TypeId>{},
+        {},
+        std::move(mergedDeferredConstraints),
+    };
+
+    Subtyping subtyping{builtinTypes, NotNull{scc->sharedArena.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, NotNull{&iceHandler}};
+
+    ConstraintSolver cs{
+        NotNull{&normalizer},
+        NotNull{&typeFunctionRuntime},
+        item.modules[0].module,
+        NotNull{&moduleResolver},
+        {},
+        nullptr, // logger
+        NotNull{cgData[0].dfg.get()},
+        typeCheckLimits,
+        std::move(constraintSet),
+        NotNull{cgraph.get()},
+        NotNull{&subtyping}
+    };
+
+    try
+    {
+        cs.run();
+    }
+    catch (const TimeLimitError&)
+    {
+        for (BuildQueueModuleInfo& moduleInfo : item.modules)
+            moduleInfo.module->timeout = true;
+    }
+    catch (const UserCancelError&)
+    {
+        for (BuildQueueModuleInfo& moduleInfo : item.modules)
+            moduleInfo.module->cancelled = true;
+    }
+
+    // Partition CG + solver errors to the appropriate modules by moduleName
+    {
+        DenseHashMap2<ModuleName, ModulePtr> nameToModule;
+        for (const BuildQueueModuleInfo& moduleInfo : item.modules)
+            nameToModule[moduleInfo.name] = moduleInfo.module;
+
+        for (TypeError& err : mergedErrors)
+        {
+            if (ModulePtr* modulePtr = nameToModule.find(err.moduleName))
+                (*modulePtr)->errors.emplace_back(std::move(err));
+        }
+
+        for (TypeError& err : cs.errors)
+        {
+            if (ModulePtr* modulePtr = nameToModule.find(err.moduleName))
+                (*modulePtr)->errors.emplace_back(std::move(err));
+        }
+    }
+
+    // Post-solver: run type checking and prepare public interface for each module
+    for (size_t i = 0; i < item.modules.size(); i++)
+    {
+        BuildQueueModuleInfo& moduleInfo = item.modules[i];
+        ModulePtr module = moduleInfo.module;
+        const SourceModule& sourceModule = *moduleInfo.sourceModule;
+
+        module->scopes = std::move(cgData[i].cgScopes);
+        module->type = sourceModule.type;
+
+        if (module->timeout || module->cancelled)
+        {
+            ScopePtr moduleScope = module->getModuleScope();
+            moduleScope->returnType = builtinTypes->errorTypePack;
+
+            for (auto& [name, ty] : module->declaredGlobals)
+                ty = builtinTypes->errorType;
+            for (auto& [name, tf] : module->exportedTypeBindings)
+                tf.type = builtinTypes->errorType;
+        }
+        else
+        {
+            try
+            {
+                Mode mode = module->mode;
+                switch (mode)
+                {
+                case Mode::Nonstrict:
+                    Luau::checkNonStrict(
+                        builtinTypes,
+                        NotNull{&typeFunctionRuntime},
+                        NotNull{&iceHandler},
+                        NotNull{&unifierState},
+                        NotNull{cgData[i].dfg.get()},
+                        NotNull{&typeCheckLimits},
+                        sourceModule,
+                        module.get()
+                    );
+                    break;
+                case Mode::Definition:
+                    // fallthrough
+                case Mode::Strict:
+                    Luau::check(
+                        builtinTypes,
+                        NotNull{&typeFunctionRuntime},
+                        NotNull{&unifierState},
+                        NotNull{&typeCheckLimits},
+                        nullptr, // logger
+                        sourceModule,
+                        module.get()
+                    );
+                    break;
+                case Mode::NoCheck:
+                    break;
+                }
+            }
+            catch (const TimeLimitError&)
+            {
+                module->timeout = true;
+            }
+            catch (const UserCancelError&)
+            {
+                module->cancelled = true;
+            }
+        }
+
+        if (FFlag::LuauExportValueSyntax && FFlag::LuauExportValueTypecheck && !module->timeout && !module->cancelled)
+            synthesizeExportReturn(builtinTypes, NotNull{module.get()});
+
+        // Clone public interface
+        unfreeze(module->interfaceTypes);
+        module->clonePublicInterface(builtinTypes, iceHandler, SolverMode::New);
+
+        if (module->mode == Mode::NoCheck)
+        {
+            module->errors.clear();
+            continue;
+        }
+
+        // Add parse errors
+        ErrorVec parseErrors;
+        for (const ParseError& pe : sourceModule.parseErrors)
+            parseErrors.emplace_back(pe.getLocation(), moduleInfo.name, SyntaxError{pe.what()});
+        module->errors.insert(module->errors.begin(), parseErrors.begin(), parseErrors.end());
+    }
+
+    // Freeze the shared arena after all modules are done
+    freeze(*scc->sharedArena);
+
+    // Freeze each module's interface types
+    for (BuildQueueModuleInfo& moduleInfo : item.modules)
+        freeze(moduleInfo.module->interfaceTypes);
+
+    // Emit a warning on the first SCC member if the cycle is large enough.
+    if (FInt::LuauCyclicSccWarningThreshold > 0 && scc->members.size() >= static_cast<size_t>(FInt::LuauCyclicSccWarningThreshold))
+    {
+        item.modules[0].module->errors.emplace_back(Location{}, item.modules[0].name, CyclicModuleGraphTooLarge{scc->members.size(), scc->members});
+    }
+}
+
 void Frontend::checkBuildQueueItem(BuildQueueItem& item)
 {
+    if (FFlag::LuauCyclicRequireTypeInference && item.scc && item.modules.size() > 1)
+    {
+        checkSCCBuildQueueItem(item);
+        return;
+    }
+
     BuildQueueModuleInfo& moduleInfo = item.modules[0];
     SourceNode& sourceNode = *moduleInfo.sourceNode;
     const SourceModule& sourceModule = *moduleInfo.sourceModule;
@@ -1097,7 +1747,14 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     }
 
     ModulePtr module = check(
-        sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, moduleInfo.stats, std::move(typeCheckLimits)
+        sourceModule,
+        mode,
+        requireCycles,
+        environmentScope,
+        /*forAutocomplete*/ false,
+        item.recordJsonLog,
+        moduleInfo.stats,
+        std::move(typeCheckLimits)
     );
 
     double duration = getTimestamp() - timestamp;
@@ -1194,8 +1851,25 @@ void Frontend::checkBuildQueueItems(std::vector<BuildQueueItem>& items)
     {
         checkBuildQueueItem(item);
 
-        if (item.modules[0].module && item.modules[0].module->cancelled)
-            break;
+        if (FFlag::LuauCyclicRequireTypeInference)
+        {
+            bool cancelled = false;
+            for (const BuildQueueModuleInfo& moduleInfo : item.modules)
+            {
+                if (moduleInfo.module && moduleInfo.module->cancelled)
+                {
+                    cancelled = true;
+                    break;
+                }
+            }
+            if (cancelled)
+                break;
+        }
+        else
+        {
+            if (item.modules[0].module && item.modules[0].module->cancelled)
+                break;
+        }
 
         recordItemResult(item);
     }
@@ -1206,54 +1880,65 @@ void Frontend::recordItemResult(const BuildQueueItem& item)
     if (item.exception)
         std::rethrow_exception(item.exception);
 
-    const BuildQueueModuleInfo& moduleInfo = item.modules[0];
-
-    bool replacedModule = false;
-    if (item.options.forAutocomplete)
+    auto recordModuleInfo = [&](const BuildQueueModuleInfo& moduleInfo)
     {
-        replacedModule = moduleResolverForAutocomplete.setModule(moduleInfo.name, moduleInfo.module);
-        moduleInfo.sourceNode->dirtyModuleForAutocomplete = false;
+        bool replacedModule = false;
+        if (item.options.forAutocomplete)
+        {
+            replacedModule = moduleResolverForAutocomplete.setModule(moduleInfo.name, moduleInfo.module);
+            moduleInfo.sourceNode->dirtyModuleForAutocomplete = false;
+        }
+        else
+        {
+            replacedModule = moduleResolver.setModule(moduleInfo.name, moduleInfo.module);
+            moduleInfo.sourceNode->dirtyModule = false;
+        }
+
+        if (replacedModule)
+        {
+            LUAU_TIMETRACE_SCOPE("Frontend::invalidateDependentModules", "Frontend");
+            LUAU_TIMETRACE_ARGUMENT("name", moduleInfo.name.c_str());
+            traverseDependents(
+                moduleInfo.name,
+                [forAutocomplete = item.options.forAutocomplete](SourceNode& sourceNode)
+                {
+                    bool traverseSubtree = !sourceNode.hasInvalidModuleDependency(forAutocomplete);
+                    sourceNode.setInvalidModuleDependency(true, forAutocomplete);
+                    return traverseSubtree;
+                }
+            );
+        }
+
+        moduleInfo.sourceNode->setInvalidModuleDependency(false, item.options.forAutocomplete);
+
+        stats.timeCheck += moduleInfo.stats.timeCheck;
+        stats.timeLint += moduleInfo.stats.timeLint;
+
+        stats.filesStrict += moduleInfo.stats.filesStrict;
+        stats.filesNonstrict += moduleInfo.stats.filesNonstrict;
+
+        if (item.options.collectTypeAllocationStats)
+        {
+            stats.typesAllocated += moduleInfo.stats.typesAllocated;
+            stats.typePacksAllocated += moduleInfo.stats.typePacksAllocated;
+
+            stats.boolSingletonsMinted += moduleInfo.stats.boolSingletonsMinted;
+            stats.strSingletonsMinted += moduleInfo.stats.strSingletonsMinted;
+            stats.uniqueStrSingletonsMinted += moduleInfo.stats.uniqueStrSingletonsMinted;
+        }
+
+        stats.dynamicConstraintsCreated += moduleInfo.stats.dynamicConstraintsCreated;
+    };
+
+    if (FFlag::LuauCyclicRequireTypeInference)
+    {
+        for (const BuildQueueModuleInfo& moduleInfo : item.modules)
+            recordModuleInfo(moduleInfo);
     }
     else
     {
-        replacedModule = moduleResolver.setModule(moduleInfo.name, moduleInfo.module);
-        moduleInfo.sourceNode->dirtyModule = false;
+        recordModuleInfo(item.modules[0]);
     }
-
-    if (replacedModule)
-    {
-        LUAU_TIMETRACE_SCOPE("Frontend::invalidateDependentModules", "Frontend");
-        LUAU_TIMETRACE_ARGUMENT("name", moduleInfo.name.c_str());
-        traverseDependents(
-            moduleInfo.name,
-            [forAutocomplete = item.options.forAutocomplete](SourceNode& sourceNode)
-            {
-                bool traverseSubtree = !sourceNode.hasInvalidModuleDependency(forAutocomplete);
-                sourceNode.setInvalidModuleDependency(true, forAutocomplete);
-                return traverseSubtree;
-            }
-        );
-    }
-
-    moduleInfo.sourceNode->setInvalidModuleDependency(false, item.options.forAutocomplete);
-
-    stats.timeCheck += moduleInfo.stats.timeCheck;
-    stats.timeLint += moduleInfo.stats.timeLint;
-
-    stats.filesStrict += moduleInfo.stats.filesStrict;
-    stats.filesNonstrict += moduleInfo.stats.filesNonstrict;
-
-    if (item.options.collectTypeAllocationStats)
-    {
-        stats.typesAllocated += moduleInfo.stats.typesAllocated;
-        stats.typePacksAllocated += moduleInfo.stats.typePacksAllocated;
-
-        stats.boolSingletonsMinted += moduleInfo.stats.boolSingletonsMinted;
-        stats.strSingletonsMinted += moduleInfo.stats.strSingletonsMinted;
-        stats.uniqueStrSingletonsMinted += moduleInfo.stats.uniqueStrSingletonsMinted;
-    }
-
-    stats.dynamicConstraintsCreated += moduleInfo.stats.dynamicConstraintsCreated;
 }
 
 void Frontend::performQueueItemTask(std::shared_ptr<BuildQueueWorkState> state, size_t itemPos)
@@ -1544,7 +2229,8 @@ ModulePtr check(
             printf("%s", dumpCFG(*cfg).c_str());
         if (FFlag::DebugLuauDumpCFGJson)
             printf("%s\n", dumpCFGJson(*cfg).c_str());
-        state = std::make_unique<CFG::TypeStateMap>(NotNull{module->internalTypes.get()}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
+        state =
+            std::make_unique<CFG::TypeStateMap>(NotNull{module->internalTypes.get()}, NotNull{parentScope.get()}, builtinTypes, NotNull{cfg.get()});
         state->computeTypes();
     }
 
@@ -1845,7 +2531,30 @@ std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(const ModuleName& 
 
     if (!source)
     {
-        sourceModules.erase(name);
+        if (FFlag::LuauFrontendSourceNodeErase)
+        {
+            if (auto it = sourceNodes.find(name); it != sourceNodes.end())
+            {
+                // Remove this module from the dependents set of each of its dependencies
+                for (const ModuleName& dep : it->second->requireSet)
+                {
+                    if (auto depIt = sourceNodes.find(dep); depIt != sourceNodes.end())
+                        depIt->second->dependents.erase(name);
+                }
+
+                sourceNodes.erase(it);
+            }
+
+            sourceModules.erase(name);
+            requireTrace.erase(name);
+            moduleResolver.eraseModule(name);
+            moduleResolverForAutocomplete.eraseModule(name);
+        }
+        else
+        {
+            sourceModules.erase(name);
+        }
+
         return {nullptr, nullptr};
     }
 
@@ -2177,7 +2886,8 @@ TypeId Frontend::parseType(
 
     TypeId t = cg.resolveType(globals.globalScope, parseResult.root, false);
 
-    if (!cg.constraints.empty())
+    bool hasConstraints = FFlag::LuauCyclicRequireTypeInference ? !cg.cgraph->constraints.empty() : !cg.constraints.empty();
+    if (hasConstraints)
     {
         iceHandler->ice("Not yet implemented: parseType cannot reduce other type aliases");
     }

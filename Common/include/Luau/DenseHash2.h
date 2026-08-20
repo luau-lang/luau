@@ -747,7 +747,7 @@ public:
     using const_iterator = typename Impl::const_iterator;
     using iterator = typename Impl::iterator;
 
-    explicit DenseHashSet2(size_t buckets = 0)
+    DenseHashSet2(size_t buckets = 0)
         : impl(buckets)
     {
     }
@@ -761,6 +761,13 @@ public:
     {
         impl.rehash_if_full(key);
         return *impl.insert_unsafe(key);
+    }
+
+    bool try_insert(const Key& key)
+    {
+        const size_t oldSize = impl.size();
+        insert(key);
+        return impl.size() != oldSize;
     }
 
     const Key* find(const Key& key) const
@@ -839,7 +846,7 @@ public:
     using const_iterator = typename Impl::const_iterator;
     using iterator = typename Impl::iterator;
 
-    explicit DenseHashMap2(size_t buckets = 0)
+    DenseHashMap2(size_t buckets = 0)
         : impl(buckets)
     {
     }

@@ -6,7 +6,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauCodegenSharedLog)
+LUAU_FASTFLAGVARIABLE(LuauCodegenRexWidth)
 
 namespace Luau
 {
@@ -80,13 +80,11 @@ static ABIX64 getCurrentX64ABI()
 #endif
 }
 
-AssemblyBuilderX64::AssemblyBuilderX64(LogBuilder* logger, bool logText_DEPRECATED, ABIX64 abi, unsigned int features)
-    : logText(FFlag::LuauCodegenSharedLog ? logger != nullptr : logText_DEPRECATED)
-    , abi(abi)
+AssemblyBuilderX64::AssemblyBuilderX64(LogBuilder* logger, ABIX64 abi, unsigned int features)
+    : abi(abi)
     , features(features)
     , logger(logger)
-    , constCache32(~0u)
-    , constCache64(~0ull)
+    , logText(logger != nullptr)
 {
     data.resize(4096);
     dataPos = data.size(); // data is filled backwards
@@ -96,8 +94,8 @@ AssemblyBuilderX64::AssemblyBuilderX64(LogBuilder* logger, bool logText_DEPRECAT
     codeEnd = code.data() + code.size();
 }
 
-AssemblyBuilderX64::AssemblyBuilderX64(LogBuilder* logger, bool logText_DEPRECATED, unsigned int features)
-    : AssemblyBuilderX64(logger, logText_DEPRECATED, getCurrentX64ABI(), features)
+AssemblyBuilderX64::AssemblyBuilderX64(LogBuilder* logger, unsigned int features)
+    : AssemblyBuilderX64(logger, getCurrentX64ABI(), features)
 {
 }
 
@@ -175,21 +173,28 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
     {
         SizeX64 size = lhs.base.size;
 
-        placeRex(lhs.base);
+        if (!FFlag::LuauCodegenRexWidth)
+            placeRex(lhs.base);
 
         if (size == SizeX64::byte)
         {
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs.base);
             place(OP_PLUS_REG(0xb0, lhs.base.index));
             placeImm8(rhs.imm);
         }
         else if (size == SizeX64::word)
         {
             place(0x66);
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs.base);
             place(OP_PLUS_REG(0xb8, lhs.base.index));
             placeImm16(rhs.imm);
         }
         else if (size == SizeX64::dword)
         {
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs.base);
             place(OP_PLUS_REG(0xb8, lhs.base.index));
             placeImm32(rhs.imm);
         }
@@ -197,6 +202,8 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
         {
             CODEGEN_ASSERT(size == SizeX64::qword);
 
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs.base);
             place(OP_PLUS_REG(0xb8, lhs.base.index));
             placeImm64(rhs.imm);
         }
@@ -205,10 +212,13 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
     {
         SizeX64 size = lhs.memSize;
 
-        placeRex(lhs);
+        if (!FFlag::LuauCodegenRexWidth)
+            placeRex(lhs);
 
         if (size == SizeX64::byte)
         {
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs);
             place(0xc6);
             placeModRegMem(lhs, 0, /*extraCodeBytes=*/1);
             placeImm8(rhs.imm);
@@ -216,6 +226,8 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
         else if (size == SizeX64::word)
         {
             place(0x66);
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs);
             place(0xc7);
             placeModRegMem(lhs, 0, /*extraCodeBytes=*/2);
             placeImm16(rhs.imm);
@@ -224,6 +236,8 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
         {
             CODEGEN_ASSERT(size == SizeX64::dword || size == SizeX64::qword);
 
+            if (FFlag::LuauCodegenRexWidth)
+                placeRex(lhs);
             place(0xc7);
             placeModRegMem(lhs, 0, /*extraCodeBytes=*/4);
             placeImm32(rhs.imm);
@@ -249,10 +263,7 @@ void AssemblyBuilderX64::mov64(RegisterX64 lhs, int64_t imm)
 {
     if (logText)
     {
-        if (FFlag::LuauCodegenSharedLog)
-            logger->append(" mov         ");
-        else
-            text.append(" mov         ");
+        logger->append(" mov         ");
         log(lhs);
         logAppend(",%llXh\n", (unsigned long long)imm);
     }
@@ -1267,22 +1278,10 @@ OperandX64 AssemblyBuilderX64::bytes(const void* ptr, size_t size, size_t align)
 
 void AssemblyBuilderX64::logAppend(const char* fmt, ...)
 {
-    if (FFlag::LuauCodegenSharedLog)
-    {
-        va_list args;
-        va_start(args, fmt);
-        logger->vformatAppend(fmt, args);
-        va_end(args);
-    }
-    else
-    {
-        char buf[256];
-        va_list args;
-        va_start(args, fmt);
-        vsnprintf(buf, sizeof(buf), fmt, args);
-        va_end(args);
-        text.append(buf);
-    }
+    va_list args;
+    va_start(args, fmt);
+    logger->vformatAppend(fmt, args);
+    va_end(args);
 }
 
 uint32_t AssemblyBuilderX64::getCodeSize() const
@@ -1813,70 +1812,40 @@ void AssemblyBuilderX64::log(const char* opcode, OperandX64 op)
     logAppend(" %-12s", opcode);
     log(op);
 
-    if (FFlag::LuauCodegenSharedLog)
-        logger->append("\n");
-    else
-        text.append("\n");
+    logger->append("\n");
 }
 
 void AssemblyBuilderX64::log(const char* opcode, OperandX64 op1, OperandX64 op2)
 {
     logAppend(" %-12s", opcode);
     log(op1);
-    if (FFlag::LuauCodegenSharedLog)
-        logger->append(",");
-    else
-        text.append(",");
+    logger->append(",");
     log(op2);
-    if (FFlag::LuauCodegenSharedLog)
-        logger->append("\n");
-    else
-        text.append("\n");
+    logger->append("\n");
 }
 
 void AssemblyBuilderX64::log(const char* opcode, OperandX64 op1, OperandX64 op2, OperandX64 op3)
 {
     logAppend(" %-12s", opcode);
     log(op1);
-    if (FFlag::LuauCodegenSharedLog)
-        logger->append(",");
-    else
-        text.append(",");
+    logger->append(",");
     log(op2);
-    if (FFlag::LuauCodegenSharedLog)
-        logger->append(",");
-    else
-        text.append(",");
+    logger->append(",");
     log(op3);
-    if (FFlag::LuauCodegenSharedLog)
-        logger->append("\n");
-    else
-        text.append("\n");
+    logger->append("\n");
 }
 
 void AssemblyBuilderX64::log(const char* opcode, OperandX64 op1, OperandX64 op2, OperandX64 op3, OperandX64 op4)
 {
     logAppend(" %-12s", opcode);
     log(op1);
-    if (FFlag::LuauCodegenSharedLog)
-        logger->append(",");
-    else
-        text.append(",");
+    logger->append(",");
     log(op2);
-    if (FFlag::LuauCodegenSharedLog)
-        logger->append(",");
-    else
-        text.append(",");
+    logger->append(",");
     log(op3);
-    if (FFlag::LuauCodegenSharedLog)
-        logger->append(",");
-    else
-        text.append(",");
+    logger->append(",");
     log(op4);
-    if (FFlag::LuauCodegenSharedLog)
-        logger->append("\n");
-    else
-        text.append("\n");
+    logger->append("\n");
 }
 
 void AssemblyBuilderX64::log(Label label)
@@ -1893,10 +1862,7 @@ void AssemblyBuilderX64::log(const char* opcode, RegisterX64 reg, Label label)
 {
     logAppend(" %-12s", opcode);
     log(reg);
-    if (FFlag::LuauCodegenSharedLog)
-        logger->append(",");
-    else
-        text.append(",");
+    logger->append(",");
     logAppend(".L%d\n", label.id);
 }
 
@@ -1940,10 +1906,7 @@ void AssemblyBuilderX64::log(OperandX64 op)
                 logAppend("-0%Xh", -op.imm);
         }
 
-        if (FFlag::LuauCodegenSharedLog)
-            logger->append("]");
-        else
-            text.append("]");
+        logger->append("]");
         break;
     case CategoryX64::imm:
         if (op.imm >= 0 && op.imm <= 9)

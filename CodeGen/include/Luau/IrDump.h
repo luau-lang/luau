@@ -16,10 +16,13 @@ namespace CodeGen
 
 struct CfgInfo;
 
+const char* getTagName(uint8_t tag);
 const char* getCmdName(IrCmd cmd);
 const char* getBlockKindName(IrBlockKind kind);
 const char* getValueKindName(IrValueKind kind);
 const char* getConversionCmdSuffix(IrCmd conversionCmd);
+
+uint8_t parseTagName(std::string_view name);
 
 struct IrToStringContext
 {
@@ -27,7 +30,7 @@ struct IrToStringContext
     const std::vector<IrBlock>& blocks;
     const std::vector<IrConst>& constants;
     const CfgInfo& cfg;
-    const DenseHashMap<uint32_t, VmExitSyncInfo>& vmExitInfo;
+    const DenseHashMap2<uint32_t, VmExitSyncInfo>& vmExitInfo;
     Proto* proto = nullptr;
 };
 

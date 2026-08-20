@@ -64,7 +64,7 @@ struct ConstraintList
     Iterator end();
 
 private:
-    DenseHashMap<ConstraintVertex, bool, HashBlockedConstraintId> present{(TypeId) nullptr};
+    DenseHashMap2<ConstraintVertex, bool, HashBlockedConstraintId> present;
     std::vector<ConstraintVertex> order;
     size_t entries = 0;
 };
@@ -92,9 +92,20 @@ private:
  */
 struct ConstraintGraph
 {
-    using ConstraintMap = DenseHashMap<ConstraintVertex, ConstraintList*, HashBlockedConstraintId>;
+    using ConstraintMap = DenseHashMap2<ConstraintVertex, ConstraintList*, HashBlockedConstraintId>;
 
     ConstraintGraph(NotNull<BuiltinTypes> builtinTypes);
+
+    // Constraint data co-located with the dependency edges that reference them.
+    // In the SCC path, multiple ConstraintGenerators accumulate directly into these fields.
+    // Constraints that go straight to the solver.
+    std::vector<ConstraintPtr> constraints;
+
+    // The set of all free types introduced during constraint generation.
+    TypeIds freeTypes;
+
+    // Map a function's signature scope back to its signature type.
+    DenseHashMap2<Scope*, TypeId> scopeToFunction;
 
     /**
      * Add [dependency] as a blocker for [target]
@@ -235,7 +246,7 @@ private:
      * - Any free type pack with no dependencies can be generalized;
      * - Any constraint with no dependencies can be dispatched.
      */
-    ConstraintMap dependencies{(TypeId) nullptr};
+    ConstraintMap dependencies;
 
 
     NotNull<ConstraintList> findDependencyList(ConstraintVertex vertex);
@@ -244,7 +255,7 @@ private:
      * Inverse of the above mapping. Yes, the proper name for this is
      * "dependents," but naming it such will result in hellish typos.
      */
-    ConstraintMap reverseDependencies{(TypeId) nullptr};
+    ConstraintMap reverseDependencies;
     NotNull<ConstraintList> findReverseDependencyList(ConstraintVertex vertex);
 
     /**

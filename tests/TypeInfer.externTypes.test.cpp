@@ -15,7 +15,9 @@ using namespace Luau;
 using std::nullopt;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
+LUAU_FASTFLAG(LuauAllowIntersectionOfOneTableWithExtern)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -457,9 +459,12 @@ b(a)
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected = "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
-                                     "accessing `Y` results in `number` in the latter type and `string` in the former type, "
-                                     "and `number` is not a subtype of `string`";
+        const std::string expected = FFlag::LuauNewTypePathErrorMessages
+                                         ? "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
+                                           "Expected property `Y` to be `string`, but got `number`"
+                                         : "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
+                                           "accessing `Y` results in `number` in the latter type and `string` in the former type, "
+                                           "and `number` is not a subtype of `string`";
         CHECK_EQ(expected, toString(result.errors.at(0)));
     }
     else
@@ -549,11 +554,17 @@ local b: B = a
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK(
-            "Expected this to be 'B', but got 'A'; \n"
-            "accessing `x` results in `ChildClass` in the latter type and `BaseClass` in the former type, and `ChildClass` is not "
-            "exactly `BaseClass`" == toString(result.errors.at(0))
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK(
+                "Expected this to be 'B', but got 'A'; \n"
+                "Expected property `x` to be exactly `BaseClass`, but got `ChildClass`" == toString(result.errors.at(0))
+            );
+        else
+            CHECK(
+                "Expected this to be 'B', but got 'A'; \n"
+                "accessing `x` results in `ChildClass` in the latter type and `BaseClass` in the former type, and `ChildClass` is not "
+                "exactly `BaseClass`" == toString(result.errors.at(0))
+            );
     }
     else
     {
@@ -1235,6 +1246,50 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_2")
     LUAU_CHECK_NO_ERRORS(result);
 
     CHECK_EQ("Instance & { brushes: Instance }", toString(requireTypeAtPosition({2, 18})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_1")
+{
+    ScopedFastFlag _{FFlag::LuauAllowIntersectionOfOneTableWithExtern, true};
+
+    loadDefinition(R"(
+        declare extern type Frame with
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type BIG_FRAME = {something: Frame} & Frame
+        type context<O> = {_object: O}
+
+        local big_context: context<BIG_FRAME>
+
+        local function fn<O>(p: context<O>)
+        end
+
+        fn(big_context)
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_2")
+{
+    ScopedFastFlag _{FFlag::LuauAllowIntersectionOfOneTableWithExtern, true};
+
+    loadDefinition(R"(
+        declare extern type Folder with
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local World : { [number]: { PlayerData: { Settings: { Audio: {} & Folder } } } }
+
+        local function Spread(Id: number)
+            local Ownership = World[Id]
+            assert(Ownership)
+            return Ownership
+        end
+    )"));
+
+    CHECK_EQ("(number) -> { PlayerData: { Settings: { Audio: Folder & {  } } } }", toString(requireType("Spread")));
 }
 
 TEST_SUITE_END();

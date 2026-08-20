@@ -43,4 +43,40 @@
     <DisplayString>{begin}-{end}</DisplayString>
   </Type>
 
+  <Type Name="Luau::DenseHashSet2&lt;*,*,*&gt;">
+    <DisplayString>{{ size={impl.count} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]">impl.count</Item>
+      <Item Name="[capacity]">impl.capacity</Item>
+      <CustomListItems>
+        <Variable Name="i" InitialValue="0" />
+        <Size>impl.count</Size>
+        <Loop Condition="i &lt; impl.capacity">
+          <If Condition="(impl.usedTable.data[i >> 6] >> (i &amp; 63)) &amp; 1">
+            <Item>impl.data[i]</Item>
+          </If>
+          <Exec>i++</Exec>
+        </Loop>
+      </CustomListItems>
+    </Expand>
+  </Type>
+
+  <Type Name="Luau::DenseHashMap2&lt;*,*,*,*&gt;">
+    <DisplayString>{{ size={impl.count} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]">impl.count</Item>
+      <Item Name="[capacity]">impl.capacity</Item>
+      <CustomListItems>
+        <Variable Name="i" InitialValue="0" />
+        <Size>impl.count</Size>
+        <Loop Condition="i &lt; impl.capacity">
+          <If Condition="(impl.usedTable.data[i >> 6] >> (i &amp; 63)) &amp; 1">
+            <Item Name="[{impl.data[i].first}]">impl.data[i].second</Item>
+          </If>
+          <Exec>i++</Exec>
+        </Loop>
+      </CustomListItems>
+    </Expand>
+  </Type>
+
 </AutoVisualizer>

@@ -3,9 +3,10 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/BytecodeBuilder.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/SmallVector.h"
 
+#include <algorithm>
 #include <list>
 #include <optional>
 #include <vector>
@@ -137,12 +138,14 @@ enum class BcVmConstKind : uint8_t
     Nil,
     Boolean,
     Number,
-    Vector,
+    Vectorf,
+    Vectord,
     String,
     Import,
     Table,
     Closure,
-    Integer
+    Integer,
+    ClassShape
 };
 
 struct BcVmConst
@@ -153,12 +156,14 @@ struct BcVmConst
     {
         bool valueBoolean;
         double valueNumber;
-        float valueVector[4];
+        float valueVectorf[4];
+        double valueVectord[4];
         std::string_view valueString;
         uint32_t valueImport;
         uint32_t valueTable;
         uint32_t valueClosure;
         int64_t valueInteger;
+        uint32_t valueClassShape;
     };
 
     BcVmConst()
@@ -183,9 +188,13 @@ struct BcVmConst
         case BcVmConstKind::Number:
             return valueNumber == rhs.valueNumber;
 
-        case BcVmConstKind::Vector:
-            return valueVector[0] == rhs.valueVector[0] && valueVector[1] == rhs.valueVector[1] && valueVector[2] == rhs.valueVector[2] &&
-                   valueVector[3] == rhs.valueVector[3];
+        case BcVmConstKind::Vectorf:
+            return valueVectorf[0] == rhs.valueVectorf[0] && valueVectorf[1] == rhs.valueVectorf[1] && valueVectorf[2] == rhs.valueVectorf[2] &&
+                   valueVectorf[3] == rhs.valueVectorf[3];
+
+        case BcVmConstKind::Vectord:
+            return valueVectord[0] == rhs.valueVectord[0] && valueVectord[1] == rhs.valueVectord[1] && valueVectord[2] == rhs.valueVectord[2] &&
+                   valueVectord[3] == rhs.valueVectord[3];
 
         case BcVmConstKind::String:
             return valueString == rhs.valueString;
@@ -201,6 +210,9 @@ struct BcVmConst
 
         case BcVmConstKind::Integer:
             return valueInteger == rhs.valueInteger;
+
+        case BcVmConstKind::ClassShape:
+            return valueClassShape == rhs.valueClassShape;
 
         default:
             LUAU_ASSERT(!"Unhandled BcVmConstKind");
@@ -400,6 +412,7 @@ struct BcFunction
     std::vector<BcPhi> phis;
     std::vector<BcProj> projections;
     std::vector<BytecodeBuilder::TableShape> tableShapes;
+    std::vector<BytecodeBuilder::ClassShape> classShapes;
 
     BcOp entryBlock;
     BcOp exitBlock;
@@ -582,6 +595,40 @@ struct BcFunction
         phiUser->ops.push_back(usedOp);
         recordUse(usedOp, phiUser.op);
     }
+
+    void eraseUse(BcOp userOp, BcOp usedOp)
+    {
+        if (usedOp.kind == BcOpKind::Inst)
+        {
+            BcRef<BcInst> usedInst = inst(usedOp);
+            usedInst->uses.erase(std::remove(usedInst->uses.begin(), usedInst->uses.end(), userOp), usedInst->uses.end());
+        }
+        else if (usedOp.kind == BcOpKind::Phi)
+        {
+            BcRef<BcPhi> usedPhi = phi(usedOp);
+            usedPhi->uses.erase(std::remove(usedPhi->uses.begin(), usedPhi->uses.end(), userOp), usedPhi->uses.end());
+        }
+    }
+
+    void eraseOp(BcOp op)
+    {
+        BcRef<BcInst> instRef = inst(op);
+        BcRef<BcBlock> blockRef = block(instRef->block);
+        blockRef->ops.erase(std::remove(blockRef->ops.begin(), blockRef->ops.end(), op), blockRef->ops.end());
+    }
+
+    // replace the instruction's operands while keeping def->use links consistent
+    void setOps(BcOp op, BcRef<BcInst> inst, std::initializer_list<BcOp> newOps)
+    {
+        for (BcOp oldOp : inst->ops)
+            eraseUse(op, oldOp);
+        inst->ops.clear();
+        for (BcOp newOp : newOps)
+        {
+            inst->ops.push_back(newOp);
+            recordUse(newOp, op);
+        }
+    };
 };
 
 using CompTimeBcFunction = BcFunction<BcVmConst>;

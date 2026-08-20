@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Bytecode.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
 #include "Luau/RegisterX64.h"
@@ -417,6 +417,13 @@ enum class IrCmd : uint8_t
     // E: block (if false)
     JUMP_CMP_INT,
 
+    // Perform a conditional jump based on the result of int64 comparison
+    // A, B: int64
+    // C: condition
+    // D: block (if true)
+    // E: block (if false)
+    JUMP_CMP_INT64,
+
     // Jump if pointers are equal
     // A, B: pointer (*)
     // C: block (if true)
@@ -489,6 +496,12 @@ enum class IrCmd : uint8_t
     // A: int (size)
     // B: int (tag)
     NEW_USERDATA,
+
+    // Create new heap-allocated vector
+    // A: double (x)
+    // B: double (y)
+    // C: double (z)
+    NEW_VECTOR,
 
     // Convert integer into a double number
     // A: int
@@ -1446,10 +1459,10 @@ struct IrFunction
     // For each instruction, an operand that can be used to recompute the value
     std::vector<ValueRestoreLocation> valueRestoreOps;
     std::vector<uint32_t> validRestoreOpBlocks;
-    DenseHashMap<uint32_t, StoreLocationHint> storeLocationHints{kInvalidInstIdx};
+    DenseHashMap2<uint32_t, StoreLocationHint> storeLocationHints;
 
-    DenseHashMap<uint32_t, VmExitSyncInfo> vmExitInfo{kInvalidInstIdx};
-    DenseHashMap<uint32_t, uint32_t> blockToVmExitMap{~0u};
+    DenseHashMap2<uint32_t, VmExitSyncInfo> vmExitInfo;
+    DenseHashMap2<uint32_t, uint32_t> blockToVmExitMap;
 
     BytecodeTypeInfo bcOriginalTypeInfo; // Bytecode type information as loaded
     BytecodeTypeInfo bcTypeInfo;         // Bytecode type information with additional inferences
@@ -1467,6 +1480,9 @@ struct IrFunction
 
     // Stores register tags that are known after constant propagating through a block, indexed by that block's index
     std::vector<std::vector<uint8_t>> blockExitTags; // blockIdx → tag array
+
+    // Known VM register tag values on fallback entry (intersection of data from each individual jump point)
+    std::vector<std::vector<uint8_t>> fallbackEntryTags;
 
     IrBlock& blockOp(IrOp op)
     {

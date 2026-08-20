@@ -8,7 +8,7 @@
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/ParseResult.h"
 #include "Luau/Compiler.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/StringUtils.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFunction.h"
@@ -29,8 +29,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionSerializeArgNames)
-LUAU_FASTFLAGVARIABLE(LuauUdtfTypeIsSubtypeOf)
-LUAU_FASTFLAGVARIABLE(LuauTypeFunctionTableIndexerIsReadOnly)
+LUAU_FASTFLAGVARIABLE(LuauUdtfErrorHandling)
 LUAU_FASTFLAGVARIABLE(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeUseTaggedMetatable)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeToStringMetamethod)
@@ -98,7 +97,7 @@ std::optional<std::string> TypeFunctionRuntime::registerFunction_DEPRECATED(AstS
     AstStat* stmtArray[] = {&stmtReturn};
     AstArray<AstStat*> stmts{stmtArray, 1};
     AstStatBlock exec{Location{}, stmts};
-    ParseResult parseResult{&exec, 1, {}, {}, {}, CstNodeMap{nullptr}};
+    ParseResult parseResult{&exec, 1, {}, {}, {}, CstNodeMap{}};
 
     BytecodeBuilder builder;
     try
@@ -184,7 +183,7 @@ std::optional<TypeFunctionError> TypeFunctionRuntime::registerFunction(AstStatTy
     AstStat* stmtArray[] = {&stmtReturn};
     AstArray<AstStat*> stmts{stmtArray, 1};
     AstStatBlock exec{Location{}, stmts};
-    ParseResult parseResult{&exec, 1, {}, {}, {}, CstNodeMap{nullptr}};
+    ParseResult parseResult{&exec, 1, {}, {}, {}, CstNodeMap{}};
 
     BytecodeBuilder builder;
     try
@@ -349,7 +348,8 @@ void pushType(lua_State* L, TypeFunctionTypeId type)
 
     if (FFlag::LuauUdtfTypeUseTaggedMetatable)
     {
-        TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+        TypeFunctionTypeId* ptr =
+            static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
         *ptr = type;
     }
     else
@@ -371,7 +371,8 @@ void allocTypeUserData(lua_State* L, TypeFunctionTypeVariant type, bool frozen)
     // allocate a new type userdata
     if (FFlag::LuauUdtfTypeUseTaggedMetatable)
     {
-        TypeFunctionTypeId* ptr = static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
+        TypeFunctionTypeId* ptr =
+            static_cast<TypeFunctionTypeId*>(lua_newuserdatataggedwithmetatable(L, sizeof(TypeFunctionTypeId), kTypeUserdataTag));
         *ptr = allocateTypeFunctionType(L, std::move(type));
         const_cast<TypeFunctionType*>(*ptr)->frozen = frozen;
     }
@@ -2043,11 +2044,8 @@ void registerTypeUserData(lua_State* L)
     lua_newtable(L);
     luaL_register(L, nullptr, typeUserdataMethods);
 
-    if (FFlag::LuauUdtfTypeIsSubtypeOf)
-    {
-        lua_pushcfunction(L, isSubtypeOf, "issubtypeof");
-        lua_setfield(L, -2, "issubtypeof");
-    }
+    lua_pushcfunction(L, isSubtypeOf, "issubtypeof");
+    lua_setfield(L, -2, "issubtypeof");
 
     lua_setreadonly(L, -1, true);
     lua_pushcclosure(L, typeUserdataIndex, "__index", 1);
@@ -2126,12 +2124,25 @@ void setTypeFunctionEnvironment(lua_State* L)
     luaopen_base(L);
     lua_pop(L, 1);
 
-    // Remove certain global functions from the base library
-    static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv", "pcall", "xpcall"};
-    for (auto& name : unavailableGlobals)
+    if (FFlag::LuauUdtfErrorHandling)
     {
-        lua_pushcfunction(L, unsupportedFunction, name);
-        lua_setglobal(L, name);
+        // Remove certain global functions from the base library
+        static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv"};
+        for (auto& name : unavailableGlobals)
+        {
+            lua_pushcfunction(L, unsupportedFunction, name);
+            lua_setglobal(L, name);
+        }
+    }
+    else
+    {
+        // Remove certain global functions from the base library
+        static const char* unavailableGlobals[] = {"gcinfo", "getfenv", "newproxy", "setfenv", "pcall", "xpcall"};
+        for (auto& name : unavailableGlobals)
+        {
+            lua_pushcfunction(L, unsupportedFunction, name);
+            lua_setglobal(L, name);
+        }
     }
 
     lua_pushcfunction(L, print, "print");
@@ -2538,8 +2549,8 @@ bool TypeFunctionProperty::isWriteOnly() const
 
 class TypeFunctionCloner
 {
-    using SeenTypes = DenseHashMap<TypeFunctionTypeId, TypeFunctionTypeId>;
-    using SeenTypePacks = DenseHashMap<TypeFunctionTypePackId, TypeFunctionTypePackId>;
+    using SeenTypes = DenseHashMap2<TypeFunctionTypeId, TypeFunctionTypeId>;
+    using SeenTypePacks = DenseHashMap2<TypeFunctionTypePackId, TypeFunctionTypePackId>;
 
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
 
@@ -2843,13 +2854,7 @@ private:
         }
 
         if (t1->indexer.has_value())
-        {
-            t2->indexer = TypeFunctionTableIndexer(
-                shallowClone(t1->indexer->keyType),
-                shallowClone(t1->indexer->valueType),
-                FFlag::LuauTypeFunctionTableIndexerIsReadOnly ? t1->indexer->isReadOnly : false
-            );
-        }
+            t2->indexer = TypeFunctionTableIndexer(shallowClone(t1->indexer->keyType), shallowClone(t1->indexer->valueType), t1->indexer->isReadOnly);
 
         if (t1->metatable.has_value())
             t2->metatable = shallowClone(*t1->metatable);

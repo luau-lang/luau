@@ -6,7 +6,7 @@
 #include "Luau/ConstraintGraph.h"
 #include "Luau/ConstraintSet.h"
 #include "Luau/DataFlowGraph.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Error.h"
 #include "Luau/Location.h"
 #include "Luau/Module.h"
@@ -95,9 +95,12 @@ struct ConstraintSolver
     // The entire set of constraints that the solver is trying to resolve.
     ConstraintSet constraintSet;
     std::vector<NotNull<Constraint>> constraints;
-    NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction;
+    NotNull<DenseHashMap2<Scope*, TypeId>> scopeToFunction;
     NotNull<Scope> rootScope;
-    ModulePtr module;
+    ModulePtr module; // Clip with LuauCyclicRequireTypeInference
+    // Used for solver-scoped errors not attributable to a specific constraint
+    // (e.g. ConstraintSolvingIncompleteError, time limits).
+    std::shared_ptr<ModuleName> representativeModuleName;
 
     // The dataflow graph of the program, used in constraint generation and for magic functions.
     NotNull<const DataFlowGraph> dfg;
@@ -116,20 +119,20 @@ struct ConstraintSolver
     std::vector<NotNull<const Constraint>> unsolvedConstraints;
 
     // Memoized instantiations of type aliases.
-    DenseHashMap<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases{{}};
+    DenseHashMap2<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases;
     // Breadcrumbs for where a free type's upper bound was expanded. We use
     // these to provide more helpful error messages when a free type is solved
     // as never unexpectedly.
-    DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors{nullptr};
+    DenseHashMap2<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors;
 
     // Irreducible/uninhabited type functions or type pack functions.
-    DenseHashSet<const void*> uninhabitedTypeFunctions{{}};
+    DenseHashSet2<const void*> uninhabitedTypeFunctions;
 
-    DenseHashMap<SubtypeConstraintRecord, Constraint*, HashSubtypeConstraintRecord> seenConstraints{{}};
+    DenseHashMap2<SubtypeConstraintRecord, Constraint*, HashSubtypeConstraintRecord> seenConstraints;
 
     // The set of types that will definitely be unchanged by generalization.
-    DenseHashSet<TypeId> generalizedTypes_{nullptr};
-    const NotNull<DenseHashSet<TypeId>> generalizedTypes{&generalizedTypes_};
+    DenseHashSet2<TypeId> generalizedTypes_;
+    const NotNull<DenseHashSet2<TypeId>> generalizedTypes{&generalizedTypes_};
 
     // Recorded errors that take place within the solver.
     ErrorVec errors;
@@ -140,7 +143,7 @@ struct ConstraintSolver
     DcrLogger* logger;
     TypeCheckLimits limits;
 
-    DenseHashMap<TypeId, const Constraint*> typeFunctionsToFinalize{nullptr};
+    DenseHashMap2<TypeId, const Constraint*> typeFunctionsToFinalize;
 
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
@@ -162,7 +165,7 @@ struct ConstraintSolver
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<Scope> rootScope,
         std::vector<NotNull<Constraint>> constraints,
-        NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction,
+        NotNull<DenseHashMap2<Scope*, TypeId>> scopeToFunction,
         ModulePtr module,
         NotNull<ModuleResolver> moduleResolver,
         std::vector<RequireCycle> requireCycles,
@@ -330,7 +333,10 @@ public:
     /** Pushes a new solver constraint to the solver.
      * @param cv the body of the constraint.
      **/
-    NotNull<Constraint> pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv);
+    NotNull<Constraint> pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv, std::shared_ptr<ModuleName> moduleName);
+
+    // Clip with LuauCyclicRequireTypeInference
+    NotNull<Constraint> DEPRECATED_pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv);
 
     /**
      * Attempts to resolve a module from its module information. Returns the
@@ -341,10 +347,15 @@ public:
      * @param location the location where the require is taking place; used for
      * error locations.
      **/
-    TypeId resolveModule(const ModuleInfo& info, const Location& location);
+    TypeId resolveModule(const ModuleInfo& info, const Location& location, const ModuleName& moduleName);
 
-    void reportError(TypeErrorData&& data, const Location& location);
-    void reportError(TypeError e);
+    void reportError(TypeErrorData&& data, const Location& location, const ModuleName& errorModule);
+
+    // Clip with LuauCyclicRequireTypeInference
+    TypeId DEPRECATED_resolveModule(const ModuleInfo& info, const Location& location);
+    void DEPRECATED_reportError(TypeErrorData&& data, const Location& location);
+    void DEPRECATED_reportError(TypeError e);
+    void DEPRECATED_reportError(TypeError e, const ModuleName& errorModule);
 
     /**
      * Bind a type variable to another type.
@@ -387,7 +398,15 @@ public:
      * At the time of writing, this pertains only to type functions.
      * @param subst the substitution that was applied
      **/
-    void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);
+    void reproduceConstraints(
+        NotNull<Scope> scope,
+        const Location& location,
+        const Substitution& subst,
+        const std::shared_ptr<ModuleName>& moduleName
+    );
+
+    // Clip with LuauCyclicRequireTypeInference
+    void DEPRECATED_reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);
 
     TypeId simplifyIntersection(NotNull<Scope> scope, Location location, TypeId left, TypeId right);
 

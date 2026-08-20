@@ -51,8 +51,6 @@ std::optional<BcOp> BcVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& rhsOp
         r = a * b;
         break;
     case LuauOpcode::LOP_DIV:
-        if (b == 0.0)
-            return std::nullopt;
         r = a / b;
         break;
     case LuauOpcode::LOP_MOD:
@@ -64,8 +62,6 @@ std::optional<BcOp> BcVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& rhsOp
         r = pow(a, b);
         break;
     case LuauOpcode::LOP_IDIV:
-        if (b == 0.0)
-            return std::nullopt;
         r = floor(a / b);
         break;
     default:
@@ -133,7 +129,6 @@ int BcVmConstImpl::cmp(const BcOp& lhsOp, const BcImm& rhs) const
             return (lhs.valueBoolean == rhs.valueBoolean) ? 0 : 1;
     }
 
-    LUAU_ASSERT(!"incompatible types for immCmpBcVmConst");
     return 0;
 }
 
@@ -435,10 +430,8 @@ ConditionState SccpInterpreter::evaluateXeqkCondition(BcRef<BcInst> inst)
         if (valConst.kind == Constness::VmConstant && impl->falsey(valConst.vmConst.value()) &&
             impl->kindEquals(valConst.vmConst.value(), impl->makeNil()))
             return ConditionState::AlwaysTrue;
-        else if (
-            valConst.kind == Constness::ImmConstant ||
-            (valConst.kind == Constness::VmConstant && !impl->kindEquals(valConst.vmConst.value(), impl->makeNil()))
-        )
+        else if (valConst.kind == Constness::ImmConstant ||
+                 (valConst.kind == Constness::VmConstant && !impl->kindEquals(valConst.vmConst.value(), impl->makeNil())))
             return ConditionState::AlwaysFalse;
         break;
     case LOP_JUMPXEQKB:

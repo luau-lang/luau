@@ -232,7 +232,7 @@ TypePackIterator end(TypePackId tp)
 
 TypePackId getTail(TypePackId tp)
 {
-    DenseHashSet<TypePackId> seen{nullptr};
+    DenseHashSet2<TypePackId> seen;
     while (tp)
     {
         tp = follow(tp);

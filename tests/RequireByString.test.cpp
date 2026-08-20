@@ -27,6 +27,10 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCyclicRequireShortCircuit)
+LUAU_DYNAMIC_FASTFLAG(LuauSelfIsSelfAndAlwaysSelf)
+LUAU_FASTFLAG(LuauCallFeedback)
+LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauBytecodeCostModel)
 
 #if __APPLE__
 #include <TargetConditionals.h>
@@ -647,6 +651,21 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireUnprefixedPath")
     assertOutputContainsAll({"false", "require path must start with a valid prefix: ./, ../, or @"});
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSubmoduleUsingSelfWithOverrideAttempt")
+{
+    ScopedFastFlag sffs[] = {{DFFlag::LuauSelfIsSelfAndAlwaysSelf, true}};
+    {
+        std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config/nested_override";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"true", "result from submodule"});
+    }
+    {
+        std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config_luau/nested_override";
+        runProtectedRequire(path);
+        assertOutputContainsAll({"true", "result from submodule"});
+    }
+}
+
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithAlias")
 {
     {
@@ -942,10 +961,9 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireChainedAliasesFailureDependOnInne
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicPath")
 {
-    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
-    // Both modules use the require table (...) as their require surface, so the
-    // cycle resolves consistently: each module's cached table is the one distributed
-    // to the other during loading.
+    ScopedFastFlag sffs[] = {{FFlag::LuauCyclicRequireShortCircuit, true}, {FFlag::LuauExportValueSyntax, true}};
+    // Both modules use the export keyword. The compiler uses the runtime-provided
+    // placeholder as the export table, so the cycle resolves automatically.
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_requirer";
     runProtectedRequire(path);
     assertOutputContainsAll({"true"});
@@ -953,9 +971,7 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicPath")
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnAccess")
 {
-    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
-    // A requires B, B requires A (cycle hit), B then tries to read
-    // a field from A's incomplete require table. CyclicDependencyError is raised.
+    ScopedFastFlag sffs[] = {{FFlag::LuauCyclicRequireShortCircuit, true}, {FFlag::LuauExportValueSyntax, true}};
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_access_a";
     runProtectedRequire(path);
     assertOutputContainsAll({"false", "Cannot access the exported field 'Tree'"});
@@ -963,9 +979,7 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnAccess")
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnMutation")
 {
-    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
-    // B requires A, A requires B (cycle hit), A then tries to write
-    // to B's incomplete require table. CyclicDependencyError is raised.
+    ScopedFastFlag sffs[] = {{FFlag::LuauCyclicRequireShortCircuit, true}, {FFlag::LuauExportValueSyntax, true}};
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_mutation_b";
     runProtectedRequire(path);
     assertOutputContainsAll({"false", "Cannot set the exported field 'foo'"});
@@ -973,33 +987,10 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnMutation")
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnNonStringKey")
 {
-    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
-    // A requires B, B requires A (cycle hit), B then accesses A's incomplete require
-    // table using a table as the key. CyclicDependencyError is raised without crashing
-    // (verifies luaL_tolstring handles non-string keys instead of lua_tostring).
+    ScopedFastFlag sffs[] = {{FFlag::LuauCyclicRequireShortCircuit, true}, {FFlag::LuauExportValueSyntax, true}};
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_access_nonstringkey_a";
     runProtectedRequire(path);
-    assertOutputContainsAll({"false", "Cannot access the exported field"});
-}
-
-TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicPlaceholderPrevMetatableRestored")
-{
-    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
-    // A sets a metatable (__index) on its placeholder before calling require(B).
-    // When B finishes, lua_requirecont restores the saved metatable instead of clearing it
-    // to nil. After both modules load, A's __index should still be active.
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_prev_mt_requirer";
-    runProtectedRequire(path);
-    assertOutputContainsAll({"true"});
-}
-
-TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyPlaceholderMetatableLocked")
-{
-    ScopedFastFlag sff{FFlag::LuauCyclicRequireShortCircuit, true};
-
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_locked_mt_requirer";
-    runProtectedRequire(path);
-    assertOutputContainsAll({"true"});
+    assertOutputContainsAll({"false", "Cannot access the exported field 'unknown'"});
 }
 
 TEST_SUITE_END();
@@ -1290,7 +1281,12 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireExportTrap")
 TEST_CASE("RequireExportClass")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauExportValueSyntax, true}, {FFlag::DebugLuauUserDefinedClasses, true}, {FFlag::DebugLuauUserDefinedClassesRuntime, true}
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauUserDefinedClassesRuntime, true},
+        {FFlag::LuauCallFeedback, true},
+        {FFlag::LuauEmitCallFeedback, true},
+        {FFlag::LuauBytecodeCostModel, true}
     };
 
     // we create a new fixture so the new lua_State has the class library
@@ -1300,6 +1296,91 @@ TEST_CASE("RequireExportClass")
         fixture.getLuauDirectory(ReplWithPathFixture::PathType::Relative) + "/tests/require/without_config/export_keyword/require_export_class";
     fixture.runProtectedRequire(path);
     fixture.assertOutputContainsAll({"true"});
+}
+
+TEST_CASE("RequireExportClassChildWithoutParent")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauUserDefinedClassesRuntime, true},
+        {FFlag::LuauCallFeedback, true},
+        {FFlag::LuauEmitCallFeedback, true},
+        {FFlag::LuauBytecodeCostModel, true}
+    };
+
+    ReplWithPathFixture fixture;
+
+    std::string path = fixture.getLuauDirectory(ReplWithPathFixture::PathType::Relative) +
+                       "/tests/require/without_config/export_keyword/require_export_class_child_without_parent";
+    fixture.runProtectedRequire(path);
+    fixture.assertOutputContainsAll({"true"});
+}
+
+TEST_CASE("RequireExportClassBothExported")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauUserDefinedClassesRuntime, true},
+        {FFlag::LuauCallFeedback, true},
+        {FFlag::LuauEmitCallFeedback, true},
+        {FFlag::LuauBytecodeCostModel, true}
+    };
+
+    ReplWithPathFixture fixture;
+
+    std::string path = fixture.getLuauDirectory(ReplWithPathFixture::PathType::Relative) +
+                       "/tests/require/without_config/export_keyword/require_export_class_both_exported";
+    fixture.runProtectedRequire(path);
+    fixture.assertOutputContainsAll({"true"});
+}
+
+TEST_CASE("RequireExportClassMultiLevel")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauUserDefinedClassesRuntime, true},
+        {FFlag::LuauCallFeedback, true},
+        {FFlag::LuauEmitCallFeedback, true},
+        {FFlag::LuauBytecodeCostModel, true}
+    };
+
+    ReplWithPathFixture fixture;
+
+    std::string path = fixture.getLuauDirectory(ReplWithPathFixture::PathType::Relative) +
+                       "/tests/require/without_config/export_keyword/require_export_class_multi_level";
+    fixture.runProtectedRequire(path);
+    fixture.assertOutputContainsAll({"true"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassOverrideInstanceMemberError")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauUserDefinedClassesRuntime, true},
+        {FFlag::LuauCallFeedback, true},
+        {FFlag::LuauEmitCallFeedback, true},
+        {FFlag::LuauBytecodeCostModel, true}
+    };
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/class_override_instance_member_error";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"Cannot override instance member 'x' of parent class 'Parent' in child class 'Child'"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassExtendsNonOpenParent")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauUserDefinedClassesRuntime, true},
+        {FFlag::LuauCallFeedback, true},
+        {FFlag::LuauEmitCallFeedback, true},
+        {FFlag::LuauBytecodeCostModel, true}
+    };
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/class_extends_non_open_parent";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"Non-open class 'Parent' cannot be extended"});
 }
 
 TEST_SUITE_END();

@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include <ostream>
 #include <optional>
 
@@ -41,7 +41,7 @@ auto operator<<(std::ostream& lhs, const std::vector<T>& t) -> decltype(lhs << t
 }
 
 template<typename K, typename H, typename E>
-auto operator<<(std::ostream& lhs, const Luau::DenseHashSet<K, H, E>& set) -> decltype(lhs << *set.begin())
+auto operator<<(std::ostream& lhs, const Luau::DenseHashSet2<K, H, E>& set) -> decltype(lhs << *set.begin())
 {
     lhs << "{ ";
     bool first = true;

@@ -16,9 +16,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAG(LuauFixPropReadsOnMetatableTypes)
-LUAU_FASTFLAG(LuauTweakAccessViolationReporting)
-LUAU_FASTFLAG(LuauTidyTypePrototyping)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -466,7 +463,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cycle_between_object_constructor_and_alias")
     CHECK_MESSAGE(get<MetatableType>(follow(aliasType)), "Expected metatable type but got: " << toString(aliasType));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::timeout(2))
+TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::timeout(LUAU_TIMEOUT))
 {
     getFrontend().options.retainFullTypeGraphs = false;
 
@@ -788,7 +785,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assign_to_prop_of_intersection_of_metatables")
 {
-    ScopedFastFlag sff{FFlag::LuauFixPropReadsOnMetatableTypes, true};
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -919,7 +915,7 @@ TEST_CASE_FIXTURE(Fixture, "point_class")
                 return 100
             end
 
-            function new()
+            function create()
                 return Point { x = 0, y = 0 }
             end
         end
@@ -927,7 +923,7 @@ TEST_CASE_FIXTURE(Fixture, "point_class")
         local p = Point { x = 2, y = 3 }
         local len = p:length()
 
-        local p2 = Point.new()
+        local p2 = Point.create()
     )");
 
     LUAU_CHECK_NO_ERRORS(result);
@@ -1121,7 +1117,7 @@ end
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<SyntaxError>(result.errors[0]);
     REQUIRE(err);
-    CHECK_EQ("Variable 'Animal' is constant and may not be reassigned", err->message);
+    CHECK_EQ("'Animal' refers to a class and cannot be used as a variable name (defined on line 2)", err->message);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "class_that_shadows_a_type_alias")
@@ -1129,7 +1125,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "class_that_shadows_a_type_alias")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauTidyTypePrototyping, true},
     };
 
     CheckResult result = check(R"(
@@ -1149,7 +1144,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_class_method_field_access")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauTidyTypePrototyping, true},
     };
 
     CheckResult result = check(R"(
@@ -1177,7 +1171,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_class_annotations")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauTidyTypePrototyping, true},
     };
 
     CheckResult result = check(R"(
@@ -1205,8 +1198,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "read_unknown_property_from_class_object_or_i
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauTidyTypePrototyping, true},
-        {FFlag::LuauTweakAccessViolationReporting, true},
     };
 
     CheckResult result = check(R"(
@@ -1240,8 +1231,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_class_object_properties_are_forbid
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauTidyTypePrototyping, true},
-        {FFlag::LuauTweakAccessViolationReporting, true},
     };
 
     CheckResult result = check(R"(
@@ -1299,8 +1288,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_unknown_class_instance_properties_
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauTidyTypePrototyping, true},
-        {FFlag::LuauTweakAccessViolationReporting, true},
     };
 
     CheckResult result = check(R"(

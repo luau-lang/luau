@@ -1,13 +1,9 @@
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/BytecodeGraph.h"
-#include "Luau/BytecodeUtils.h"
 #include "Luau/BytecodeWire.h"
 
 #include "BytecodeGraphParser.h"
 #include "BytecodeGraphSerializer.h"
-
-#include <unordered_set>
-#include <algorithm>
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCostModel)
@@ -96,11 +92,21 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
 
         case LBC_CONSTANT_VECTOR:
         {
-            fn.constants[i].kind = BcVmConstKind::Vector;
-            fn.constants[i].valueVector[0] = read<float>(data, offset);
-            fn.constants[i].valueVector[1] = read<float>(data, offset);
-            fn.constants[i].valueVector[2] = read<float>(data, offset);
-            fn.constants[i].valueVector[3] = read<float>(data, offset);
+            fn.constants[i].kind = BcVmConstKind::Vectorf;
+            fn.constants[i].valueVectorf[0] = read<float>(data, offset);
+            fn.constants[i].valueVectorf[1] = read<float>(data, offset);
+            fn.constants[i].valueVectorf[2] = read<float>(data, offset);
+            fn.constants[i].valueVectorf[3] = read<float>(data, offset);
+            break;
+        }
+
+        case LBC_CONSTANT_VECTORD:
+        {
+            fn.constants[i].kind = BcVmConstKind::Vectord;
+            fn.constants[i].valueVectord[0] = read<double>(data, offset);
+            fn.constants[i].valueVectord[1] = read<double>(data, offset);
+            fn.constants[i].valueVectord[2] = read<double>(data, offset);
+            fn.constants[i].valueVectord[3] = read<double>(data, offset);
             break;
         }
 
@@ -159,6 +165,33 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
             fn.constants[i].valueInteger = isNegative ? (int64_t)(~magnitude + 1) : (int64_t)magnitude;
             break;
         }
+
+        case LBC_CONSTANT_CLASS_SHAPE:
+        {
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+            fn.constants[i].kind = BcVmConstKind::ClassShape;
+            fn.constants[i].valueClassShape = uint32_t(fn.classShapes.size());
+
+            BytecodeBuilder::ClassShape shape;
+            shape.className = readVarInt(data, offset);
+
+            uint32_t numProps = readVarInt(data, offset);
+            uint32_t numMethods = readVarInt(data, offset);
+
+            shape.propertyNames.reserve(numProps);
+            shape.methodNames.reserve(numMethods);
+
+            for (uint32_t i = 0; i < numProps; ++i)
+                shape.propertyNames.emplace_back(readVarInt(data, offset));
+
+            for (uint32_t i = 0; i < numMethods; ++i)
+                shape.methodNames.emplace_back(readVarInt(data, offset));
+
+            fn.classShapes.push_back(shape);
+            break;
+        }
+
         default:
             LUAU_ASSERT(!"Unknown constant type!");
         }
@@ -313,8 +346,12 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
             consts.push_back(bcb.addConstantNumber(c.valueNumber));
             break;
 
-        case BcVmConstKind::Vector:
-            consts.push_back(bcb.addConstantVector(c.valueVector[0], c.valueVector[1], c.valueVector[2], c.valueVector[3]));
+        case BcVmConstKind::Vectorf:
+            consts.push_back(bcb.addConstantVectorf(c.valueVectorf[0], c.valueVectorf[1], c.valueVectorf[2], c.valueVectorf[3]));
+            break;
+
+        case BcVmConstKind::Vectord:
+            consts.push_back(bcb.addConstantVectord(c.valueVectord[0], c.valueVectord[1], c.valueVectord[2], c.valueVectord[3]));
             break;
 
         case BcVmConstKind::String:
@@ -339,6 +376,14 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
         case BcVmConstKind::Integer:
             consts.push_back(bcb.addConstantInteger(c.valueInteger));
             break;
+
+        case BcVmConstKind::ClassShape:
+        {
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+            LUAU_ASSERT(c.valueClassShape < fn.classShapes.size());
+            consts.push_back(bcb.addClassShape(fn.classShapes[c.valueClassShape]));
+            break;
+        }
         }
     }
 

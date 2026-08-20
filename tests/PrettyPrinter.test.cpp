@@ -11,8 +11,7 @@
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauTableEntriesDontNeedToMatchIndent)
-LUAU_FASTFLAG(LuauCstAttr)
+LUAU_FASTFLAG(LuauPrettyPrintVisualizeIndexerAccess)
 
 using namespace Luau;
 
@@ -2121,8 +2120,9 @@ class Point
     function length(self)
         return 100
     end
-    function new()
-        return Point { x = 0, y = 0 }
+    function __init(self)
+        self.x = 0
+        self.y = 0
     end
 end
     )";
@@ -2139,8 +2139,9 @@ class Point
         return 100
     end
     public x
-    function new(): Point
-        return Point { x = 0, y = 0 }
+    function __init(self)
+        self.x = 0
+        self.y = 0
     end
     public y
 end
@@ -2158,8 +2159,9 @@ class Point
         return 100
     end
     public x
-    public function new(): Point
-        return Point { x = 0, y = 0 }
+    public function __init(self)
+        self.x = 0
+        self.y = 0
     end
     public y
 end
@@ -2167,9 +2169,25 @@ end
     CHECK_EQ(code, prettyPrint(code, {}, true).code);
 }
 
+TEST_CASE("simple_class_inheritance")
+{
+    ScopedFastFlag fflag{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string code = R"(
+class Animal
+    public species: string
+end
+
+class Cat extends Animal
+    public meowMult: number
+end
+    )";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
+}
+
 TEST_CASE("prettyPrint_function_attributes")
 {
-    ScopedFastFlag fflags[] = {{FFlag::LuauCstAttr, true}, {FFlag::LuauExportValueSyntax, true}};
+    ScopedFastFlag sff{FFlag::LuauExportValueSyntax, true};
 
     std::string code = R"(
         @native
@@ -2447,8 +2465,6 @@ end)";
 
 TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_table_expr")
 {
-    ScopedFastFlag fflag2{FFlag::LuauTableEntriesDontNeedToMatchIndent, true};
-
     std::string code = R"(local a = { a = 1 ["b"] = 2 })";
 
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
@@ -2601,8 +2617,6 @@ TEST_CASE_FIXTURE(Fixture, "pretty_print_incomplete_typeof_type")
 
 TEST_CASE("pretty_print_incomplete_attr_list")
 {
-    ScopedFastFlag fflag{FFlag::LuauCstAttr, true};
-
     std::string code = R"=(
     @unknown
     @[deprecated  , native
@@ -2615,13 +2629,23 @@ TEST_CASE("pretty_print_incomplete_attr_list")
 
 TEST_CASE("pretty_print_incomplete_attr_args")
 {
-    ScopedFastFlag fflag{FFlag::LuauCstAttr, true};
-
     std::string code = R"=(
     @[deprecated ({ use = "newApi()"} ]
     function oldApi()
     end
     )=";
+
+    CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE("pretty_print_readonly_indexer")
+{
+    ScopedFastFlag visualizeIndexerAccess{FFlag::LuauPrettyPrintVisualizeIndexerAccess, true};
+
+    std::string code = R"(
+        local _t: { read number } = {}
+        local _u: { read [string]: boolean }
+    )";
 
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
 }

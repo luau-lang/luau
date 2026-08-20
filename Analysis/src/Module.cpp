@@ -15,6 +15,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAGVARIABLE(LuauDoNotExportBrokenTypeFunction)
+LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 
 namespace Luau
 {
@@ -204,6 +205,11 @@ struct ClonePublicInterface : Substitution
             {
                 genericty->scope = nullptr;
             }
+            else if (FFlag::LuauCloneTypeFunctionFromForeignArena)
+            {
+                if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state == TypeFunctionInstanceState::Stuck)
+                    result = arena->addType(ErrorType{ty});
+            }
             else if (auto tfit = get<TypeFunctionInstanceType>(ty);
                      FFlag::LuauDoNotExportBrokenTypeFunction && tfit && tfit->state != TypeFunctionInstanceState::Solved)
             {
@@ -391,7 +397,7 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
         return builtinTypes->errorType;
     };
 
-    DenseHashSet<AstLocal*> exportedLocals{nullptr};
+    DenseHashSet2<AstLocal*> exportedLocals;
 
     for (AstStat* statement : module->root->body)
     {
@@ -461,7 +467,11 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
                 if (!classStat->exported)
                     continue;
 
-                props[classStat->name->name.value] = Property::readonly(lookupExportedBindingType(classStat->name));
+                TypeId ty = builtinTypes->errorType;
+                if (auto found = moduleScope->lookup(Symbol{classStat->name->name}))
+                    ty = follow(*found);
+
+                props[classStat->name->name.value] = Property::readonly(ty);
                 props[classStat->name->name.value].location = classStat->name->location;
             }
         }
@@ -470,7 +480,9 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
     if (props.empty())
         return;
 
-    TypeId exports = module->internalTypes->addType(TableType{props, std::nullopt, moduleScope->level, TableState::Sealed});
+    TableType tbl{props, std::nullopt, moduleScope->level, TableState::Sealed};
+    tbl.definitionModuleName = module->name;
+    TypeId exports = module->internalTypes->addType(std::move(tbl));
     moduleScope->returnType = module->internalTypes->addTypePack({exports});
 }
 

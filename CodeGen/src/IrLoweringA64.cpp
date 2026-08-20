@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "IrLoweringA64.h"
 
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 #include "Luau/LoweringStats.h"
@@ -13,10 +13,8 @@
 #include "lgc.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenFixBufferLenCheck)
-LUAU_FASTFLAGVARIABLE(LuauCodegenFixTwoResA64Builtin)
 LUAU_FASTFLAG(LuauYieldIter2)
 LUAU_FASTFLAG(LuauCIProto)
-LUAU_FASTFLAG(LuauCodegenSharedLog)
 
 namespace Luau
 {
@@ -240,17 +238,9 @@ static bool emitBuiltin(AssemblyBuilderA64& build, IrFunction& function, IrRegAl
 
         if (nresults == 2)
         {
-            if (FFlag::LuauCodegenFixTwoResA64Builtin)
-            {
-                RegisterA64 temp2 = regs.allocTemp(KindA64::w);
-                build.ldr(temp2, sTemporary);
-                build.scvtf(d1, temp2);
-            }
-            else
-            {
-                build.ldr(w0, sTemporary);
-                build.scvtf(d1, w0);
-            }
+            RegisterA64 temp2 = regs.allocTemp(KindA64::w);
+            build.ldr(temp2, sTemporary);
+            build.scvtf(d1, temp2);
 
             build.str(d1, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, value.n)));
             build.str(temp, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, tt)));
@@ -306,7 +296,7 @@ IrLoweringA64::IrLoweringA64(LogBuilder* logger, AssemblyBuilderA64& build, Modu
     , stats(stats)
     , regs(logger, build, function, stats, {{x0, x15}, {x16, x17}, {q0, q7}, {q16, q31}})
     , valueTracker(logger, function)
-    , exitHandlerMap(~0u)
+
 {
     valueTracker.setRestoreCallback(
         this,
@@ -1709,6 +1699,44 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         jumpOrFallthrough(blockOp(OP_E(inst)), next);
         break;
     }
+    case IrCmd::JUMP_CMP_INT64:
+    {
+        IrCondition cond = conditionOp(OP_C(inst));
+
+        // Constant propagation can place a constant on either side and every form below compares against the right
+        // operand, so the operands are swapped and the condition inverted, like CMP_INT64 does. Equal and NotEqual
+        // are unchanged by that inversion, so the zero forms below still test the original condition.
+        IrOp lhs = OP_A(inst);
+        IrOp rhs = OP_B(inst);
+        bool swapped = lhs.kind == IrOpKind::Constant;
+
+        if (swapped)
+        {
+            lhs = OP_B(inst);
+            rhs = OP_A(inst);
+        }
+
+        if (cond == IrCondition::Equal && rhs.kind == IrOpKind::Constant && int64Op(rhs) == 0)
+        {
+            build.cbz(regOp(lhs), labelOp(OP_D(inst)));
+        }
+        else if (cond == IrCondition::NotEqual && rhs.kind == IrOpKind::Constant && int64Op(rhs) == 0)
+        {
+            build.cbnz(regOp(lhs), labelOp(OP_D(inst)));
+        }
+        else
+        {
+            if (rhs.kind == IrOpKind::Constant && uint64_t(int64Op(rhs)) <= AssemblyBuilderA64::kMaxImmediate)
+                build.cmp(regOp(lhs), uint16_t(int64Op(rhs)));
+            else
+                build.cmp(regOp(lhs), tempInt64(rhs));
+
+            ConditionA64 cc = getConditionInt64(cond);
+            build.b(swapped ? getInverseCondition(cc) : cc, labelOp(OP_D(inst)));
+        }
+        jumpOrFallthrough(blockOp(OP_E(inst)), next);
+        break;
+    }
     case IrCmd::JUMP_EQ_POINTER:
         build.cmp(regOp(OP_A(inst)), regOp(OP_B(inst)));
         build.b(ConditionA64::Equal, labelOp(OP_C(inst)));
@@ -1906,6 +1934,27 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.mov(x2, intOp(OP_B(inst)));
         build.ldr(x3, mem(rNativeContext, offsetof(NativeContext, newUserdata)));
         build.blr(x3);
+        inst.regA64 = regs.takeReg(x0, index);
+        break;
+    }
+    case IrCmd::NEW_VECTOR:
+    {
+        RegisterA64 tempx = tempDouble(OP_A(inst));
+        RegisterA64 tempy = tempDouble(OP_B(inst));
+        RegisterA64 tempz = tempDouble(OP_C(inst));
+
+        regs.spill(index, {tempx, tempy, tempz});
+
+        build.mov(x0, rState);
+        if (tempx != d0)
+            build.fmov(d0, tempx);
+        if (tempy != d1)
+            build.fmov(d1, tempy);
+        if (tempz != d2)
+            build.fmov(d2, tempz);
+        build.ldr(x1, mem(rNativeContext, offsetof(NativeContext, newVector)));
+        build.blr(x1);
+
         inst.regA64 = regs.takeReg(x0, index);
         break;
     }
@@ -3735,10 +3784,8 @@ void IrLoweringA64::finishBlock(const IrBlock& curr, const IrBlock& next)
 
 void IrLoweringA64::finishFunction()
 {
-    if (FFlag::LuauCodegenSharedLog && logger && logger->options.includeAssembly)
+    if (logger && logger->options.includeAssembly)
         logger->formatAppend("; interrupt handlers\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; interrupt handlers\n");
 
     for (InterruptHandler& handler : interruptHandlers)
     {
@@ -3748,10 +3795,8 @@ void IrLoweringA64::finishFunction()
         build.b(helpers.interrupt);
     }
 
-    if (FFlag::LuauCodegenSharedLog && logger && logger->options.includeAssembly)
+    if (logger && logger->options.includeAssembly)
         logger->formatAppend("; exit handlers\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; exit handlers\n");
 
     for (ExitHandler& handler : exitHandlers)
     {
@@ -3862,10 +3907,8 @@ void IrLoweringA64::allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcp
     if (!function.recordCounters)
         return;
 
-    if (FFlag::LuauCodegenSharedLog && logger && logger->options.includeAssembly)
+    if (logger && logger->options.includeAssembly)
         logger->formatAppend("; counter kind %u at pcpos %d\n", unsigned(kind), pcpos);
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; counter kind %u at pcpos %d\n", unsigned(kind), pcpos);
 
     // {uint32_t, uint32_t, uint64_t}
     function.extraNativeData.push_back(unsigned(kind));
@@ -4181,8 +4224,8 @@ AddressA64 IrLoweringA64::tempAddr(IrOp op, int offset, RegisterA64 tempStorage)
 
 AddressA64 IrLoweringA64::tempAddrBuffer(IrOp bufferOp, IrOp indexOp, uint8_t tag)
 {
-    CODEGEN_ASSERT(tag == LUA_TUSERDATA || tag == LUA_TBUFFER);
-    int dataOffset = tag == LUA_TBUFFER ? offsetof(Buffer, data) : offsetof(Udata, data);
+    CODEGEN_ASSERT(tag == LUA_TUSERDATA || tag == LUA_TBUFFER || tag == LUA_TVECTOR);
+    int dataOffset = tag == LUA_TBUFFER ? offsetof(Buffer, data) : tag == LUA_TVECTOR ? offsetof(LuauVector, v) : offsetof(Udata, data);
 
     if (indexOp.kind == IrOpKind::Inst)
     {
