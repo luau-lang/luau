@@ -28,7 +28,7 @@
  */
 
 #include "Luau/Ast.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Common.h"
 #include "Luau/StringUtils.h"
 
@@ -200,13 +200,13 @@ std::optional<Identifier> mkName(AstStat* const el)
 struct ArcCollector : public AstVisitor
 {
     NodeQueue& queue;
-    DenseHashMap<Identifier, Node*, IdentifierHash> map;
+    DenseHashMap2<Identifier, Node*, IdentifierHash> map;
 
     Node* currentArc;
 
     ArcCollector(NodeQueue& queue)
         : queue(queue)
-        , map(Identifier{std::string{}, 0})
+        , map{}
         , currentArc(nullptr)
     {
         for (const auto& node : queue)
@@ -413,7 +413,7 @@ void drain(NodeList& Q, std::vector<AstStat*>& result, Node* target)
         // Copy the connectivity information but filter out any provides or depends arcs that are not in Q
         Arcs& arcs = allArcs[node.get()];
 
-        DenseHashSet<Node*> elements{nullptr};
+        DenseHashSet2<Node*> elements;
         for (const auto& q : Q)
             elements.insert(q.get());
 

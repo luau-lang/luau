@@ -30,7 +30,7 @@ struct IrToStringContext
     const std::vector<IrBlock>& blocks;
     const std::vector<IrConst>& constants;
     const CfgInfo& cfg;
-    const DenseHashMap<uint32_t, VmExitSyncInfo>& vmExitInfo;
+    const DenseHashMap2<uint32_t, VmExitSyncInfo>& vmExitInfo;
     Proto* proto = nullptr;
 };
 

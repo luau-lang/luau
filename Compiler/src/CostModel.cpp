@@ -3,7 +3,7 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/Common.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 
 #include "ConstantFolding.h"
 #include "Utils.h"
@@ -98,16 +98,15 @@ struct Cost
 
 struct CostVisitor : AstVisitor
 {
-    const DenseHashMap<AstExprCall*, int>& builtins;
-    const DenseHashMap<AstExpr*, Constant>& constants;
+    const DenseHashMap2<AstExprCall*, int>& builtins;
+    const DenseHashMap2<AstExpr*, Constant>& constants;
 
-    DenseHashMap<AstLocal*, uint64_t> vars;
+    DenseHashMap2<AstLocal*, uint64_t> vars;
     Cost result;
 
-    CostVisitor(const DenseHashMap<AstExprCall*, int>& builtins, const DenseHashMap<AstExpr*, Constant>& constants)
+    CostVisitor(const DenseHashMap2<AstExprCall*, int>& builtins, const DenseHashMap2<AstExpr*, Constant>& constants)
         : builtins(builtins)
         , constants(constants)
-        , vars(nullptr)
     {
     }
 
@@ -413,8 +412,8 @@ uint64_t modelCost(
     AstNode* root,
     AstLocal* const* vars,
     size_t varCount,
-    const DenseHashMap<AstExprCall*, int>& builtins,
-    const DenseHashMap<AstExpr*, Constant>& constants
+    const DenseHashMap2<AstExprCall*, int>& builtins,
+    const DenseHashMap2<AstExpr*, Constant>& constants
 )
 {
     CostVisitor visitor{builtins, constants};
@@ -428,8 +427,8 @@ uint64_t modelCost(
 
 uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount)
 {
-    DenseHashMap<AstExprCall*, int> builtins{nullptr};
-    DenseHashMap<AstExpr*, Constant> constants{nullptr};
+    DenseHashMap2<AstExprCall*, int> builtins;
+    DenseHashMap2<AstExpr*, Constant> constants;
 
     return modelCost(root, vars, varCount, builtins, constants);
 }

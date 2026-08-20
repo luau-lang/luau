@@ -11,6 +11,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauRawGetUseTypeFunction)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -1029,11 +1030,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK_EQ(
-            "Expected this to be 'number', but got 'number?'; \n"
-            "the 2nd component of the union is `nil`, which is not a subtype of `number`",
-            toString(result.errors[0])
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK_EQ(
+                "Expected this to be 'number', but got 'number?'; \n"
+                "`nil` is not a subtype of `number`",
+                toString(result.errors[0])
+            );
+        else
+            CHECK_EQ(
+                "Expected this to be 'number', but got 'number?'; \n"
+                "the 2nd component of the union is `nil`, which is not a subtype of `number`",
+                toString(result.errors[0])
+            );
     }
     else
     {

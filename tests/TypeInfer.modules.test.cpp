@@ -19,6 +19,7 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTINT(LuauSolverConstraintLimit)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 using namespace Luau;
 
@@ -464,9 +465,13 @@ local b: B.T = a
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected = "Expected this to be 'T' from 'game/B', but got 'T' from 'game/A'; \n"
-                                     "accessing `x` results in `number` in the latter type and `string` in the former type, and "
-                                     "`number` is not exactly `string`";
+        const std::string expected =
+            FFlag::LuauNewTypePathErrorMessages
+                ? "Expected this to be 'T' from 'game/B', but got 'T' from 'game/A'; \n"
+                  "Expected property `x` to be exactly `string`, but got `number`"
+                : "Expected this to be 'T' from 'game/B', but got 'T' from 'game/A'; \n"
+                  "accessing `x` results in `number` in the latter type and `string` in the former type, and `number` is not exactly "
+                  "`string`";
         CHECK(expected == toString(result.errors[0]));
     }
     else
@@ -510,9 +515,13 @@ local b: B.T = a
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected = "Expected this to be 'T' from 'game/C', but got 'T' from 'game/B'; \n"
-                                     "accessing `x` results in `number` in the latter type and `string` in the former type, and "
-                                     "`number` is not exactly `string`";
+        const std::string expected =
+            FFlag::LuauNewTypePathErrorMessages
+                ? "Expected this to be 'T' from 'game/C', but got 'T' from 'game/B'; \n"
+                  "Expected property `x` to be exactly `string`, but got `number`"
+                : "Expected this to be 'T' from 'game/C', but got 'T' from 'game/B'; \n"
+                  "accessing `x` results in `number` in the latter type and `string` in the former type, and `number` is not exactly "
+                  "`string`";
         CHECK(expected == toString(result.errors[0]));
     }
     else

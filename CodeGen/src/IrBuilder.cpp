@@ -24,7 +24,6 @@ constexpr unsigned kNoAssociatedBlockIndex = ~0u;
 
 IrBuilder::IrBuilder(const HostIrHooks& hostHooks)
     : hostHooks(hostHooks)
-    , constantMap({IrConstKind::Tag, ~0ull})
 {
 }
 
@@ -675,6 +674,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     // We do not support classes in NCG at the moment, so if we see a class
     // operation then unconditionally exit to the VM.
     case LOP_NEWCLASSMEMBER:
+    case LOP_NEWCLASS:
         inst(IrCmd::JUMP, vmExit(i));
         break;
 
@@ -748,7 +748,7 @@ void IrBuilder::checkSafeEnv(int pcpos)
 
 void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator)
 {
-    DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
+    DenseHashMap2<uint32_t, uint32_t> instRedir;
 
     auto redirect = [&instRedir](IrOp& op)
     {

@@ -7,7 +7,7 @@
 #include "Luau/Common.h"
 #include "Luau/ConstraintGenerator.h"
 #include "Luau/ConstraintSolver.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Error.h"
 #include "Luau/Frontend.h"
 #include "Luau/Module.h"
@@ -24,6 +24,8 @@
 #include <algorithm>
 #include <string_view>
 
+LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+LUAU_FASTFLAG(LuauUdtfErrorHandling)
 LUAU_FASTFLAGVARIABLE(LuauRawGetUseTypeFunction)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
@@ -542,43 +544,89 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     globals.globalTypeFunctionScope->exportedTypeBindings = globals.globalScope->exportedTypeBindings;
     globals.globalTypeFunctionScope->builtinTypeNames = globals.globalScope->builtinTypeNames;
 
-    // Type function runtime also removes a few standard libraries and globals, so we will take only the ones that are defined
-    static constexpr const char* typeFunctionRuntimeBindings[] = {
-        // Libraries
-        "math",
-        "table",
-        "string",
-        "bit32",
-        "utf8",
-        "buffer",
-
-        // Globals
-        "assert",
-        "error",
-        "print",
-        "next",
-        "ipairs",
-        "pairs",
-        "select",
-        "unpack",
-        "getmetatable",
-        "setmetatable",
-        "rawget",
-        "rawset",
-        "rawlen",
-        "rawequal",
-        "tonumber",
-        "tostring",
-        "type",
-        "typeof",
-    };
-
-    for (auto& name : typeFunctionRuntimeBindings)
+    if (FFlag::LuauUdtfErrorHandling)
     {
-        AstName astName = globals.globalNames.names->get(name);
-        LUAU_ASSERT(astName.value);
+        // Type function runtime also removes a few standard libraries and globals, so we will take only the ones that are defined
+        static constexpr const char* typeFunctionRuntimeBindings[] = {
+            // Libraries
+            "math",
+            "table",
+            "string",
+            "bit32",
+            "utf8",
+            "buffer",
 
-        globals.globalTypeFunctionScope->bindings[astName] = globals.globalScope->bindings[astName];
+            // Globals
+            "assert",
+            "error",
+            "print",
+            "next",
+            "ipairs",
+            "pairs",
+            "select",
+            "unpack",
+            "getmetatable",
+            "setmetatable",
+            "rawget",
+            "rawset",
+            "rawlen",
+            "rawequal",
+            "tonumber",
+            "tostring",
+            "type",
+            "typeof",
+            "pcall",
+            "xpcall",
+        };
+
+        for (auto& name : typeFunctionRuntimeBindings)
+        {
+            AstName astName = globals.globalNames.names->get(name);
+            LUAU_ASSERT(astName.value);
+
+            globals.globalTypeFunctionScope->bindings[astName] = globals.globalScope->bindings[astName];
+        }
+    }
+    else
+    {
+        // Type function runtime also removes a few standard libraries and globals, so we will take only the ones that are defined
+        static constexpr const char* typeFunctionRuntimeBindings[] = {
+            // Libraries
+            "math",
+            "table",
+            "string",
+            "bit32",
+            "utf8",
+            "buffer",
+
+            // Globals
+            "assert",
+            "error",
+            "print",
+            "next",
+            "ipairs",
+            "pairs",
+            "select",
+            "unpack",
+            "getmetatable",
+            "setmetatable",
+            "rawget",
+            "rawset",
+            "rawlen",
+            "rawequal",
+            "tonumber",
+            "tostring",
+            "type",
+            "typeof",
+        };
+
+        for (auto& name : typeFunctionRuntimeBindings)
+        {
+            AstName astName = globals.globalNames.names->get(name);
+            LUAU_ASSERT(astName.value);
+
+            globals.globalTypeFunctionScope->bindings[astName] = globals.globalScope->bindings[astName];
+        }
     }
 
     LoadDefinitionFileResult typeFunctionLoadResult = frontend.loadDefinitionFile(
@@ -724,7 +772,16 @@ bool MagicFormat::infer(const MagicFunctionCallContext& context)
     size_t numExpectedParams = expected.size() + 1; // + 1 for the format string
 
     if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
-        context.solver->reportError(TypeError{context.callSite->location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
+    {
+        if (FFlag::LuauCyclicRequireTypeInference)
+            context.solver->reportError(
+                CountMismatch{numExpectedParams, std::nullopt, numActualParams}, context.callSite->location, *context.constraint->moduleName
+            );
+        else
+            context.solver->DEPRECATED_reportError(
+                TypeError{context.callSite->location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}}
+            );
+    }
 
     // This is invoked at solve time, so we just need to provide a type for the result of :/.format
     TypePackId resultPack = arena->addTypePack({context.solver->builtinTypes->stringType});
@@ -1333,7 +1390,12 @@ bool MagicSelect::infer(const MagicFunctionCallContext& context)
 {
     if (context.callSite->args.size <= 0)
     {
-        context.solver->reportError(TypeError{context.callSite->location, GenericError{"select should take 1 or more arguments"}});
+        if (FFlag::LuauCyclicRequireTypeInference)
+            context.solver->reportError(
+                GenericError{"select should take 1 or more arguments"}, context.callSite->location, *context.constraint->moduleName
+            );
+        else
+            context.solver->DEPRECATED_reportError(TypeError{context.callSite->location, GenericError{"select should take 1 or more arguments"}});
         return false;
     }
 
@@ -1631,7 +1693,10 @@ bool MagicClone::infer(const MagicFunctionCallContext& context)
     const auto& [paramTypes, paramTail] = flatten(context.arguments);
     if (paramTypes.empty() || context.callSite->args.size == 0)
     {
-        context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
+        if (FFlag::LuauCyclicRequireTypeInference)
+            context.solver->reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation, *context.constraint->moduleName);
+        else
+            context.solver->DEPRECATED_reportError(CountMismatch{1, std::nullopt, 0}, context.callSite->argLocation);
         return false;
     }
 
@@ -1850,7 +1915,7 @@ std::optional<WithPredicate<TypePackId>> MagicRequire::handleOldSolver(
     return std::nullopt;
 }
 
-static bool checkRequirePathDcr(NotNull<ConstraintSolver> solver, AstExpr* expr)
+static bool checkRequirePathNewSolver(NotNull<ConstraintSolver> solver, AstExpr* expr, const ModuleName& moduleName)
 {
     // require(foo.parent.bar) will technically work, but it depends on legacy goop that
     // Luau does not and could not support without a bunch of work.  It's deprecated anyway, so
@@ -1862,7 +1927,30 @@ static bool checkRequirePathDcr(NotNull<ConstraintSolver> solver, AstExpr* expr)
     {
         if (indexExpr->index == "parent")
         {
-            solver->reportError(DeprecatedApiUsed{"parent", "Parent"}, indexExpr->indexLocation);
+            solver->reportError(DeprecatedApiUsed{"parent", "Parent"}, indexExpr->indexLocation, moduleName);
+            good = false;
+        }
+
+        indexExpr = indexExpr->expr->as<AstExprIndexName>();
+    }
+
+    return good;
+}
+
+// Clip with LuauCyclicRequireTypeInference
+static bool DEPRECATED_checkRequirePathDcr(NotNull<ConstraintSolver> solver, AstExpr* expr)
+{
+    // require(foo.parent.bar) will technically work, but it depends on legacy goop that
+    // Luau does not and could not support without a bunch of work.  It's deprecated anyway, so
+    // we'll warn here if we see it.
+    bool good = true;
+    AstExprIndexName* indexExpr = expr->as<AstExprIndexName>();
+
+    while (indexExpr)
+    {
+        if (indexExpr->index == "parent")
+        {
+            solver->DEPRECATED_reportError(DeprecatedApiUsed{"parent", "Parent"}, indexExpr->indexLocation);
             good = false;
         }
 
@@ -1876,16 +1964,31 @@ bool MagicRequire::infer(const MagicFunctionCallContext& context)
 {
     if (context.callSite->args.size != 1)
     {
-        context.solver->reportError(GenericError{"require takes 1 argument"}, context.callSite->location);
+        if (FFlag::LuauCyclicRequireTypeInference)
+            context.solver->reportError(GenericError{"require takes 1 argument"}, context.callSite->location, *context.constraint->moduleName);
+        else
+            context.solver->DEPRECATED_reportError(GenericError{"require takes 1 argument"}, context.callSite->location);
         return false;
     }
 
-    if (!checkRequirePathDcr(context.solver, context.callSite->args.data[0]))
-        return false;
-
-    if (auto moduleInfo = context.solver->moduleResolver->resolveModuleInfo(context.solver->module->name, *context.callSite))
+    if (FFlag::LuauCyclicRequireTypeInference)
     {
-        TypeId moduleType = context.solver->resolveModule(*moduleInfo, context.callSite->location);
+        if (!checkRequirePathNewSolver(context.solver, context.callSite->args.data[0], *context.constraint->moduleName))
+            return false;
+    }
+    else
+    {
+        if (!DEPRECATED_checkRequirePathDcr(context.solver, context.callSite->args.data[0]))
+            return false;
+    }
+
+    const ModuleName& resolveFrom = FFlag::LuauCyclicRequireTypeInference ? *context.constraint->moduleName : context.solver->module->name;
+
+    if (auto moduleInfo = context.solver->moduleResolver->resolveModuleInfo(resolveFrom, *context.callSite))
+    {
+        TypeId moduleType = FFlag::LuauCyclicRequireTypeInference
+                                ? context.solver->resolveModule(*moduleInfo, context.callSite->location, *context.constraint->moduleName)
+                                : context.solver->DEPRECATED_resolveModule(*moduleInfo, context.callSite->location);
         TypePackId moduleResult = context.solver->arena->addTypePack({moduleType});
         asMutable(context.result)->ty.emplace<BoundTypePack>(moduleResult);
 

@@ -15,7 +15,7 @@ namespace Luau
 namespace Compile
 {
 
-Builtin getBuiltin(AstExpr* node, const DenseHashMap<AstName, Global>& globals, const DenseHashMap<AstLocal*, Variable>& variables)
+Builtin getBuiltin(AstExpr* node, const DenseHashMap2<AstName, Global>& globals, const DenseHashMap2<AstLocal*, Variable>& variables)
 {
     if (AstExprLocal* expr = node->as<AstExprLocal>())
     {
@@ -388,19 +388,19 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
 
 struct BuiltinVisitor : AstVisitor
 {
-    DenseHashMap<AstExprCall*, int>& result;
+    DenseHashMap2<AstExprCall*, int>& result;
     std::array<bool, 256> builtinIsDisabled;
 
-    const DenseHashMap<AstName, Global>& globals;
-    const DenseHashMap<AstLocal*, Variable>& variables;
+    const DenseHashMap2<AstName, Global>& globals;
+    const DenseHashMap2<AstLocal*, Variable>& variables;
 
     const CompileOptions& options;
     const AstNameTable& names;
 
     BuiltinVisitor(
-        DenseHashMap<AstExprCall*, int>& result,
-        const DenseHashMap<AstName, Global>& globals,
-        const DenseHashMap<AstLocal*, Variable>& variables,
+        DenseHashMap2<AstExprCall*, int>& result,
+        const DenseHashMap2<AstName, Global>& globals,
+        const DenseHashMap2<AstLocal*, Variable>& variables,
         const CompileOptions& options,
         const AstNameTable& names
     )
@@ -466,9 +466,9 @@ struct BuiltinVisitor : AstVisitor
 };
 
 void analyzeBuiltins(
-    DenseHashMap<AstExprCall*, int>& result,
-    const DenseHashMap<AstName, Global>& globals,
-    const DenseHashMap<AstLocal*, Variable>& variables,
+    DenseHashMap2<AstExprCall*, int>& result,
+    const DenseHashMap2<AstName, Global>& globals,
+    const DenseHashMap2<AstLocal*, Variable>& variables,
     const CompileOptions& options,
     AstNode* root,
     const AstNameTable& names

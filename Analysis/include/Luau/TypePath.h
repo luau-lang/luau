@@ -1,14 +1,16 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/NotNull.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/Variant.h"
 
+#include <cstddef>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Luau
@@ -238,11 +240,70 @@ using Path = TypePath::Path;
 /// terribly clear to end users of the Luau type system.
 std::string toString(const TypePath::Path& path, bool prefixDot = false);
 
-/// Converts a Path to a human readable string for error reporting.
-std::string toStringHuman(const TypePath::Path& path);
+struct RenderedTypePath
+{
+    /// A noun phrase identifying the type at the end of the path.
+    std::string subject;
+    /// A phrase that introduces the type at the end of the path.
+    std::string prefix;
+    /// The negation containing the type at the end of the path, when the path ends by selecting a negated type.
+    std::optional<TypeId> enclosingNegation;
+};
 
-std::optional<TypeOrPack> traverse(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
-std::optional<TypeOrPack> traverse(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
+struct TypePathRenderMetadata
+{
+    struct ReturnTypePackInfo
+    {
+        TypePackId typePack;
+        bool isSingular;
+    };
+
+    /// Return type packs selected by path component position and whether they contain a single element.
+    DenseHashMap2<size_t, ReturnTypePackInfo> returnTypePacks;
+
+    /// The negation containing the type at the end of the path, when the path ends by selecting a negated type.
+    std::optional<TypeId> enclosingNegation;
+};
+
+/// Returns rendering options for a path rooted at a type.
+TypePathRenderMetadata deriveRenderMetadata(TypeId root, const TypePath::Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
+
+/// Returns rendering options for a path rooted at a type pack.
+TypePathRenderMetadata deriveRenderMetadata(
+    TypePackId root,
+    const TypePath::Path& path,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena
+);
+
+/// Converts a Path into phrases that can be composed into an error message.
+RenderedTypePath renderTypePath(const TypePath::Path& path, const TypePathRenderMetadata& options = {});
+
+/// Converts a Path to a human readable string for error reporting.
+///
+/// Remove with FFlag::LuauNewTypePathErrorMessages
+std::string toStringHuman_DEPRECATED(const TypePath::Path& path);
+
+/// Remove with FFlag::LuauNewTypePathErrorMessages
+std::optional<TypeOrPack> traverse_DEPRECATED(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
+
+/// Remove with FFlag::LuauNewTypePathErrorMessages
+std::optional<TypeOrPack> traverse_DEPRECATED(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena);
+
+std::optional<TypeOrPack> traverse(
+    TypePackId root,
+    const Path& path,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena,
+    TypePathRenderMetadata* renderMetadata
+);
+std::optional<TypeOrPack> traverse(
+    TypeId root,
+    const Path& path,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena,
+    TypePathRenderMetadata* renderMetadata
+);
 
 /// Traverses a path from a type to its end point, which must be a type.
 /// @param root the entry point of the traversal

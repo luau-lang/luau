@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h" // Used for some of the enumerations
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/NotNull.h"
 #include "Luau/Variant.h"
 #include "Luau/TypeFwd.h"
@@ -51,9 +51,9 @@ struct GeneralizationConstraint
     TypeId generalizedType;
     TypeId sourceType;
 
-    std::vector<TypeId> interiorTypes;
-    bool hasDeprecatedAttribute = false;
-    AstAttr::DeprecatedInfo deprecatedInfo;
+    /// Potentially null pointer to a deprecated attribute. Used to attach
+    /// deprecation info to the generalized function type.
+    AstAttr* maybeDeprecatedAttr;
 
     /// If true, never introduce generics.  Always replace free types by their
     /// bounds or unknown. Presently used only to generalize the whole module.
@@ -68,7 +68,7 @@ struct IterableConstraint
     std::vector<TypeId> variables;
 
     const AstNode* nextAstFragment;
-    DenseHashMap<const AstNode*, TypeId>* astForInNextTypes;
+    DenseHashMap2<const AstNode*, TypeId>* astForInNextTypes;
 };
 
 // name(namedType) = name
@@ -103,9 +103,11 @@ struct FunctionCallConstraint
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> typePackArguments;
 
+    DenseHashMap2<const AstExpr*, TypeId>* astTypes = nullptr;
+
     // When we dispatch this constraint, we update the key at this map to record
     // the overload that we selected.
-    DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes = nullptr;
+    DenseHashMap2<const AstNode*, TypeId>* astOverloadResolvedTypes = nullptr;
 };
 
 // function_check fn argsPack
@@ -120,8 +122,8 @@ struct FunctionCheckConstraint
     TypePackId argsPack;
 
     class AstExprCall* callSite = nullptr;
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
+    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes;
+    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes;
 };
 
 // prim FreeType ExpectedType PrimitiveType
@@ -312,8 +314,8 @@ struct PushTypeConstraint
 {
     TypeId expectedType;
     TypeId targetType;
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
+    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes;
+    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes;
     NotNull<const AstExpr> expr;
 };
 
@@ -343,6 +345,7 @@ using ConstraintV = Variant<
 struct Constraint
 {
     Constraint(NotNull<Scope> scope, const Location& location, ConstraintV&& c);
+    Constraint(NotNull<Scope> scope, const Location& location, ConstraintV&& c, std::shared_ptr<ModuleName> moduleName);
 
     Constraint(const Constraint&) = delete;
     Constraint& operator=(const Constraint&) = delete;
@@ -350,6 +353,7 @@ struct Constraint
     NotNull<Scope> scope;
     Location location;
     ConstraintV c;
+    std::shared_ptr<ModuleName> moduleName;
 
     /**
      * Return the types and type packs that may be mutated by this constraint.
