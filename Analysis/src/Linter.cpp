@@ -3541,8 +3541,8 @@ private:
             if (const auto* call = cond->as<AstExprCall>())
                 if (const auto* func = call->func->as<AstExprIndexName>())
                     if (const auto* global = func->expr->as<AstExprGlobal>())
-                        if (strcmp(global->name.value, "bit32") == 0)
-                            if (strcmp(func->index.value, "band") == 0)
+                        if (global->name == "bit32")
+                            if (func->index == "band")
                                 *msg = *negated ? "(not bit32.band(X, Y)) is always false; did you mean (not bit32.btest(X, Y))?" :
                                 "(bit32.band(X, Y)) is always true; did you mean (bit32.btest(X, Y))?";
             return false;
@@ -3621,7 +3621,7 @@ private:
         const char * msg;
         bool negated;
         if (const auto* global = node->func->as<AstExprGlobal>())
-            if (strcmp(global->name.value, "assert") == 0)
+            if (global->name == "assert")
                 if (node->args.size >= 1)
                     if (!checkCondition(node->args.data[0], &msg, &negated))
                         emitWarning(*context, LintWarning::Code_MisleadingCondition, node->location, "%s", msg);
