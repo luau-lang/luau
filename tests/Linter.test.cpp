@@ -18,7 +18,7 @@ TEST_CASE_FIXTURE(Fixture, "CleanCode")
 {
     LintResult result = lint(R"(
 function fib(n)
-    return n < 2 and true or fib(n-1) + fib(n-2)
+    return n < 2 and 1 or fib(n-1) + fib(n-2)
 end
 
 )");
@@ -2332,11 +2332,10 @@ return foo, moo, a1, a2
 TEST_CASE_FIXTURE(Fixture, "MisleadingAndOr")
 {
     LintResult result = lint(R"(
---!nolint MisleadingCondition
 _ = math.random() < 0.5 and true or 42
 _ = math.random() < 0.5 and false or 42 -- misleading
 _ = math.random() < 0.5 and nil or 42 -- misleading
-_ = math.random() < 0.5 and 0 or 42 -- fails MisleadingCondition
+_ = math.random() < 0.5 and 0 or 42
 _ = (math.random() < 0.5 and false) or 42 -- currently ignored
 )");
 
