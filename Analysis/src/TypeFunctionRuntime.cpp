@@ -498,6 +498,16 @@ static int createBoolean(lua_State* L)
     return 1;
 }
 
+// Luau: `type.integer`
+// Returns the type instance representing boolean
+static int createInteger(lua_State* L)
+{
+    if(!FFlag::IntegerType2) return 0;
+    allocTypeUserData(L, TypeFunctionPrimitiveType{TypeFunctionPrimitiveType::Integer});
+
+    return 1;
+}
+
 // Luau: `type.number`
 // Returns the type instance representing number
 static int createNumber(lua_State* L)
@@ -1917,6 +1927,7 @@ void registerTypesLibrary(lua_State* L)
         {"never", createNever},
         {"any", createAny},
         {"boolean", createBoolean},
+        {"integer", createInteger}
         {"number", createNumber},
         {"string", createString},
         {"thread", createThread},
