@@ -1927,7 +1927,7 @@ void registerTypesLibrary(lua_State* L)
         {"never", createNever},
         {"any", createAny},
         {"boolean", createBoolean},
-        {"integer", createInteger}
+        {"integer", createInteger},
         {"number", createNumber},
         {"string", createString},
         {"thread", createThread},
