@@ -141,7 +141,7 @@ void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLev
 
 struct SkipCacheForType final : TypeOnceVisitor
 {
-    SkipCacheForType(const DenseHashMap<TypeId, bool>& skipCacheForType, const TypeArena* typeArena)
+    SkipCacheForType(const DenseHashMap2<TypeId, bool>& skipCacheForType, const TypeArena* typeArena)
         : TypeOnceVisitor("SkipCacheForType", /* skipBoundTypes */ false)
         , skipCacheForType(skipCacheForType)
         , typeArena(typeArena)
@@ -251,7 +251,7 @@ struct SkipCacheForType final : TypeOnceVisitor
         return false;
     }
 
-    const DenseHashMap<TypeId, bool>& skipCacheForType;
+    const DenseHashMap2<TypeId, bool>& skipCacheForType;
     const TypeArena* typeArena = nullptr;
     bool result = false;
 };
@@ -2403,7 +2403,7 @@ void Unifier::tryUnifyNegations(TypeId subTy, TypeId superTy)
         reportError(location, TypeMismatch{superTy, subTy, mismatchContext()});
 }
 
-static void queueTypePack(std::vector<TypeId>& queue, DenseHashSet<TypePackId>& seenTypePacks, Unifier& state, TypePackId a, TypePackId anyTypePack)
+static void queueTypePack(std::vector<TypeId>& queue, DenseHashSet2<TypePackId>& seenTypePacks, Unifier& state, TypePackId a, TypePackId anyTypePack)
 {
     while (true)
     {
@@ -2494,8 +2494,8 @@ void Unifier::tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool rever
 static void tryUnifyWithAny(
     std::vector<TypeId>& queue,
     Unifier& state,
-    DenseHashSet<TypeId>& seen,
-    DenseHashSet<TypePackId>& seenTypePacks,
+    DenseHashSet2<TypeId>& seen,
+    DenseHashSet2<TypePackId>& seenTypePacks,
     const TypeArena* typeArena,
     TypeId anyType,
     TypePackId anyTypePack
@@ -2640,7 +2640,7 @@ bool Unifier::occursCheck(TypeId needle, TypeId haystack, bool reversed)
     return occurs;
 }
 
-bool Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack)
+bool Unifier::occursCheck(DenseHashSet2<TypeId>& seen, TypeId needle, TypeId haystack)
 {
     RecursionLimiter _ra("Unifier::occursCheck", &sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
@@ -2700,7 +2700,7 @@ bool Unifier::occursCheck(TypePackId needle, TypePackId haystack, bool reversed)
     return occurs;
 }
 
-bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack)
+bool Unifier::occursCheck(DenseHashSet2<TypePackId>& seen, TypePackId needle, TypePackId haystack)
 {
     needle = log.follow(needle);
     haystack = log.follow(haystack);

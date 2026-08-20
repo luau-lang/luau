@@ -236,6 +236,13 @@ struct ModuleHasCyclicDependency
     bool operator==(const ModuleHasCyclicDependency& rhs) const;
 };
 
+struct CyclicModuleGraphTooLarge
+{
+    size_t moduleCount;
+    std::vector<ModuleName> members;
+    bool operator==(const CyclicModuleGraphTooLarge& rhs) const;
+};
+
 struct FunctionExitsWithoutReturning
 {
     TypePackId expectedReturnType;
@@ -628,6 +635,7 @@ using TypeErrorData = Variant<
     ExtraInformation,
     DeprecatedApiUsed,
     ModuleHasCyclicDependency,
+    CyclicModuleGraphTooLarge,
     IllegalRequire,
     FunctionExitsWithoutReturning,
     DuplicateGenericParameter,

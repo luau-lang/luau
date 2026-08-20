@@ -12,7 +12,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauSolverV2)
-LUAU_FASTFLAGVARIABLE(LuauInstantiationUsesPolarity)
 
 namespace Luau
 {
@@ -187,30 +186,19 @@ std::optional<TypeId> instantiate(
     if (ft->generics.empty() && ft->genericPacks.empty())
         return ty;
 
-    DenseHashMap<TypeId, TypeId> replacements{nullptr};
-    DenseHashMap<TypePackId, TypePackId> replacementPacks{nullptr};
+    DenseHashMap2<TypeId, TypeId> replacements;
+    DenseHashMap2<TypePackId, TypePackId> replacementPacks;
 
-    if (FFlag::LuauInstantiationUsesPolarity)
+    for (TypeId g : ft->generics)
     {
-        for (TypeId g : ft->generics)
-        {
-            if (auto gen = get<GenericType>(follow(g)))
-                replacements[g] = freshType(arena, builtinTypes, scope, gen->polarity);
-        }
-
-        for (TypePackId g : ft->genericPacks)
-        {
-            if (auto gen = get<GenericTypePack>(follow(g)))
-                replacementPacks[g] = arena->freshTypePack(scope, gen->polarity);
-        }
+        if (auto gen = get<GenericType>(follow(g)))
+            replacements[g] = freshType(arena, builtinTypes, scope, gen->polarity);
     }
-    else
-    {
-        for (TypeId g : ft->generics)
-            replacements[g] = freshType(arena, builtinTypes, scope);
 
-        for (TypePackId g : ft->genericPacks)
-            replacementPacks[g] = arena->freshTypePack(scope);
+    for (TypePackId g : ft->genericPacks)
+    {
+        if (auto gen = get<GenericTypePack>(follow(g)))
+            replacementPacks[g] = arena->freshTypePack(scope, gen->polarity);
     }
 
     Replacer r{arena, NotNull{&replacements}, NotNull{&replacementPacks}};

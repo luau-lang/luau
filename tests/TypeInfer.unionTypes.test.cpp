@@ -11,6 +11,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauSubtypeUnionsTogether)
 LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -532,14 +533,24 @@ end
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK_EQ(
-            toString(result.errors[0]),
-            "Expected this to be '{ w: number }', but got 'X | Y | Z'; \n"
-            "this is because \n\t"
-            " * the 1st component of the union is `X`, which is not a subtype of `{ w: number }`\n\t"
-            " * the 2nd component of the union is `Y`, which is not a subtype of `{ w: number }`\n\t"
-            " * the 3rd component of the union is `Z`, which is not a subtype of `{ w: number }`"
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK_EQ(
+                toString(result.errors[0]),
+                "Expected this to be '{ w: number }', but got 'X | Y | Z'; \n"
+                "this is because \n\t"
+                " * `X` is not a subtype of `{ w: number }`\n\t"
+                " * `Y` is not a subtype of `{ w: number }`\n\t"
+                " * `Z` is not a subtype of `{ w: number }`"
+            );
+        else
+            CHECK_EQ(
+                toString(result.errors[0]),
+                "Expected this to be '{ w: number }', but got 'X | Y | Z'; \n"
+                "this is because \n\t"
+                " * the 1st component of the union is `X`, which is not a subtype of `{ w: number }`\n\t"
+                " * the 2nd component of the union is `Y`, which is not a subtype of `{ w: number }`\n\t"
+                " * the 3rd component of the union is `Z`, which is not a subtype of `{ w: number }`"
+            );
     }
     else
     {

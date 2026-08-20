@@ -31,7 +31,8 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(DebugLuauCyclicRequireTypeInference)
+LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+LUAU_FASTFLAGVARIABLE(LuauFragmentACEnableTypeFunctionEvaluation)
 
 namespace Luau
 {
@@ -378,7 +379,7 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
     std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(stale, cursorPos);
     LUAU_ASSERT(ancestry.size() >= 1);
     // We should only pick up locals that are before the region
-    DenseHashMap<AstName, AstLocal*> localMap{AstName()};
+    DenseHashMap2<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
 
     for (AstNode* node : ancestry)
@@ -655,9 +656,9 @@ struct UsageFinder : public AstVisitor
     }
 
     NotNull<DataFlowGraph> dfg;
-    DenseHashSet<Name> declaredAliases{""};
+    DenseHashSet2<Name> declaredAliases;
     std::vector<std::pair<const Def*, AstLocal*>> localBindingsReferenced;
-    DenseHashSet<const Def*> mentionedDefs{nullptr};
+    DenseHashSet2<const Def*> mentionedDefs;
     std::vector<Name> referencedBindings{""};
     std::vector<std::pair<Name, Name>> referencedImportedBindings{{"", ""}};
     std::vector<std::pair<AstName, const Def*>> globalDefsToPrePopulate;
@@ -812,7 +813,7 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse_DEPRECATED(AstSt
     std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(root, cursorPos);
     // Should always contain the root AstStat
     LUAU_ASSERT(ancestry.size() >= 1);
-    DenseHashMap<AstName, AstLocal*> localMap{AstName()};
+    DenseHashMap2<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
     AstStat* nearestStatement = nullptr;
     for (AstNode* node : ancestry)
@@ -1165,7 +1166,7 @@ FragmentTypeCheckResult typecheckFragment_(
         frontend.builtinTypes, NotNull{incrementalModule->internalTypes.get()}, NotNull{&normalizer}, NotNull{&typeFunctionRuntime}, iceHandler
     };
 
-    typeFunctionRuntime.allowEvaluation = false;
+    typeFunctionRuntime.allowEvaluation = FFlag::LuauFragmentACEnableTypeFunctionEvaluation;
 
     /// Create a DataFlowGraph just for the surrounding context
     DataFlowGraph dfg = DataFlowGraphBuilder::build(root, NotNull{&incrementalModule->defArena}, NotNull{&incrementalModule->keyArena}, iceHandler);
@@ -1240,8 +1241,8 @@ FragmentTypeCheckResult typecheckFragment_(
         NotNull{&normalizer},
         NotNull{&typeFunctionRuntime},
         NotNull(cg.rootScope),
-        borrowConstraints(FFlag::DebugLuauCyclicRequireTypeInference ? cg.cgraph->constraints : cg.constraints),
-        NotNull{FFlag::DebugLuauCyclicRequireTypeInference ? &cg.cgraph->scopeToFunction : &cg.scopeToFunction},
+        borrowConstraints(FFlag::LuauCyclicRequireTypeInference ? cg.cgraph->constraints : cg.constraints),
+        NotNull{FFlag::LuauCyclicRequireTypeInference ? &cg.cgraph->scopeToFunction : &cg.scopeToFunction},
         incrementalModule,
         NotNull{&resolver},
         {},

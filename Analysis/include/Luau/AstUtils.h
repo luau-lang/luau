@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/NotNull.h"
 #include "Luau/TypeFwd.h"
 
@@ -24,17 +24,17 @@ std::optional<TypeGuard> matchTypeGuard(AstExprBinary::Op op, AstExpr* left, Ast
 
 // Search through the expression 'expr' for typeArguments that are known to represent
 // uniquely held references. Append these typeArguments to 'uniqueTypes'.
-void findUniqueTypes(NotNull<DenseHashSet<TypeId>> uniqueTypes, AstExpr* expr, NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes);
+void findUniqueTypes(NotNull<DenseHashSet2<TypeId>> uniqueTypes, AstExpr* expr, NotNull<const DenseHashMap2<const AstExpr*, TypeId>> astTypes);
 
 void findUniqueTypes(
-    NotNull<DenseHashSet<TypeId>> uniqueTypes,
+    NotNull<DenseHashSet2<TypeId>> uniqueTypes,
     AstArray<AstExpr*> exprs,
-    NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes
+    NotNull<const DenseHashMap2<const AstExpr*, TypeId>> astTypes
 );
 void findUniqueTypes(
-    NotNull<DenseHashSet<TypeId>> uniqueTypes,
+    NotNull<DenseHashSet2<TypeId>> uniqueTypes,
     const std::vector<AstExpr*>& exprs,
-    NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes
+    NotNull<const DenseHashMap2<const AstExpr*, TypeId>> astTypes
 );
 
 } // namespace Luau

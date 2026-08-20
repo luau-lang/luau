@@ -1,9 +1,7 @@
-local M = ...
 local b = require("./cyclic_b")
-M.value = "a_value"
-M.b = b
+export local value = "a_value"
+export local bRef = b
 -- Safe to read b.value here because b is fully loaded by call time.
-function M.getB()
+export function getB()
     return b.value
 end
-return M
