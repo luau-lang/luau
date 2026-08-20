@@ -539,7 +539,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
     }
 }
 
-static void foldInterpString(Constant& result, AstExprInterpString* expr, DenseHashMap<AstExpr*, Constant>& constants, AstNameTable& stringTable)
+static void foldInterpString(Constant& result, AstExprInterpString* expr, DenseHashMap2<AstExpr*, Constant>& constants, AstNameTable& stringTable)
 {
     LUAU_ASSERT(expr->strings.size == expr->expressions.size + 1);
     size_t resultLength = 0;
@@ -588,11 +588,11 @@ static void foldInterpString(Constant& result, AstExprInterpString* expr, DenseH
 // Pass to detect which tables are mutated or 'escape'
 struct TableMutationTracker : AstVisitor
 {
-    const DenseHashMap<AstLocal*, Variable>& variables;
+    const DenseHashMap2<AstLocal*, Variable>& variables;
 
-    DenseHashSet<AstLocal*> escaped{nullptr};
+    DenseHashSet2<AstLocal*> escaped;
 
-    TableMutationTracker(const DenseHashMap<AstLocal*, Variable>& variables)
+    TableMutationTracker(const DenseHashMap2<AstLocal*, Variable>& variables)
         : variables(variables)
     {
     }
@@ -741,37 +741,37 @@ struct TableMutationTracker : AstVisitor
 
 struct ConstantVisitor : AstVisitor
 {
-    DenseHashMap<AstExpr*, Constant>& constants;
-    DenseHashMap<AstLocal*, Variable>& variables;
-    DenseHashMap<AstLocal*, Constant>& locals;
+    DenseHashMap2<AstExpr*, Constant>& constants;
+    DenseHashMap2<AstLocal*, Variable>& variables;
+    DenseHashMap2<AstLocal*, Constant>& locals;
 
-    const DenseHashMap<AstExprCall*, int>* builtins;
+    const DenseHashMap2<AstExprCall*, int>* builtins;
     bool foldLibraryK = false;
     bool vectorDoublePrecision;
     LibraryMemberConstantCallback libraryMemberConstantCb;
     AstNameTable& stringTable;
-    std::vector<DenseHashMap<AstName, Constant>> constantTables;
+    std::vector<DenseHashMap2<AstName, Constant>> constantTables;
 
     bool wasEmpty = false;
 
     std::vector<Constant> builtinArgs;
 
-    const DenseHashMap<AstLocal*, TableConstantKind>& constantTableLocals;
-    DenseHashMap<AstLocal*, Constant> tableLocals{nullptr};
+    const DenseHashMap2<AstLocal*, TableConstantKind>& constantTableLocals;
+    DenseHashMap2<AstLocal*, Constant> tableLocals;
 
     ExprConstantChangeLog* exprChangeLog = nullptr;
     LocalConstantChangeLog* localChangeLog = nullptr;
 
     ConstantVisitor(
-        DenseHashMap<AstExpr*, Constant>& constants,
-        DenseHashMap<AstLocal*, Variable>& variables,
-        DenseHashMap<AstLocal*, Constant>& locals,
-        const DenseHashMap<AstExprCall*, int>* builtins,
+        DenseHashMap2<AstExpr*, Constant>& constants,
+        DenseHashMap2<AstLocal*, Variable>& variables,
+        DenseHashMap2<AstLocal*, Constant>& locals,
+        const DenseHashMap2<AstExprCall*, int>* builtins,
         bool foldLibraryK,
         bool vectorDoublePrecision,
         LibraryMemberConstantCallback libraryMemberConstantCb,
         AstNameTable& stringTable,
-        const DenseHashMap<AstLocal*, TableConstantKind>& constantTableLocals,
+        const DenseHashMap2<AstLocal*, TableConstantKind>& constantTableLocals,
         ExprConstantChangeLog* exprChangeLog = nullptr,
         LocalConstantChangeLog* localChangeLog = nullptr
     )
@@ -886,7 +886,7 @@ struct ConstantVisitor : AstVisitor
                 LUAU_ASSERT(value.valueTable < constantTables.size());
                 if (value.valueTable < constantTables.size())
                 {
-                    const DenseHashMap<AstName, Constant>& props = constantTables[value.valueTable];
+                    const DenseHashMap2<AstName, Constant>& props = constantTables[value.valueTable];
                     if (const Constant* prop = props.find(expr->index))
                         result = *prop;
                 }
@@ -977,7 +977,7 @@ struct ConstantVisitor : AstVisitor
                 LUAU_ASSERT(tableVal.valueTable < constantTables.size());
                 if (tableVal.valueTable < constantTables.size() && indexVal.stringLength != 0)
                 {
-                    const DenseHashMap<AstName, Constant>& props = constantTables[tableVal.valueTable];
+                    const DenseHashMap2<AstName, Constant>& props = constantTables[tableVal.valueTable];
                     AstName indexName = stringTable.getOrAdd(indexVal.valueString, indexVal.stringLength);
                     if (const Constant* prop = props.find(std::move(indexName)))
                         result = *prop;
@@ -992,7 +992,7 @@ struct ConstantVisitor : AstVisitor
         else if (AstExprTable* expr = node->as<AstExprTable>())
         {
             // If expr is a constant table, update result to be a table constant, and insert it into constantTables
-            DenseHashMap<AstName, Constant> props{AstName()};
+            DenseHashMap2<AstName, Constant> props;
             for (size_t i = 0; i < expr->items.size; ++i)
             {
                 const AstExprTable::Item& item = expr->items.data[i];
@@ -1077,7 +1077,7 @@ struct ConstantVisitor : AstVisitor
     }
 
     template<typename T>
-    void recordConstant(DenseHashMap<T, Constant>& map, T key, const Constant& value)
+    void recordConstant(DenseHashMap2<T, Constant>& map, T key, const Constant& value)
     {
         if (value.type == Constant::Type_Table)
         {
@@ -1099,7 +1099,7 @@ struct ConstantVisitor : AstVisitor
         }
     }
 
-    void logChange(DenseHashMap<AstExpr*, Constant>& map, AstExpr* key, const Constant* existing = nullptr)
+    void logChange(DenseHashMap2<AstExpr*, Constant>& map, AstExpr* key, const Constant* existing = nullptr)
     {
         if (!exprChangeLog)
             return;
@@ -1108,7 +1108,7 @@ struct ConstantVisitor : AstVisitor
         exprChangeLog->push_back({key, old ? *old : Constant{}, old == nullptr});
     }
 
-    void logChange(DenseHashMap<AstLocal*, Constant>& map, AstLocal* key, const Constant* existing = nullptr)
+    void logChange(DenseHashMap2<AstLocal*, Constant>& map, AstLocal* key, const Constant* existing = nullptr)
     {
         if (!localChangeLog)
             return;
@@ -1198,7 +1198,7 @@ struct ConstantVisitor : AstVisitor
     }
 };
 
-void buildTableConstantMap(DenseHashMap<AstLocal*, TableConstantKind>& result, const DenseHashMap<AstLocal*, Variable>& variables, AstNode* root)
+void buildTableConstantMap(DenseHashMap2<AstLocal*, TableConstantKind>& result, const DenseHashMap2<AstLocal*, Variable>& variables, AstNode* root)
 {
     TableMutationTracker tracker{variables};
     root->visit(&tracker);
@@ -1216,7 +1216,7 @@ void buildTableConstantMap(DenseHashMap<AstLocal*, TableConstantKind>& result, c
     }
 }
 
-void undoChanges(DenseHashMap<AstExpr*, Constant>& constants, const ExprConstantChangeLog& changes)
+void undoChanges(DenseHashMap2<AstExpr*, Constant>& constants, const ExprConstantChangeLog& changes)
 {
     for (auto it = changes.rbegin(); it != changes.rend(); ++it)
     {
@@ -1232,7 +1232,7 @@ void undoChanges(DenseHashMap<AstExpr*, Constant>& constants, const ExprConstant
     }
 }
 
-void undoChanges(DenseHashMap<AstLocal*, Constant>& locals, const LocalConstantChangeLog& changes)
+void undoChanges(DenseHashMap2<AstLocal*, Constant>& locals, const LocalConstantChangeLog& changes)
 {
     for (auto it = changes.rbegin(); it != changes.rend(); ++it)
     {
@@ -1249,16 +1249,16 @@ void undoChanges(DenseHashMap<AstLocal*, Constant>& locals, const LocalConstantC
 }
 
 void foldConstants(
-    DenseHashMap<AstExpr*, Constant>& constants,
-    DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstLocal*, Constant>& locals,
-    const DenseHashMap<AstExprCall*, int>* builtins,
+    DenseHashMap2<AstExpr*, Constant>& constants,
+    DenseHashMap2<AstLocal*, Variable>& variables,
+    DenseHashMap2<AstLocal*, Constant>& locals,
+    const DenseHashMap2<AstExprCall*, int>* builtins,
     bool foldLibraryK,
     bool vectorDoublePrecision,
     LibraryMemberConstantCallback libraryMemberConstantCb,
     AstNode* root,
     AstNameTable& stringTable,
-    const DenseHashMap<AstLocal*, TableConstantKind>& tableConstants,
+    const DenseHashMap2<AstLocal*, TableConstantKind>& tableConstants,
     ExprConstantChangeLog* exprChangeLog,
     LocalConstantChangeLog* localChangeLog
 )

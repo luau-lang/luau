@@ -25,9 +25,11 @@ struct TempTValueBacking
     std::vector<TValue*> chunks;
     size_t chunkSize = kDefaultBackingSize;
     size_t countInChunk = 0;
+    uint8_t memcat;
 
     explicit TempTValueBacking(lua_State* L)
         : L(L)
+        , memcat(L->activememcat)
     {
         allocateChunk();
     }
@@ -41,7 +43,7 @@ struct TempTValueBacking
     ~TempTValueBacking() noexcept
     {
         for (TValue* chunk : chunks)
-            luaM_freearray(L, chunk, chunkSize, TValue, 0);
+            luaM_freearray(L, chunk, chunkSize, TValue, memcat);
     }
 
     TValue* nextTValue()
@@ -55,7 +57,7 @@ struct TempTValueBacking
 private:
     void allocateChunk()
     {
-        TValue* chunk = luaM_newarray(L, chunkSize, TValue, L->activememcat);
+        TValue* chunk = luaM_newarray(L, chunkSize, TValue, memcat);
         chunks.push_back(chunk);
         countInChunk = 0;
     }

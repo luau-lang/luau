@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Set.h"
 #include "Luau/SubtypingVariance.h"
 #include "Luau/TypeCheckLimits.h"
@@ -40,8 +40,8 @@ struct SubtypingReasoning
     // The path, relative to the _root supertype_, where subtyping failed.
     Path superPath;
     SubtypingVariance variance = SubtypingVariance::Covariant;
-    // Set when the failure is due to a property modifier mismatch (e.g. the
-    // sub property is read-only or write-only but the super property requires
+    // Set when the failure is due to a property or indexer modifier mismatch
+    // (e.g. the subtype member is read-only but the supertype member requires
     // read-write). In this case the leaf types at the path ends are the same,
     // so a plain "X is not a subtype of X" message would be misleading.
     bool isPropertyModifierViolation = false;
@@ -54,7 +54,7 @@ struct SubtypingReasoningHash
     size_t operator()(const SubtypingReasoning& r) const;
 };
 
-using SubtypingReasonings = DenseHashSet<SubtypingReasoning, SubtypingReasoningHash>;
+using SubtypingReasonings = DenseHashSet2<SubtypingReasoning, SubtypingReasoningHash>;
 inline const SubtypingReasoning kEmptyReasoning = SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invalid};
 
 /*
@@ -71,11 +71,11 @@ struct MappedGenericEnvironment
 {
     struct MappedGenericFrame
     {
-        DenseHashMap<TypePackId, std::optional<TypePackId>> mappings;
+        DenseHashMap2<TypePackId, std::optional<TypePackId>> mappings;
         std::optional<size_t> parentScopeIndex; // nullopt if this is the root frame
-        DenseHashSet<size_t> children{0};
+        DenseHashSet2<size_t> children;
 
-        MappedGenericFrame(DenseHashMap<TypePackId, std::optional<TypePackId>> mappings, std::optional<size_t> parentScopeIndex);
+        MappedGenericFrame(DenseHashMap2<TypePackId, std::optional<TypePackId>> mappings, std::optional<size_t> parentScopeIndex);
     };
 
     std::vector<MappedGenericFrame> frames;
@@ -122,7 +122,7 @@ struct SubtypingResult
     ErrorVec errors;
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
-    SubtypingReasonings reasoning{kEmptyReasoning};
+    SubtypingReasonings reasoning;
 
     // If this subtype result required testing free types, we might be making
     // assumptions about what the free type eventually resolves to.  If so,
@@ -185,7 +185,7 @@ struct SubtypingEnvironment
      * vector of bounds, since generics may be shadowed by nested types. The back
      * of each vector represents the current scope.
      */
-    DenseHashMap<TypeId, std::vector<GenericBounds>> mappedGenerics{nullptr};
+    DenseHashMap2<TypeId, std::vector<GenericBounds>> mappedGenerics;
 
     MappedGenericEnvironment mappedGenericPacks;
 
@@ -195,13 +195,13 @@ struct SubtypingEnvironment
      *
      * An empty value is equivalent to a nonexistent key.
      */
-    DenseHashMap<TypeId, TypeId> substitutions{nullptr};
+    DenseHashMap2<TypeId, TypeId> substitutions;
 
     // We use this cache to track pairs of subtypes that we tried to subtype, and found them to be in the seen set at the time.
     // In those situations, we return True, but mark the result as not cacheable, because we don't want to cache broader results which
     // led to the seen pair. However, those results were previously being cache in the ephemeralCache, and we still want to cache them somewhere
     // for performance reasons.
-    DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> seenSetCache{{}};
+    DenseHashMap2<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> seenSetCache;
 
     int iterationCount = 0;
 };
@@ -220,13 +220,13 @@ struct Subtyping
 
     // If a type is known to have a single unique reference, then we can perform
     // a covariant test where an invariant test would otherwise be required.
-    const DenseHashSet<TypeId>* uniqueTypes = nullptr;
+    const DenseHashSet2<TypeId>* uniqueTypes = nullptr;
 
     using SeenSet = Set<std::pair<TypeId, TypeId>, TypePairHash>;
     using SeenTypePackSet = Set<std::pair<TypePackId, TypePackId>, TypePairHash>;
 
-    SeenSet seenTypes{{}};
-    SeenTypePackSet seenPacks{{}};
+    SeenSet seenTypes;
+    SeenTypePackSet seenPacks;
 
     Subtyping(
         NotNull<BuiltinTypes> builtinTypes,
@@ -243,7 +243,7 @@ struct Subtyping
     Subtyping& operator=(Subtyping&&) = default;
 
     // Only used by unit tests to test that the cache works.
-    const DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash>& peekCache() const
+    const DenseHashMap2<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash>& peekCache() const
     {
         return resultCache;
     }
@@ -263,7 +263,7 @@ struct Subtyping
     );
 
 private:
-    DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> resultCache{{}};
+    DenseHashMap2<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> resultCache;
 
     SubtypingResult cache(SubtypingEnvironment& env, SubtypingResult res, TypeId subTy, TypeId superTy);
 

@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Common.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/NotNull.h"
 #include "Luau/Polarity.h"
 #include "Luau/TypeFwd.h"

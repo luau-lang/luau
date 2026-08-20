@@ -56,7 +56,7 @@ struct Comment
     Location location;
 };
 
-using CstNodeMap = DenseHashMap<AstNode*, CstNode*>;
+using CstNodeMap = DenseHashMap2<AstNode*, CstNode*>;
 
 struct ParseResult
 {
@@ -68,7 +68,7 @@ struct ParseResult
 
     std::vector<Comment> commentLocations;
 
-    CstNodeMap cstNodeMap{nullptr};
+    CstNodeMap cstNodeMap;
 };
 
 template<typename Node>
@@ -82,7 +82,7 @@ struct ParseNodeResult
 
     std::vector<Comment> commentLocations;
 
-    CstNodeMap cstNodeMap{nullptr};
+    CstNodeMap cstNodeMap;
 };
 
 inline constexpr const char* kParseNameError = "%error-id%";

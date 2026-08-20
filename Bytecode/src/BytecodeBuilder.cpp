@@ -10,9 +10,12 @@
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauVirtualBcBuilder)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
+LUAU_FLAGVERSION(LuauBytecodeCostModel, 2)
+LUAU_FASTFLAGVARIABLE(LuauCompileEmitVectorDouble)
+LUAU_FLAGVERSION(LuauCompileEmitVectorDouble, 2)
 
 namespace Luau
 {
@@ -177,11 +180,7 @@ size_t BytecodeBuilder::TableShapeHash::operator()(const TableShape& v) const
 }
 
 BytecodeBuilder::BytecodeBuilder(BytecodeEncoder* encoder)
-    : constantMap({Constant::Type_Nil, ~0ull})
-    , tableShapeMap(TableShape())
-    , protoMap(~0u)
-    , stringTable({nullptr, 0})
-    , encoder(encoder)
+    : encoder(encoder)
 {
     LUAU_ASSERT(stringTable.find(StringRef{"", 0}) == nullptr);
 
@@ -760,7 +759,7 @@ void BytecodeBuilder::finalize()
 
     // assemble final bytecode blob
     uint8_t version = getVersion();
-    LUAU_ASSERT(version >= LBC_VERSION_MIN && version <= LBC_VERSION_MAX);
+    LUAU_ASSERT((version >= LBC_VERSION_MIN && version <= LBC_VERSION_MAX) || version == LBC_VERSION_CLASSES);
 
     bytecode = char(version);
 
@@ -789,7 +788,7 @@ void BytecodeBuilder::finalize()
 
     for (const Function& func : functions)
     {
-        if (FFlag::LuauBytecodeCostModel)
+        if (FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::DebugLuauUserDefinedClasses)
             writeVarInt(bytecode, func.data.size());
         bytecode += func.data;
     }
@@ -891,11 +890,22 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
             break;
 
         case Constant::Type_Vectord:
-            writeByte(ss, LBC_CONSTANT_VECTORD);
-            writeDouble(ss, c.valueVectord[0]);
-            writeDouble(ss, c.valueVectord[1]);
-            writeDouble(ss, c.valueVectord[2]);
-            writeDouble(ss, c.valueVectord[3]);
+            if (FFlag::LuauCompileEmitVectorDouble)
+            {
+                writeByte(ss, LBC_CONSTANT_VECTORD);
+                writeDouble(ss, c.valueVectord[0]);
+                writeDouble(ss, c.valueVectord[1]);
+                writeDouble(ss, c.valueVectord[2]);
+                writeDouble(ss, c.valueVectord[3]);
+            }
+            else
+            {
+                writeByte(ss, LBC_CONSTANT_VECTOR);
+                writeFloat(ss, float(c.valueVectord[0]));
+                writeFloat(ss, float(c.valueVectord[1]));
+                writeFloat(ss, float(c.valueVectord[2]));
+                writeFloat(ss, float(c.valueVectord[3]));
+            }
             break;
 
         case Constant::Type_String:
@@ -1015,11 +1025,13 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
             writeVarInt(ss, pc);
         }
     }
-
-    if (FFlag::LuauBytecodeCostModel && (flags & LPF_INLINABLE) != 0)
+    else if (FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::DebugLuauUserDefinedClasses)
     {
-        if (!FFlag::LuauEmitCallFeedback)
-            writeVarInt(ss, 0);
+        writeVarInt(ss, 0); // Empty feedback vector
+    }
+
+    if ((FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::DebugLuauUserDefinedClasses) && (flags & LPF_INLINABLE) != 0)
+    {
         writeVarInt(ss, cost);
     }
 }
@@ -1461,13 +1473,16 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
+    if (FFlag::DebugLuauUserDefinedClasses)
+        return LBC_VERSION_CLASSES;
+
+    if (FFlag::LuauCompileEmitVectorDouble)
+        return 13;
     if (FFlag::LuauBytecodeCostModel)
         return 12;
+
     if (FFlag::LuauEmitCallFeedback)
         return 11;
-
-    if (FFlag::DebugLuauUserDefinedClasses)
-        return 10;
 
     return LBC_VERSION_TARGET;
 }
@@ -1941,13 +1956,25 @@ void BytecodeBuilder::validateInstructions() const
             VREG(LUAU_INSN_A(insn));
             VREG(LUAU_INSN_B(insn));
             VCONST(LUAU_INSN_AUX_KV16(insns[i + 1]), String);
-            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALL);
+            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALL || LUAU_INSN_OP(insns[i + 2]) == LOP_CALLFB);
             break;
 
         case LOP_CMPPROTO:
             VREG(LUAU_INSN_A(insn));
             VJUMP(LUAU_INSN_D(insn));
             break;
+
+        case LOP_NEWCLASS:
+        {
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+            VREG(LUAU_INSN_A(insn));
+            uint8_t super = LUAU_INSN_B(insn);
+            LUAU_ASSERT(super == 0xff || (unsigned(super) < func.maxstacksize));
+            uint8_t flags = LUAU_INSN_C(insn);
+            LUAU_ASSERT(flags == 0 || flags == 1);
+            VCONST(insns[i + 1], ClassShape);
+        }
+        break;
 
         default:
             LUAU_ASSERT(!"Unsupported opcode");
@@ -2131,13 +2158,31 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k, bool detailed) co
             formatAppend(result, "%.9g, %.9g, %.9g, %.9g", data.valueVectorf[0], data.valueVectorf[1], data.valueVectorf[2], data.valueVectorf[3]);
         break;
     case Constant::Type_Vectord:
-        // 3-vectors is the most common configuration, so truncate to three components if possible
-        if (data.valueVectord[3] == 0.0)
-            formatAppend(result, "%.17g, %.17g, %.17g", data.valueVectord[0], data.valueVectord[1], data.valueVectord[2]);
+        if (FFlag::LuauCompileEmitVectorDouble)
+        {
+            // 3-vectors is the most common configuration, so truncate to three components if possible
+            if (data.valueVectord[3] == 0.0)
+                formatAppend(result, "%.17g, %.17g, %.17g", data.valueVectord[0], data.valueVectord[1], data.valueVectord[2]);
+            else
+                formatAppend(
+                    result, "%.17g, %.17g, %.17g, %.17g", data.valueVectord[0], data.valueVectord[1], data.valueVectord[2], data.valueVectord[3]
+                );
+        }
         else
-            formatAppend(
-                result, "%.17g, %.17g, %.17g, %.17g", data.valueVectord[0], data.valueVectord[1], data.valueVectord[2], data.valueVectord[3]
-            );
+        {
+            // 3-vectors is the most common configuration, so truncate to three components if possible
+            if (data.valueVectord[3] == 0.0f)
+                formatAppend(result, "%.9g, %.9g, %.9g", float(data.valueVectord[0]), float(data.valueVectord[1]), float(data.valueVectord[2]));
+            else
+                formatAppend(
+                    result,
+                    "%.9g, %.9g, %.9g, %.9g",
+                    float(data.valueVectord[0]),
+                    float(data.valueVectord[1]),
+                    float(data.valueVectord[2]),
+                    float(data.valueVectord[3])
+                );
+        }
         break;
     case Constant::Type_String:
     {
@@ -2265,8 +2310,18 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k, bool detailed) co
     {
         const Function& func = functions[data.valueClosure];
 
-        if (!func.dumpname.empty())
-            formatAppend(result, "'%s'", func.dumpname.c_str());
+        if (detailed)
+        {
+            if (!func.dumpname.empty())
+                formatAppend(result, "function %s", func.dumpname.c_str());
+            else
+                formatAppend(result, "function");
+        }
+        else
+        {
+            if (!func.dumpname.empty())
+                formatAppend(result, "'%s'", func.dumpname.c_str());
+        }
         break;
     }
     case Constant::Type_ClassShape:
@@ -2279,6 +2334,32 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k, bool detailed) co
         // valid Luau identifier!
         LUAU_ASSERT(printableStringConstant(str.data, str.length));
         formatAppend(result, "class %.*s (props: %zu, methods: %zu)", int(str.length), str.data, cs.propertyNames.size(), cs.methodNames.size());
+
+        if (detailed)
+        {
+            if (!cs.propertyNames.empty())
+            {
+                formatAppend(result, "\n  props:");
+                for (size_t i = 0; i < cs.propertyNames.size(); ++i)
+                {
+                    formatAppend(result, "\n    K%d [", cs.propertyNames[i]);
+                    dumpConstant(result, cs.propertyNames[i], false);
+                    result.append("]");
+                }
+            }
+
+            if (!cs.methodNames.empty())
+            {
+                formatAppend(result, "\n  methods:");
+                for (size_t i = 0; i < cs.methodNames.size(); ++i)
+                {
+                    formatAppend(result, "\n    K%d [", cs.methodNames[i]);
+                    dumpConstant(result, cs.methodNames[i], false);
+                    result.append("]");
+                }
+            }
+        }
+        break;
     }
     }
 }
@@ -2717,6 +2798,17 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
 
     case LOP_CMPPROTO:
         formatAppend(result, "CMPPROTO R%d #%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        break;
+
+    case LOP_NEWCLASS:
+        if (LUAU_INSN_B(insn) == 0xff)
+            formatAppend(result, "NEWCLASS R%d no_base K%d %d [", LUAU_INSN_A(insn), *code, LUAU_INSN_C(insn));
+        else
+            formatAppend(result, "NEWCLASS R%d R%d K%d %d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code, LUAU_INSN_C(insn));
+
+        dumpConstant(result, *code, false);
+        result.append("]\n");
+        code++;
         break;
 
     default:

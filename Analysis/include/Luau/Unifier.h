@@ -56,7 +56,7 @@ struct Widen : Substitution
  * so it is perfectly safe for the function to mutate the table any way it
  * wishes.
  */
-using LiteralProperties = DenseHashSet<Name>;
+using LiteralProperties = DenseHashSet2<Name>;
 
 // TODO: Use this more widely.
 struct UnifierOptions
@@ -167,9 +167,9 @@ private:
 public:
     // Returns true if the type "needle" already occurs within "haystack" and reports an "infinite type error"
     bool occursCheck(TypeId needle, TypeId haystack, bool reversed);
-    bool occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
+    bool occursCheck(DenseHashSet2<TypeId>& seen, TypeId needle, TypeId haystack);
     bool occursCheck(TypePackId needle, TypePackId haystack, bool reversed);
-    bool occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
+    bool occursCheck(DenseHashSet2<TypePackId>& seen, TypePackId needle, TypePackId haystack);
 
     std::unique_ptr<Unifier> makeChildUnifier();
 

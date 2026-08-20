@@ -60,7 +60,7 @@ enum TableConstantKind
     NotConstant
 };
 
-void buildTableConstantMap(DenseHashMap<AstLocal*, TableConstantKind>& result, const DenseHashMap<AstLocal*, Variable>& variables, AstNode* root);
+void buildTableConstantMap(DenseHashMap2<AstLocal*, TableConstantKind>& result, const DenseHashMap2<AstLocal*, Variable>& variables, AstNode* root);
 
 struct ExprConstantChange
 {
@@ -79,20 +79,20 @@ struct LocalConstantChange
 using ExprConstantChangeLog = std::vector<ExprConstantChange>;
 using LocalConstantChangeLog = std::vector<LocalConstantChange>;
 
-void undoChanges(DenseHashMap<AstExpr*, Constant>& constants, const ExprConstantChangeLog& changes);
-void undoChanges(DenseHashMap<AstLocal*, Constant>& locals, const LocalConstantChangeLog& changes);
+void undoChanges(DenseHashMap2<AstExpr*, Constant>& constants, const ExprConstantChangeLog& changes);
+void undoChanges(DenseHashMap2<AstLocal*, Constant>& locals, const LocalConstantChangeLog& changes);
 
 void foldConstants(
-    DenseHashMap<AstExpr*, Constant>& constants,
-    DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstLocal*, Constant>& locals,
-    const DenseHashMap<AstExprCall*, int>* builtins,
+    DenseHashMap2<AstExpr*, Constant>& constants,
+    DenseHashMap2<AstLocal*, Variable>& variables,
+    DenseHashMap2<AstLocal*, Constant>& locals,
+    const DenseHashMap2<AstExprCall*, int>* builtins,
     bool foldLibraryK,
     bool vectorDoublePrecision,
     LibraryMemberConstantCallback libraryMemberConstantCb,
     AstNode* root,
     AstNameTable& stringTable,
-    const DenseHashMap<AstLocal*, TableConstantKind>& tableConstants,
+    const DenseHashMap2<AstLocal*, TableConstantKind>& tableConstants,
     ExprConstantChangeLog* exprChangeLog = nullptr,
     LocalConstantChangeLog* localChangeLog = nullptr
 );

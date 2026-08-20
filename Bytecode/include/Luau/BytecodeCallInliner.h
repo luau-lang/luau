@@ -3,7 +3,7 @@
 
 #include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeOps.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -39,7 +39,7 @@ struct CallInliner
     // memoizes target-phi -> caller-phi so a target phi referenced both in a block's phi list and as
     // another phi's operand maps to a single caller phi. Without this, the operand reference would get
     // its own unanchored duplicate that SCCP never visits (it only visits phis listed in a block)
-    DenseHashMap<BcOp, BcOp, BcOpHash> mappedPhis{BcOp()};
+    DenseHashMap2<BcOp, BcOp, BcOpHash> mappedPhis;
 
     CallInliner(BcFunction<VmConst>& caller, BcFunction<VmConst>& target, BcOp callOp, uint32_t callerFbVecSize)
         : caller(caller)
@@ -364,12 +364,6 @@ struct CallInliner
             for (auto& e : targetBlock.predecessors)
                 callerBlock.predecessors.push_back({e.kind, mapBlockOp(e.target)});
 
-            for (auto phiOp : targetBlock.phis)
-            {
-                BcOp callerPhiOp = mapToCallerOp(phiOp);
-                callerBlock.phis.push_back(callerPhiOp);
-            }
-
             for (auto op : targetBlock.ops)
             {
                 BcInst& inst = target.instOp(op);
@@ -382,7 +376,7 @@ struct CallInliner
                     if (!replaceReturn(nextBlock, callerBlockOp, op))
                         return false;
                 }
-                else
+                else if (inst.op != LOP_PREPVARARGS)
                 {
                     BcOp callerInstOp = mapInstOp(op);
                     callerBlock.appendInstruction(callerInstOp);
@@ -466,7 +460,9 @@ struct CallInliner
 
     Reg mapToCallerReg(Reg reg)
     {
-        return targetReg + 1 + (target.is_vararg ? static_cast<uint8_t>(callParams.size()) : 0) + reg;
+        Reg callerReg = targetReg + 1 + (target.is_vararg ? static_cast<uint8_t>(callParams.size()) : 0) + reg;
+        LUAU_ASSERT(callerReg < caller.maxstacksize);
+        return callerReg;
     }
 
     bool isMultiConsumer(BcFunction<VmConst>& graph, BcRef<BcInst>& inst)
@@ -493,7 +489,11 @@ struct CallInliner
         case LOP_SETLIST:
         {
             auto setList = BcSetList<VmConst>::from(graph, inst);
-            setList.setCount(static_cast<uint32_t>(setList.params().size()));
+            uint32_t count = static_cast<uint32_t>(setList.params().size());
+            if (count == 0)
+                setList.detach();
+            else
+                setList.setCount(count);
             break;
         }
         case LOP_RETURN:
@@ -527,6 +527,25 @@ struct CallInliner
         return inst->op == LOP_GETVARARGS;
     }
 
+    void migrateBlockPhis()
+    {
+        // This pass cannot be joined with migrateBlocks.
+        // The reason is phi can refer GETVARARGS instruction's projection.
+        // mapToCallerOp tries to map it to corresponding MOVE or LOADNIL,
+        // but they are only materialized during migrateBlocks pass.
+        for (uint32_t i = 0; i < target.blocks.size(); i++)
+        {
+            BcBlock& targetBlock = target.blocks[i];
+            BcBlock& callerBlock = caller.blocks[callerBlocksSizeBeforeInline + i];
+
+            for (auto phiOp : targetBlock.phis)
+            {
+                BcOp callerPhiOp = mapToCallerOp(phiOp);
+                callerBlock.phis.push_back(callerPhiOp);
+            }
+        }
+    }
+
     void migrateInstructions()
     {
         for (uint32_t i = 0; i < target.instructions.size(); i++)
@@ -536,7 +555,7 @@ struct CallInliner
             BcRef<BcInst> targetInst = target.inst(targetInsnOp);
             BcRef<BcInst> callerInst = caller.inst(callerInsnOp);
 
-            if (targetInst->op == LOP_RETURN || targetInst->op == LOP_GETVARARGS)
+            if (targetInst->op == LOP_RETURN || targetInst->op == LOP_GETVARARGS || targetInst->op == LOP_PREPVARARGS)
                 continue;
 
             callerInst->op = targetInst->op;
@@ -574,7 +593,11 @@ struct CallInliner
                 // Feedback slots are concatenated in optimized version: caller's slots + target's slots.
                 // So all target's slot should be increased by caller's slots count.
                 BcCallFB<VmConst> fbcall = BcCallFB<VmConst>::from(caller, callerInst);
-                fbcall.setFbSlot(fbcall.FbSlot() + callerFbVecSize);
+
+                // do not migrate sealed fbcalls
+                if (fbcall.FbSlot() != -1)
+                    fbcall.setFbSlot(fbcall.FbSlot() + callerFbVecSize);
+
                 break;
             }
             default:
@@ -610,13 +633,6 @@ struct CallInliner
         for (uint32_t i = 0; i < caller.phis.size(); i++)
             if (std::find(returnOps.begin(), returnOps.end(), BcOp{BcOpKind::Phi, i}) == returnOps.end())
                 replaceCallUsagesInOps(BcOp{BcOpKind::Phi, i}, caller.phis[i].ops);
-    }
-
-    void dropPrepVarArgsInInlinedPath()
-    {
-        BcRef<BcBlock> inlinedEntryBlock = caller.block(mapBlockOp(target.entryBlock));
-        if (inlinedEntryBlock->ops.size() > 0 && caller.instOp(inlinedEntryBlock->ops.front()).op == LOP_PREPVARARGS)
-            inlinedEntryBlock->ops.pop_front();
     }
 
     void allocateGraphEntitiesForTarget()
@@ -662,7 +678,8 @@ struct CallInliner
         uint32_t newMaxStackSize = static_cast<uint32_t>(caller.maxstacksize) + static_cast<uint32_t>(target.maxstacksize);
 
         if (target.is_vararg)
-            newMaxStackSize += uint32_t(callParams.size());
+            // If there are less call arguments than target.numparams it will be filled with nils.
+            newMaxStackSize += std::max(uint8_t(callParams.size()), target.numparams);
 
         if (newMaxStackSize >= kMaxInlinerCombinedStackSize)
             return false;
@@ -721,6 +738,8 @@ struct CallInliner
         setFallthrough(prevBlock->successors, callerInlinedEntry.op);
         setFallthrough(callerInlinedEntry->predecessors, prevBlock.op);
 
+        migrateBlockPhis();
+
         migrateInstructions();
 
         replaceCallUsagesWithReturnPhis();
@@ -728,8 +747,6 @@ struct CallInliner
         for (BcOp retOp : returnOps)
             if (retOp.kind == BcOpKind::Phi)
                 nextBlock->phis.push_back(retOp);
-
-        dropPrepVarArgsInInlinedPath();
 
         LUAU_ASSERT(validate());
 

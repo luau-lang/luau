@@ -132,7 +132,7 @@ LUAU_FLAGVERSION(LuauBackedgeHeapCheck, 2)
         VM_DISPATCH_OP(LOP_FASTCALL2), VM_DISPATCH_OP(LOP_FASTCALL2K), VM_DISPATCH_OP(LOP_FORGPREP), VM_DISPATCH_OP(LOP_JUMPXEQKNIL), \
         VM_DISPATCH_OP(LOP_JUMPXEQKB), VM_DISPATCH_OP(LOP_JUMPXEQKN), VM_DISPATCH_OP(LOP_JUMPXEQKS), VM_DISPATCH_OP(LOP_IDIV), \
         VM_DISPATCH_OP(LOP_IDIVK), VM_DISPATCH_OP(LOP_GETUDATAKS), VM_DISPATCH_OP(LOP_SETUDATAKS), VM_DISPATCH_OP(LOP_NAMECALLUDATA), \
-        VM_DISPATCH_OP(LOP_NEWCLASSMEMBER), VM_DISPATCH_OP(LOP_CALLFB), VM_DISPATCH_OP(LOP_CMPPROTO),
+        VM_DISPATCH_OP(LOP_NEWCLASSMEMBER), VM_DISPATCH_OP(LOP_CALLFB), VM_DISPATCH_OP(LOP_CMPPROTO), VM_DISPATCH_OP(LOP_NEWCLASS),
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VM_USE_CGOTO 1
@@ -3697,6 +3697,37 @@ reentry:
                     pc += LUAU_INSN_D(insn) - 1;
 
                 VM_ASSERT_PC(pc);
+                VM_NEXT();
+            }
+
+            VM_CASE(LOP_NEWCLASS)
+            {
+                VM_CASE_INSTRUCTION insn = *pc++;
+                VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
+                uint8_t super = LUAU_INSN_B(insn);
+
+                // Load unreified class object from constant table using offset in aux
+                uint32_t aux = *pc++;
+                TValue* kv = VM_KV(aux);
+
+                setobj2s(L, ra, kv);
+
+                LuauClass* newcls = classvalue(ra);
+                newcls->isopen = (LUAU_INSN_C(insn) & 0x1u) != 0; // bottom bit of C is the isopen flag
+
+                if (super != 0xff)
+                {
+                    VM_PROTECT_PC();
+
+                    VM_CASE_STKID rb = VM_REG(super);
+
+                    if (LUAU_UNLIKELY(!ttisclass(rb)))
+                        luaG_typeerror(L, rb, "extend");
+
+                    LuauClass* inherited = luaR_inheritclass(L, newcls, classvalue(rb));
+                    setclassvalue(L, ra, inherited);
+                }
+
                 VM_NEXT();
             }
 

@@ -1,6 +1,6 @@
 local module = require("./export_class")
 
-local myPoint = module.Point {x = 1, y = 2}
+local myPoint = module.Point.new({x = 1, y = 2})
 
 assert(class.isinstance(myPoint, module.Point), "expected myPoint to be an instance of module.Point")
 assert(myPoint:getX() == 1, "expected myPoint.x to be 1")
@@ -11,7 +11,7 @@ myPoint:setX(3)
 assert(myPoint:getX() == 3, "expected myPoint.x to be 3")
 assert(myPoint:getY() == 2, "expected myPoint.y to be 2")
 
-local myPoint2 = module.Point {x = 1, y = 2}
+local myPoint2 = module.Point.new({x = 1, y = 2})
 
 assert(class.isinstance(myPoint2, module.Point), "expected myPoint2 to be an instance of module.Point")
 assert(myPoint2:getX() == 1, "expected myPoint2.x to be 1")

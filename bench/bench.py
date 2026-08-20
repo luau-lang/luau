@@ -700,6 +700,53 @@ def graph():
     if arguments.window:
         plt.show()
 
+def computeGeomean(vmIndex):
+    """Compute per-iteration geometric means across all benchmarks for a given VM index.
+
+    Returns (TestResult, None) on success, (None, errorString) on failure."""
+    if len(allResults) == 0:
+        return None, None
+
+    # Gather the values arrays for the given VM index across all benchmarks
+    valuesPerBenchmark = []
+    for resultSet in allResults:
+        if vmIndex >= len(resultSet):
+            continue
+        result = resultSet[vmIndex]
+        if result.min is None or len(result.values) == 0:
+            continue
+        valuesPerBenchmark.append(result.values)
+
+    if len(valuesPerBenchmark) == 0:
+        return None, None
+
+    # All benchmarks must have the same iteration count
+    n = len(valuesPerBenchmark[0])
+    for values in valuesPerBenchmark:
+        if len(values) != n:
+            counts = sorted(set(len(v) for v in valuesPerBenchmark))
+            return None, "inconsistent iteration counts ({})".format(", ".join(str(c) for c in counts))
+
+    # Compute per-iteration geometric means
+    geomeanValues = []
+    numBenchmarks = len(valuesPerBenchmark)
+    for k in range(n):
+        product = 1.0
+        for values in valuesPerBenchmark:
+            product *= values[k]
+        geomeanValues.append(product ** (1.0 / numBenchmarks))
+
+    geomeanResult = TestResult()
+    geomeanResult.filename = "<geomean>"
+    geomeanResult.vm = allResults[0][vmIndex].vm if vmIndex < len(allResults[0]) else ""
+    geomeanResult.shortVm = allResults[0][vmIndex].shortVm if vmIndex < len(allResults[0]) else ""
+    geomeanResult.name = "Geomean"
+    geomeanResult.values = geomeanValues
+    geomeanResult.count = len(geomeanValues)
+
+    finalizeResult(geomeanResult)
+    return geomeanResult, None
+
 def addTotalsToTable():
     if len(vmTotalMin) == 0:
         return
@@ -740,6 +787,73 @@ def addTotalsToTable():
             'Average': '{:8.3f}ms'.format(vmTotalAverage[0]),
             'StdDev%': "---",
             'Driver': getShortVmName(os.path.abspath(arguments.vm))
+        })
+
+def addGeomeanToTable():
+    mainGeomean, mainError = computeGeomean(0)
+    if mainGeomean is None and mainError is None:
+        return
+
+    if mainError is not None:
+        if arguments.vmNext != None:
+            resultPrinter.add_row({
+                'Test': 'Geomean',
+                'Min': "",
+                'Average': colored(Color.RED, mainError),
+                'StdDev%': "",
+                'Driver': getShortVmName(os.path.abspath(arguments.vm)),
+                'Speedup': "",
+                'Significance': "",
+                'P(T<=t)': ""
+            })
+        else:
+            resultPrinter.add_row({
+                'Test': 'Geomean',
+                'Min': "",
+                'Average': colored(Color.RED, mainError),
+                'StdDev%': "",
+                'Driver': getShortVmName(os.path.abspath(arguments.vm))
+            })
+        return
+
+    if arguments.vmNext != None:
+        resultPrinter.add_row({
+            'Test': 'Geomean',
+            'Min': '{:8.3f}ms'.format(mainGeomean.min),
+            'Average': '{:8.3f}ms'.format(mainGeomean.avg),
+            'StdDev%': '{:8.3f}%'.format(mainGeomean.sampleConfidenceInterval / mainGeomean.avg * 100),
+            'Driver': mainGeomean.shortVm,
+            'Speedup': "",
+            'Significance': "",
+            'P(T<=t)': ""
+        })
+
+        index = 0
+        for compareVm in arguments.vmNext:
+            index = index + 1
+            compareGeomean, compareError = computeGeomean(index)
+            if compareGeomean is None:
+                continue
+
+            speedup = mainGeomean.avg / compareGeomean.avg * 100 - 100
+
+            resultPrinter.add_row({
+                'Test': 'Geomean',
+                'Min': '{:8.3f}ms'.format(compareGeomean.min),
+                'Average': '{:8.3f}ms'.format(compareGeomean.avg),
+                'StdDev%': '{:8.3f}%'.format(compareGeomean.sampleConfidenceInterval / compareGeomean.avg * 100),
+                'Driver': compareGeomean.shortVm,
+                'Speedup': colored(Color.RED if speedup < 0 else Color.GREEN if speedup > 0 else Color.YELLOW, '{:8.3f}%'.format(speedup)),
+                'Significance': "",
+                'P(T<=t)': ""
+            })
+    else:
+        resultPrinter.add_row({
+            'Test': 'Geomean',
+            'Min': '{:8.3f}ms'.format(mainGeomean.min),
+            'Average': '{:8.3f}ms'.format(mainGeomean.avg),
+            'StdDev%': '{:8.3f}%'.format(mainGeomean.sampleConfidenceInterval / mainGeomean.avg * 100),
+            'Driver': mainGeomean.shortVm
         })
 
 def writeResultsToFile():
@@ -892,7 +1006,7 @@ def run(args, argsubcb, reporter_factory=None):
         all_files = [subdir + os.sep + filename for subdir, dirs, files in os.walk(arguments.folder) for filename in files]
         for filepath in sorted(all_files):
             subdir, filename = os.path.split(filepath)
-            if filename.endswith(".lua"):
+            if filename.endswith(".lua") or filename.endswith(".luau"):
                 if os.path.isfile(os.path.join(subdir, "bench_resource_directory")):
                     continue
                 if arguments.run_test == None or re.match(arguments.run_test, filename[:-4]):
@@ -909,6 +1023,7 @@ def run(args, argsubcb, reporter_factory=None):
 
     if arguments.print_final_summary:
         addTotalsToTable()
+        addGeomeanToTable()
 
         print()
         print(colored(Color.YELLOW, '==================================================RESULTS=================================================='))

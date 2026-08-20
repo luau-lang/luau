@@ -13,7 +13,7 @@
 #include "ltm.h"
 
 LUAU_FASTFLAG(LuauCodegenInteger3)
-LUAU_FASTFLAGVARIABLE(LuauCodegenBuilinDeadRange)
+LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerCompare)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 
 namespace Luau
@@ -203,6 +203,25 @@ void translateInstJumpIfEq(IrBuilder& build, const Instruction* pc, int pcpos, b
         IrOp vb = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rb));
 
         build.inst(IrCmd::JUMP_CMP_NUM, va, vb, build.cond(IrCondition::NotEqual), not_ ? target : next, not_ ? next : target);
+
+        build.beginBlock(fallback);
+    }
+    // fast-path: integer (when both operands are expected to be an integer or are unknown)
+    else if (FFlag::LuauCodegenInteger3 && FFlag::LuauCodegenIntegerCompare && isExpectedOrUnknownBytecodeType(bcTypes.a, LBC_TYPE_INTEGER) &&
+             isExpectedOrUnknownBytecodeType(bcTypes.b, LBC_TYPE_INTEGER))
+    {
+        IrOp fallback = build.fallbackBlock(pcpos);
+
+        IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
+        build.inst(IrCmd::CHECK_TAG, ta, build.constTag(LUA_TINTEGER), fallback);
+
+        IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
+        build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TINTEGER), fallback);
+
+        IrOp va = build.inst(IrCmd::LOAD_INT64, build.vmReg(ra));
+        IrOp vb = build.inst(IrCmd::LOAD_INT64, build.vmReg(rb));
+
+        build.inst(IrCmd::JUMP_CMP_INT64, va, vb, build.cond(IrCondition::NotEqual), not_ ? target : next, not_ ? next : target);
 
         build.beginBlock(fallback);
     }
@@ -1196,7 +1215,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
         if (nresults == LUA_MULTRET)
             build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(ra), build.constInt(br.actualResultCount));
         else
-            build.inst(IrCmd::MARK_DEAD, build.vmReg(ra + (FFlag::LuauCodegenBuilinDeadRange ? br.actualResultCount : 1)), build.constInt(-1));
+            build.inst(IrCmd::MARK_DEAD, build.vmReg(ra + br.actualResultCount), build.constInt(-1));
 
         if (br.type != BuiltinImplType::UsesFallback)
         {

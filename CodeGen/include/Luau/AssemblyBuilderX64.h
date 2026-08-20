@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Common.h"
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/Label.h"
 #include "Luau/LogBuilder.h"
 #include "Luau/ConditionX64.h"
@@ -49,8 +49,8 @@ enum class ABIX64
 class AssemblyBuilderX64
 {
 public:
-    explicit AssemblyBuilderX64(LogBuilder* logger, bool logText_DEPRECATED, ABIX64 abi, unsigned int features);
-    explicit AssemblyBuilderX64(LogBuilder* logger, bool logText_DEPRECATED, unsigned int features);
+    explicit AssemblyBuilderX64(LogBuilder* logger, ABIX64 abi, unsigned int features);
+    explicit AssemblyBuilderX64(LogBuilder* logger, unsigned int features);
     ~AssemblyBuilderX64();
 
     // Base two operand instructions with 9 opcode selection
@@ -224,9 +224,6 @@ public:
     OperandX64 f64x2(double x, double y);
     OperandX64 bytes(const void* ptr, size_t size, size_t align = 8);
 
-    // Make private with FFlagLuauCodegenSharedLog removal
-    void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
-
     // Code size is measured in 'code' array units - uint8_t on x64 and uint32_t on arm64
     uint32_t getCodeSize() const;
 
@@ -239,12 +236,6 @@ public:
     // The *end* of 'data' has to be aligned to 16 bytes, this will also align 'code'
     std::vector<uint8_t> data;
     std::vector<uint8_t> code;
-
-    // Remove with FFlagLuauCodegenSharedLog
-    std::string text;
-
-    // Make private with FFlagLuauCodegenSharedLog removal
-    const bool logText = false;
 
     const ABIX64 abi;
 
@@ -323,14 +314,17 @@ private:
     LUAU_NOINLINE void log(const char* opcode, RegisterX64 reg, Label label);
     void log(OperandX64 op);
 
+    void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
+
     LogBuilder* logger = nullptr;
+    const bool logText = false;
 
     uint32_t nextLabel = 1;
     std::vector<Label> pendingLabels;
     std::vector<uint32_t> labelLocations;
 
-    DenseHashMap<uint32_t, int32_t> constCache32;
-    DenseHashMap<uint64_t, int32_t> constCache64;
+    DenseHashMap2<uint32_t, int32_t> constCache32;
+    DenseHashMap2<uint64_t, int32_t> constCache64;
 
     bool finalized = false;
 

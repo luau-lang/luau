@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/OptimizeConstProp.h"
 
-#include "Luau/DenseHash.h"
+#include "Luau/DenseHash2.h"
 #include "Luau/IrData.h"
 #include "Luau/IrBuilder.h"
 #include "Luau/IrUtils.h"
@@ -23,15 +23,17 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
+LUAU_FASTFLAGVARIABLE(LuauCodegenLinearNoCall)
+LUAU_FLAGVERSION(LuauCodegenLinearNoCall, 2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSubstituteReplacements)
 LUAU_FASTFLAGVARIABLE(LuauCodegenConstVectorBufferRead)
+LUAU_FASTFLAGVARIABLE(LuauCodegenOriginVerifyMatch)
+LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateFallbackTags)
 
 namespace Luau
 {
 namespace CodeGen
 {
-
-constexpr uint8_t kUpvalueEmptyKey = 0xff;
 
 // Data we know about the register value
 struct RegisterInfo
@@ -604,14 +606,31 @@ struct ConstPropState
             if (tvalueLoad.cmd != IrCmd::LOAD_TVALUE || OP_A(tvalueLoad).kind != IrOpKind::VmReg)
                 return false;
 
-            if (vmRegOp(OP_A(tvalueLoad)) == vmRegOp(OP_A(loadInst)))
-                return false;
+            if (FFlag::LuauCodegenOriginVerifyMatch)
+            {
+                uint8_t prevLoadReg = vmRegOp(OP_A(tvalueLoad));
 
-            if (tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}) == nullptr)
-                return false;
+                if (prevLoadReg == vmRegOp(OP_A(loadInst)))
+                    return false;
 
-            replace(function, OP_A(loadInst), OP_A(tvalueLoad));
-            return true;
+                // Previous load is still linked to the same register
+                if (RegisterLink* link = tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}); link && link->reg == prevLoadReg)
+                {
+                    replace(function, OP_A(loadInst), OP_A(tvalueLoad));
+                    return true;
+                }
+            }
+            else
+            {
+                if (vmRegOp(OP_A(tvalueLoad)) == vmRegOp(OP_A(loadInst)))
+                    return false;
+
+                if (tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}) == nullptr)
+                    return false;
+
+                replace(function, OP_A(loadInst), OP_A(tvalueLoad));
+                return true;
+            }
         }
 
         return false;
@@ -1379,19 +1398,19 @@ struct ConstPropState
     bool checkedGc = false;
 
     // Stores which register does the instruction value correspond to (and at which version of the register)
-    DenseHashMap<uint32_t, RegisterLink> instLink{kInvalidInstIdx};
+    DenseHashMap2<uint32_t, RegisterLink> instLink;
 
     // Stored the tag of a TValue stored in an instruction and will never change
-    DenseHashMap<uint32_t, uint8_t> instTag{kInvalidInstIdx};
-    DenseHashMap<uint32_t, IrOp> instValue{kInvalidInstIdx};
+    DenseHashMap2<uint32_t, uint8_t> instTag;
+    DenseHashMap2<uint32_t, IrOp> instValue;
 
-    DenseHashMap<IrInst, uint32_t, IrInstHash, IrInstEq> valueMap;
+    DenseHashMap2<IrInst, uint32_t, IrInstHash, IrInstEq> valueMap;
 
     // For upvalue load-store optimizations, we just keep track of the last known value of the upvalue
-    DenseHashMap<uint8_t, uint32_t> upvalueMap{kUpvalueEmptyKey};
+    DenseHashMap2<uint8_t, uint32_t> upvalueMap;
 
     // For load-store optimizations of table elements, separate maps for hash and array parts as writes to one do not affect the other
-    DenseHashMap<uint32_t, uint32_t> hashValueCache{kInvalidInstIdx};
+    DenseHashMap2<uint32_t, uint32_t> hashValueCache;
     std::vector<ArrayValueEntry> arrayValueCache;
 
     // Some instruction re-uses can't be stored in valueMap because of extra requirements
@@ -1414,9 +1433,9 @@ struct ConstPropState
     uint32_t loadEnvIdx = kInvalidInstIdx;
 
     // Properties associated with a table contained in an SSA register pointer
-    DenseHashSet<uint32_t> instNotReadonly{kInvalidInstIdx};
-    DenseHashSet<uint32_t> instNoMetatable{kInvalidInstIdx};
-    DenseHashMap<uint32_t, int> instArraySize{kInvalidInstIdx};
+    DenseHashSet2<uint32_t> instNotReadonly;
+    DenseHashSet2<uint32_t> instNoMetatable;
+    DenseHashMap2<uint32_t, int> instArraySize;
 
     std::vector<uint32_t> rangeEndTemp;
 };
@@ -2134,6 +2153,20 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     {
         std::optional<int> valueA = function.asIntOp(OP_A(inst).kind == IrOpKind::Constant ? OP_A(inst) : state.tryGetValue(OP_A(inst)));
         std::optional<int> valueB = function.asIntOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst)));
+
+        if (valueA && valueB)
+        {
+            if (compare(*valueA, *valueB, conditionOp(OP_C(inst))))
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
+            else
+                replace(function, block, index, {IrCmd::JUMP, {OP_E(inst)}});
+        }
+        break;
+    }
+    case IrCmd::JUMP_CMP_INT64:
+    {
+        std::optional<int64_t> valueA = function.asInt64Op(OP_A(inst).kind == IrOpKind::Constant ? OP_A(inst) : state.tryGetValue(OP_A(inst)));
+        std::optional<int64_t> valueB = function.asInt64Op(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst)));
 
         if (valueA && valueB)
         {
@@ -3513,6 +3546,47 @@ static void saveBlockExitState(IrFunction& function, const IrBlock& block, Const
     function.blockExitTags[blockIdx] = std::move(tags);
 }
 
+static void snapshotFallbackEntryTags(IrFunction& function, IrInst& inst, ConstPropState& state)
+{
+    visitArguments(
+        inst,
+        [&](IrOp op)
+        {
+            if (op.kind != IrOpKind::Block)
+                return;
+
+            const IrBlock& block = function.blockOp(op);
+
+            if (block.kind != IrBlockKind::Fallback)
+                return;
+
+            uint32_t blockIdx = function.getBlockIndex(block);
+            std::vector<uint8_t>& tags = function.fallbackEntryTags[blockIdx];
+
+            if (tags.empty())
+            {
+                tags.reserve(state.maxReg + 1);
+
+                for (int i = 0; i <= state.maxReg; i++)
+                    tags.emplace_back(state.regs[i].tag);
+            }
+            else
+            {
+                // Disagreeing tags result make them unknown
+                for (int i = 0; i <= state.maxReg && i < int(tags.size()); i++)
+                {
+                    if (tags[i] != state.regs[i].tag)
+                        tags[i] = kUnknownTag;
+                }
+
+                // Tags we don't know about are unknown
+                for (int i = state.maxReg + 1; i < int(tags.size()); i++)
+                    tags[i] = kUnknownTag;
+            }
+        }
+    );
+}
+
 static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& state)
 {
     IrFunction& function = build.function;
@@ -3529,6 +3603,9 @@ static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& s
         applySubstitutions(function, inst);
 
         foldConstants(build, function, block, index);
+
+        if (FFlag::LuauCodegenPropagateFallbackTags && !isPseudo(inst.cmd))
+            snapshotFallbackEntryTags(function, inst, state);
 
         constPropInInst(state, build, function, block, inst, index);
 
@@ -3599,6 +3676,61 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
     }
 }
 
+static void constPropInFallback(IrBuilder& build, std::vector<uint8_t>& visited, IrBlock& block, ConstPropState& state)
+{
+    IrFunction& function = build.function;
+    const uint32_t blockIdx = function.getBlockIndex(block);
+
+    if (blockIdx >= function.cfg.predecessorsOffsets.size())
+        return;
+
+    // All predecessors must be visited for fallbackEntryTags info to be correct
+    for (uint32_t predIdx : predecessors(function.cfg, blockIdx))
+    {
+        if (visited[predIdx] == 0)
+            return;
+    }
+
+    CODEGEN_ASSERT(!visited[blockIdx]);
+    visited[blockIdx] = 1;
+
+    state.clear();
+
+    const std::vector<uint8_t>& tags = function.fallbackEntryTags[blockIdx];
+    const RegisterSet& in = function.cfg.in[blockIdx];
+
+    // Setup entry state for the fallback block
+    for (size_t i = 0; i < tags.size(); i++)
+    {
+        if (tags[i] != kUnknownTag)
+        {
+            // Only live in registers can have entry tags recorded
+            if (in.regs.test(i) || (in.varargSeq && i >= in.varargStart))
+                state.updateTag(build.vmReg(uint8_t(i)), tags[i]);
+        }
+    }
+
+    constPropInBlock(build, block, state);
+
+    saveBlockExitState(function, block, state);
+}
+
+static bool includeBlockInLinearPath(IrFunction& function, const IrBlock& block)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenLinearNoCall);
+
+    for (uint32_t index = block.start; index <= block.finish; index++)
+    {
+        const IrInst& inst = function.instructions[index];
+
+        // Call cannot return to the linear block upon completion, so it cannot be included in a linear path clone
+        if (inst.cmd == IrCmd::CALL)
+            return false;
+    }
+
+    return true;
+}
+
 // Note that blocks in the collected path are marked as visited
 static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, std::vector<uint8_t>& visited, IrBlock* block)
 {
@@ -3627,14 +3759,20 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
 
             if (!visited[targetIdx] && target.kind == IrBlockKind::Internal)
             {
-                // Additional restriction is that to join a block, it cannot produce values that are used in other blocks
+                // Additional restriction is that to join a block chain, it cannot produce values that are used in other blocks
                 // And it also can't use values produced in other blocks
-                auto [liveIns, liveOuts] = getLiveInOutValueCount(function, target, true);
+                auto [liveIns, liveOuts] = getLiveInOutValueCount(function, target, /* visitChain */ true);
 
                 if (liveIns == 0 && liveOuts == 0)
                 {
+                    SmallVector<uint32_t, 8> chain;
+
                     visited[targetIdx] = true;
-                    path.push_back(targetIdx);
+
+                    if (FFlag::LuauCodegenLinearNoCall)
+                        chain.push_back(targetIdx);
+                    else
+                        path.push_back(targetIdx);
 
                     nextBlock = &target;
 
@@ -3645,7 +3783,11 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
                             uint32_t nextInChainIdx = function.getBlockIndex(*nextInChain);
 
                             visited[nextInChainIdx] = true;
-                            path.push_back(nextInChainIdx);
+
+                            if (FFlag::LuauCodegenLinearNoCall)
+                                chain.push_back(nextInChainIdx);
+                            else
+                                path.push_back(nextInChainIdx);
 
                             nextBlock = nextInChain;
                         }
@@ -3653,6 +3795,24 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
                         {
                             break;
                         }
+                    }
+
+                    // Check that the block chain is valid to include in the linear path
+                    if (FFlag::LuauCodegenLinearNoCall)
+                    {
+                        bool allValidForInclusion = std::all_of(
+                            chain.begin(),
+                            chain.end(),
+                            [&](uint32_t blockIdx)
+                            {
+                                return includeBlockInLinearPath(function, function.blocks[blockIdx]);
+                            }
+                        );
+
+                        if (!allValidForInclusion)
+                            break;
+
+                        path.insert(path.end(), chain.begin(), chain.end());
                     }
                 }
             }
@@ -3793,15 +3953,28 @@ void constPropInBlockChains(IrBuilder& build)
 
     function.blockExitTags.resize(function.blocks.size());
 
+    if (FFlag::LuauCodegenPropagateFallbackTags)
+        function.fallbackEntryTags.resize(function.blocks.size());
+
     for (IrBlock& block : function.blocks)
     {
-        if (block.kind == IrBlockKind::Fallback || block.kind == IrBlockKind::Dead)
+        if ((!FFlag::LuauCodegenPropagateFallbackTags && block.kind == IrBlockKind::Fallback) || block.kind == IrBlockKind::Dead)
             continue;
 
         if (visited[function.getBlockIndex(block)])
             continue;
 
-        constPropInBlockChain(build, visited, &block, state);
+        if (FFlag::LuauCodegenPropagateFallbackTags)
+        {
+            if (block.kind == IrBlockKind::Fallback)
+                constPropInFallback(build, visited, block, state);
+            else
+                constPropInBlockChain(build, visited, &block, state);
+        }
+        else
+        {
+            constPropInBlockChain(build, visited, &block, state);
+        }
     }
 }
 
