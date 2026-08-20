@@ -502,7 +502,7 @@ static int createBoolean(lua_State* L)
 // Returns the type instance representing boolean
 static int createInteger(lua_State* L)
 {
-    if(!FFlag::IntegerType2) return 0;
+    if(!FFlag::LuauIntegerType2) return 0;
     allocTypeUserData(L, TypeFunctionPrimitiveType{TypeFunctionPrimitiveType::Integer});
 
     return 1;
