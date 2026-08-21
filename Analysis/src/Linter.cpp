@@ -2,6 +2,7 @@
 #include "Luau/Linter.h"
 
 #include "Luau/AstQuery.h"
+#include "Luau/LinterConfig.h"
 #include "Luau/Module.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
@@ -13,6 +14,7 @@
 #include <climits>
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
+LUAU_FASTFLAGVARIABLE(LuauFunctionUnusedRecursiveLinting)
 
 namespace Luau
 {
@@ -712,10 +714,12 @@ private:
     struct Local
     {
         AstNode* defined = nullptr;
-        bool function;
-        bool import;
-        bool used;
-        bool arg;
+        unsigned int scopeDepth = 0;
+        bool function = false;
+        bool import = false;
+        bool usedOutsideSelf = false;
+        bool usedRecursively = false;
+        bool arg = false;
     };
 
     struct Global
@@ -735,7 +739,7 @@ private:
     {
         for (auto& l : locals)
         {
-            if (l.second.used)
+            if (l.second.usedOutsideSelf)
                 reportUsedLocal(l.first, l.second);
             else if (l.second.defined)
                 reportUnusedLocal(l.first, l.second);
@@ -793,22 +797,29 @@ private:
         if (local->name.value[0] == '_')
             return;
 
+        const char* msg;
+        LintWarning::Code warning;
+
         if (info.function)
-            emitWarning(
-                *context,
-                LintWarning::Code_FunctionUnused,
-                local->location,
-                "Function '%s' is never used; prefix with '_' to silence",
-                local->name.value
-            );
+        {
+            warning = LintWarning::Code_FunctionUnused;
+            if (info.usedRecursively)
+                msg = "Function '%s' is never used outside its own body; prefix with '_' to silence";
+            else
+                msg = "Function '%s' is never used; prefix with '_' to silence";
+        }
         else if (info.import)
-            emitWarning(
-                *context, LintWarning::Code_ImportUnused, local->location, "Import '%s' is never used; prefix with '_' to silence", local->name.value
-            );
+        {
+            warning = LintWarning::Code_ImportUnused;
+            msg = "Import '%s' is never used; prefix with '_' to silence";
+        }
         else
-            emitWarning(
-                *context, LintWarning::Code_LocalUnused, local->location, "Variable '%s' is never used; prefix with '_' to silence", local->name.value
-            );
+        {
+            warning = LintWarning::Code_LocalUnused;
+            msg = "Variable '%s' is never used; prefix with '_' to silence";
+        }
+
+        emitWarning(*context, warning, local->location, msg, local->name.value);
     }
 
     bool isRequireCall(AstExpr* expr)
@@ -871,14 +882,21 @@ private:
         l.defined = node;
         l.function = true;
 
-        return true;
+        l.scopeDepth++;
+        node->func->visit(this);
+        l.scopeDepth--;
+
+        return false;
     }
 
     bool visit(AstExprLocal* node) override
     {
         Local& l = locals[node->local];
 
-        l.used = true;
+        if (FFlag::LuauFunctionUnusedRecursiveLinting && l.function && l.scopeDepth > 0)
+            l.usedRecursively = true;
+        else
+            l.usedOutsideSelf = true;
 
         return true;
     }
@@ -915,7 +933,7 @@ private:
         AstLocal* astLocal = imports[*node->prefix];
         Local& local = locals[astLocal];
         LUAU_ASSERT(local.import);
-        local.used = true;
+        local.usedOutsideSelf = true;
 
         return true;
     }
@@ -950,9 +968,12 @@ private:
 
     struct Global
     {
-        Location location;
-        bool function;
-        bool used;
+        unsigned int scopeDepth = 0;
+        bool func = false;
+        bool usedOutsideSelf = false;
+        bool usedRecursively = false;
+
+        Location nameLocation;
     };
 
     DenseHashMap2<AstName, Global> globals;
@@ -963,39 +984,44 @@ private:
     {
         for (auto& g : globals)
         {
-            if (g.second.function && !g.second.used && g.first.value[0] != '_')
-                emitWarning(
-                    *context,
-                    LintWarning::Code_FunctionUnused,
-                    g.second.location,
-                    "Function '%s' is never used; prefix with '_' to silence",
-                    g.first.value
-                );
+            if (!g.second.func || g.second.usedOutsideSelf || g.first.value[0] == '_')
+                continue;
+
+            const char* msg;
+            if (g.second.usedRecursively)
+                msg = "Function '%s' is never used outside its own body; prefix with '_' to silence";
+            else
+                msg = "Function '%s' is never used; prefix with '_' to silence";
+
+            emitWarning(*context, LintWarning::Code_FunctionUnused, g.second.nameLocation, msg, g.first.value);
         }
     }
 
     bool visit(AstStatFunction* node) override
     {
-        if (AstExprGlobal* expr = node->name->as<AstExprGlobal>())
-        {
-            Global& g = globals[expr->name];
+        AstExprGlobal* expr = node->name->as<AstExprGlobal>();
+        if (!expr)
+            return true;
 
-            g.function = true;
-            g.location = expr->location;
+        Global& g = globals[expr->name];
+        g.func = true;
+        g.nameLocation = expr->location;
 
-            node->func->visit(this);
+        g.scopeDepth++;
+        node->func->visit(this);
+        g.scopeDepth--;
 
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     bool visit(AstExprGlobal* node) override
     {
         Global& g = globals[node->name];
 
-        g.used = true;
+        if (FFlag::LuauFunctionUnusedRecursiveLinting && g.func && g.scopeDepth > 0)
+            g.usedRecursively = true;
+        else
+            g.usedOutsideSelf = true;
 
         return true;
     }
