@@ -13,7 +13,6 @@
 #include "lgc.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenFixBufferLenCheck)
-LUAU_FASTFLAG(LuauYieldIter2)
 LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
@@ -270,6 +269,35 @@ static bool emitBuiltin(AssemblyBuilderA64& build, IrFunction& function, IrRegAl
         CODEGEN_ASSERT(!"Missing A64 lowering");
         return false;
     }
+}
+
+static void emitDispatchLuauCall(AssemblyBuilderA64& build, ModuleHelpers& helpers)
+{
+    build.ldr(x1, mem(rState, offsetof(lua_State, ci)));
+
+    // Switch current Closure
+    build.ldr(rClosure, mem(x1, offsetof(CallInfo, func)));
+    build.ldr(rClosure, mem(rClosure, offsetof(TValue, value.gc)));
+
+    if (FFlag::LuauCIProto)
+        build.ldr(x2, mem(x1, offsetof(CallInfo, p)));
+    else
+        build.ldr(x2, mem(rClosure, offsetof(Closure, l.p)));
+
+    // Switch current code and constants
+    static_assert(offsetof(Proto, code) == offsetof(Proto, k) + sizeof(Proto::k));
+    build.ldp(rConstants, rCode, mem(x2, offsetof(Proto, k)));
+
+    // Get native function entry
+    build.ldr(x3, mem(x2, offsetof(Proto, exectarget)));
+    build.cbz(x3, helpers.exitContinueVm);
+
+    // Mark call frame as native
+    build.ldr(w4, mem(x1, offsetof(CallInfo, flags)));
+    build.orr(w4, w4, LUA_CALLINFO_NATIVE);
+    build.str(w4, mem(x1, offsetof(CallInfo, flags)));
+
+    build.br(x3);
 }
 
 static uint64_t getDoubleBits(double value)
@@ -1699,6 +1727,44 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         jumpOrFallthrough(blockOp(OP_E(inst)), next);
         break;
     }
+    case IrCmd::JUMP_CMP_INT64:
+    {
+        IrCondition cond = conditionOp(OP_C(inst));
+
+        // Constant propagation can place a constant on either side and every form below compares against the right
+        // operand, so the operands are swapped and the condition inverted, like CMP_INT64 does. Equal and NotEqual
+        // are unchanged by that inversion, so the zero forms below still test the original condition.
+        IrOp lhs = OP_A(inst);
+        IrOp rhs = OP_B(inst);
+        bool swapped = lhs.kind == IrOpKind::Constant;
+
+        if (swapped)
+        {
+            lhs = OP_B(inst);
+            rhs = OP_A(inst);
+        }
+
+        if (cond == IrCondition::Equal && rhs.kind == IrOpKind::Constant && int64Op(rhs) == 0)
+        {
+            build.cbz(regOp(lhs), labelOp(OP_D(inst)));
+        }
+        else if (cond == IrCondition::NotEqual && rhs.kind == IrOpKind::Constant && int64Op(rhs) == 0)
+        {
+            build.cbnz(regOp(lhs), labelOp(OP_D(inst)));
+        }
+        else
+        {
+            if (rhs.kind == IrOpKind::Constant && uint64_t(int64Op(rhs)) <= AssemblyBuilderA64::kMaxImmediate)
+                build.cmp(regOp(lhs), uint16_t(int64Op(rhs)));
+            else
+                build.cmp(regOp(lhs), tempInt64(rhs));
+
+            ConditionA64 cc = getConditionInt64(cond);
+            build.b(swapped ? getInverseCondition(cc) : cc, labelOp(OP_D(inst)));
+        }
+        jumpOrFallthrough(blockOp(OP_E(inst)), next);
+        break;
+    }
     case IrCmd::JUMP_EQ_POINTER:
         build.cmp(regOp(OP_A(inst)), regOp(OP_B(inst)));
         build.b(ConditionA64::Equal, labelOp(OP_C(inst)));
@@ -2120,6 +2186,34 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.cmp(regOp(OP_A(inst)), uint16_t(0));
         build.b(ConditionA64::Less, labelOp(OP_B(inst)));
         break;
+
+    case IrCmd::INVOKE_FASTPCALL:
+    {
+        regs.spill(index);
+
+        // fastPcallSetup(L, ra, pfid, nparams, nresults)
+        build.mov(x0, rState);
+        build.add(x1, rBase, uint16_t(vmRegOp(OP_A(inst)) * sizeof(TValue)));
+        build.mov(w2, uintOp(OP_B(inst)));
+        build.mov(w3, intOp(OP_C(inst)));
+        build.mov(w4, intOp(OP_D(inst)));
+        build.ldr(x5, mem(rNativeContext, offsetof(NativeContext, fastPcallSetup)));
+        build.blr(x5);
+
+        emitUpdateBase(build);
+
+        Label cont;
+
+        build.cmp(w0, uint16_t(0));
+        build.b(ConditionA64::Less, cont);                        // Continue to next instruction on -1
+        build.b(ConditionA64::Greater, helpers.exitNoContinueVm); // Yield on 1
+
+        // Continue Luau call on 0
+        emitDispatchLuauCall(build, helpers);
+
+        build.setLabel(cont);
+        break;
+    }
     case IrCmd::DO_ARITH:
         regs.spill(index);
         build.mov(x0, rState);
@@ -2408,6 +2502,22 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::CHECK_SAFE_ENV:
     {
         checkSafeEnv(OP_A(inst), index, next);
+        break;
+    }
+    case IrCmd::CHECK_YIELDABLE:
+    {
+        Label fresh;
+        Label& fail = getTargetLabel(OP_A(inst), index, fresh);
+
+        RegisterA64 temp1 = regs.allocTemp(KindA64::w);
+        RegisterA64 temp2 = regs.allocTemp(KindA64::w);
+
+        build.ldrh(temp1, mem(rState, offsetof(lua_State, nCcalls)));
+        build.ldrh(temp2, mem(rState, offsetof(lua_State, baseCcalls)));
+        build.cmp(temp1, temp2);
+        build.b(ConditionA64::Greater, fail);
+
+        finalizeTargetLabel(OP_A(inst), index, fresh);
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:
@@ -2969,23 +3079,14 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.mov(x0, rState);
         build.mov(w1, vmRegOp(OP_A(inst)));
         build.mov(w2, intOp(OP_B(inst)));
+        build.ldr(x3, mem(rNativeContext, offsetof(NativeContext, forgLoopNonTableFallback)));
+        build.blr(x3);
 
-        if (FFlag::LuauYieldIter2)
-        {
-            build.ldr(x3, mem(rNativeContext, offsetof(NativeContext, forgLoopNonTableFallback)));
-            build.blr(x3);
-            emitUpdateBase(build);
-            build.cmp(w0, uint16_t(0));
-            build.b(ConditionA64::Less, helpers.exitNoContinueVm);
-            build.b(ConditionA64::Greater, labelOp(OP_C(inst)));
-        }
-        else
-        {
-            build.ldr(x3, mem(rNativeContext, offsetof(NativeContext, forgLoopNonTableFallback_DEPRECATED)));
-            build.blr(x3);
-            emitUpdateBase(build);
-            build.cbnz(w0, labelOp(OP_C(inst)));
-        }
+        emitUpdateBase(build);
+
+        build.cmp(w0, uint16_t(0));
+        build.b(ConditionA64::Less, helpers.exitNoContinueVm);
+        build.b(ConditionA64::Greater, labelOp(OP_C(inst)));
 
         jumpOrFallthrough(blockOp(OP_D(inst)), next);
         break;

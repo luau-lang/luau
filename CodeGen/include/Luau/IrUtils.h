@@ -32,6 +32,7 @@ inline bool isBlockTerminator(IrCmd cmd)
     case IrCmd::JUMP_IF_FALSY:
     case IrCmd::JUMP_EQ_TAG:
     case IrCmd::JUMP_CMP_INT:
+    case IrCmd::JUMP_CMP_INT64:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::JUMP_CMP_FLOAT:
@@ -63,6 +64,7 @@ inline bool isNonTerminatingJump(IrCmd cmd)
     case IrCmd::CHECK_READONLY:
     case IrCmd::CHECK_NO_METATABLE:
     case IrCmd::CHECK_SAFE_ENV:
+    case IrCmd::CHECK_YIELDABLE:
     case IrCmd::CHECK_ARRAY_SIZE:
     case IrCmd::CHECK_SLOT_MATCH:
     case IrCmd::CHECK_NODE_NO_NEXT:
@@ -236,6 +238,8 @@ void applySubstitutions(IrFunction& function, IrInst& inst);
 
 // Compare numbers using IR condition value
 bool compare(double a, double b, IrCondition cond);
+bool compare(int a, int b, IrCondition cond);
+bool compare(int64_t a, int64_t b, IrCondition cond);
 
 // Perform constant folding on instruction at index
 // For most instructions, successful folding results in a IrCmd::SUBSTITUTE

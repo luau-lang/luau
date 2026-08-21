@@ -26,7 +26,6 @@ LuauClass* luaR_newblankclass(lua_State* L, TString* name, bool isopen)
     classobject->staticmembers = NULL;
     classobject->memberstooffset = NULL;
     classobject->offsettomember = NULL;
-    classobject->metatable = NULL;
     classobject->instancemetatable = NULL;
     classobject->numberofinstancemembers = 0;
     classobject->numberofallmembers = 0;

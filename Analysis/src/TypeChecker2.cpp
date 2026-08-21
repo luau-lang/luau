@@ -34,12 +34,14 @@
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
+LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
+LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -1249,8 +1251,11 @@ void TypeChecker2::visit(AstStatAssign* assign)
 
 void TypeChecker2::visit(AstStatCompoundAssign* stat)
 {
-    AstExprBinary fake{stat->location, stat->op, stat->var, stat->value};
-    visit(&fake, stat);
+    if (!FFlag::LuauCompoundAssignSeedsAstTypes)
+    {
+        AstExprBinary fake{stat->location, stat->op, stat->var, stat->value};
+        visit(&fake, stat);
+    }
 
     TypeId* resultTy = module->astCompoundAssignResultTypes.find(stat);
 
@@ -1258,6 +1263,15 @@ void TypeChecker2::visit(AstStatCompoundAssign* stat)
         return;
 
     LUAU_ASSERT(resultTy);
+
+    if (FFlag::LuauCompoundAssignSeedsAstTypes)
+    {
+        AstExprBinary fake{stat->location, stat->op, stat->var, stat->value};
+        module->astTypes[&fake] = *resultTy;
+        visit(&fake, stat);
+        module->astTypes.erase(&fake);
+    }
+
     TypeId varTy = lookupType(stat->var);
 
     testIsSubtype(*resultTy, varTy, stat->location);
@@ -1353,6 +1367,9 @@ void TypeChecker2::visit(AstStatDeclareExternType* stat)
 void TypeChecker2::visit(AstStatClass* stat)
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+    if (stat->super)
+        visit(stat->super, ValueContext::RValue);
 
     for (const auto& member : stat->members)
     {
@@ -2240,7 +2257,11 @@ void TypeChecker2::visit(AstExprUnary* expr)
     }
     else if (expr->op == AstExprUnary::Op::Minus)
     {
-        testIsSubtype(operandType, builtinTypes->numberType, expr->location);
+        // A negated integer literal is folded into one constant by the compiler, so it never negates anything.
+        if (FFlag::LuauIntegerType2 && expr->expr->is<AstExprConstantInteger>())
+            testIsSubtype(operandType, builtinTypes->integerType, expr->location);
+        else
+            testIsSubtype(operandType, builtinTypes->numberType, expr->location);
     }
     else if (expr->op == AstExprUnary::Op::Not)
     {

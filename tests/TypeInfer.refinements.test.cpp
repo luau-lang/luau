@@ -367,9 +367,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_assert_position")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK("<a>(a) -> a & number" == toString(requireType("f")));
+        CHECK("<T>(T) -> T & number" == toString(requireType("f")));
     else
-        CHECK("<a>(a) -> number" == toString(requireType("f")));
+        CHECK("<T>(T) -> number" == toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_test_a_prop")
@@ -709,7 +709,7 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
     }
     else
     {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "a");       // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "T");       // a == b
         CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "string?"); // a == b
     }
 }
@@ -1466,7 +1466,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "typeguard_cast_free_table_to_vec
 
     CHECK_EQ("never", toString(requireTypeAtPosition({7, 28}))); // typeof(vec) == "Instance"
 
-    CHECK_EQ("{+ X: a, Y: b, Z: c +}", toString(requireTypeAtPosition({9, 28}))); // type(vec) ~= "vector" and typeof(vec) ~= "Instance"
+    CHECK_EQ("{+ X: T, Y: U, Z: V +}", toString(requireTypeAtPosition({9, 28}))); // type(vec) ~= "vector" and typeof(vec) ~= "Instance"
 }
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "typeguard_cast_instance_or_vector3_to_vector")

@@ -185,8 +185,8 @@ TEST_CASE_FIXTURE(SimplifyFixture, "any_and_indeterminate_types")
     CHECK("'a | *error-type*" == intersectStr(anyTy, freeTy));
     CHECK("'a | *error-type*" == intersectStr(freeTy, anyTy));
 
-    CHECK("*error-type* | b" == intersectStr(anyTy, genericTy));
-    CHECK("*error-type* | b" == intersectStr(genericTy, anyTy));
+    CHECK("*error-type* | U" == intersectStr(anyTy, genericTy));
+    CHECK("*error-type* | U" == intersectStr(genericTy, anyTy));
 
     auto anyRhsBlocked = get<UnionType>(intersect(anyTy, blockedTy));
     auto anyLhsBlocked = get<UnionType>(intersect(blockedTy, anyTy));
@@ -262,8 +262,8 @@ TEST_CASE_FIXTURE(SimplifyFixture, "error_and_indeterminate_types")
     CHECK("'a & *error-type*" == intersectStr(errorTy, freeTy));
     CHECK("'a & *error-type*" == intersectStr(freeTy, errorTy));
 
-    CHECK("*error-type* & b" == intersectStr(errorTy, genericTy));
-    CHECK("*error-type* & b" == intersectStr(genericTy, errorTy));
+    CHECK("*error-type* & U" == intersectStr(errorTy, genericTy));
+    CHECK("*error-type* & U" == intersectStr(genericTy, errorTy));
 
     CHECK(isIntersection(intersect(errorTy, blockedTy)));
     CHECK(isIntersection(intersect(blockedTy, errorTy)));

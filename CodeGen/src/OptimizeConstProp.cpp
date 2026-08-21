@@ -2163,6 +2163,20 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         break;
     }
+    case IrCmd::JUMP_CMP_INT64:
+    {
+        std::optional<int64_t> valueA = function.asInt64Op(OP_A(inst).kind == IrOpKind::Constant ? OP_A(inst) : state.tryGetValue(OP_A(inst)));
+        std::optional<int64_t> valueB = function.asInt64Op(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst)));
+
+        if (valueA && valueB)
+        {
+            if (compare(*valueA, *valueB, conditionOp(OP_C(inst))))
+                replace(function, block, index, {IrCmd::JUMP, {OP_D(inst)}});
+            else
+                replace(function, block, index, {IrCmd::JUMP, {OP_E(inst)}});
+        }
+        break;
+    }
     case IrCmd::JUMP_CMP_NUM:
     {
         std::optional<double> valueA = function.asDoubleOp(OP_A(inst).kind == IrOpKind::Constant ? OP_A(inst) : state.tryGetValue(OP_A(inst)));
@@ -2345,6 +2359,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         {
             state.inSafeEnv = true;
         }
+        break;
+    case IrCmd::CHECK_YIELDABLE:
         break;
     case IrCmd::CHECK_BUFFER_LEN:
     {
@@ -2563,6 +2579,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     }
     case IrCmd::INVOKE_FASTCALL:
         handleBuiltinEffects(state, LuauBuiltinFunction(function.uintOp(OP_A(inst))), vmRegOp(OP_B(inst)), function.intOp(OP_G(inst)));
+        break;
+
+    case IrCmd::INVOKE_FASTPCALL:
+        state.invalidateRegistersFrom(vmRegOp(OP_A(inst)));
+        state.invalidateUserCall();
         break;
 
         // These instructions don't have an effect on register/memory state we are tracking

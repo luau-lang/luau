@@ -772,7 +772,7 @@ static int loadsafe(
 
         if (version >= 12)
         {
-            // Potantially skipping unknown data at the end of Proto.
+            // Potentially skipping unknown data at the end of Proto.
             offset = protoStartOffset + protoSize;
         }
 

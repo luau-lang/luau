@@ -13,6 +13,7 @@
 #include "ltm.h"
 
 LUAU_FASTFLAG(LuauCodegenInteger3)
+LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerCompare)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 
 namespace Luau
@@ -202,6 +203,25 @@ void translateInstJumpIfEq(IrBuilder& build, const Instruction* pc, int pcpos, b
         IrOp vb = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rb));
 
         build.inst(IrCmd::JUMP_CMP_NUM, va, vb, build.cond(IrCondition::NotEqual), not_ ? target : next, not_ ? next : target);
+
+        build.beginBlock(fallback);
+    }
+    // fast-path: integer (when both operands are expected to be an integer or are unknown)
+    else if (FFlag::LuauCodegenInteger3 && FFlag::LuauCodegenIntegerCompare && isExpectedOrUnknownBytecodeType(bcTypes.a, LBC_TYPE_INTEGER) &&
+             isExpectedOrUnknownBytecodeType(bcTypes.b, LBC_TYPE_INTEGER))
+    {
+        IrOp fallback = build.fallbackBlock(pcpos);
+
+        IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
+        build.inst(IrCmd::CHECK_TAG, ta, build.constTag(LUA_TINTEGER), fallback);
+
+        IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
+        build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TINTEGER), fallback);
+
+        IrOp va = build.inst(IrCmd::LOAD_INT64, build.vmReg(ra));
+        IrOp vb = build.inst(IrCmd::LOAD_INT64, build.vmReg(rb));
+
+        build.inst(IrCmd::JUMP_CMP_INT64, va, vb, build.cond(IrCondition::NotEqual), not_ ? target : next, not_ ? next : target);
 
         build.beginBlock(fallback);
     }
@@ -1229,6 +1249,66 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
         else if (nparams == LUA_MULTRET)
             build.inst(IrCmd::ADJUST_STACK_TO_TOP);
     }
+
+    return fallback;
+}
+
+std::optional<IrOp> translateFastPcall(IrBuilder& build, const Instruction* pc, int pcpos)
+{
+    LuauOpcode opcode = LuauOpcode(LUAU_INSN_OP(*pc));
+
+    int explicitArgs = LUAU_INSN_B(*pc);
+    int skip = LUAU_INSN_C(*pc);
+    Instruction call = pc[skip + 1];
+    CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+
+    int ra = LUAU_INSN_A(call);
+    int nparams = LUAU_INSN_B(call) - 1;
+    int nresults = LUAU_INSN_C(call) - 1;
+    int pfid = LUAU_INSN_A(*pc);
+    int knownArgs = (nparams == LUA_MULTRET) ? explicitArgs : nparams;
+
+    CODEGEN_ASSERT(pfid == 0 || pfid == 1);
+
+    if (pfid == 0) // pcall pre-requisites
+    {
+        if (knownArgs < 1 || !build.function.envInfo.hasPcall)
+            return std::nullopt;
+    }
+    else if (pfid == 1) // xpcall pre-requisites
+    {
+        if (knownArgs < 2 || !build.function.envInfo.hasXpcall)
+            return std::nullopt;
+    }
+
+    IrOp fallback = build.fallbackBlock(pcpos);
+
+    // In unsafe environment, instead of retrying fastcall at 'pcpos' we side-exit directly to fallback sequence
+    build.checkSafeEnv(pcpos + getOpLength(opcode));
+
+    build.inst(IrCmd::CHECK_YIELDABLE, fallback);
+
+    if (pfid == 0)
+    {
+        build.loadAndCheckTag(build.vmReg(ra + 1), LUA_TFUNCTION, fallback);
+    }
+    else if (pfid == 1)
+    {
+        build.loadAndCheckTag(build.vmReg(ra + 1), LUA_TFUNCTION, fallback);
+        build.loadAndCheckTag(build.vmReg(ra + 2), LUA_TFUNCTION, fallback);
+
+        // swap 'f' and 'errf' so that we get 'errf, f, arguments' prepared for calling 'f'
+        IrOp f = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra + 1));
+        IrOp errf = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra + 2));
+
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra + 1), errf);
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra + 2), f);
+    }
+
+    // unlike other fastcalls, we are saving the location where the callee will return to, which is after the fallback
+    build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + skip + 2));
+
+    build.inst(IrCmd::INVOKE_FASTPCALL, build.vmReg(ra), build.constUint(pfid), build.constInt(nparams), build.constInt(nresults));
 
     return fallback;
 }

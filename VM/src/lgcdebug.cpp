@@ -153,8 +153,6 @@ static void validateclass(global_State* g, LuauClass* lco)
         if (i >= lco->numberofinstancemembers)
             validateref(g, obj, &lco->staticmembers[i - lco->numberofinstancemembers]);
     }
-    if (lco->metatable)
-        validateobjref(g, obj, obj2gco(lco->metatable));
     if (lco->instancemetatable)
         validateobjref(g, obj, obj2gco(lco->instancemetatable));
 }
@@ -631,11 +629,6 @@ static void dumpclass(FILE* f, LuauClass* lco)
     }
     fprintf(f, R"(],"staticmembers":[)");
     dumprefs(f, lco->staticmembers, lco->numberofallmembers - lco->numberofinstancemembers);
-    fprintf(f, R"(],"metatable":)");
-    if (lco->metatable)
-        dumpref(f, obj2gco(lco->metatable));
-    else
-        fprintf(f, "null");
     fprintf(f, R"(,"instancemetatable":)");
     if (lco->instancemetatable)
         dumpref(f, obj2gco(lco->instancemetatable));
@@ -1053,9 +1046,6 @@ static void enumclass(EnumContext* ctx, LuauClass* lco)
 
     for (uint32_t i = 0; i < lco->numberofallmembers; i++)
         enumedge(ctx, obj, obj2gco(lco->offsettomember[i]), "membername");
-
-    if (lco->metatable)
-        enumedge(ctx, obj, obj2gco(lco->metatable), "metatable");
 
     if (FFlag::LuauEnumMoreEdges && lco->instancemetatable)
         enumedge(ctx, obj, obj2gco(lco->instancemetatable), "instancemetatable");
