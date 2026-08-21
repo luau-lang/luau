@@ -569,6 +569,8 @@ struct lua_Debug
     const char* short_src; // (s)
     int linedefined;       // (s)
     int currentline;       // (l)
+    int protoid;           // (p) globally unique (within VM) proto id; 0 for C functions
+    int bytecodeid;        // (p) proto index within its bytecode module; -1 for C functions
     unsigned char nupvals; // (u) number of upvalues
     unsigned char nparams; // (a) number of parameters
     char isvararg;         // (a)
@@ -612,6 +614,9 @@ struct lua_Callbacks
     void (*debugprotectederror)(lua_State* L);           // gets called when protected call results in an error
 
     void (*onallocate)(lua_State* L, size_t osize, size_t nsize); // gets called when memory is allocated
+
+    void (*preresume)(lua_State* L);  // gets called before lua_resume runs a (co)routine
+    void (*postresume)(lua_State* L); // gets called after lua_resume returns (yield, return, or error)
 };
 typedef struct lua_Callbacks lua_Callbacks;
 

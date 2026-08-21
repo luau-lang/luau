@@ -4,8 +4,6 @@
 #include "Luau/Common.h"
 #include "Luau/DenseHash2.h"
 
-LUAU_FASTFLAG(LuauSolverV2)
-
 namespace Luau
 {
 

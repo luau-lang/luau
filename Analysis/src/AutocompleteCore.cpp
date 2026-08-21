@@ -26,6 +26,7 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionArglistSuggestion)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
@@ -335,7 +336,7 @@ static void autocompleteProps(
         return;
     seen.insert(ty);
 
-    auto isWrongIndexer = [typeArena, builtinTypes, &module, rootTy, indexType](Luau::TypeId type)
+    auto DEPRECATED_isWrongIndexer = [typeArena, builtinTypes, &module, rootTy, indexType](Luau::TypeId type)
     {
         if (indexType == PropIndexType::Key)
             return false;
@@ -382,6 +383,88 @@ static void autocompleteProps(
         return calledWithSelf;
     };
 
+    // Classification used only when FFlag::LuauAutocompleteDotMethodConversion is enabled. Splits
+    // the wrong-indexer case into "wrong, but auto-fixable by rewriting '.' to ':'" vs. "wrong for
+    // some other reason", and otherwise mirrors isWrongIndexer.
+    enum class IndexerStatus
+    {
+        Ok,
+        WrongConvertibleToColon,
+        WrongOther,
+    };
+
+    auto classifyIndexer = [typeArena, builtinTypes, &module, rootTy, indexType](Luau::TypeId type) -> IndexerStatus
+    {
+        if (indexType == PropIndexType::Key)
+            return IndexerStatus::Ok;
+
+        const bool calledWithSelf = indexType == PropIndexType::Colon;
+
+        // Returns whether calling `ftv` with the given operator (':' if callWithSelf, else '.') is
+        // a valid call: strong match on `hasSelf` or first-arg compatibility.
+        auto isCompatibleCall = [typeArena, builtinTypes, &module, rootTy](const FunctionType* ftv, bool callWithSelf) -> bool
+        {
+            // Strong match with definition is a success
+            if (callWithSelf == ftv->hasSelf)
+                return true;
+            // Calls on extern types require strict match between how function is declared and how it's called
+            if (get<ExternType>(rootTy))
+                return false;
+
+            // When called with ':', but declared without 'self', it is invalid if a function has incompatible first argument or no arguments at all
+            // When called with '.', but declared with 'self', it is considered invalid if first argument is compatible
+            if (std::optional<TypeId> firstArgTy = first(ftv->argTypes))
+            {
+                if (checkTypeMatch(module, rootTy, *firstArgTy, NotNull{module.getModuleScope().get()}, typeArena, builtinTypes))
+                    return callWithSelf;
+            }
+            return !callWithSelf;
+        };
+
+        if (const FunctionType* ftv = get<FunctionType>(type))
+        {
+            const bool dotOk = isCompatibleCall(ftv, /*callWithSelf=*/false);
+            const bool colonOk = isCompatibleCall(ftv, /*callWithSelf=*/true);
+
+            if (calledWithSelf)
+                return colonOk ? IndexerStatus::Ok : IndexerStatus::WrongOther;
+            if (dotOk)
+                return IndexerStatus::Ok;
+            if (colonOk)
+                return IndexerStatus::WrongConvertibleToColon;
+            return IndexerStatus::WrongOther;
+        }
+
+        if (const IntersectionType* itv = get<IntersectionType>(type))
+        {
+            bool anyDotOk = false;
+            bool anyColonOk = false;
+            for (auto subType : itv->parts)
+            {
+                if (const FunctionType* ftv = get<FunctionType>(Luau::follow(subType)))
+                {
+                    if (isCompatibleCall(ftv, /*callWithSelf=*/false))
+                        anyDotOk = true;
+                    if (isCompatibleCall(ftv, /*callWithSelf=*/true))
+                        anyColonOk = true;
+                }
+            }
+
+            if (calledWithSelf)
+                return anyColonOk ? IndexerStatus::Ok : IndexerStatus::WrongOther;
+            if (anyDotOk)
+                return IndexerStatus::Ok;
+            if (anyColonOk)
+                return IndexerStatus::WrongConvertibleToColon;
+            // Match isWrongIndexer's intersection fall-through (`return calledWithSelf`): an
+            // intersection accessed via '.' with no compatible part is treated as not-wrong.
+            return IndexerStatus::Ok;
+        }
+
+        // Non-function, non-intersection: dot is fine; colon is wrong.
+        return calledWithSelf ? IndexerStatus::WrongOther : IndexerStatus::Ok;
+    };
+
     auto maybeFillSingletonProp = [&](TypeId type)
     {
         if (auto singletonTy = get<SingletonType>(type))
@@ -396,11 +479,25 @@ static void autocompleteProps(
                 ParenthesesRecommendation parens =
                     indexType == PropIndexType::Key ? ParenthesesRecommendation::None : getParenRecommendation(ty, nodes, typeCorrect);
 
+                bool replaceDot = false;
+                bool wrong = false;
+                if (FFlag::LuauAutocompleteDotMethodConversion)
+                {
+                    IndexerStatus s = classifyIndexer(type);
+                    replaceDot = (s == IndexerStatus::WrongConvertibleToColon);
+                    wrong = (s == IndexerStatus::WrongOther);
+                }
+                else
+                {
+                    wrong = DEPRECATED_isWrongIndexer(type);
+                }
+                bool withSelf = replaceDot ? true : (indexType == PropIndexType::Colon);
+
                 result[stringSingleton->value] = AutocompleteEntry{
                     AutocompleteEntryKind::String,
                     type,
                     /* deprecated */ false,
-                    isWrongIndexer(type),
+                    wrong,
                     typeCorrect,
                     containingExternType,
                     std::nullopt,
@@ -408,7 +505,8 @@ static void autocompleteProps(
                     {},
                     parens,
                     {},
-                    indexType == PropIndexType::Colon
+                    withSelf,
+                    replaceDot
                 };
             }
         }
@@ -435,11 +533,25 @@ static void autocompleteProps(
                 ParenthesesRecommendation parens =
                     indexType == PropIndexType::Key ? ParenthesesRecommendation::None : getParenRecommendation(type, nodes, typeCorrect);
 
+                bool replaceDot = false;
+                bool wrong = false;
+                if (FFlag::LuauAutocompleteDotMethodConversion)
+                {
+                    IndexerStatus s = classifyIndexer(type);
+                    replaceDot = (s == IndexerStatus::WrongConvertibleToColon);
+                    wrong = (s == IndexerStatus::WrongOther);
+                }
+                else
+                {
+                    wrong = DEPRECATED_isWrongIndexer(type);
+                }
+                bool withSelf = replaceDot ? true : (indexType == PropIndexType::Colon);
+
                 result[name] = AutocompleteEntry{
                     AutocompleteEntryKind::Property,
                     type,
                     prop.deprecated || (FFlag::LuauCheckTypeForDeprecated && isTypeDeprecated(type)),
-                    isWrongIndexer(type),
+                    wrong,
                     typeCorrect,
                     containingExternType,
                     &prop,
@@ -447,7 +559,8 @@ static void autocompleteProps(
                     {},
                     parens,
                     {},
-                    indexType == PropIndexType::Colon
+                    withSelf,
+                    replaceDot
                 };
             }
         }

@@ -11,7 +11,6 @@
 #include <optional>
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauDoNotOverwriteAstDefs)
 LUAU_FASTFLAGVARIABLE(LuauAvoidTrivialPhis)
@@ -888,6 +887,9 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatClass* d)
     graph.localDefs[d->name] = def;
     currentScope()->bindings[d->name->name] = def;
     captures[d->name->name].allVersions.push_back(def);
+
+    if (d->super)
+        visitExpr(d->super);
 
     for (const auto& member : d->members)
     {

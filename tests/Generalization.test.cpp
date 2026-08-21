@@ -16,6 +16,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
+LUAU_FASTFLAG(LuauBetterInferredGenericNames)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -26,6 +27,8 @@ struct GeneralizationFixture
     ScopePtr globalScope = std::make_shared<Scope>(builtinTypes.anyTypePack);
     ScopePtr scope = std::make_shared<Scope>(globalScope);
     ToStringOptions opts;
+
+    ScopedFastFlag sff_LuauBetterInferredGenericNames{FFlag::LuauBetterInferredGenericNames, true};
 
     DenseHashSet2<TypeId> generalizedTypes_;
     NotNull<DenseHashSet2<TypeId>> generalizedTypes{&generalizedTypes_};
@@ -222,7 +225,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "('a) -> 'a")
 
     generalize(fnTy);
 
-    CHECK("<a>(a) -> a" == toString(fnTy));
+    CHECK("<T>(T) -> T" == toString(fnTy));
 }
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a <: (t1 <: 'b) & {number} & {number})")
@@ -273,7 +276,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
 
     // The free type 'b is not replace with unknown because it appears in an
     // invariant context.
-    CHECK("<a>({a}) -> ()" == toString(functionTy));
+    CHECK("<T>({T}) -> ()" == toString(functionTy));
 }
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(('b <: {t1}), ('a <: t1)) -> t1 where t1 = (('a <: t1) <: 'c)")
@@ -294,7 +297,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('b <: {t1}), ('a <: t1)) -> t1 where
 
     generalize(functionTy);
 
-    CHECK("<a>({a}, a) -> a" == toString(functionTy));
+    CHECK("<T>({T}, T) -> T" == toString(functionTy));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_traversal_should_re_traverse_unions_if_they_change_type")

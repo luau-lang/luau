@@ -15,16 +15,14 @@ class Body
     public vz: number
     public mass: number
 
-    function new(x, y, z, vx, vy, vz, mass)
-        return Body {
-            x = x,
-            y = y,
-            z = z,
-            vx = vx,
-            vy = vy,
-            vz = vz,
-            mass = mass,
-        }
+    function __init(self, x, y, z, vx, vy, vz, mass)
+        self.x = x
+        self.y = y
+        self.z = z
+        self.vx = vx
+        self.vy = vy
+        self.vz = vz
+        self.mass = mass
     end
 
     function offsetMomentum(self, px, py, pz)
@@ -67,8 +65,8 @@ end
 class NBodySystem
     public bodies: { Body }
 
-    function new(bodies)
-        local self = NBodySystem { bodies = bodies }
+    function __init(self, bodies)
+        self.bodies = bodies
 
         local px = 0
         local py = 0
@@ -85,7 +83,6 @@ class NBodySystem
         end
 
         self.bodies[1]:offsetMomentum(px, py, pz)
-        return self
     end
 
     function advance(self, dt)

@@ -211,7 +211,7 @@ struct RemoveDeadStoreState
 
     void killTValueStore(StoreRegInfo& regInfo)
     {
-        // TValue can only be killed if it is not overlayed by a partial tag/value write
+        // TValue can only be killed if it is not overlaid by a partial tag/value write
         if (regInfo.tvalueInstIdx != kInvalidInstIdx && regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx)
         {
             if (FFlag::LuauCodegenDseRestoreHints)
@@ -1188,6 +1188,9 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::CHECK_SAFE_ENV:
         state.checkLiveIns(OP_A(inst), index, true);
         break;
+    case IrCmd::CHECK_YIELDABLE:
+        state.checkLiveIns(OP_A(inst), index, true);
+        break;
     case IrCmd::CHECK_ARRAY_SIZE:
         state.checkLiveIns(OP_C(inst), index, true);
         break;
@@ -1258,6 +1261,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::INTERRUPT:
     case IrCmd::CHECK_GC:
     case IrCmd::CALL:
+    case IrCmd::INVOKE_FASTPCALL:
     case IrCmd::FORGLOOP_FALLBACK:
     case IrCmd::FALLBACK_GETGLOBAL:
     case IrCmd::FALLBACK_SETGLOBAL:
@@ -1311,6 +1315,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::FALLBACK_FORGPREP:
         // CALL directly executes a Luau function on the same native stack frame
     case IrCmd::CALL:
+    case IrCmd::INVOKE_FASTPCALL:
         // These instructions use lowering that is not aware of register allocator and demand no active values to exist
     case IrCmd::SETLIST:
     case IrCmd::FORGLOOP:

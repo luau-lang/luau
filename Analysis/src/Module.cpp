@@ -14,8 +14,9 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAGVARIABLE(LuauDoNotExportBrokenTypeFunction)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
+LUAU_FASTFLAGVARIABLE(LuauExportTypecheckTypepacks)
+LUAU_FASTFLAGVARIABLE(LuauExportAnnotationBinding)
 
 namespace Luau
 {
@@ -210,11 +211,6 @@ struct ClonePublicInterface : Substitution
                 if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state == TypeFunctionInstanceState::Stuck)
                     result = arena->addType(ErrorType{ty});
             }
-            else if (auto tfit = get<TypeFunctionInstanceType>(ty);
-                     FFlag::LuauDoNotExportBrokenTypeFunction && tfit && tfit->state != TypeFunctionInstanceState::Solved)
-            {
-                result = builtinTypes->errorType;
-            }
         }
 
         return result;
@@ -394,6 +390,16 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
         if (TypeId* ty = module->astTypes.find(expr))
             return follow(*ty);
 
+        // type-packs may not be in astTypes (require causes this), so we check and assign the first value here
+        if (FFlag::LuauExportTypecheckTypepacks)
+        {
+            if (TypePackId* tp = module->astTypePacks.find(expr))
+            {
+                if (std::optional<TypeId> ty = first(*tp))
+                    return follow(*ty);
+            }
+        }
+
         return builtinTypes->errorType;
     };
 
@@ -411,13 +417,27 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
                 AstLocal* local = localStat->vars.data[i];
                 exportedLocals.insert(local);
 
-                if (localStat->vars.size != localStat->values.size || i >= localStat->values.size)
+                if (FFlag::LuauExportAnnotationBinding)
                 {
-                    props[local->name.value] = lookupExportedBindingType(local);
+                    if (localStat->vars.size != localStat->values.size || i >= localStat->values.size || local->annotation)
+                    {
+                        props[local->name.value] = Property::readonly(lookupExportedBindingType(local));
+                    }
+                    else
+                    {
+                        props[local->name.value] = Property::readonly(lookupExprType(localStat->values.data[i]));
+                    }
                 }
                 else
                 {
-                    props[local->name.value] = Property::readonly(lookupExprType(localStat->values.data[i]));
+                    if (localStat->vars.size != localStat->values.size || i >= localStat->values.size)
+                    {
+                        props[local->name.value] = lookupExportedBindingType(local);
+                    }
+                    else
+                    {
+                        props[local->name.value] = Property::readonly(lookupExprType(localStat->values.data[i]));
+                    }
                 }
 
                 props[local->name.value].location = local->location;

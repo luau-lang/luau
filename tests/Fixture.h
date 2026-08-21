@@ -32,6 +32,7 @@ LUAU_FASTFLAG(DebugLuauForceAllOldSolverTests)
 LUAU_FASTFLAG(DebugLuauAlwaysShowConstraintSolvingIncomplete);
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowExternClassInTypeDefinitions)
+LUAU_FASTFLAG(LuauBetterInferredGenericNames)
 
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::DebugLuauForceOldSolver, !FFlag::DebugLuauForceAllNewSolverTests};
 
@@ -183,6 +184,8 @@ struct Fixture
 
     // lots of tests might use declare class in type definitions - disable this and force all tests to adopt the new syntax
     ScopedFastFlag sff_LuauDisallowExternClassInTypeDefinitions{FFlag::LuauDisallowExternClassInTypeDefinitions, true};
+
+    ScopedFastFlag sff_LuauBetterInferredGenericNames{FFlag::LuauBetterInferredGenericNames, true};
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;

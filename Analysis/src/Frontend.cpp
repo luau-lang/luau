@@ -56,6 +56,8 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauExportValueTypecheck)
 LUAU_FLAGVERSION(LuauExportValueTypecheck, 2)
 LUAU_FASTFLAGVARIABLE(LuauCyclicRequireTypeInference)
+LUAU_FLAGVERSION(LuauCyclicRequireTypeInference, 2)
+LUAU_FASTFLAG(LuauExportedTypesParticipateInScc)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauCFG)
@@ -1062,24 +1064,44 @@ bool Frontend::parseGraph(
     return cyclic;
 }
 
-static bool moduleHasExports(const SourceModule& sourceModule)
+static bool moduleHasValidExports(const SourceModule& sourceModule)
 {
     if (!sourceModule.root)
         return false;
+
+    bool hasValueExports = false;
+    bool hasTypeExports = false;
+    bool hasReturn = false;
 
     for (AstStat* stat : sourceModule.root->body)
     {
         if (AstStatLocal* local = stat->as<AstStatLocal>())
         {
             if (local->isExported)
-                return true;
+                hasValueExports = true;
         }
         else if (AstStatLocalFunction* func = stat->as<AstStatLocalFunction>())
         {
             if (func->name->isExported)
-                return true;
+                hasValueExports = true;
+        }
+        else if (AstStatTypeAlias* alias = stat->as<AstStatTypeAlias>())
+        {
+            if (alias->exported)
+                hasTypeExports = true;
+        }
+        else if (stat->is<AstStatReturn>())
+        {
+            hasReturn = true;
         }
     }
+
+    if (hasValueExports)
+        return true;
+
+    // Modules with exported types only is valid if it doesn't have a return statement
+    if (FFlag::LuauExportedTypesParticipateInScc && hasTypeExports)
+        return !hasReturn;
 
     return false;
 }
@@ -1239,7 +1261,7 @@ void Frontend::computeSCCs(const std::vector<ModuleName>& buildQueue)
         for (const ModuleName& member : scc->members)
         {
             auto it = sourceModules.find(member);
-            if (it == sourceModules.end() || !it->second || !moduleHasExports(*it->second))
+            if (it == sourceModules.end() || !it->second || !moduleHasValidExports(*it->second))
             {
                 allMembersUseExport = false;
                 break;
@@ -1477,6 +1499,16 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
         for (auto& deferred : cgResult.deferredConstraints)
             mergedDeferredConstraints.push_back(std::move(deferred));
 
+        // Synthesize exports table early so subsequent modules in the SCC can
+        // see the correct table shape (with free types) during their CG pass.
+        // Without this, export-only modules (no explicit return) would have an
+        // empty return type in the placeholder, causing peers to see unknown.
+        if (FFlag::LuauExportValueSyntax && FFlag::LuauExportValueTypecheck)
+        {
+            module->scopes = cgData[i].cgScopes;
+            synthesizeExportReturn(builtinTypes, NotNull{module.get()});
+        }
+
         // Bind the placeholder BlockedType to the actual return type so subsequent
         // modules in this SCC see real types when they require() this one.
         TypePackId actualReturnType = cgData[i].cgScopes[0].second->returnType;
@@ -1495,6 +1527,9 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
             {
                 emplaceType<BoundType>(asMutable(*placeholderHead), *actualHead);
             }
+
+            // Copy exported type bindings so subsequent CG passes can import them
+            placeholderModule->exportedTypeBindings = cgData[i].cgScopes[0].second->exportedTypeBindings;
         }
 
         mergedErrors.insert(mergedErrors.end(), std::make_move_iterator(cgResult.errors.begin()), std::make_move_iterator(cgResult.errors.end()));
@@ -1628,9 +1663,6 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
                 module->cancelled = true;
             }
         }
-
-        if (FFlag::LuauExportValueSyntax && FFlag::LuauExportValueTypecheck && !module->timeout && !module->cancelled)
-            synthesizeExportReturn(builtinTypes, NotNull{module.get()});
 
         // Clone public interface
         unfreeze(module->interfaceTypes);
