@@ -1175,8 +1175,8 @@ private:
         if (name == "nil" || name == "boolean" || name == "userdata" || name == "number" || name == "string" || name == "table" ||
             name == "function" || name == "thread" || name == "buffer")
             return Kind_Primitive;
-        if (FFlags::LuauIntegerType2 && name == "integer")
-            return Kind_primitive;
+        if (FFlag::LuauIntegerType2 && name == "integer")
+            return Kind_Primitive;
         if (name == "vector")
             return Kind_Primitive;
 
