@@ -1172,7 +1172,7 @@ private:
     TypeKind getTypeKind(const std::string& name)
     {
         if (name == "nil" || name == "boolean" || name == "userdata" || name == "number" || name == "string" || name == "table" ||
-            name == "function" || name == "thread" || name == "buffer" || name == "integer")
+            name == "function" || name == "thread" || name == "buffer")
             return Kind_Primitive;
 
         if (name == "vector")
