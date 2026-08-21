@@ -6,6 +6,7 @@
 #include "Luau/TimeTrace.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 #include <errno.h>
 #include <limits.h>
