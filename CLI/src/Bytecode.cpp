@@ -10,6 +10,7 @@
 #include "Luau/FileUtils.h"
 #include "Luau/Flags.h"
 
+#include <cstdlib>
 #include <memory>
 
 using Luau::CodeGen::FunctionBytecodeSummary;

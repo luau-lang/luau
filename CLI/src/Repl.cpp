@@ -21,6 +21,7 @@
 
 #include "isocline.h"
 
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <string_view>

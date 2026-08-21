@@ -5,6 +5,7 @@
 #include "Luau/StringUtils.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <string.h>
 #include <climits>
 
