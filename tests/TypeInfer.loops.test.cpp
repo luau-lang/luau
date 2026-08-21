@@ -1016,7 +1016,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_minimized_fragmented_keys_1")
             return next, t, nil
         end
 
-        local function getFragmentedKeys(tbl)
+        local function getFragmentedKeys<V>(tbl: { V })
             local _ = rawget(tbl, 0)
             for _ in rawpairs(tbl) do
             end
@@ -1029,7 +1029,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_minimized_fragmented_keys_1")
 TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_minimized_fragmented_keys_2")
 {
     CheckResult result = check(R"(
-        local function getFragmentedKeys(tbl)
+        local function getFragmentedKeys<V>(tbl: { V })
             local _ = rawget(tbl, 0)
             for _ in next, tbl, nil do
             end
@@ -1059,7 +1059,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_fragmented_keys")
             return true
         end
 
-        local function getTableLength(tbl)
+        local function getTableLength<V>(tbl: { V })
             local length = 1
             local value = rawget(tbl, length)
             while value ~= nil do
