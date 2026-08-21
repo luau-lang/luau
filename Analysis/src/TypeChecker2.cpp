@@ -35,6 +35,7 @@
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
@@ -1749,17 +1750,45 @@ void TypeChecker2::visitCall(AstExprCall* call)
     {
         for (const auto& [ty, reasons] : result2.incompatibleOverloads)
         {
-            if (const SubtypingReasonings* sr = get_if<SubtypingReasonings>(&reasons))
+            if (FFlag::LuauFixCallMetamethodErrorReporting)
             {
-                for (const SubtypingReasoning& reason : *sr)
-                    resolver.reportErrors(module->errors, ty, call->func->location, module->name, argsPack, argExprs, reason);
-            }
-            else if (const auto errorVec = get_if<ErrorVec>(&reasons))
-            {
-                reportErrors(*errorVec);
+                // A metamethod is reasoned about with the callee prepended, so reporting
+                // traverses that same pack. Otherwise the lookup misses and the error is lost.
+                TypePackId reportedArgs = argsPack;
+                std::vector<AstExpr*> reportedExprs = argExprs;
+
+                if (result2.metamethods.contains(ty))
+                {
+                    reportedArgs = module->internalTypes->addTypePack(TypePack{{fnTy}, argsPack});
+                    reportedExprs.insert(reportedExprs.begin(), call->func);
+                }
+
+                if (const SubtypingReasonings* sr = get_if<SubtypingReasonings>(&reasons))
+                {
+                    for (const SubtypingReasoning& reason : *sr)
+                        resolver.reportErrors(module->errors, ty, call->func->location, module->name, reportedArgs, reportedExprs, reason);
+                }
+                else if (const auto errorVec = get_if<ErrorVec>(&reasons))
+                {
+                    reportErrors(*errorVec);
+                }
+                else
+                    LUAU_ASSERT(!"Unreachable");
             }
             else
-                LUAU_ASSERT(!"Unreachable");
+            {
+                if (const SubtypingReasonings* sr = get_if<SubtypingReasonings>(&reasons))
+                {
+                    for (const SubtypingReasoning& reason : *sr)
+                        resolver.reportErrors(module->errors, ty, call->func->location, module->name, argsPack, argExprs, reason);
+                }
+                else if (const auto errorVec = get_if<ErrorVec>(&reasons))
+                {
+                    reportErrors(*errorVec);
+                }
+                else
+                    LUAU_ASSERT(!"Unreachable");
+            }
         }
 
         return;

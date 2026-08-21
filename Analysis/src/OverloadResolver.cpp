@@ -13,6 +13,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 
@@ -320,6 +321,14 @@ void OverloadResolver::reportErrors(
 ) const
 {
     std::optional<size_t> argumentIndex = getArgumentIndex(reason.subPath, fnTy);
+
+    // A variadic parameter has no index of its own, so the subPath stops at the tail. The
+    // argument that failed against it is the one the superPath names.
+    if (FFlag::LuauFixCallMetamethodErrorReporting && !argumentIndex)
+    {
+        const TypeId given = arena->addType(FunctionType{argPack, builtinTypes->anyTypePack});
+        argumentIndex = getArgumentIndex(reason.superPath, given);
+    }
 
     Location argLocation;
     // If the Nth argument directly corresponds to a term in the AST, use its location.
