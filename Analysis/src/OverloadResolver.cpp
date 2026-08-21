@@ -323,7 +323,7 @@ void OverloadResolver::reportErrors(
 
     // A variadic parameter has no index of its own, so the subPath stops at the tail. The
     // argument that failed against it is the one the superPath names.
-    if (FFlag::LuauFixCallMetamethodErrorReporting && !argumentIndex)
+    if (!argumentIndex)
     {
         const TypeId given = arena->addType(FunctionType{argPack, builtinTypes->anyTypePack});
         argumentIndex = getArgumentIndex(reason.superPath, given);

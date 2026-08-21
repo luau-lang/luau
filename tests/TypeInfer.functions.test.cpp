@@ -2380,8 +2380,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_wi
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_argument_types")
 {
-    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
-
     CheckResult result = check(R"(
         type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, number) -> string }))
         local f = (nil :: any) :: Callable
@@ -2396,8 +2394,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_argument_types")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_variadic_argument_types")
 {
-    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
-
     CheckResult result = check(R"(
         type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
         local f = (nil :: any) :: Callable
@@ -2413,8 +2409,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_variadic_argument_typ
 // the superPath. Without that, the error lands on the last argument rather than the bad one.
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_the_offending_argument")
 {
-    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
-
     CheckResult result = check(R"(
         type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
         local f = (nil :: any) :: Callable
@@ -2431,8 +2425,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_the_offendin
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_each_offending_argument")
 {
-    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
-
     CheckResult result = check(R"(
         type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
         local f = (nil :: any) :: Callable
