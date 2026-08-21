@@ -11,7 +11,7 @@ end
 
 function test()
 
-    local n = Number { value = 42 }
+    local n = Number.new({ value = 42 })
 
     local ts0 = os.clock()
     for i=1,10000000 do

@@ -25,8 +25,7 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauTrackPrefixLocal)
 
 LUAU_FASTFLAG(LuauNoDuplicateBinaryPrefix)
-LUAU_FASTFLAG(LuauFunctionReturnTypePackLessTypeGroups)
-
+LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
 
@@ -2960,7 +2959,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_nested_ast_type_group")
 
 TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_pack_explicit")
 {
-    ScopedFastFlag sff{FFlag::LuauFunctionReturnTypePackLessTypeGroups, true};
+    ScopedFastFlag sff{FFlag::LuauSingleTypeOptionalPackReturnsAttributeParens, true};
 
     AstStatBlock* stat = parse(R"(
         type Foo = () -> (string)
@@ -4175,7 +4174,7 @@ TEST_CASE_FIXTURE(Fixture, "type_group_with_cst")
 
 TEST_CASE_FIXTURE(Fixture, "type_pack_explicit_with_cst")
 {
-    ScopedFastFlag sff{FFlag::LuauFunctionReturnTypePackLessTypeGroups, true};
+    ScopedFastFlag sff{FFlag::LuauSingleTypeOptionalPackReturnsAttributeParens, true};
 
     ParseOptions parseOptions;
     parseOptions.storeCstData = true;
@@ -4201,6 +4200,46 @@ TEST_CASE_FIXTURE(Fixture, "type_pack_explicit_with_cst")
     CHECK_EQ(cstNode->closeParenthesesPosition, Position{0, 33});
     REQUIRE_EQ(cstNode->commaPositions.size, 1);
     CHECK_EQ(cstNode->commaPositions.data[0], Position{0, 22});
+}
+
+TEST_CASE_FIXTURE(Fixture, "optional_return_type_pack_with_cst_func_return")
+{
+    ScopedFastFlag sff2{FFlag::LuauSingleTypeOptionalPackReturnsAttributeParens, true};
+    ParseOptions parseOptions;
+    parseOptions.storeCstData = true;
+
+    // `(string | number)?` as a return type is a single optional type:
+    //     union( group( union(string, number) ), nil )
+    // The one pair of parens belongs to the GROUP, so the enclosing return
+    // type pack is implicit and must NOT record any parenthesis positions.
+    ParseResult result = parseEx("type T = () -> (string | number)?", parseOptions);
+    REQUIRE(result.root);
+    REQUIRE_EQ(result.root->body.size, 1);
+
+    auto typeAlias = result.root->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(typeAlias);
+    auto funcType = typeAlias->type->as<AstTypeFunction>();
+    REQUIRE(funcType);
+
+    auto typePack = funcType->returnTypes->as<AstTypePackExplicit>();
+    REQUIRE(typePack);
+    REQUIRE_EQ(typePack->typeList.types.size, 1);
+    REQUIRE(!typePack->typeList.tailType);
+
+    // The sole return type is the optional union `(string | number)?`.
+    auto optional = typePack->typeList.types.data[0]->as<AstTypeUnion>();
+    REQUIRE(optional);
+    REQUIRE_EQ(optional->types.size, 2);
+    CHECK(optional->types.data[0]->is<AstTypeGroup>());    // (string | number)
+    CHECK(optional->types.data[1]->is<AstTypeOptional>()); // ?
+
+    // The parens belong to the group, NOT the return type pack.
+    const auto baseCstNode = result.cstNodeMap.find(typePack);
+    REQUIRE(baseCstNode);
+    const auto cstNode = (*baseCstNode)->as<CstTypePackExplicit>();
+    REQUIRE(cstNode);
+    CHECK_EQ(cstNode->openParenthesesPosition, Position::missing());
+    CHECK_EQ(cstNode->closeParenthesesPosition, Position::missing());
 }
 
 TEST_SUITE_END();

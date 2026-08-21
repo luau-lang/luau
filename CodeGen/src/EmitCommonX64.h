@@ -229,6 +229,7 @@ void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int offset, in
 void emitUpdatePcForExit(AssemblyBuilderX64& build);
 
 void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers);
+void emitDispatchLuauCall(AssemblyBuilderX64& build, ModuleHelpers& helpers);
 
 } // namespace X64
 } // namespace CodeGen

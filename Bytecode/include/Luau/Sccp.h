@@ -717,9 +717,17 @@ struct Sccp
         {
             uint32_t blockidx = func.getBlockIndex(block);
             block.useCount = static_cast<uint32_t>(blockUses[blockidx].size());
-            if (!reachable.contains(blockidx))
+            if (!reachable.contains(blockidx) && !hasCloseUpvals(block))
                 block.flags |= BcBlockFlag::Dead;
         }
+    }
+
+    bool hasCloseUpvals(const BcBlock& block) const
+    {
+        for (BcOp op : block.ops)
+            if (func.instOp(op).op == LOP_CLOSEUPVALS)
+                return true;
+        return false;
     }
 
     static std::optional<LuauOpcode> arithToKOpcode(LuauOpcode op)

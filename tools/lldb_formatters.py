@@ -784,7 +784,7 @@ def set_userdata_type_name(userdata_type_name):
     _userdata_type_name = userdata_type_name
 
 def get_userdata_type(target):
-    """Get's the SBType of the userdata type specified by set_userdata_type_name. If set_userdata_type_name hasn't been called,
+    """Gets the SBType of the userdata type specified by set_userdata_type_name. If set_userdata_type_name hasn't been called,
        or if the type can't be found, this returns None.
     """
     return target.FindFirstType(_userdata_type_name)
@@ -806,7 +806,7 @@ def luau_closure_summary(valobj, internal_dict):
 # Note for future work:
 # LLDB is limited in terms of expansion. i.e. a child provider can expand to a set
 # of children, but it can't directly express how those children can be expanded further.
-# To acheive this functionality for special situations (e.g. showing callstacks in reverse
+# To achieve this functionality for special situations (e.g. showing callstacks in reverse
 # order) it may be necessary to create types that are only used for debugging purposes which
 # an then define how their children are expanded.
 #

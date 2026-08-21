@@ -99,9 +99,9 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("<a, b..., c...>((c...) -> (b...), (a) -> (c...), a) -> (b...)", toString(requireType("apply")));
+        CHECK_EQ("<T, U..., V...>((V...) -> (U...), (T) -> (V...), T) -> (U...)", toString(requireType("apply")));
     else
-        CHECK_EQ("<a, b..., c...>((b...) -> (c...), (a) -> (b...), a) -> (c...)", toString(requireType("apply")));
+        CHECK_EQ("<T, U..., V...>((U...) -> (V...), (T) -> (U...), T) -> (V...)", toString(requireType("apply")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "return_type_should_be_empty_if_nothing_is_returned")

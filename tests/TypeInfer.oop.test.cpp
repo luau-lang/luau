@@ -395,7 +395,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "augmenting_an_unsealed_table_with_a_metatabl
     if (!FFlag::DebugLuauForceOldSolver)
         CHECK("{ @metatable { number: number }, { method: (unknown) -> string } }" == toString(requireType("B"), {true}));
     else
-        CHECK("{ @metatable {| number: number |}, {| method: <a>(a) -> string |} }" == toString(requireType("B"), {true}));
+        CHECK("{ @metatable {| number: number |}, {| method: <T>(T) -> string |} }" == toString(requireType("B"), {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")

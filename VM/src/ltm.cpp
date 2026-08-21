@@ -122,13 +122,6 @@ const TValue* luaT_gettmbyobj(lua_State* L, const TValue* o, TMS event)
     case LUA_TUSERDATA:
         mt = uvalue(o)->metatable;
         break;
-    case LUA_TCLASS:
-    {
-        // We store a metatable for class objects on the
-        // class object itself, use that.
-        mt = classvalue(o)->metatable;
-        break;
-    }
     case LUA_TOBJECT:
         mt = objectvalue(o)->lclass->instancemetatable;
         break;

@@ -34,6 +34,8 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauOptimizeExportTable)
+LUAU_FASTFLAG(LuauCompileFastpcall)
+LUAU_FASTFLAG(LuauExportedTypesParticipateInScc)
 
 using namespace Luau;
 
@@ -5979,7 +5981,7 @@ RETURN R0 0
 
 TEST_CASE("Arithmetics")
 {
-    // basic arithmetics codegen with non-constants
+    // basic arithmetic codegen with non-constants
     CHECK_EQ(
         "\n" + compileFunction0(R"(
 local a, b = ...
@@ -5997,7 +5999,7 @@ RETURN R2 6
 )"
     );
 
-    // basic arithmetics codegen with constants on the right side
+    // basic arithmetic codegen with constants on the right side
     // note that we don't simplify these expressions as we don't know the type of a
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -9919,7 +9921,7 @@ RETURN R0 0
 )"
     );
 
-    // multiple assignments with multcall handling - foo() evalutes to temporary registers and they are copied out to target
+    // multiple assignments with multcall handling - foo() evaluates to temporary registers and they are copied out to target
     CHECK_EQ(
         "\n" + compileFunction0(R"(
         local a, b, c, d = ...
@@ -10006,7 +10008,7 @@ RETURN R0 0
 )"
     );
 
-    // when there are more expressions when values, we evalute them for side effects, but they also participate in conflict handling
+    // when there are more expressions when values, we evaluate them for side effects, but they also participate in conflict handling
     CHECK_EQ(
         "\n" + compileFunction0(R"(
         local a, b = ...
@@ -12247,6 +12249,37 @@ TEST_CASE("ExportSyntaxRegression")
     )"));
 }
 
+TEST_CASE("ExportTypeOnlyNoReturnEmitsEmptyTable")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportedTypesParticipateInScc, true}};
+
+    // A type-only export module with no return implicitly returns a frozen empty table
+    CHECK_EQ(
+        "\n" + compileFunction0("export type Foo = { x: number }"),
+        R"(
+NEWTABLE R0 0 0
+GETIMPORT R1 2 [table.freeze]
+MOVE R2 R0
+CALL R1 1 1
+RETURN R1 1
+)"
+    );
+}
+
+TEST_CASE("ExportTypeOnlyWithReturnDoesNotEmitEmptyTable")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportedTypesParticipateInScc, true}};
+
+    // A type-only export module with an explicit return uses the return as-is
+    CHECK_EQ(
+        "\n" + compileFunction0("export type Foo = { x: number }\nreturn {}"),
+        R"(
+NEWTABLE R0 0 0
+RETURN R0 1
+)"
+    );
+}
+
 /**
  * This was introduced as a regression test to ensure that the LBC_CONSTANT_*
  * values do not incidentally change.
@@ -12620,6 +12653,51 @@ NEWCLASS R0 no_base K3 0 [class _ (props: 0, methods: 2)]
 LOADNIL R2
 NEWCLASS R1 R2 K5 0 [class l0 (props: 0, methods: 2)]
 RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ProtectedCalls")
+{
+    ScopedFastFlag luauCompileFastpcall{FFlag::LuauCompileFastpcall, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local a, b = ...
+local s, value = pcall(rawequal, a, b)
+return s, value
+)"),
+        R"(
+GETVARARGS R0 2
+GETIMPORT R3 1 [rawequal]
+MOVE R4 R0
+MOVE R5 R1
+FASTPCALL pcall L0
+GETIMPORT R2 3 [pcall]
+CALL R2 3 2
+L0: RETURN R2 2
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a, b = ...
+local s, value = xpcall(rawequal, function(err) return err .. '!' end, a, b)
+return s, value
+)",
+                   1
+               ),
+        R"(
+GETVARARGS R0 2
+GETIMPORT R3 1 [rawequal]
+DUPCLOSURE R4 K2 []
+MOVE R5 R0
+MOVE R6 R1
+FASTPCALL xpcall L0
+GETIMPORT R2 4 [xpcall]
+CALL R2 4 2
+L0: RETURN R2 2
 )"
     );
 }

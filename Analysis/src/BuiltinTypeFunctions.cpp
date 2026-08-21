@@ -719,7 +719,7 @@ TypeFunctionReductionResult<TypeId> andTypeFunction(
     else if (isPending(rhsTy, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
 
-    // And evalutes to a boolean if the LHS is falsy, and the RHS type if LHS is truthy.
+    // And evaluates to a boolean if the LHS is falsy, and the RHS type if LHS is truthy.
     SimplifyResult filteredLhs = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, ctx->builtins->falsyType);
     SimplifyResult overallResult = simplifyUnion(ctx->builtins, ctx->arena, rhsTy, filteredLhs.result);
     std::vector<TypeId> blockedTypes{};
@@ -759,7 +759,7 @@ TypeFunctionReductionResult<TypeId> orTypeFunction(
     else if (isBlockedOrUnsolvedType(rhsTy))
         return {std::nullopt, Reduction::MaybeOk, {rhsTy}, {}};
 
-    // Or evalutes to the LHS type if the LHS is truthy, and the RHS type if LHS is falsy.
+    // Or evaluates to the LHS type if the LHS is truthy, and the RHS type if LHS is falsy.
     SimplifyResult filteredLhs = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, ctx->builtins->truthyType);
     SimplifyResult overallResult = simplifyUnion(ctx->builtins, ctx->arena, rhsTy, filteredLhs.result);
     std::vector<TypeId> blockedTypes{};

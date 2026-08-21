@@ -150,7 +150,9 @@ struct BytecodeInlinerFixture
             CompileOptions opts;
             opts.optimizationLevel = optimizationLevel;
             compileOrThrow(bcb, result, names, opts);
-            return {{bcb.getFunctionData(0), bcb.getFunctionData(1), extractStringTable(bcb)}};
+            uint32_t funcCount = bcb.getFunctionCount();
+            LUAU_ASSERT(funcCount >= 3);
+            return {{bcb.getFunctionData(funcCount - 3), bcb.getFunctionData(funcCount - 2), extractStringTable(bcb)}};
         }
         catch (CompileError& e)
         {
@@ -1558,6 +1560,75 @@ JUMPBACK L0
 RETURN R0 0
 L3: CALLFB R0 0 0 [-1]
 L4: RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_keeps_unreachable_closeupvals_block")
+{
+    std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
+        local function caller()
+            local f = function() end
+            while true do
+                local cap = function() f = f end
+                f()
+            end
+        end
+        caller()
+    )");
+
+    CompTimeBcFunction* caller = nullptr;
+    for (CompTimeBcFunction& fn : graphs)
+        if (fn.debugname == "caller")
+            caller = &fn;
+    REQUIRE(caller);
+
+    BcVmConstImpl impl(*caller);
+    Bytecode::foldConstants(*caller, impl);
+
+    bool foundCloseUpvalsBlock = false;
+    for (const BcBlock& block : caller->blocks)
+    {
+        bool hasClose = false;
+        for (BcOp op : block.ops)
+            if (caller->instOp(op).op == LOP_CLOSEUPVALS)
+                hasClose = true;
+
+        if (hasClose)
+        {
+            foundCloseUpvalsBlock = true;
+            CHECK((block.flags & BcBlockFlag::Dead) == 0);
+        }
+    }
+    CHECK(foundCloseUpvalsBlock);
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_projection_in_return_phi")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(a, ...)
+            return a and ...
+        end
+
+        local function caller(x)
+            local r = inlinee(x)
+            return r
+        end
+    )"),
+        R"(
+GETUPVAL R1 0
+MOVE R2 R0
+CMPPROTO R1 #0 L1
+MOVE R4 R2
+JUMPIFNOT R4 L0
+LOADNIL R4
+L0: MOVE R1 R4
+RETURN R1 1
+L1: CALLFB R1 1 1 [-1]
+RETURN R1 1
 )"
     );
 }

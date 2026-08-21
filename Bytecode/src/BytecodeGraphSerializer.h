@@ -564,6 +564,10 @@ struct BytecodeGraphSerializer
             bcb.emitAux(getImmInt(insn, 1));
             break;
 
+        case LOP_FASTPCALL:
+            bcb.emitABC(LOP_FASTPCALL, getImmInt(insn, 0), getImmInt(insn, 1), getImmInt(insn, 2));
+            break;
+
         case LOP_NEWCLASS:
             LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
             bcb.emitABC(LOP_NEWCLASS, getRegister(insnOp), getRegInput(insn, 0), getImmImport(insn, 1));
