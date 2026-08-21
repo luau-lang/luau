@@ -498,18 +498,6 @@ static int createBoolean(lua_State* L)
     return 1;
 }
 
-// Luau: `type.integer`
-// Returns the type instance representing boolean
-static int createInteger(lua_State* L)
-{
-    // if(!FFlag::LuauIntegerType2){ //whoops
-    //     lua_pushnil(L);
-    //     return 1;
-    // }
-    allocTypeUserData(L, TypeFunctionPrimitiveType{TypeFunctionPrimitiveType::Integer});
-
-    return 1;
-}
 
 // Luau: `type.number`
 // Returns the type instance representing number
