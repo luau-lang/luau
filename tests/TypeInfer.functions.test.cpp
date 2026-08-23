@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
+LUAU_FASTFLAG(LuauDoesCallErrorUnwrapsGroups)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -971,6 +972,69 @@ TEST_CASE_FIXTURE(Fixture, "report_exiting_without_return_strict")
 
     FunctionExitsWithoutReturning* inferredErr = get<FunctionExitsWithoutReturning>(result.errors[1]);
     CHECK(inferredErr);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_call_diverges_through_grouping")
+{
+    ScopedFastFlag sff{FFlag::LuauDoesCallErrorUnwrapsGroups, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function ungrouped(): never
+            error("oops")
+        end
+
+        local function grouped(): never
+            (error)("oops")
+        end
+
+        local function nestedGroups(): never
+            ((error))("oops")
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_call_diverges_through_grouping")
+{
+    ScopedFastFlag sff{FFlag::LuauDoesCallErrorUnwrapsGroups, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function ungrouped(): never
+            assert(false)
+        end
+
+        local function grouped(): never
+            (assert)(false)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "grouped_call_to_shadowed_error_does_not_diverge")
+{
+    ScopedFastFlag sff{FFlag::LuauDoesCallErrorUnwrapsGroups, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local error = function(_: string) end
+        local assert = function(_: boolean) end
+
+        local function withError(): never
+            (error)("oops")
+        end
+
+        local function withAssert(): never
+            (assert)(false)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
+    CHECK(get<FunctionExitsWithoutReturning>(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields_errors_spanning_argument")
