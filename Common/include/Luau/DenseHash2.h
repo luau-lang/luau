@@ -441,7 +441,7 @@ public:
         for (size_t bucket : usedTable)
         {
             const Key& key = ItemInterface::getKey(data[bucket]);
-            // ItemInterface::setKey default constructs the value type. If we use insert_unsafe here, we then pay for one unecessary construction
+            // ItemInterface::setKey default constructs the value type. If we use insert_unsafe here, we then pay for one unnecessary construction
             // which is immediately overwritten. Instead, we manually insert these items into the destination table
             auto [dest, found] = newtable.getBucket(key);
             LUAU_ASSERT(!found);

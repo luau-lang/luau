@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 
 using namespace Luau;
 
@@ -1279,6 +1280,13 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(string | number) & (\"a\" | true) <: { lower
 {
     auto base = meet(join(getBuiltins()->stringType, getBuiltins()->numberType), join(aType, trueSingleton));
     CHECK_IS_SUBTYPE(base, tableWithLower);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(string | number) & (\"a\" | true) <: string")
+{
+    ScopedFastFlag _{FFlag::LuauRefactorStringSemanticSubtyping, true};
+    auto base = meet(join(getBuiltins()->stringType, getBuiltins()->numberType), join(aType, trueSingleton));
+    CHECK_IS_SUBTYPE(base, getBuiltins()->stringType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "number <: ~~number")

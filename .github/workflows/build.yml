@@ -42,6 +42,8 @@ jobs:
       run: |
         ./luau-tests
         ./luau-tests --fflags=true
+        ./luau-tests --fflags=DebugLuauForceOldSolver
+        ./luau-tests --fflags=DebugLuauForceOldSolver,true
     - name: run extra conformance tests
       run: |
         ./luau-tests -ts=Conformance -O2
@@ -77,6 +79,8 @@ jobs:
         Debug/Luau.Conformance.exe
         Debug/Luau.UnitTest.exe --fflags=true
         Debug/Luau.Conformance.exe --fflags=true
+        Debug/Luau.UnitTest.exe --fflags=DebugLuauForceOldSolver
+        Debug/Luau.UnitTest.exe --fflags=DebugLuauForceOldSolver,true
     - name: run extra conformance tests
       shell: bash # necessary for fail-fast
       run: |

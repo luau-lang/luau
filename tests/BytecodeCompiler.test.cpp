@@ -17,6 +17,7 @@ using namespace Luau;
 using namespace Luau::Bytecode;
 
 LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauCompileFastpcall)
 
 namespace
 {
@@ -1197,6 +1198,23 @@ SETTABLEKS R1 R2 K9 ['Cat']
 CLOSEUPVALS R0
 RETURN R2 1
 )");
+}
+
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "fastpcall_roundtrip")
+{
+    ScopedFastFlag luauCompileFastpcall{FFlag::LuauCompileFastpcall, true};
+
+    checkRoundtrip(R"(
+        local function test(fn)
+            return pcall(fn, 42)
+        end
+    )");
+
+    checkRoundtrip(R"(
+        local function test(fn, errf)
+            return xpcall(fn, errf, 1, 2, 3)
+        end
+    )");
 }
 
 TEST_SUITE_END();

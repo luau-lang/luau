@@ -33,6 +33,7 @@ struct LuauTempThreadPopper
 using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
 
 void* typeFunctionAlloc(void* ud, void* ptr, size_t osize, size_t nsize);
+void* typeFunctionAllocWithLimit(void* ud, void* ptr, size_t osize, size_t nsize);
 
 struct TypeFunctionPrimitiveType
 {
@@ -324,6 +325,8 @@ struct TypeFunctionRuntime
 
     // Type builder, valid for the duration of a single evaluation
     TypeFunctionRuntimeBuilderState* runtimeBuilder = nullptr;
+
+    std::unique_ptr<size_t> heapSize = nullptr;
 
 private:
     void prepareState();

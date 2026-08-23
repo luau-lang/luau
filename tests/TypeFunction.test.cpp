@@ -15,7 +15,6 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauDoNotExportBrokenTypeFunction)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 
 struct TypeFunctionFixture : Fixture
@@ -319,7 +318,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_can_be_shadowed")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK(toString(requireType("hi")) == "(string) -> string");
-    CHECK(toString(requireType("plus")) == "<a, b>(a, b) -> add<a, b>");
+    CHECK(toString(requireType("plus")) == "<T, U>(T, U) -> add<T, U>");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_inhabited_with_normalization")

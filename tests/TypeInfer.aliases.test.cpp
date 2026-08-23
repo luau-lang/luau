@@ -11,8 +11,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
-LUAU_FASTFLAG(LuauDoNotEmplaceAnnotatedType)
 LUAU_FASTFLAG(LuauInstantiationCheckArguments)
+LUAU_FASTFLAG(LuauInstantiationCheckArgumentsDedup)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -1388,8 +1388,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unpack_doesnt_emplace_typeof_type")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauDoNotEmplaceAnnotatedType, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local Obj = {}
         
@@ -1412,6 +1410,60 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unused_type_arguments")
         type Foo<T> = {}
         export type Export<T> = {Foo<Foo<T>>}
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_argument_duplicate_pending_expansions")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag luauInstantiationCheckArguments{FFlag::LuauInstantiationCheckArguments, true};
+    ScopedFastFlag luauInstantiationCheckArgumentsDedup{FFlag::LuauInstantiationCheckArgumentsDedup, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"_(
+type Sym<Kind = string> = { text: Kind }
+type Data<T, U> = { [number]: T, separators: { Sym<U> } }
+type MT<T, U> = { __iter: (Data<T, U>) -> (({ [number]: T }, number?) -> (number?, T), { T }) }
+type Combined<T, U> = setmetatable<Data<T, U>, MT<T, U>>
+
+type Instantiate0 = { typeArguments: Combined<Pack1 | Pack2 | Pack3 | Pack4, ","> }
+type Instantiate1 = { typeArguments: Combined<Pack1 | Pack2 | Pack3 | Pack4, ","> }
+type Instantiate2 = { typeArguments: Combined<Pack1 | Pack2 | Pack3 | Pack4, ","> }
+type Instantiate3 = { typeArguments: Combined<Pack1 | Pack2 | Pack3 | Pack4, ","> }
+type Instantiate4 = { typeArguments: Combined<Pack1 | Pack2 | Pack3 | Pack4, ","> }
+type Instantiate5 = { typeArguments: Combined<Pack1 | Pack2 | Pack3 | Pack4, ","> }
+type Instantiate6 = { typeArguments: Combined<Pack1 | Pack2 | Pack3 | Pack4, ","> }
+type Instantiate7 = { typeArguments: Combined<Pack1 | Pack2 | Pack3 | Pack4, ","> }
+type Instantiate8 = { typeArguments: Combined<Pack1 | Pack2 | Pack3 | Pack4, ","> }
+type Instantiate9 = { typeArguments: Combined<Pack1 | Pack2 | Pack3 | Pack4, ","> }
+
+type Pack1a = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack1b = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack1c = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack1d = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack1e = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack1 = Pack1a | Pack1b | Pack1c | Pack1d | Pack1e
+
+type Pack2a = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack2b = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack2c = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack2d = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack2e = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack2 = Pack2a | Pack2b | Pack2c | Pack2d | Pack2e
+
+type Pack3a = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack3b = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack3c = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack3d = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack3e = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack3 = Pack3a | Pack3b | Pack3c | Pack3d | Pack3e
+
+type Pack4a = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack4b = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack4c = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack4d = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack4e = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
+type Pack4 = Pack4a | Pack4b | Pack4c | Pack4d | Pack4e
+    )_"));
 }
 
 TEST_SUITE_END();

@@ -550,7 +550,7 @@ void IrRegAllocA64::restore(const IrRegAllocA64::Spill& s, RegisterA64 reg)
     {
         CODEGEN_ASSERT(!inst.spilled && inst.needsReload);
 
-        // When restoring the value, we allow cross-block restore because we have commited to the target location at spill time
+        // When restoring the value, we allow cross-block restore because we have committed to the target location at spill time
         ValueRestoreLocation restoreLocation = function.findRestoreLocation(inst, /*limitToCurrentBlock*/ false);
 
         AddressA64 addr = getReloadAddress(restoreLocation);

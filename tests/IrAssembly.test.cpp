@@ -76,7 +76,7 @@ class IrAssemblyFixture
 {
 public:
     IrAssemblyFixture()
-        : build(hooks)
+        : build(hooks, {})
     {
         options.target = AssemblyOptions::X64_Windows;
 
