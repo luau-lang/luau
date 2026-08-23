@@ -4,6 +4,7 @@
 #include "Luau/BytecodeBuilder.h"
 
 LUAU_FASTFLAG(LuauIntegerFastcalls)
+LUAU_FASTFLAGVARIABLE(LuauCompileResolveAliasChains)
 
 namespace Luau
 {
@@ -296,6 +297,32 @@ struct TypeMapVisitor : AstVisitor
         return ty;
     }
 
+    // An alias can name another alias, so a single step can land on a reference rather than the
+    // table it stands for and leave the field lookup with nothing to search
+    const AstType* resolveAliases(const AstType* ty)
+    {
+        if (!FFlag::LuauCompileResolveAliasChains)
+            return resolveAliases_DEPRECATED(ty);
+
+        DenseHashSet2<AstName> seenAliases;
+
+        while (const AstTypeReference* ref = ty->as<AstTypeReference>())
+        {
+            if (ref->prefix || seenAliases.contains(ref->name))
+                break;
+
+            AstStatTypeAlias* const* alias = typeAliases.find(ref->name);
+
+            if (!alias || !*alias)
+                break;
+
+            seenAliases.insert(ref->name);
+            ty = (*alias)->type;
+        }
+
+        return ty;
+    }
+
     const AstTableIndexer* tryGetTableIndexer(AstExpr* expr)
     {
         if (const AstType** typePtr = resolvedExprs.find(expr))
@@ -309,7 +336,7 @@ struct TypeMapVisitor : AstVisitor
 
     LuauBytecodeType recordResolvedType(AstExpr* expr, const AstType* ty)
     {
-        ty = resolveAliases_DEPRECATED(ty);
+        ty = resolveAliases(ty);
 
         resolvedExprs[expr] = ty;
 
@@ -321,7 +348,7 @@ struct TypeMapVisitor : AstVisitor
 
     LuauBytecodeType recordResolvedType(AstLocal* local, const AstType* ty)
     {
-        ty = resolveAliases_DEPRECATED(ty);
+        ty = resolveAliases(ty);
 
         resolvedLocals[local] = ty;
 
