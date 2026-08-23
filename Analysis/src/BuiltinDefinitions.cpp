@@ -26,7 +26,6 @@
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
-LUAU_FASTFLAG(LuauNewSolverNewDefinitions)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -427,12 +426,9 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     if (frontend.getLuauSolverMode() == SolverMode::New)
     {
-        if (!FFlag::LuauNewSolverNewDefinitions)
-        {
-            // getmetatable : <T>(T) -> getmetatable<T>
-            TypeId getmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypes->typeFunctions->getmetatableFunc, {genericT}});
-            addGlobalBinding(globals, "getmetatable", makeFunction(arena, std::nullopt, {genericT}, {}, {genericT}, {getmtReturn}), "@luau");
-        }
+        // getmetatable : <T>(T) -> getmetatable<T>
+        TypeId getmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypes->typeFunctions->getmetatableFunc, {genericT}});
+        addGlobalBinding(globals, "getmetatable", makeFunction(arena, std::nullopt, {genericT}, {}, {genericT}, {getmtReturn}), "@luau");
     }
     else
     {
@@ -442,14 +438,11 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     if (frontend.getLuauSolverMode() == SolverMode::New)
     {
-        if (!FFlag::LuauNewSolverNewDefinitions)
-        {
-            // setmetatable<T: {}, MT>(T, MT) -> setmetatable<T, MT>
-            TypeId setmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypes->typeFunctions->setmetatableFunc, {genericT, genericMT}});
-            addGlobalBinding(
-                globals, "setmetatable", makeFunction(arena, std::nullopt, {genericT, genericMT}, {}, {genericT, genericMT}, {setmtReturn}), "@luau"
-            );
-        }
+        // setmetatable<T: {}, MT>(T, MT) -> setmetatable<T, MT>
+        TypeId setmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypes->typeFunctions->setmetatableFunc, {genericT, genericMT}});
+        addGlobalBinding(
+            globals, "setmetatable", makeFunction(arena, std::nullopt, {genericT, genericMT}, {}, {genericT, genericMT}, {setmtReturn}), "@luau"
+        );
     }
     else
     {
