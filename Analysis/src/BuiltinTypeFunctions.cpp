@@ -24,7 +24,6 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
-LUAU_FASTFLAGVARIABLE(LuauIndexImplAnyIndexerResultsInAny)
 
 namespace Luau
 {
@@ -2129,10 +2128,6 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
     // if the indexer failed to normalize, we can't reduce, but know nothing about inhabitance.
     if (!indexerNormTy)
         return {std::nullopt, Reduction::MaybeOk, {}, {}};
-
-    // if the indexer is `any`, then indexing also gives us `any`
-    if (FFlag::LuauIndexImplAnyIndexerResultsInAny && indexerNormTy->shouldSuppressErrors())
-        return {ctx->builtins->anyType, Reduction::MaybeOk, {}, {}};
 
     // we're trying to reject any type that is not a string singleton or primitive (string, number, boolean, thread, nil, function, table, or buffer)
     if (indexerNormTy->hasTops() || indexerNormTy->hasErrors())

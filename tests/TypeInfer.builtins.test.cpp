@@ -2055,34 +2055,4 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_function")
     CHECK_EQ("Argument count mismatch. Function 'table.freeze' expects 1 argument, but none are specified", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_array")
-{
-    DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag useTypeFunction{FFlag::LuauNewSolverNewDefinitions, true};
-
-    CheckResult result = check(R"(
-        local t: { buffer }
-        local k: number
-        local v = rawget(t, k)
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(0, result);
-    CHECK_EQ("buffer", toString(requireType("v")));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_properties")
-{
-    DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag useTypeFunction{FFlag::LuauNewSolverNewDefinitions, true};
-
-    CheckResult result = check(R"(
-        local t: { hello: vector }
-        local k: "hello"
-        local v = rawget(t, k)
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(0, result);
-    CHECK_EQ("vector", toString(requireType("v")));
-}
-
 TEST_SUITE_END();

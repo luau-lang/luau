@@ -34,7 +34,7 @@ declare function tostring<T>(value: T): string
 declare function tonumber<T>(value: T, radix: number?): number?
 
 declare function rawequal<T1, T2>(a: T1, b: T2): boolean
-declare function rawget<T, K>(tab: T, k: K): rawget<T, K>
+declare function rawget<K, V>(tab: {[K]: V}, k: K): V?
 declare function rawset<K, V>(tab: {[K]: V}, k: K, v: V): {[K]: V}
 declare function rawlen<K, V>(obj: {[K]: V} | string): number
 
