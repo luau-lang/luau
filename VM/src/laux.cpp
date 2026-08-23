@@ -599,7 +599,7 @@ void luaL_pushresult(luaL_Strbuf* B)
     {
         luaC_checkGC(L);
 
-        // if we finished just at the end of the string buffer, we can convert it to a mutable stirng without a copy
+        // if we finished just at the end of the string buffer, we can convert it to a mutable string without a copy
         if (B->p == B->end)
         {
             setsvalue(L, L->top - 1, luaS_buffinish(L, storage));

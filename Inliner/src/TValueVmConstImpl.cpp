@@ -242,7 +242,7 @@ int TValueVmConstImpl::cmp(const BcOp& lhsOp, const BcImm& rhs) const
             return (bvalue(lhs) == static_cast<int>(rhs.valueBoolean)) ? 0 : 1;
     }
 
-    // BcImms are only either Int, Boolean or Import, and we are not doing import comparions, so return false
+    // BcImms are only either Int, Boolean or Import, and we are not doing import comparisons, so return false
     return 0;
 }
 

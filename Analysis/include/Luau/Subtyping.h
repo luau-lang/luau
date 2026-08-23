@@ -107,12 +107,6 @@ struct MappedGenericEnvironment
     bool bindGeneric(TypePackId genericTp, TypePackId bindeeTp);
 };
 
-enum class SubtypingSuppressionPolicy
-{
-    Any,
-    All
-};
-
 struct SubtypingResult
 {
     bool isSubtype = false;
@@ -132,7 +126,7 @@ struct SubtypingResult
     /// If any generic bounds were invalid, report them here
     std::vector<GenericBoundsMismatch> genericBoundsMismatches;
 
-    SubtypingResult& andAlso(SubtypingResult other, SubtypingSuppressionPolicy policy = SubtypingSuppressionPolicy::Any);
+    SubtypingResult& andAlso(SubtypingResult other);
     SubtypingResult& orElse(SubtypingResult other);
     SubtypingResult& withBothComponent(TypePath::Component component);
     SubtypingResult& withSuperComponent(TypePath::Component component);

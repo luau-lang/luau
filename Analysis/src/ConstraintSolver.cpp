@@ -44,9 +44,10 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAGVARIABLE(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArguments)
+LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArgumentsDedup)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
-LUAU_FASTFLAG(LuauBidirectionalInferenceVariadics)
+LUAU_FASTFLAGVARIABLE(LuauForceLess)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauIndexingIntoErrorGivesError)
@@ -303,10 +304,24 @@ struct InstantiationQueuer : IterativeTypeVisitor
 
     bool visit(TypeId ty, const PendingExpansionType& petv) override
     {
-        if (FFlag::LuauCyclicRequireTypeInference)
-            solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty}, moduleName);
+        if (FFlag::LuauInstantiationCheckArgumentsDedup)
+        {
+            if (!solver->typeAliasesToExpand.contains(ty))
+            {
+                if (FFlag::LuauCyclicRequireTypeInference)
+                    solver->typeAliasesToExpand[ty] = solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty}, moduleName);
+                else
+                    solver->typeAliasesToExpand[ty] = solver->DEPRECATED_pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
+            }
+        }
         else
-            solver->DEPRECATED_pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
+        {
+            if (FFlag::LuauCyclicRequireTypeInference)
+                solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty}, moduleName);
+            else
+                solver->DEPRECATED_pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
+        }
+
         return false;
     }
 
@@ -854,7 +869,7 @@ void ConstraintSolver::bind(NotNull<const Constraint> constraint, TypeId ty, Typ
 
     // This follow shouldn't be needed, but if for some reason we end up
     // with a bound type, we want to also follow it when doing this
-    // occurence check.
+    // occurrence check.
     if (follow(ty) == boundTo)
     {
         auto freshTy = freshType(arena, builtinTypes, constraint->scope, Polarity::Mixed);
@@ -936,7 +951,7 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
     else if (auto taec = get<TypeAliasExpansionConstraint>(*constraint))
         success = tryDispatch(*taec, constraint);
     else if (auto fcc = get<FunctionCallConstraint>(*constraint))
-        success = tryDispatch(*fcc, constraint, force);
+        success = tryDispatch(*fcc, constraint);
     else if (auto fcc = get<FunctionCheckConstraint>(*constraint))
         success = tryDispatch(*fcc, constraint, force);
     else if (auto fcc = get<DEPRECATED_PrimitiveTypeConstraint>(*constraint); !FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier && fcc)
@@ -1108,6 +1123,9 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
 
 bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
+    if (FFlag::LuauForceLess)
+         force = false;
+
     /*
      * for .. in loops can play out in a bunch of different ways depending on
      * the shape of iteratee.
@@ -1578,7 +1596,7 @@ void ConstraintSolver::fillInDiscriminantTypes(NotNull<const Constraint> constra
     }
 }
 
-bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint, bool force)
+bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint)
 {
     TypeId fn = follow(c.fn);
     TypePackId argsPack = follow(c.argsPack);
@@ -1867,6 +1885,9 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
 bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
+    if (FFlag::LuauForceLess)
+        force = false;
+
     TypeId fn = follow(c.fn);
     const TypePackId argsPack = follow(c.argsPack);
 
@@ -1935,9 +1956,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     // We don't attempt to perform bidirectional inference on the self type.
     const size_t typeOffset = c.callSite->self ? 1 : 0;
 
-    const std::vector<TypeId> expectedArgs = FFlag::LuauBidirectionalInferenceVariadics
-                                                 ? extendTypePack(*arena, builtinTypes, ftv->argTypes, c.callSite->args.size + typeOffset).head
-                                                 : flatten(ftv->argTypes).first;
+    const std::vector<TypeId> expectedArgs = extendTypePack(*arena, builtinTypes, ftv->argTypes, c.callSite->args.size + typeOffset).head;
     const std::vector<TypeId> argPackHead = flatten(argsPack).first;
 
     for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
@@ -2825,6 +2844,9 @@ bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Cons
 
 bool ConstraintSolver::tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
+    if (FFlag::LuauForceLess)
+        force = false;
+
     TypePackId tp = follow(c.tp);
 
     TypeFunctionContext context{NotNull{this}, constraint->scope, constraint, subtyping};
@@ -3137,6 +3159,9 @@ TypeId ConstraintSolver::instantiateFunctionType(
 
 bool ConstraintSolver::tryDispatch(const PushTypeConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
+    if (FFlag::LuauForceLess)
+        force = false;
+
     Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}, &uninhabitedTypeFunctions};
 
     // NOTE: If we don't do this check up front, we almost immediately start
@@ -3181,6 +3206,9 @@ bool ConstraintSolver::tryDispatch(const PushTypeConstraint& c, NotNull<const Co
 
 bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
+    if (FFlag::LuauForceLess)
+        force = false;
+
     iteratorTy = follow(iteratorTy);
 
     if (get<FreeType>(iteratorTy))

@@ -868,11 +868,33 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 
 #if defined(CODEGEN_TARGET_A64)
 
+#ifdef CODEGEN_TARGET_A64_PTRAUTH_CALLS
+#include <ptrauth.h>
+#endif
+
+namespace Luau
+{
+namespace CodeGen
+{
+unsigned int getCpuFeaturesA64();
+} // namespace CodeGen
+} // namespace Luau
+
+template<typename FunctionType>
+static FunctionType* asCallablePointer(uint8_t* code)
+{
+#ifdef CODEGEN_TARGET_A64_PTRAUTH_CALLS
+    return ptrauth_sign_unauthenticated(reinterpret_cast<FunctionType*>(code), ptrauth_key_function_pointer, 0);
+#else
+    return reinterpret_cast<FunctionType*>(code);
+#endif
+}
+
 TEST_CASE("GeneratedCodeExecutionA64")
 {
     using namespace A64;
 
-    AssemblyBuilderA64 build(/* logger= */ nullptr, /* features= */ 0);
+    AssemblyBuilderA64 build(/* logger= */ nullptr, getCpuFeaturesA64());
 
     Label skip;
     build.cbz(x1, skip);
@@ -902,7 +924,7 @@ TEST_CASE("GeneratedCodeExecutionA64")
     REQUIRE(codeAllocation.codeStart);
 
     using FunctionType = int64_t(int64_t, int*);
-    FunctionType* f = (FunctionType*)codeAllocation.codeStart;
+    FunctionType* f = asCallablePointer<FunctionType>(codeAllocation.codeStart);
     int input = 10;
     int64_t result = f(20, &input);
     CHECK(result == 42);
@@ -925,11 +947,14 @@ TEST_CASE("GeneratedCodeExecutionWithThrowA64")
 
     using namespace A64;
 
-    AssemblyBuilderA64 build(/* logger= */ nullptr, /* features= */ 0);
+    AssemblyBuilderA64 build(/* logger= */ nullptr, getCpuFeaturesA64());
 
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderDwarf2>();
 
     unwind->startInfo(UnwindBuilder::A64);
+
+    if (build.features & Feature_PtrAuthRet)
+        build.pacibsp();
 
     build.sub(sp, sp, uint16_t(32));
     build.stp(x29, x30, mem(sp));
@@ -945,7 +970,10 @@ TEST_CASE("GeneratedCodeExecutionWithThrowA64")
     build.ldp(x29, x30, mem(sp));
     build.add(sp, sp, uint16_t(32));
 
-    build.ret();
+    if (build.features & Feature_PtrAuthRet)
+        build.retab();
+    else
+        build.ret();
 
     Label functionEnd = build.setLabel();
 
@@ -970,7 +998,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowA64")
     REQUIRE(codeAllocation.codeStart);
 
     using FunctionType = int64_t(int64_t, void (*)(int64_t));
-    FunctionType* f = (FunctionType*)codeAllocation.codeStart;
+    FunctionType* f = asCallablePointer<FunctionType>(codeAllocation.codeStart);
 
     // To simplify debugging, CHECK_THROWS_WITH_AS is not used here
     try

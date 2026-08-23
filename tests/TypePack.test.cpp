@@ -199,7 +199,7 @@ TEST_CASE_FIXTURE(TypePackFixture, "std_distance")
 
 TEST_CASE("content_reassignment")
 {
-    TypePackVar myError{ErrorTypePack{}, /*presistent*/ true};
+    TypePackVar myError{ErrorTypePack{}, /*persistent*/ true};
 
     TypeArena arena;
 

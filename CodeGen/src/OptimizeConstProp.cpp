@@ -2360,6 +2360,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.inSafeEnv = true;
         }
         break;
+    case IrCmd::CHECK_YIELDABLE:
+        break;
     case IrCmd::CHECK_BUFFER_LEN:
     {
         std::optional<int> bufferOffset = function.asIntOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst)));
@@ -2577,6 +2579,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     }
     case IrCmd::INVOKE_FASTCALL:
         handleBuiltinEffects(state, LuauBuiltinFunction(function.uintOp(OP_A(inst))), vmRegOp(OP_B(inst)), function.intOp(OP_G(inst)));
+        break;
+
+    case IrCmd::INVOKE_FASTPCALL:
+        state.invalidateRegistersFrom(vmRegOp(OP_A(inst)));
+        state.invalidateUserCall();
         break;
 
         // These instructions don't have an effect on register/memory state we are tracking

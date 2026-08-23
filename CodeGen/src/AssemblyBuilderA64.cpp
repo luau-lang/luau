@@ -651,12 +651,34 @@ void AssemblyBuilderA64::br(RegisterA64 src)
 
 void AssemblyBuilderA64::blr(RegisterA64 src)
 {
-    placeBR("blr", src, 0b1101011'0'0'01'11111'0000'0'0);
+    if (features & Feature_PtrAuthCall)
+    {
+        // op4 = 0b11111 selects the Z (zero modifier) form
+        placeBR("blraaz", src, 0b1101011'0'0'01'11111'0000'1'0, 0b11111);
+    }
+    else
+    {
+        placeBR("blr", src, 0b1101011'0'0'01'11111'0000'0'0);
+    }
 }
 
 void AssemblyBuilderA64::ret()
 {
     place0("ret", 0b1101011'0'0'10'11111'0000'0'0'11110'00000);
+}
+
+void AssemblyBuilderA64::pacibsp()
+{
+    CODEGEN_ASSERT(features & Feature_PtrAuthRet);
+
+    place0("pacibsp", 0b11010101000000110010'0011'01111111u);
+}
+
+void AssemblyBuilderA64::retab()
+{
+    CODEGEN_ASSERT(features & Feature_PtrAuthRet);
+
+    place0("retab", 0b1101011'0'0'10'11111'0000'1'1'11111'11111);
 }
 
 void AssemblyBuilderA64::b(ConditionA64 cond, Label& label)
@@ -1582,14 +1604,14 @@ void AssemblyBuilderA64::placeBCR(const char* name, const char* nameInv, Label& 
     }
 }
 
-void AssemblyBuilderA64::placeBR(const char* name, RegisterA64 src, uint32_t op)
+void AssemblyBuilderA64::placeBR(const char* name, RegisterA64 src, uint32_t op, uint32_t op4)
 {
     if (logText)
         log(name, src);
 
     CODEGEN_ASSERT(src.kind == KindA64::x);
 
-    place((src.index << 5) | (op << 10));
+    place(op4 | (src.index << 5) | (op << 10));
     commit();
 }
 

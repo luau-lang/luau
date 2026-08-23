@@ -16,7 +16,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
 LUAU_FASTFLAGVARIABLE(LuauCheckReadTyWhenRelatingExtern)
@@ -818,7 +817,7 @@ TypeId TypeSimplifier::intersectFromParts(TypeIds parts)
             return builtinTypes->neverType;
 
         // At this point, source will contain some intersection, and dest will contain
-        // the intersection we want to retain for the next interation.
+        // the intersection we want to retain for the next iteration.
 
         // We swap the two, so that we can use `source` as the basis for the next iteration.
         std::swap(source, dest);
