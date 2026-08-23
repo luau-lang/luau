@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauCompileIifeInline)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
+LUAU_FASTFLAG(LuauCompileResolveAliasChains)
 LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAG(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
@@ -4048,6 +4049,63 @@ SETUPVAL R4 0
 GETIMPORT R4 3 [a]
 RETURN R4 1
 )");
+}
+
+TEST_CASE("TableFieldTypesThroughAliasChain")
+{
+    ScopedFastFlag chains{FFlag::LuauCompileResolveAliasChains, true};
+
+    auto compileTypes = [](const char* source)
+    {
+        Luau::BytecodeBuilder bcb;
+        bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Types);
+        bcb.setDumpSource(source);
+
+        Luau::CompileOptions options;
+        options.vectorType = "vector";
+        options.typeInfoLevel = 1;
+
+        Luau::compileOrThrow(bcb, source, options);
+
+        return "\n" + bcb.dumpFunction(0);
+    };
+
+    // Chained alias
+    CHECK_EQ(
+        compileTypes(R"(
+type Vertex = {pos: vector, normal: vector}
+type Alias = Vertex
+
+function foo(v: Alias)
+    local p = v.pos
+    return p
+end
+)"),
+        R"(
+R0: table [argument]
+R1: vector from 0 to 3
+GETTABLEKS R1 R0 K0 ['pos']
+RETURN R1 1
+)"
+    );
+
+    // Mutually recursive aliases
+    CHECK_EQ(
+        compileTypes(R"(
+type A = B
+type B = A
+
+function foo(v: A)
+    local p = v.pos
+    return p
+end
+)"),
+        R"(
+R1: any from 0 to 3
+GETTABLEKS R1 R0 K0 ['pos']
+RETURN R1 1
+)"
+    );
 }
 
 TEST_CASE("CostModelRemarks")
