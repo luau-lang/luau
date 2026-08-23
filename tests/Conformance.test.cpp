@@ -75,6 +75,7 @@ LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauBytecodeCostModel)
 LUAU_FASTFLAG(LuauVirtualBcBuilder)
 LUAU_FASTFLAG(LuauNewPointerEncode)
+LUAU_FASTFLAG(LuauSandboxFreezesVectorMetatable)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -5210,6 +5211,36 @@ TEST_CASE("CodegenRandomizeFunctionalCorrectness")
     REQUIRE_MESSAGE(callResult == 0, lua_tostring(L, -1));
 
     CHECK(lua_tonumber(L, -1) == 42.0);
+}
+
+TEST_CASE("SandboxFreezesVectorMetatable")
+{
+    ScopedFastFlag freezeVectorMetatable{FFlag::LuauSandboxFreezesVectorMetatable, true};
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+#if LUA_VECTOR_SIZE == 4
+    lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
+#else
+    lua_pushvector(L, 0.0f, 0.0f, 0.0f);
+#endif
+
+    luaL_newmetatable(L, "Vector7");
+    lua_pushboolean(L, true);
+    lua_setfield(L, -2, "Supported");
+
+    lua_setmetatable(L, -2);
+
+    luaL_sandbox(L);
+
+#if LUA_VECTOR_SIZE == 4
+    lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
+#else
+    lua_pushvector(L, 0.0f, 0.0f, 0.0f);
+#endif
+    CHECK(lua_getmetatable(L, -1));
+    CHECK(lua_getreadonly(L, -1));
 }
 
 TEST_SUITE_END();
