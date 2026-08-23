@@ -12,7 +12,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
-LUAU_FASTFLAG(LuauNewSolverNewDefinitions)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
