@@ -1187,7 +1187,7 @@ FragmentTypeCheckResult typecheckFragment_(
 
     std::unique_ptr<ConstraintGraph> cgraph = std::make_unique<ConstraintGraph>(frontend.builtinTypes);
 
-    /// Contraint Generator
+    /// Constraint Generator
     ConstraintGenerator cg{
         incrementalModule,
         NotNull{&normalizer},

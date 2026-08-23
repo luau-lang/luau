@@ -323,7 +323,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class")
     fileResolver.source["game/B"] = R"(
         local A = require(game.A)
 
-        local x : unknown = (A.Point {} ) :: any
+        local x : unknown = (A.Point { x = 0 } ) :: any
         if class.isinstance(x, A.Point) then
             local y = x
         end
@@ -348,7 +348,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class_but_not_a_c
     fileResolver.source["game/B"] = R"(
         local A = require(game.A)
 
-        local x : unknown = (A.Point {} ) :: any
+        local x : unknown = (A.Point { x = 0 } ) :: any
         if class.isinstance(x, A.notAPoint) then
             local y = x
         end
@@ -356,7 +356,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class_but_not_a_c
     CheckResult modA = getFrontend().check("game/A");
     CheckResult modB = getFrontend().check("game/B");
     LUAU_REQUIRE_ERROR_COUNT(1, modB);
-    // Theres an unknown property on A.foo, but
+    // There's an unknown property on A.foo, but
     LUAU_REQUIRE_ERROR(modB, TypeMismatch);
     auto err = get<TypeMismatch>(modB.errors[0]);
     CHECK_EQ("class", toString(err->wantedType));
@@ -443,6 +443,15 @@ TEST_CASE_FIXTURE(ClassesFixture, "accept_read_only_tables")
 
     CHECK_EQ("({ bar: number }) -> Foo", toString(requireType("ofnumbertbl")));
     CHECK_EQ("({ read bar: number | string }) -> Foo", toString(requireType("inference")));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "fuzzy_classes_crash")
+{
+    // TODO CLI-201171: This should be an error, but at least it doesn't crash.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        class sqrt extends sqrt
+        end
+    )"));
 }
 
 

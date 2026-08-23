@@ -159,7 +159,7 @@ std::string dump(const Constraint& c);
 
 std::string dump(const std::shared_ptr<Scope>& scope, const char* name);
 
-std::string generateName(size_t i);
+std::string generateName(size_t i, bool isForGeneric);
 
 std::string toString(const Position& position);
 std::string toString(const Location& location, int offset = 0, bool useBegin = true);

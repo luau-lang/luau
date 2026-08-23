@@ -18,12 +18,12 @@
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauAllowIntersectionOfOneTableWithExtern)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
+LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
 
 namespace Luau
 {
@@ -118,18 +118,81 @@ const NormalizedStringType NormalizedStringType::never;
 
 bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& superStr)
 {
-    if (subStr.isUnion() && (superStr.isUnion() && !superStr.isNever()))
+    if (FFlag::LuauRefactorStringSemanticSubtyping)
     {
-        for (auto [name, ty] : subStr.singletons)
+        if (subStr.isIntersection() && superStr.isIntersection())
         {
-            if (!superStr.singletons.count(name))
-                return false;
+            // If we have two intersections, then we check that there's
+            // no exclusion in the superset that's also not excluded
+            // in the subset. For example, consider:
+            //
+            //  string & ~"a" & ~"b" & ~"d" </: string & ~"a" & ~"c"
+            //
+            // ... substr excludes "b" but superstr does not.
+            //
+            // NOTE: This case catches the trivial `string <: string`,
+            // as this is two intersections where the singleton part
+            // is empty (`unknown`).
+            for (const auto& [name, ty] : superStr.singletons)
+            {
+                if (subStr.singletons.count(name) == 0)
+                    return false;
+            }
+            return true;
         }
-    }
-    else if (subStr.isString() && superStr.isUnion())
-        return false;
 
-    return true;
+        if (subStr.isUnion() && superStr.isUnion())
+        {
+            // If we have two unions, then we check that every singleton in the
+            // substr is accounted for in the superstr, as in:
+            //
+            //  "a" | "b" <: "a" | "b" | "c"
+            //
+            for (const auto& [name, ty] : subStr.singletons)
+            {
+                if (superStr.singletons.count(name) == 0)
+                    return false;
+            }
+            return true;
+        }
+
+        if (subStr.isUnion() && superStr.isIntersection())
+        {
+            // If the substr is a union and the superstr is an intersection, then
+            // we have something of the form:
+            //
+            //  "a" | "b" | "c" <: string & ~"d" & ~"e" & ~"f"
+            //
+            // ... we just need to check that _none_ of the singletons in the
+            // substr are represented in the superstr.
+            for (const auto& [name, ty] : subStr.singletons)
+            {
+                if (superStr.singletons.count(name) != 0)
+                    return false;
+            }
+            return true;
+        }
+
+        // If the substr is an intersection and the superstr is a union,
+        // then we cannot possibly represent the union that would actually
+        // be a supertype (it would be an infinite set).
+        return false;
+    }
+    else
+    {
+        if (subStr.isUnion() && (superStr.isUnion() && !superStr.isNever()))
+        {
+            for (auto [name, ty] : subStr.singletons)
+            {
+                if (!superStr.singletons.count(name))
+                    return false;
+            }
+        }
+        else if (subStr.isString() && superStr.isUnion())
+            return false;
+
+        return true;
+    }
 }
 
 void NormalizedExternType::pushPair(TypeId ty, TypeIds negations)
