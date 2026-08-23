@@ -64,7 +64,6 @@ LUAU_FASTFLAG(LuauCodegenBufferInteger)
 LUAU_FASTFLAG(LuauXpcallFixMessageYieldPath)
 LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
 LUAU_FASTFLAG(LuauCodegenDseRestoreHintUpdate)
-LUAU_FASTFLAG(LuauYieldIter2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauGcTraceUdata)
@@ -75,6 +74,7 @@ LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauBytecodeCostModel)
 LUAU_FASTFLAG(LuauVirtualBcBuilder)
+LUAU_FASTFLAG(LuauNewPointerEncode)
 LUAU_FASTFLAG(LuauIsNotLua)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
@@ -1397,6 +1397,7 @@ TEST_CASE("JitInliner")
 {
     ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
     ScopedFastFlag luauBytecodeFold{FFlag::LuauBytecodeFold, true};
+    ScopedFastFlag luauVirtualBuilder{FFlag::LuauVirtualBcBuilder, true};
     runConformance("jit_inliner.luau", nullptr, nullptr, nullptr, nullptr, /*skipCodegen=*/true);
 }
 
@@ -2034,7 +2035,7 @@ TEST_CASE("Debugger")
 
                 // for every breakpoint, we break on the first invocation and continue on second
                 // this allows us to easily step off breakpoints
-                // (real implementaiton may require singlestepping)
+                // (real implementation may require singlestepping)
                 if (breakhits % 2 == 1)
                     lua_break(L);
             };
@@ -3022,6 +3023,90 @@ TEST_CASE("ApiAlloc")
     bool allocfIsSet = lua_getallocf(L, &udCheck) == limitedRealloc;
     CHECK(allocfIsSet);
     CHECK(udCheck == &ud);
+}
+
+TEST_CASE("ApiEncode")
+{
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    // Changing the key changes the pointer (at least for these keys)
+    {
+        lua_setpointerencodekey(L, 111111, 222222, 333333, 444444);
+        uintptr_t a = lua_encodepointer(L, uintptr_t(0xc0ffee12));
+
+        lua_setpointerencodekey(L, 999999, 888888, 777777, 666666);
+        uintptr_t b = lua_encodepointer(L, uintptr_t(0xc0ffee12));
+
+        CHECK(a != 0xc0ffee12);
+        CHECK(a != b);
+    }
+
+    // Identity keys
+    {
+        lua_setpointerencodekey(L, 1, 0, 0, 0);
+        CHECK(lua_encodepointer(L, uintptr_t(0xc0ffee12)) == uintptr_t(0xc0ffee12));
+
+        lua_setpointerencodekey(L, 0, 1, 0, 0);
+        CHECK(lua_encodepointer(L, uintptr_t(0xc0ffee12)) == uintptr_t(0xc0ffee12));
+    }
+
+    // Not random
+    {
+        lua_setpointerencodekey(L, 111111, 222222, 333333, 444444);
+        uintptr_t a = lua_encodepointer(L, uintptr_t(0xc0ffee12));
+        uintptr_t b = lua_encodepointer(L, uintptr_t(0xc0ffee12));
+        CHECK(a == b);
+    }
+
+    ScopedFastFlag luauNewPointerEncode{FFlag::LuauNewPointerEncode, true};
+
+    // A few exact value tests
+    if (sizeof(void*) == 8)
+    {
+        struct Vector64
+        {
+            uint64_t a, b, c, d;
+            uint64_t input;
+            uint64_t expected;
+        } vector64[] = {
+            {111111ull, 222222ull, 333333ull, 444444ull, 0x00000000c0ffee12ull, 0xc497c9f06c9901c3ull},
+            {999999ull, 888888ull, 777777ull, 666666ull, 0x0123456789abcdefull, 0xc7bb09966ae1c6d4ull},
+            {0x0706050403020100ull,
+             0x0f0e0d0c0b0a0908ull,
+             0x1716151413121110ull,
+             0x1f1e1d1c1b1a1918ull,
+             0xfedcba9876543210ull,
+             0xd6729ee7b7c47d59ull},
+            {0ull, 0ull, 0ull, 0ull, 0xffffffffffffffffull, 0xcd819a7f2506d0f7ull},
+        };
+
+        for (const Vector64& vector : vector64)
+        {
+            lua_setpointerencodekey(L, vector.a, vector.b, vector.c, vector.d);
+            CHECK(lua_encodepointer(L, uintptr_t(vector.input)) == uintptr_t(vector.expected));
+        }
+    }
+    else
+    {
+        struct Vector32
+        {
+            uint64_t a, b, c, d;
+            uint32_t input;
+            uint32_t expected;
+        } vector32[] = {
+            {111111ull, 222222ull, 333333ull, 444444ull, 0xc0ffee12ul, 0x523aabfaul},
+            {999999ull, 888888ull, 777777ull, 666666ull, 0x89abcdeful, 0x1fa6cbdaul},
+            {0x0706050403020100ull, 0x0f0e0d0c0b0a0908ull, 0x1716151413121110ull, 0x1f1e1d1c1b1a1918ull, 0x76543210ul, 0x571c084aul},
+            {0ull, 0ull, 0ull, 0ull, 0xfffffffful, 0x2463651ful},
+        };
+
+        for (const Vector32& vector : vector32)
+        {
+            lua_setpointerencodekey(L, vector.a, vector.b, vector.c, vector.d);
+            CHECK(lua_encodepointer(L, uintptr_t(vector.input)) == uintptr_t(vector.expected));
+        }
+    }
 }
 
 #if !LUA_USE_LONGJMP
@@ -4030,8 +4115,6 @@ static int cYieldingIterator(lua_State* L)
 
 TEST_CASE("Iter")
 {
-    ScopedFastFlag luauYieldIter{FFlag::LuauYieldIter2, true};
-
     runConformance(
         "iter.luau",
         [](lua_State* L)

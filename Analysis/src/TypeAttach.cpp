@@ -42,7 +42,7 @@ static const char* getName(Allocator* allocator, SyntheticNames* syntheticNames,
     char*& n = (*syntheticNames)[&gen];
     if (!n)
     {
-        std::string str = gen.explicitName ? gen.name : generateName(s);
+        std::string str = gen.explicitName ? gen.name : generateName(s, /*isForGeneric*/ true);
         n = static_cast<char*>(allocator->allocate(str.size() + 1));
         strcpy(n, str.c_str());
     }
@@ -56,7 +56,7 @@ static const char* getName(Allocator* allocator, SyntheticNames* syntheticNames,
     char*& n = (*syntheticNames)[&gen];
     if (!n)
     {
-        std::string str = gen.explicitName ? gen.name : generateName(s);
+        std::string str = gen.explicitName ? gen.name : generateName(s, /*isForGeneric*/ true);
         n = static_cast<char*>(allocator->allocate(str.size() + 1));
         strcpy(n, str.c_str());
     }

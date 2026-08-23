@@ -18,6 +18,7 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
+LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 
 namespace Luau
 {
@@ -955,7 +956,7 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType*
         innerState->tryUnify_(type, superTy, isFunctionCall);
 
         // TODO: This sets errorSuppressed to true if any of the parts is error-suppressing,
-        // in paricular any & T is error-suppressing. Really, errorSuppressed should be true if
+        // in particular any & T is error-suppressing. Really, errorSuppressed should be true if
         // all of the parts are error-suppressing, but that fails to typecheck lua-apps.
         if (innerState->errors.empty())
         {
@@ -2396,11 +2397,18 @@ void Unifier::tryUnifyNegations(TypeId subTy, TypeId superTy)
     if (!subNorm || !superNorm)
         return reportError(location, NormalizationTooComplex{});
 
-    // T </: ~U iff T <: U
-    std::unique_ptr<Unifier> state = makeChildUnifier();
-    state->tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "");
-    if (state->errors.empty())
-        reportError(location, TypeMismatch{superTy, subTy, mismatchContext()});
+    if (FFlag::LuauRefactorStringSemanticSubtyping)
+    {
+        tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "");
+    }
+    else
+    {
+        // T </: ~U iff T <: U
+        std::unique_ptr<Unifier> state = makeChildUnifier();
+        state->tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "");
+        if (state->errors.empty())
+            reportError(location, TypeMismatch{superTy, subTy, mismatchContext()});
+    }
 }
 
 static void queueTypePack(std::vector<TypeId>& queue, DenseHashSet2<TypePackId>& seenTypePacks, Unifier& state, TypePackId a, TypePackId anyTypePack)

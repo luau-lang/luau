@@ -23,6 +23,8 @@
 #include <set>
 #include <vector>
 
+LUAU_FASTINTVARIABLE(DebugLuauTypeFunctionRuntimeHeapLimit, 0)
+
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 
@@ -56,7 +58,16 @@ TypeFunctionRuntime::TypeFunctionRuntime(NotNull<InternalErrorReporter> ice, Not
 {
 }
 
-TypeFunctionRuntime::~TypeFunctionRuntime() {}
+TypeFunctionRuntime::~TypeFunctionRuntime()
+{
+    if (FInt::DebugLuauTypeFunctionRuntimeHeapLimit > 0)
+    {
+        // state depends on heapSize not being free'd first, so ensure the
+        // correct order here.
+        state.reset();
+        heapSize.reset();
+    }
+}
 
 std::optional<std::string> TypeFunctionRuntime::registerFunction_DEPRECATED(AstStatTypeFunction* function)
 {
@@ -235,7 +246,16 @@ void TypeFunctionRuntime::prepareState()
     if (state)
         return;
 
-    state = StateRef(lua_newstate(typeFunctionAlloc, nullptr), lua_close);
+    if (FInt::DebugLuauTypeFunctionRuntimeHeapLimit > 0)
+    {
+        // Create a unique pointer so that the pointer given to the runtime
+        // is stable.
+        heapSize = std::make_unique<size_t>(0);
+        state = StateRef{lua_newstate(typeFunctionAllocWithLimit, heapSize.get()), lua_close};
+    }
+    else
+        state = StateRef(lua_newstate(typeFunctionAlloc, nullptr), lua_close);
+
     lua_State* L = state.get();
 
     lua_setthreaddata(L, this);
@@ -251,6 +271,19 @@ void TypeFunctionRuntime::prepareState()
 }
 
 constexpr int kTypeUserdataTag = 42;
+
+void* typeFunctionAllocWithLimit(void* ud, void* ptr, size_t osize, size_t nsize)
+{
+    size_t* heapSize = static_cast<size_t*>(ud);
+
+    if ((*heapSize) - osize + nsize > size_t(FInt::DebugLuauTypeFunctionRuntimeHeapLimit))
+        return nullptr;
+
+    (*heapSize) -= osize;
+    (*heapSize) += nsize;
+
+    return typeFunctionAlloc(ud, ptr, osize, nsize);
+}
 
 void* typeFunctionAlloc(void* ud, void* ptr, size_t osize, size_t nsize)
 {
@@ -503,6 +536,15 @@ static int createBoolean(lua_State* L)
 static int createNumber(lua_State* L)
 {
     allocTypeUserData(L, TypeFunctionPrimitiveType{TypeFunctionPrimitiveType::Number});
+
+    return 1;
+}
+
+// Luau: `type.integer`
+// Returns the type instance representing integer
+static int createInteger(lua_State* L)
+{
+    allocTypeUserData(L, TypeFunctionPrimitiveType{TypeFunctionPrimitiveType::Integer});
 
     return 1;
 }
@@ -1945,6 +1987,14 @@ void registerTypesLibrary(lua_State* L)
     {
         l->func(L);
         lua_setfield(L, -2, l->name);
+    }
+
+    // `integer` is only nameable in type annotations when the flag is on, so only expose a
+    // constructor for it under the same condition
+    if (FFlag::LuauIntegerType2)
+    {
+        createInteger(L);
+        lua_setfield(L, -2, "integer");
     }
 
     lua_pop(L, 1);

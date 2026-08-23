@@ -321,6 +321,14 @@ void OverloadResolver::reportErrors(
 {
     std::optional<size_t> argumentIndex = getArgumentIndex(reason.subPath, fnTy);
 
+    // A variadic parameter has no index of its own, so the subPath stops at the tail. The
+    // argument that failed against it is the one the superPath names.
+    if (!argumentIndex)
+    {
+        const TypeId given = arena->addType(FunctionType{argPack, builtinTypes->anyTypePack});
+        argumentIndex = getArgumentIndex(reason.superPath, given);
+    }
+
     Location argLocation;
     // If the Nth argument directly corresponds to a term in the AST, use its location.
     if (argumentIndex && *argumentIndex < argExprs.size())

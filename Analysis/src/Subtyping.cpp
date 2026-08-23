@@ -25,11 +25,11 @@ LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
-LUAU_FASTFLAGVARIABLE(LuauSubtypeUnionsTogether)
 LUAU_FASTFLAGVARIABLE(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 
 
 namespace Luau
@@ -234,7 +234,7 @@ static SubtypingReasonings mergeReasonings(const SubtypingReasonings& a, const S
     return result;
 }
 
-SubtypingResult& SubtypingResult::andAlso(SubtypingResult other, SubtypingSuppressionPolicy policy)
+SubtypingResult& SubtypingResult::andAlso(SubtypingResult other)
 {
     // If the other result is not a subtype, we want to join all of its
     // reasonings to this one. If this result already has reasonings of its own,
@@ -250,11 +250,7 @@ SubtypingResult& SubtypingResult::andAlso(SubtypingResult other, SubtypingSuppre
 
     isSubtype &= other.isSubtype;
 
-    if (policy == SubtypingSuppressionPolicy::All)
-        isErrorSuppressing &= other.isErrorSuppressing;
-    else
-        isErrorSuppressing |= other.isErrorSuppressing;
-
+    isErrorSuppressing |= other.isErrorSuppressing;
     normalizationTooComplex |= other.normalizationTooComplex;
     isCacheable &= other.isCacheable;
     errors.insert(errors.end(), other.errors.begin(), other.errors.end());
@@ -895,7 +891,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
             result.isCacheable = false;
         }
     }
-    else if (auto p = get2<UnionType, UnionType>(subTy, superTy); FFlag::LuauSubtypeUnionsTogether && p)
+    else if (auto p = get2<UnionType, UnionType>(subTy, superTy))
     {
         result = isCovariantWith(env, p.first, p.second, scope);
         if (!result.isSubtype && !result.normalizationTooComplex)
@@ -1666,7 +1662,6 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 LUAU_NOINLINE
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const UnionType* subUnion, const UnionType* superUnion, NotNull<Scope> scope)
 {
-    LUAU_ASSERT(FFlag::LuauSubtypeUnionsTogether);
     // A | B | C <: D | E | F
     //
     // ... when all of A, B and C are subtypes of D | E | F. However, we can
@@ -2305,7 +2300,7 @@ SubtypingResult Subtyping::isCovariantWith(
         //
         //  local function ohno(v: Vector3)
         //      local v_prime = cast(v)
-        //      v_prime["well thats not good"] = 42
+        //      v_prime["well that's not good"] = 42
         //  end
         result = {/* isSubtype */ false};
     }
@@ -2597,8 +2592,18 @@ SubtypingResult Subtyping::isCovariantWith(
     result.andAlso(isCovariantWith(env, subNorm->errors, superNorm->errors, scope));
     result.andAlso(isCovariantWith(env, subNorm->nils, superNorm->nils, scope));
     result.andAlso(isCovariantWith(env, subNorm->numbers, superNorm->numbers, scope));
-    result.andAlso(isCovariantWith(env, subNorm->strings, superNorm->strings, scope));
-    result.andAlso(isCovariantWith(env, subNorm->strings, superNorm->tables, scope));
+    if (FFlag::LuauRefactorStringSemanticSubtyping)
+    {
+        auto subResult = std::make_unique<SubtypingResult>(SubtypingResult{false});
+        subResult->orElse(isCovariantWith(env, subNorm->strings, superNorm->strings, scope));
+        subResult->orElse(isCovariantWith(env, subNorm->strings, superNorm->tables, scope));
+        result.andAlso(std::move(*subResult));
+    }
+    else
+    {
+        result.andAlso(isCovariantWith(env, subNorm->strings, superNorm->strings, scope));
+        result.andAlso(isCovariantWith(env, subNorm->strings, superNorm->tables, scope));
+    }
     result.andAlso(isCovariantWith(env, subNorm->threads, superNorm->threads, scope));
     result.andAlso(isCovariantWith(env, subNorm->buffers, superNorm->buffers, scope));
     result.andAlso(isCovariantWith(env, subNorm->tables, superNorm->tables, scope));
@@ -2949,7 +2954,7 @@ SubtypingResult Subtyping::checkGenericBounds(
          *
          * No actual value is both a string and a number, so the test fails.
          *
-         * TODO: We'll need to add explanitory context here.
+         * TODO: We'll need to add explanatory context here.
          */
         result.isSubtype = false;
     }
