@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauExportAnnotationBinding)
 LUAU_FASTINT(LuauSolverConstraintLimit)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauIndexImplAnyIndexerResultsInAny)
 
 using namespace Luau;
 
@@ -973,6 +974,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_194463_modify_bounds_of_visited_generic_regression")
 {
     ScopedFastFlag _{FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true};
+    ScopedFastFlag indexWithAnyResultsInAny{FFlag::LuauIndexImplAnyIndexerResultsInAny, true};
 
     fileResolver.source["game/Container"] = R"(
         local Container = {}

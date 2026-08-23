@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauIndexingIntoErrorGivesError)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAG(LuauNewSolverNewDefinitions)
 
 namespace Luau
 {
@@ -4008,7 +4009,8 @@ NotNull<Constraint> ConstraintSolver::pushConstraint(
     solverConstraints.push_back(std::move(c));
     unsolvedConstraints.emplace_back(borrow);
 
-    if (solverConstraintLimit > 0)
+    // Built-in definitions (`@luau`) should not count towards the constraint limit.
+    if (solverConstraintLimit > 0 && (!FFlag::LuauNewSolverNewDefinitions || *representativeModuleName != "@luau"))
     {
         --solverConstraintLimit;
 
@@ -4043,7 +4045,8 @@ NotNull<Constraint> ConstraintSolver::DEPRECATED_pushConstraint(NotNull<Scope> s
     solverConstraints.push_back(std::move(c));
     unsolvedConstraints.emplace_back(borrow);
 
-    if (solverConstraintLimit > 0)
+    // Built-in definitions (`@luau`) should not count towards the constraint limit.
+    if (solverConstraintLimit > 0 && (!FFlag::LuauNewSolverNewDefinitions || *representativeModuleName != "@luau"))
     {
         --solverConstraintLimit;
 
