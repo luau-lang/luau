@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauCodegenConstVectorBufferRead)
 LUAU_FASTFLAG(LuauCodegenStoreTagCheck)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAG(LuauCodegenIntegerCompare)
+LUAU_FASTFLAG(LuauLoadRemapOptionalUserdata)
 
 #define ensureVectorSize3() \
     if constexpr (LUA_VECTOR_SIZE != 3) \
@@ -8644,6 +8645,86 @@ bb_bytecode_2:
   STORE_TAG R3, tnumber
   INTERRUPT 20u
   RETURN R3, 1i
+)"
+    );
+}
+
+// The compile-time and run-time userdata type lists are in different orders, so 'vec2?' only reports
+// as 'vec2' if the load-time remapping ran for the optional form as well.
+TEST_CASE_FIXTURE(LoweringFixture, "OptionalUserdataTypeRemapping")
+{
+    ScopedFastFlag remapOptional{FFlag::LuauLoadRemapOptionalUserdata, true};
+
+    // Argument types
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(b: vec2?)
+    return b
+end
+)",
+                   /* includeIrTypes */ true
+               ),
+        R"(
+; function foo($arg0) line 2
+; R0: vec2? [argument]
+bb_0:
+  %0 = LOAD_TAG R0
+  JUMP_EQ_TAG %0, tnil, bb_2, bb_3
+bb_3:
+  CHECK_TAG %0, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  INTERRUPT 0u
+  RETURN R0, 1i
+)"
+    );
+
+    // Upvalue types
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local up: vec2? = nil
+local function foo()
+    return up
+end
+return foo
+)",
+                   /* includeIrTypes */ true,
+                   /* debugLevel */ 2
+               ),
+        R"(
+; function foo() line 3
+; U0: vec2? ['up']
+bb_bytecode_0:
+  STORE_TAG R0, tnil
+  INTERRUPT 1u
+  RETURN R0, 1i
+)"
+    );
+
+    // Local types
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo()
+    local v: vec2? = nil
+    return v
+end
+return foo
+)",
+                   /* includeIrTypes */ true,
+                   /* debugLevel */ 2
+               ),
+        R"(
+; function foo() line 2
+; R0: vec2? from 0 to 2 [local 'v']
+bb_bytecode_0:
+  STORE_TAG R0, tnil
+  INTERRUPT 1u
+  RETURN R0, 1i
 )"
     );
 }
