@@ -8653,6 +8653,10 @@ bb_bytecode_2:
 // as 'vec2' if the load-time remapping ran for the optional form as well.
 TEST_CASE_FIXTURE(LoweringFixture, "OptionalUserdataTypeRemapping")
 {
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
     ScopedFastFlag remapOptional{FFlag::LuauLoadRemapOptionalUserdata, true};
 
     // Argument types
