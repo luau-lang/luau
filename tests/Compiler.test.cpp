@@ -2559,10 +2559,8 @@ until (function() return rr end)() < 0.5
 
     // unless that upvalue is from an outer scope
     CHECK_EQ(
-        "\n" + compileFunction0(
-                   "local stop = false stop = true function test() repeat local r = math.random() if r > 0.5 then "
-                   "continue end r = r + 0.3 until stop or r < 0.5 end"
-               ),
+        "\n" + compileFunction0("local stop = false stop = true function test() repeat local r = math.random() if r > 0.5 then "
+                                "continue end r = r + 0.3 until stop or r < 0.5 end"),
         R"(
 L0: GETIMPORT R0 2 [math.random]
 CALLFB R0 0 1 [0]
@@ -4086,6 +4084,27 @@ R0: table [argument]
 R1: vector from 0 to 3
 GETTABLEKS R1 R0 K0 ['pos']
 RETURN R1 1
+)"
+    );
+
+    // Generic alias
+    CHECK_EQ(
+        compileTypes(R"(
+type Map<K, V> = { [K]: V }
+type Rec = { n: number }
+type ComponentIndex = Map<string, Rec>
+
+function foo(m: ComponentIndex, k: string)
+    local r = m[k]
+    return r
+end
+)"),
+        R"(
+R0: table [argument]
+R1: string [argument]
+R2: any from 0 to 2
+GETTABLE R2 R0 R1
+RETURN R2 1
 )"
     );
 

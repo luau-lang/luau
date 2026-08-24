@@ -316,6 +316,11 @@ struct TypeMapVisitor : AstVisitor
             if (!alias || !*alias)
                 break;
 
+            // TODO: type arguments are not substituted, so stepping into a generic alias body
+            // would resolve its parameters against nothing
+            if ((*alias)->generics.size != 0 || (*alias)->genericPacks.size != 0)
+                break;
+
             seenAliases.insert(ref->name);
             ty = (*alias)->type;
         }
