@@ -503,8 +503,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "os_time_takes_optional_date_table")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("number" == toString(requireType("n1")));
-    CHECK("number" == toString(requireType("n2")));
-    CHECK("number" == toString(requireType("n3")));
+    CHECK("number?" == toString(requireType("n2")));
+    CHECK("number?" == toString(requireType("n3")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "os_time_with_date_table_may_return_nil")
+{
+    // os.time returns nil when the date table is out of range, so the result
+    // must not be used as a number without a check.
+    CheckResult result = check(R"(
+        local n: number = os.time({ year = 0, month = 0, day = 0 })
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "thread_is_a_type")
