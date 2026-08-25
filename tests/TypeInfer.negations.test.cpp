@@ -82,6 +82,7 @@ end
 
 TEST_CASE_FIXTURE(NegationFixture, "subtyping_handles_super_negation")
 {
+    ScopedFastFlag newSolverOnly{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastFlag newErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
     ScopedFastFlag fixTypePaths{FFlag::LuauFixSuperNegationTypePaths, true};
 
