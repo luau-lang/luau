@@ -33,7 +33,7 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowExternClassInTypeDefinitions)
 LUAU_FASTFLAGVARIABLE(LuauStoreConstKeywordBegin)
 LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
-LUAU_FASTFLAGVARIABLE(LuauFunctionReturnTypePackLessTypeGroups)
+LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -2551,6 +2551,11 @@ AstTypePack* Parser::parseOptionalReturnType(Position* returnSpecifierPosition)
     return nullptr;
 }
 
+static bool isTypeFollow(Lexeme::Type c)
+{
+    return c == '|' || c == '?' || c == '&';
+}
+
 // ReturnType ::= Type | `(' TypeList `)'
 AstTypePack* Parser::parseReturnType()
 {
@@ -2607,16 +2612,32 @@ AstTypePack* Parser::parseReturnType()
             // TODO(CLI-140667): stop parsing type suffix when varargAnnotation != nullptr - this should be a parse error
             AstType* inner = nullptr;
 
-            if (varargAnnotation == nullptr &&
-                (FFlag::LuauFunctionReturnTypePackLessTypeGroups ? (lexer.current().type == '&' || lexer.current().type == '|') : true))
+            bool parensBelongToInnerGroup = false;
+            if (FFlag::LuauSingleTypeOptionalPackReturnsAttributeParens)
             {
-                inner = allocator.alloc<AstTypeGroup>(location, result[0]);
-
-                if (options.storeCstData)
-                    cstNodeMap[inner] = allocator.alloc<CstTypeGroup>(closeParenFound ? closeParenthesesPosition : Position::missing());
+                if (varargAnnotation == nullptr && isTypeFollow(lexer.current().type))
+                {
+                    inner = allocator.alloc<AstTypeGroup>(location, result[0]);
+                    parensBelongToInnerGroup = true;
+                    if (options.storeCstData)
+                        cstNodeMap[inner] = allocator.alloc<CstTypeGroup>(closeParenFound ? closeParenthesesPosition : Position::missing());
+                }
+                else
+                    inner = result[0];
             }
             else
-                inner = result[0];
+            {
+                if (varargAnnotation == nullptr)
+                {
+                    inner = allocator.alloc<AstTypeGroup>(location, result[0]);
+
+                    if (options.storeCstData)
+                        cstNodeMap[inner] = allocator.alloc<CstTypeGroup>(closeParenFound ? closeParenthesesPosition : Position::missing());
+                }
+                else
+                    inner = result[0];
+            }
+
 
             AstType* returnType = parseTypeSuffix(inner, begin.location);
 
@@ -2630,11 +2651,19 @@ AstTypePack* Parser::parseReturnType()
 
             AstTypePackExplicit* node =
                 allocator.alloc<AstTypePackExplicit>(Location{location.begin, endPos}, AstTypeList{copy(&returnType, 1), varargAnnotation});
-            if (options.storeCstData)
-                cstNodeMap[node] = FFlag::LuauFunctionReturnTypePackLessTypeGroups
-                                       ? allocator.alloc<CstTypePackExplicit>(location.begin, closeParenthesesPosition, copy(commaPositions))
-                                       : allocator.alloc<CstTypePackExplicit>();
-            return node;
+            if (FFlag::LuauSingleTypeOptionalPackReturnsAttributeParens && options.storeCstData)
+            {
+                cstNodeMap[node] = parensBelongToInnerGroup
+                                       ? allocator.alloc<CstTypePackExplicit>()
+                                       : allocator.alloc<CstTypePackExplicit>(location.begin, closeParenthesesPosition, copy(commaPositions));
+                return node;
+            }
+            else
+            {
+                if (options.storeCstData)
+                    cstNodeMap[node] = allocator.alloc<CstTypePackExplicit>();
+                return node;
+            }
         }
 
         AstTypePackExplicit* node = allocator.alloc<AstTypePackExplicit>(location, AstTypeList{copy(result), varargAnnotation});
@@ -3041,11 +3070,6 @@ AstType* Parser::parseFunctionTypeTail(
     return allocator.alloc<AstTypeFunction>(
         Location(begin.location, returnType->location), attributes, generics, genericPacks, paramTypes, paramNames, returnType
     );
-}
-
-static bool isTypeFollow(Lexeme::Type c)
-{
-    return c == '|' || c == '?' || c == '&';
 }
 
 // Type ::=

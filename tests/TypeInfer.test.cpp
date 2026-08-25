@@ -1442,7 +1442,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_function_that_invokes_itself_with_
     if (!FFlag::DebugLuauForceOldSolver)
         CHECK("(unknown) -> ()" == toString(requireType("readValue")));
     else
-        CHECK("<a>(a) -> ()" == toString(requireType("readValue")));
+        CHECK("<T>(T) -> ()" == toString(requireType("readValue")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_function_that_invokes_itself_with_a_refinement_of_its_parameter_2")

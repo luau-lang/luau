@@ -4,8 +4,8 @@ local bench = script and require(script.Parent.bench_support) or prequire("bench
 
 class Number
     public x
-    function new(x)
-        return Number { x = x }
+    function __init(self, x)
+        self.x = x
     end
     function Get(self)
         return self.x

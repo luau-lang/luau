@@ -174,6 +174,21 @@ static Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closur
             }
             break;
         }
+        case 'p':
+        {
+            if (f->isC)
+            {
+                ar->protoid = 0;
+                ar->bytecodeid = -1;
+            }
+            else
+            {
+                Proto* p = (FFlag::LuauCIProto && ci != nullptr ? ci->p : f->l.p);
+                ar->protoid = int(p->funid);
+                ar->bytecodeid = p->bytecodeid;
+            }
+            break;
+        }
         case 'n':
         {
             ar->name = ci ? getfuncname(ci_func(ci)) : getfuncname(f);

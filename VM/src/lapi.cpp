@@ -22,6 +22,7 @@
 LUAU_FASTFLAG(LuauDirectFieldGet)
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_FASTFLAGVARIABLE(LuauManagedDebugNames)
+LUAU_FASTFLAGVARIABLE(LuauNewPointerEncode)
 
 /*
  * This file contains most implementations of core Lua APIs from lua.h.
@@ -1682,20 +1683,108 @@ int lua_incustomexecution(lua_State* L, int level)
     return luaG_isnative(L, level);
 }
 
+#define siprotate(v, s) v = (((v) << (s)) | ((v) >> (64 - (s))))
+
+#define siphashround(v0, v1, v2, v3) \
+    (v0) += (v1); \
+    siprotate(v1, 13); \
+    (v1) ^= (v0); \
+    siprotate(v0, 32); \
+    (v2) += (v3); \
+    siprotate(v3, 16); \
+    (v3) ^= (v2); \
+    (v2) += (v1); \
+    siprotate(v1, 17); \
+    (v1) ^= (v2); \
+    siprotate(v2, 32); \
+    (v0) += (v3); \
+    siprotate(v3, 21); \
+    (v3) ^= (v0);
+
+static uint64_t siphash24(uint64_t k0, uint64_t k1, uint32_t input)
+{
+    uint64_t v0 = k0 ^ 0x736f6d6570736575ull;
+    uint64_t v1 = k1 ^ 0x646f72616e646f6dull;
+    uint64_t v2 = k0 ^ 0x6c7967656e657261ull;
+    uint64_t v3 = k1 ^ 0x7465646279746573ull;
+
+    uint64_t m0 = (4ull << 56ull) | input; // Top byte is the sizeof(input)
+
+    v3 ^= m0;
+    siphashround(v0, v1, v2, v3);
+    siphashround(v0, v1, v2, v3);
+    v0 ^= m0;
+
+    v2 ^= 0xff;
+    siphashround(v0, v1, v2, v3);
+    siphashround(v0, v1, v2, v3);
+    siphashround(v0, v1, v2, v3);
+    siphashround(v0, v1, v2, v3);
+
+    return v0 ^ v1 ^ v2 ^ v3;
+}
+
 void lua_setpointerencodekey(lua_State* L, uint64_t a, uint64_t b, uint64_t c, uint64_t d)
 {
     global_State* g = L->global;
 
-    g->ptrenckey[0] = a & ~1ull;
-    g->ptrenckey[1] = b | 1ull;
-    g->ptrenckey[2] = c;
-    g->ptrenckey[3] = d;
+    if (FFlag::LuauNewPointerEncode)
+    {
+        // Two keys have historically made the encoding an identity
+        bool identity = (a == 1 && b == 0 && c == 0 && d == 0) || (a == 0 && b == 1 && c == 0 && d == 0);
+
+        g->ptrencactive = !identity;
+
+        // Derive a 512-bit key from the provided seed
+        for (int i = 0; i < 4; i++)
+        {
+            g->ptrenckeynew[2 * i + 0] = siphash24(a, b, i);
+            g->ptrenckeynew[2 * i + 1] = siphash24(c, d, i);
+        }
+    }
+    else
+    {
+        g->ptrenckey[0] = a & ~1ull;
+        g->ptrenckey[1] = b | 1ull;
+        g->ptrenckey[2] = c;
+        g->ptrenckey[3] = d;
+    }
 }
 
 uintptr_t lua_encodepointer(lua_State* L, uintptr_t p)
 {
     global_State* g = L->global;
-    return uintptr_t((g->ptrenckey[0] * p + g->ptrenckey[2]) ^ (g->ptrenckey[1] * p + g->ptrenckey[3]));
+
+    if (FFlag::LuauNewPointerEncode)
+    {
+        if (!g->ptrencactive)
+            return p;
+
+        // Feistel cipher transforms the scrambling SipHash into a permutation
+        // 64-bit platforms split into two 32-bit pieces, 32-bit platforms into two 16-bit pieces
+        int halfbits = int(sizeof(p) * 4);
+        uintptr_t mask = (uintptr_t(1) << halfbits) - 1;
+
+        // Split the block into two pieces
+        uintptr_t l0 = p & mask;
+        uintptr_t r0 = p >> halfbits;
+
+        // Perform the minimal required four rounds
+        for (int i = 0; i < 4; i++)
+        {
+            uintptr_t f = siphash24(g->ptrenckeynew[i * 2 + 0], g->ptrenckeynew[i * 2 + 1], uint32_t(r0)) & mask;
+
+            uintptr_t rnext = l0 ^ f;
+            l0 = r0;
+            r0 = rnext;
+        }
+
+        return (r0 << halfbits) | l0;
+    }
+    else
+    {
+        return uintptr_t((g->ptrenckey[0] * p + g->ptrenckey[2]) ^ (g->ptrenckey[1] * p + g->ptrenckey[3]));
+    }
 }
 
 static int registryref(lua_State* L, int idx, TValue* registry, int& registryfree)

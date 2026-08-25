@@ -17,6 +17,8 @@ LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
 LUAU_FLAGVERSION(LuauBytecodeCostModel, 2)
 LUAU_FASTFLAGVARIABLE(LuauCompileEmitVectorDouble)
 LUAU_FLAGVERSION(LuauCompileEmitVectorDouble, 2)
+LUAU_FASTFLAGVARIABLE(LuauCompileFastpcall)
+LUAU_FLAGVERSION(LuauCompileFastpcall, 2)
 
 namespace Luau
 {
@@ -789,7 +791,7 @@ void BytecodeBuilder::finalize()
 
     for (const Function& func : functions)
     {
-        if (FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::DebugLuauUserDefinedClasses)
+        if (FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::LuauCompileFastpcall || FFlag::DebugLuauUserDefinedClasses)
             writeVarInt(bytecode, func.data.size());
         bytecode += func.data;
     }
@@ -1026,12 +1028,13 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags,
             writeVarInt(ss, pc);
         }
     }
-    else if (FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::DebugLuauUserDefinedClasses)
+    else if (FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::LuauCompileFastpcall || FFlag::DebugLuauUserDefinedClasses)
     {
         writeVarInt(ss, 0); // Empty feedback vector
     }
 
-    if ((FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::DebugLuauUserDefinedClasses) && (flags & LPF_INLINABLE) != 0)
+    if ((FFlag::LuauBytecodeCostModel || FFlag::LuauCompileEmitVectorDouble || FFlag::LuauCompileFastpcall || FFlag::DebugLuauUserDefinedClasses) &&
+        (flags & LPF_INLINABLE) != 0)
     {
         writeVarInt(ss, cost);
     }
@@ -1477,6 +1480,8 @@ uint8_t BytecodeBuilder::getVersion()
     if (FFlag::DebugLuauUserDefinedClasses)
         return LBC_VERSION_CLASSES;
 
+    if (FFlag::LuauCompileFastpcall)
+        return 14;
     if (FFlag::LuauCompileEmitVectorDouble)
         return 13;
     if (FFlag::LuauBytecodeCostModel)
@@ -1965,6 +1970,12 @@ void BytecodeBuilder::validateInstructions() const
             VJUMP(LUAU_INSN_D(insn));
             break;
 
+        case LOP_FASTPCALL:
+            LUAU_ASSERT(LUAU_INSN_A(insn) <= 1);
+            VJUMP(LUAU_INSN_C(insn));
+            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 1 + LUAU_INSN_C(insn)]) == LOP_CALL);
+            break;
+
         case LOP_NEWCLASS:
         {
             LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
@@ -2079,7 +2090,7 @@ void BytecodeBuilder::validateVariadic() const
             LUAU_ASSERT(variadicSeq);
             variadicSeq = false;
         }
-        else if (op == LOP_FASTCALL)
+        else if (op == LOP_FASTCALL || op == LOP_FASTPCALL)
         {
             int callTarget = int(i + LUAU_INSN_C(insn) + 1);
             LUAU_ASSERT(unsigned(callTarget) < insns.size() && LUAU_INSN_OP(insns[callTarget]) == LOP_CALL);
@@ -2799,6 +2810,10 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
 
     case LOP_CMPPROTO:
         formatAppend(result, "CMPPROTO R%d #%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        break;
+
+    case LOP_FASTPCALL:
+        formatAppend(result, "FASTPCALL %s L%d\n", LUAU_INSN_A(insn) == 0 ? "pcall" : "xpcall", targetLabel);
         break;
 
     case LOP_NEWCLASS:

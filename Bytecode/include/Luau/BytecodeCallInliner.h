@@ -36,6 +36,7 @@ struct CallInliner
     std::vector<BcOp> returnOps;
     std::unordered_set<BcOp, BcOpHash> callProjections;
     std::unordered_map<BcOp, std::vector<BcOp>, BcOpHash> varArgMoves;
+    std::vector<std::pair<BcOp, BcOp>> returnSites;
     // memoizes target-phi -> caller-phi so a target phi referenced both in a block's phi list and as
     // another phi's operand maps to a single caller phi. Without this, the operand reference would get
     // its own unanchored duplicate that SCCP never visits (it only visits phis listed in a block)
@@ -196,7 +197,9 @@ struct CallInliner
     void allocateProtos()
     {
         callerProtoSizeBeforeInline = uint32_t(caller.protos.size());
-        caller.protos.resize(callerProtoSizeBeforeInline + target.protos.size());
+        caller.protos.reserve(callerProtoSizeBeforeInline + target.protos.size());
+        for (auto p : target.protos)
+            caller.protos.push_back(p);
     }
 
     BcOp mapProtoOp(BcOp targetProtoOp)
@@ -270,12 +273,12 @@ struct CallInliner
         }
     }
 
-    bool replaceReturn(BcRef<BcBlock>& nextBlock, BcOp callerBlockOp, BcOp targetReturnOp)
+    void replaceReturn(BcRef<BcBlock>& nextBlock, BcOp callerBlockOp, BcOp targetReturnOp)
     {
         BcRef<BcBlock> callerBlock = caller.block(callerBlockOp);
         BcReturn ret = target.template as<BcReturn<VmConst>>(targetReturnOp);
-        if (ret.ReturnCount() < 0)
-            return false;
+        // multi-value returns are rejected by migrateBlocks before collecting the site
+        LUAU_ASSERT(ret.ReturnCount() >= 0);
         std::vector<BcOp> values = ret.values();
         uint32_t i = 0;
         for (; i < values.size(); i++)
@@ -298,7 +301,6 @@ struct CallInliner
 
         callerBlock->successors.push_back({BcBlockEdgeKind::Fallthrough, nextBlock.op});
         nextBlock->predecessors.push_back({BcBlockEdgeKind::Fallthrough, callerBlockOp});
-        return true;
     }
 
     void replaceGetVarArg(BcOp callerBlockOp, BcOp targetGetVarArgsOp)
@@ -373,8 +375,9 @@ struct CallInliner
                 }
                 else if (inst.op == LOP_RETURN)
                 {
-                    if (!replaceReturn(nextBlock, callerBlockOp, op))
+                    if (target.template as<BcReturn<VmConst>>(op).ReturnCount() < 0)
                         return false;
+                    returnSites.push_back({callerBlockOp, op});
                 }
                 else if (inst.op != LOP_PREPVARARGS)
                 {
@@ -739,6 +742,9 @@ struct CallInliner
         setFallthrough(callerInlinedEntry->predecessors, prevBlock.op);
 
         migrateBlockPhis();
+
+        for (auto& [callerBlockOp, targetReturnOp] : returnSites)
+            replaceReturn(nextBlock, callerBlockOp, targetReturnOp);
 
         migrateInstructions();
 

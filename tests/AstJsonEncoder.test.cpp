@@ -13,7 +13,7 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(LuauDisallowExternClassInTypeDefinitions)
-LUAU_FASTFLAG(LuauFunctionReturnTypePackLessTypeGroups)
+LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 
 struct JsonEncoderFixture
 {
@@ -483,7 +483,7 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatDeclareClass")
 
 TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_annotation")
 {
-    ScopedFastFlag sff{FFlag::LuauFunctionReturnTypePackLessTypeGroups, true};
+    ScopedFastFlag sff{FFlag::LuauSingleTypeOptionalPackReturnsAttributeParens, true};
 
     AstStat* statement = expectParseStatement("type T = ((number) -> (string | nil)) & ((string) -> ())");
 

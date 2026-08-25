@@ -976,7 +976,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_68448_iterators_need_not_accept_nil")
     LUAU_REQUIRE_NO_ERRORS(result);
     // HACK (CLI-68453): We name this inner table `enum`. For now, use the
     // exhaustive switch to see past it.
-    CHECK(toString(requireType("makeEnum"), {true}) == "<a>({a}) -> { [a]: a }");
+    CHECK(toString(requireType("makeEnum"), {true}) == "<T>({T}) -> { [T]: T }");
 }
 
 TEST_CASE_FIXTURE(Fixture, "iterate_over_free_table")

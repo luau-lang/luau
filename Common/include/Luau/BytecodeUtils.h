@@ -58,6 +58,7 @@ inline bool isFastCall(LuauOpcode op)
     case LOP_FASTCALL2:
     case LOP_FASTCALL2K:
     case LOP_FASTCALL3:
+    case LOP_FASTPCALL:
         return true;
 
     default:

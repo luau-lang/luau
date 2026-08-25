@@ -44,7 +44,6 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAGVARIABLE(LuauDoNotEmplaceAnnotatedType)
 LUAU_FASTFLAGVARIABLE(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FLAGVERSION(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, 3)
 LUAU_FASTFLAGVARIABLE(LuauDeprecatedAttributeOnAnonymousFunctions)
@@ -1115,7 +1114,7 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
                             if (method.function->args.size < 1 || method.function->args.data[0]->name != "self")
                                 staticProps[method.functionName.value] = prop;
                             // The parser will report an error for classes that define disallowed metamethods.
-                            // The RFC also requires that it is a syntax error for methods to have __ in their name whos name is not in the
+                            // The RFC also requires that it is a syntax error for methods to have __ in their name whose name is not in the
                             // validClassMetamethod set.
                             if (isValidClassMetamethod(method.functionName.value))
                                 instanceMetatableProps[method.functionName.value] = prop;
@@ -1474,15 +1473,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
             localDomain->insert(annotatedTypes[i]);
             if (i >= head.size() && tail)
             {
-                if (FFlag::LuauDoNotEmplaceAnnotatedType)
-                {
-                    deferredTypes.push_back(arena->addType(BlockedType{}));
-                    freshBlockedTypes.insert(getMutable<BlockedType>(deferredTypes.back()));
-                }
-                else
-                {
-                    deferredTypes.emplace_back(annotatedTypes[i]);
-                }
+                deferredTypes.push_back(arena->addType(BlockedType{}));
+                freshBlockedTypes.insert(getMutable<BlockedType>(deferredTypes.back()));
             }
         }
         else
@@ -2472,6 +2464,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareFunc
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* statClass)
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+    if (statClass->super)
+        check(scope, statClass->super);
 
     auto* classDeclRecordPtr = classDeclRecords.find(statClass->name);
     // TODO CLI-199124: This is unpopulated in fragment autocomplete.
