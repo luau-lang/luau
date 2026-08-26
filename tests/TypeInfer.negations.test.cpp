@@ -80,9 +80,11 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(NegationFixture, "subtyping_paths_is_valid_for_union")
+TEST_CASE_FIXTURE(NegationFixture, "subtyping_path_is_valid_for_union")
 {
-    ScopedFastFlag newSolverOnly{FFlag::DebugLuauForceOldSolver, false};
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
     ScopedFastFlag newErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
     ScopedFastFlag fixTypePaths{FFlag::LuauFixSuperNegationTypePaths, true};
 
@@ -98,10 +100,11 @@ TEST_CASE_FIXTURE(NegationFixture, "subtyping_paths_is_valid_for_union")
 
 TEST_CASE_FIXTURE(NegationFixture, "subtype_path_is_valid_for_intersections")
 {
-    ScopedFastFlag newSolverOnly{FFlag::DebugLuauForceOldSolver, false};
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
     ScopedFastFlag newErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
     ScopedFastFlag fixTypePaths{FFlag::LuauFixSuperNegationTypePaths, true};
-
 
     CheckResult result = check(R"(
         type T = Not<unknown & boolean>
