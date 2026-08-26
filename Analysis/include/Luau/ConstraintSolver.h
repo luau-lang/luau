@@ -144,6 +144,7 @@ struct ConstraintSolver
     TypeCheckLimits limits;
 
     DenseHashMap2<TypeId, const Constraint*> typeFunctionsToFinalize;
+    DenseHashMap2<TypeId, const Constraint*> typeAliasesToExpand;
 
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
@@ -221,7 +222,7 @@ public:
     bool tryDispatch(const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const NameConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
-    bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint, bool force);
+    bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint, bool force);
     // Clip with LuauRemovePrimitiveTypeConstraint
     bool DEPRECATED_tryDispatch(const DEPRECATED_PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);

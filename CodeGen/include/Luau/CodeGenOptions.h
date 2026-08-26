@@ -150,7 +150,7 @@ enum class IncludeUseInfo
     Yes
 };
 
-// Output CFG informations like block predecessors, successors and etc
+// Output CFG information like block predecessors, successors and etc
 enum class IncludeCfgInfo
 {
     No,

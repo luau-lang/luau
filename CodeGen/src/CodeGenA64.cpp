@@ -12,6 +12,10 @@
 
 #include "lstate.h"
 
+#ifdef CODEGEN_TARGET_A64_PTRAUTH_CALLS
+#include <ptrauth.h>
+#endif
+
 LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck)
 LUAU_FASTFLAG(LuauCIProto)
 
@@ -19,6 +23,9 @@ namespace Luau
 {
 namespace CodeGen
 {
+
+unsigned int getCpuFeaturesA64();
+
 namespace A64
 {
 
@@ -230,6 +237,9 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     locations.start = build.setLabel();
 
     // prologue
+    if (build.features & Feature_PtrAuthRet)
+        build.pacibsp();
+
     build.sub(sp, sp, uint16_t(kStackSize));
     build.stp(x29, x30, mem(sp)); // fp, lr
 
@@ -273,7 +283,10 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     build.ldp(x29, x30, mem(sp)); // fp, lr
     build.add(sp, sp, uint16_t(kStackSize));
 
-    build.ret();
+    if (build.features & Feature_PtrAuthRet)
+        build.retab(); // Authenticate the LR signed by pacibsp in the prologue, then return
+    else
+        build.ret();
 
     // Our entry function is special, it spans the whole remaining code area
     unwind.startFunction();
@@ -285,7 +298,14 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
 
 bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
 {
+    // This file is built for every target, but CodeGen.cpp only defines
+    // getCpuFeaturesA64() when the host is arm64. The gate is only executed on
+    // an arm64 host, so the features are irrelevant elsewhere.
+#if defined(CODEGEN_TARGET_A64)
+    AssemblyBuilderA64 build(/* logger= */ nullptr, /* features= */ getCpuFeaturesA64());
+#else
     AssemblyBuilderA64 build(/* logger= */ nullptr, /* features= */ 0);
+#endif
     UnwindBuilder& unwind = *codeGenContext.unwindBuilder.get();
 
     unwind.startInfo(UnwindBuilder::A64);
@@ -311,7 +331,16 @@ bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
     // specified by the unwind information of the entry function
     unwind.setBeginOffset(build.getLabelOffset(entryLocations.prologueEnd));
 
-    codeGenContext.context.gateEntry = codeStart + build.getLabelOffset(entryLocations.start);
+    uint8_t* gateEntry = codeStart + build.getLabelOffset(entryLocations.start);
+
+#ifdef CODEGEN_TARGET_A64_PTRAUTH_CALLS
+    // onEnter() invokes gateEntry through a GateFn function pointer.  When PAC
+    // function pointer signing is enabled, we need to sign the function pointer
+    // so that authentication succeeds when onEnter() calls it.
+    gateEntry = (uint8_t*)ptrauth_sign_unauthenticated(gateEntry, ptrauth_key_function_pointer, 0);
+#endif
+
+    codeGenContext.context.gateEntry = gateEntry;
     codeGenContext.context.gateExit = codeStart + build.getLabelOffset(entryLocations.epilogueStart);
 
     return true;

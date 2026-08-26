@@ -18,8 +18,8 @@
 #include <algorithm>
 #include <string>
 
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -213,9 +213,13 @@ struct StringifierState
         if (!n.empty())
             return n;
 
+        const bool isForGeneric = FFlag::LuauBetterInferredGenericNames
+            ? nullptr != get<GenericType>(follow(ty))
+            : false;
+
         for (int count = 0; count < 256; ++count)
         {
-            std::string candidate = generateName(usedNames.size() + count);
+            std::string candidate = generateName(usedNames.size() + count, isForGeneric);
             if (!usedNames.contains(candidate))
             {
                 usedNames.insert(candidate);
@@ -224,7 +228,7 @@ struct StringifierState
             }
         }
 
-        return generateName(s);
+        return generateName(s, isForGeneric);
     }
 
     int previousNameIndex = 0;
@@ -236,9 +240,14 @@ struct StringifierState
         if (!n.empty())
             return n;
 
+        const bool isForGeneric =
+            FFlag::LuauBetterInferredGenericNames
+            ? nullptr != get<GenericTypePack>(follow(ty))
+            : false;
+
         for (int count = 0; count < 256; ++count)
         {
-            std::string candidate = generateName(previousNameIndex + count);
+            std::string candidate = generateName(previousNameIndex + count, isForGeneric);
             if (!usedNames.contains(candidate))
             {
                 previousNameIndex += count;
@@ -248,7 +257,7 @@ struct StringifierState
             }
         }
 
-        return generateName(s);
+        return generateName(s, isForGeneric);
     }
 
     void emit(const std::string& s)
@@ -1922,10 +1931,15 @@ std::string dump(const ScopePtr& scope, const char* name)
     return s;
 }
 
-std::string generateName(size_t i)
+constexpr const char kGenericTypeLetters[] = "TUVWXYZABCDEFGHIJKLMNOPQRS";
+
+std::string generateName(size_t i, bool isForGeneric)
 {
     std::string n;
-    n = char('a' + i % 26);
+    if (isForGeneric)
+        n = kGenericTypeLetters[i % 26];
+    else
+        n = char('a' + i % 26);
     if (i >= 26)
         n += std::to_string(i / 26);
     return n;

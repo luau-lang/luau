@@ -121,7 +121,7 @@ class Bitboard
 	end
 
 	function from(l, h)
-		return Bitboard { l = l, h = h }
+		return Bitboard.new({ l = l, h = h })
 	end
 
 	function up(self)
@@ -299,20 +299,18 @@ class Board
 	public material: number
 	public state: { [number]: Bitboard }
 
-	function new()
-		return Board {
-			ocupied = BITBOARD_ZERO,
-			white = BITBOARD_ZERO,
-			black = BITBOARD_ZERO,
-			unocupied = BITBOARD_FULL,
-			ep = BITBOARD_ZERO,
-			castle = BITBOARD_ZERO,
-			toMove = 1,
-			hm = 0,
-			moves = 0,
-			material = 0,
-			state = table.create(12, BITBOARD_ZERO)
-		}
+	function __init(self)
+		self.ocupied = BITBOARD_ZERO
+		self.white = BITBOARD_ZERO
+		self.black = BITBOARD_ZERO
+		self.unocupied = BITBOARD_FULL
+		self.ep = BITBOARD_ZERO
+		self.castle = BITBOARD_ZERO
+		self.toMove = 1
+		self.hm = 0
+		self.moves = 0
+		self.material = 0
+		self.state = table.create(12, BITBOARD_ZERO)
 	end
 
 	function fromFen(fen)
