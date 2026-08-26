@@ -16,6 +16,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
+LUAU_FASTFLAG(LuauIndexImplAnyIndexerResultsInAny)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -2114,6 +2115,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_t
         CHECK(toString(requireType("x")) == "*error-type<concat<string, unknown>>*");
     else
         CHECK(toString(requireType("x")) == "*error-type*");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_value_with_any_results_in_any")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag indexWithAnyResultsInAny{FFlag::LuauIndexImplAnyIndexerResultsInAny, true};
+
+    CheckResult result = check(R"(
+        local x: index<{ hello: string }, any>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("any", toString(requireType("x")));
 }
 
 TEST_SUITE_END();
