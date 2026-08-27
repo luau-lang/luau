@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauCompileIifeInline)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
+LUAU_FASTFLAG(LuauCompileResolveAliasChains)
 LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAG(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
@@ -2558,10 +2559,8 @@ until (function() return rr end)() < 0.5
 
     // unless that upvalue is from an outer scope
     CHECK_EQ(
-        "\n" + compileFunction0(
-                   "local stop = false stop = true function test() repeat local r = math.random() if r > 0.5 then "
-                   "continue end r = r + 0.3 until stop or r < 0.5 end"
-               ),
+        "\n" + compileFunction0("local stop = false stop = true function test() repeat local r = math.random() if r > 0.5 then "
+                                "continue end r = r + 0.3 until stop or r < 0.5 end"),
         R"(
 L0: GETIMPORT R0 2 [math.random]
 CALLFB R0 0 1 [0]
@@ -4048,6 +4047,84 @@ SETUPVAL R4 0
 GETIMPORT R4 3 [a]
 RETURN R4 1
 )");
+}
+
+TEST_CASE("TableFieldTypesThroughAliasChain")
+{
+    ScopedFastFlag chains{FFlag::LuauCompileResolveAliasChains, true};
+
+    auto compileTypes = [](const char* source)
+    {
+        Luau::BytecodeBuilder bcb;
+        bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Types);
+        bcb.setDumpSource(source);
+
+        Luau::CompileOptions options;
+        options.vectorType = "vector";
+        options.typeInfoLevel = 1;
+
+        Luau::compileOrThrow(bcb, source, options);
+
+        return "\n" + bcb.dumpFunction(0);
+    };
+
+    // Chained alias
+    CHECK_EQ(
+        compileTypes(R"(
+type Vertex = {pos: vector, normal: vector}
+type Alias = Vertex
+
+function foo(v: Alias)
+    local p = v.pos
+    return p
+end
+)"),
+        R"(
+R0: table [argument]
+R1: vector from 0 to 3
+GETTABLEKS R1 R0 K0 ['pos']
+RETURN R1 1
+)"
+    );
+
+    // Generic alias
+    CHECK_EQ(
+        compileTypes(R"(
+type Map<K, V> = { [K]: V }
+type Rec = { n: number }
+type ComponentIndex = Map<string, Rec>
+
+function foo(m: ComponentIndex, k: string)
+    local r = m[k]
+    return r
+end
+)"),
+        R"(
+R0: table [argument]
+R1: string [argument]
+R2: any from 0 to 2
+GETTABLE R2 R0 R1
+RETURN R2 1
+)"
+    );
+
+    // Mutually recursive aliases
+    CHECK_EQ(
+        compileTypes(R"(
+type A = B
+type B = A
+
+function foo(v: A)
+    local p = v.pos
+    return p
+end
+)"),
+        R"(
+R1: any from 0 to 3
+GETTABLEKS R1 R0 K0 ['pos']
+RETURN R1 1
+)"
+    );
 }
 
 TEST_CASE("CostModelRemarks")
