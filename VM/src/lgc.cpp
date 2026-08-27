@@ -22,6 +22,7 @@ LUAU_FLAGVERSION(LuauGcTraceUdata, 2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcMarkUdataAccess, false)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAG(LuauManagedDebugNames)
+LUAU_FASTFLAG(LuauFastpcall)
 
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
@@ -470,8 +471,6 @@ static void traverseclass(global_State* g, LuauClass* classobject)
         markobject(g, classobject->offsettomember[i]);
     for (uint32_t i = 0; i < classobject->numberofallmembers - classobject->numberofinstancemembers; i++)
         markvalue(g, &classobject->staticmembers[i]);
-    if (classobject->metatable)
-        markobject(g, classobject->metatable);
     if (classobject->instancemetatable)
         markobject(g, classobject->instancemetatable);
 }
@@ -881,6 +880,15 @@ static void marktaggetmt(global_State* g)
     }
 }
 
+static void markfastpcalls(global_State* g)
+{
+    if (g->builtinPcall)
+        markobject(g, g->builtinPcall);
+
+    if (g->builtinXpcall)
+        markobject(g, g->builtinXpcall);
+}
+
 // mark root set
 static void markroot(lua_State* L)
 {
@@ -917,6 +925,9 @@ static void markroot(lua_State* L)
 
     if (FFlag::LuauDirectFieldGet)
         markudatadirectfields(g);
+
+    if (FFlag::LuauFastpcall)
+        markfastpcalls(g);
 
     markmt(g);
 
@@ -1013,6 +1024,9 @@ static size_t atomic(lua_State* L)
 
     if (FFlag::LuauDirectFieldGet)
         markudatadirectfields(g); // mark direct field dispatch tables (again)
+
+    if (FFlag::LuauFastpcall)
+        markfastpcalls(g);
 
     work += propagateall(g);
 

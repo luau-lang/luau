@@ -306,7 +306,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_member_function_2")
 
     REQUIRE_EQ(methodArgs.size(), 1);
 
-    // TODO(rblanckaert): Revist when we can bind self at function creation time
+    // TODO(rblanckaert): Revisit when we can bind self at function creation time
     // REQUIRE_EQ(*methodArgs[0], *uType);
 }
 
@@ -441,7 +441,7 @@ TEST_CASE_FIXTURE(Fixture, "open_table_unification_2")
     REQUIRE(error->properties.size() == 1);
 
     CHECK_EQ("y", error->properties[0]);
-    // TODO(rblanckaert): Revist when we can bind self at function creation time
+    // TODO(rblanckaert): Revisit when we can bind self at function creation time
     // CHECK_EQ(err.location, Location(Position{5, 19}, Position{5, 25}));
 
     CHECK_EQ(err.location, Location(Position{7, 8}, Position{7, 9}));
@@ -550,7 +550,7 @@ TEST_CASE_FIXTURE(Fixture, "table_param_width_subtyping_3")
 
             CHECK_EQ("baz", error->properties[0]);
 
-            // TODO(rblanckaert): Revist when we can bind self at function creation time
+            // TODO(rblanckaert): Revisit when we can bind self at function creation time
             /*
               CHECK_EQ(err->location,
               (Location{ Position{4, 22}, Position{4, 30} })
@@ -716,7 +716,7 @@ TEST_CASE_FIXTURE(Fixture, "indexers_get_quantified_too")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK("<a>({a}) -> ()" == toString(requireType("swap")));
+        CHECK("<T>({T}) -> ()" == toString(requireType("swap")));
     else
     {
         const FunctionType* ftv = get<FunctionType>(requireType("swap"));
@@ -2500,15 +2500,15 @@ Expected this to be exactly 'number', but got 'string')";
         R"(Expected this to be 'a2', but got 'b2'
 caused by:
   Expected this to be exactly
-	'{| __call: <a>(a) -> () |}'
+	'{| __call: <T>(T) -> () |}'
 but got
-	'{| __call: <a, b>(a, b) -> () |}'
+	'{| __call: <T, U>(T, U) -> () |}'
 caused by:
   Property '__call' is not compatible.
 Expected this to be exactly
-	'<a>(a) -> ()'
+	'<T>(T) -> ()'
 but got
-	'<a, b>(a, b) -> ()'; different number of generic type parameters)";
+	'<T, U>(T, U) -> ()'; different number of generic type parameters)";
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -3599,9 +3599,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_free_table_props")
     }
     else
     {
-        CHECK_EQ("<a>({+ blah: a +}) -> ()", toString(requireType("a")));
-        CHECK_EQ("<a>({+ gwar: a +}) -> ()", toString(requireType("b")));
-        CHECK_EQ("() -> <a, b>({+ blah: a, gwar: b +}) -> ()", toString(getMainModule()->returnType));
+        CHECK_EQ("<T>({+ blah: T +}) -> ()", toString(requireType("a")));
+        CHECK_EQ("<T>({+ gwar: T +}) -> ()", toString(requireType("b")));
+        CHECK_EQ("() -> <T, U>({+ blah: T, gwar: U +}) -> ()", toString(getMainModule()->returnType));
     }
 }
 
@@ -3731,22 +3731,22 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
         TypeMismatch* tm1 = get<TypeMismatch>(result.errors[0]);
         REQUIRE(tm1);
         CHECK("typeof(string)" == toString(tm1->givenType));
-        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (a...) }" == toString(tm1->wantedType));
+        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (T...) }" == toString(tm1->wantedType));
 
         TypeMismatch* tm2 = get<TypeMismatch>(result.errors[1]);
         REQUIRE(tm2);
         CHECK("typeof(string)" == toString(tm2->givenType));
-        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (a...) }" == toString(tm2->wantedType));
+        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (T...) }" == toString(tm2->wantedType));
 
         TypeMismatch* tm3 = get<TypeMismatch>(result.errors[2]);
         REQUIRE(tm3);
         CHECK("\"bar\" | \"baz\"" == toString(tm3->givenType));
-        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (a...) }" == toString(tm3->wantedType));
+        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (T...) }" == toString(tm3->wantedType));
 
         TypeMismatch* tm4 = get<TypeMismatch>(result.errors[3]);
         REQUIRE(tm4);
         CHECK("\"bar\" | \"baz\"" == toString(tm4->givenType));
-        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (a...) }" == toString(tm4->wantedType));
+        CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (T...) }" == toString(tm4->wantedType));
     }
     else
     {
@@ -3822,13 +3822,13 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
         const std::string expected =
-            R"(Expected this to be 'string', but got 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}'
+            R"(Expected this to be 'string', but got 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (T, U...) +}'
 caused by:
   The given type's metatable does not satisfy the requirements.
-Table type 'typeof(string)' not compatible with type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+Table type 'typeof(string)' not compatible with type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (T, U...) +}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
         CHECK_EQ(expected, toString(result.errors[0]));
 
-        CHECK_EQ("<a, b...>(t1) -> string where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}", toString(requireType("f")));
+        CHECK_EQ("<T, U...>(t1) -> string where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (T, U...) +}", toString(requireType("f")));
     }
 }
 
@@ -4317,7 +4317,7 @@ TEST_CASE_FIXTURE(Fixture, "simple_method_definition")
     if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("{ m: (unknown) -> number }", toString(getMainModule()->returnType, ToStringOptions{true}));
     else
-        CHECK_EQ("{ m: <a>(a) -> number }", toString(getMainModule()->returnType, ToStringOptions{true}));
+        CHECK_EQ("{ m: <T>(T) -> number }", toString(getMainModule()->returnType, ToStringOptions{true}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "identify_all_problematic_table_fields")
@@ -4881,9 +4881,9 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK(
-        "<a>({{ read Character: t1 }}, { Character: t1 }) -> () "
+        "<T>({{ read Character: t1 }}, { Character: t1 }) -> () "
         "where "
-        "t1 = { read FindFirstChild: (t1, string) -> (a, ...unknown) }" == toString(requireType("oc"))
+        "t1 = { read FindFirstChild: (t1, string) -> (T, ...unknown) }" == toString(requireType("oc"))
     );
 }
 
@@ -4919,7 +4919,7 @@ TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("<a>({a}, a) -> a" == toString(requireType("foo")));
+    CHECK("<T>({T}, T) -> T" == toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parameter_was_set_an_indexer_and_bounded_by_string")
@@ -5359,7 +5359,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
     )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(
-        "Cannot add indexer to table '{ @metatable t1, (nil & ~(false?)) | {  } } where t1 = { new: <a>(a) -> { @metatable t1, (a & ~(false?)) | {  "
+        "Cannot add indexer to table '{ @metatable t1, (nil & ~(false?)) | {  } } where t1 = { new: <T>(T) -> { @metatable t1, (T & ~(false?)) | {  "
         "} } }'",
         toString(result.errors[0])
     );
@@ -6604,7 +6604,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_inference_variadic_type_pack")
     };
 
     // As it turns out, you don't strictly need bidirectional inference in
-    // this specific case: subtyping is enough to constain `foobar` to be
+    // this specific case: subtyping is enough to constrain `foobar` to be
     // `string <: 'a <: string`, and generalization takes care of the rest,
     // but you need to order the constraints correctly, otherwise we
     // generalize the lambda too early.
@@ -7513,7 +7513,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
         end
     )"));
 
-    CHECK_EQ("<a, b>({ read RootToDescendantCountMap: { [a]: b } }) -> ()", toString(requireType("setupRootMappingMove")));
+    CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
 }
 
 TEST_SUITE_END();

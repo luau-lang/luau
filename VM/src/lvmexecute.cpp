@@ -24,10 +24,10 @@ LUAU_FLAGVERSION(LuauDirectFieldGet, 3)
 LUAU_FASTFLAGVARIABLE(LuauCIProto)
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAGVARIABLE(LuauCallFeedback)
-LUAU_FASTFLAGVARIABLE(LuauYieldIter2)
 LUAU_FASTFLAGVARIABLE(LuauPromoteProto)
 LUAU_FASTFLAGVARIABLE(LuauBackedgeHeapCheck)
 LUAU_FLAGVERSION(LuauBackedgeHeapCheck, 2)
+LUAU_FASTFLAG(LuauFastpcall)
 
 // Disable c99-designator to avoid the warning in computed goto dispatch table
 #ifdef __clang__
@@ -132,7 +132,8 @@ LUAU_FLAGVERSION(LuauBackedgeHeapCheck, 2)
         VM_DISPATCH_OP(LOP_FASTCALL2), VM_DISPATCH_OP(LOP_FASTCALL2K), VM_DISPATCH_OP(LOP_FORGPREP), VM_DISPATCH_OP(LOP_JUMPXEQKNIL), \
         VM_DISPATCH_OP(LOP_JUMPXEQKB), VM_DISPATCH_OP(LOP_JUMPXEQKN), VM_DISPATCH_OP(LOP_JUMPXEQKS), VM_DISPATCH_OP(LOP_IDIV), \
         VM_DISPATCH_OP(LOP_IDIVK), VM_DISPATCH_OP(LOP_GETUDATAKS), VM_DISPATCH_OP(LOP_SETUDATAKS), VM_DISPATCH_OP(LOP_NAMECALLUDATA), \
-        VM_DISPATCH_OP(LOP_NEWCLASSMEMBER), VM_DISPATCH_OP(LOP_CALLFB), VM_DISPATCH_OP(LOP_CMPPROTO), VM_DISPATCH_OP(LOP_NEWCLASS),
+        VM_DISPATCH_OP(LOP_NEWCLASSMEMBER), VM_DISPATCH_OP(LOP_CALLFB), VM_DISPATCH_OP(LOP_CMPPROTO), VM_DISPATCH_OP(LOP_FASTPCALL), \
+        VM_DISPATCH_OP(LOP_NEWCLASS),
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VM_USE_CGOTO 1
@@ -2788,18 +2789,11 @@ reentry:
                     L->top = ra + 3 + 3; // func + 2 args (state and index)
                     LUAU_ASSERT(L->top <= L->stack_last);
 
-                    if (FFlag::LuauYieldIter2)
-                    {
-                        bool yielded;
-                        VM_PROTECT(yielded = luaD_performcally(L, ra + 3, uint8_t(aux)));
+                    bool yielded;
+                    VM_PROTECT(yielded = luaD_performcally(L, ra + 3, uint8_t(aux)));
 
-                        if (yielded)
-                            goto exit;
-                    }
-                    else
-                    {
-                        VM_PROTECT(luaD_call(L, ra + 3, uint8_t(aux)));
-                    }
+                    if (yielded)
+                        goto exit;
 
                     L->top = L->ci->top;
 
@@ -2868,7 +2862,12 @@ reentry:
                 LUAU_ASSERT(p->execdata);
 
                 CallInfo* ci = L->ci;
-                ci->flags = LUA_CALLINFO_NATIVE;
+
+                if (FFlag::LuauFastpcall)
+                    ci->flags |= LUA_CALLINFO_NATIVE;
+                else
+                    ci->flags = LUA_CALLINFO_NATIVE;
+
                 ci->savedpc = p->code;
 
 #if VM_HAS_NATIVE
@@ -3700,6 +3699,78 @@ reentry:
                 VM_NEXT();
             }
 
+            VM_CASE(LOP_FASTPCALL)
+            {
+                VM_CASE_INSTRUCTION insn = *pc++;
+
+                // even with compiler flag enabled, runtime can be safely disabled and will execute the fallback
+                if (!FFlag::LuauFastpcall)
+                    VM_NEXT();
+
+                int pfid = LUAU_INSN_A(insn);
+                int skip = LUAU_INSN_C(insn);
+                VM_ASSERT_PC(pc + skip);
+
+                Instruction call = pc[skip];
+                LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+
+                VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(call));
+
+                int nparams = LUAU_INSN_B(call) - 1;
+                int nresults = LUAU_INSN_C(call) - 1;
+
+                nparams = (nparams == LUA_MULTRET) ? int(L->top - ra - 1) : nparams;
+
+                // fast protected calls are only supported in safe environments and in yieldable contexts
+                if (LUAU_UNLIKELY(!cl->env->safeenv) || L->nCcalls > L->baseCcalls)
+                    VM_NEXT();
+
+                int errfunc = luauPF_table[pfid](L, ra, nparams);
+
+                if (errfunc < 0)
+                    VM_NEXT();
+
+                L->ci->savedpc = pc + skip + 1; // return skips the fallback path
+
+                L->top = ra + 1 + nparams;
+
+                // note: creating a call frame can invalidate 'ra' and other StkId
+                luau_pushhandlerci(L, ra, errfunc, nresults);
+
+                // prepare target call, note that we request fewer results from the target as pcalls provide 'status'
+                StkId callerfunc = L->ci->base + errfunc;
+                int calleeresults = (nresults > 0) ? nresults - 1 : nresults;
+                int pr = luau_precall(L, callerfunc, calleeresults);
+
+                if (LUAU_LIKELY(pr == PCRLUA))
+                {
+                    // target Luau function must return so that C continuation can be processed
+                    L->ci->flags |= LUA_CALLINFO_RETURN;
+
+                    Closure* fcl = clvalue(L->ci->func);
+                    Proto* p = FFlag::LuauCIProto ? L->ci->p : fcl->l.p;
+
+                    // reentry into the call (see LOP_CALL for description of how native calls are handled with 'codeentry')
+                    pc = SingleStep ? p->code : p->codeentry;
+                    cl = fcl;
+                    base = L->base;
+                    k = p->k;
+                    VM_NEXT();
+                }
+                else if (pr == PCRC)
+                {
+                    luau_pospcallsuccess(L);
+                    base = L->base;
+
+                    pc += skip + 1; // skip instructions that compute function as well as CALL
+                    VM_ASSERT_PC(pc);
+                    VM_NEXT();
+                }
+
+                LUAU_ASSERT(pr == PCRYIELD);
+                goto exit;
+            }
+
             VM_CASE(LOP_NEWCLASS)
             {
                 VM_CASE_INSTRUCTION insn = *pc++;
@@ -3863,6 +3934,26 @@ int luau_precall(lua_State* L, StkId func, int nresults)
     }
 }
 
+void luau_pushhandlerci(lua_State* L, StkId funcslot, int errfunc, int nresults)
+{
+    Closure* ccl = clvalue(funcslot);
+    LUAU_ASSERT(ccl->isC && ccl->c.cont);
+
+    CallInfo* ci = incr_ci(L);
+    ci->func = funcslot;
+    ci->p = nullptr;
+    ci->base = funcslot + 1;
+    ci->top = L->top + ccl->stacksize;
+    ci->flags = LUA_CALLINFO_HANDLE | LUA_CALLINFO_PCALL;
+    ci->nresults = nresults;
+    ci->errfunc = errfunc;
+
+    // Note: L->top is assigned externally
+
+    luaD_checkstackfornewci(L, int(ccl->stacksize));
+    LUAU_ASSERT(ci->top <= L->stack_last);
+}
+
 void luau_poscall(lua_State* L, StkId first)
 {
     // finish interrupted execution of `OP_CALL'
@@ -3886,4 +3977,35 @@ void luau_poscall(lua_State* L, StkId first)
     L->ci = cip;
     L->base = cip->base;
     L->top = (ci->nresults == LUA_MULTRET) ? res : cip->top;
+}
+
+void luau_pospcallsuccess(lua_State* L)
+{
+    // finish interrupted execution of a fast protected call
+    // ci is our callinfo, cip is our parent
+    CallInfo* ci = L->ci;
+    CallInfo* cip = ci - 1;
+    int calleeresults = (ci->nresults > 0) ? ci->nresults - 1 : ci->nresults;
+
+    // return 'status' value in-place
+    StkId res = ci->func;
+    setbvalue(res++, 1);
+
+    // for functions with an error handler (e.g. xpcall), shift results one left over it
+    if (ci->errfunc != 0)
+    {
+        StkId vali = L->base + ci->errfunc;
+        StkId valend = (calleeresults == LUA_MULTRET) ? L->top : (vali + calleeresults);
+        while (vali < valend)
+            setobj2s(L, res++, vali++);
+    }
+    else
+    {
+        res += (calleeresults == LUA_MULTRET) ? int(L->top - L->base) : calleeresults;
+    }
+
+    // pop the stack frame
+    L->ci = cip;
+    L->base = cip->base;
+    L->top = (calleeresults == LUA_MULTRET) ? res : cip->top;
 }

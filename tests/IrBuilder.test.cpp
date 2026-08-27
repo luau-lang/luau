@@ -29,7 +29,7 @@ class IrBuilderFixture
 {
 public:
     IrBuilderFixture()
-        : build(hooks)
+        : build(hooks, {})
     {
     }
 
@@ -5057,7 +5057,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateHashSlotChecksInvalidation")
 
     build.beginBlock(block);
 
-    // This roughly corresponds to 'return t.a + t.a' with a stange GC assist in the middle
+    // This roughly corresponds to 'return t.a + t.a' with a strange GC assist in the middle
     IrOp table1 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(1));
     IrOp slot1 = build.inst(IrCmd::GET_SLOT_NODE_ADDR, table1, build.constUint(3), build.vmConst(1));
     build.inst(IrCmd::CHECK_SLOT_MATCH, slot1, build.vmConst(1), fallback);
@@ -6868,7 +6868,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "UnusedAtReturnPartial")
     markDeadStoresInBlockChains(build);
 
     // Partial stores cannot be removed, even if unused
-    // Existance of an unpaired partial store means that the other valid part is a block live in (even if not present is this test)
+    // Existence of an unpaired partial store means that the other valid part is a block live in (even if not present is this test)
     CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
 bb_0:
 ; in regs: R0

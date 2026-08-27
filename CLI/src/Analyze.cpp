@@ -433,6 +433,14 @@ int main(int argc, char** argv)
             basePath = std::string{argv[i] + 10};
         else if (strcmp(argv[i], "--solver=old") == 0)
             solverMode = Luau::SolverMode::Old;
+        else if (strcmp(argv[i], "--solver=new") == 0)
+            solverMode = Luau::SolverMode::New;
+        else
+        {
+            fprintf(stderr, "Error: Unrecognized option '%s'.\n\n", argv[i]);
+            displayHelp(argv[0]);
+            return 1;
+        }
     }
 
 #if !defined(LUAU_ENABLE_TIME_TRACE)
