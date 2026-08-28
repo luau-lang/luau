@@ -97,8 +97,11 @@ def process_crash(args, reproducer):
         crash_output, "minimized_reproducer"), "-detect_leaks=0", "-verbosity=0"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     modules_text = modules_result.stdout
 
-    module_index_of = modules_text.index("Module")
-    modules_text = modules_text[module_index_of:]
+    module_index_of = modules_text.find("Module")
+    if module_index_of != -1:
+        modules_text = modules_text[module_index_of:]
+    else:
+        print(f"Warning: 'Module' string not found for {crash_id}. Saving full output.")
 
     with open(os.path.join(crash_output, "modules.txt"), "w") as modules_file:
         modules_file.write(modules_text)

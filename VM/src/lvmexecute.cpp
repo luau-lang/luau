@@ -28,6 +28,7 @@ LUAU_FASTFLAGVARIABLE(LuauPromoteProto)
 LUAU_FASTFLAGVARIABLE(LuauBackedgeHeapCheck)
 LUAU_FLAGVERSION(LuauBackedgeHeapCheck, 2)
 LUAU_FASTFLAG(LuauFastpcall)
+LUAU_FASTFLAGVARIABLE(LuauFastpcallInterrupt)
 
 // Disable c99-designator to avoid the warning in computed goto dispatch table
 #ifdef __clang__
@@ -3706,6 +3707,9 @@ reentry:
                 // even with compiler flag enabled, runtime can be safely disabled and will execute the fallback
                 if (!FFlag::LuauFastpcall)
                     VM_NEXT();
+
+                if (FFlag::LuauFastpcallInterrupt)
+                    VM_INTERRUPT();
 
                 int pfid = LUAU_INSN_A(insn);
                 int skip = LUAU_INSN_C(insn);

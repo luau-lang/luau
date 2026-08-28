@@ -317,7 +317,7 @@ public:
         size_t numGenerics = 0;
         for (auto it = ftv.generics.begin(); it != ftv.generics.end(); ++it)
         {
-            if (auto gtv = get<GenericType>(*it))
+            if (auto gtv = get<GenericType>(follow(*it)))
                 generics.data[numGenerics++] = allocator->alloc<AstGenericType>(Location(), AstName(gtv->name.c_str()), nullptr);
         }
 
@@ -327,7 +327,7 @@ public:
         size_t numGenericPacks = 0;
         for (auto it = ftv.genericPacks.begin(); it != ftv.genericPacks.end(); ++it)
         {
-            if (auto gtv = get<GenericTypePack>(*it))
+            if (auto gtv = get<GenericTypePack>(follow(*it)))
                 genericPacks.data[numGenericPacks++] = allocator->alloc<AstGenericTypePack>(Location(), AstName(gtv->name.c_str()), nullptr);
         }
 
@@ -439,7 +439,7 @@ public:
     {
         AstArray<AstTypeOrPack> params;
         params.size = 1;
-        params.data = static_cast<AstTypeOrPack*>(allocator->allocate(sizeof(AstType*)));
+        params.data = static_cast<AstTypeOrPack*>(allocator->allocate(sizeof(AstTypeOrPack)));
         params.data[0] = AstTypeOrPack{Luau::visit(*this, ntv.ty->ty), nullptr};
 
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("negate"), std::nullopt, Location(), true, params);

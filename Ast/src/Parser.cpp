@@ -28,7 +28,6 @@ LUAU_FLAGVERSION(LuauExportValueSyntax, 4)
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauAllowGlobalDeclarationToBeCalledClass)
-LUAU_FASTFLAGVARIABLE(LuauDisallowExternClassInTypeDefinitions)
 LUAU_FASTFLAGVARIABLE(LuauStoreConstKeywordBegin)
 LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
@@ -1829,17 +1828,10 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
     // global variable declaration whose name is `class`, not as a malformed class declaration. This allows
     // us to support a global table like string/math/bit32 called `class`. CLI-203833 tracks the work to actually
     // remove support for `declare class X [extends Y]` syntax.
-    else if (FFlag::LuauDisallowExternClassInTypeDefinitions
-                 ? AstName(lexer.current().name) == "extern"
-                 : (AstName(lexer.current().name) == "class" &&
-                    (FFlag::LuauAllowGlobalDeclarationToBeCalledClass ? lexer.lookahead().type != ':' : true)) ||
-                       AstName(lexer.current().name) == "extern")
+    else if (AstName(lexer.current().name) == "extern")
     {
-        bool foundExtern = false;
         if (AstName(lexer.current().name) == "extern")
         {
-            if (!FFlag::LuauDisallowExternClassInTypeDefinitions)
-                foundExtern = true;
             nextLexeme();
             if (AstName(lexer.current().name) != "type")
                 return reportStatError(
@@ -1859,17 +1851,14 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
             superName = parseName("supertype name").name;
         }
 
-        if (FFlag::LuauDisallowExternClassInTypeDefinitions || foundExtern)
-        {
-            if (AstName(lexer.current().name) != "with")
-                report(
-                    lexer.current().location,
-                    "Expected `with` keyword before listing properties of the external type, but got %s instead",
-                    lexer.current().name
-                );
-            else
-                nextLexeme();
-        }
+        if (AstName(lexer.current().name) != "with")
+            report(
+                lexer.current().location,
+                "Expected `with` keyword before listing properties of the external type, but got %s instead",
+                lexer.current().name
+            );
+        else
+            nextLexeme();
 
         TempVector<AstDeclaredExternTypeProperty> props(scratchDeclaredClassProps);
         AstTableIndexer* indexer = nullptr;

@@ -16,6 +16,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauSetmetatableOverrides)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -1334,6 +1335,106 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_unknown_class_instance_properties_
     REQUIRE(pav3);
     CHECK(pav3->key == "__index");
     CHECK(pav3->context == PropertyAccessViolation::CannotWrite);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "subclass_property_access")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Instance = { Name: string }
+
+        const Base = {}
+        Base.__index = {}
+
+        export type Class = setmetatable<{ read instance: Instance }, typeof(Base)>
+
+        function Base.new(instance: Instance): Class
+            return setmetatable({ instance = instance, }, Base)
+        end
+
+        function Base.ChangeName(self: Class, name: string): ()
+            error("Override required.")
+        end
+
+        const Derived = setmetatable({}, Base)
+        Derived.__index = Derived
+
+        export type Subclass = setmetatable<Class & { --[[ new members here ]] }, typeof(Derived)>
+
+        function Derived.new(instance: Instance): Subclass
+            return table.freeze(setmetatable(Base.new(instance), Derived))
+        end
+
+        function Derived.ChangeName(self: Subclass, name: string): ()
+            self.instance.Name = name -- TypeError: Type 'Class' does not have key 'instance'
+        end
+
+        return Derived
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_1")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
+
+    CheckResult result = check(R"(
+        local root = {}
+        local mt1 = { __index = { propA = 42 } }
+        local mt2 = { __index = { propB = "hmm" } }
+
+        setmetatable(root, mt1)
+
+        local getpropA = root.propA
+
+        setmetatable(root, mt2)
+
+        local getpropB = root.propB
+        local ohno = root.propA
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("number", toString(requireType("getpropA"), {/* exhaustive */ true}));
+    CHECK_EQ("string", toString(requireType("getpropB"), {/* exhaustive */ true}));
+
+    // TODO CLI-221097: This is incorrect, we should be claiming that `uhoh`
+    // has type `any`, but we report an error, so it's not awful.
+    CHECK_EQ("number", toString(requireType("ohno"), {/* exhaustive */ true}));
+
+    auto err = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("propA", err->key);
+    CHECK_EQ("{ @metatable mt2, root }", toString(err->table));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_2")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
+
+    CheckResult result = check(R"(
+        type MT1 = { __index: { propA: number } }
+        type MT2 = { __index: { propB: string } }
+
+        local root: setmetatable<setmetatable<{ Name: string }, MT1>, MT2>
+
+        local getpropB = root.propB
+        local ohno = root.propA
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("string", toString(requireType("getpropB"), {/* exhaustive */ true}));
+    CHECK_EQ("any", toString(requireType("ohno"), {/* exhaustive */ true}));
+
+    auto err = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("propA", err->key);
+    CHECK_EQ("{ @metatable MT2, { Name: string } }", toString(err->table));
 }
 
 TEST_SUITE_END();

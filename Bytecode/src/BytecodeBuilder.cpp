@@ -558,6 +558,13 @@ void BytecodeBuilder::undoEmit(LuauOpcode op)
     lines.pop_back();
 }
 
+unsigned BytecodeBuilder::lastInstruction()
+{
+    LUAU_ASSERT(!insns.empty());
+
+    return insns.back();
+}
+
 size_t BytecodeBuilder::emitLabel()
 {
     return insns.size();

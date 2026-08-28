@@ -13,6 +13,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauInstantiationCheckArguments)
 LUAU_FASTFLAG(LuauInstantiationCheckArgumentsDedup)
+LUAU_FASTFLAG(LuauBlockingTypeAliasExpansion)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -1464,6 +1465,26 @@ type Pack4d = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">,
 type Pack4e = { a: Sym<"a">, b: Sym<"b">, c: Sym<"c">, d: Sym<"d">, e: Sym<"e">, f: Sym<"e"> }
 type Pack4 = Pack4a | Pack4b | Pack4c | Pack4d | Pack4e
     )_"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "blocked_type_alias_do_not_leak_generic_arguments")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag luauBlockingTypeAliasExpansion{FFlag::LuauBlockingTypeAliasExpansion, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+type Alias<Generic> = typeof(getmetatable(... :: Generic))
+
+type Value = { x: number, y: number }
+type Meta = setmetatable<Value, { __len : (Value) -> number }>
+
+local foo: Alias<Meta>
+
+local x: number = foo.__len({ x = 1, y = 2})
+
+return foo
+    )"));
 }
 
 TEST_SUITE_END();
