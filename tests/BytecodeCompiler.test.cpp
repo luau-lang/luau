@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeBuilder.h"
+#include "Luau/BytecodeDump.h"
 #include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeValidation.h"
 #include "Luau/BytecodeWire.h"
@@ -117,11 +118,7 @@ struct BytecodeCompilerFixture
         return Bytecode::fromFunctionBytecode(fnData, table);
     }
 
-    std::optional<std::pair<std::string, std::vector<std::string>>> getFunctionBytecode(
-        std::string_view src,
-        int optimizationLevel = 0,
-        uint32_t functionId = 0
-    )
+    std::optional<std::string> getFunctionBytecode(std::string_view src, int optimizationLevel = 0, uint32_t functionId = 0)
     {
         Allocator allocator;
         AstNameTable names(allocator);
@@ -129,7 +126,10 @@ struct BytecodeCompilerFixture
         BytecodeBuilder bcb;
 
         if (compileCode(bcb, result, names, BytecodeBuilder::Dump_Code, optimizationLevel, false))
-            return {{bcb.getFunctionData(functionId), extractStringTable(bcb)}};
+        {
+            strings = extractStringTable(bcb);
+            return {{bcb.getFunctionData(functionId)}};
+        }
 
         return {};
     }
@@ -138,7 +138,7 @@ struct BytecodeCompilerFixture
     {
         auto bytecode = getFunctionBytecode(src, optimizationLevel, functionId);
         if (bytecode)
-            return {fromFunctionBytecode(bytecode->first, bytecode->second)};
+            return {fromFunctionBytecode(*bytecode, strings)};
 
         return {};
     }
@@ -197,105 +197,19 @@ struct BytecodeCompilerFixture
             }
         }
     }
+
+    // String table has to be retained for the lifetime of CompTimeBcFunction
+    std::vector<std::string> strings;
 };
 
 } // namespace
 
 TEST_SUITE_BEGIN("BytecodeCompiler");
 
-bool checkOps(CompTimeBcFunction& fn, std::list<BcOp>& ops, std::initializer_list<LuauOpcode> expected_ops)
-{
-    std::vector<LuauOpcode> expected = expected_ops;
-    if (ops.size() != expected.size())
-    {
-        WARN_EQ(ops.size(), expected.size());
-        return false;
-    }
-    int i = 0;
-    for (auto& op : ops)
-    {
-        if (fn.instOp(op).op != expected[i])
-        {
-            WARN_EQ(fn.instOp(op).op, expected[i]);
-            return false;
-        }
-        i++;
-    }
-    return true;
-}
-
-bool checkEdges(BcEdges& edges, std::initializer_list<BcBlockEdgeKind> expected_edges)
-{
-    std::vector<BcBlockEdgeKind> expected = expected_edges;
-    if (edges.size() != expected.size())
-        return false;
-    int i = 0;
-    for (auto& e : edges)
-        if (e.kind != expected[i++])
-            return false;
-    return true;
-}
-
-inline BcOp getOp(BcBlock& block, int idx)
-{
-    return *std::next(block.ops.begin(), idx);
-}
-
-inline BcOp getBlockOp(BcEdges& edges, BcBlockEdgeKind kind)
-{
-    for (auto& e : edges)
-        if (e.kind == kind)
-            return e.target;
-    LUAU_UNREACHABLE();
-}
-
-inline BcOp fallthroughOp(BcEdges& edges)
-{
-    return getBlockOp(edges, BcBlockEdgeKind::Fallthrough);
-}
-
-inline BcOp branchOp(BcEdges& edges)
-{
-    return getBlockOp(edges, BcBlockEdgeKind::Branch);
-}
-
-inline BcOp loopOp(BcEdges& edges)
-{
-    return getBlockOp(edges, BcBlockEdgeKind::Loop);
-}
-
-inline BcBlock& getBlock(CompTimeBcFunction& fn, BcEdges& edges, BcBlockEdgeKind kind)
-{
-    return fn.blockOp(getBlockOp(edges, kind));
-}
-
-inline BcBlock& fallthroughBlock(CompTimeBcFunction& fn, BcEdges& edges)
-{
-    return getBlock(fn, edges, BcBlockEdgeKind::Fallthrough);
-}
-
-inline BcBlock& branchBlock(CompTimeBcFunction& fn, BcEdges& edges)
-{
-    return getBlock(fn, edges, BcBlockEdgeKind::Branch);
-}
-
-inline BcBlock& loopBlock(CompTimeBcFunction& fn, BcEdges& edges)
-{
-    return getBlock(fn, edges, BcBlockEdgeKind::Loop);
-}
-
-inline bool isPhiOf(CompTimeBcFunction& fn, BcOp op, BcOp left, BcOp right)
-{
-    if (op.kind != BcOpKind::Phi)
-        return false;
-    BcPhi& opPhi = fn.phiOp(op);
-    if (opPhi.ops.size() != 2)
-        return false;
-    return opPhi.ops.size() == 2 && opPhi.ops[0] == left && opPhi.ops[1] == right;
-}
-
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "from_function_bytecode")
 {
+    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
+
     auto fn = buildBytecode(R"(
         function fn(a, b)
             local extra = 0
@@ -304,85 +218,45 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "from_function_bytecode")
         end
     )");
 
-    /*
-        Function 0 (fn):
-        // Block 1 (entry)
-        2: LOADK R2 K0 [0]
-        3: JUMPIFNOTLT R1 R0 L0
-        // Block 2 (condTrue)
-        3: LOADK R2 K1 [1]
-        // Block 3 (condFalse)
-        4: L0: ADD R4 R2 R0
-        4: ADD R3 R4 R1
-        4: RETURN R3 1
-        // Block 4 (exit)
-    */
-
     REQUIRE(fn);
+
     // function meta
-    REQUIRE_EQ(fn->nups, 0);
-    REQUIRE_EQ(fn->numparams, 2);
     REQUIRE_EQ(fn->constants.size(), 2);
 
     REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
-    // CFG Blocks
-    REQUIRE_EQ(fn->blocks.size(), 4);
-    BcBlock& entry = fn->blockOp(fn->entryBlock);
-    // Entry block ends with if
-    REQUIRE(checkEdges(entry.successors, {BcBlockEdgeKind::Branch, BcBlockEdgeKind::Fallthrough}));
-    BcOp condFalseOp = branchOp(entry.successors);
-    BcBlock& condTrue = fn->blockOp(entry.successors[1].target);
-    REQUIRE(checkEdges(condTrue.successors, {BcBlockEdgeKind::Fallthrough}));
-    REQUIRE_EQ(fallthroughOp(condTrue.successors), condFalseOp);
-    BcBlock& condFalse = fn->blockOp(condFalseOp);
-    REQUIRE(checkEdges(condFalse.successors, {BcBlockEdgeKind::Fallthrough}));
-    REQUIRE_EQ(fallthroughOp(condFalse.successors), fn->exitBlock);
-    BcBlock& exit = fn->blockOp(fn->exitBlock);
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function fn($arg0, $arg1) line 2 maxstacksize: 5 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_2 [branch], bb_3 [fallthrough]
+  %0 = LOADK K0 (0)                                          ; uses: phi.0
+  %1 = JUMPIFNOTLT R1, R0, bb_2
 
-    // Instructions
-    // Entry
-    BcOp loadKOp;
-    REQUIRE_EQ(entry.ops.size(), 2);
-    {
-        auto it = entry.ops.begin();
-        loadKOp = *it++;
-        BcInst& loadK = fn->instOp(loadKOp);
-        REQUIRE_EQ(loadK.op, LOP_LOADK);
-        REQUIRE_EQ(loadK.ops.size(), 1);
-        REQUIRE_EQ(loadK.ops[0].kind, BcOpKind::VmConst);
-        REQUIRE_EQ(loadK.ops[0].index, 0);
-        REQUIRE_EQ(fn->constants[0].kind, BcVmConstKind::Number);
-        REQUIRE_EQ(fn->constants[0].valueNumber, 0);
+bb_3:
+; predecessors: bb_0 [fallthrough]
+; successors: bb_2 [fallthrough]
+  %2 = LOADK K1 (1)                                          ; uses: phi.0
 
-        // The lone use of the entry `local extra = 0` is the merge phi for R2 at condFalse,
-        // which joins it with condTrue's `extra = 1`. That phi in turn feeds only the first ADD.
-        REQUIRE_EQ(loadK.uses.size(), 1);
-        BcOp extraPhiOp = loadK.uses[0];
-        REQUIRE_EQ(extraPhiOp.kind, BcOpKind::Phi);
-        BcPhi& extraPhi = fn->phiOp(extraPhiOp);
-        BcOp condTrueLoadKOp = getOp(condTrue, 0);
-        REQUIRE_EQ(extraPhi.ops.size(), 2);
-        REQUIRE_EQ(std::count(extraPhi.ops.begin(), extraPhi.ops.end(), loadKOp), 1);
-        REQUIRE_EQ(std::count(extraPhi.ops.begin(), extraPhi.ops.end(), condTrueLoadKOp), 1);
+bb_2:
+; predecessors: bb_0 [branch], bb_3 [fallthrough]
+; successors: bb_1 [fallthrough]
+  phi.0 = %0 from bb_0, %2 from bb_3                         ; uses: %3
+  %3 = ADD phi.0, R0                                         ; uses: %4
+  %4 = ADD %3, R1                                            ; uses: %5
+  %5 = RETURN 1, %4
 
-        BcOp firstAddOp = getOp(condFalse, 0);
-        REQUIRE_EQ(extraPhi.uses.size(), 1);
-        REQUIRE(hasUse(*fn, extraPhiOp, firstAddOp));
-        REQUIRE_EQ(fn->instOp(firstAddOp).ops[0], extraPhiOp);
-
-        BcInst& jumpIfNotLt = fn->instOp(*it);
-        REQUIRE_EQ(jumpIfNotLt.op, LOP_JUMPIFNOTLT);
-        REQUIRE_EQ(jumpIfNotLt.ops.size(), 3);
-    }
-
-    REQUIRE(checkOps(*fn, condTrue.ops, {LOP_LOADK}));
-    REQUIRE(checkOps(*fn, condFalse.ops, {LOP_ADD, LOP_ADD, LOP_RETURN}));
-    REQUIRE(checkOps(*fn, exit.ops, {}));
+bb_1 (exit):
+; predecessors: bb_2 [fallthrough]
+)"
+    );
 }
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "repeat_until_loop")
 {
+    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
+
     auto fn = buildBytecode(R"(
         function fn()
             local var = 0
@@ -391,67 +265,40 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "repeat_until_loop")
         end
     )");
 
-    /*
-        // Block 1 (entry)
-        LOADK R0 K0 [0]
-        // Block 2 (loopBody)
-        L0: LOADK R1 K1 [1]
-        ADD R0 R0 R1
-        LOADK R1 K2 [10]
-        JUMPIFLT R0 R1 L1
-        // Block 3 (loopJumpBack)
-        JUMPBACK L0
-        // Block 4 (ret)
-        L1: RETURN R0 0
-        // Block 5 (exit)
-    */
-
     REQUIRE(fn);
     REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
-    // CFG Blocks
-    REQUIRE_EQ(fn->blocks.size(), 5);
-    BcBlock& entry = fn->blockOp(fn->entryBlock);
-    REQUIRE(checkEdges(entry.successors, {BcBlockEdgeKind::Fallthrough}));
-    BcBlock& loopBody = fallthroughBlock(*fn, entry.successors);
-    REQUIRE(checkEdges(loopBody.predecessors, {BcBlockEdgeKind::Fallthrough, BcBlockEdgeKind::Loop}));
-    REQUIRE(checkEdges(loopBody.successors, {BcBlockEdgeKind::Branch, BcBlockEdgeKind::Fallthrough}));
-    BcBlock& loopJumpBack = fallthroughBlock(*fn, loopBody.successors);
-    REQUIRE(checkEdges(loopJumpBack.successors, {BcBlockEdgeKind::Loop}));
-    BcBlock& ret = branchBlock(*fn, loopBody.successors);
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function fn() line 2 maxstacksize: 2 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_4 [fallthrough]
+  %0 = LOADK K0 (0)                                          ; uses: phi.0
 
-    // Instructions
-    REQUIRE(checkOps(*fn, entry.ops, {LOP_LOADK}));
-    REQUIRE(checkOps(*fn, loopBody.ops, {LOP_LOADK, LOP_ADD, LOP_LOADK, LOP_JUMPIFLT}));
-    REQUIRE(checkOps(*fn, loopJumpBack.ops, {LOP_JUMPBACK}));
-    REQUIRE(checkOps(*fn, ret.ops, {LOP_RETURN}));
-    {
-        BcOp varInitOp = getOp(entry, 0);
-        BcOp loadKOneOp = getOp(loopBody, 0);
-        BcOp addVarOp = getOp(loopBody, 1);
-        BcOp jumpIfLtOp = getOp(loopBody, 3);
-        BcInst& addVar = fn->instOp(addVarOp);
-        REQUIRE_EQ(addVar.ops.size(), 2);
-        REQUIRE_EQ(addVar.ops[0].kind, BcOpKind::Phi);
-        BcOp addVarPhiOp = addVar.ops[0];
-        BcPhi& addVarPhi = fn->phiOp(addVarPhiOp);
-        REQUIRE_EQ(addVarPhi.ops[0], varInitOp);
-        REQUIRE_EQ(addVarPhi.ops[1], addVarOp);
-        REQUIRE_EQ(addVar.ops[1], loadKOneOp);
+bb_4:
+; predecessors: bb_0 [fallthrough], bb_3 [loop]
+; successors: bb_2 [branch], bb_3 [fallthrough]
+  phi.0 = %0 from bb_0, %2 from bb_4                         ; uses: %2
+  %1 = LOADK K1 (1)                                          ; uses: %2
+  %2 = ADD phi.0, %1                                         ; uses: %4, phi.0
+  %3 = LOADK K2 (10)                                         ; uses: %4
+  %4 = JUMPIFLT %2, %3, bb_2
 
-        // the loop-header phi for `var` feeds exactly the ADD
-        REQUIRE_EQ(addVarPhi.uses.size(), 1);
-        REQUIRE(hasUse(*fn, addVarPhiOp, addVarOp));
+bb_3:
+; predecessors: bb_4 [fallthrough]
+; successors: bb_4 [loop]
+  %5 = JUMPBACK bb_4
 
-        // the ADD result is consumed twice: by the phi over the back-edge and by the until-condition JUMPIFLT
-        REQUIRE_EQ(fn->instOp(jumpIfLtOp).op, LOP_JUMPIFLT);
-        REQUIRE(hasUse(*fn, addVarOp, addVarPhiOp));
-        REQUIRE(hasUse(*fn, addVarOp, jumpIfLtOp));
+bb_2:
+; predecessors: bb_4 [branch]
+; successors: bb_1 [fallthrough]
+  %6 = RETURN 0, R0
 
-        // both LOADK defs list their single consumer
-        REQUIRE(hasUse(*fn, varInitOp, addVarPhiOp));
-        REQUIRE(hasUse(*fn, loadKOneOp, addVarOp));
-    }
+bb_1 (exit):
+; predecessors: bb_2 [fallthrough]
+)"
+    );
 }
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "for_loop_and_backward_input")
@@ -468,80 +315,56 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "for_loop_and_backward_input")
         end
     )");
 
-    /*
-        // Block 1 (entry)
-        LOADK R0 K0 [3]
-        // initialize loop variable
-        LOADK R3 K1 [1]
-        LOADK R1 K2 [10]
-        LOADN R2 1
-        FORNPREP R1 L2
-        // Block 2 (loopEnter)
-        L0: LOADK R4 K3 [0]
-        JUMPIFNOTLT R4 R0 L1
-        // Block 3 (loopCond)
-        GETGLOBAL R4 K4 ['print']
-        MOVE R5 R3
-        CALLFB R4 1 0
-        // Block 4 (loopEpllog)
-        L1: LOADK R4 K1 [1]
-        SUB R0 R0 R4
-        FORNLOOP R1 L0
-        // Block 5 (ret)
-        L2: RETURN R0 0
-        // Block 6 (exit)
-    */
-
     REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
-    // CFG Blocks
-    REQUIRE_EQ(fn->blocks.size(), 6);
-    BcBlock& entry = fn->blockOp(fn->entryBlock);
-    // Entry block ends with loop header
-    REQUIRE_EQ(entry.successors.size(), 2);
-    REQUIRE(checkEdges(entry.successors, {BcBlockEdgeKind::Branch, BcBlockEdgeKind::Fallthrough}));
-    BcOp loopEnterOp = fallthroughOp(entry.successors);
-    BcBlock& loopEnter = fn->blockOp(loopEnterOp);
-    // Check we have 2 incoming edges: 1 fallthrough from FORNPREP and 1 back edge from FORNLOOP
-    REQUIRE(checkEdges(loopEnter.predecessors, {BcBlockEdgeKind::Fallthrough, BcBlockEdgeKind::Loop}));
-    REQUIRE(checkEdges(loopEnter.successors, {BcBlockEdgeKind::Branch, BcBlockEdgeKind::Fallthrough}));
-    BcBlock& loopCond = fallthroughBlock(*fn, loopEnter.successors);
-    REQUIRE(checkEdges(loopCond.successors, {BcBlockEdgeKind::Fallthrough}));
-    BcOp loopEpllogOp = branchOp(loopEnter.successors);
-    REQUIRE_EQ(fallthroughOp(loopCond.successors), loopEpllogOp);
-    BcBlock& loopEpllog = fn->blockOp(loopEpllogOp);
-    REQUIRE(checkEdges(loopEpllog.successors, {BcBlockEdgeKind::Loop, BcBlockEdgeKind::Fallthrough}));
-    REQUIRE_EQ(loopOp(loopEpllog.successors), loopEnterOp);
-    BcBlock& ret = fn->blockOp(loopEpllog.successors[1].target);
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function fn() line 2 maxstacksize: 6 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_2 [branch], bb_3 [fallthrough]
+  %0 = LOADK K0 (3)                                          ; uses: phi.0
+  %1 = LOADK K1 (1)                                          ; uses: %4
+  %2 = LOADK K2 (10)                                         ; uses: %4
+  %3 = LOADN 1                                               ; uses: %4
+  %4 = FORNPREP %2, %3, %1, bb_2
 
-    // Instructions
-    REQUIRE(checkOps(*fn, entry.ops, {LOP_LOADK, LOP_LOADK, LOP_LOADK, LOP_LOADN, LOP_FORNPREP}));
-    REQUIRE(checkOps(*fn, loopEnter.ops, {LOP_LOADK, LOP_JUMPIFNOTLT}));
-    {
-        BcOp varInitOp = *entry.ops.begin();
-        BcOp subVarOp = *std::next(loopEpllog.ops.begin(), 1);
-        BcInst& jumpIfNotLt = fn->instOp(*std::next(loopEnter.ops.begin(), 1));
-        REQUIRE_EQ(jumpIfNotLt.ops.size(), 3);
-        // first input is LOADK
-        REQUIRE_EQ(jumpIfNotLt.ops[0], *loopEnter.ops.begin());
-        // second input is Phi coming outside of the loop and from the loop forward
-        REQUIRE(isPhiOf(*fn, jumpIfNotLt.ops[1], varInitOp, subVarOp));
-        // third input is target block
-        REQUIRE_EQ(jumpIfNotLt.ops[2], loopEpllogOp);
+bb_3:
+; predecessors: bb_0 [fallthrough], bb_4 [loop]
+; successors: bb_4 [branch], bb_5 [fallthrough]
+  phi.0 = %0 from bb_0, %11 from bb_4                        ; uses: %6, phi.2, phi.2, %11
+  %5 = LOADK K3 (0)                                          ; uses: %6
+  %6 = JUMPIFNOTLT %5, phi.0, bb_4
 
-        BcInst& subVar = fn->instOp(subVarOp);
-        REQUIRE_EQ(subVar.ops.size(), 2);
-        // second input is LOADK
-        REQUIRE(isPhiOf(*fn, subVar.ops[0], varInitOp, subVarOp));
-        REQUIRE_EQ(subVar.ops[1], *loopEpllog.ops.begin());
-    }
-    REQUIRE(checkOps(*fn, loopCond.ops, {LOP_GETGLOBAL, LOP_MOVE, LOP_CALLFB}));
-    REQUIRE(checkOps(*fn, loopEpllog.ops, {LOP_LOADK, LOP_SUB, LOP_FORNLOOP}));
-    REQUIRE(checkOps(*fn, ret.ops, {LOP_RETURN}));
+bb_5:
+; predecessors: bb_3 [fallthrough]
+; successors: bb_4 [fallthrough]
+  %7 = GETGLOBAL 70, K4 ('print')                            ; uses: %9
+  %8 = MOVE %4[2]                                            ; uses: %9
+  %9 = CALLFB 1, 0, 0, %7, %8
+
+bb_4:
+; predecessors: bb_3 [branch], bb_5 [fallthrough]
+; successors: bb_3 [loop], bb_2 [fallthrough]
+  %10 = LOADK K1 (1)                                         ; uses: %11
+  %11 = SUB phi.0, %10                                       ; uses: phi.0
+  %12 = FORNLOOP %4[0], %4[1], %4[2], bb_3
+
+bb_2:
+; predecessors: bb_0 [branch], bb_4 [fallthrough]
+; successors: bb_1 [fallthrough]
+  %13 = RETURN 0, R0
+
+bb_1 (exit):
+; predecessors: bb_2 [fallthrough]
+)"
+    );
 }
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "nested_loops")
 {
+    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
+
     auto fn = buildBytecode(R"(
         function fn()
             local res = 0
@@ -557,76 +380,63 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "nested_loops")
         end
     )");
 
-    /*
-        // Block 1 (entry)
-        LOADK R0 K0 [0]
-        LOADK R1 K0 [0]
-        // Block 2 (outerEntry)
-        L0: LOADK R2 K0 [0]
-        // Block 3 (innerEntry)
-        L1: MUL R3 R2 R1
-        ADD R0 R0 R3
-        LOADK R3 K1 [1]
-        ADD R2 R2 R3
-        LOADK R3 K2 [5]
-        JUMPIFLT R2 R3 L2
-        // Block 4 (innerBackLoop)
-        JUMPBACK L1
-        // Block 5 (outerEpllog)
-        L2: LOADK R3 K1 [1]
-        ADD R1 R1 R3
-        LOADK R3 K3 [10]
-        JUMPIFLT R1 R3 L3
-        // Block 6 (outerBackLoop)
-        JUMPBACK L0
-        // Block 7 (ret)
-        L3: RETURN R0 0
-        // Block 8 (exit)
-    */
-
     REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
-    // CFG Blocks
-    REQUIRE_EQ(fn->blocks.size(), 8);
-    BcBlock& entry = fn->blockOp(fn->entryBlock);
-    REQUIRE(checkEdges(entry.successors, {BcBlockEdgeKind::Fallthrough}));
-    BcOp outerEntryOp = fallthroughOp(entry.successors);
-    BcBlock& outerEntry = fn->blockOp(outerEntryOp);
-    REQUIRE(checkEdges(outerEntry.predecessors, {BcBlockEdgeKind::Fallthrough, BcBlockEdgeKind::Loop}));
-    REQUIRE(checkEdges(outerEntry.successors, {BcBlockEdgeKind::Fallthrough}));
-    BcOp innerEntryOp = fallthroughOp(outerEntry.successors);
-    BcBlock& innerEntry = fn->blockOp(innerEntryOp);
-    REQUIRE(checkEdges(innerEntry.predecessors, {BcBlockEdgeKind::Fallthrough, BcBlockEdgeKind::Loop}));
-    REQUIRE(checkEdges(innerEntry.successors, {BcBlockEdgeKind::Branch, BcBlockEdgeKind::Fallthrough}));
-    BcBlock& innerBackLoop = fallthroughBlock(*fn, innerEntry.successors);
-    REQUIRE(checkEdges(innerBackLoop.successors, {BcBlockEdgeKind::Loop}));
-    REQUIRE_EQ(loopOp(innerBackLoop.successors), innerEntryOp);
-    BcBlock& outerEpllog = branchBlock(*fn, innerEntry.successors);
-    REQUIRE(checkEdges(outerEpllog.successors, {BcBlockEdgeKind::Branch, BcBlockEdgeKind::Fallthrough}));
-    BcBlock& outerBackLoop = fallthroughBlock(*fn, outerEpllog.successors);
-    REQUIRE(checkEdges(outerBackLoop.successors, {BcBlockEdgeKind::Loop}));
-    REQUIRE_EQ(loopOp(outerBackLoop.successors), outerEntryOp);
-    BcBlock& ret = branchBlock(*fn, outerEpllog.successors);
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function fn() line 2 maxstacksize: 4 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_7 [fallthrough]
+  %0 = LOADK K0 (0)                                          ; uses: phi.4
+  %1 = LOADK K0 (0)                                          ; uses: phi.3
 
-    // Instructions
-    REQUIRE(checkOps(*fn, entry.ops, {LOP_LOADK, LOP_LOADK}));
-    REQUIRE(checkOps(*fn, outerEntry.ops, {LOP_LOADK}));
-    REQUIRE(checkOps(*fn, innerEntry.ops, {LOP_MUL, LOP_ADD, LOP_LOADK, LOP_ADD, LOP_LOADK, LOP_JUMPIFLT}));
-    REQUIRE(checkOps(*fn, innerBackLoop.ops, {LOP_JUMPBACK}));
-    REQUIRE(checkOps(*fn, outerEpllog.ops, {LOP_LOADK, LOP_ADD, LOP_LOADK, LOP_JUMPIFLT}));
-    REQUIRE(checkOps(*fn, outerBackLoop.ops, {LOP_JUMPBACK}));
-    REQUIRE(checkOps(*fn, ret.ops, {LOP_RETURN}));
-    {
-        BcOp varInitOp = getOp(entry, 1);
-        BcOp varIncOp = getOp(outerEpllog, 1);
-        BcOp iInitOp = getOp(outerEntry, 0);
-        BcOp iIncOp = getOp(innerEntry, 3);
-        BcOp iTimesVarOp = getOp(innerEntry, 0);
-        BcInst& iTimesVar = fn->instOp(iTimesVarOp);
-        REQUIRE_EQ(iTimesVar.ops.size(), 2);
-        REQUIRE(isPhiOf(*fn, iTimesVar.ops[0], iInitOp, iIncOp));
-        REQUIRE(isPhiOf(*fn, iTimesVar.ops[1], varInitOp, varIncOp));
-    }
+bb_7:
+; predecessors: bb_0 [fallthrough], bb_6 [loop]
+; successors: bb_4 [fallthrough]
+  phi.3 = %1 from bb_0, %11 from bb_2                        ; uses: phi.1, %3, %11
+  phi.4 = %0 from bb_0, %4 from bb_4                         ; uses: phi.2
+  %2 = LOADK K0 (0)                                          ; uses: phi.0
+
+bb_4:
+; predecessors: bb_7 [fallthrough], bb_3 [loop]
+; successors: bb_2 [branch], bb_3 [fallthrough]
+  phi.0 = %2 from bb_7, %6 from bb_4                         ; uses: %3, %6
+  phi.2 = phi.4, %4 from bb_4                                ; uses: %4
+  %3 = MUL phi.0, phi.3                                      ; uses: %4
+  %4 = ADD phi.2, %3                                         ; uses: phi.2, phi.4
+  %5 = LOADK K1 (1)                                          ; uses: %6
+  %6 = ADD phi.0, %5                                         ; uses: %8, phi.0
+  %7 = LOADK K2 (5)                                          ; uses: %8
+  %8 = JUMPIFLT %6, %7, bb_2
+
+bb_3:
+; predecessors: bb_4 [fallthrough]
+; successors: bb_4 [loop]
+  %9 = JUMPBACK bb_4
+
+bb_2:
+; predecessors: bb_4 [branch]
+; successors: bb_5 [branch], bb_6 [fallthrough]
+  %10 = LOADK K1 (1)                                         ; uses: %11
+  %11 = ADD phi.3, %10                                       ; uses: %13, phi.3
+  %12 = LOADK K3 (10)                                        ; uses: %13
+  %13 = JUMPIFLT %11, %12, bb_5
+
+bb_6:
+; predecessors: bb_2 [fallthrough]
+; successors: bb_7 [loop]
+  %14 = JUMPBACK bb_7
+
+bb_5:
+; predecessors: bb_2 [branch]
+; successors: bb_1 [fallthrough]
+  %15 = RETURN 0, R0
+
+bb_1 (exit):
+; predecessors: bb_5 [fallthrough]
+)"
+    );
 }
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_fixed")
@@ -640,46 +450,24 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_fixed")
         end
     )");
 
-    /*
-        GETGLOBAL R0 K0 ['f']
-        CALLFB R0 0 2
-        MOVE R2 R1
-        MOVE R3 R0
-        RETURN R2 2
-    */
-
-    // CFG Blocks
-    BcBlock& entry = fn->blockOp(fn->entryBlock);
-
     REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
-    // Instructions
-    REQUIRE(checkOps(*fn, entry.ops, {LOP_GETGLOBAL, LOP_CALLFB, LOP_MOVE, LOP_MOVE, LOP_RETURN}));
-    {
-        BcOp callOp = getOp(entry, 1);
-        BcOp move1op = getOp(entry, 2);
-        BcInst& move1 = fn->instOp(move1op);
-        REQUIRE_EQ(move1.ops.size(), 1);
-        REQUIRE_EQ(move1.ops[0].kind, BcOpKind::Proj);
-        BcProj& move1proj = fn->projOp(move1.ops[0]);
-        REQUIRE_EQ(move1proj.op, callOp);
-        REQUIRE_EQ(move1proj.index, 1);
-        BcOp move2op = getOp(entry, 3);
-        BcInst& move2 = fn->instOp(move2op);
-        REQUIRE_EQ(move2.ops.size(), 1);
-        REQUIRE_EQ(move2.ops[0].kind, BcOpKind::Proj);
-        BcProj& move2proj = fn->projOp(move2.ops[0]);
-        REQUIRE_EQ(move2proj.op, callOp);
-        REQUIRE_EQ(move2proj.index, 0);
-        BcInst& ret = fn->instOp(getOp(entry, 4));
-        REQUIRE_EQ(ret.ops.size(), 3);
-        REQUIRE_EQ(ret.ops[0].kind, BcOpKind::Imm);
-        BcImm& retCount = fn->immOp(ret.ops[0]);
-        REQUIRE_EQ(retCount.kind, BcImmKind::Int);
-        REQUIRE_EQ(retCount.valueInt, 2);
-        REQUIRE_EQ(ret.ops[1], move1op);
-        REQUIRE_EQ(ret.ops[2], move2op);
-    }
+    CHECK_EQ(
+        "\n" + toString(*fn, false),
+        R"(
+; function x() line 2 maxstacksize: 4 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_1 [fallthrough]
+  %0 = GETGLOBAL 135, K0 ('f')
+  %1 = CALLFB 0, 2, 0, %0
+  %2 = MOVE %1[1]
+  %3 = MOVE %1[0]
+  %4 = RETURN 2, %2, %3
+
+bb_1 (exit):
+; predecessors: bb_0 [fallthrough]
+)"
+    );
 }
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_variadic")
@@ -697,54 +485,41 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "multi_call_variadic")
         end
     )");
 
-    /*
-        // Block 1 (entry)
-        LOADK R1 K0 [0]
-        JUMPIFNOTLT R1 R0 L0
-        // Block 2 (ifTrue)
-        LOADK R1 K0 [0]
-        LOADK R2 K1 [1]
-        RETURN R1 2
-        // Block 3 (ifFalse)
-        L0: GETUPVAL R1 0
-        LOADK R3 K1 [1]
-        SUB R2 R0 R3
-        CALLFB R1 1 2
-        ADD R3 R1 R2
-        GETUPVAL R4 0
-        MOVE R5 R0
-        CALL R4 1 -1
-        RETURN R3 -1
-        // Block 4 (exit)
-    */
-
     REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
-    // CFG Blocks
-    REQUIRE_EQ(fn->blocks.size(), 4);
-    BcBlock& entry = fn->blockOp(fn->entryBlock);
-    REQUIRE(checkEdges(entry.successors, {BcBlockEdgeKind::Branch, BcBlockEdgeKind::Fallthrough}));
-    BcBlock& ifTrue = fallthroughBlock(*fn, entry.successors);
-    REQUIRE(checkEdges(ifTrue.successors, {BcBlockEdgeKind::Fallthrough}));
-    BcBlock& ifFalse = branchBlock(*fn, entry.successors);
-    REQUIRE(checkEdges(ifTrue.successors, {BcBlockEdgeKind::Fallthrough}));
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function fn($arg0) line 2 maxstacksize: 6 upvalues: 1 flags: 0
+bb_0 (entry):
+; successors: bb_2 [branch], bb_3 [fallthrough]
+  %0 = LOADK K0 (0)                                          ; uses: %1
+  %1 = JUMPIFNOTLT %0, R0, bb_2
 
-    // Instructions
-    REQUIRE(checkOps(*fn, entry.ops, {LOP_LOADK, LOP_JUMPIFNOTLT}));
-    REQUIRE(checkOps(*fn, ifTrue.ops, {LOP_LOADK, LOP_LOADK, LOP_RETURN}));
-    REQUIRE(checkOps(*fn, ifFalse.ops, {LOP_GETUPVAL, LOP_LOADK, LOP_SUB, LOP_CALLFB, LOP_ADD, LOP_GETUPVAL, LOP_MOVE, LOP_CALL, LOP_RETURN}));
-    {
-        BcInst& ret = fn->instOp(getOp(ifFalse, 8));
-        REQUIRE_EQ(ret.ops.size(), 3);
-        REQUIRE_EQ(ret.ops[0].kind, BcOpKind::Imm);
-        BcImm& retCount = fn->immOp(ret.ops[0]);
-        REQUIRE_EQ(retCount.kind, BcImmKind::Int);
-        REQUIRE_EQ(retCount.valueInt, -1);
-        BcOp addOp = getOp(ifFalse, 4);
-        REQUIRE_EQ(ret.ops[1], addOp);
-        BcOp multiCallOp = getOp(ifFalse, 7);
-        REQUIRE_EQ(ret.ops[2], multiCallOp);
-    }
+bb_3:
+; predecessors: bb_0 [fallthrough]
+; successors: bb_1 [fallthrough]
+  %2 = LOADK K0 (0)                                          ; uses: %4
+  %3 = LOADK K1 (1)                                          ; uses: %4
+  %4 = RETURN 2, %2, %3
+
+bb_2:
+; predecessors: bb_0 [branch]
+; successors: bb_1 [fallthrough]
+  %5 = GETUPVAL U0                                           ; uses: %8
+  %6 = LOADK K1 (1)                                          ; uses: %7
+  %7 = SUB R0, %6                                            ; uses: %8
+  %8 = CALLFB 1, 2, 0, %5, %7
+  %9 = ADD %8[0], %8[1]                                      ; uses: %13
+  %10 = GETUPVAL U0                                          ; uses: %12
+  %11 = MOVE R0                                              ; uses: %12
+  %12 = CALL 1, -1, %10, %11                                 ; uses: %13
+  %13 = RETURN -1, %9, %12
+
+bb_1 (exit):
+; predecessors: bb_3 [fallthrough], bb_2 [fallthrough]
+)"
+    );
 }
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "variadic_function")
@@ -757,79 +532,32 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "variadic_function")
         end
     )");
 
-    /*
-        // Block 1 (entry)
-        GETVARARGS R1 2
-        NEWTABLE R3 0 0
-        GETVARARGS R4 -1
-        SETLIST R3 R4 -1 [1]
-        ADD R6 R0 R1
-        ADD R5 R6 R2
-        LOADK R7 K0 [1]
-        GETTABLE R6 R3 R7
-        ADD R4 R5 R6
-        GETVARARGS R5 -1
-        RETURN R4 -1
-        // Block 2 (exit)
-    */
-
-    // CFG Blocks
-    REQUIRE_EQ(fn->blocks.size(), 2);
-    BcBlock& entry = fn->blockOp(fn->entryBlock);
-
     REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
-    // Instructions
-    REQUIRE(checkOps(
-        *fn,
-        entry.ops,
-        {LOP_PREPVARARGS,
-         LOP_GETVARARGS,
-         LOP_NEWTABLE,
-         LOP_GETVARARGS,
-         LOP_SETLIST,
-         LOP_ADD,
-         LOP_ADD,
-         LOP_LOADK,
-         LOP_GETTABLE,
-         LOP_ADD,
-         LOP_GETVARARGS,
-         LOP_RETURN}
-    ));
-    {
-        BcInst& getVarArgs1 = fn->instOp(getOp(entry, 1));
-        REQUIRE_EQ(getVarArgs1.ops.size(), 2);
-        REQUIRE_EQ(getVarArgs1.ops[0].kind, BcOpKind::VmReg);
-        REQUIRE_EQ(getVarArgs1.ops[0].index, 1);
-        REQUIRE_EQ(getVarArgs1.ops[1].kind, BcOpKind::Imm);
-        BcImm& getVarArgs1Count = fn->immOp(getVarArgs1.ops[1]);
-        REQUIRE_EQ(getVarArgs1Count.kind, BcImmKind::Int);
-        REQUIRE_EQ(getVarArgs1Count.valueInt, 2);
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function fn($arg0, ...) line 2 maxstacksize: 8 upvalues: 0 flags: 0
+bb_0 (entry):
+; successors: bb_1 [fallthrough]
+  %0 = PREPVARARGS 1
+  %1 = GETVARARGS R1, 2
+  %2 = NEWTABLE 0, 0                                         ; uses: %4, %8
+  %3 = GETVARARGS R4, -1                                     ; uses: %4
+  %4 = SETLIST 1, -1, %2, %3
+  %5 = ADD R0, %1[0]                                         ; uses: %6
+  %6 = ADD %5, %1[1]                                         ; uses: %9
+  %7 = LOADK K0 (1)                                          ; uses: %8
+  %8 = GETTABLE %2, %7                                       ; uses: %9
+  %9 = ADD %6, %8                                            ; uses: %11
+  %10 = GETVARARGS R5, -1                                    ; uses: %11
+  %11 = RETURN -1, %9, %10
 
-        BcOp getVarArgs2Op = getOp(entry, 3);
-        BcInst& getVarArgs2 = fn->instOp(getVarArgs2Op);
-        REQUIRE_EQ(getVarArgs2.ops.size(), 2);
-        REQUIRE_EQ(getVarArgs2.ops[0].kind, BcOpKind::VmReg);
-        REQUIRE_EQ(getVarArgs2.ops[0].index, 4);
-        REQUIRE_EQ(getVarArgs2.ops[1].kind, BcOpKind::Imm);
-        BcImm& getVarArgs2Count = fn->immOp(getVarArgs2.ops[1]);
-        REQUIRE_EQ(getVarArgs2Count.kind, BcImmKind::Int);
-        REQUIRE_EQ(getVarArgs2Count.valueInt, -1);
-
-        BcInst& setList = fn->instOp(getOp(entry, 4));
-        REQUIRE_EQ(setList.ops.size(), 4);
-        BcImm& setListStartIdx = fn->immOp(setList.ops[0]);
-        REQUIRE_EQ(setListStartIdx.kind, BcImmKind::Int);
-        REQUIRE_EQ(setListStartIdx.valueInt, 1);
-        BcImm& setListCount = fn->immOp(setList.ops[1]);
-        REQUIRE_EQ(setListCount.kind, BcImmKind::Int);
-        REQUIRE_EQ(setListCount.valueInt, -1);
-        BcOp newTableOp = getOp(entry, 2);
-        REQUIRE_EQ(setList.ops[2], newTableOp);
-        REQUIRE_EQ(setList.ops[3], getVarArgs2Op);
-    }
+bb_1 (exit):
+; predecessors: bb_0 [fallthrough]
+)"
+    );
 }
-
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "tables_strings_and_fastcall")
 {
@@ -844,56 +572,39 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "tables_strings_and_fastcall")
         1
     );
 
-    /*
-        // Block 1 (entry)
-        DUPTABLE R1 2
-        SETTABLEKS R0 R1 K0 ['a']
-        MOVE R3 R0
-        LOADN R4 42
-        CONCAT R2 R3 R4
-        SETTABLEKS R2 R1 K1 ['b']
-        NEWTABLE R3 0 1
-        MOVE R4 R1
-        SETLIST R3 R4 1 [1]
-        GETUPVAL R4 0
-        FASTCALL2 52 R3 R4 L0
-        GETIMPORT R2 5 [table.insert]
-        CALL R2 2 -1
-        L0: RETURN R2 -1
-        // Block 2 (exit)
-    */
-
-    // CFG Blocks
-    REQUIRE_EQ(fn->blocks.size(), 2);
-    BcBlock& entry = fn->blockOp(fn->entryBlock);
-
     REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
-    // Instructions
-    REQUIRE(checkOps(
-        *fn,
-        entry.ops,
-        {LOP_DUPTABLE,
-         LOP_SETTABLEKS,
-         LOP_MOVE,
-         LOP_LOADN,
-         LOP_CONCAT,
-         LOP_SETTABLEKS,
-         LOP_NEWTABLE,
-         LOP_MOVE,
-         LOP_SETLIST,
-         LOP_GETUPVAL,
-         LOP_FASTCALL2,
-         LOP_GETIMPORT,
-         LOP_CALL,
-         LOP_RETURN}
-    ));
-    {
-    }
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function fn($arg0) line 3 maxstacksize: 5 upvalues: 1 flags: 0
+bb_0 (entry):
+; successors: bb_1 [fallthrough]
+  %0 = DUPTABLE K2 ({...})                                   ; uses: %1, %5, %7
+  %1 = SETTABLEKS R0, %0, 128, K0 ('a')
+  %2 = MOVE R0                                               ; uses: %4
+  %3 = LOADN 42                                              ; uses: %4
+  %4 = CONCAT %2, %3                                         ; uses: %5
+  %5 = SETTABLEKS %4, %0, 131, K1 ('b')
+  %6 = NEWTABLE 0, 1                                         ; uses: %8, %10, %12
+  %7 = MOVE %0                                               ; uses: %8
+  %8 = SETLIST 1, 1, %6, %7
+  %9 = GETUPVAL U0                                           ; uses: %10, %12
+  %10 = FASTCALL2 52, %6, %9, 3
+  %11 = GETIMPORT K5 (table.insert), 2, K3 ('table'), K4 ('insert') ; uses: %12
+  %12 = CALL 2, -1, %11, %6, %9                              ; uses: %13
+  %13 = RETURN -1, %12
+
+bb_1 (exit):
+; predecessors: bb_0 [fallthrough]
+)"
+    );
 }
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "def_use_chains")
 {
+    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
+
     auto fn = buildBytecode(R"(
         local function fn(a, b, c)
             local s = a + b
@@ -916,44 +627,28 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "def_use_chains")
     REQUIRE(fn);
     REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
-    REQUIRE_EQ(fn->blocks.size(), 2);
-    BcBlock& entry = fn->blockOp(fn->entryBlock);
-    REQUIRE(checkOps(*fn, entry.ops, {LOP_ADD, LOP_ADD, LOP_ADD, LOP_ADD, LOP_RETURN}));
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function fn($arg0, $arg1, $arg2) line 2 maxstacksize: 7 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_1 [fallthrough]
+  %0 = ADD R0, R1                                            ; uses: %1, %2
+  %1 = ADD %0, R2                                            ; uses: %3
+  %2 = ADD %0, R0                                            ; uses: %3
+  %3 = ADD %1, %2                                            ; uses: %4
+  %4 = RETURN 1, %3
 
-    BcOp sOp = getOp(entry, 0);
-    BcOp xOp = getOp(entry, 1);
-    BcOp yOp = getOp(entry, 2);
-    BcOp rOp = getOp(entry, 3);
-    BcOp retOp = getOp(entry, 4);
-
-    // `s` flows only into the two ADDs that read it, once each, as their first operand
-    BcInst& s = fn->instOp(sOp);
-    REQUIRE_EQ(s.uses.size(), 2);
-    REQUIRE_EQ(countUses(*fn, sOp, xOp), 1);
-    REQUIRE_EQ(countUses(*fn, sOp, yOp), 1);
-    REQUIRE_EQ(fn->instOp(xOp).ops[0], sOp);
-    REQUIRE_EQ(fn->instOp(yOp).ops[0], sOp);
-
-    // x and y are each consumed exactly once, by the final ADD
-    BcInst& r = fn->instOp(rOp);
-    REQUIRE_EQ(r.ops.size(), 2);
-    REQUIRE_EQ(r.ops[0], xOp);
-    REQUIRE_EQ(r.ops[1], yOp);
-    REQUIRE_EQ(countUses(*fn, xOp, rOp), 1);
-    REQUIRE_EQ(countUses(*fn, yOp, rOp), 1);
-    REQUIRE_EQ(fn->instOp(xOp).uses.size(), 1);
-    REQUIRE_EQ(fn->instOp(yOp).uses.size(), 1);
-
-    // the final ADD is consumed only by the RETURN
-    BcInst& ret = fn->instOp(retOp);
-    REQUIRE_EQ(ret.op, LOP_RETURN);
-    REQUIRE_EQ(ret.ops.back(), rOp);
-    REQUIRE_EQ(r.uses.size(), 1);
-    REQUIRE(hasUse(*fn, rOp, retOp));
+bb_1 (exit):
+; predecessors: bb_0 [fallthrough]
+)"
+    );
 }
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "loop_invariant_inst_phi_collapse")
 {
+    ScopedFastFlag luauEmitCallFeedback{FFlag::LuauEmitCallFeedback, true};
+
     auto fn = buildBytecode(R"(
         local function fn(a, b)
             local s = a + b
@@ -966,25 +661,37 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "loop_invariant_inst_phi_collapse")
     REQUIRE(fn);
     REQUIRE_EQ(verifyUseConsistency(*fn), true);
 
-    BcBlock& entry = fn->blockOp(fn->entryBlock);
-    BcOp sOp = getOp(entry, 0);
-    BcInst& s = fn->instOp(sOp);
-    REQUIRE_EQ(s.op, LOP_ADD);
+    CHECK_EQ(
+        "\n" + toString(*fn, true),
+        R"(
+; function fn($arg0, $arg1) line 2 maxstacksize: 5 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_4 [fallthrough]
+  %0 = ADD R0, R1                                            ; uses: phi.1, %2
+  %1 = LOADK K0 (0)                                          ; uses: phi.0
 
-    int consumers = 0;
-    for (BcBlock& block : fn->blocks)
-    {
-        if ((block.flags & BcBlockFlag::Dead) != 0)
-            continue;
-        for (BcOp instOp : block.ops)
-            for (BcOp operand : fn->instOp(instOp).ops)
-                if (operand == sOp)
-                {
-                    REQUIRE(hasUse(*fn, sOp, instOp));
-                    consumers++;
-                }
-    }
-    REQUIRE_FALSE(consumers == 0);
+bb_4:
+; predecessors: bb_0 [fallthrough], bb_3 [loop]
+; successors: bb_2 [branch], bb_3 [fallthrough]
+  phi.0 = %1 from bb_0, %2 from bb_4                         ; uses: %2
+  %2 = ADD phi.0, %0                                         ; uses: %4, phi.0, %6
+  %3 = LOADK K1 (100)                                        ; uses: %4
+  %4 = JUMPIFLT %2, %3, bb_2
+
+bb_3:
+; predecessors: bb_4 [fallthrough]
+; successors: bb_4 [loop]
+  %5 = JUMPBACK bb_4
+
+bb_2:
+; predecessors: bb_4 [branch]
+; successors: bb_1 [fallthrough]
+  %6 = RETURN 1, %2
+
+bb_1 (exit):
+; predecessors: bb_2 [fallthrough]
+)"
+    );
 }
 
 TEST_CASE_FIXTURE(BytecodeCompilerFixture, "bytecode_roundtrip")

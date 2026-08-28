@@ -18,7 +18,7 @@
 LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauAutocompleteFunctionArglistSuggestion)
+
 LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauAutocompleteSkipErrorTypeInUnion)
 LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
@@ -4639,7 +4639,6 @@ TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_cursor_after_function_keyword
     // Cursor is right after the "function" keyword but before any "(" — the arg list has not been
     // opened yet. The suggestion must expand the full "function(...) end" expression, not just the
     // parameter list (which would replace the word "function" with bare argument names).
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionArglistSuggestion, true};
 
     check(R"(
 local function foo(a: (number, string) -> ())
@@ -4660,8 +4659,6 @@ foo(function@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_cursor_in_arglist_empty")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionArglistSuggestion, true};
-
     check(R"(
 local function foo(a: () -> ())
     a()
@@ -4681,8 +4678,6 @@ foo(function(@1))
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_cursor_in_arglist_args")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionArglistSuggestion, true};
-
     check(R"(
 local function foo(a: (number, string) -> ())
     a()
@@ -4702,8 +4697,6 @@ foo(function(@1))
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_cursor_in_arglist_with_return")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionArglistSuggestion, true};
-
     check(R"(
 local function foo(a: (number, string) -> string)
     return a(1, "x")
@@ -4723,8 +4716,6 @@ foo(function(@1))
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_cursor_in_arglist_named_args")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionArglistSuggestion, true};
-
     check(R"(
 local function foo(a: (foo: number, bar: string) -> ())
     a()
@@ -4744,8 +4735,6 @@ foo(function(@1))
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_cursor_in_arglist_varargs")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionArglistSuggestion, true};
-
     check(R"(
 local function foo(a: (...number) -> ())
     a()
@@ -5890,6 +5879,27 @@ ModuleTable:GenericFunctionInsideATable<<string>>(@1)
     CHECK(ac.entryMap.count("myString"));
     CHECK(ac.entryMap["myString"].typeCorrect == TypeCorrectKind::Correct);
     CHECK(ac.entryMap["myNumber"].typeCorrect == TypeCorrectKind::None);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_recursive_intersection")
+{
+    std::ignore = check(R"(
+        export type T = {
+            prop: number
+        }
+        local function make(): MakeT
+            return nil :: any
+        end
+
+        type MakeT = typeof(make()) & T
+
+        local var: MakeT = nil :: any
+
+        @1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("var"));
 }
 
 TEST_SUITE_END();

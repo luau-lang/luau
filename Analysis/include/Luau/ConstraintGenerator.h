@@ -316,7 +316,11 @@ private:
     ControlFlow visit(const ScopePtr& scope, AstStatClass* statClass);
     ControlFlow visit(const ScopePtr& scope, AstStatError* error);
 
-    InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes = {});
+
+    InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes, bool generalize);
+
+    InferencePack checkPack_DEPRECATED(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes = {});
+
     InferencePack checkPack(
         const ScopePtr& scope,
         AstExpr* expr,
@@ -372,7 +376,11 @@ private:
     Inference check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
     Inference check(const ScopePtr& scope, AstExprInterpString* interpString);
     Inference check(const ScopePtr& scope, AstExprInstantiate* explicitTypeInstantiation);
-    Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
+
+    Inference check_DEPRECATED(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
+
+    Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType, bool generalize);
+
     std::tuple<TypeId, TypeId, RefinementId> checkBinary(
         const ScopePtr& scope,
         AstExprBinary::Op op,

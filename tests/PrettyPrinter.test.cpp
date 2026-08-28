@@ -919,6 +919,28 @@ TEST_CASE_FIXTURE(Fixture, "attach_types")
     CHECK_EQ(expected, decorateWithTypes(code));
 }
 
+TEST_CASE_FIXTURE(Fixture, "attach_type_negate")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    const std::string code = R"(
+        local function foo(x: unknown)
+            assert(x)
+            local b = x
+            return b
+        end
+    )";
+    const std::string expected = R"(
+        local function foo(x: unknown): negate<false?>
+            assert(x)
+            local b:negate<false?>=x
+            return b
+        end
+    )";
+
+    CHECK_EQ(expected, decorateWithTypes(code));
+}
+
 TEST_CASE("a_table_key_can_be_the_empty_string")
 {
     std::string code = "local T = {[''] = true}";

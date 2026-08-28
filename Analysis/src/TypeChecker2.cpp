@@ -42,6 +42,7 @@ LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -1832,11 +1833,22 @@ void TypeChecker2::visitCall(AstExprCall* call)
     if (!result2.nonFunctions.empty())
     {
         auto norm = normalizer.normalize(fnTy);
-        if (!norm || normalizer.isInhabited(norm.get()) == NormalizationResult::HitLimits)
-            reportError(NormalizationTooComplex{}, call->func->location);
-        // At this point norm is non-null and inhabited.
-        if (!norm->shouldSuppressErrors())
-            reportError(CannotCallNonFunction{fnTy}, call->func->location);
+        if (FFlag::LuauNormalizeGuardAgainstNonTestableNegations)
+        {
+            if (!norm || normalizer.isInhabited(norm.get()) == NormalizationResult::HitLimits)
+                reportError(NormalizationTooComplex{}, call->func->location);
+            // At this point norm is non-null and inhabited.
+            else if (!norm->shouldSuppressErrors())
+                reportError(CannotCallNonFunction{fnTy}, call->func->location);
+        }
+        else
+        {
+            if (!norm || normalizer.isInhabited(norm.get()) == NormalizationResult::HitLimits)
+                reportError(NormalizationTooComplex{}, call->func->location);
+            // At this point norm is non-null and inhabited.
+            if (!norm->shouldSuppressErrors())
+                reportError(CannotCallNonFunction{fnTy}, call->func->location);
+        }
         return;
     }
 }
@@ -2284,6 +2296,9 @@ static bool isOkToCompare(
     // normalization fails here, it should have also failed elsewhere and will
     // already have been reported.
     if (NormalizationResult::False != typesHaveIntersection)
+        return true;
+
+    if (FFlag::LuauNormalizeGuardAgainstNonTestableNegations && (!normLeft || !normRight))
         return true;
 
     // We allow anything to be compared to nil.

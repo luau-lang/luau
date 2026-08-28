@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
 
 
 namespace Luau
@@ -2794,7 +2795,7 @@ bool Subtyping::bindGeneric(SubtypingEnvironment& env, TypeId subTy, TypeId supe
         else
             upperSubBounds.insert(superTy);
     }
-    else if (env.containsMappedType(subTy))
+    else if (!FFlag::LuauDoNotIceForBindingGeneric && env.containsMappedType(subTy))
         iceReporter->ice("attempting to modify bounds of a potentially visited generic");
 
     if (const auto superBounds = env.mappedGenerics.find(superTy); superBounds && !superBounds->empty())
@@ -2814,7 +2815,7 @@ bool Subtyping::bindGeneric(SubtypingEnvironment& env, TypeId subTy, TypeId supe
         else
             lowerSuperBounds.insert(subTy);
     }
-    else if (env.containsMappedType(superTy))
+    else if (!FFlag::LuauDoNotIceForBindingGeneric && env.containsMappedType(superTy))
         iceReporter->ice("attempting to modify bounds of a potentially visited generic");
 
     return true;
