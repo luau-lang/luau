@@ -7,6 +7,53 @@
 #include <memory>
 #include <string>
 
+namespace
+{
+// Number of live Tracked instances. Tests can observe whether an erased element's destructor actually ran
+int gLiveTracked = 0;
+
+struct Tracked
+{
+    int value = 0;
+
+    Tracked()
+    {
+        ++gLiveTracked;
+    }
+    explicit Tracked(int v)
+        : value(v)
+    {
+        ++gLiveTracked;
+    }
+    Tracked(const Tracked& other)
+        : value(other.value)
+    {
+        ++gLiveTracked;
+    }
+    Tracked(Tracked&& other) noexcept
+        : value(other.value)
+    {
+        ++gLiveTracked;
+    }
+    Tracked& operator=(const Tracked&) = default;
+    Tracked& operator=(Tracked&&) = default;
+    ~Tracked()
+    {
+        --gLiveTracked;
+    }
+};
+
+// Hashes every key to the same bucket, packing all entries into one contiguous probe chain. This guarantees
+// that erasing the head of the chain triggers algorithm-R backward shifting.
+struct AlwaysCollideHash
+{
+    size_t operator()(int) const
+    {
+        return 0;
+    }
+};
+} // namespace
+
 TEST_SUITE_BEGIN("DenseHash2Tests");
 
 TEST_CASE("map_insert_and_find")
@@ -541,6 +588,43 @@ TEST_CASE("map_erase_destroys_value_destructor")
         m.erase(1);
         CHECK(p.use_count() == 1);
     }
+}
+
+TEST_CASE("map_erase_backward_shift_runs_destructor")
+{
+    // Regression test for a leak in backward-shift deletion: the erased slot was move-constructed
+    // over without being destroyed first, so value types with non-trivial destructors (e.g. the
+    // std::unique_ptr<NormalizedType> stored in NormalizedType::tyvars) leaked the erased element. Existing
+    // erase tests only erase the tail of a probe chain (no shift) and use trivially-destructible values, so
+    // they don't exercised this path.
+    gLiveTracked = 0;
+
+    {
+        // AlwaysCollideHash puts every key in one contiguous chain from bucket 0, so erasing key 0 (the head)
+        // shifts all following elements down and overwrites the erased slot.
+        Luau::DenseHashMap2<int, Tracked, AlwaysCollideHash> m;
+        for (int i = 0; i < 10; ++i)
+            m[i] = Tracked(i);
+
+        REQUIRE(m.size() == 10);
+        CHECK(gLiveTracked == 10);
+
+        m.erase(0);
+
+        REQUIRE(m.size() == 9);
+        CHECK(gLiveTracked == 9); // before the fix this was 10 (or higher): the erased element was never destroyed
+
+        // The shifted-down elements survive intact.
+        for (int i = 1; i < 10; ++i)
+        {
+            Tracked* v = m.find(i);
+            REQUIRE(v != nullptr);
+            CHECK(v->value == i);
+        }
+    }
+
+    // Every remaining element is destroyed when the map goes out of scope; nothing leaks.
+    CHECK(gLiveTracked == 0);
 }
 
 TEST_CASE("map_usable_with_Luau_notnull")

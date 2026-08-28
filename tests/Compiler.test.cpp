@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauCompileIifeInline)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
+LUAU_FASTFLAG(LuauCompileMoveElision)
 LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAG(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
@@ -36,6 +37,7 @@ LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauOptimizeExportTable)
 LUAU_FASTFLAG(LuauCompileFastpcall)
 LUAU_FASTFLAG(LuauExportedTypesParticipateInScc)
+LUAU_FASTFLAG(LuauCompileRecursiveAliases)
 
 using namespace Luau;
 
@@ -7015,6 +7017,8 @@ RETURN R1 1
 
 TEST_CASE("InlineNestedLoops")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // functions with basic loops get inlined
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7034,14 +7038,13 @@ return x
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-NEWTABLE R2 0 0
-LOADN R3 1
-SETTABLEN R3 R2 1
-LOADN R3 2
-SETTABLEN R3 R2 2
-LOADN R3 3
-SETTABLEN R3 R2 3
-MOVE R1 R2
+NEWTABLE R1 0 0
+LOADN R2 1
+SETTABLEN R2 R1 1
+LOADN R2 2
+SETTABLEN R2 R1 2
+LOADN R2 3
+SETTABLEN R2 R1 3
 RETURN R1 1
 )"
     );
@@ -7065,14 +7068,13 @@ return x
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-NEWTABLE R2 0 0
-LOADN R3 1
-SETTABLEN R3 R2 1
-LOADN R3 2
-SETTABLEN R3 R2 2
-LOADN R3 3
-SETTABLEN R3 R2 3
-MOVE R1 R2
+NEWTABLE R1 0 0
+LOADN R2 1
+SETTABLEN R2 R1 1
+LOADN R2 2
+SETTABLEN R2 R1 2
+LOADN R2 3
+SETTABLEN R2 R1 3
 RETURN R1 1
 )"
     );
@@ -7108,6 +7110,8 @@ RETURN R1 1
 
 TEST_CASE("InlineMutate")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // if the argument is mutated, it gets a register even if the value is constant
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7125,9 +7129,8 @@ return x
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-LOADN R2 42
-ORK R2 R2 K1 [5]
-MOVE R1 R2
+LOADN R1 42
+ORK R1 R1 K1 [5]
 RETURN R1 1
 )"
     );
@@ -7175,8 +7178,7 @@ return y
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
 LOADNIL R1
-MOVE R3 R1
-MOVE R2 R3
+MOVE R2 R1
 RETURN R2 1
 )"
     );
@@ -7209,6 +7211,8 @@ RETURN R1 1
 
 TEST_CASE("InlineUpval")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // if the argument is an upvalue, we naturally need to copy it to a local
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7228,8 +7232,7 @@ end
                    2
                ),
         R"(
-GETUPVAL R1 0
-MOVE R0 R1
+GETUPVAL R0 0
 RETURN R0 1
 )"
     );
@@ -7291,6 +7294,8 @@ RETURN R1 1
 
 TEST_CASE("InlineCapture")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // if the argument is captured by a nested closure, normally we can rely on capture by value
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7338,7 +7343,7 @@ RETURN R1 1
 )"
     );
 
-    // if the argument is an externally mutated variable, we copy it to an argument and capture it by value
+    // if the argument is an externally mutated variable, no copy is needed if it is captured by value
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -7357,9 +7362,8 @@ return y
 DUPCLOSURE R0 K0 ['foo']
 LOADNIL R1
 LOADN R1 42
-MOVE R3 R1
 NEWCLOSURE R2 P1
-CAPTURE VAL R3
+CAPTURE VAL R1
 RETURN R2 1
 )"
     );
@@ -7529,6 +7533,8 @@ RETURN R1 -1
 
 TEST_CASE("InlineArgMismatch")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // when inlining a function, we must respect all the usual rules
 
     // caller might not have enough arguments
@@ -7639,9 +7645,8 @@ return x
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-LOADNIL R2
-LOADN R2 42
-MOVE R1 R2
+LOADNIL R1
+LOADN R1 42
 RETURN R1 1
 )"
     );
@@ -8099,6 +8104,8 @@ L3: RETURN R0 0
 
 TEST_CASE("InlineHiddenMutation")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // when the argument is assigned inside the function, we can't reuse the local
     CHECK_EQ(
         "\n" + compileFunction(
@@ -8118,9 +8125,8 @@ return y
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
-MOVE R3 R1
-LOADN R3 42
-MOVE R2 R3
+MOVE R2 R1
+LOADN R2 42
 RETURN R2 1
 )"
     );
@@ -8149,10 +8155,9 @@ GETVARARGS R1 1
 NEWCLOSURE R2 P1
 CAPTURE REF R1
 SETGLOBAL R2 K1 ['mutator']
-MOVE R3 R1
-GETGLOBAL R4 K1 ['mutator']
-CALL R4 0 0
-MOVE R2 R3
+MOVE R2 R1
+GETGLOBAL R3 K1 ['mutator']
+CALL R3 0 0
 CLOSEUPVALS R1
 RETURN R2 1
 )"
@@ -8607,6 +8612,8 @@ RETURN R1 1
 
 TEST_CASE("InlineConstConditionals")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // the most expensive part does not participate in cost model if branches are const
     CHECK_EQ(
         "\n" + compileFunction(
@@ -8665,20 +8672,18 @@ return x, y
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
+LOADN R1 0
+ADDK R1 R1 K1 [1]
+ADDK R1 R1 K2 [2]
+ADDK R1 R1 K3 [3]
+ADDK R1 R1 K4 [4]
+ADDK R1 R1 K5 [5]
 LOADN R2 0
-ADDK R2 R2 K1 [1]
-ADDK R2 R2 K2 [2]
-ADDK R2 R2 K3 [3]
-ADDK R2 R2 K4 [4]
-ADDK R2 R2 K5 [5]
-MOVE R1 R2
-LOADN R3 0
-SUBK R3 R3 K1 [1]
-SUBK R3 R3 K2 [2]
-SUBK R3 R3 K3 [3]
-SUBK R3 R3 K4 [4]
-SUBK R3 R3 K5 [5]
-MOVE R2 R3
+SUBK R2 R2 K1 [1]
+SUBK R2 R2 K2 [2]
+SUBK R2 R2 K3 [3]
+SUBK R2 R2 K4 [4]
+SUBK R2 R2 K5 [5]
 RETURN R1 2
 )"
     );
@@ -8778,6 +8783,8 @@ RETURN R1 5
 
 TEST_CASE("InlineLoopIteration")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -8798,11 +8805,10 @@ return x, y
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-LOADN R2 0
-ADDK R2 R2 K1 [1]
-ADDK R2 R2 K2 [2]
-ADDK R2 R2 K3 [3]
-MOVE R1 R2
+LOADN R1 0
+ADDK R1 R1 K1 [1]
+ADDK R1 R1 K2 [2]
+ADDK R1 R1 K3 [3]
 MOVE R2 R0
 LOADN R3 100
 CALL R2 1 1
@@ -9175,6 +9181,712 @@ DUPCLOSURE R2 K1 ['f']
 SETTABLEKS R2 R1 K2 ['f']
 LOADN R2 101
 RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE("InlineElideTemporaries")
+{
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
+    // 'id' elides the move by pointing the argument at the target and 'accum' elides the move by pointing the local 's' to the target
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function id(x) return x end
+
+local function accum(n: number)
+  local s = 0
+  for i = 1,n do s += i end
+  return s
+end
+
+local b = id(accum(4))
+return b
+)",
+                   2,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['id']
+DUPCLOSURE R1 K1 ['accum']
+LOADN R2 0
+ADDK R2 R2 K2 [1]
+ADDK R2 R2 K3 [2]
+ADDK R2 R2 K4 [3]
+ADDK R2 R2 K5 [4]
+RETURN R2 1
+)"
+    );
+
+    // Elide moves to ADD temporaries by pointing the local 's' to the target
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function accum(n: number)
+local s = 0
+for i = 1,n do s += i end
+return s
+end
+
+local b = accum(3) + accum(5)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['accum']
+LOADN R2 0
+ADDK R2 R2 K1 [1]
+ADDK R2 R2 K2 [2]
+ADDK R2 R2 K3 [3]
+LOADN R3 0
+ADDK R3 R3 K1 [1]
+ADDK R3 R3 K2 [2]
+ADDK R3 R3 K3 [3]
+ADDK R3 R3 K4 [4]
+ADDK R3 R3 K5 [5]
+ADD R1 R2 R3
+RETURN R1 1
+)"
+    );
+
+    // 'id' elides the move by pointing the argument at the target local
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = ...
+local function id(x) return x end
+
+local b = id(a)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+MOVE R2 R0
+RETURN R2 1
+)"
+    );
+
+    // 'id' elides the move by pointing the argument at the return temporary
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = ...
+local function id(x) return x end
+return id(a)
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+RETURN R0 1
+)"
+    );
+
+    // Moves are elided even in deep chains of identity functions (identity functions are useful for type inference helper functions)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = ...
+
+local function id(x) return x end
+
+local b = id(id(id(id(a))))
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+MOVE R2 R0
+RETURN R2 1
+)"
+    );
+
+    // Non-captured local move arrives at the ADDK arguments directly
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = ...
+
+local function id(x) return x end
+
+local b = id(a) + 2
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+ADDK R2 R0 K1 [2]
+RETURN R2 1
+)"
+    );
+
+    // Non-captured local moves arrive at the ADD arguments directly
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(x) return x end
+
+local b = id(x) + id(y)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+ADD R4 R0 R1
+RETURN R4 1
+)"
+    );
+
+    // Computed argument flows directly into the target register
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(x) return x end
+
+local b = id(x + 1)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+ADDK R4 R0 K1 [1]
+RETURN R4 1
+)"
+    );
+
+    // Check that there are no issues with varargs
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function id(x) return x end
+
+local b = id(...)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['id']
+GETVARARGS R1 1
+RETURN R1 1
+)"
+    );
+
+    // Result is assigned to a target mutable local directly
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(x) return x end
+y = id(x)
+return y
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+MOVE R1 R0
+RETURN R1 1
+)"
+    );
+
+    // SETLIST protocol requires copies
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(x) return x end
+local t = {id(x), id(y)}
+return t
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+NEWTABLE R4 0 2
+MOVE R5 R0
+MOVE R6 R1
+SETLIST R4 R5 2 [1]
+RETURN R4 1
+)"
+    );
+
+    // Locals flow to fixed fastcall arguments directly (slow path performs the copies)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(x) return x end
+local b = math.max(id(x), id(y))
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+FASTCALL2 18 R0 R1 L0
+MOVE R5 R0
+MOVE R6 R1
+GETIMPORT R4 3 [math.max]
+CALL R4 2 1
+L0: RETURN R4 1
+)"
+    );
+
+    // Mutable argument can use the target non-captured local directly
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function inc(n)
+    n += 1
+    return n
+end
+local b = inc(x)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['inc']
+MOVE R4 R0
+ADDK R4 R4 K1 [1]
+RETURN R4 1
+)"
+    );
+
+    // Mutable local can use the target non-captured local directly
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function choose(cond)
+    local r = 0
+    if cond then r = 1; return r end
+    r = 2; return r
+end
+local b = choose(x)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['choose']
+LOADN R4 0
+JUMPIFNOT R0 L0
+LOADN R4 1
+RETURN R4 1
+L0: LOADN R4 2
+RETURN R4 1
+)"
+    );
+
+    // Separate case to cover table access instructions
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(v) return v end
+return id(x).name
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+GETTABLEKS R4 R0 K1 ['name']
+RETURN R4 1
+)"
+    );
+
+    // During inlining of an outer call, inner arguments can also be redirected to target argument registers
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(v) return v end
+local function pick(a, b) return a + b end
+local r = pick(id(x), id(y))
+return r
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+DUPCLOSURE R4 K1 ['pick']
+ADD R5 R0 R1
+RETURN R5 1
+)"
+    );
+}
+
+TEST_CASE("InlineElideCaptured")
+{
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
+    // Locals captured by reference cannot elide the move
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = ...
+
+local function inc(x)
+    local capx = function() return x end
+    x = x + 1
+    return x
+end
+
+a = inc(a)
+return a
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['inc']
+MOVE R2 R0
+NEWCLOSURE R3 P1
+CAPTURE REF R2
+ADDK R2 R2 K1 [1]
+MOVE R0 R2
+CLOSEUPVALS R2
+RETURN R0 1
+)"
+    );
+
+    // When captured by value, we can skip the move and use the target register directly
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = ...
+
+local function id(x)
+    local snap = function() return x end
+    return x
+end
+
+a = id(a)
+return a
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+NEWCLOSURE R2 P1
+CAPTURE VAL R0
+RETURN R0 1
+)"
+    );
+
+    // Target local might also be captured
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = 5
+local m = function() a = 42 end
+
+local function id(x)
+    m()
+    return x
+end
+
+a = id(a)
+return a
+)",
+                   2,
+                   2
+               ),
+        R"(
+LOADN R0 5
+NEWCLOSURE R1 P0
+CAPTURE REF R0
+NEWCLOSURE R2 P1
+CAPTURE REF R0
+MOVE R3 R0
+LOADN R0 42
+MOVE R0 R3
+CLOSEUPVALS R0
+RETURN R0 1
+)"
+    );
+
+    // Do not elide final result move when source register is captured (in expressions)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x = ...
+function evil() x = 42; return -100 end
+local function id(v) return v end
+return id(x) + evil()
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+NEWCLOSURE R1 P0
+CAPTURE REF R0
+SETGLOBAL R1 K0 ['evil']
+DUPCLOSURE R1 K1 ['id']
+MOVE R3 R0
+GETGLOBAL R4 K0 ['evil']
+CALL R4 0 1
+ADD R2 R3 R4
+CLOSEUPVALS R0
+RETURN R2 1
+)"
+    );
+
+    // Do not elide final result move when source register is captured (in fastcalls)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x = ...
+function evil() x = 42; return -100 end
+local function id(v) return v end
+return math.max(id(x), (evil()))
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+NEWCLOSURE R1 P0
+CAPTURE REF R0
+SETGLOBAL R1 K0 ['evil']
+DUPCLOSURE R1 K1 ['id']
+MOVE R3 R0
+GETGLOBAL R4 K0 ['evil']
+CALL R4 0 1
+FASTCALL2 18 R3 R4 L0
+GETIMPORT R2 4 [math.max]
+CALL R2 2 1
+L0: CLOSEUPVALS R0
+RETURN R2 1
+)"
+    );
+
+    // Can elide final result move when source register is not captured (in expressions)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x = ...
+local function id(v) return v end
+function ext() return -100 end
+return id(x) + ext()
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+DUPCLOSURE R2 K1 ['ext']
+SETGLOBAL R2 K2 ['ext']
+GETGLOBAL R4 K2 ['ext']
+CALL R4 0 1
+ADD R2 R0 R4
+RETURN R2 1
+)"
+    );
+
+    // Redirecting an inlined argument must preserve the copy when a later argument mutates its captured source
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function outer(x)
+    local function evil()
+        x = 42
+        return -100
+    end
+
+    local function id(v) return v end
+    local function add(a, b) return a + b end
+
+    return add(id(x), evil())
+end
+)",
+                   3,
+                   2
+               ),
+        R"(
+NEWCLOSURE R1 P0
+CAPTURE REF R0
+DUPCLOSURE R2 K0 ['id']
+DUPCLOSURE R3 K1 ['add']
+MOVE R5 R0
+LOADN R0 42
+LOADN R6 -100
+ADD R4 R5 R6
+CLOSEUPVALS R0
+RETURN R4 1
+)"
+    );
+}
+
+TEST_CASE("InlineElideAliased")
+{
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
+    // Argument storage cannot alias the result target when result construction may overwrite it before the argument is read
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function copy(v)
+    return {v[1]}
+end
+
+local x = {42}
+x = copy(x)
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['copy']
+NEWTABLE R1 0 1
+LOADN R2 42
+SETLIST R1 R2 1 [1]
+MOVE R2 R1
+NEWTABLE R1 0 1
+GETTABLEN R3 R2 1
+SETLIST R1 R3 1 [1]
+RETURN R1 1
+)"
+    );
+
+    // Same issue can happen with a local copy (since non-mutable copies just assign target local storage to the source)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function copy(v)
+    local alias = v
+    return {alias[1]}
+end
+
+local x = {42}
+x = copy(x)
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['copy']
+NEWTABLE R1 0 1
+LOADN R2 42
+SETLIST R1 R2 1 [1]
+MOVE R2 R1
+NEWTABLE R1 0 1
+GETTABLEN R3 R2 1
+SETLIST R1 R3 1 [1]
+RETURN R1 1
+)"
+    );
+
+    // Argument and return target storage can be aliased only when no other access can observe the aliasing
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function outer(a)
+    local seen = 0
+
+    local function first(x, y)
+        seen = y
+        return x
+    end
+
+    a = first(a + 1, a)
+    return a, seen
+end
+)",
+                   1,
+                   2
+               ),
+        R"(
+LOADN R1 0
+NEWCLOSURE R2 P0
+CAPTURE REF R1
+ADDK R3 R0 K0 [1]
+MOVE R4 R0
+MOVE R1 R4
+MOVE R0 R3
+CLOSEUPVALS R1
+RETURN R0 2
+)"
+    );
+}
+
+TEST_CASE("InlineNoElideWhenNoTarget")
+{
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
+    // there is no target register when return values are not used, so no move elision is needed
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function make()
+    local result = {}
+    result.V = {1, 2, 3}
+    return result
+end
+
+make()
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['make']
+NEWTABLE R1 1 0
+NEWTABLE R2 0 3
+LOADN R3 1
+LOADN R4 2
+LOADN R5 3
+SETLIST R2 R3 3 [1]
+SETTABLEKS R2 R1 K1 ['V']
+RETURN R0 0
 )"
     );
 }
@@ -10486,6 +11198,19 @@ end
         R"(
 0: function(number, table, userdata, number, any)
 1: function(number, any)
+)"
+    );
+
+    ScopedFastFlag luauCompileRecursiveAliases{FFlag::LuauCompileRecursiveAliases, true};
+
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
+function foo(l0: t0, l1: number)
+end
+export type t0 = (t0) | (t0)
+)"),
+        R"(
+0: function(any, number)
 )"
     );
 }

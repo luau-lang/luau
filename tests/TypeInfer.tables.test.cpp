@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
+LUAU_FASTFLAG(LuauRelateIndexersTypo)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -6837,9 +6838,11 @@ TEST_CASE_FIXTURE(Fixture, "table_inference_one_incorrect_member")
     CHECK_EQ("(number) -> { x: number, y: string }", toString(requireType("makeTable")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "basic_data_like_array")
+TEST_CASE_FIXTURE(Fixture, "basic_data_like_array_1")
 {
-    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauRelateIndexersTypo, true};
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local t = {
@@ -6848,6 +6851,79 @@ TEST_CASE_FIXTURE(Fixture, "basic_data_like_array")
         }
     )"));
     CHECK_EQ("{{number}}", toString(requireType("t"), {/* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "basic_data_like_array_2")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauRelateIndexersTypo, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local t = {
+            {1, 2, 3},
+            {"foo", "bar", "baz"}
+        }
+    )"));
+    CHECK_EQ("{{number} | {string}}", toString(requireType("t"), {/* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "basic_data_like_array_3")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauRelateIndexersTypo, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local v: number?
+        local t1 = {
+            {1, 2, 3},
+            {v}
+        }
+        local t2 = {
+            {v},
+            {1, 2, 3}
+        }
+    )"));
+
+    // We could probably express this as `{{number?}}` in the future, but it's fine to leave this as-is.
+    CHECK_EQ("{{number?} | {number}}", toString(requireType("t1"), {/* exhaustive */ true}));
+    CHECK_EQ("{{number?} | {number}}", toString(requireType("t2"), {/* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "basic_data_like_array_4")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauRelateIndexersTypo, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local v: number?
+        local s: string?
+        local t = {
+            {s},
+            {v}
+        }
+    )"));
+
+    CHECK_EQ("{{number?} | {string?}}", toString(requireType("t"), {/* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "basic_data_like_array_5")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauRelateIndexersTypo, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local v: number?
+        local t = {
+            { entry = 42 },
+            { entry = v }
+        }
+    )"));
+
+    CHECK_EQ("{{ entry: number } | { entry: number? }}", toString(requireType("t"), {/* exhaustive */ true}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "large_data_like_array_can_simplify")

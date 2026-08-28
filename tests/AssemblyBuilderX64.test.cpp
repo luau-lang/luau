@@ -7,8 +7,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenRexWidth)
-
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::X64;
 
@@ -195,8 +193,6 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "BaseUnaryInstructionForms")
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMov")
 {
-    ScopedFastFlag luauCodegenRexWidth{FFlag::LuauCodegenRexWidth, true};
-
     SINGLE_COMPARE(mov(rcx, 1), 0x48, 0xb9, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
     SINGLE_COMPARE(mov64(rcx, 0x1234567812345678ll), 0x48, 0xb9, 0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12);
     SINGLE_COMPARE(mov(ecx, 2), 0xb9, 0x02, 0x00, 0x00, 0x00);

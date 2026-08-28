@@ -29,6 +29,7 @@ LUAU_FASTFLAGVARIABLE(LuauCodegenSubstituteReplacements)
 LUAU_FASTFLAGVARIABLE(LuauCodegenConstVectorBufferRead)
 LUAU_FASTFLAGVARIABLE(LuauCodegenOriginVerifyMatch)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateFallbackTags)
+LUAU_FASTFLAGVARIABLE(LuauCodegenNoLinearFastpcall)
 
 namespace Luau
 {
@@ -3732,6 +3733,10 @@ static bool includeBlockInLinearPath(IrFunction& function, const IrBlock& block)
 
         // Call cannot return to the linear block upon completion, so it cannot be included in a linear path clone
         if (inst.cmd == IrCmd::CALL)
+            return false;
+
+        // Same rule applies to fast pcall path as it acts as a call
+        if (FFlag::LuauCodegenNoLinearFastpcall && inst.cmd == IrCmd::INVOKE_FASTPCALL)
             return false;
     }
 

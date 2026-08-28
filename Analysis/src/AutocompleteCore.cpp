@@ -28,10 +28,10 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionArglistSuggestion)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteSkipErrorTypeInUnion)
 LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
+LUAU_FLAGVERSION(LuauCheckTypeForDeprecated, 2)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
@@ -281,13 +281,26 @@ static bool isTypeDeprecated(TypeId ty)
     LUAU_ASSERT(FFlag::LuauCheckTypeForDeprecated);
     ty = follow(ty);
 
-    if (const auto ftv = get<FunctionType>(ty); ftv && ftv->isDeprecatedFunction)
-        return true;
+    auto check = [](auto candidate)
+    {
+        if (const auto ftv = get<FunctionType>(candidate); ftv && ftv->isDeprecatedFunction)
+            return true;
+        return false;
+    };
 
     if (const auto itv = get<IntersectionType>(ty))
-        return std::all_of(itv->parts.begin(), itv->parts.end(), isTypeDeprecated);
+    {
+        // Avoid a potentially degenerate intersection type *and* descend into
+        // nested intersections.
+        for (auto part : itv)
+        {
+            if (!check(part))
+                return false;
+        }
+        return true;
+    }
 
-    return false;
+    return check(ty);
 }
 
 enum class PropIndexType
@@ -1991,54 +2004,7 @@ static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& func
 {
     std::string result = "function(";
 
-    if (FFlag::LuauAutocompleteFunctionArglistSuggestion)
-    {
-        result += makeAnonymousArgList(scope, funcTy);
-    }
-    else
-    {
-        auto [args, tail] = Luau::flatten(funcTy.argTypes);
-
-        bool first = true;
-        // Skip the implicit 'self' argument if call is indexed with ':'
-        for (size_t argIdx = 0; argIdx < args.size(); ++argIdx)
-        {
-            if (!first)
-                result += ", ";
-            else
-                first = false;
-
-            std::string name;
-            if (argIdx < funcTy.argNames.size() && funcTy.argNames[argIdx])
-                name = funcTy.argNames[argIdx]->name;
-            else
-                name = "a" + std::to_string(argIdx);
-
-            if (std::optional<Name> type = tryGetTypeNameInScope(scope, args[argIdx], true))
-                result += name + ": " + *type;
-            else
-                result += name;
-        }
-
-        if (tail && (Luau::isVariadic(*tail) || Luau::get<Luau::FreeTypePack>(Luau::follow(*tail))))
-        {
-            if (!first)
-                result += ", ";
-
-            std::optional<std::string> varArgType;
-            if (const VariadicTypePack* pack = get<VariadicTypePack>(follow(*tail)))
-            {
-                if (std::optional<std::string> res = tryGetTypeNameInScope(scope, pack->ty, true))
-                    varArgType = std::move(res);
-            }
-
-            if (varArgType)
-                result += "...: " + *varArgType;
-            else
-                result += "...";
-        }
-    }
-
+    result += makeAnonymousArgList(scope, funcTy);
     result += ")";
 
     auto [rets, retTail] = Luau::flatten(funcTy.retTypes);
@@ -2156,7 +2122,7 @@ static std::optional<AutocompleteEntry> makeAnonymousAutofilled(
     // If argLocation is absent the user has typed the "function" keyword but not yet the "(", so
     // the full expression is still the correct completion.
     const AstExprFunction* exprFunc = node->as<AstExprFunction>();
-    if (FFlag::LuauAutocompleteFunctionArglistSuggestion && exprFunc && exprFunc->argLocation.has_value())
+    if (exprFunc && exprFunc->argLocation.has_value())
         entry.insertText = makeAnonymousArgList(scope, *type);
     else
         entry.insertText = makeAnonymous(scope, *type);

@@ -837,24 +837,21 @@ struct Sccp
                 }
                 else if (isConstNumber(lhsLat) && rhsLat.kind == Constness::NotAConstant)
                 {
-                    if (inst->op == LOP_ADD || inst->op == LOP_MUL || inst->op == LOP_SUB || inst->op == LOP_DIV)
+                    if (inst->op != LOP_ADD && inst->op != LOP_MUL && inst->op != LOP_SUB && inst->op != LOP_DIV)
+                        continue;
+
+                    nonConstantOp = rhs;
+                    constantK = lhsLat;
+
+                    if (inst->op == LOP_SUB)
                     {
-                        // LOP_ADD and LOP_MUL are commutative
-                        // LOP_SUB and LOP_DIV can emit the RK variant
-
-                        nonConstantOp = rhs;
-                        constantK = lhsLat;
-
-                        if (inst->op == LOP_SUB)
-                        {
-                            kOpcode = LOP_SUBRK;
-                            rk = true;
-                        }
-                        else if (inst->op == LOP_DIV)
-                        {
-                            kOpcode = LOP_DIVRK;
-                            rk = true;
-                        }
+                        kOpcode = LOP_SUBRK;
+                        rk = true;
+                    }
+                    else if (inst->op == LOP_DIV)
+                    {
+                        kOpcode = LOP_DIVRK;
+                        rk = true;
                     }
                 }
                 else
@@ -864,12 +861,14 @@ struct Sccp
 
                 BcOp prevConstOperand = (nonConstantOp == lhs) ? rhs : lhs;
 
+                const bool constantIsRhs = (nonConstantOp == lhs);
+
                 // we can do some potential folding here now that we know one operand is constant
                 // for instance, adds of zero, muls of zero or 1, pows of zero or 1, etc
                 double valueNumber = impl->asNumber(constantK.vmConst.value());
                 if (valueNumber == 0)
                 {
-                    if (inst->op == LOP_ADD || inst->op == LOP_SUB)
+                    if (inst->op == LOP_ADD || (inst->op == LOP_SUB && constantIsRhs))
                     {
                         inst->op = LOP_MOVE;
                         func.setOps(op, inst, {nonConstantOp});
@@ -881,8 +880,9 @@ struct Sccp
                         imm.valueInt = 0;
                         func.setOps(op, inst, {func.addImm(imm)});
                     }
-                    else if (inst->op == LOP_POW)
+                    else if (inst->op == LOP_POW && constantIsRhs)
                     {
+                        // x ^ 0 == 1 (0 ^ x is not folded: it is 0 for x != 0)
                         inst->op = LOP_LOADN;
                         BcImm imm{BcImmKind::Int};
                         imm.valueInt = 1;
@@ -891,7 +891,7 @@ struct Sccp
                 }
                 else if (valueNumber == 1)
                 {
-                    if (inst->op == LOP_MUL || inst->op == LOP_POW || inst->op == LOP_DIV)
+                    if (inst->op == LOP_MUL || (inst->op == LOP_POW && constantIsRhs) || (inst->op == LOP_DIV && constantIsRhs))
                     {
                         inst->op = LOP_MOVE;
                         func.setOps(op, inst, {nonConstantOp});

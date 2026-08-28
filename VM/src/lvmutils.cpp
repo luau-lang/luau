@@ -364,19 +364,10 @@ int luaV_equalval(lua_State* L, const TValue* t1, const TValue* t2)
         return classvalue(t1) == classvalue(t2);
     case LUA_TOBJECT:
     {
-        // We follow roughly the same rules as metatables, except we require
-        // that the two instances have *exactly* the same class object. This
-        // is not a strict requirement for comparison metamethods.
-        LuauObject* t1inst = objectvalue(t1);
-        LuauObject* t2inst = objectvalue(t2);
-        // Class instances with differing class objects are always inequal.
-        if (t1inst->lclass != t2inst->lclass)
-            return false;
-        // Otherwise, check if `__eq` exists and use that
-        tm = luaT_gettmbyobj(L, t1, TM_EQ);
-        if (ttisnil(tm))
-            // If it doesn't, then check physical equality
-            return t1inst == t2inst;
+        // We follow the same rules as metatables.
+        tm = get_compTM(L, objectvalue(t1)->lclass->instancemetatable, objectvalue(t1)->lclass->instancemetatable, TM_EQ);
+        if (!tm)
+            return objectvalue(t1) == objectvalue(t2);
         break; // will try TM
     }
     case LUA_TTABLE:

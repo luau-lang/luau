@@ -60,4 +60,30 @@ do
     end
 end
 
+do
+    -- select("#", ...) / select(i, ...) inside a vararg function (Immutable.Append pattern).
+    -- select fuses to a FASTCALL with GETVARARGS between it and the paired CALL; inlining it would
+    -- shift the CALL and break the FASTCALL skip offset. The inliner must refuse to inline `append`.
+    local function append(list, ...)
+        local new = {}
+        local len = #list
+        for key = 1, len do
+            new[key] = list[key]
+        end
+        for i = 1, select("#", ...) do
+            new[len + i] = select(i, ...)
+        end
+        return new
+    end
+
+    local function run()
+        local r = append({ 1, 2 }, 7, 8, 9)
+        return #r * 10000 + r[3] * 100 + r[5]
+    end
+
+    for _ = 1, INLINING_THREASHOLD do
+        assert(run() == 50709, "vararg select must not be miscompiled by inlining")
+    end
+end
+
 return 'OK'
