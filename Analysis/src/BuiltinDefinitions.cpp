@@ -1243,7 +1243,7 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
         UnionType{
             {stringType,
              arena->addType(TableType({}, TableIndexer(stringType, stringType), TypeLevel{}, TableState::Generic)),
-             makeFunction(*arena, std::nullopt, {}, {}, {stringType}, {}, {stringType}, /* checked */ false)}
+             arena->addType(FunctionType{stringVariadicList, oneStringPack})}
         }
     );
     const TypeId gsubFunc =
