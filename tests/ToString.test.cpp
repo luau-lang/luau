@@ -177,6 +177,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "named_metatable_toStringNamedFunction")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
 {
+    ScopedFastFlag sff{FFlag::LuauNamedCycleTypes, true};
+
     CheckResult result = check(R"(
         --!strict
         local Vec3 = {}
@@ -204,17 +206,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK(
-            "t2 where "
-            "t1 = { __index: t1, __mul: ((t2, number) -> t2) & ((t2, t2) -> t2), new: () -> t2 } ; "
-            "t2 = { @metatable t1, { x: number, y: number, z: number } }" == a
+            "t1 where "
+            "Vec3 = { __index: Vec3, __mul: ((t1, number) -> t1) & ((t1, t1) -> t1), new: () -> t1 } ; "
+            "t1 = { @metatable Vec3, { x: number, y: number, z: number } }" == a
         );
     }
     else
     {
         CHECK_EQ(
-            "t2 where "
-            "t1 = {| __index: t1, __mul: ((t2, number) -> t2) & ((t2, t2) -> t2), new: () -> t2 |} ; "
-            "t2 = { @metatable t1, { x: number, y: number, z: number } }",
+            "t1 where "
+            "Vec3 = { | __index: Vec3, __mul: ((t1, number) -> t1) & ((t1, t1) -> t1), new: () -> t1 | } ; "
+            "t1 = { @metatable Vec3, { x: number, y: number, z: number } }",
             a
         );
     }

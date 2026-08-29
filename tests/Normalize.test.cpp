@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauIncludeExternTypeExtensionsWithTopExternType)
+LUAU_FASTFLAG(LuauNamedCycleTypes)
 
 using namespace Luau;
 
@@ -787,6 +788,8 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_with_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
 {
+    ScopedFastFlag sff{FFlag::LuauNamedCycleTypes, true};
+
     CheckResult result = check(R"(
         local Cyclic = {}
         function Cyclic.get()
@@ -798,9 +801,9 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
 
     TypeId ty = requireType("Cyclic");
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("t1 where t1 = { get: () -> t1 }", toString(ty, {true}));
+        CHECK_EQ("Cyclic where Cyclic = { get: () -> Cyclic }", toString(ty, {true}));
     else
-        CHECK_EQ("t1 where t1 = {| get: () -> t1 |}", toString(ty, {true}));
+        CHECK_EQ("Cyclic where Cyclic = {| get: () -> Cyclic |}", toString(ty, {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "skip_force_normal_on_external_types")
