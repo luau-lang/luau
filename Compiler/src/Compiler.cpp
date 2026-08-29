@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <bitset>
+#include <stdlib.h>
 
 #include <math.h>
 

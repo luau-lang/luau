@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #endif
 
+#include <errno.h>
 #include <string.h>
 #include <string_view>
 

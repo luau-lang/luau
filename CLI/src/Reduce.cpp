@@ -8,6 +8,7 @@
 #include "Luau/FileUtils.h"
 
 #include <algorithm>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string>
 #include <string_view>
