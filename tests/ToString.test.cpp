@@ -1074,16 +1074,39 @@ TEST_CASE_FIXTURE(Fixture, "cycle_type_naming")
     ScopedFastFlag sff{FFlag::LuauNamedCycleTypes, true};
 
     CheckResult result = check(R"(
-		type Foo = {
-			bar: Foo
-		}
-		type Meow = {
-			mrrp: Foo
-		}
-		type Nyan<T> = {
-			Meow | Nyan<T>
-		}
-		type Kya = Nyan<Foo>
+    type Foo = {
+        bar: Foo
+    }
+    type Meow = {
+        mrrp: Foo
+    }
+    type Nyan<T> = {
+        Meow | Nyan<T>
+    }
+    type Kya = Nyan<Foo>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ToStringOptions opts;
+    opts.exhaustive = true;
+
+    CHECK("Foo where Foo = { bar: Foo }" == toString(requireTypeAlias("Foo"), opts));
+    CHECK("{ mrrp: Foo } where Foo = { bar: Foo }" == toString(requireTypeAlias("Meow"), opts));
+    CHECK("Kya where Foo = { bar: Foo } ; Kya = {Kya | { mrrp: Foo }}" == toString(requireTypeAlias("Kya"), opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cycle_type_syntheticname")
+{
+    ScopedFastFlag sff{FFlag::LuauNamedCycleTypes, true};
+
+    CheckResult result = check(R"(
+        local meow = {}
+        meow.mrrp = meow
+        local function foo(bar)
+       	    bar.baz(meow)
+        end
+        type A = typeof(foo)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -1092,9 +1115,29 @@ TEST_CASE_FIXTURE(Fixture, "cycle_type_naming")
     opts.exhaustive = true;
     opts.ignoreSyntheticName = false;
 
-    CHECK("Foo where Foo = { bar: Foo }" == toString(requireTypeAlias("Foo"), opts));
-    CHECK("{ mrrp: Foo } where Foo = { bar: Foo }" == toString(requireTypeAlias("Meow"), opts));
-    CHECK("Kya where Foo = { bar: Foo } ; Kya = {Kya | { mrrp: Foo }}" == toString(requireTypeAlias("Kya"), opts));
+    CHECK("({ read baz: (meow) -> (...unknown) }) -> () where meow = { mrrp: meow }" == toString(requireTypeAlias("A"), opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cycle_type_ignoresyntheticname")
+{
+    ScopedFastFlag sff{FFlag::LuauNamedCycleTypes, true};
+
+    CheckResult result = check(R"(
+        local meow = {}
+        meow.mrrp = meow
+        local function foo(bar)
+       	    bar.baz(meow)
+        end
+        type A = typeof(foo)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ToStringOptions opts;
+    opts.exhaustive = true;
+    opts.ignoreSyntheticName = true;
+
+    CHECK("({ read baz: (t1) -> (...unknown) }) -> () where t1 = { mrrp: t1 }" == toString(requireTypeAlias("A"), opts));
 }
 
 TEST_SUITE_END();
