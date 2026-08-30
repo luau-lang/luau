@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauCompoundAssignRecordsPropertyWrite)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -7111,6 +7112,59 @@ TEST_CASE_FIXTURE(Fixture, "compound_assignment_writes_lhs")
 
         local foo: T = { x = 5 }
         foo.x += 5
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<PropertyAccessViolation>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "compound_assignment_to_read_only_property_still_errors")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauCompoundAssignRecordsPropertyWrite, true};
+
+    CheckResult result = check(R"(
+        type T = { read x: number }
+
+        local foo: T = { x = 5 }
+        foo.x += 5
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<PropertyAccessViolation>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "compound_assignment_to_write_only_property_still_errors")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauCompoundAssignRecordsPropertyWrite, true};
+
+    CheckResult result = check(R"(
+        type T = { write x: number }
+
+        local function f(foo: T)
+            foo.x += 5
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<PropertyAccessViolation>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "compound_assignment_to_read_only_indexer_still_errors")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauCompoundAssignRecordsPropertyWrite, true};
+
+    CheckResult result = check(R"(
+        type T = { read [string]: number }
+
+        local function f(foo: T, k: string)
+            foo[k] += 5
+        end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);

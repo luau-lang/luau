@@ -53,6 +53,7 @@ LUAU_FASTFLAGVARIABLE(LuauUdtfPopulateEnv)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
+LUAU_FASTFLAGVARIABLE(LuauCompoundAssignRecordsPropertyWrite)
 
 namespace Luau
 {
@@ -2011,8 +2012,22 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatCompoundAss
 {
     TypeId resultTy = checkAstExprBinary(scope, assign->location, assign->op, assign->var, assign->value, std::nullopt).ty;
     module->astCompoundAssignResultTypes[assign] = resultTy;
-    // NOTE: We do not update lvalues for compound assignments. This is
-    // intentional.
+
+    // NOTE: We do not update the typestate of lvalues for compound assignments.
+    // This is intentional.
+    const bool varIsProperty = assign->var->is<AstExprIndexName>() || assign->var->is<AstExprIndexExpr>();
+
+    if (FFlag::LuauCompoundAssignRecordsPropertyWrite && varIsProperty)
+    {
+        TypeId* readTy = module->astTypes.find(assign->var);
+        TypeId savedReadTy = readTy ? *readTy : nullptr;
+
+        visitLValue(scope, assign->var, resultTy);
+
+        if (savedReadTy)
+            module->astTypes[assign->var] = savedReadTy;
+    }
+
     return ControlFlow::None;
 }
 

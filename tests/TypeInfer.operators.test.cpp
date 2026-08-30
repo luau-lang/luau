@@ -21,6 +21,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAG(LuauCompoundAssignRecordsPropertyWrite)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -410,6 +411,108 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_basic")
         s += 20
     )");
     CHECK_EQ(0, result.errors.size());
+    CHECK_EQ(toString(requireType("s")), "number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "compound_assign_infers_read_write_property")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauCompoundAssignRecordsPropertyWrite, true};
+
+    CheckResult result = check(R"(
+        local function f(x)
+            x.h += 1
+            return x.h > 2
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("({ h: number }) -> boolean", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "compound_assign_infers_same_property_as_ordinary_assign")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauCompoundAssignRecordsPropertyWrite, true};
+
+    CheckResult result = check(R"(
+        local function ordinary(x)
+            x.h = x.h + 1
+            return x.h > 2
+        end
+
+        local function compound(x)
+            x.h += 1
+            return x.h > 2
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType("ordinary")), toString(requireType("compound")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "compound_assign_infers_read_write_property_for_other_operators")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauCompoundAssignRecordsPropertyWrite, true};
+
+    CheckResult result = check(R"(
+        local function f(x)
+            x.h *= 2
+            return x.h > 2
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("({ h: number }) -> boolean", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "compound_assign_infers_read_write_property_through_index_expr")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauCompoundAssignRecordsPropertyWrite, true};
+
+    CheckResult result = check(R"(
+        local function f(x)
+            x["h"] += 1
+            return x["h"] > 2
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("({ h: number }) -> boolean", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "compound_assign_on_mutable_property_is_still_ok")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauCompoundAssignRecordsPropertyWrite, true};
+
+    CheckResult result = check(R"(
+        type T = { h: number }
+        local function f(x: T)
+            x.h += 1
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "compound_assign_does_not_widen_local")
+{
+    ScopedFastFlag sff{FFlag::LuauCompoundAssignRecordsPropertyWrite, true};
+
+    CheckResult result = check(R"(
+        local s = 10
+        s += 20
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(toString(requireType("s")), "number");
 }
 
