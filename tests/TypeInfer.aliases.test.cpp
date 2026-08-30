@@ -613,8 +613,7 @@ type X = Import.X
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_of_an_imported_recursive_generic_type")
 {
-    ScopedFastFlag sffs
-        {FFlag::LuauNamedCycleTypes, true};
+    ScopedFastFlag sff{FFlag::LuauNamedCycleTypes, true};
 
     fileResolver.source["game/A"] = R"(
         export type X<T, U> = { a: T, b: U, C: X<T, U>? }
