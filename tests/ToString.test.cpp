@@ -215,7 +215,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
     {
         CHECK_EQ(
             "t1 where "
-            "Vec3 = { | __index: Vec3, __mul: ((t1, number) -> t1) & ((t1, t1) -> t1), new: () -> t1 | } ; "
+            "Vec3 = {| __index: Vec3, __mul: ((t1, number) -> t1) & ((t1, t1) -> t1), new: () -> t1 |} ; "
             "t1 = { @metatable Vec3, { x: number, y: number, z: number } }",
             a
         );
