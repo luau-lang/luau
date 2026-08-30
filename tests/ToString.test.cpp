@@ -1073,7 +1073,10 @@ TEST_CASE_FIXTURE(Fixture, "record_type_compositions_generic")
 
 TEST_CASE_FIXTURE(Fixture, "cycle_type_naming")
 {
-    ScopedFastFlag sff{FFlag::LuauNamedCycleTypes, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauNamedCycleTypes, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
 
     CheckResult result = check(R"(
     type Foo = {
@@ -1100,7 +1103,10 @@ TEST_CASE_FIXTURE(Fixture, "cycle_type_naming")
 
 TEST_CASE_FIXTURE(Fixture, "cycle_type_syntheticname")
 {
-    ScopedFastFlag sff{FFlag::LuauNamedCycleTypes, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauNamedCycleTypes, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
 
     CheckResult result = check(R"(
         local meow = {}
@@ -1122,7 +1128,10 @@ TEST_CASE_FIXTURE(Fixture, "cycle_type_syntheticname")
 
 TEST_CASE_FIXTURE(Fixture, "cycle_type_ignoresyntheticname")
 {
-    ScopedFastFlag sff{FFlag::LuauNamedCycleTypes, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauNamedCycleTypes, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
 
     CheckResult result = check(R"(
         local meow = {}
