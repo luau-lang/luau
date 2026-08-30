@@ -333,6 +333,12 @@ private:
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const PrimitiveType* superPrim, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TableType* subTable, const PrimitiveType* superPrim, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const PrimitiveType* subPrim, const TableType* superTable, NotNull<Scope> scope);
+    SubtypingResult isCovariantWith(
+        SubtypingEnvironment& env,
+        const PrimitiveType* subPrim,
+        const FunctionType* superFunction,
+        NotNull<Scope> scope
+    );
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const SingletonType* subSingleton, const TableType* superTable, NotNull<Scope> scope);
 
     SubtypingResult isCovariantWith(

@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
+LUAU_FASTFLAG(LuauFunctionPrimitiveIsSubtypeOfVariadicAnyFunction)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4618,6 +4619,24 @@ TEST_CASE_FIXTURE(Fixture, "let_generalization_multiple_values")
     CHECK_EQ("string", toString(requireType("r2"), {true}));
     CHECK_EQ("number", toString(requireType("r3"), {true}));
     CHECK_EQ("string", toString(requireType("r4"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_primitive_satisfies_variadic_any_annotation")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFunctionPrimitiveIsSubtypeOfVariadicAnyFunction, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type fun = typeof((function()
+            local a: unknown
+            assert(typeof(a) == "function")
+            return a
+        end)())
+
+        local a = (nil :: any) :: fun
+        local b: (...any) -> ...any = a
+    )"));
 }
 
 TEST_SUITE_END();

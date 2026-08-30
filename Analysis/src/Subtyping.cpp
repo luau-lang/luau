@@ -32,6 +32,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFunctionPrimitiveIsSubtypeOfVariadicAnyFunction)
 
 
 namespace Luau
@@ -945,6 +946,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result.isSubtype = superPrimitive->type == PrimitiveType::Function;
     }
     else if (auto p = get2<FunctionType, FunctionType>(subTy, superTy))
+        result = isCovariantWith(env, p, scope);
+    else if (auto p = get2<PrimitiveType, FunctionType>(subTy, superTy); p && FFlag::LuauFunctionPrimitiveIsSubtypeOfVariadicAnyFunction)
         result = isCovariantWith(env, p, scope);
     else if (auto p = get2<TableType, TableType>(subTy, superTy))
     {
@@ -2525,6 +2528,33 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Prim
     }
 
     return result;
+}
+
+static bool isVariadicAnyPack(TypePackId tp)
+{
+    auto [head, tail] = flatten(tp);
+
+    if (!head.empty() || !tail)
+        return false;
+
+    const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*tail));
+
+    return vtp && bool(get<AnyType>(follow(vtp->ty)));
+}
+
+SubtypingResult Subtyping::isCovariantWith(
+    SubtypingEnvironment& env,
+    const PrimitiveType* subPrim,
+    const FunctionType* superFunction,
+    NotNull<Scope> scope
+)
+{
+    if (subPrim->type != PrimitiveType::Function)
+        return {false};
+
+    // `function` is the set of all functions, so it can only satisfy a function
+    // type whose parameters and returns are both variadic `any`.
+    return {isVariadicAnyPack(superFunction->argTypes) && isVariadicAnyPack(superFunction->retTypes)};
 }
 
 SubtypingResult Subtyping::isCovariantWith(
