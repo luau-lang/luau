@@ -13,6 +13,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauNamedCycleTypes)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
@@ -908,6 +909,8 @@ type C = A<string, (number), (boolean)>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_defaults_recursive_type")
 {
+    ScopedFastFlag sff{FFlag::LuauNamedCycleTypes, true};
+
     CheckResult result = check(R"(
 type F<K = string, V = (K) -> ()> = (K) -> V
 type R = { m: F<R> }
@@ -915,7 +918,7 @@ type R = { m: F<R> }
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(*lookupType("R"), {true}), "t1 where t1 = { m: (t1) -> (t1) -> () }");
+    CHECK_EQ(toString(*lookupType("R"), {true}), "R where R = { m: (R) -> (R) -> () }");
 }
 
 TEST_CASE_FIXTURE(Fixture, "pack_tail_unification_check")

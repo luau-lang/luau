@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauInstantiationCheckArguments)
 LUAU_FASTFLAG(LuauInstantiationCheckArgumentsDedup)
 LUAU_FASTFLAG(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAG(LuauNamedCycleTypes)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -612,6 +613,7 @@ type X = Import.X
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_of_an_imported_recursive_generic_type")
 {
+    ScopedFastFlag sff{FFlag::LuauNamedCycleTypes, true};
 
     fileResolver.source["game/A"] = R"(
         export type X<T, U> = { a: T, b: U, C: X<T, U>? }
@@ -649,12 +651,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_of_an_imported_recursive_generic_
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK(toString(*ty1, {true}) == "t1 where t1 = { C: t1?, a: T, b: U }");
-        CHECK(toString(*ty2, {true}) == "t1 where t1 = { C: t1?, a: U, b: T }");
+        CHECK(toString(*ty1, {true}) == "X where X = { C: X?, a: T, b: U }");
+        CHECK(toString(*ty2, {true}) == "X where X = { C: X?, a: U, b: T }");
     }
     else
     {
-        CHECK_EQ(toString(*ty1, {true}), "t1 where t1 = { C: t1?, a: T, b: U }");
+        CHECK_EQ(toString(*ty1, {true}), "X where X = { C: X?, a: T, b: U }");
+        // i can only assume that 't1' displaying *specifically* on
+        // the old solver is an unrelated bug
         CHECK_EQ(toString(*ty2, {true}), "{ C: t1, a: U, b: T } where t1 = { C: t1, a: U, b: T }?");
     }
 }
@@ -1391,7 +1395,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unpack_doesnt_emplace_typeof_type")
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local Obj = {}
-        
+
         local function g(): number
             return 42
         end

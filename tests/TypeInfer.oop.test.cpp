@@ -17,6 +17,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
+LUAU_FASTFLAG(LuauNamedCycleTypes)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -742,7 +743,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
 {
-    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sffs[] {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauNamedCycleTypes, true},
+    };
 
     CheckResult results = check(R"(
         local Foobar = {}
@@ -758,7 +762,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
     auto err = get<TypeMismatch>(results.errors[0]);
     REQUIRE(err);
     CHECK_EQ("{ const: number }", toString(err->wantedType));
-    CHECK_EQ("{ @metatable t1, {  } } where t1 = { __index: t1, const: number }", toString(err->givenType, {/* exhaustive */ true}));
+    CHECK_EQ("{ @metatable Foobar, {  } } where Foobar = { __index: Foobar, const: number }", toString(err->givenType, {/* exhaustive */ true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")

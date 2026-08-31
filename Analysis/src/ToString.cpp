@@ -20,6 +20,7 @@
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
+LUAU_FASTFLAGVARIABLE(LuauNamedCycleTypes)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -1443,6 +1444,41 @@ void TypeStringifier::stringify(TypePackId tpid, const std::vector<std::optional
     tps.stringify(tpid);
 }
 
+static void assignCycleNames2(
+    const std::set<TypeId>& cycles,
+    const std::set<TypePackId>& cycleTPs,
+    DenseHashMap2<TypeId, std::string>& cycleNames,
+    DenseHashMap2<TypePackId, std::string>& cycleTpNames,
+    bool ignoreSyntheticName
+)
+{
+    int nextIndex = 1;
+
+    for (TypeId cycleTy : cycles)
+    {
+        std::string name;
+
+        if (auto ttv = get<TableType>(follow(cycleTy)); ttv && (ttv->name || (ttv->syntheticName && !ignoreSyntheticName)))
+        {
+            cycleNames[cycleTy] = ttv->name ? *ttv->name : *ttv->syntheticName;
+
+            continue;
+        }
+
+        name = "t" + std::to_string(nextIndex);
+        ++nextIndex;
+
+        cycleNames[cycleTy] = std::move(name);
+    }
+
+    for (TypePackId tp : cycleTPs)
+    {
+        std::string name = "tp" + std::to_string(nextIndex);
+        ++nextIndex;
+        cycleTpNames[tp] = std::move(name);
+    }
+}
+
 static void assignCycleNames(
     const std::set<TypeId>& cycles,
     const std::set<TypePackId>& cycleTPs,
@@ -1547,7 +1583,10 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 
     findCyclicTypes(cycles, cycleTPs, ty, opts.exhaustive);
 
-    assignCycleNames(cycles, cycleTPs, state.cycleNames, state.cycleTpNames, opts.exhaustive);
+    if (FFlag::LuauNamedCycleTypes)
+        assignCycleNames2(cycles, cycleTPs, state.cycleNames, state.cycleTpNames, opts.ignoreSyntheticName);
+    else
+        assignCycleNames(cycles, cycleTPs, state.cycleNames, state.cycleTpNames, opts.exhaustive);
 
     TypeStringifier tvs{state};
 
@@ -1679,7 +1718,10 @@ ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
 
     findCyclicTypes(cycles, cycleTPs, tp, opts.exhaustive);
 
-    assignCycleNames(cycles, cycleTPs, state.cycleNames, state.cycleTpNames, opts.exhaustive);
+    if (FFlag::LuauNamedCycleTypes)
+        assignCycleNames2(cycles, cycleTPs, state.cycleNames, state.cycleTpNames, opts.ignoreSyntheticName);
+    else
+        assignCycleNames(cycles, cycleTPs, state.cycleNames, state.cycleTpNames, opts.exhaustive);
 
     TypeStringifier tvs{state};
 
