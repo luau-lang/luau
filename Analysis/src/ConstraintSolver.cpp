@@ -4015,8 +4015,7 @@ NotNull<Constraint> ConstraintSolver::pushConstraint(
     solverConstraints.push_back(std::move(c));
     unsolvedConstraints.emplace_back(borrow);
 
-    // Built-in definitions (`@luau`) should not count towards the constraint limit.
-    if (solverConstraintLimit > 0 && (!FFlag::LuauNewSolverNewDefinitions || *representativeModuleName != "@luau"))
+    if (solverConstraintLimit > 0)
     {
         --solverConstraintLimit;
 
@@ -4051,8 +4050,7 @@ NotNull<Constraint> ConstraintSolver::DEPRECATED_pushConstraint(NotNull<Scope> s
     solverConstraints.push_back(std::move(c));
     unsolvedConstraints.emplace_back(borrow);
 
-    // Built-in definitions (`@luau`) should not count towards the constraint limit.
-    if (solverConstraintLimit > 0 && (!FFlag::LuauNewSolverNewDefinitions || *representativeModuleName != "@luau"))
+    if (solverConstraintLimit > 0)
     {
         --solverConstraintLimit;
 
