@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4484,6 +4485,139 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2623_double_negate_string")
 
         local node: Foo = { tag = "str" }
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_callback_in_array")
+{
+    CheckResult result = check(R"(
+        type Callback = (string) -> ()
+        
+        local t: { Callback } = {
+            function (s)
+                s.uper("hello")
+            end
+        }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_ERROR(result, UnknownProperty);
+}
+
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "let_generalization_direct")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauThreadGeneralizeThroughConstraintGeneration, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local Func = function(x, y)
+            return x * y
+        end
+        local result1 = Func(42, 13)
+        local result2 = Func(42, vector.create(1, 2, 3))
+    )"));
+
+    CHECK_EQ("number", toString(requireType("result1"), {true}));
+    CHECK_EQ("vector", toString(requireType("result2"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "let_generalization_direct_one_level")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauThreadGeneralizeThroughConstraintGeneration, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl = {
+            Func = function(x, y)
+                return x * y
+            end
+        }
+        local result1 = tbl.Func(42, 13)
+        local result2 = tbl.Func(42, vector.create(1, 2, 3))
+    )"));
+
+    CHECK_EQ("number", toString(requireType("result1"), {true}));
+    CHECK_EQ("vector", toString(requireType("result2"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "let_generalization_return_not_generalized")
+{
+    ScopedFastFlag _{FFlag::LuauThreadGeneralizeThroughConstraintGeneration, true};
+
+    CheckResult result = check(R"(
+        local function f()
+            return function(x) return x end
+        end
+        local g = f()
+        local r1 = g(42)
+        local r2 = g("hello")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("r1"), {true}));
+    CHECK_EQ("string", toString(requireType("r2"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "let_generalization_forin_iterator")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauThreadGeneralizeThroughConstraintGeneration, true};
+
+    CheckResult result = check(R"(
+        local function makeIter(arr)
+            local i = 0
+            return function()
+                i = i + 1
+                return arr[i]
+            end
+        end
+        local nums = makeIter({1, 2, 3})
+        local strs = makeIter({"a", "b", "c"})
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(...any) -> number", toString(requireType("nums"), {true}));
+    CHECK_EQ("(...any) -> string", toString(requireType("strs"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "let_generalization_assign_statement")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauThreadGeneralizeThroughConstraintGeneration, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local Func
+        Func = function(x, y)
+            return x * y
+        end
+        local result1 = Func(42, 13)
+        local result2 = Func(42, vector.create(1, 2, 3))
+    )"));
+
+    CHECK_EQ("number", toString(requireType("result1"), {true}));
+    CHECK_EQ("vector", toString(requireType("result2"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "let_generalization_multiple_values")
+{
+    ScopedFastFlag _{FFlag::LuauThreadGeneralizeThroughConstraintGeneration, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local a, b = function(x) return x end, function(y) return y end
+        local r1 = a(42)
+        local r2 = a("hello")
+        local r3 = b(3.14)
+        local r4 = b("world")
+    )"));
+
+    CHECK_EQ("number", toString(requireType("r1"), {true}));
+    CHECK_EQ("string", toString(requireType("r2"), {true}));
+    CHECK_EQ("number", toString(requireType("r3"), {true}));
+    CHECK_EQ("string", toString(requireType("r4"), {true}));
 }
 
 TEST_SUITE_END();

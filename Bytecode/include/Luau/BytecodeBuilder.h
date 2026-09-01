@@ -85,6 +85,7 @@ public:
     void emitAux(uint32_t aux);
 
     void undoEmit(LuauOpcode op);
+    unsigned lastInstruction();
 
     size_t emitLabel();
 

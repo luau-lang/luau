@@ -30,8 +30,10 @@ LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
  *
  * 0: Disabled, no changes.
  *
- * 1: Prefix free/generic types with free- and gen-, respectively. Also reveal
- * hidden variadic tails. Display block count for local types.
+ * 1: Prefix free/generic types with free- and gen-, respectively.
+ *    Reveal hidden variadic tails.
+ *    Display block count for local types.
+ *    Display contents of pending expansion types
  *
  * 2: Suffix free/generic types with their scope depth.
  *
@@ -589,6 +591,44 @@ struct TypeStringifier
         state.emit("*pending-expansion-");
         state.emit(petv.index);
         state.emit("*");
+
+        if (FInt::DebugLuauVerboseTypeNames >= 1)
+        {
+            state.emit(" of ");
+
+            if (petv.prefix)
+            {
+                state.emit(petv.prefix->value);
+                state.emit(".");
+            }
+
+            state.emit(petv.name.value);
+
+            if (petv.typeArguments.size() > 0 || petv.packArguments.size() > 0)
+            {
+                state.emit("<");
+
+                bool comma = false;
+
+                for (auto ty : petv.typeArguments)
+                {
+                    if (comma)
+                        state.emit(", ");
+                    comma = true;
+                    stringify(ty);
+                }
+
+                for (auto tp : petv.packArguments)
+                {
+                    if (comma)
+                        state.emit(", ");
+                    comma = true;
+                    stringify(tp);
+                }
+
+                state.emit(">");
+            }
+        }
     }
 
     void operator()(TypeId, const PrimitiveType& ptv)

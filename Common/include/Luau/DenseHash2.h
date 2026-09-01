@@ -180,6 +180,14 @@ private:
         class iterator
         {
         public:
+            iterator()
+                : data(nullptr)
+                , wordCount(0)
+                , wordIdx(0)
+                , word(0)
+            {
+            }
+
             iterator(const BitsetT* data, size_t wordCount, size_t wordIdx)
                 : data(data)
                 , wordCount(wordCount)
@@ -214,6 +222,11 @@ private:
                 }
                 currentBucket = wordIdx * numElements + countTrailingZeroes(word);
                 return *this;
+            }
+
+            bool operator==(const iterator& other) const
+            {
+                return wordIdx == other.wordIdx && word == other.word;
             }
 
             bool operator!=(const iterator& other) const
@@ -468,32 +481,22 @@ public:
 
     const_iterator begin() const
     {
-        size_t start = 0;
-
-        while (start < capacity && !usedTable.contains(start))
-            start++;
-
-        return const_iterator(this, start);
+        return const_iterator(this, usedTable.begin());
     }
 
     const_iterator end() const
     {
-        return const_iterator(this, capacity);
+        return const_iterator(this, usedTable.end());
     }
 
     iterator begin()
     {
-        size_t start = 0;
-
-        while (start < capacity && !usedTable.contains(start))
-            start++;
-
-        return iterator(this, start);
+        return iterator(this, usedTable.begin());
     }
 
     iterator end()
     {
-        return iterator(this, capacity);
+        return iterator(this, usedTable.end());
     }
 
     size_t size() const
@@ -510,47 +513,37 @@ public:
         using difference_type = ptrdiff_t;
         using iterator_category = std::forward_iterator_tag;
 
-        const_iterator()
-            : set(0)
-            , index(0)
-        {
-        }
+        const_iterator() = default;
 
-        const_iterator(const DenseHashTable2<Key, Item, MutableItem, ItemInterface, Hash, Eq>* set, size_t index)
+        const_iterator(const DenseHashTable2<Key, Item, MutableItem, ItemInterface, Hash, Eq>* set, typename BitSet::iterator bucketIt)
             : set(set)
-            , index(index)
+            , bucketIt(bucketIt)
         {
         }
 
         const Item& operator*() const
         {
-            return set->data[index];
+            return set->data[*bucketIt];
         }
 
         const Item* operator->() const
         {
-            return &set->data[index];
+            return &set->data[*bucketIt];
         }
 
         bool operator==(const const_iterator& other) const
         {
-            return set == other.set && index == other.index;
+            return set == other.set && bucketIt == other.bucketIt;
         }
 
         bool operator!=(const const_iterator& other) const
         {
-            return set != other.set || index != other.index;
+            return set != other.set || bucketIt != other.bucketIt;
         }
 
         const_iterator& operator++()
         {
-            size_t size = set->capacity;
-
-            do
-            {
-                index++;
-            } while (index < size && !set->usedTable.contains(index));
-
+            ++bucketIt;
             return *this;
         }
 
@@ -562,8 +555,8 @@ public:
         }
 
     private:
-        const DenseHashTable2<Key, Item, MutableItem, ItemInterface, Hash, Eq>* set;
-        size_t index;
+        const DenseHashTable2<Key, Item, MutableItem, ItemInterface, Hash, Eq>* set = nullptr;
+        typename BitSet::iterator bucketIt;
     };
 
     class iterator
@@ -575,47 +568,37 @@ public:
         using difference_type = ptrdiff_t;
         using iterator_category = std::forward_iterator_tag;
 
-        iterator()
-            : set(0)
-            , index(0)
-        {
-        }
+        iterator() = default;
 
-        iterator(DenseHashTable2<Key, Item, MutableItem, ItemInterface, Hash, Eq>* set, size_t index)
+        iterator(DenseHashTable2<Key, Item, MutableItem, ItemInterface, Hash, Eq>* set, typename BitSet::iterator bucketIt)
             : set(set)
-            , index(index)
+            , bucketIt(bucketIt)
         {
         }
 
         MutableItem& operator*() const
         {
-            return *reinterpret_cast<MutableItem*>(&set->data[index]);
+            return *reinterpret_cast<MutableItem*>(&set->data[*bucketIt]);
         }
 
         MutableItem* operator->() const
         {
-            return reinterpret_cast<MutableItem*>(&set->data[index]);
+            return reinterpret_cast<MutableItem*>(&set->data[*bucketIt]);
         }
 
         bool operator==(const iterator& other) const
         {
-            return set == other.set && index == other.index;
+            return set == other.set && bucketIt == other.bucketIt;
         }
 
         bool operator!=(const iterator& other) const
         {
-            return set != other.set || index != other.index;
+            return set != other.set || bucketIt != other.bucketIt;
         }
 
         iterator& operator++()
         {
-            size_t size = set->capacity;
-
-            do
-            {
-                index++;
-            } while (index < size && !set->usedTable.contains(index));
-
+            ++bucketIt;
             return *this;
         }
 
@@ -627,8 +610,8 @@ public:
         }
 
     private:
-        DenseHashTable2<Key, Item, MutableItem, ItemInterface, Hash, Eq>* set;
-        size_t index;
+        DenseHashTable2<Key, Item, MutableItem, ItemInterface, Hash, Eq>* set = nullptr;
+        typename BitSet::iterator bucketIt;
     };
 
 private:
@@ -686,6 +669,10 @@ private:
             {
                 usedTable.set(i, true);
                 usedTable.set(j, false);
+                // Slot i currently holds a live element: the just-erased element on the first shift, or an
+                // already-moved-from element on later shifts. Destroy it before move-constructing over it,
+                // otherwise value types that own resources (e.g. std::unique_ptr) leak the erased element.
+                data[i].~Item();
                 new (&data[i]) Item(std::move(data[j]));
                 i = j;
             }

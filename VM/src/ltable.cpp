@@ -566,7 +566,7 @@ static void rehash(lua_State* L, LuaTable* t, const TValue* ek)
 
 LuaTable* luaH_new(lua_State* L, int narray, int nhash)
 {
-    LuaTable* t = luaM_newgco(L, LuaTable, sizeof(LuaTable), L->activememcat);
+    LuaTable* t = luaM_newgco(L, LuaTable, sizeof(LuaTable), L->activememcat, LUA_TTABLE);
     luaC_init(L, t, LUA_TTABLE);
     t->metatable = NULL;
     t->tmcache = cast_byte(~0);
@@ -899,7 +899,7 @@ int luaH_getn(LuaTable* t)
 
 LuaTable* luaH_clone(lua_State* L, LuaTable* tt)
 {
-    LuaTable* t = luaM_newgco(L, LuaTable, sizeof(LuaTable), L->activememcat);
+    LuaTable* t = luaM_newgco(L, LuaTable, sizeof(LuaTable), L->activememcat, LUA_TTABLE);
     luaC_init(L, t, LUA_TTABLE);
     t->metatable = tt->metatable;
     t->tmcache = tt->tmcache;

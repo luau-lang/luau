@@ -47,6 +47,7 @@ std::optional<std::pair<RuntimeBcFunction, BcOp>> buildGraphFromProto(Proto* p, 
     fn.nups = p->nups;
     fn.is_vararg = static_cast<bool>(p->is_vararg);
     fn.flags = p->flags;
+    fn.linedefined = p->linedefined;
 
     uint8_t* typeinfo = p->typeinfo;
     fn.typeInfo = std::string_view(reinterpret_cast<char*>(typeinfo), p->sizetypeinfo);
@@ -253,6 +254,49 @@ bool hasFoldableConstants(const RuntimeBcFunction& func)
     return false;
 }
 
+bool isEnvDependentOrUsesSelect(Proto* proto, bool crossEnv)
+{
+    Instruction* codeend = proto->code + proto->sizecode;
+    for (Instruction* pc = proto->code; pc < codeend;)
+    {
+        switch (LUAU_INSN_OP(*pc))
+        {
+            case LOP_GETIMPORT:
+            {
+                uint16_t importKIndex = LUAU_INSN_D(*pc);
+                LUAU_ASSERT(importKIndex < static_cast<uint16_t>(proto->sizek));
+                // if import is unresolved we cannot inline target, because globals can differ in the caller's env.
+                if (crossEnv && ttisnil(proto->k + importKIndex))
+                    return true;
+                break;
+            }
+            case LOP_GETGLOBAL:
+            case LOP_SETGLOBAL:
+            case LOP_NEWCLOSURE:
+            case LOP_DUPCLOSURE:
+            {
+                if (crossEnv)
+                    return true;
+                break;
+            }
+            case LOP_FASTCALL1:
+            case LOP_FASTCALL2:
+            case LOP_FASTCALL2K:
+            case LOP_FASTCALL3:
+            case LOP_FASTCALL:
+            {
+                if (LUAU_INSN_A(*pc) == LBF_SELECT_VARARG)
+                    return true;
+                break;
+            }
+            default:
+                break;
+        }
+        pc += Luau::getOpLength(static_cast<LuauOpcode>(LUAU_INSN_OP(*pc)));
+    }
+    return false;
+}
+
 Proto* onInlineFunction(lua_State* L, Closure* caller, Closure* target, uint32_t pc)
 {
     LUAU_ASSERT(!caller->isC && !target->isC);
@@ -271,6 +315,12 @@ Proto* onInlineFunction(lua_State* L, Closure* caller, Closure* target, uint32_t
 
     // recursive inlining is not supported yet.
     if (targetProto->funid == callerProto->funid)
+        return nullptr;
+
+    if (caller->env->safeenv == 0 || target->env->safeenv == 0)
+        return nullptr;
+    
+    if (isEnvDependentOrUsesSelect(targetProto, caller->env != target->env))
         return nullptr;
 
     // pick the latest optimized version for inlining

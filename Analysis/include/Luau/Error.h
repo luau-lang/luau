@@ -243,6 +243,14 @@ struct CyclicModuleGraphTooLarge
     bool operator==(const CyclicModuleGraphTooLarge& rhs) const;
 };
 
+struct CyclicModuleTopLevelAccess
+{
+    ModuleName cyclicModuleName;
+    Name localName;
+    Name propName;
+    bool operator==(const CyclicModuleTopLevelAccess& rhs) const;
+};
+
 struct FunctionExitsWithoutReturning
 {
     TypePackId expectedReturnType;
@@ -636,6 +644,7 @@ using TypeErrorData = Variant<
     DeprecatedApiUsed,
     ModuleHasCyclicDependency,
     CyclicModuleGraphTooLarge,
+    CyclicModuleTopLevelAccess,
     IllegalRequire,
     FunctionExitsWithoutReturning,
     DuplicateGenericParameter,

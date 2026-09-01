@@ -440,9 +440,9 @@ ConditionState SccpInterpreter::evaluateXeqkCondition(BcRef<BcInst> inst)
         LUAU_ASSERT(cmpImmOp.kind == BcOpKind::Imm);
         if (valConst.kind == Constness::ImmConstant && valConst.immConst.value().kind == BcImmKind::Boolean)
         {
-            std::optional<bool> eq = impl->eq(valConst.vmConst.value(), cmpImmOp);
-            if (eq)
-                return *eq ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
+            bool lhsBool = valConst.immConst.value().valueBoolean;
+            bool rhsBool = impl->asImm(cmpImmOp)->valueBoolean;
+            return (lhsBool == rhsBool) ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
         }
         else if (valConst.kind == Constness::VmConstant)
         {

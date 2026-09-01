@@ -16,7 +16,6 @@
 
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 

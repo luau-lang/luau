@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauIndexingIntoErrorGivesError)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
+LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauNewSolverNewDefinitions)
 
@@ -662,7 +663,7 @@ void ConstraintSolver::run()
         for (auto& constraint : constraintSet.deferredConstraints)
         {
             if (get<BlockedType>(follow(get<GeneralizationConstraint>(*constraint)->generalizedType)))
-                tryDispatch(NotNull{constraint.get()}, false);
+                tryDispatch(NotNull{constraint.get()}, true);
         }
     }
 
@@ -1334,6 +1335,11 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
         bindResult(builtinTypes->errorType);
         return true;
     }
+
+    // If the type function itself is still blocked, we have to wait for it
+    // Not using 'isBlocked' as this constraint has special handling of pending and TypeFunctionInstanceType
+    if (FFlag::LuauBlockingTypeAliasExpansion && get<BlockedType>(follow(tf->type)))
+        return block(tf->type, constraint);
 
     // Adding ReduceConstraint on type function for the constraint solver
     if (FFlag::LuauCloneTypeFunctionFromForeignArena)
