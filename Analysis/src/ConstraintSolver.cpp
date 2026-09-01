@@ -54,7 +54,6 @@ LUAU_FASTFLAGVARIABLE(LuauIndexingIntoErrorGivesError)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
-LUAU_FASTFLAG(LuauNewSolverNewDefinitions)
 
 namespace Luau
 {
