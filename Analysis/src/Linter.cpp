@@ -13,6 +13,7 @@
 #include <climits>
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
+LUAU_FASTFLAG(LuauIntegerType2)
 
 namespace Luau
 {
@@ -1174,7 +1175,8 @@ private:
         if (name == "nil" || name == "boolean" || name == "userdata" || name == "number" || name == "string" || name == "table" ||
             name == "function" || name == "thread" || name == "buffer")
             return Kind_Primitive;
-
+        if (FFlag::LuauIntegerType2 && name == "integer")
+            return Kind_Primitive;
         if (name == "vector")
             return Kind_Primitive;
 

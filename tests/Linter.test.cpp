@@ -890,7 +890,8 @@ type InputData = {
     updated: number,
     position: Vector3,
     keyCode: EnumItem,
-    name: string
+    name: string,
+    value: integer
 }
 )");
 
