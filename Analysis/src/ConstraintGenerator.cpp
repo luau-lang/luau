@@ -2015,9 +2015,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatCompoundAss
 
     // NOTE: We do not update the typestate of lvalues for compound assignments.
     // This is intentional.
-    const bool varIsProperty = assign->var->is<AstExprIndexName>() || assign->var->is<AstExprIndexExpr>();
-
-    if (FFlag::LuauCompoundAssignRecordsPropertyWrite && varIsProperty)
+    if (FFlag::LuauCompoundAssignRecordsPropertyWrite && (assign->var->is<AstExprIndexName>() || assign->var->is<AstExprIndexExpr>()))
     {
         TypeId* readTy = module->astTypes.find(assign->var);
         TypeId savedReadTy = readTy ? *readTy : nullptr;
