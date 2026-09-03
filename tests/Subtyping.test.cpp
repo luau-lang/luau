@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauFunctionPrimitiveIsSubtypeOfVariadicAnyFunction)
 
 using namespace Luau;
 
@@ -1536,6 +1537,60 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(number, number...) <!: (number, string...)")
     TypePackId rightTp = arena.addTypePack({builtinTypes->numberType}, arena.addTypePack(VariadicTypePack{builtinTypes->stringType}));
 
     CHECK_IS_NOT_SUBTYPE(leftTp, rightTp);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "function_is_a_subtype_of_a_variadic_any_function")
+{
+    ScopedFastFlag sff{FFlag::LuauFunctionPrimitiveIsSubtypeOfVariadicAnyFunction, true};
+
+    // function <: (...any) -> ...any
+    TypeId variadicAnyFunction = fn({}, VariadicTypePack{getBuiltins()->anyType}, {}, VariadicTypePack{getBuiltins()->anyType});
+
+    CHECK_IS_SUBTYPE(getBuiltins()->functionType, variadicAnyFunction);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "function_is_not_a_subtype_of_a_function_that_returns_nothing")
+{
+    ScopedFastFlag sff{FFlag::LuauFunctionPrimitiveIsSubtypeOfVariadicAnyFunction, true};
+
+    // function <!: (...any) -> ()
+    TypeId superTy = fn({}, VariadicTypePack{getBuiltins()->anyType}, {});
+
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->functionType, superTy);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "function_is_not_a_subtype_of_a_nullary_function")
+{
+    ScopedFastFlag sff{FFlag::LuauFunctionPrimitiveIsSubtypeOfVariadicAnyFunction, true};
+
+    // function <!: () -> ()
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->functionType, fn({}, {}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "function_is_not_a_subtype_of_a_concrete_function")
+{
+    ScopedFastFlag sff{FFlag::LuauFunctionPrimitiveIsSubtypeOfVariadicAnyFunction, true};
+
+    // function <!: (number) -> string
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->functionType, fn({getBuiltins()->numberType}, {getBuiltins()->stringType}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "concrete_function_is_still_a_subtype_of_function")
+{
+    ScopedFastFlag sff{FFlag::LuauFunctionPrimitiveIsSubtypeOfVariadicAnyFunction, true};
+
+    // (number) -> string <: function
+    CHECK_IS_SUBTYPE(fn({getBuiltins()->numberType}, {getBuiltins()->stringType}), getBuiltins()->functionType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "other_primitives_are_not_subtypes_of_a_variadic_any_function")
+{
+    ScopedFastFlag sff{FFlag::LuauFunctionPrimitiveIsSubtypeOfVariadicAnyFunction, true};
+
+    TypeId variadicAnyFunction = fn({}, VariadicTypePack{getBuiltins()->anyType}, {}, VariadicTypePack{getBuiltins()->anyType});
+
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->numberType, variadicAnyFunction);
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->tableType, variadicAnyFunction);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_check_for_error_suppression_in_union_type_path")
