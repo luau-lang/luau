@@ -24,6 +24,7 @@
 #include <mutex>
 #include <queue>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 #include <fstream>
 
@@ -534,6 +535,17 @@ int main(int argc, char** argv)
 
     for (const Luau::ModuleName& name : checkedModules)
         failed += !reportModuleResult(frontend, name, format, annotate);
+
+    std::unordered_set<Luau::ModuleName> checkedNames(checkedModules.begin(), checkedModules.end());
+
+    for (const std::string& path : files)
+    {
+        if (checkedNames.count(path) == 0)
+        {
+            fprintf(stderr, "Error opening %s\n", path.c_str());
+            failed++;
+        }
+    }
 
     if (!configResolver.configErrors.empty())
     {
