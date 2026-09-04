@@ -26,6 +26,7 @@
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
+LUAU_FASTFLAG(LuauNewSolverNewDefinitions)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -361,7 +362,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
 
     LoadDefinitionFileResult loadResult = frontend.loadDefinitionFile(
-        globals, globals.globalScope, getBuiltinDefinitionSource(), "@luau", /* captureComments */ false, typeCheckForAutocomplete
+        globals, globals.globalScope, getBuiltinDefinitionSource(frontend.getLuauSolverMode()), "@luau", /* captureComments */ false, typeCheckForAutocomplete
     );
     LUAU_ASSERT(loadResult.success);
 
@@ -426,9 +427,12 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     if (frontend.getLuauSolverMode() == SolverMode::New)
     {
-        // getmetatable : <T>(T) -> getmetatable<T>
-        TypeId getmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypes->typeFunctions->getmetatableFunc, {genericT}});
-        addGlobalBinding(globals, "getmetatable", makeFunction(arena, std::nullopt, {genericT}, {}, {genericT}, {getmtReturn}), "@luau");
+        if (!FFlag::LuauNewSolverNewDefinitions)
+        {
+            // getmetatable : <T>(T) -> getmetatable<T>
+            TypeId getmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypes->typeFunctions->getmetatableFunc, {genericT}});
+            addGlobalBinding(globals, "getmetatable", makeFunction(arena, std::nullopt, {genericT}, {}, {genericT}, {getmtReturn}), "@luau");
+        }
     }
     else
     {
@@ -438,11 +442,14 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     if (frontend.getLuauSolverMode() == SolverMode::New)
     {
-        // setmetatable<T: {}, MT>(T, MT) -> setmetatable<T, MT>
-        TypeId setmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypes->typeFunctions->setmetatableFunc, {genericT, genericMT}});
-        addGlobalBinding(
-            globals, "setmetatable", makeFunction(arena, std::nullopt, {genericT, genericMT}, {}, {genericT, genericMT}, {setmtReturn}), "@luau"
-        );
+        if (!FFlag::LuauNewSolverNewDefinitions)
+        {
+            // setmetatable<T: {}, MT>(T, MT) -> setmetatable<T, MT>
+            TypeId setmtReturn = arena.addType(TypeFunctionInstanceType{builtinTypes->typeFunctions->setmetatableFunc, {genericT, genericMT}});
+            addGlobalBinding(
+                globals, "setmetatable", makeFunction(arena, std::nullopt, {genericT, genericMT}, {}, {genericT, genericMT}, {setmtReturn}), "@luau"
+            );
+        }
     }
     else
     {
