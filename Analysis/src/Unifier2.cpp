@@ -25,6 +25,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
 
 namespace Luau
 {
@@ -121,7 +122,7 @@ Unifier2::Unifier2(
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Scope> scope,
     NotNull<InternalErrorReporter> ice,
-    DenseHashSet2<const void*>* uninhabitedTypeFunctions
+    DenseHashSet<const void*>* uninhabitedTypeFunctions
 )
     : arena(arena)
     , builtinTypes(builtinTypes)
@@ -594,15 +595,25 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
          * same indexer.
          */
 
-        TypeId indexType = superTable->indexer->indexType;
-        if (TypeId* subst = genericSubstitutions.find(indexType))
-            indexType = *subst;
+        if (FFlag::LuauDoNotLeakGenericsInIndexer)
+        {
+            subTable->indexer = TableIndexer{
+                instantiateWithBoundTypes(superTable->indexer->indexType),
+                instantiateWithBoundTypes(superTable->indexer->indexResultType),
+            };
+        }
+        else
+        {
+            TypeId indexType = superTable->indexer->indexType;
+            if (TypeId* subst = genericSubstitutions.find(indexType))
+                indexType = *subst;
 
-        TypeId indexResultType = superTable->indexer->indexResultType;
-        if (TypeId* subst = genericSubstitutions.find(indexResultType))
-            indexResultType = *subst;
+            TypeId indexResultType = superTable->indexer->indexResultType;
+            if (TypeId* subst = genericSubstitutions.find(indexResultType))
+                indexResultType = *subst;
 
-        subTable->indexer = TableIndexer{indexType, indexResultType};
+            subTable->indexer = TableIndexer{indexType, indexResultType};
+        }
     }
 
     return result;

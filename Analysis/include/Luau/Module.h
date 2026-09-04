@@ -101,9 +101,9 @@ struct Module
 
     std::vector<std::pair<Location, ScopePtr>> scopes; // never empty
 
-    DenseHashMap2<const AstExpr*, TypeId> astTypes;
-    DenseHashMap2<const AstExpr*, TypePackId> astTypePacks;
-    DenseHashMap2<const AstExpr*, TypeId> astExpectedTypes;
+    DenseHashMap<const AstExpr*, TypeId> astTypes;
+    DenseHashMap<const AstExpr*, TypePackId> astTypePacks;
+    DenseHashMap<const AstExpr*, TypeId> astExpectedTypes;
 
     // For AST nodes that are function calls, this map provides the
     // unspecialized type of the function that was called. If a function call
@@ -111,32 +111,34 @@ struct Module
     // metamethod.
     //
     // This is useful for type checking and Signature Help.
-    DenseHashMap2<const AstNode*, TypeId> astOriginalCallTypes;
+    DenseHashMap<const AstNode*, TypeId> astOriginalCallTypes;
 
     // The specialization of a function that was selected.  If the function is
     // generic, those generic type parameters will be replaced with the actual
     // types that were passed.  If the function is an overload, this map will
     // point at the specific overloads that were selected.
-    DenseHashMap2<const AstNode*, TypeId> astOverloadResolvedTypes;
+    DenseHashMap<const AstNode*, TypeId> astOverloadResolvedTypes;
 
     // Only used with for...in loops.  The computed type of the next() function
     // is kept here for type checking.
-    DenseHashMap2<const AstNode*, TypeId> astForInNextTypes;
+    DenseHashMap<const AstNode*, TypeId> astForInNextTypes;
 
-    DenseHashMap2<const AstType*, TypeId> astResolvedTypes;
-    DenseHashMap2<const AstTypePack*, TypePackId> astResolvedTypePacks;
+    DenseHashMap<const AstType*, TypeId> astResolvedTypes;
+    DenseHashMap<const AstTypePack*, TypePackId> astResolvedTypePacks;
+    DenseHashSet<const AstType*> astTypeReferenceLookupFailures;
+    DenseHashSet<const AstTypePack*> astTypePackReferenceLookupFailures;
 
     // The computed result type of a compound assignment. (eg foo += 1)
     //
     // Type checking uses this to check that the result of such an operation is
     // actually compatible with the left-side operand.
-    DenseHashMap2<const AstStat*, TypeId> astCompoundAssignResultTypes;
+    DenseHashMap<const AstStat*, TypeId> astCompoundAssignResultTypes;
 
-    DenseHashMap2<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors;
+    DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors;
 
     // Map AST nodes to the scope they create.  Cannot be NotNull<Scope> because
     // we need a sentinel value for the map.
-    DenseHashMap2<const AstNode*, Scope*> astScopes;
+    DenseHashMap<const AstNode*, Scope*> astScopes;
 
     // Stable references for type aliases registered in the environment
     std::vector<std::unique_ptr<TypeFun>> typeFunctionAliases;

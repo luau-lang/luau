@@ -232,7 +232,7 @@ TypePackIterator end(TypePackId tp)
 
 TypePackId getTail(TypePackId tp)
 {
-    DenseHashSet2<TypePackId> seen;
+    DenseHashSet<TypePackId> seen;
     while (tp)
     {
         tp = follow(tp);
@@ -362,6 +362,21 @@ std::optional<TypeId> first(TypePackId tp, bool ignoreHiddenVariadics)
     }
 
     return std::nullopt;
+}
+
+TypePackId typePackFromIterator(NotNull<TypeArena> arena, TypePackIterator startIter, TypePackIterator endIter)
+{
+    if (auto t = startIter.tryGetHead())
+        return *t;
+
+    TypePack p;
+
+    for (; startIter != endIter; ++startIter)
+        p.head.push_back(*startIter);
+
+    p.tail = startIter.tail();
+
+    return arena->addTypePack(std::move(p));
 }
 
 TypePackVar* asMutable(TypePackId tp)

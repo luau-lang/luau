@@ -14,7 +14,6 @@
 #include <stdio.h>
 
 LUAU_FASTFLAG(LuauCIProto)
-LUAU_FASTFLAG(LuauManagedDebugNames)
 
 static const char* getfuncname(Closure* cl);
 
@@ -259,18 +258,8 @@ static const char* getfuncname(Closure* cl)
 {
     if (cl->isC)
     {
-        if (FFlag::LuauManagedDebugNames)
-        {
-            if (TString* str = cl->c.debugname)
-                return getstr(str);
-        }
-        else
-        {
-            if (cl->c.debugname_DEPRECATED)
-            {
-                return cl->c.debugname_DEPRECATED;
-            }
-        }
+        if (TString* str = cl->c.debugname)
+            return getstr(str);
     }
     else
     {

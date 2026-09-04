@@ -69,8 +69,9 @@ struct Checkpoint
 
 struct ClassDeclRecord
 {
+    // The type of an instance of the class.
     TypeId ty = nullptr;
-    DenseHashMap2<AstName, TypeId> memberTypes;
+    DenseHashMap<AstName, TypeId> memberTypes;
 };
 
 struct ConstraintGenerator
@@ -103,7 +104,7 @@ struct ConstraintGenerator
     // might have.
     //
     // See the functions recordInferredBinding and fillInInferredBindings.
-    DenseHashMap2<Symbol, InferredBinding> inferredBindings;
+    DenseHashMap<Symbol, InferredBinding> inferredBindings;
 
     // Remove constraints, freeTypes, and scopeToFunction with LuauCyclicRequireTypeInference: these move to ConstraintGraph (cgraph).
     // Constraints that go straight to the solver.
@@ -113,10 +114,10 @@ struct ConstraintGenerator
     TypeIds freeTypes;
 
     // Map a function's signature scope back to its signature type.
-    DenseHashMap2<Scope*, TypeId> scopeToFunction;
+    DenseHashMap<Scope*, TypeId> scopeToFunction;
 
     // The private scope of type aliases for which the type parameters belong to.
-    DenseHashMap2<const AstStatTypeAlias*, ScopePtr> astTypeAliasDefiningScopes;
+    DenseHashMap<const AstStatTypeAlias*, ScopePtr> astTypeAliasDefiningScopes;
 
     NotNull<const DataFlowGraph> dfg;
     RefinementArena refinementArena;
@@ -131,7 +132,7 @@ struct ConstraintGenerator
 
     // Needed to register all available type functions for execution at later stages.
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
-    DenseHashMap2<const AstStatTypeFunction*, ScopePtr> astTypeFunctionEnvironmentScopes;
+    DenseHashMap<const AstStatTypeFunction*, ScopePtr> astTypeFunctionEnvironmentScopes;
 
     // Needed to resolve modules to make 'require' import types properly.
     NotNull<ModuleResolver> moduleResolver;
@@ -144,11 +145,11 @@ struct ConstraintGenerator
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope;
     std::vector<RequireCycle> requireCycles;
 
-    DenseHashMap2<TypeId, TypeIds> localTypes;
+    DenseHashMap<TypeId, TypeIds> localTypes;
 
-    DenseHashMap2<AstExpr*, Inference> inferredExprCache;
+    DenseHashMap<AstExpr*, Inference> inferredExprCache;
 
-    DenseHashMap2<AstLocal*, std::unique_ptr<ClassDeclRecord>> classDeclRecords;
+    DenseHashMap<AstLocal*, std::unique_ptr<ClassDeclRecord>> classDeclRecords;
 
     DcrLogger* logger;
 
@@ -204,7 +205,7 @@ private:
 
     Polarity polarity = Polarity::None;
 
-    DenseHashMap2<std::pair<TypeId, std::string>, TypeId, PairHash<TypeId, std::string>> propIndexPairsSeen;
+    DenseHashMap<std::pair<TypeId, std::string>, TypeId, PairHash<TypeId, std::string>> propIndexPairsSeen;
 
     // Used to keep track of when we are inside a large table and should
     // opt *not* to do type inference for singletons.

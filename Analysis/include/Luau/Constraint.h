@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h" // Used for some of the enumerations
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/NotNull.h"
 #include "Luau/Variant.h"
 #include "Luau/TypeFwd.h"
@@ -68,7 +68,7 @@ struct IterableConstraint
     std::vector<TypeId> variables;
 
     const AstNode* nextAstFragment;
-    DenseHashMap2<const AstNode*, TypeId>* astForInNextTypes;
+    DenseHashMap<const AstNode*, TypeId>* astForInNextTypes;
 };
 
 // name(namedType) = name
@@ -103,11 +103,11 @@ struct FunctionCallConstraint
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> typePackArguments;
 
-    DenseHashMap2<const AstExpr*, TypeId>* astTypes = nullptr;
+    DenseHashMap<const AstExpr*, TypeId>* astTypes = nullptr;
 
     // When we dispatch this constraint, we update the key at this map to record
     // the overload that we selected.
-    DenseHashMap2<const AstNode*, TypeId>* astOverloadResolvedTypes = nullptr;
+    DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes = nullptr;
 };
 
 // function_check fn argsPack
@@ -122,8 +122,8 @@ struct FunctionCheckConstraint
     TypePackId argsPack;
 
     class AstExprCall* callSite = nullptr;
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes;
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
 };
 
 // prim FreeType ExpectedType PrimitiveType
@@ -314,8 +314,8 @@ struct PushTypeConstraint
 {
     TypeId expectedType;
     TypeId targetType;
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes;
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
     NotNull<const AstExpr> expr;
 };
 

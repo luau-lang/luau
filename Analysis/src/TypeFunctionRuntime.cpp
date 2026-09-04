@@ -8,7 +8,7 @@
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/ParseResult.h"
 #include "Luau/Compiler.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/StringUtils.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFunction.h"
@@ -2576,8 +2576,8 @@ bool TypeFunctionProperty::isWriteOnly() const
 
 class TypeFunctionCloner
 {
-    using SeenTypes = DenseHashMap2<TypeFunctionTypeId, TypeFunctionTypeId>;
-    using SeenTypePacks = DenseHashMap2<TypeFunctionTypePackId, TypeFunctionTypePackId>;
+    using SeenTypes = DenseHashMap<TypeFunctionTypeId, TypeFunctionTypeId>;
+    using SeenTypePacks = DenseHashMap<TypeFunctionTypePackId, TypeFunctionTypePackId>;
 
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
 

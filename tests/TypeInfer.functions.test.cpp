@@ -13,6 +13,8 @@
 #include "ScopedFlags.h"
 #include "doctest.h"
 
+#include <algorithm>
+
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
@@ -25,7 +27,9 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
+LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1431,10 +1435,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument
         {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
     };
 
-
     CheckResult result = check(R"(
-local a = {{x=4}, {x=7}, {x=1}}
-table.sort(a, function(x, y) return x.x < y.x end)
+        local a = {{x=4}, {x=7}, {x=1}}
+        table.sort(a, function(x, y) return x.x < y.x end)
     )");
 
     // FIXME CLI-161355: We *should* be able to bidirectionally push the type
@@ -2375,6 +2378,89 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_wi
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_argument_types")
+{
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
+    CheckResult result = check(R"(
+        type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, number) -> string }))
+        local f = (nil :: any) :: Callable
+
+        local ok: string = f(1)
+        local bad: string = f("wrong")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_variadic_argument_types")
+{
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
+    CheckResult result = check(R"(
+        type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
+        local f = (nil :: any) :: Callable
+
+        f(1, 2, 3)
+        f(1, "wrong")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+// A variadic parameter has no index of its own, so the argument index is recovered from
+// the superPath. Without that, the error lands on the last argument rather than the bad one.
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_the_offending_argument")
+{
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
+    CheckResult result = check(R"(
+        type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
+        local f = (nil :: any) :: Callable
+
+        f(1, "wrong", 3)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+
+    // Check if the type error was reported on the second argument ("wrong")
+    CHECK_EQ(result.errors[0].location, Location{{4, 13}, {4, 20}});
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_each_offending_argument")
+{
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
+    CheckResult result = check(R"(
+        type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
+        local f = (nil :: any) :: Callable
+
+        f("a", 2, "b")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    // The two errors arrive in an order that differs between standard libraries, so sort them by
+    // location first, which is what the frontend does before anyone sees them.
+    std::vector<TypeError> errors = result.errors;
+    std::sort(
+        errors.begin(),
+        errors.end(),
+        [](const TypeError& lhs, const TypeError& rhs)
+        {
+            return lhs.location.begin < rhs.location.begin;
+        }
+    );
+
+    CHECK(get<TypeMismatch>(errors[0]));
+    CHECK_EQ(errors[0].location, Location{{4, 10}, {4, 13}});
+
+    CHECK(get<TypeMismatch>(errors[1]));
+    CHECK_EQ(errors[1].location, Location{{4, 18}, {4, 21}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
@@ -4408,6 +4494,50 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2623_double_negate_string")
 
         local node: Foo = { tag = "str" }
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2670_generic_leaking_indexer_1")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauDoNotLeakGenericsInIndexer, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function setDefault<K, V>(t: { [K]: V? }): V
+            return nil :: any
+        end
+
+        local t = {hello = "world"}
+        setDefault(t, "green", "42")
+
+        local x = t["h"]
+
+    )"));
+
+    CHECK_EQ("{ [unknown]: unknown?, hello: string }", toString(requireType("t"), {true}));
+    // TODO CLI-181248: This seems incorrect.
+    CHECK_EQ("any", toString(requireType("x"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2670_generic_leaking_indexer_2")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauDoNotLeakGenericsInIndexer, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local set: <K, V>({ [K | number]: V | string }) -> V
+
+        local t = {hello = "world"}
+        set(t)
+
+        local k, v = next(t)
+
+    )"));
+
+    // TODO CLI-181248: This also seems not entirely correct.
+    CHECK_EQ("number?", toString(requireType("k"), {true}));
+    CHECK_EQ("string", toString(requireType("v"), {true}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_callback_in_array")

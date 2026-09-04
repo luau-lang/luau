@@ -7,7 +7,7 @@
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
 #include "Luau/DcrLogger.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Error.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Metamethods.h"
@@ -35,6 +35,7 @@
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
@@ -43,6 +44,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -163,8 +165,8 @@ bool areEquivalent(const T& a, const T& b)
 
 struct TypeFunctionFinder : TypeOnceVisitor
 {
-    DenseHashSet2<TypeId> mentionedFunctions;
-    DenseHashSet2<TypePackId> mentionedFunctionPacks;
+    DenseHashSet<TypeId> mentionedFunctions;
+    DenseHashSet<TypePackId> mentionedFunctionPacks;
 
     TypeFunctionFinder()
         : TypeOnceVisitor("TypeFunctionFinder", /* skipBoundTypes */ true)
@@ -186,10 +188,10 @@ struct TypeFunctionFinder : TypeOnceVisitor
 
 struct InternalTypeFunctionFinder : TypeOnceVisitor
 {
-    DenseHashSet2<TypeId> internalFunctions;
-    DenseHashSet2<TypePackId> internalPackFunctions;
-    DenseHashSet2<TypeId> mentionedFunctions;
-    DenseHashSet2<TypePackId> mentionedFunctionPacks;
+    DenseHashSet<TypeId> internalFunctions;
+    DenseHashSet<TypePackId> internalPackFunctions;
+    DenseHashSet<TypeId> mentionedFunctions;
+    DenseHashSet<TypePackId> mentionedFunctionPacks;
 
     explicit InternalTypeFunctionFinder(std::vector<TypeId>& declStack)
         : TypeOnceVisitor("InternalTypeFunctionFinder", /* skipBoundTypes */ true)
@@ -1382,10 +1384,180 @@ void TypeChecker2::visit(AstStatClass* stat)
         else if (const auto* method = member.get_if<AstClassMethod>())
         {
             visit(method->function);
+            if (method->functionName == "__init")
+                visitConstructor(stat, method);
         }
         else
             LUAU_ASSERT(!"Unknown class member!");
     }
+}
+
+struct FindUninitializedAccesses : public AstVisitor
+{
+    NotNull<AstLocal> self;
+    NotNull<DenseHashSet<std::string>> uninitializedFields;
+    DenseHashSet<std::string> methodNames;
+
+    std::optional<AstExpr*> violatingRef;
+    DenseHashMap<std::string, AstExpr*> violatingFields;
+
+    FindUninitializedAccesses(AstLocal* self, NotNull<DenseHashSet<std::string>> uninitializedFields, DenseHashSet<std::string> methodNames)
+        : self(self)
+        , uninitializedFields(uninitializedFields)
+        , methodNames(std::move(methodNames))
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    }
+
+    bool visit(AstExprLocal* local) override
+    {
+        if (local->local == self && !uninitializedFields->empty())
+            violatingRef.emplace(local);
+
+        return false;
+    }
+
+    bool visit(AstExprIndexName* indexName) override
+    {
+        if (auto local = indexName->expr->as<AstExprLocal>(); local && local->local == self)
+        {
+            // We don't report on fields that simply don't exist. Other machinery will report that.
+            // We just care about fields that do exist, haven't been initialized, and are being used as rvalues.
+            std::string fieldName = indexName->index.value;
+
+            if (uninitializedFields->contains(fieldName))
+                violatingFields.try_insert(fieldName, indexName);
+            else if (methodNames.contains(fieldName) && !uninitializedFields->empty())
+                violatingRef.emplace(indexName);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    bool visit(AstExprIndexExpr* indexName) override
+    {
+        if (const AstExprLocal* local = indexName->expr->as<AstExprLocal>(); local && local->local == self)
+        {
+            if (const AstExprConstantString* str = indexName->index->as<AstExprConstantString>())
+            {
+                std::string key{str->value.data, str->value.size};
+                if (uninitializedFields->contains(key))
+                    violatingFields.try_insert(key, indexName);
+                else if (methodNames.contains(key) && !uninitializedFields->empty())
+                    violatingRef.emplace(indexName);
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool visit(AstExprTypeAssertion* expr) override
+    {
+        // If self is cast, we don't report
+        if (const AstExprLocal* local = expr->expr->as<AstExprLocal>(); local && local->local == self)
+            return false;
+        return true;
+    }
+};
+
+void TypeChecker2::visitConstructor(AstStatClass* stat, const AstClassMethod* method)
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    LUAU_ASSERT(stat);
+
+    if (method->function->args.size < 1)
+    {
+        reportError(SyntaxError{"__init must have at least one parameter."}, method->nameLocation);
+        return;
+    }
+
+    AstLocal* self = method->function->args.data[0];
+
+    if (self->name != "self")
+    {
+        reportError(SyntaxError{"__init's first parameter must be named 'self'."}, self->location);
+        return;
+    }
+
+    DenseHashSet<std::string> uninitializedFields;
+    DenseHashSet<std::string> methodNames;
+    for (const AstClassMember& field : stat->members)
+    {
+        if (const AstClassProperty* prop = get_if<AstClassProperty>(&field))
+        {
+            if (!prop->ty)
+            {
+                // Unannotated fields are assumed to be nilable.
+                continue;
+            }
+
+            if (TypeId* propTy = module->astResolvedTypes.find(prop->ty))
+            {
+                if (subtyping->isSubtype(builtinTypes->nilType, *propTy, stack.back()).isSubtype)
+                    continue;
+                // TODO CLI-222651: Also support error suppressing types
+            }
+
+            uninitializedFields.insert(prop->name.value);
+        }
+        else if (const AstClassMethod* method = get_if<AstClassMethod>(&field))
+            methodNames.insert(method->functionName.value);
+    }
+
+    FindUninitializedAccesses finder{self, NotNull{&uninitializedFields}, std::move(methodNames)};
+
+    for (auto stat : method->function->body->body)
+    {
+        // We only check assignments which are executed unconditionally
+        if (auto assignment = stat->as<AstStatAssign>())
+        {
+            // First search initializers for offending field accesses
+            for (auto expr : assignment->values)
+                expr->visit(&finder);
+
+            // Then note which fields we've initialized
+            for (auto expr : assignment->vars)
+            {
+                if (auto indexName = expr->as<AstExprIndexName>())
+                {
+                    if (auto local = indexName->expr->as<AstExprLocal>())
+                    {
+                        if (local->local == self)
+                        {
+                            std::string key = indexName->index.value;
+                            uninitializedFields.erase(key);
+                        }
+                    }
+                }
+                else if (const AstExprIndexExpr* indexExpr = expr->as<AstExprIndexExpr>())
+                {
+                    if (const AstExprLocal* local = indexExpr->expr->as<AstExprLocal>())
+                    {
+                        if (local->local != self)
+                            continue;
+
+                        if (const AstExprConstantString* str = indexExpr->index->as<AstExprConstantString>())
+                        {
+                            std::string key{str->value.data, str->value.size};
+                            uninitializedFields.erase(key);
+                        }
+                    }
+                }
+            }
+        }
+        else
+            stat->visit(&finder);
+    }
+
+    if (finder.violatingRef)
+        reportError(UninitializedFieldAccess{std::nullopt}, finder.violatingRef.value()->location);
+
+    for (const auto& [key, expr] : finder.violatingFields)
+        reportError(UninitializedFieldAccess{key}, expr->location);
 }
 
 void TypeChecker2::visit(AstStatError* stat)
@@ -1731,7 +1903,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
         limits,
         call->location,
     };
-    DenseHashSet2<TypeId> uniqueTypes;
+    DenseHashSet<TypeId> uniqueTypes;
     findUniqueTypes(NotNull{&uniqueTypes}, argExprs, NotNull{&module->astTypes});
 
     TypePackId argsPack = module->internalTypes->addTypePack(args);
@@ -1766,17 +1938,45 @@ void TypeChecker2::visitCall(AstExprCall* call)
     {
         for (const auto& [ty, reasons] : result2.incompatibleOverloads)
         {
-            if (const SubtypingReasonings* sr = get_if<SubtypingReasonings>(&reasons))
+            if (FFlag::LuauFixCallMetamethodErrorReporting)
             {
-                for (const SubtypingReasoning& reason : *sr)
-                    resolver.reportErrors(module->errors, ty, call->func->location, module->name, argsPack, argExprs, reason);
-            }
-            else if (const auto errorVec = get_if<ErrorVec>(&reasons))
-            {
-                reportErrors(*errorVec);
+                // A metamethod is reasoned about with the callee prepended, so reporting
+                // traverses that same pack. Otherwise the lookup misses and the error is lost.
+                TypePackId reportedArgs = argsPack;
+                std::vector<AstExpr*> reportedExprs = argExprs;
+
+                if (result2.metamethods.contains(ty))
+                {
+                    reportedArgs = module->internalTypes->addTypePack(TypePack{{fnTy}, argsPack});
+                    reportedExprs.insert(reportedExprs.begin(), call->func);
+                }
+
+                if (const SubtypingReasonings* sr = get_if<SubtypingReasonings>(&reasons))
+                {
+                    for (const SubtypingReasoning& reason : *sr)
+                        resolver.reportErrors(module->errors, ty, call->func->location, module->name, reportedArgs, reportedExprs, reason);
+                }
+                else if (const auto errorVec = get_if<ErrorVec>(&reasons))
+                {
+                    reportErrors(*errorVec);
+                }
+                else
+                    LUAU_ASSERT(!"Unreachable");
             }
             else
-                LUAU_ASSERT(!"Unreachable");
+            {
+                if (const SubtypingReasonings* sr = get_if<SubtypingReasonings>(&reasons))
+                {
+                    for (const SubtypingReasoning& reason : *sr)
+                        resolver.reportErrors(module->errors, ty, call->func->location, module->name, argsPack, argExprs, reason);
+                }
+                else if (const auto errorVec = get_if<ErrorVec>(&reasons))
+                {
+                    reportErrors(*errorVec);
+                }
+                else
+                    LUAU_ASSERT(!"Unreachable");
+            }
         }
 
         return;
@@ -1862,6 +2062,8 @@ void TypeChecker2::visit(AstExprCall* call)
         flipper.emplace(&typeContext, TypeContext::Default);
 
     visit(call->func, ValueContext::RValue);
+    if (FFlag::LuauStrictVisitInstantiatedType)
+        visitTypeArguments(call->typeArguments);
 
     if (matchAssert(*call) && call->args.size > 0)
     {
@@ -2241,7 +2443,7 @@ void TypeChecker2::visit(AstExprUnary* expr)
 
     if (expr->op == AstExprUnary::Op::Len)
     {
-        DenseHashSet2<TypeId> seen;
+        DenseHashSet<TypeId> seen;
         int recursionCount = 0;
         std::shared_ptr<const NormalizedType> nty = normalizer.normalize(operandType);
 
@@ -2726,6 +2928,8 @@ void TypeChecker2::visit(AstExprIfElse* expr)
 void TypeChecker2::visit(AstExprInstantiate* explicitTypeInstantiation)
 {
     visit(explicitTypeInstantiation->expr, ValueContext::RValue);
+    if (FFlag::LuauStrictVisitInstantiatedType)
+        visitTypeArguments(explicitTypeInstantiation->typeArguments);
     checkTypeInstantiation(
         explicitTypeInstantiation->expr,
         lookupType(explicitTypeInstantiation->expr),
@@ -2777,9 +2981,21 @@ TypeId TypeChecker2::flattenPack(TypePackId pack)
     }
 }
 
+void TypeChecker2::visitTypeArguments(const AstArray<AstTypeOrPack>& typeArguments)
+{
+    for (const AstTypeOrPack& typeArgument : typeArguments)
+    {
+        LUAU_ASSERT(typeArgument.type || typeArgument.typePack);
+        if (typeArgument.type)
+            visit(typeArgument.type);
+        else
+            visit(typeArgument.typePack);
+    }
+}
+
 void TypeChecker2::visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks)
 {
-    DenseHashSet2<AstName> seen;
+    DenseHashSet<AstName> seen;
 
     for (const auto* g : generics)
     {
@@ -2848,6 +3064,16 @@ void TypeChecker2::visit(AstTypeReference* ty)
 
     if (alias.has_value())
     {
+        if (FFlag::LuauStrictVisitInstantiatedType)
+        {
+            // Generic defaults should be resolved before the corresponding type parameter is added to the alias scope.
+            // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
+            // As a result, we can't use `scope->lookupType` to check for the existence of the type, because it will find
+            // the parameter incorrectly, and thus accept a self-referece as a default value.
+            if (!ty->prefix && module->astTypeReferenceLookupFailures.contains(ty))
+                return reportError(UnknownSymbol{ty->name.value, UnknownSymbol::Context::Type}, ty->location);
+        }
+
         size_t typesRequired = alias->typeParams.size();
         size_t packsRequired = alias->typePackParams.size();
 
@@ -3038,7 +3264,19 @@ void TypeChecker2::visit(AstTypePackGeneric* tp)
     LUAU_ASSERT(scope);
 
     if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
+    {
+        if (FFlag::LuauStrictVisitInstantiatedType)
+        {
+            // Generic defaults should be resolved before the corresponding type parameter is added to the alias scope.
+            // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
+            // As a result, we can't use `scope->lookupPack` to check for the existence of the type pack, because it will find
+            // the parameter incorrectly, and thus accept a self-referece as a default value.
+            if (module->astTypePackReferenceLookupFailures.contains(tp))
+                return reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
+        }
+
         return;
+    }
 
     if (scope->lookupType(tp->genericName.value))
         return reportError(
@@ -3072,7 +3310,7 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
         return {};
 
     std::vector<std::string> reasons;
-    DenseHashSet2<std::string> seenReasons;
+    DenseHashSet<std::string> seenReasons;
     bool suppressed = true;
     for (const SubtypingReasoning& reasoning : r.reasoning)
     {
@@ -3345,7 +3583,7 @@ bool TypeChecker2::testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedT
 
     if (FFlag::LuauImproveUniqueTableWidthSubtyping && !FFlag::LuauBidirectionalInferenceSimplifyTables)
     {
-        DenseHashSet2<TypeId> uniqueTypes;
+        DenseHashSet<TypeId> uniqueTypes;
         findUniqueTypes(NotNull{&uniqueTypes}, std::vector{expr}, NotNull{&module->astTypes});
 
         // We create a separate `Subtyping` instance here because, in this
@@ -3672,7 +3910,7 @@ PropertyTypes TypeChecker2::lookupProp(
         if (result != NormalizationResult::True)
             return;
 
-        DenseHashSet2<TypeId> seen;
+        DenseHashSet<TypeId> seen;
         PropertyType res = hasIndexTypeFromType(ty, prop, context, location, seen, astIndexExprType, errors);
 
         if (res.present == NormalizationResult::HitLimits)
@@ -3726,7 +3964,7 @@ PropertyTypes TypeChecker2::lookupProp(
             if (result != NormalizationResult::True)
                 continue;
 
-            DenseHashSet2<TypeId> seen;
+            DenseHashSet<TypeId> seen;
             PropertyType res = hasIndexTypeFromType(ty, prop, context, location, seen, astIndexExprType, errors);
 
             if (res.present == NormalizationResult::HitLimits)
@@ -3747,7 +3985,7 @@ PropertyTypes TypeChecker2::lookupProp(
             if (result != NormalizationResult::True)
                 continue;
 
-            DenseHashSet2<TypeId> seen;
+            DenseHashSet<TypeId> seen;
             PropertyType res = hasIndexTypeFromType(ty, prop, context, location, seen, astIndexExprType, errors);
 
             if (res.present == NormalizationResult::HitLimits)
@@ -3903,7 +4141,7 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
     const std::string& prop,
     ValueContext context,
     const Location& location,
-    DenseHashSet2<TypeId>& seen,
+    DenseHashSet<TypeId>& seen,
     TypeId astIndexExprType,
     std::vector<TypeError>& errors
 )
@@ -4038,7 +4276,7 @@ void TypeChecker2::suggestAnnotations(AstExprFunction* expr, TypeId ty)
     LUAU_ASSERT(inferredFtv);
 
     VecDeque<TypeId> workList;
-    DenseHashSet2<TypeId> seen;
+    DenseHashSet<TypeId> seen;
 
     TypeFunctionReductionGuesser guesser{NotNull{module->internalTypes.get()}, builtinTypes, NotNull{&normalizer}};
     for (TypeId retTy : inferredFtv->retTypes)

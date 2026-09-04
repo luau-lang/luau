@@ -491,12 +491,12 @@ private:
      * We use this to avoid doing second-pass analysis of type aliases that are duplicates. We record a pair
      * (exported, name) to properly deal with the case where the two duplicates do not have the same export status.
      */
-    DenseHashSet2<std::pair<bool, Name>, HashBoolNamePair> duplicateTypeAliases;
+    DenseHashSet<std::pair<bool, Name>, HashBoolNamePair> duplicateTypeAliases;
 
     /**
      * A set of incorrect class definitions which is used to avoid a second-pass analysis.
      */
-    DenseHashSet2<const AstStatDeclareExternType*> incorrectExternTypeDefinitions;
+    DenseHashSet<const AstStatDeclareExternType*> incorrectExternTypeDefinitions;
 
     std::vector<std::pair<TypeId, ScopePtr>> deferredQuantification;
 };

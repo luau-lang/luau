@@ -13,6 +13,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 
@@ -180,7 +181,7 @@ OverloadResolution OverloadResolver::resolveOverload(
     TypeId ty,
     TypePackId argsPack,
     Location fnLocation,
-    NotNull<DenseHashSet2<TypeId>> uniqueTypes,
+    NotNull<DenseHashSet<TypeId>> uniqueTypes,
     bool useFreeTypeBounds
 )
 {
@@ -320,6 +321,14 @@ void OverloadResolver::reportErrors(
 ) const
 {
     std::optional<size_t> argumentIndex = getArgumentIndex(reason.subPath, fnTy);
+
+    // A variadic parameter has no index of its own, so the subPath stops at the tail. The
+    // argument that failed against it is the one the superPath names.
+    if (FFlag::LuauFixCallMetamethodErrorReporting && !argumentIndex)
+    {
+        const TypeId given = arena->addType(FunctionType{argPack, builtinTypes->anyTypePack});
+        argumentIndex = getArgumentIndex(reason.superPath, given);
+    }
 
     Location argLocation;
     // If the Nth argument directly corresponds to a term in the AST, use its location.
@@ -493,7 +502,7 @@ void OverloadResolver::testFunction(
     TypeId fnTy,
     TypePackId argsPack,
     Location fnLocation,
-    NotNull<DenseHashSet2<TypeId>> uniqueTypes
+    NotNull<DenseHashSet<TypeId>> uniqueTypes
 )
 {
     fnTy = follow(fnTy);
@@ -588,7 +597,7 @@ void OverloadResolver::testFunctionOrUnion(
     TypeId fnTy,
     TypePackId argsPack,
     Location fnLocation,
-    NotNull<DenseHashSet2<TypeId>> uniqueTypes
+    NotNull<DenseHashSet<TypeId>> uniqueTypes
 )
 {
     LUAU_ASSERT(fnTy == follow(fnTy));
@@ -642,7 +651,7 @@ void OverloadResolver::testFunctionOrCallMetamethod(
     TypeId fnTy,
     TypePackId argsPack,
     Location fnLocation,
-    NotNull<DenseHashSet2<TypeId>> uniqueTypes
+    NotNull<DenseHashSet<TypeId>> uniqueTypes
 )
 {
     fnTy = follow(fnTy);

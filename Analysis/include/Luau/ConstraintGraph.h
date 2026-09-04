@@ -64,7 +64,7 @@ struct ConstraintList
     Iterator end();
 
 private:
-    DenseHashMap2<ConstraintVertex, bool, HashBlockedConstraintId> present;
+    DenseHashMap<ConstraintVertex, bool, HashBlockedConstraintId> present;
     std::vector<ConstraintVertex> order;
     size_t entries = 0;
 };
@@ -92,7 +92,7 @@ private:
  */
 struct ConstraintGraph
 {
-    using ConstraintMap = DenseHashMap2<ConstraintVertex, ConstraintList*, HashBlockedConstraintId>;
+    using ConstraintMap = DenseHashMap<ConstraintVertex, ConstraintList*, HashBlockedConstraintId>;
 
     ConstraintGraph(NotNull<BuiltinTypes> builtinTypes);
 
@@ -105,7 +105,7 @@ struct ConstraintGraph
     TypeIds freeTypes;
 
     // Map a function's signature scope back to its signature type.
-    DenseHashMap2<Scope*, TypeId> scopeToFunction;
+    DenseHashMap<Scope*, TypeId> scopeToFunction;
 
     /**
      * Add [dependency] as a blocker for [target]

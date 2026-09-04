@@ -10,7 +10,7 @@
 #include "Luau/ConstraintSolver.h"
 #include "Luau/ControlFlowGraph.h"
 #include "Luau/DataFlowGraph.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/DumpCFG.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/ExpectedTypeVisitor.h"
@@ -41,7 +41,6 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
-LUAU_FASTINTVARIABLE(LuauCyclicSccWarningThreshold, 4)
 
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(LuauFrontendSourceNodeErase)
@@ -52,6 +51,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode)
 LUAU_FASTFLAGVARIABLE(DebugLuauAlwaysShowConstraintSolvingIncomplete)
+LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauExportValueTypecheck)
 LUAU_FLAGVERSION(LuauExportValueTypecheck, 2)
@@ -282,7 +282,7 @@ ErrorVec accumulateErrors(
     const ModuleName& name
 )
 {
-    DenseHashSet2<ModuleName> seen;
+    DenseHashSet<ModuleName> seen;
     std::vector<ModuleName> queue{name};
 
     ErrorVec result;
@@ -362,7 +362,7 @@ std::vector<RequireCycle> getRequireCycles(
 {
     std::vector<RequireCycle> result;
 
-    DenseHashSet2<const SourceNode*> seen;
+    DenseHashSet<const SourceNode*> seen;
     std::vector<const SourceNode*> stack;
     std::vector<const SourceNode*> path;
 
@@ -511,7 +511,7 @@ void Frontend::parseModules(const std::vector<ModuleName>& names)
 {
     LUAU_TIMETRACE_SCOPE("Frontend::parseModules", "Frontend");
 
-    DenseHashSet2<Luau::ModuleName> seen;
+    DenseHashSet<Luau::ModuleName> seen;
 
     for (const ModuleName& name : names)
     {
@@ -557,7 +557,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     if (FFlag::LuauCyclicRequireTypeInference)
         computeSCCs(buildQueue);
 
-    DenseHashSet2<Luau::ModuleName> seen;
+    DenseHashSet<Luau::ModuleName> seen;
     std::vector<BuildQueueItem> buildQueueItems;
     addBuildQueueItems(buildQueueItems, buildQueue, cycleDetected, seen, frontendOptions);
     LUAU_ASSERT(!buildQueueItems.empty());
@@ -639,7 +639,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(
     std::vector<ModuleName> currModuleQueue;
     std::swap(currModuleQueue, moduleQueue);
 
-    DenseHashSet2<Luau::ModuleName> seen;
+    DenseHashSet<Luau::ModuleName> seen;
 
     std::shared_ptr<BuildQueueWorkState> state = std::make_shared<BuildQueueWorkState>();
 
@@ -968,7 +968,7 @@ bool Frontend::parseGraph(
         Permanent
     };
 
-    DenseHashMap2<SourceNode*, Mark> seen;
+    DenseHashMap<SourceNode*, Mark> seen;
     std::vector<SourceNode*> stack;
     std::vector<SourceNode*> path;
     bool cyclic = false;
@@ -1091,7 +1091,7 @@ static std::vector<ModuleSCCPtr> computeTarjanSCCs(
     if (N == 0)
         return {};
 
-    DenseHashMap2<ModuleName, size_t> nameToVertex;
+    DenseHashMap<ModuleName, size_t> nameToVertex;
     for (size_t i = 0; i < N; i++)
         nameToVertex[buildQueue[i]] = i;
 
@@ -1261,12 +1261,12 @@ void Frontend::addBuildQueueItems(
     std::vector<BuildQueueItem>& items,
     std::vector<ModuleName>& buildQueue,
     bool cycleDetected,
-    DenseHashSet2<Luau::ModuleName>& seen,
+    DenseHashSet<Luau::ModuleName>& seen,
     const FrontendOptions& frontendOptions
 )
 {
     // Map SCC pointer to item index for grouping SCC members into a single BuildQueueItem
-    DenseHashMap2<ModuleSCC*, size_t> sccToItemIndex;
+    DenseHashMap<ModuleSCC*, size_t> sccToItemIndex;
 
     for (const ModuleName& moduleName : buildQueue)
     {
@@ -1382,12 +1382,12 @@ static void applyInternalLimitScaling(SourceNode& sourceNode, const ModulePtr mo
 
 struct CyclicTopLevelAccessVisitor : public AstVisitor
 {
-    NotNull<const DenseHashMap2<Name, ModuleName>> peerImports;
+    NotNull<const DenseHashMap<Name, ModuleName>> peerImports;
     NotNull<std::vector<TypeError>> errors;
     ModuleName moduleName;
 
     CyclicTopLevelAccessVisitor(
-        NotNull<const DenseHashMap2<Name, ModuleName>> peerImports,
+        NotNull<const DenseHashMap<Name, ModuleName>> peerImports,
         NotNull<std::vector<TypeError>> errors,
         ModuleName moduleName
     )
@@ -1443,7 +1443,7 @@ static void errorOnCyclicTopLevelAccess(const SourceModule& sourceModule, const 
     if (!rootScope || rootScope->importedModules.empty())
         return;
 
-    DenseHashSet2<ModuleName> peerSet;
+    DenseHashSet<ModuleName> peerSet;
     for (const auto& member : sccMembers)
     {
         if (member != sourceModule.name)
@@ -1453,7 +1453,7 @@ static void errorOnCyclicTopLevelAccess(const SourceModule& sourceModule, const 
     if (peerSet.empty())
         return;
 
-    DenseHashMap2<Name, ModuleName> peerImports;
+    DenseHashMap<Name, ModuleName> peerImports;
     for (const auto& [localName, importedModule] : rootScope->importedModules)
     {
         if (peerSet.contains(importedModule))
@@ -1608,7 +1608,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
         NotNull{rootScope.get()},
         {},
         {},
-        DenseHashMap2<Scope*, TypeId>{},
+        DenseHashMap<Scope*, TypeId>{},
         {},
         std::move(mergedDeferredConstraints),
     };
@@ -1646,7 +1646,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
 
     // Partition CG + solver errors to the appropriate modules by moduleName
     {
-        DenseHashMap2<ModuleName, ModulePtr> nameToModule;
+        DenseHashMap<ModuleName, ModulePtr> nameToModule;
         for (const BuildQueueModuleInfo& moduleInfo : item.modules)
             nameToModule[moduleInfo.name] = moduleInfo.module;
 
@@ -1758,33 +1758,6 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
     {
         for (BuildQueueModuleInfo& moduleInfo : item.modules)
             errorOnCyclicTopLevelAccess(*moduleInfo.sourceModule, moduleInfo.module, scc->members);
-    }
-
-    // Emit a warning on every SCC member if the cycle is large enough.
-    if (FInt::LuauCyclicSccWarningThreshold > 0 && scc->members.size() >= static_cast<size_t>(FInt::LuauCyclicSccWarningThreshold))
-    {
-        for (BuildQueueModuleInfo& moduleInfo : item.modules)
-        {
-            Location loc{};
-            for (const auto& [depName, depLoc] : moduleInfo.sourceNode->requireLocations)
-            {
-                if (depName != moduleInfo.name)
-                {
-                    for (const ModuleName& member : scc->members)
-                    {
-                        if (member == depName)
-                        {
-                            loc = depLoc;
-                            break;
-                        }
-                    }
-                    if (loc != Location{})
-                        break;
-                }
-            }
-
-            moduleInfo.module->errors.emplace_back(loc, moduleInfo.name, CyclicModuleGraphTooLarge{scc->members.size(), scc->members});
-        }
     }
 }
 
@@ -1946,6 +1919,11 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         module->astForInNextTypes.clear();
         module->astResolvedTypes.clear();
         module->astResolvedTypePacks.clear();
+        if (FFlag::LuauStrictVisitInstantiatedType)
+        {
+            module->astTypeReferenceLookupFailures.clear();
+            module->astTypePackReferenceLookupFailures.clear();
+        }
         module->astCompoundAssignResultTypes.clear();
         module->astScopes.clear();
         module->upperBoundContributors.clear();

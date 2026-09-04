@@ -18,7 +18,7 @@ namespace Luau
 struct SubtypingUnifier
 {
 
-    using UpperBounds = DenseHashMap2<TypeId, std::vector<std::pair<Location, TypeId>>>;
+    using UpperBounds = DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>>;
 
     /**
      * Represents attempting to dispatch some number of assumed constraints.

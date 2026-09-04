@@ -3,7 +3,7 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/Common.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 
 #include "ConstantFolding.h"
 #include "Utils.h"
@@ -98,13 +98,13 @@ struct Cost
 
 struct CostVisitor : AstVisitor
 {
-    const DenseHashMap2<AstExprCall*, int>& builtins;
-    const DenseHashMap2<AstExpr*, Constant>& constants;
+    const DenseHashMap<AstExprCall*, int>& builtins;
+    const DenseHashMap<AstExpr*, Constant>& constants;
 
-    DenseHashMap2<AstLocal*, uint64_t> vars;
+    DenseHashMap<AstLocal*, uint64_t> vars;
     Cost result;
 
-    CostVisitor(const DenseHashMap2<AstExprCall*, int>& builtins, const DenseHashMap2<AstExpr*, Constant>& constants)
+    CostVisitor(const DenseHashMap<AstExprCall*, int>& builtins, const DenseHashMap<AstExpr*, Constant>& constants)
         : builtins(builtins)
         , constants(constants)
     {
@@ -299,6 +299,14 @@ struct CostVisitor : AstVisitor
 
     bool visit(AstStatIf* node) override
     {
+        if (node->conditionLocal)
+        {
+            Cost arg = model(node->condition);
+
+            if (arg.constant != 0)
+                vars[node->conditionLocal] = arg.constant;
+        }
+
         if (isConstantFalse(constants, node->condition))
         {
             if (node->elsebody)
@@ -412,8 +420,8 @@ uint64_t modelCost(
     AstNode* root,
     AstLocal* const* vars,
     size_t varCount,
-    const DenseHashMap2<AstExprCall*, int>& builtins,
-    const DenseHashMap2<AstExpr*, Constant>& constants
+    const DenseHashMap<AstExprCall*, int>& builtins,
+    const DenseHashMap<AstExpr*, Constant>& constants
 )
 {
     CostVisitor visitor{builtins, constants};
@@ -427,8 +435,8 @@ uint64_t modelCost(
 
 uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount)
 {
-    DenseHashMap2<AstExprCall*, int> builtins;
-    DenseHashMap2<AstExpr*, Constant> constants;
+    DenseHashMap<AstExprCall*, int> builtins;
+    DenseHashMap<AstExpr*, Constant> constants;
 
     return modelCost(root, vars, varCount, builtins, constants);
 }

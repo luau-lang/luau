@@ -11,7 +11,7 @@
 #include "Luau/ControlFlowGraph.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/Def.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IterativeTypeVisitor.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Normalize.h"
@@ -51,8 +51,10 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauUdtfPopulateEnv)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
+LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
 
 namespace Luau
 {
@@ -254,7 +256,7 @@ bool hasFreeType(TypeId ty)
 
 struct GlobalNameCollector : public AstVisitor
 {
-    DenseHashSet2<AstName> names;
+    DenseHashSet<AstName> names;
 
     GlobalNameCollector() = default;
 
@@ -348,7 +350,7 @@ ConstraintSet ConstraintGenerator::run(AstStatBlock* block)
 
         // constraints, freeTypes, and ScopeToFunction are empty with LuauCyclicRequireTypeInference because they're added to ConstraintGraph instead
         // of ConstraintSet
-        return ConstraintSet{NotNull{rootScope}, {}, {}, DenseHashMap2<Scope*, TypeId>{}, std::move(errors), std::move(deferred)};
+        return ConstraintSet{NotNull{rootScope}, {}, {}, DenseHashMap<Scope*, TypeId>{}, std::move(errors), std::move(deferred)};
     }
 
     return ConstraintSet{NotNull{rootScope}, std::move(constraints), std::move(freeTypes), std::move(scopeToFunction), std::move(errors)};
@@ -359,7 +361,7 @@ ConstraintSet ConstraintGenerator::runOnFragment(const ScopePtr& resumeScope, As
     visitFragmentRoot(resumeScope, block);
 
     if (FFlag::LuauCyclicRequireTypeInference)
-        return ConstraintSet{NotNull{rootScope}, {}, {}, DenseHashMap2<Scope*, TypeId>{}, std::move(errors)};
+        return ConstraintSet{NotNull{rootScope}, {}, {}, DenseHashMap<Scope*, TypeId>{}, std::move(errors)};
     return ConstraintSet{NotNull{rootScope}, std::move(constraints), std::move(freeTypes), std::move(scopeToFunction), std::move(errors)};
 }
 
@@ -916,7 +918,7 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
  */
 void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstStatBlock* block)
 {
-    DenseHashMap2<Name, Location> typeNameLocations;
+    DenseHashMap<Name, Location> typeNameLocations;
 
     bool hasTypeFunction = false;
     ScopePtr typeFunctionEnvScope;
@@ -1080,17 +1082,16 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
             scope->lvalueTypes[theDef] = theTy;
 
             // Objects are ExternTypes, where the metatable field represents the metamethods associated with the instance, ** not ** the class itself.
-            // Class: ExternType { props, parent: top class type, metatable: {__call -- this lets it be called as a constructor } }
+            // Class: ExternType { props, parent: top class type }
             // Object: ExternType { props, parent: top object type for now, metatable: instance metamethods }
             // TODO: we should add a direct reference to the `class` on the `object` type (probably useful for classof)
             TableType::Props staticProps;
             ExternType::Props props;
             TableType::Props instanceMetatableProps;
-            DenseHashMap2<AstName, TypeId> memberTypes;
+            DenseHashMap<AstName, TypeId> memberTypes;
 
-            TypeId ctorArgTy = arena->addType(TableType{TableType::Props{}, std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed});
-            TableType* ctorArgTable = getMutable<TableType>(ctorArgTy);
-            LUAU_ASSERT(ctorArgTable);
+            bool hasExplicitConstructor = false;
+            TableType::Props defaultConstructorProps;
 
             for (const auto& member : classDecl->members)
             {
@@ -1111,10 +1112,9 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
                             p = Property::rw(propertyType);
                             p.location = classProp.nameLocation;
 
-                            // We make the constructor take read-only args.
-                            // This is true, in that we do not write to the
-                            // table you pass for constructing an object.
-                            ctorArgTable->props[classProp.name.value] = Property::readonly(propertyType);
+                            // We make the default constructor take read-only args. This is true, in that we do not write to the table you pass for
+                            // constructing an object.
+                            defaultConstructorProps[classProp.name.value] = Property::readonly(propertyType);
                         },
                         [&](const AstClassMethod& method)
                         {
@@ -1134,6 +1134,14 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
                                 instanceMetatableProps[method.functionName.value] = prop;
                             else
                                 props[method.functionName.value] = prop;
+
+                            if (method.functionName == "__init")
+                            {
+                                hasExplicitConstructor = true;
+                                TypeId newBlockedTy = arena->addType(BlockedType{});
+                                memberTypes.try_insert(module->names->getOrAdd("new"), newBlockedTy);
+                                staticProps["new"] = Property::readonly(newBlockedTy);
+                            }
                         }
                     },
                     member
@@ -1148,15 +1156,17 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
                 }
             );
 
-            TypeId ctorTy =
-                arena->addType(FunctionType{arena->addTypePack({builtinTypes->unknownType, ctorArgTy}), arena->addTypePack({classInstanceTy})});
-
-            TypeId metatableTy = arena->addType(
-                TableType{TableType::Props{{"__call", Property::readonly(ctorTy)}}, std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed}
-            );
+            // If this class doesn't define an explicit constructor, we don't yet know what its type is at this point.
+            // We handle the explicit constructor in ConstraintGenerator::visit(AstStatClass)
+            if (!hasExplicitConstructor)
+            {
+                TypeId ctorArgTy = arena->addType(TableType{defaultConstructorProps, std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed});
+                TypeId ctorTy = arena->addType(FunctionType{arena->addTypePack({ctorArgTy}), arena->addTypePack({classInstanceTy})});
+                staticProps.try_emplace("new", Property::readonly(ctorTy));
+            }
 
             TypeId externTy = arena->addType(
-                ExternType{declName, staticProps, builtinTypes->classType, metatableTy, Tags{}, nullptr, module->name, classDecl->location}
+                ExternType{declName, staticProps, builtinTypes->classType, std::nullopt, Tags{}, nullptr, module->name, classDecl->location}
             );
 
             // Setup a bidirectional relationship between classes and objects
@@ -1183,7 +1193,7 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
         typeFunctionEnvScope = std::make_shared<Scope>(typeFunctionRuntime->rootScope);
 
     std::vector<TypeFunctionInstanceType*> createdTypeFunctions;
-    DenseHashMap2<AstStatTypeFunction*, const TypeFunctionInstanceType*> referencedTypeFunctions;
+    DenseHashMap<AstStatTypeFunction*, const TypeFunctionInstanceType*> referencedTypeFunctions;
 
     // Additional pass for user-defined type functions to fill in their environments completely
     for (AstStat* stat : block->body)
@@ -1482,7 +1492,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
     std::vector<TypeId> deferredTypes;
     auto [head, tail] = flatten(rvaluePack);
 
-    DenseHashSet2<BlockedType*> freshBlockedTypes;
+    DenseHashSet<BlockedType*> freshBlockedTypes;
 
     for (size_t i = 0; i < statLocal->vars.size; ++i)
     {
@@ -2020,8 +2030,10 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatIf* ifState
 {
     if (FFlag::DebugLuauCFG)
     {
+        // TODO CLI-222927: `if local`/`if const` support in CFG branch left for later as its design isn't fully complete
         check(scope, ifStatement->condition, std::nullopt);
         ScopePtr thenScope = childScope(ifStatement->thenbody, scope);
+
         visit(thenScope, ifStatement->thenbody);
         if (ifStatement->elsebody)
         {
@@ -2032,17 +2044,46 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatIf* ifState
     }
     else
     {
-        RefinementId refinement = [&]()
-        {
-            InConditionalContext flipper{&typeContext};
-            return check(scope, ifStatement->condition, std::nullopt).refinement;
-        }();
-
         ScopePtr thenScope = childScope(ifStatement->thenbody, scope);
-        applyRefinements(thenScope, ifStatement->condition->location, refinement);
-
         ScopePtr elseScope = childScope(ifStatement->elsebody ? ifStatement->elsebody : ifStatement, scope);
-        applyRefinements(elseScope, ifStatement->elseLocation.value_or(ifStatement->condition->location), refinementArena.negation(refinement));
+
+        if (FFlag::DebugLuauIfLocalAnalysis && ifStatement->conditionLocal)
+        {
+            std::optional<TypeId> annotatedType;
+            if (ifStatement->conditionLocal->annotation)
+                annotatedType = resolveType(scope, ifStatement->conditionLocal->annotation, /* inTypeArguments */ false);
+
+            TypeId initType = [&]()
+            {
+                InConditionalContext flipper{&typeContext};
+                return check(scope, ifStatement->condition, annotatedType).ty;
+            }();
+
+            TypeId baseType = annotatedType ? *annotatedType : initType;
+            TypeId boundType = createTypeFunctionInstance(
+                builtinTypes->typeFunctions->refineFunc,
+                {baseType, builtinTypes->truthyType},
+                {},
+                thenScope,
+                ifStatement->conditionLocal->location
+            );
+
+            thenScope->bindings[ifStatement->conditionLocal] = Binding{boundType, ifStatement->conditionLocal->location};
+
+            DefId def = dfg->getDef(ifStatement->conditionLocal);
+            thenScope->lvalueTypes[def] = boundType;
+        }
+        else
+        {
+            RefinementId refinement = [&]()
+            {
+                InConditionalContext flipper{&typeContext};
+                return check(scope, ifStatement->condition, std::nullopt).refinement;
+            }();
+
+            applyRefinements(thenScope, ifStatement->condition->location, refinement);
+            applyRefinements(elseScope, ifStatement->elseLocation.value_or(ifStatement->condition->location), refinementArena.negation(refinement));
+        }
 
         ControlFlow thencf = visit(thenScope, ifStatement->thenbody);
         ControlFlow elsecf = ControlFlow::None;
@@ -2565,20 +2606,70 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
                     Checkpoint end = checkpoint(this);
 
                     NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
-                    std::unique_ptr<Constraint> c =
+
+                    NotNull<Constraint> genConstraint = addConstraint(
+                        scope,
                         FFlag::LuauCyclicRequireTypeInference
                             ? std::make_unique<Constraint>(
                                   constraintScope, method.function->location, GeneralizationConstraint{functionType, sig.signature}, sharedModuleName
                               )
                             : std::make_unique<Constraint>(
                                   constraintScope, method.function->location, GeneralizationConstraint{functionType, sig.signature}
-                              );
+                              )
+                    );
 
-                    propagateDeprecatedAttributeToConstraint(c->c, method.function);
+                    propagateDeprecatedAttributeToConstraint(genConstraint->c, method.function);
 
-                    addAllAsDependenciesAndChainReturns(start, end, this, NotNull{c.get()});
+                    addAllAsDependenciesAndChainReturns(start, end, this, genConstraint);
 
-                    getMutable<BlockedType>(functionType)->setOwner(addConstraint(scope, std::move(c)));
+                    getMutable<BlockedType>(functionType)->setOwner(genConstraint);
+
+                    if (method.functionName == "__init")
+                    {
+                        // The signature of ClassName.new() is the same as that of __init() except without the leading self argument.
+                        // It also always returns an instance of the class.
+                        const FunctionType* initFn = get<FunctionType>(sig.signature);
+                        LUAU_ASSERT(initFn);
+
+                        TypePackId newArgs = nullptr;
+
+                        auto iter = begin(initFn->argTypes);
+                        auto endIter = Luau::end(initFn->argTypes);
+                        if (iter == endIter)
+                        {
+                            // The parser complains if __init() does not take self as its first argument.
+                            newArgs = iter.tail().value_or(builtinTypes->emptyTypePack);
+                        }
+                        else
+                        {
+                            // Skip the first argument (self).  Collect the rest.
+                            ++iter;
+                            newArgs = typePackFromIterator(arena, iter, endIter);
+                        }
+                        LUAU_ASSERT(newArgs != nullptr);
+
+                        // Copy all properties of the __init function except for
+                        // its first argument, return type, and hasSelf.
+                        FunctionType newFunction = *initFn;
+                        newFunction.argTypes = newArgs;
+                        newFunction.retTypes = arena->addTypePack({classDeclRecord->ty});
+                        newFunction.hasSelf = false;
+
+                        // Also clip self and the return pack from the generic list.
+                        auto eraseValue = [](auto& vec, auto val)
+                        {
+                            vec.erase(std::remove(vec.begin(), vec.end(), val), vec.end());
+                        };
+                        eraseValue(newFunction.generics, classDeclRecord->ty);
+                        eraseValue(newFunction.genericPacks, initFn->retTypes);
+
+                        TypeId newFn = arena->addType(std::move(newFunction));
+
+                        const TypeId* newEntry = classDeclRecord->memberTypes.find(module->names->getOrAdd("new"));
+                        LUAU_ASSERT(newEntry != nullptr);
+                        LUAU_ASSERT(get<BlockedType>(*newEntry));
+                        emplaceType<BoundType>(asMutable(*newEntry), newFn);
+                    }
                 }
             },
             member
@@ -4476,6 +4567,9 @@ TypeId ConstraintGenerator::resolveReferenceType(
     }
     else
     {
+        // The type checker will report the lookup failure when it visits the type later.
+        if (FFlag::LuauStrictVisitInstantiatedType)
+            module->astTypeReferenceLookupFailures.insert(ty);
         result = builtinTypes->errorType;
         if (replaceErrorWithFresh)
             result = freshType(scope, Polarity::Mixed);
@@ -4795,7 +4889,11 @@ TypePackId ConstraintGenerator::resolveTypePack_(const ScopePtr& scope, AstTypeP
         }
         else
         {
-            reportError(tp->location, UnknownSymbol{gen->genericName.value, UnknownSymbol::Context::Type});
+            // The type checker will report the lookup failure when it visits the type pack later.
+            if (FFlag::LuauStrictVisitInstantiatedType)
+                module->astTypePackReferenceLookupFailures.insert(tp);
+            else
+                reportError(tp->location, UnknownSymbol{gen->genericName.value, UnknownSymbol::Context::Type});
             result = builtinTypes->errorTypePack;
         }
     }
@@ -4992,7 +5090,7 @@ struct GlobalPrepopulator : AstVisitor
     const NotNull<TypeArena> arena;
     const NotNull<const DataFlowGraph> dfg;
 
-    DenseHashSet2<AstName> uninitializedGlobals;
+    DenseHashSet<AstName> uninitializedGlobals;
 
     GlobalPrepopulator(NotNull<Scope> globalScope, NotNull<TypeArena> arena, NotNull<const DataFlowGraph> dfg)
         : globalScope(globalScope)
@@ -5088,7 +5186,7 @@ void ConstraintGenerator::prepopulateGlobalScope(const ScopePtr& globalScope, As
 
 bool ConstraintGenerator::recordPropertyAssignment(TypeId ty)
 {
-    DenseHashSet2<TypeId> seen;
+    DenseHashSet<TypeId> seen;
     VecDeque<TypeId> queue;
 
     queue.push_back(ty);

@@ -247,6 +247,7 @@ typedef struct global_State
 
     TValue weakregistry; // backing table for lua_weakref/lua_weakunref/lua_getweakref
     int weakregistryfree; // next free slot in weakregistry
+    int weakregistrytop; // top of the weakregistry (highest used index)
     lua_EmbedderGc embeddergc; // embedder GC callback for keeping weak references alive
 
     TString* lightuserdataname[LUA_LUTAG_LIMIT]; // names for tagged lightuserdata

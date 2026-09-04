@@ -11,8 +11,8 @@ namespace Luau
 
 Replacer::Replacer(
     NotNull<TypeArena> arena,
-    NotNull<DenseHashMap2<TypeId, TypeId>> replacements,
-    NotNull<DenseHashMap2<TypePackId, TypePackId>> replacementPacks
+    NotNull<DenseHashMap<TypeId, TypeId>> replacements,
+    NotNull<DenseHashMap<TypePackId, TypePackId>> replacementPacks
 )
     : Substitution(TxnLog::empty(), arena)
     , replacements(replacements)
@@ -185,8 +185,8 @@ TypePackId Instantiation2_DEPRECATED::clean(TypePackId tp)
 
 void resolveGenericSubstitutions(
     TypeArena* arena,
-    DenseHashMap2<TypeId, TypeId>& genericSubstitutions,
-    DenseHashMap2<TypePackId, TypePackId>& genericPackSubstitutions,
+    DenseHashMap<TypeId, TypeId>& genericSubstitutions,
+    DenseHashMap<TypePackId, TypePackId>& genericPackSubstitutions,
     NotNull<Subtyping> subtyping,
     NotNull<Scope> scope
 )
@@ -194,7 +194,7 @@ void resolveGenericSubstitutions(
     // Collect the set of original free type IDs from genericSubstitutions
     // before we overwrite the map values.  These are the types that may
     // appear inside type pack substitutions and need to be resolved.
-    DenseHashSet2<TypeId> originalFreeTypes;
+    DenseHashSet<TypeId> originalFreeTypes;
     for (auto& [_, v] : genericSubstitutions)
     {
         TypeId followed = follow(v);
@@ -261,8 +261,8 @@ void resolveGenericSubstitutions(
 
 std::optional<TypeId> instantiate2(
     TypeArena* arena,
-    DenseHashMap2<TypeId, TypeId> genericSubstitutions,
-    DenseHashMap2<TypePackId, TypePackId> genericPackSubstitutions,
+    DenseHashMap<TypeId, TypeId> genericSubstitutions,
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
     NotNull<Subtyping> subtyping,
     NotNull<Scope> scope,
     TypeId ty
@@ -281,8 +281,8 @@ std::optional<TypeId> instantiate2(
 
 std::optional<TypePackId> instantiate2(
     TypeArena* arena,
-    DenseHashMap2<TypeId, TypeId> genericSubstitutions,
-    DenseHashMap2<TypePackId, TypePackId> genericPackSubstitutions,
+    DenseHashMap<TypeId, TypeId> genericSubstitutions,
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
     NotNull<Subtyping> subtyping,
     NotNull<Scope> scope,
     TypePackId tp

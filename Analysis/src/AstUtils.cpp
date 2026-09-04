@@ -42,10 +42,10 @@ std::optional<TypeGuard> matchTypeGuard(AstExprBinary::Op op, AstExpr* left, Ast
 
 struct AstExprTableFinder : AstVisitor
 {
-    NotNull<DenseHashSet2<TypeId>> result;
-    NotNull<const DenseHashMap2<const AstExpr*, TypeId>> astTypes;
+    NotNull<DenseHashSet<TypeId>> result;
+    NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes;
 
-    explicit AstExprTableFinder(NotNull<DenseHashSet2<TypeId>> result, NotNull<const DenseHashMap2<const AstExpr*, TypeId>> astTypes)
+    explicit AstExprTableFinder(NotNull<DenseHashSet<TypeId>> result, NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes)
         : result(result)
         , astTypes(astTypes)
     {
@@ -67,7 +67,7 @@ struct AstExprTableFinder : AstVisitor
     }
 };
 
-void findUniqueTypes(NotNull<DenseHashSet2<TypeId>> uniqueTypes, AstExpr* expr, NotNull<const DenseHashMap2<const AstExpr*, TypeId>> astTypes)
+void findUniqueTypes(NotNull<DenseHashSet<TypeId>> uniqueTypes, AstExpr* expr, NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes)
 {
     AstExprTableFinder finder{uniqueTypes, astTypes};
     expr->visit(&finder);
@@ -75,10 +75,10 @@ void findUniqueTypes(NotNull<DenseHashSet2<TypeId>> uniqueTypes, AstExpr* expr, 
 
 template<typename Iter>
 void findUniqueTypes(
-    NotNull<DenseHashSet2<TypeId>> uniqueTypes,
+    NotNull<DenseHashSet<TypeId>> uniqueTypes,
     Iter startIt,
     Iter endIt,
-    NotNull<const DenseHashMap2<const AstExpr*, TypeId>> astTypes
+    NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes
 )
 {
     while (startIt != endIt)
@@ -92,18 +92,18 @@ void findUniqueTypes(
 
 
 void findUniqueTypes(
-    NotNull<DenseHashSet2<TypeId>> uniqueTypes,
+    NotNull<DenseHashSet<TypeId>> uniqueTypes,
     AstArray<AstExpr*> exprs,
-    NotNull<const DenseHashMap2<const AstExpr*, TypeId>> astTypes
+    NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes
 )
 {
     findUniqueTypes(uniqueTypes, exprs.begin(), exprs.end(), astTypes);
 }
 
 void findUniqueTypes(
-    NotNull<DenseHashSet2<TypeId>> uniqueTypes,
+    NotNull<DenseHashSet<TypeId>> uniqueTypes,
     const std::vector<AstExpr*>& exprs,
-    NotNull<const DenseHashMap2<const AstExpr*, TypeId>> astTypes
+    NotNull<const DenseHashMap<const AstExpr*, TypeId>> astTypes
 )
 {
     findUniqueTypes(uniqueTypes, exprs.begin(), exprs.end(), astTypes);

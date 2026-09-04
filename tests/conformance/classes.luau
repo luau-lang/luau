@@ -51,6 +51,12 @@ class Point
 
 end
 
+expectpass("access_with_brackets", function() 
+    local p1 = Point.new({ x = 1, y =2 })
+    assert(p1["x"] == 1)
+    assert(p1["y"] == 2)
+end)
+
 class NotAPoint
     public x
 end

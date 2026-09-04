@@ -16,7 +16,6 @@ using std::nullopt;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
-LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAG(LuauAllowIntersectionOfOneTableWithExtern)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
@@ -615,7 +614,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "callable_extern_types")
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 {
-    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
     // Test reading from an index
     {
         CheckResult result = check(R"(

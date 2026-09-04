@@ -11,8 +11,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
@@ -765,26 +765,34 @@ local d: Y<number, string, ...boolean, ...() -> ()>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors")
 {
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
 
-    CheckResult result = check(R"(
-        type Y<T = T> = { a: T }
-        local a: Y = { a = 2 }
-    )");
+    for (Mode mode : {Mode::Strict, Mode::Nonstrict})
+    {
+        CheckResult result = check(mode, R"(
+            type Y<T = T> = { a: T }
+            local a: Y = { a = 2 }
+        )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors2")
 {
-    CheckResult result = check(R"(
-        type Y<T... = T...> = { a: (T...) -> () }
-        local a: Y<>
-    )");
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+    for (Mode mode : {Mode::Strict, Mode::Nonstrict})
+    {
+        CheckResult result = check(mode, R"(
+            type Y<T... = T...> = { a: (T...) -> () }
+            local a: Y<>
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors3")
@@ -1003,13 +1011,8 @@ local y: ((number) -> (boolean, boolean)) | ((number) -> (boolean, string)) = x
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     const std::string message = toString(result.errors[0]);
-    if (FFlag::LuauDropUnionSubtypeReasoning)
-    {
-        CHECK(message.find("Expected to return") == std::string::npos);
-        CHECK(message.find("is not a subtype of") != std::string::npos);
-    }
-    else
-        CHECK(message.find("Expected to return") != std::string::npos);
+    CHECK(message.find("Expected to return") == std::string::npos);
+    CHECK(message.find("is not a subtype of") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_return_count_mismatch_through_intersection_reports_expected_return_pack")

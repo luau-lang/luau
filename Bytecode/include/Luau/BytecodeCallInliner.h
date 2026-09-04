@@ -3,7 +3,7 @@
 
 #include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeOps.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -40,7 +40,7 @@ struct CallInliner
     // memoizes target-phi -> caller-phi so a target phi referenced both in a block's phi list and as
     // another phi's operand maps to a single caller phi. Without this, the operand reference would get
     // its own unanchored duplicate that SCCP never visits (it only visits phis listed in a block)
-    DenseHashMap2<BcOp, BcOp, BcOpHash> mappedPhis;
+    DenseHashMap<BcOp, BcOp, BcOpHash> mappedPhis;
 
     CallInliner(BcFunction<VmConst>& caller, BcFunction<VmConst>& target, BcOp callOp, uint32_t callerFbVecSize)
         : caller(caller)
