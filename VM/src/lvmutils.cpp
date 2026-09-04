@@ -365,7 +365,7 @@ int luaV_equalval(lua_State* L, const TValue* t1, const TValue* t2)
     case LUA_TOBJECT:
     {
         // We follow the same rules as metatables.
-        tm = get_compTM(L, objectvalue(t1)->lclass->instancemetatable, objectvalue(t1)->lclass->instancemetatable, TM_EQ);
+        tm = get_compTM(L, objectvalue(t1)->lclass->instancemetatable, objectvalue(t2)->lclass->instancemetatable, TM_EQ);
         if (!tm)
             return objectvalue(t1) == objectvalue(t2);
         break; // will try TM
