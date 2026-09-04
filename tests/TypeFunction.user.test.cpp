@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3680,6 +3681,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_type_function_type_check")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]).find("Expected this to be 'number', but got") == 0);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag structuredErrors(FFlag::LuauTypeFunctionStructuredErrors, true);
+    ScopedFastFlag fixTypeNameTypo{FFlag::LuauUdtfFixTypeNameTypo, true};
+
+    CheckResult result = check(R"(
+        type function foo()
+            error({})
+        end
+
+        local x: foo<> = 5
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
 }
 
 TEST_SUITE_END();
