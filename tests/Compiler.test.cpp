@@ -518,6 +518,7 @@ RETURN R3 1
 TEST_CASE("ConcatTopRegisterUse")
 {
     ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
+
     CHECK_EQ("\n" + compileFunction0("local a, b = ...; return '{a=' .. tostring(a) .. ' b=' .. tostring(b) .. '}'"), R"(
 GETVARARGS R0 2
 LOADK R3 K0 ['{a=']
