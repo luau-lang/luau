@@ -290,6 +290,7 @@ lua_State* lua_newstate(lua_Alloc allocator, void* ud)
         setnilvalue(registry(L));
         setnilvalue(&g->weakregistry);
         g->weakregistryfree = 0;
+        g->weakregistrytop = 0;
         g->embeddergc = NULL;
         g->gcstate = GCSpause;
         g->gray = NULL;

@@ -3,7 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/Config.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Variant.h"
 
 #include <string>
@@ -66,7 +66,7 @@ struct VariantHashDefault
 // Forward declaration
 struct ConfigValue;
 
-struct ConfigTable : public DenseHashMap2<ConfigTableKey, ConfigValue, VariantHashDefault<ConfigTableKey>>
+struct ConfigTable : public DenseHashMap<ConfigTableKey, ConfigValue, VariantHashDefault<ConfigTableKey>>
 {
     ConfigTable() = default;
 };

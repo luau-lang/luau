@@ -474,7 +474,6 @@ typedef struct Closure
         {
             lua_CFunction f;
             lua_Continuation cont;
-            const char* debugname_DEPRECATED;
             TString* debugname;
             TValue upvals[1];
         } c;

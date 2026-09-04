@@ -21,7 +21,6 @@
 
 LUAU_FASTFLAG(LuauDirectFieldGet)
 LUAU_FASTFLAG(LuauGcTraceUdata)
-LUAU_FASTFLAGVARIABLE(LuauManagedDebugNames)
 LUAU_FASTFLAGVARIABLE(LuauNewPointerEncode)
 
 /*
@@ -789,11 +788,7 @@ void lua_pushcclosurek(lua_State* L, lua_CFunction fn, const char* debugname, in
     Closure* cl = luaF_newCclosure(L, nup, getcurrenv(L));
     cl->c.f = fn;
     cl->c.cont = cont;
-
-    if (FFlag::LuauManagedDebugNames)
-        cl->c.debugname = debugname ? luaS_new(L, debugname) : nullptr;
-    else
-        cl->c.debugname_DEPRECATED = debugname;
+    cl->c.debugname = debugname ? luaS_new(L, debugname) : nullptr;
 
     L->top -= nup;
     while (nup--)
@@ -1787,18 +1782,19 @@ uintptr_t lua_encodepointer(lua_State* L, uintptr_t p)
     }
 }
 
-static int registryref(lua_State* L, int idx, TValue* registry, int& registryfree)
+int lua_ref(lua_State* L, int idx)
 {
-    LUAU_ASSERT(FFlag::LuauGcTraceUdata);
+    api_check(L, idx != LUA_REGISTRYINDEX); // idx is a stack index for value
     int ref = LUA_REFNIL;
+    global_State* g = L->global;
     StkId p = index2addr(L, idx);
     if (!ttisnil(p))
     {
-        LuaTable* reg = hvalue(registry);
+        LuaTable* reg = hvalue(registry(L));
 
-        if (registryfree != 0)
+        if (g->registryfree != 0)
         { // reuse existing slot
-            ref = registryfree;
+            ref = g->registryfree;
         }
         else
         { // no free elements
@@ -1807,21 +1803,21 @@ static int registryref(lua_State* L, int idx, TValue* registry, int& registryfre
         }
 
         TValue* slot = luaH_setnum(L, reg, ref);
-        if (registryfree != 0)
-            registryfree = int(nvalue(slot));
+        if (g->registryfree != 0)
+            g->registryfree = int(nvalue(slot));
         setobj2t(L, slot, p);
         luaC_barriert(L, reg, p);
     }
     return ref;
 }
 
-static void registryunref(lua_State* L, int ref, TValue* registry, int& registryfree)
+int lua_unref(lua_State* L, int ref)
 {
-    LUAU_ASSERT(FFlag::LuauGcTraceUdata);
     if (ref <= LUA_REFNIL)
-        return;
+        return LUA_NOREF;
 
-    LuaTable* reg = hvalue(registry);
+    global_State* g = L->global;
+    LuaTable* reg = hvalue(registry(L));
 
     const TValue* slot = luaH_getnum(reg, ref);
     api_check(L, slot != luaO_nilobject);
@@ -1830,81 +1826,10 @@ static void registryunref(lua_State* L, int ref, TValue* registry, int& registry
     TValue* mutableSlot = (TValue*)slot;
 
     // NB: no barrier needed because value isn't collectable
-    setnvalue(mutableSlot, registryfree);
+    setnvalue(mutableSlot, g->registryfree);
 
-    registryfree = ref;
-}
-
-int lua_ref(lua_State* L, int idx)
-{
-    api_check(L, idx != LUA_REGISTRYINDEX); // idx is a stack index for value
-    if (FFlag::LuauGcTraceUdata)
-    {
-        global_State* g = L->global;
-        int registryfree = g->registryfree;
-        int ref = registryref(L, idx, registry(L), registryfree);
-        g->registryfree = registryfree;
-        return ref;
-    }
-    else
-    {
-        int ref = LUA_REFNIL;
-        global_State* g = L->global;
-        StkId p = index2addr(L, idx);
-        if (!ttisnil(p))
-        {
-            LuaTable* reg = hvalue(registry(L));
-
-            if (g->registryfree != 0)
-            { // reuse existing slot
-                ref = g->registryfree;
-            }
-            else
-            { // no free elements
-                ref = luaH_getn(reg);
-                ref++; // create new reference
-            }
-
-            TValue* slot = luaH_setnum(L, reg, ref);
-            if (g->registryfree != 0)
-                g->registryfree = int(nvalue(slot));
-            setobj2t(L, slot, p);
-            luaC_barriert(L, reg, p);
-        }
-        return ref;
-    }
-}
-
-int lua_unref(lua_State* L, int ref)
-{
-    if (FFlag::LuauGcTraceUdata)
-    {
-        global_State* g = L->global;
-        int registryfree = g->registryfree;
-        registryunref(L, ref, registry(L), registryfree);
-        g->registryfree = registryfree;
-        return LUA_NOREF;
-    }
-    else
-    {
-        if (ref <= LUA_REFNIL)
-            return LUA_NOREF;
-
-        global_State* g = L->global;
-        LuaTable* reg = hvalue(registry(L));
-
-        const TValue* slot = luaH_getnum(reg, ref);
-        api_check(L, slot != luaO_nilobject);
-
-        // similar to how 'luaH_setnum' makes non-nil slot value mutable
-        TValue* mutableSlot = (TValue*)slot;
-
-        // NB: no barrier needed because value isn't collectable
-        setnvalue(mutableSlot, g->registryfree);
-
-        g->registryfree = ref;
-        return LUA_NOREF;
-    }
+    g->registryfree = ref;
+    return LUA_NOREF;
 }
 
 void lua_setuserdatatag(lua_State* L, int idx, int tag)
@@ -1943,15 +1868,52 @@ void lua_setembeddergc(lua_State* L, lua_EmbedderGc fn)
 int lua_weakref(lua_State* L, int idx)
 {
     LUAU_ASSERT(FFlag::LuauGcTraceUdata);
+    api_check(L, idx != LUA_REGISTRYINDEX); // idx is a stack index for value
+    int ref = LUA_REFNIL;
     global_State* g = L->global;
-    return registryref(L, idx, &g->weakregistry, g->weakregistryfree);
+    StkId p = index2addr(L, idx);
+    if (!ttisnil(p))
+    {
+        LuaTable* weakregistry = hvalue(&g->weakregistry);
+        int& weakregistryfree = g->weakregistryfree;
+        TValue* slot = nullptr;
+
+        if (weakregistryfree != 0)
+        { // reuse existing slot
+            ref = weakregistryfree;
+            slot = luaH_setnum(L, weakregistry, ref);
+            weakregistryfree = int(nvalue(slot));
+        }
+        else
+        { // no free elements
+            // must use weakregistrytop here: garbage collection may have made
+            // "holes" that are unsafe to reuse until lua_weakunref is called
+            ref = ++g->weakregistrytop;
+            slot = luaH_setnum(L, weakregistry, ref);
+        }
+
+        setobj2t(L, slot, p);
+        luaC_barriert(L, weakregistry, p);
+    }
+    return ref;
 }
 
 int lua_weakunref(lua_State* L, int ref)
 {
     LUAU_ASSERT(FFlag::LuauGcTraceUdata);
+    if (ref <= LUA_REFNIL)
+        return LUA_NOREF;
+
     global_State* g = L->global;
-    registryunref(L, ref, &g->weakregistry, g->weakregistryfree);
+    api_check(L, ref <= g->weakregistrytop);
+    LuaTable* weakregistry = hvalue(&g->weakregistry);
+
+    TValue* slot = luaH_setnum(L, weakregistry, ref);
+
+    // NB: no barrier needed because value isn't collectable
+    setnvalue(slot, g->weakregistryfree);
+
+    g->weakregistryfree = ref;
     return LUA_NOREF;
 }
 

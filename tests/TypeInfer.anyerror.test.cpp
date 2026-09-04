@@ -14,7 +14,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauIndexingIntoErrorGivesError)
 
 TEST_SUITE_BEGIN("TypeInferAnyError");
 
@@ -267,8 +266,6 @@ TEST_CASE_FIXTURE(Fixture, "quantify_any_does_not_bind_to_itself")
 
 TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")
 {
-    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
-
     CheckResult result = check(R"(
         local a = unknown.Parent.Reward.GetChildren()
     )");
@@ -284,8 +281,6 @@ TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")
 
 TEST_CASE_FIXTURE(Fixture, "chain_calling_error_type_yields_error")
 {
-    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
-
     CheckResult result = check(R"(
         local a = Utility.Create "Foo" {}
     )");
@@ -415,8 +410,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_of_any_calls")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_any_can_have_props")
 {
-    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
-
     // *blocked-130* ~ hasProp any & ~(false?), "_status"
     CheckResult result = check(R"(
 function foo(x: any, y)

@@ -70,7 +70,7 @@ void write(JsonEmitter& emitter, const TypeBindingSnapshot& snapshot)
 }
 
 template<typename K, typename V>
-void write(JsonEmitter& emitter, const DenseHashMap2<const K*, V>& map)
+void write(JsonEmitter& emitter, const DenseHashMap<const K*, V>& map)
 {
     ObjectEmitter o = emitter.writeObject();
     for (const auto& [k, v] : map)
@@ -380,7 +380,7 @@ void DcrLogger::popBlock(NotNull<const Constraint> block)
 static void snapshotTypeStrings(
     const std::vector<ExprTypesAtLocation>& interestedExprs,
     const std::vector<AnnotationTypesAtLocation>& interestedAnnots,
-    DenseHashMap2<const void*, std::string>& map,
+    DenseHashMap<const void*, std::string>& map,
     ToStringOptions& opts
 )
 {
@@ -432,7 +432,7 @@ ConstraintStepSnapshot DcrLogger::prepareStepSnapshot(
 )
 {
     ScopeSnapshot scopeSnapshot = snapshotScope(rootScope, opts);
-    DenseHashMap2<const Constraint*, ConstraintSnapshot> constraints;
+    DenseHashMap<const Constraint*, ConstraintSnapshot> constraints;
 
     for (NotNull<const Constraint> c : unsolvedConstraints)
     {
@@ -443,7 +443,7 @@ ConstraintStepSnapshot DcrLogger::prepareStepSnapshot(
         };
     }
 
-    DenseHashMap2<const void*, std::string> typeStrings;
+    DenseHashMap<const void*, std::string> typeStrings;
     snapshotTypeStrings(generationLog.exprTypeLocations, generationLog.annotationTypeLocations, typeStrings, opts);
 
     return ConstraintStepSnapshot{
@@ -462,7 +462,7 @@ GeneralizeStepSnapshot DcrLogger::prepareGeneralizationSnapshot(
 )
 {
     ScopeSnapshot scopeSnapshot = snapshotScope(rootScope, opts);
-    DenseHashMap2<const Constraint*, ConstraintSnapshot> constraints;
+    DenseHashMap<const Constraint*, ConstraintSnapshot> constraints;
 
     for (NotNull<const Constraint> c : unsolvedConstraints)
     {
@@ -473,7 +473,7 @@ GeneralizeStepSnapshot DcrLogger::prepareGeneralizationSnapshot(
         };
     }
 
-    DenseHashMap2<const void*, std::string> typeStrings;
+    DenseHashMap<const void*, std::string> typeStrings;
     snapshotTypeStrings(generationLog.exprTypeLocations, generationLog.annotationTypeLocations, typeStrings, opts);
 
     return GeneralizeStepSnapshot{

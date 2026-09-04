@@ -29,7 +29,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteSkipErrorTypeInUnion)
 LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 LUAU_FLAGVERSION(LuauCheckTypeForDeprecated, 2)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
@@ -654,21 +653,8 @@ static void autocompleteProps(
         auto iter = begin(u);
         auto endIter = end(u);
 
-        if (FFlag::LuauAutocompleteSkipErrorTypeInUnion)
-        {
-            while (iter != endIter && isSkippableTypeInUnion(*iter))
-                ++iter;
-        }
-        else
-        {
-            while (iter != endIter)
-            {
-                if (isNil(*iter))
-                    ++iter;
-                else
-                    break;
-            }
-        }
+        while (iter != endIter && isSkippableTypeInUnion(*iter))
+            ++iter;
 
         if (iter == endIter)
             return;
@@ -694,21 +680,10 @@ static void autocompleteProps(
                     innerSeen.insert(ty);
             }
 
-            if (FFlag::LuauAutocompleteSkipErrorTypeInUnion)
+            if (isSkippableTypeInUnion(*iter))
             {
-                if (isSkippableTypeInUnion(*iter))
-                {
-                    ++iter;
-                    continue;
-                }
-            }
-            else
-            {
-                if (isNil(*iter))
-                {
-                    ++iter;
-                    continue;
-                }
+                ++iter;
+                continue;
             }
 
             autocompleteProps(module, typeArena, builtinTypes, rootTy, *iter, indexType, nodes, inner, innerSeen);

@@ -52,7 +52,7 @@ std::ostream& operator<<(std::ostream& lhs, const SubtypingReasoning& reasoning)
     return lhs << toString(reasoning.subPath) << " </: " << toString(reasoning.superPath) << " (" << reasoning.variance << ")";
 }
 
-bool operator==(const DenseHashSet2<SubtypingReasoning, SubtypingReasoningHash>& set, const std::vector<SubtypingReasoning>& items)
+bool operator==(const DenseHashSet<SubtypingReasoning, SubtypingReasoningHash>& set, const std::vector<SubtypingReasoning>& items)
 {
     if (items.size() != set.size())
         return false;
@@ -1714,7 +1714,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "unique_table_missing_optional_prop_is_subtype
     // With uniqueTypes containing subTy: should be a subtype (covariant check
     // permits missing optional props on a unique/fresh table).
     {
-        DenseHashSet2<TypeId> uniqueTypes;
+        DenseHashSet<TypeId> uniqueTypes;
         uniqueTypes.insert(subTy);
 
         Subtyping st = mkSubtyping();
@@ -2002,8 +2002,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "weird_cyclic_instantiation")
                      /* retTypes */ arena.addTypePack({genericT})}
     );
 
-    DenseHashMap2<TypeId, TypeId> genericSubstitutions;
-    DenseHashMap2<TypePackId, TypePackId> genericPackSubstitutions;
+    DenseHashMap<TypeId, TypeId> genericSubstitutions;
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions;
 
     TypeId freeTy = arena.freshType(getBuiltins(), &scope);
     FreeType* ft = getMutable<FreeType>(freeTy);

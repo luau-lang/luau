@@ -9,7 +9,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 TEST_SUITE_BEGIN("UnionTypes");
@@ -562,8 +561,6 @@ Table type 'X' not compatible with type '{ w: number }' because the former is mi
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
 {
-    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
-
     CheckResult result = check(R"(
         type X = { x: number }
         type Y = { y: number }
@@ -844,8 +841,6 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_variadics")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
 {
-    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
-
     CheckResult result = check(R"(
         function f(x : (number) -> ())
             local y : ((number?) -> ()) | ((...number) -> ()) = x -- OK

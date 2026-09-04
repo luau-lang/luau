@@ -25,7 +25,6 @@ LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
-LUAU_FASTFLAGVARIABLE(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
@@ -50,7 +49,7 @@ size_t SubtypingReasoningHash::operator()(const SubtypingReasoning& r) const
 }
 
 MappedGenericEnvironment::MappedGenericFrame::MappedGenericFrame(
-    DenseHashMap2<TypePackId, std::optional<TypePackId>> mappings,
+    DenseHashMap<TypePackId, std::optional<TypePackId>> mappings,
     const std::optional<size_t> parentScopeIndex
 )
     : mappings(std::move(mappings))
@@ -107,7 +106,7 @@ MappedGenericEnvironment::LookupResult MappedGenericEnvironment::lookupGenericPa
 
 void MappedGenericEnvironment::pushFrame(const std::vector<TypePackId>& genericTps)
 {
-    DenseHashMap2<TypePackId, std::optional<TypePackId>> mappings;
+    DenseHashMap<TypePackId, std::optional<TypePackId>> mappings;
 
     for (TypePackId tp : genericTps)
         mappings[tp] = std::nullopt;
@@ -1652,11 +1651,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         ++index;
     }
 
-    if (FFlag::LuauDropUnionSubtypeReasoning)
-    {
-        LUAU_ASSERT(!result.isSubtype);
-        result.reasoning.clear();
-    }
+    LUAU_ASSERT(!result.isSubtype);
+    result.reasoning.clear();
 
     return result;
 }

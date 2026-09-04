@@ -18,10 +18,9 @@
 
 LUAU_FASTFLAG(LuauDirectFieldGet)
 LUAU_FASTFLAGVARIABLE(LuauGcTraceUdata)
-LUAU_FLAGVERSION(LuauGcTraceUdata, 2)
+LUAU_FLAGVERSION(LuauGcTraceUdata, 3)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcMarkUdataAccess, false)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
-LUAU_FASTFLAG(LuauManagedDebugNames)
 LUAU_FASTFLAG(LuauFastpcall)
 
 /*
@@ -426,11 +425,8 @@ static void traverseclosure(global_State* g, Closure* cl)
     markobject(g, cl->env);
     if (cl->isC)
     {
-        if (FFlag::LuauManagedDebugNames)
-        {
-            if (TString* str = cl->c.debugname)
-                stringmark(str);
-        }
+        if (TString* str = cl->c.debugname)
+            stringmark(str);
 
         int i;
         for (i = 0; i < cl->nupvalues; i++) // mark its upvalues

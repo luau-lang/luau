@@ -1349,7 +1349,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "export_class")
     fileResolver.source["game/B"] = R"(
         local A = require(game.A)
 
-        local a: A.Point = A.Point { x=2, y=3 }
+        local a: A.Point = A.Point.new { x=2, y=3 }
 
         local x, y = a.x, a.y
     )";
@@ -1382,7 +1382,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_exported_class")
     fileResolver.source["game/B"] = R"(
         local A = require(game.A)
 
-        local a: A.Point = A.Point { x=2, y=3 }
+        local a: A.Point = A.Point.new { x=2, y=3 }
     )";
 
     CheckResult result = getFrontend().check("game/B");

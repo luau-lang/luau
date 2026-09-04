@@ -23,6 +23,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTINTVARIABLE(LuauNonStrictTypeCheckerRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(LuauAddRecursionCounterToNonStrictTypeChecker)
+LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
@@ -168,9 +169,9 @@ struct NonStrictTypeChecker
     Normalizer normalizer;
     Subtyping subtyping;
     NotNull<const DataFlowGraph> dfg;
-    DenseHashSet2<TypeId> noTypeFunctionErrors;
+    DenseHashSet<TypeId> noTypeFunctionErrors;
     std::vector<NotNull<Scope>> stack;
-    DenseHashMap2<TypeId, TypeId> cachedNegations;
+    DenseHashMap<TypeId, TypeId> cachedNegations;
 
     const NotNull<TypeCheckLimits> limits;
 
@@ -203,6 +204,19 @@ struct NonStrictTypeChecker
         else
             return std::nullopt;
     }
+
+    void visitTypeArguments(const AstArray<AstTypeOrPack>& typeArguments)
+    {
+        for (const AstTypeOrPack& typeArgument : typeArguments)
+        {
+            LUAU_ASSERT(typeArgument.type || typeArgument.typePack);
+            if (typeArgument.type)
+                visit(typeArgument.type);
+            else
+                visit(typeArgument.typePack);
+        }
+    }
+
 
     TypeId flattenPack(TypePackId pack)
     {
@@ -647,6 +661,8 @@ struct NonStrictTypeChecker
     NonStrictContext visit(AstExprCall* call)
     {
         visit(call->func, ValueContext::RValue);
+        if (FFlag::LuauStrictVisitInstantiatedType)
+            visitTypeArguments(call->typeArguments);
         for (auto arg : call->args)
             visit(arg, ValueContext::RValue);
 
@@ -865,13 +881,21 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprInstantiate* instantiate)
     {
-        for (const AstTypeOrPack& param : instantiate->typeArguments)
+        if (FFlag::LuauStrictVisitInstantiatedType)
+            visitTypeArguments(instantiate->typeArguments);
+        else
         {
-            if (param.type)
-                visit(param.type);
-            else
-                visit(param.typePack);
-        }
+            for (const AstTypeOrPack& typeArgument : instantiate->typeArguments)
+            {
+                if (typeArgument.type)
+                    visit(typeArgument.type);
+                else
+                {
+                    LUAU_ASSERT(typeArgument.typePack);
+                    visit(typeArgument.typePack);
+                }
+            }
+        };
 
         return visit(instantiate->expr, ValueContext::RValue);
     }
@@ -931,6 +955,16 @@ struct NonStrictTypeChecker
 
         if (alias.has_value())
         {
+            if (FFlag::LuauStrictVisitInstantiatedType)
+            {
+                // Generic defaults should be resolved before the corresponding type parameter is added to the alias scope.
+                // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
+                // As a result, we can't use `scope->lookupType` to check for the existence of the type, because it will find
+                // the parameter incorrectly, and thus accept a self-referece as a default value.
+                if (!ty->prefix && module->astTypeReferenceLookupFailures.contains(ty))
+                    return reportError(UnknownSymbol{ty->name.value, UnknownSymbol::Context::Type}, ty->location);
+            }
+
             size_t typesRequired = alias->typeParams.size();
             size_t packsRequired = alias->typePackParams.size();
 
@@ -1132,7 +1166,19 @@ struct NonStrictTypeChecker
         LUAU_ASSERT(scope);
 
         if (std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value))
+        {
+            if (FFlag::LuauStrictVisitInstantiatedType)
+            {
+                // Generic defaults should be resolved before the corresponding type parameter is added to the alias scope.
+                // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
+                // As a result, we can't use `scope->lookupPack` to check for the existence of the type pack, because it will find
+                // the parameter incorrectly, and thus accept a self-referece as a default value.
+                if (module->astTypePackReferenceLookupFailures.contains(tp))
+                    return reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
+            }
+
             return;
+        }
 
         if (scope->lookupType(tp->genericName.value))
             return reportError(
@@ -1148,7 +1194,7 @@ struct NonStrictTypeChecker
 
     void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks)
     {
-        DenseHashSet2<AstName> seen;
+        DenseHashSet<AstName> seen;
 
         for (const auto* g : generics)
         {

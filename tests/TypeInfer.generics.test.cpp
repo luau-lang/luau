@@ -10,6 +10,7 @@
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 
 using namespace Luau;
 
@@ -638,6 +639,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_pack_parentheses")
 
 TEST_CASE_FIXTURE(Fixture, "better_mismatch_error_messages")
 {
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
+
     CheckResult result = check(R"(
         function f<T>(...: T...)
             return ...
@@ -648,22 +651,9 @@ TEST_CASE_FIXTURE(Fixture, "better_mismatch_error_messages")
         end
     )");
 
-    SwappedGenericTypeParameter* fErr;
-    SwappedGenericTypeParameter* gErr;
-
-    if (!FFlag::DebugLuauForceOldSolver)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(3, result);
-        // The first error here is an unknown symbol that is redundant with the `fErr`.
-        fErr = get<SwappedGenericTypeParameter>(result.errors[1]);
-        gErr = get<SwappedGenericTypeParameter>(result.errors[2]);
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        fErr = get<SwappedGenericTypeParameter>(result.errors[0]);
-        gErr = get<SwappedGenericTypeParameter>(result.errors[1]);
-    }
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    SwappedGenericTypeParameter* fErr = get<SwappedGenericTypeParameter>(result.errors[0]);
+    SwappedGenericTypeParameter* gErr = get<SwappedGenericTypeParameter>(result.errors[1]);
 
     REQUIRE(fErr);
     CHECK_EQ(fErr->name, "T");

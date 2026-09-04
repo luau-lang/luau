@@ -11,8 +11,10 @@
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-LUAU_FASTFLAG(LuauIndexingIntoErrorGivesError);
 LUAU_FASTFLAG(LuauAvoidTrivialPhis)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(DebugLuauCFG)
 
 using namespace Luau;
 
@@ -1685,8 +1687,6 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_optional_properties_sh
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_non_existent_properties_should_not_refine_extern_types_to_never")
 {
-    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
-
     CheckResult result = check(R"(
         local weld: WeldConstraint = nil :: any
         assert(weld.Part8)
@@ -3231,8 +3231,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_vector_refine")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_into_error_gives_error")
 {
-    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function keyExtractor(item: any, index: number): string
             if typeof(item) == "table" and item.key ~= nil then
@@ -3295,6 +3293,106 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_with_refinements_doesnt_impact_f
     )"));
 
     CHECK_EQ("(unknown, unknown) -> boolean", toString(requireType("sorter")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_narrows_to_truthy")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: string?)
+            if local x = v then
+                local s = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_basic_typecheck")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number?)
+            if local x = v then
+                local y = x + 1
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_binding_not_visible_after_block")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        if local x = math.random() then
+            print(x)
+        end
+        print(x)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Unknown global 'x'; consider assigning to it first", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_unannotated_to_truthy")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number?)
+            if local x = v then
+                local s = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number?)
+            if local x: number? = v then
+                local s = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // `x` is annotated `number?`, but the then-branch still refines it by `truthy` down to `number`.
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
 }
 
 TEST_SUITE_END();

@@ -18,7 +18,6 @@
 
 LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauCodegenInteger3)
-LUAU_FASTFLAG(LuauCodegenLinearNoCall)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauCodegenBufferInteger)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
@@ -27,7 +26,6 @@ LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAG(LuauCodegenConstVectorBufferRead)
-LUAU_FASTFLAG(LuauCodegenStoreTagCheck)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAG(LuauCodegenIntegerCompare)
 
@@ -8001,7 +7999,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "TableOperationTagSuggestion2")
 {
     ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauCodegenLinearNoCall{FFlag::LuauCodegenLinearNoCall, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -8492,8 +8489,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "BufferWriteChecksExtraArgs")
 {
-    ScopedFastFlag luauCodegenStoreTagCheck{FFlag::LuauCodegenStoreTagCheck, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(

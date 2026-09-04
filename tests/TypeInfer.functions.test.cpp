@@ -27,7 +27,9 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
+LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1433,10 +1435,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument
         {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
     };
 
-
     CheckResult result = check(R"(
-local a = {{x=4}, {x=7}, {x=1}}
-table.sort(a, function(x, y) return x.x < y.x end)
+        local a = {{x=4}, {x=7}, {x=1}}
+        table.sort(a, function(x, y) return x.x < y.x end)
     )");
 
     // FIXME CLI-161355: We *should* be able to bidirectionally push the type
@@ -2381,6 +2382,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_wi
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_argument_types")
 {
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
     CheckResult result = check(R"(
         type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, number) -> string }))
         local f = (nil :: any) :: Callable
@@ -2395,6 +2398,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_argument_types")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_variadic_argument_types")
 {
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
     CheckResult result = check(R"(
         type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
         local f = (nil :: any) :: Callable
@@ -2410,6 +2415,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_variadic_argument_typ
 // the superPath. Without that, the error lands on the last argument rather than the bad one.
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_the_offending_argument")
 {
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
     CheckResult result = check(R"(
         type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
         local f = (nil :: any) :: Callable
@@ -2426,6 +2433,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_the_offendin
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_each_offending_argument")
 {
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
     CheckResult result = check(R"(
         type Callable = typeof(setmetatable({}, {} :: { __call: (Callable, ...number) -> () }))
         local f = (nil :: any) :: Callable
@@ -4485,6 +4494,50 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2623_double_negate_string")
 
         local node: Foo = { tag = "str" }
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2670_generic_leaking_indexer_1")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauDoNotLeakGenericsInIndexer, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function setDefault<K, V>(t: { [K]: V? }): V
+            return nil :: any
+        end
+
+        local t = {hello = "world"}
+        setDefault(t, "green", "42")
+
+        local x = t["h"]
+
+    )"));
+
+    CHECK_EQ("{ [unknown]: unknown?, hello: string }", toString(requireType("t"), {true}));
+    // TODO CLI-181248: This seems incorrect.
+    CHECK_EQ("any", toString(requireType("x"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2670_generic_leaking_indexer_2")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauDoNotLeakGenericsInIndexer, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local set: <K, V>({ [K | number]: V | string }) -> V
+
+        local t = {hello = "world"}
+        set(t)
+
+        local k, v = next(t)
+
+    )"));
+
+    // TODO CLI-181248: This also seems not entirely correct.
+    CHECK_EQ("number?", toString(requireType("k"), {true}));
+    CHECK_EQ("string", toString(requireType("v"), {true}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_callback_in_array")

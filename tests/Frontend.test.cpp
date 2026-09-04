@@ -2,7 +2,7 @@
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Frontend.h"
 #include "Luau/Parser.h"
 #include "Luau/RequireTracer.h"
@@ -25,7 +25,6 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauFrontendSourceNodeErase)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTINT(LuauCyclicSccWarningThreshold)
 LUAU_FASTFLAG(LuauExportAnnotationBinding)
 LUAU_FASTFLAG(LuauCyclicRequireTopLevelAccessError)
 
@@ -1762,7 +1761,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_dependents_stored_on_node_as_graph_upda
 
     auto validateMatchesRequireLists = [&](const std::string& message)
     {
-        DenseHashMap2<ModuleName, std::vector<ModuleName>> dependents;
+        DenseHashMap<ModuleName, std::vector<ModuleName>> dependents;
         for (const auto& module : getFrontend().sourceNodes)
         {
             for (const auto& dep : module.second->requireSet)
@@ -2662,40 +2661,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "scc_markdirty_propagates_to_peers")
     CHECK(getFrontend().isDirty("game/B"));
     CHECK(std::find(markedDirty.begin(), markedDirty.end(), "game/A") != markedDirty.end());
     CHECK(std::find(markedDirty.begin(), markedDirty.end(), "game/B") != markedDirty.end());
-}
-
-TEST_CASE_FIXTURE(FrontendFixture, "scc_large_cycle_warning")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCyclicRequireTypeInference, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExportValueSyntax, true},
-        {FFlag::LuauExportValueTypecheck, true},
-    };
-
-    fileResolver.source["game/A"] = R"(
-        local c = require(game.C)
-        export local a = 1
-    )";
-    fileResolver.source["game/B"] = R"(
-        local a = require(game.A)
-        export local b = 2
-    )";
-    fileResolver.source["game/C"] = R"(
-        local b = require(game.B)
-        export local c = 3
-    )";
-
-    ScopedFastInt sfi{FInt::LuauCyclicSccWarningThreshold, 2};
-    CheckResult result = getFrontend().check("game/A");
-
-    bool foundWarning = false;
-    for (const TypeError& e : result.errors)
-    {
-        if (get<CyclicModuleGraphTooLarge>(e))
-            foundWarning = true;
-    }
-    CHECK(foundWarning);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "scc_old_solver_independent")

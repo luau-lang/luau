@@ -268,7 +268,7 @@ bool isLiteral(const AstExpr* expr);
  * @returns A vector of blocked types
  */
 
-std::vector<TypeId> findBlockedArgTypesIn_DEPRECATED(AstExprCall* expr, NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes);
+std::vector<TypeId> findBlockedArgTypesIn_DEPRECATED(AstExprCall* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes);
 
 /**
  * Given a scope and a free type, find the closest parent that has a present
@@ -399,8 +399,8 @@ TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, st
 /**
  * @returns if `ty` contains a generic in the set `generics`.
  */
-bool containsGeneric(TypeId ty, NotNull<DenseHashSet2<const void*>> generics);
-bool containsGeneric(TypePackId ty, NotNull<DenseHashSet2<const void*>> generics);
+bool containsGeneric(TypeId ty, NotNull<DenseHashSet<const void*>> generics);
+bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics);
 
 /**
  * @return Whether `ty` is a type that cannot be unified with another type,

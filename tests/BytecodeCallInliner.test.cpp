@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeBuilder.h"
+#include "Luau/BytecodeDump.h"
 #include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeWire.h"
 #include "Luau/BytecodeValidation.h"
@@ -1568,8 +1569,10 @@ L4: RETURN R0 0
     );
 }
 
-TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_keeps_unreachable_closeupvals_block")
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_removes_unreachable_closeupvals_block")
 {
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
     std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
         local function caller()
             local f = function() end
@@ -1590,21 +1593,75 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_keeps_unreachable_closeupvals_bl
     BcVmConstImpl impl(*caller);
     Bytecode::foldConstants(*caller, impl);
 
-    bool foundCloseUpvalsBlock = false;
-    for (const BcBlock& block : caller->blocks)
-    {
-        bool hasClose = false;
-        for (BcOp op : block.ops)
-            if (caller->instOp(op).op == LOP_CLOSEUPVALS)
-                hasClose = true;
+    CHECK_EQ(
+        "\n" + toString(*caller, true),
+        R"(
+; function caller() line 2 maxstacksize: 3 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_2 [fallthrough], bb_2 [loop]
+  %0 = DUPCLOSURE K0 (0)                                     ; uses: phi.0, phi.0, %2, %3
 
-        if (hasClose)
-        {
-            foundCloseUpvalsBlock = true;
-            CHECK((block.flags & BcBlockFlag::Dead) == 0);
-        }
-    }
-    CHECK(foundCloseUpvalsBlock);
+bb_2:
+; predecessors: bb_0 [fallthrough], bb_0 [loop]
+  %1 = NEWCLOSURE P1
+  %2 = CAPTURE 1, %0, 0
+  %3 = MOVE %0                                               ; uses: %4
+  %4 = CALLFB 0, 0, 0, %3
+  %5 = JUMPBACK bb_2
+
+bb_1 (exit):
+; predecessors: bb_3 [fallthrough]
+)"
+);
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_removes_unreachable_closeupvals_scc")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
+        local function caller(x)
+            repeat
+                x = nil
+                (function(...) end)()
+            until x
+
+            repeat
+                local y = {}
+            until function() y = nil end
+        end
+        caller()
+    )");
+
+    CompTimeBcFunction* caller = nullptr;
+    for (CompTimeBcFunction& fn : graphs)
+        if (fn.debugname == "caller")
+            caller = &fn;
+    REQUIRE(caller);
+
+    BcVmConstImpl impl(*caller);
+    Bytecode::foldConstants(*caller, impl);
+
+    CHECK_EQ(
+        "\n" + toString(*caller, true),
+        R"(
+; function caller($arg0) line 2 maxstacksize: 3 upvalues: 0 flags: 8
+bb_0 (entry):
+; predecessors: bb_3 [loop]
+; successors: bb_3 [fallthrough]
+  %0 = LOADNIL                                               ; uses: %3
+  %1 = DUPCLOSURE K0 (0)                                     ; uses: %2
+  %2 = CALLFB 0, 0, 0, %1
+
+bb_3:
+; predecessors: bb_0 [fallthrough]
+; successors: bb_0 [loop]
+  %4 = JUMPBACK bb_0
+
+bb_1 (exit):
+; predecessors: bb_4 [fallthrough]
+)"
+    );
 }
 
 TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_projection_in_return_phi")

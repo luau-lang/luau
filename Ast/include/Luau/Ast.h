@@ -742,6 +742,18 @@ public:
         const std::optional<Location>& elseLocation
     );
 
+    AstStatIf(
+        const Location& location,
+        AstExpr* condition,
+        AstStatBlock* thenbody,
+        AstStat* elsebody,
+        const std::optional<Location>& thenLocation,
+        const std::optional<Location>& elseLocation,
+        AstLocal* conditionLocal,
+        bool conditionIsConst,
+        const std::optional<Location>& conditionKeywordLocation
+    );
+
     void visit(AstVisitor* visitor) override;
 
     AstExpr* condition;
@@ -752,6 +764,11 @@ public:
 
     // Active for 'elseif' as well
     std::optional<Location> elseLocation;
+
+    // Active for 'if local' and 'if const' statements
+    AstLocal* conditionLocal = nullptr;
+    bool conditionIsConst = false;
+    std::optional<Location> conditionKeywordLocation;
 };
 
 class AstStatWhile : public AstStat

@@ -5,7 +5,7 @@
 #include "Luau/Lexer.h"
 #include "Luau/ParseOptions.h"
 #include "Luau/ParseResult.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Common.h"
 #include "Luau/Cst.h"
 
@@ -121,6 +121,12 @@ private:
 
     // if exp then block {elseif exp then block} [else block] end
     AstStat* parseIf();
+
+    // (`if' | `elseif') (`local' | `const') binding `=' exp then block ... end -- parses an entire `if local`/`if const`
+    AstStat* parseIfLocalCondition(const Location& start);
+
+    // Parse the trailing `{elseif exp then block} [else block] end` shared by `parseIf` and `parseIfLocalCondition`
+    AstStat* parseElseBody(const Location& start, const Lexeme& matchThen, AstStatBlock* thenbody, Location& end, std::optional<Location>& elseLocation);
 
     // while exp do block end
     AstStat* parseWhile();
@@ -543,15 +549,15 @@ private:
     std::vector<Function> functionStack;
     size_t typeFunctionDepth = 0;
 
-    DenseHashMap2<AstName, AstLocal*> localMap;
+    DenseHashMap<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
-    DenseHashMap2<AstName, AstStatClass*> classesWithinModule;
+    DenseHashMap<AstName, AstStatClass*> classesWithinModule;
 
     std::vector<ParseError> parseErrors;
 
     std::vector<unsigned int> matchRecoveryStopOnToken;
 
-    DenseHashMap2<AstName, Location> declaredExportBindings;
+    DenseHashMap<AstName, Location> declaredExportBindings;
     bool hasModuleReturn = false;
 
     std::vector<AstAttr*> scratchAttr;

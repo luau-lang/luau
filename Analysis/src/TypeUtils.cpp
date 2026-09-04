@@ -468,7 +468,7 @@ bool isLiteral(const AstExpr* expr)
 class BlockedTypeInLiteralVisitor : public AstVisitor
 {
 public:
-    explicit BlockedTypeInLiteralVisitor(NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes, NotNull<std::vector<TypeId>> toBlock)
+    explicit BlockedTypeInLiteralVisitor(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, NotNull<std::vector<TypeId>> toBlock)
         : astTypes_{astTypes}
         , toBlock_{toBlock}
     {
@@ -489,11 +489,11 @@ public:
     }
 
 private:
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes_;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes_;
     NotNull<std::vector<TypeId>> toBlock_;
 };
 
-std::vector<TypeId> findBlockedArgTypesIn_DEPRECATED(AstExprCall* expr, NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes)
+std::vector<TypeId> findBlockedArgTypesIn_DEPRECATED(AstExprCall* expr, NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes)
 {
     std::vector<TypeId> toBlock;
     BlockedTypeInLiteralVisitor v{astTypes, NotNull{&toBlock}};
@@ -948,9 +948,9 @@ TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, st
 
 struct ContainsGenerics : public IterativeTypeVisitor
 {
-    NotNull<DenseHashSet2<const void*>> generics;
+    NotNull<DenseHashSet<const void*>> generics;
 
-    explicit ContainsGenerics(NotNull<DenseHashSet2<const void*>> generics)
+    explicit ContainsGenerics(NotNull<DenseHashSet<const void*>> generics)
         : IterativeTypeVisitor("ContainsGenerics", /* skipBoundTypes */ true)
         , generics{generics}
     {
@@ -981,14 +981,14 @@ struct ContainsGenerics : public IterativeTypeVisitor
     }
 };
 
-bool containsGeneric(TypeId ty, NotNull<DenseHashSet2<const void*>> generics)
+bool containsGeneric(TypeId ty, NotNull<DenseHashSet<const void*>> generics)
 {
     ContainsGenerics cg{generics};
     cg.run(ty);
     return cg.found;
 }
 
-bool containsGeneric(TypePackId ty, NotNull<DenseHashSet2<const void*>> generics)
+bool containsGeneric(TypePackId ty, NotNull<DenseHashSet<const void*>> generics)
 {
     ContainsGenerics cg{generics};
     cg.run(ty);
@@ -1005,7 +1005,7 @@ bool isBlocked(TypeId ty)
     return is<BlockedType, PendingExpansionType>(ty);
 }
 
-std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty, DenseHashSet2<TypeId>& seen)
+std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty, DenseHashSet<TypeId>& seen)
 {
     ty = follow(ty);
     if (seen.contains(ty))
@@ -1024,7 +1024,7 @@ std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty, Den
 
 std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty)
 {
-    DenseHashSet2<TypeId> seen;
+    DenseHashSet<TypeId> seen;
     return getApproximateReturnTypeForFunctionCall(ty, seen);
 }
 

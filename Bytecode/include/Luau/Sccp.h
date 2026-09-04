@@ -6,7 +6,7 @@
 #include "Luau/BytecodeUtils.h"
 #include "Luau/BytecodeValidation.h"
 #include "Luau/VecDeque.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 
 #include <cstdint>
 #include <optional>
@@ -173,7 +173,7 @@ struct JumpTarget
     ConditionState condition = ConditionState::Unknown;
 };
 
-using OpConstness = DenseHashMap2<BcOp, ConstnessLattice, BcOpHash>;
+using OpConstness = DenseHashMap<BcOp, ConstnessLattice, BcOpHash>;
 
 struct SccpState
 {
@@ -232,10 +232,10 @@ struct Sccp
 
     // this maps a block (index) to its predecessors that it was reached from
     // if a block is not in this map, it is unreachable
-    DenseHashMap2<uint32_t, DenseHashSet2<BcOp, BcOpHash>> blockUses;
+    DenseHashMap<uint32_t, DenseHashSet<BcOp, BcOpHash>> blockUses;
 
     VecDeque<BcOp> flowWorklist;
-    DenseHashSet2<BcOp, BcOpHash> flowWorklistSet;
+    DenseHashSet<BcOp, BcOpHash> flowWorklistSet;
 
     // when a def's lattice value changes, its uses must be re-evaluated
     VecDeque<BcOp> ssaWorklist;
@@ -688,7 +688,7 @@ struct Sccp
     {
         // mark dead blocks by forward reachability from entry, not by blockUses
         // (which can miss blocks depending on worklist ordering)
-        DenseHashSet2<uint32_t> reachable;
+        DenseHashSet<uint32_t> reachable;
         std::vector<uint32_t> worklist;
 
         uint32_t entryIdx = func.getBlockIndex(*func.block(func.entryBlock));
@@ -717,17 +717,9 @@ struct Sccp
         {
             uint32_t blockidx = func.getBlockIndex(block);
             block.useCount = static_cast<uint32_t>(blockUses[blockidx].size());
-            if (!reachable.contains(blockidx) && !hasCloseUpvals(block))
+            if (!reachable.contains(blockidx))
                 block.flags |= BcBlockFlag::Dead;
         }
-    }
-
-    bool hasCloseUpvals(const BcBlock& block) const
-    {
-        for (BcOp op : block.ops)
-            if (func.instOp(op).op == LOP_CLOSEUPVALS)
-                return true;
-        return false;
     }
 
     static std::optional<LuauOpcode> arithToKOpcode(LuauOpcode op)

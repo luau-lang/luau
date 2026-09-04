@@ -13,6 +13,7 @@
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauPrettyPrintVisualizeIndexerAccess)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 
 namespace
 {
@@ -1546,7 +1547,22 @@ struct Printer
 
     void visualizeElseIf(AstStatIf& elseif)
     {
-        visualize(*elseif.condition);
+        if (FFlag::DebugLuauIfLocalSyntax && elseif.conditionLocal)
+        {
+            writer.keyword(elseif.conditionIsConst ? "const" : "local");
+            writer.write(elseif.conditionLocal->name.value);
+            if (elseif.conditionLocal->annotation)
+            {
+                writer.symbol(":");
+                visualizeTypeAnnotation(*elseif.conditionLocal->annotation);
+            }
+            writer.symbol("=");
+            visualize(*elseif.condition);
+        }
+        else
+        {
+            visualize(*elseif.condition);
+        }
         if (elseif.thenLocation)
             advance(elseif.thenLocation->begin);
         writer.keyword("then");
