@@ -11,8 +11,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauManagedDebugNames)
-
 // convert a stack index to positive
 #define abs_index(L, i) ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
 
@@ -26,24 +24,12 @@ static const char* currfuncname(lua_State* L)
 {
     Closure* cl = L->ci > L->base_ci ? curr_func(L) : NULL;
 
-    if (FFlag::LuauManagedDebugNames)
-    {
-        const char* debugname = cl && cl->isC && cl->c.debugname ? getstr(cl->c.debugname) : NULL;
+    const char* debugname = cl && cl->isC && cl->c.debugname ? getstr(cl->c.debugname) : NULL;
 
-        if (debugname && strcmp(debugname, "__namecall") == 0)
-            return L->namecall ? getstr(L->namecall) : NULL;
-        else
-            return debugname;
-    }
+    if (debugname && strcmp(debugname, "__namecall") == 0)
+        return L->namecall ? getstr(L->namecall) : NULL;
     else
-    {
-        const char* debugname = cl && cl->isC ? cl->c.debugname_DEPRECATED + 0 : NULL;
-
-        if (debugname && strcmp(debugname, "__namecall") == 0)
-            return L->namecall ? getstr(L->namecall) : NULL;
-        else
-            return debugname;
-    }
+        return debugname;
 }
 
 l_noret luaL_argerrorL(lua_State* L, int narg, const char* extramsg)

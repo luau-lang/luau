@@ -881,7 +881,7 @@ TEST_CASE_FIXTURE(Fixture, "class_decl")
             public y: number
         end
 
-        local p = Point { x = 2, y = 3 }
+        local p = Point.new { x = 2, y = 3 }
 
         local x = p.x
         local y = p.y
@@ -916,15 +916,14 @@ TEST_CASE_FIXTURE(Fixture, "point_class")
                 return 100
             end
 
-            function create()
-                return Point { x = 0, y = 0 }
+            function __init(self, x: number, y: number)
+                self.x = x
+                self.y = y
             end
         end
 
-        local p = Point { x = 2, y = 3 }
+        local p = Point.new(2, 3)
         local len = p:length()
-
-        local p2 = Point.create()
     )");
 
     LUAU_CHECK_NO_ERRORS(result);
@@ -934,7 +933,6 @@ TEST_CASE_FIXTURE(Fixture, "point_class")
     REQUIRE(et);
 
     CHECK("Point" == toString(requireType("p")));
-    CHECK("Point" == toString(requireType("p2")));
     CHECK("number" == toString(requireType("len")));
 }
 
@@ -952,7 +950,7 @@ TEST_CASE_FIXTURE(Fixture, "self_argument_has_self_type")
             end
         end
 
-        local i = I{}
+        local i = I.new{}
         local i2 = i:m()
     )");
 
@@ -1089,11 +1087,12 @@ _ = l0 {  }
 )"
     );
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
     auto err = get<SyntaxError>(result.errors[0]);
     REQUIRE(err);
     CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
     REQUIRE(get<UnknownSymbol>(result.errors[1]));
+    REQUIRE(get<CannotCallNonFunction>(result.errors[2]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "prop_with_typeof_reassigned_class")
@@ -1207,7 +1206,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "read_unknown_property_from_class_object_or_i
             public y: number
 
             function zero()
-                return Point {x=0, y=0}
+                return Point.new {x=0, y=0}
             end
         end
 
@@ -1240,7 +1239,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_class_object_properties_are_forbid
             public y: number
 
             function zero()
-                return Point {x=0, y=0}
+                return Point.new {x=0, y=0}
             end
 
             function magnitude(self): number
@@ -1249,14 +1248,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_class_object_properties_are_forbid
         end
 
         Point.magnitude = function(p: Point) return 3 end
-        Point.zero = function() return Point { x = 1, y = 1 } end
-        Point.one = function() return Point { x = 1, y = 1 } end
-
-        Point.__index = {}
-        getmetatable(Point).__call = function() end
+        Point.zero = function() return Point.new { x = 1, y = 1 } end
+        Point.one = function() return Point.new { x = 1, y = 1 } end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(5, result);
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
 
     auto* pav0 = get<PropertyAccessViolation>(result.errors[0]);
     REQUIRE(pav0);
@@ -1272,16 +1268,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_class_object_properties_are_forbid
     REQUIRE(pav2);
     CHECK(pav2->key == "one");
     CHECK(pav2->context == PropertyAccessViolation::CannotWrite);
-
-    auto* pav3 = get<PropertyAccessViolation>(result.errors[3]);
-    REQUIRE(pav3);
-    CHECK(pav3->key == "__index");
-    CHECK(pav3->context == PropertyAccessViolation::CannotWrite);
-
-    auto* pav4 = get<PropertyAccessViolation>(result.errors[4]);
-    REQUIRE(pav4);
-    CHECK(pav4->key == "__call");
-    CHECK(pav4->context == PropertyAccessViolation::CannotWrite);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_unknown_class_instance_properties_are_forbidden")
@@ -1297,7 +1283,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_unknown_class_instance_properties_
             public y: number
 
             function zero()
-                return Point {x=0, y=0}
+                return Point.new {x=0, y=0}
             end
 
             function magnitude(self): number
@@ -1308,8 +1294,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_unknown_class_instance_properties_
         local p = Point.zero()
 
         p.magnitude = function(p: Point) return 3 end
-        p.zero = function() return Point { x = 1, y = 1 } end
-        p.one = function() return Point { x = 1, y = 1 } end
+        p.zero = function() return Point.new { x = 1, y = 1 } end
+        p.one = function() return Point.new { x = 1, y = 1 } end
 
         p.__index = {}
     )");
@@ -1435,6 +1421,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_2")
     REQUIRE(err);
     CHECK_EQ("propA", err->key);
     CHECK_EQ("{ @metatable MT2, { Name: string } }", toString(err->table));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_setmetatable_invalid_types")
+{
+    // Prior, we raised assertions here as we constructed `MetatableType`s that
+    // had non-tables as their `MetatableType::table` member.
+    LUAU_REQUIRE_ERRORS(check(R"(
+        return setmetatable(_ < _,setmetatable(setmetatable(_,_),{"",},math.abs))
+    )"));
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        return setmetatable(if _ then setmetatable(_,_) else {""}, {""}, _)
+    )"));
 }
 
 TEST_SUITE_END();

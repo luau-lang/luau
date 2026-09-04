@@ -6,7 +6,7 @@
 #include "Luau/ConstraintGraph.h"
 #include "Luau/ConstraintSet.h"
 #include "Luau/DataFlowGraph.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Error.h"
 #include "Luau/Location.h"
 #include "Luau/Module.h"
@@ -95,7 +95,7 @@ struct ConstraintSolver
     // The entire set of constraints that the solver is trying to resolve.
     ConstraintSet constraintSet;
     std::vector<NotNull<Constraint>> constraints;
-    NotNull<DenseHashMap2<Scope*, TypeId>> scopeToFunction;
+    NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction;
     NotNull<Scope> rootScope;
     ModulePtr module; // Clip with LuauCyclicRequireTypeInference
     // Used for solver-scoped errors not attributable to a specific constraint
@@ -119,20 +119,20 @@ struct ConstraintSolver
     std::vector<NotNull<const Constraint>> unsolvedConstraints;
 
     // Memoized instantiations of type aliases.
-    DenseHashMap2<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases;
+    DenseHashMap<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases;
     // Breadcrumbs for where a free type's upper bound was expanded. We use
     // these to provide more helpful error messages when a free type is solved
     // as never unexpectedly.
-    DenseHashMap2<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors;
+    DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors;
 
     // Irreducible/uninhabited type functions or type pack functions.
-    DenseHashSet2<const void*> uninhabitedTypeFunctions;
+    DenseHashSet<const void*> uninhabitedTypeFunctions;
 
-    DenseHashMap2<SubtypeConstraintRecord, Constraint*, HashSubtypeConstraintRecord> seenConstraints;
+    DenseHashMap<SubtypeConstraintRecord, Constraint*, HashSubtypeConstraintRecord> seenConstraints;
 
     // The set of types that will definitely be unchanged by generalization.
-    DenseHashSet2<TypeId> generalizedTypes_;
-    const NotNull<DenseHashSet2<TypeId>> generalizedTypes{&generalizedTypes_};
+    DenseHashSet<TypeId> generalizedTypes_;
+    const NotNull<DenseHashSet<TypeId>> generalizedTypes{&generalizedTypes_};
 
     // Recorded errors that take place within the solver.
     ErrorVec errors;
@@ -143,8 +143,8 @@ struct ConstraintSolver
     DcrLogger* logger;
     TypeCheckLimits limits;
 
-    DenseHashMap2<TypeId, const Constraint*> typeFunctionsToFinalize;
-    DenseHashMap2<TypeId, const Constraint*> typeAliasesToExpand;
+    DenseHashMap<TypeId, const Constraint*> typeFunctionsToFinalize;
+    DenseHashMap<TypeId, const Constraint*> typeAliasesToExpand;
 
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
@@ -166,7 +166,7 @@ struct ConstraintSolver
         NotNull<TypeFunctionRuntime> typeFunctionRuntime,
         NotNull<Scope> rootScope,
         std::vector<NotNull<Constraint>> constraints,
-        NotNull<DenseHashMap2<Scope*, TypeId>> scopeToFunction,
+        NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction,
         ModulePtr module,
         NotNull<ModuleResolver> moduleResolver,
         std::vector<RequireCycle> requireCycles,

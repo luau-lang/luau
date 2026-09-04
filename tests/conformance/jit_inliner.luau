@@ -86,4 +86,30 @@ do
     end
 end
 
+function fuzzfail_infinite1()
+    local function foo(x)
+        repeat
+            x = nil
+            (function(...) end)()
+        until x
+
+        -- unreachable SCC that closes upvalues
+        repeat
+            local y = {}
+        until not function() y = nil end
+    end
+
+    for _ in foo do end
+end
+
+function fuzzfail_infinite2()
+    local f = function(...) end
+    local x = 1
+    while true do
+        f(1, function(...)
+            x *= x
+        end)
+    end
+end
+
 return 'OK'

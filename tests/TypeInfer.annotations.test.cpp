@@ -5,10 +5,13 @@
 
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+
+LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 
 using namespace Luau;
 
@@ -238,6 +241,76 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_reference_generates_error")
                                 },
                             }
     );
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_generic_type_pack_reference_generates_one_error")
+{
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type F = (IDoNotExist...) -> ()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    const UnknownSymbol* error = get<UnknownSymbol>(result.errors[0]);
+    REQUIRE(error);
+    CHECK(error->name == "IDoNotExist");
+    CHECK(error->context == UnknownSymbol::Context::Type);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_generic_type_pack_vararg_generates_one_error")
+{
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        function f(...: IDoNotExist...) end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    const UnknownSymbol* error = get<UnknownSymbol>(result.errors[0]);
+    REQUIRE(error);
+    CHECK(error->name == "IDoNotExist");
+    CHECK(error->context == UnknownSymbol::Context::Type);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_generic_type_pack_in_explicit_instantiation_generates_one_error")
+{
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
+
+    for (const char* source : {
+             R"(
+                --!strict
+                local function f<T...>() end
+                f<<IDoNotExist...>>()
+            )",
+             R"(
+                --!strict
+                local t = {}
+                function t:f<T...>() end
+                t:f<<IDoNotExist...>>()
+            )",
+             R"(
+                --!nonstrict
+                local t = {}
+                function t:f<T...>() end
+                t:f<<IDoNotExist...>>()
+            )",
+         })
+    {
+        CAPTURE(source);
+        CheckResult result = check(source);
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        const UnknownSymbol* error = get<UnknownSymbol>(result.errors[0]);
+        REQUIRE(error);
+        CHECK(error->name == "IDoNotExist");
+        CHECK(error->context == UnknownSymbol::Context::Type);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "typeof_variable_type_annotation_should_return_its_type")

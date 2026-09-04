@@ -2547,7 +2547,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         if (get<AnyType>(operandType) || get<ErrorType>(operandType) || get<NeverType>(operandType))
             return WithPredicate{numberType};
 
-        DenseHashSet2<TypeId> seen;
+        DenseHashSet<TypeId> seen;
 
         if (typeCouldHaveMetatable(operandType))
         {
@@ -3703,7 +3703,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
 
         if (value)
         {
-            DenseHashSet2<TypeId> propTypes;
+            DenseHashSet<TypeId> propTypes;
 
             for (auto table : tableTypes)
             {
@@ -3744,7 +3744,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             }
         }
 
-        DenseHashSet2<TypeId> resultTypes;
+        DenseHashSet<TypeId> resultTypes;
 
         for (auto table : tableTypes)
         {

@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
@@ -583,8 +582,6 @@ TEST_CASE_FIXTURE(Fixture, "intersect_false_and_bool_and_false")
 
 TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")
 {
-    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
-
     CheckResult result = check(R"(
         function foo(x: ((number?) -> number?) & ((string?) -> string?))
             local y : (nil) -> nil = x -- Not OK (fixed in DCR)
@@ -708,8 +705,6 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
 {
-    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
-
     CheckResult result = check(R"(
         function f(x : { p : number?, q : any } & { p : unknown, q : string? })
             local y : { p : number?, q : string? } = x -- OK
@@ -775,8 +770,6 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_never_properties")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
 {
-    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
-
     CheckResult result = check(R"(
         function f(x : ((number?) -> ({ p : number } & { q : number })) & ((string?) -> ({ p : number } & { r : number })))
             local y : (nil) -> { p : number, q : number, r : number} = x -- OK

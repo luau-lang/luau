@@ -403,7 +403,7 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
         return builtinTypes->errorType;
     };
 
-    DenseHashSet2<AstLocal*> exportedLocals;
+    DenseHashSet<AstLocal*> exportedLocals;
 
     for (AstStat* statement : module->root->body)
     {

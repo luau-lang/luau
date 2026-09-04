@@ -8,7 +8,7 @@
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/DcrLogger.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Generalization.h"
 #include "Luau/HashUtil.h"
 #include "Luau/Instantiation.h"
@@ -50,7 +50,6 @@ LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAGVARIABLE(LuauForceLess)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTFLAGVARIABLE(LuauIndexingIntoErrorGivesError)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
@@ -452,7 +451,7 @@ ConstraintSolver::ConstraintSolver(
     NotNull<TypeFunctionRuntime> typeFunctionRuntime,
     NotNull<Scope> rootScope,
     std::vector<NotNull<Constraint>> constraints,
-    NotNull<DenseHashMap2<Scope*, TypeId>> scopeToFunction,
+    NotNull<DenseHashMap<Scope*, TypeId>> scopeToFunction,
     ModulePtr module,
     NotNull<ModuleResolver> moduleResolver,
     std::vector<RequireCycle> requireCycles,
@@ -1710,7 +1709,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         constraint->location
     };
 
-    DenseHashSet2<TypeId> uniqueTypes;
+    DenseHashSet<TypeId> uniqueTypes;
     if (c.callSite)
     {
         if (FFlag::LuauCyclicRequireTypeInference)
@@ -1934,10 +1933,10 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     if (!ftv)
         return true;
 
-    DenseHashMap2<TypeId, TypeId> replacements;
-    DenseHashMap2<TypePackId, TypePackId> replacementPacks;
+    DenseHashMap<TypeId, TypeId> replacements;
+    DenseHashMap<TypePackId, TypePackId> replacementPacks;
 
-    DenseHashSet2<const void*> genericTypesAndPacks;
+    DenseHashSet<const void*> genericTypesAndPacks;
 
     Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
 
@@ -3107,7 +3106,7 @@ TypeId ConstraintSolver::instantiateFunctionType(
         return functionTypeId;
     }
 
-    DenseHashMap2<TypeId, TypeId> replacements;
+    DenseHashMap<TypeId, TypeId> replacements;
     auto typeParametersIter = ft->generics.begin();
 
     for (const TypeId typeArgument : typeArguments)
@@ -3125,7 +3124,7 @@ TypeId ConstraintSolver::instantiateFunctionType(
         replacements[*typeParametersIter++] = freshType(arena, builtinTypes, scope, Polarity::Mixed);
     }
 
-    DenseHashMap2<TypePackId, TypePackId> replacementPacks;
+    DenseHashMap<TypePackId, TypePackId> replacementPacks;
     auto typePackParametersIter = ft->genericPacks.begin();
 
     for (const TypePackId typePackArgument : typePackArguments)
@@ -3180,7 +3179,7 @@ bool ConstraintSolver::tryDispatch(const PushTypeConstraint& c, NotNull<const Co
         return force;
     }
 
-    DenseHashSet2<const void*> empty;
+    DenseHashSet<const void*> empty;
     PushTypeResult result = pushTypeInto(
         c.astTypes, c.astExpectedTypes, NotNull{this}, NotNull{constraint}, NotNull{&empty}, NotNull{&u2}, subtyping, c.expectedType, c.expr
     );
@@ -3472,7 +3471,7 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
 
     if (isBlocked(subjectType))
         return {{subjectType}, std::nullopt};
-    else if (get<AnyType>(subjectType) || get<NeverType>(subjectType) || (FFlag::LuauIndexingIntoErrorGivesError && get<ErrorType>(subjectType)))
+    else if (get<AnyType>(subjectType) || get<NeverType>(subjectType) || get<ErrorType>(subjectType))
     {
         return {{}, subjectType};
     }
@@ -3888,7 +3887,7 @@ void ConstraintSolver::inheritBlocks(NotNull<const Constraint> source, NotNull<c
 
 void ConstraintSolver::unblock(TypeId ty, Location location)
 {
-    DenseHashSet2<TypeId> seen;
+    DenseHashSet<TypeId> seen;
 
     TypeId progressed = ty;
     while (true)

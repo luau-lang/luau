@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/OptimizeConstProp.h"
 
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrData.h"
 #include "Luau/IrBuilder.h"
 #include "Luau/IrUtils.h"
@@ -23,11 +23,8 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
-LUAU_FASTFLAGVARIABLE(LuauCodegenLinearNoCall)
-LUAU_FLAGVERSION(LuauCodegenLinearNoCall, 2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSubstituteReplacements)
 LUAU_FASTFLAGVARIABLE(LuauCodegenConstVectorBufferRead)
-LUAU_FASTFLAGVARIABLE(LuauCodegenOriginVerifyMatch)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAGVARIABLE(LuauCodegenNoLinearFastpcall)
 
@@ -607,28 +604,14 @@ struct ConstPropState
             if (tvalueLoad.cmd != IrCmd::LOAD_TVALUE || OP_A(tvalueLoad).kind != IrOpKind::VmReg)
                 return false;
 
-            if (FFlag::LuauCodegenOriginVerifyMatch)
+            uint8_t prevLoadReg = vmRegOp(OP_A(tvalueLoad));
+
+            if (prevLoadReg == vmRegOp(OP_A(loadInst)))
+                return false;
+
+            // Previous load is still linked to the same register
+            if (RegisterLink* link = tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}); link && link->reg == prevLoadReg)
             {
-                uint8_t prevLoadReg = vmRegOp(OP_A(tvalueLoad));
-
-                if (prevLoadReg == vmRegOp(OP_A(loadInst)))
-                    return false;
-
-                // Previous load is still linked to the same register
-                if (RegisterLink* link = tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}); link && link->reg == prevLoadReg)
-                {
-                    replace(function, OP_A(loadInst), OP_A(tvalueLoad));
-                    return true;
-                }
-            }
-            else
-            {
-                if (vmRegOp(OP_A(tvalueLoad)) == vmRegOp(OP_A(loadInst)))
-                    return false;
-
-                if (tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}) == nullptr)
-                    return false;
-
                 replace(function, OP_A(loadInst), OP_A(tvalueLoad));
                 return true;
             }
@@ -1399,19 +1382,19 @@ struct ConstPropState
     bool checkedGc = false;
 
     // Stores which register does the instruction value correspond to (and at which version of the register)
-    DenseHashMap2<uint32_t, RegisterLink> instLink;
+    DenseHashMap<uint32_t, RegisterLink> instLink;
 
     // Stored the tag of a TValue stored in an instruction and will never change
-    DenseHashMap2<uint32_t, uint8_t> instTag;
-    DenseHashMap2<uint32_t, IrOp> instValue;
+    DenseHashMap<uint32_t, uint8_t> instTag;
+    DenseHashMap<uint32_t, IrOp> instValue;
 
-    DenseHashMap2<IrInst, uint32_t, IrInstHash, IrInstEq> valueMap;
+    DenseHashMap<IrInst, uint32_t, IrInstHash, IrInstEq> valueMap;
 
     // For upvalue load-store optimizations, we just keep track of the last known value of the upvalue
-    DenseHashMap2<uint8_t, uint32_t> upvalueMap;
+    DenseHashMap<uint8_t, uint32_t> upvalueMap;
 
     // For load-store optimizations of table elements, separate maps for hash and array parts as writes to one do not affect the other
-    DenseHashMap2<uint32_t, uint32_t> hashValueCache;
+    DenseHashMap<uint32_t, uint32_t> hashValueCache;
     std::vector<ArrayValueEntry> arrayValueCache;
 
     // Some instruction re-uses can't be stored in valueMap because of extra requirements
@@ -1434,9 +1417,9 @@ struct ConstPropState
     uint32_t loadEnvIdx = kInvalidInstIdx;
 
     // Properties associated with a table contained in an SSA register pointer
-    DenseHashSet2<uint32_t> instNotReadonly;
-    DenseHashSet2<uint32_t> instNoMetatable;
-    DenseHashMap2<uint32_t, int> instArraySize;
+    DenseHashSet<uint32_t> instNotReadonly;
+    DenseHashSet<uint32_t> instNoMetatable;
+    DenseHashMap<uint32_t, int> instArraySize;
 
     std::vector<uint32_t> rangeEndTemp;
 };
@@ -3725,8 +3708,6 @@ static void constPropInFallback(IrBuilder& build, std::vector<uint8_t>& visited,
 
 static bool includeBlockInLinearPath(IrFunction& function, const IrBlock& block)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenLinearNoCall);
-
     for (uint32_t index = block.start; index <= block.finish; index++)
     {
         const IrInst& inst = function.instructions[index];
@@ -3781,11 +3762,7 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
 
                     visited[targetIdx] = true;
 
-                    if (FFlag::LuauCodegenLinearNoCall)
-                        chain.push_back(targetIdx);
-                    else
-                        path.push_back(targetIdx);
-
+                    chain.push_back(targetIdx);
                     nextBlock = &target;
 
                     for (;;)
@@ -3796,11 +3773,7 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
 
                             visited[nextInChainIdx] = true;
 
-                            if (FFlag::LuauCodegenLinearNoCall)
-                                chain.push_back(nextInChainIdx);
-                            else
-                                path.push_back(nextInChainIdx);
-
+                            chain.push_back(nextInChainIdx);
                             nextBlock = nextInChain;
                         }
                         else
@@ -3810,22 +3783,19 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
                     }
 
                     // Check that the block chain is valid to include in the linear path
-                    if (FFlag::LuauCodegenLinearNoCall)
-                    {
-                        bool allValidForInclusion = std::all_of(
-                            chain.begin(),
-                            chain.end(),
-                            [&](uint32_t blockIdx)
-                            {
-                                return includeBlockInLinearPath(function, function.blocks[blockIdx]);
-                            }
-                        );
+                    bool allValidForInclusion = std::all_of(
+                        chain.begin(),
+                        chain.end(),
+                        [&](uint32_t blockIdx)
+                        {
+                            return includeBlockInLinearPath(function, function.blocks[blockIdx]);
+                        }
+                    );
 
-                        if (!allValidForInclusion)
-                            break;
+                    if (!allValidForInclusion)
+                        break;
 
-                        path.insert(path.end(), chain.begin(), chain.end());
-                    }
+                    path.insert(path.end(), chain.begin(), chain.end());
                 }
             }
         }

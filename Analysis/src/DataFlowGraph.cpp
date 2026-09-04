@@ -12,8 +12,8 @@
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAGVARIABLE(LuauDoNotOverwriteAstDefs)
 LUAU_FASTFLAGVARIABLE(LuauAvoidTrivialPhis)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 namespace Luau
 {
@@ -481,6 +481,15 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatIf* i)
     ControlFlow thencf;
     {
         PushScope ps{scopeStack, thenScope};
+
+        if (FFlag::DebugLuauIfLocalAnalysis && i->conditionLocal)
+        {
+            DefId def = defArena->freshCell(i->conditionLocal, i->conditionLocal->location, false);
+            graph.localDefs[i->conditionLocal] = def;
+            thenScope->bindings[i->conditionLocal] = def;
+            captures[i->conditionLocal].allVersions.push_back(def);
+        }
+
         thencf = visit(i->thenbody);
     }
 
@@ -985,19 +994,18 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExpr* e)
 
     auto [def, key] = go();
 
-    if (FFlag::LuauDoNotOverwriteAstDefs)
-    {
-        if (!graph.astDefs.contains(e))
-        {
-            graph.astDefs[e] = def;
-            LUAU_ASSERT(!graph.astRefinementKeys.contains(e));
-            if (key)
-                graph.astRefinementKeys[e] = key;
-        }
-    }
-    else
+    // We, effectively, have an invariant that every expression in the tree
+    // corresponds to a single def: there's a single hash map, and we use
+    // defs as keys. Violating this (replacing a def value in this map)
+    // will result in pain (ICEs) in constraint generation.
+    //
+    // As a precaution, we only fill in a def when an expression does not
+    // have a def already. This should only really occur for the type-stateing
+    // functions like `setmetatable`, `assert` and the like.
+    if (!graph.astDefs.contains(e))
     {
         graph.astDefs[e] = def;
+        LUAU_ASSERT(!graph.astRefinementKeys.contains(e));
         if (key)
             graph.astRefinementKeys[e] = key;
     }
@@ -1067,19 +1075,11 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(AstExprCall* c)
 
         auto [def, key] = *result;
 
-        if (FFlag::LuauDoNotOverwriteAstDefs)
-        {
-            if (!graph.astDefs.contains(firstArg))
-            {
-                graph.astDefs[firstArg] = def;
-                LUAU_ASSERT(!graph.astRefinementKeys.contains(firstArg));
-                if (key)
-                    graph.astRefinementKeys[firstArg] = key;
-            }
-        }
-        else
+        // See comment in visitExpr(AstExpr*) for why we do this.
+        if (!graph.astDefs.contains(firstArg))
         {
             graph.astDefs[firstArg] = def;
+            LUAU_ASSERT(!graph.astRefinementKeys.contains(firstArg));
             if (key)
                 graph.astRefinementKeys[firstArg] = key;
         }
@@ -1286,15 +1286,9 @@ void DataFlowGraphBuilder::visitLValue(AstExpr* e, DefId incomingDef)
             handle->ice("Unknown AstExpr in DataFlowGraphBuilder::visitLValue");
     };
 
-    if (FFlag::LuauDoNotOverwriteAstDefs)
-    {
-        if (!graph.astDefs.contains(e))
-            graph.astDefs[e] = go();
-    }
-    else
-    {
+    // See comment in visitExpr(AstExpr*) for why we do this.
+    if (!graph.astDefs.contains(e))
         graph.astDefs[e] = go();
-    }
 }
 
 DefId DataFlowGraphBuilder::visitLValue(AstExprLocal* l, DefId incomingDef)

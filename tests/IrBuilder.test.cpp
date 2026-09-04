@@ -19,8 +19,6 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauCodegenSkipDeadPredecessorTags)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauCodegenSubstituteReplacements)
-LUAU_FASTFLAG(LuauCodegenLinearNoCall)
-LUAU_FASTFLAG(LuauCodegenOriginVerifyMatch)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAG(LuauCodegenNoLinearFastpcall)
 
@@ -4589,8 +4587,6 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NoLinearExtractionForBlockWithCall")
 {
-    ScopedFastFlag luauCodegenLinearNoCall{FFlag::LuauCodegenLinearNoCall, true};
-
     IrOp block1 = build.block(IrBlockKind::Internal);
     IrOp fallback1 = build.fallbackBlock(0u);
     IrOp block2 = build.block(IrBlockKind::Internal);
@@ -4667,8 +4663,6 @@ bb_6:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NoLinearExtractionForChainWithCall")
 {
-    ScopedFastFlag luauCodegenLinearNoCall{FFlag::LuauCodegenLinearNoCall, true};
-
     IrOp block1 = build.block(IrBlockKind::Internal);
     IrOp fallback1 = build.fallbackBlock(0u);
     IrOp block2 = build.block(IrBlockKind::Internal);
@@ -4745,7 +4739,6 @@ bb_6:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NoLinearExtractionForChainWithPcall")
 {
-    ScopedFastFlag luauCodegenLinearNoCall{FFlag::LuauCodegenLinearNoCall, true};
     ScopedFastFlag luauCodegenNoLinearFastpcall{FFlag::LuauCodegenNoLinearFastpcall, true};
 
     IrOp block1 = build.block(IrBlockKind::Internal);
@@ -4824,8 +4817,6 @@ bb_6:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NoLinearExtractionForChainWithCallLiveOut")
 {
-    ScopedFastFlag luauCodegenLinearNoCall{FFlag::LuauCodegenLinearNoCall, true};
-
     IrOp blockStart = build.block(IrBlockKind::Internal);
     IrOp fallbackStart = build.fallbackBlock(0u);
     IrOp target1 = build.block(IrBlockKind::Internal);
@@ -8794,8 +8785,6 @@ bb_0:
 }
 TEST_CASE_FIXTURE(IrBuilderFixture, "LoadOriginNoRedirectAfterCapturedMutation")
 {
-    ScopedFastFlag luauCodegenOriginVerifyMatch{FFlag::LuauCodegenOriginVerifyMatch, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);

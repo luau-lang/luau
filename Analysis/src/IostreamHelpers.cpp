@@ -145,8 +145,6 @@ static void errorToString(std::ostream& stream, const T& err)
 
         stream << "}";
     }
-    else if constexpr (std::is_same_v<T, CyclicModuleGraphTooLarge>)
-        stream << "CyclicModuleGraphTooLarge { moduleCount = " << err.moduleCount << " }";
     else if constexpr (std::is_same_v<T, CyclicModuleTopLevelAccess>)
         stream << "CyclicModuleTopLevelAccess { cyclicModuleName = " << err.cyclicModuleName << ", localName = " << err.localName
                << ", propName = " << err.propName << " }";
@@ -308,6 +306,8 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "UnappliedTypeFunction {}";
     else if constexpr (std::is_same_v<T, AmbiguousFunctionCall>)
         stream << "AmbiguousFunctionCall { " << toString(err.function) << ", " << toString(err.arguments) << " }";
+    else if constexpr (std::is_same_v<T, UninitializedFieldAccess>)
+        stream << "UninitializedFieldAccess { " << (err.fieldName ? *err.fieldName : "self") << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

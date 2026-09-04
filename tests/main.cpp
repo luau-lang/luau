@@ -2,6 +2,7 @@
 #include "Luau/Common.h"
 
 #include "Luau/CodeGenCommon.h"
+#include "Luau/TimeTrace.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT
 // Our calls to parseOption/parseFlag don't provide a prefix so set the prefix to the empty string.
@@ -32,6 +33,9 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include <stdio.h>
 
@@ -280,6 +284,159 @@ struct TeamCityReporter : doctest::IReporter
 
 REGISTER_REPORTER("teamcity", 1, TeamCityReporter);
 
+static bool progressEnabled = false;
+
+struct ProgressListener : doctest::IReporter
+{
+    int completed = 0;
+    int failed = 0;
+
+    const doctest::TestCaseData* currentTest = nullptr;
+
+    ProgressListener(const doctest::ContextOptions&) {}
+
+    double runStartTime = 0;
+
+    void report_query(const doctest::QueryData&) override {}
+    void test_run_start() override {}
+    void test_run_end(const doctest::TestRunStats& ts) override
+    {
+        if (!progressEnabled)
+            return;
+
+        printf("\n");
+    }
+
+    void test_case_start(const doctest::TestCaseData& tc) override
+    {
+        if (!progressEnabled)
+            return;
+
+        if (failed)
+            printf("\r\033[K[%d %d failed] %s/%s", completed, failed, tc.m_test_suite, tc.m_name);
+        else
+            printf("\r\033[K[%d] %s/%s", completed, tc.m_test_suite, tc.m_name);
+
+        fflush(stdout);
+    }
+
+    void test_case_end(const doctest::CurrentTestCaseStats& ts) override
+    {
+        completed++;
+
+        if (!ts.testCaseSuccess)
+            failed++;
+    }
+
+    void test_case_reenter(const doctest::TestCaseData&) override {}
+    void test_case_exception(const doctest::TestCaseException&) override {}
+    void subcase_start(const doctest::SubcaseSignature&) override {}
+    void subcase_end() override {}
+    void log_assert(const doctest::AssertData&) override {}
+    void log_message(const doctest::MessageData&) override {}
+    void test_case_skipped(const doctest::TestCaseData&) override {}
+};
+
+REGISTER_LISTENER("progress", 1, ProgressListener);
+
+static bool timingEnabled = false;
+
+static const size_t kTimingReportedSuites = 10;
+static const size_t kTimingReportedTests = 10;
+
+struct TimingListener : doctest::IReporter
+{
+    const doctest::TestCaseData* currentTest = nullptr;
+    double testStartTime = 0;
+
+    std::unordered_map<std::string, double> suiteTimes;
+    std::vector<std::pair<std::string, double>> testTimes;
+
+    double runStartTime = 0.0;
+
+    TimingListener(const doctest::ContextOptions&) {}
+
+    void report_query(const doctest::QueryData&) override {}
+    void test_run_start() override
+    {
+        runStartTime = Luau::TimeTrace::getClock();
+    }
+
+    void test_run_end(const doctest::TestRunStats& ts) override
+    {
+        if (!timingEnabled)
+            return;
+
+        double totalTime = Luau::TimeTrace::getClock() - runStartTime;
+        printf("Total time: %.3fs\n", totalTime);
+
+        std::vector<std::pair<std::string, double>> suitesSorted(suiteTimes.begin(), suiteTimes.end());
+        std::sort(
+            suitesSorted.begin(),
+            suitesSorted.end(),
+            [](const auto& a, const auto& b)
+            {
+                return a.second > b.second;
+            }
+        );
+
+        std::sort(
+            testTimes.begin(),
+            testTimes.end(),
+            [](const auto& a, const auto& b)
+            {
+                return a.second > b.second;
+            }
+        );
+
+        printf("Slowest test suites:\n");
+        for (size_t i = 0; i < std::min(kTimingReportedSuites, suitesSorted.size()); i++)
+            printf(
+                "  %8.3fs  %5.1f%%  %s\n",
+                suitesSorted[i].second,
+                totalTime > 0 ? 100.0 * suitesSorted[i].second / totalTime : 0.0,
+                suitesSorted[i].first.c_str()
+            );
+
+        printf("Slowest tests:\n");
+        for (size_t i = 0; i < std::min(kTimingReportedTests, testTimes.size()); i++)
+            printf(
+                "  %8.3fs  %5.1f%%  %s\n",
+                testTimes[i].second,
+                totalTime > 0 ? 100.0 * testTimes[i].second / totalTime : 0.0,
+                testTimes[i].first.c_str()
+            );
+
+        fflush(stdout);
+    }
+
+    void test_case_start(const doctest::TestCaseData& tc) override
+    {
+        currentTest = &tc;
+    }
+
+    void test_case_end(const doctest::CurrentTestCaseStats& ts) override
+    {
+        if (timingEnabled && currentTest)
+        {
+            suiteTimes[currentTest->m_test_suite] += ts.seconds;
+            testTimes.push_back({std::string(currentTest->m_test_suite) + "/" + currentTest->m_name, ts.seconds});
+        }
+
+        currentTest = nullptr;
+    }
+
+    void test_case_reenter(const doctest::TestCaseData&) override {}
+    void test_case_exception(const doctest::TestCaseException&) override {}
+    void subcase_start(const doctest::SubcaseSignature&) override {}
+    void subcase_end() override {}
+    void log_assert(const doctest::AssertData&) override {}
+    void log_message(const doctest::MessageData&) override {}
+    void test_case_skipped(const doctest::TestCaseData&) override {}
+};
+
+REGISTER_LISTENER("timing", 0, TimingListener);
+
 template<typename T>
 using FValueResult = std::pair<std::string, T>;
 
@@ -393,20 +550,21 @@ int main(int argc, char** argv)
         return 0;
     }
 
+    doctest::getListeners();
     if (doctest::parseFlag(argc, argv, "--verbose"))
-    {
         verbose = true;
-    }
 
     if (doctest::parseFlag(argc, argv, "--codegen"))
-    {
         codegen = true;
-    }
 
     if (doctest::parseFlag(argc, argv, "--jit-inliner"))
-    {
         jitInliner = true;
-    }
+
+    if (doctest::parseFlag(argc, argv, "--progress"))
+        progressEnabled = true;
+
+    if (doctest::parseFlag(argc, argv, "--timing"))
+        timingEnabled = true;
 
     doctest::String optlevel;
     if (doctest::parseOption(argc, argv, "-O", &optlevel))

@@ -773,7 +773,7 @@ void IrBuilder::checkSafeEnv(int pcpos)
 
 void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator)
 {
-    DenseHashMap2<uint32_t, uint32_t> instRedir;
+    DenseHashMap<uint32_t, uint32_t> instRedir;
 
     auto redirect = [&instRedir](IrOp& op)
     {

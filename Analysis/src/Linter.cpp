@@ -13,6 +13,7 @@
 #include <climits>
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 namespace Luau
 {
@@ -31,7 +32,7 @@ struct LintContext
     AstStat* root;
 
     AstName placeholder;
-    DenseHashMap2<AstName, Global> builtinGlobals;
+    DenseHashMap<AstName, Global> builtinGlobals;
     ScopePtr scope;
     const Module* module;
 
@@ -231,7 +232,7 @@ private:
         }
 
         AstExprFunction* ast;
-        DenseHashSet2<AstName> dominatedGlobals;
+        DenseHashSet<AstName> dominatedGlobals;
         bool conditionalExecution;
     };
 
@@ -251,7 +252,7 @@ private:
 
     LintContext* context = nullptr;
 
-    DenseHashMap2<AstName, Global> globals;
+    DenseHashMap<AstName, Global> globals;
     std::vector<AstExprGlobal*> globalRefs;
     std::vector<FunctionInfo> functionStack;
 
@@ -725,9 +726,9 @@ private:
         AstExprGlobal* firstRef;
     };
 
-    DenseHashMap2<AstLocal*, Local> locals;
-    DenseHashMap2<AstName, AstLocal*> imports;
-    DenseHashMap2<AstName, Global> globals;
+    DenseHashMap<AstLocal*, Local> locals;
+    DenseHashMap<AstName, AstLocal*> imports;
+    DenseHashMap<AstName, Global> globals;
 
     LintLocalHygiene() = default;
 
@@ -955,7 +956,7 @@ private:
         bool used;
     };
 
-    DenseHashMap2<AstName, Global> globals;
+    DenseHashMap<AstName, Global> globals;
 
     LintUnusedFunction() = default;
 
@@ -1901,8 +1902,8 @@ private:
             if (item.kind == AstExprTable::Item::Kind::List)
                 count++;
 
-        DenseHashMap2<AstArray<char>*, int, AstArrayPredicate, AstArrayPredicate> names;
-        DenseHashMap2<int, int> indices;
+        DenseHashMap<AstArray<char>*, int, AstArrayPredicate, AstArrayPredicate> names;
+        DenseHashMap<int, int> indices;
 
         for (const AstExprTable::Item& item : node->items)
         {
@@ -1978,7 +1979,7 @@ private:
 
         if (context->module->checkedInNewSolver)
         {
-            DenseHashMap2<AstName, Rec> names;
+            DenseHashMap<AstName, Rec> names;
 
             for (const AstTableProp& item : node->props)
             {
@@ -2037,7 +2038,7 @@ private:
             return true;
         }
 
-        DenseHashMap2<AstName, int> names;
+        DenseHashMap<AstName, int> names;
 
         for (const AstTableProp& item : node->props)
         {
@@ -2096,7 +2097,7 @@ private:
     };
 
     LintContext* context;
-    DenseHashMap2<AstLocal*, Local> locals;
+    DenseHashMap<AstLocal*, Local> locals;
 
     LintUninitializedLocal() = default;
 
@@ -2192,7 +2193,7 @@ public:
 
 private:
     LintContext* context;
-    DenseHashMap2<std::string, Location> defns;
+    DenseHashMap<std::string, Location> defns;
 
     LintDuplicateFunction(LintContext* context)
         : context(context)
@@ -2826,7 +2827,8 @@ private:
             head->condition->visit(this);
             head->thenbody->visit(this);
 
-            conditions.push_back(head->condition);
+            if (!FFlag::DebugLuauIfLocalAnalysis || !head->conditionLocal)
+                conditions.push_back(head->condition);
 
             if (head->elsebody && head->elsebody->is<AstStatIf>())
             {
@@ -2982,7 +2984,7 @@ public:
 private:
     LintContext* context;
 
-    DenseHashMap2<AstLocal*, AstNode*> locals;
+    DenseHashMap<AstLocal*, AstNode*> locals;
 
     LintDuplicateLocal() = default;
 

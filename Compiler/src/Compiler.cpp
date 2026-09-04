@@ -31,10 +31,12 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileIifeInline)
+LUAU_FASTFLAG(LuauCompileExpandLimit)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileMoveElision)
+LUAU_FASTFLAGVARIABLE(LuauCompileCleanBlockDeadClose)
+LUAU_FASTFLAGVARIABLE(LuauCompileContinueEagerClose)
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAGVARIABLE(LuauCompileStringInterpTargetTop)
 LUAU_FASTFLAGVARIABLE(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
@@ -42,18 +44,12 @@ LUAU_FASTFLAGVARIABLE(LuauOptimizeExportTable)
 LUAU_FASTFLAG(LuauCompileFastpcall)
 LUAU_FASTFLAGVARIABLE(LuauExportedTypesParticipateInScc)
 LUAU_FLAGVERSION(LuauExportedTypesParticipateInScc, 2)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 
 namespace Luau
 {
 
 using namespace Luau::Compile;
-
-static const uint32_t kMaxRegisterCount = 255;
-static const uint32_t kMaxUpvalueCount = 200;
-static const uint32_t kMaxLocalCount = 200;
-static const uint32_t kMaxInstructionCount = 1'000'000'000;
-
-static const uint8_t kInvalidReg = 255;
 
 static const uint32_t kDefaultAllocPc = ~0u;
 
@@ -586,7 +582,11 @@ struct Compiler
         if (options.optimizationLevel >= 1)
             bytecode.foldJumps();
 
-        bytecode.expandJumps();
+        bool hasLongJumpError = false;
+        bytecode.expandJumps(hasLongJumpError);
+
+        if (FFlag::LuauCompileExpandLimit && hasLongJumpError)
+            CompileError::raise(func->location, "Exceeded jump distance limit; simplify the code to compile");
 
         popLocals(0);
 
@@ -2592,7 +2592,7 @@ struct Compiler
         unsigned int regCount = unsigned(2 + expr->expressions.size - skippedSubExpr);
 
         // Optimization: have the format call place the result directly into the target to avoid an extra MOVE
-        bool targetTop = FFlag::LuauCompileStringInterpTargetTop && targetTemp && target == regTop - 1;
+        bool targetTop = targetTemp && target == regTop - 1;
         uint8_t baseReg = targetTop ? allocReg(expr, regCount - 1) - 1 : allocReg(expr, regCount);
 
         emitLoadK(baseReg, formatStringIndex);
@@ -3670,6 +3670,69 @@ struct Compiler
             return nullptr;
     }
 
+    void compileStatIfLocal(AstStatIf* stat)
+    {
+        LUAU_ASSERT(stat->conditionLocal);
+
+        bool thenTerminates = alwaysTerminates(stat->thenbody);
+        bool skipElse = isConstantTrue(stat->condition);
+        size_t oldLocals = localStack.size();
+        size_t elseJump = 0;
+
+        {
+            RegScope rs(this);
+
+            uint8_t reg = allocReg(stat, 1u);
+            uint32_t allocpc = bytecode.getDebugPC();
+
+            compileExprTemp(stat->condition, reg);
+            pushLocal(stat->conditionLocal, reg, allocpc);
+
+            if (!skipElse)
+            {
+                elseJump = bytecode.emitLabel();
+                bytecode.emitAD(LOP_JUMPIFNOT, reg, 0);
+            }
+
+            compileStat(stat->thenbody);
+
+            if (!thenTerminates)
+                closeLocals(oldLocals);
+
+            popLocals(oldLocals);
+        }
+
+        if (skipElse)
+            return;
+
+        if (stat->elsebody)
+        {
+            if (thenTerminates)
+            {
+                size_t elseLabel = bytecode.emitLabel();
+                compileStat(stat->elsebody);
+                patchJump(stat, elseJump, elseLabel);
+            }
+            else
+            {
+                size_t thenLabel = bytecode.emitLabel();
+                bytecode.emitAD(LOP_JUMP, 0, 0);
+
+                size_t elseLabel = bytecode.emitLabel();
+                compileStat(stat->elsebody);
+
+                size_t endLabel = bytecode.emitLabel();
+                patchJump(stat, elseJump, elseLabel);
+                patchJump(stat, thenLabel, endLabel);
+            }
+        }
+        else
+        {
+            size_t endLabel = bytecode.emitLabel();
+            patchJump(stat, elseJump, endLabel);
+        }
+    }
+
     void compileStatIf(AstStatIf* stat)
     {
         // Optimization: condition is always false => we only need the else body
@@ -3686,6 +3749,12 @@ struct Compiler
             compileExprSide(cand->left);
             if (stat->elsebody)
                 compileStat(stat->elsebody);
+            return;
+        }
+
+        if (FFlag::DebugLuauIfLocalSyntax && stat->conditionLocal)
+        {
+            compileStatIfLocal(stat);
             return;
         }
 
@@ -3823,11 +3892,19 @@ struct Compiler
         {
             compileStat(body->body.data[i]);
 
-            // continue statement inside the repeat..until loop should not close upvalues defined directly in the loop body
-            // (but it must still close upvalues defined in more nested blocks)
+            // continue statement inside the repeat..until loop should not close upvalues defined directly in the loop body before it
             // this is because the upvalues defined inside the loop body may be captured by a closure defined in the until
             // expression that continue will jump to.
-            loops.back().localOffsetContinue = localStack.size();
+            // but any locals defined in nested blocks or after first continue (which performs validateContinueUntil) do have to be closed
+            if (FFlag::LuauCompileContinueEagerClose)
+            {
+                if (!loops.back().continueUsed)
+                    loops.back().localOffsetContinue = localStack.size();
+            }
+            else
+            {
+                loops.back().localOffsetContinue = localStack.size();
+            }
 
             // if continue was called from this statement, any local defined after this in the loop body should not be accessed by until condition
             // it is sufficient to check this condition once, as if this holds for the first continue, it must hold for all subsequent continues.
@@ -4656,18 +4733,40 @@ struct Compiler
             if (FFlag::LuauExportValueSyntax)
                 blockDepth++;
 
+            bool terminatesEarly = false;
+
             for (size_t i = 0; i < stat->body.size; ++i)
             {
                 AstStat* bodyStat = stat->body.data[i];
                 compileStat(bodyStat);
 
-                if (alwaysTerminates(bodyStat))
-                    break;
+                if (FFlag::LuauCompileCleanBlockDeadClose)
+                {
+                    if (alwaysTerminates(bodyStat))
+                    {
+                        terminatesEarly = true;
+                        break;
+                    }
+                }
+                else
+                {
+                    if (alwaysTerminates(bodyStat))
+                        break;
+                }
             }
 
             if (FFlag::LuauExportValueSyntax)
                 blockDepth--;
-            closeLocals(oldLocals);
+
+            if (FFlag::LuauCompileCleanBlockDeadClose)
+            {
+                if (!terminatesEarly)
+                    closeLocals(oldLocals);
+            }
+            else
+            {
+                closeLocals(oldLocals);
+            }
 
             popLocals(oldLocals);
         }
@@ -5163,7 +5262,7 @@ struct Compiler
 
         Compiler* self;
         AstLocal* undef;
-        DenseHashSet2<AstLocal*> locals;
+        DenseHashSet<AstLocal*> locals;
     };
 
     struct ConstUpvalueVisitor : AstVisitor
@@ -5396,23 +5495,23 @@ struct Compiler
     CompileOptions options;
 
 
-    DenseHashMap2<AstExprFunction*, Function> functions;
-    DenseHashMap2<AstLocal*, Local> locals;
-    DenseHashMap2<AstName, Global> globals;
-    DenseHashMap2<AstLocal*, Variable> variables;
-    DenseHashMap2<AstExpr*, Constant> constants;
-    DenseHashMap2<AstLocal*, Constant> locstants;
-    DenseHashMap2<AstLocal*, TableConstantKind> tableConstants;
-    DenseHashMap2<AstExprTable*, TableShape> tableShapes;
-    DenseHashMap2<AstExprCall*, int> builtins;
-    DenseHashMap2<AstName, uint8_t> userdataTypes;
-    DenseHashMap2<AstExprFunction*, std::string> functionTypes;
-    DenseHashMap2<AstLocal*, LuauBytecodeType> localTypes;
-    DenseHashMap2<AstExpr*, LuauBytecodeType> exprTypes;
-    DenseHashMap2<AstName, AstLocal*> classLocals{};
+    DenseHashMap<AstExprFunction*, Function> functions;
+    DenseHashMap<AstLocal*, Local> locals;
+    DenseHashMap<AstName, Global> globals;
+    DenseHashMap<AstLocal*, Variable> variables;
+    DenseHashMap<AstExpr*, Constant> constants;
+    DenseHashMap<AstLocal*, Constant> locstants;
+    DenseHashMap<AstLocal*, TableConstantKind> tableConstants;
+    DenseHashMap<AstExprTable*, TableShape> tableShapes;
+    DenseHashMap<AstExprCall*, int> builtins;
+    DenseHashMap<AstName, uint8_t> userdataTypes;
+    DenseHashMap<AstExprFunction*, std::string> functionTypes;
+    DenseHashMap<AstLocal*, LuauBytecodeType> localTypes;
+    DenseHashMap<AstExpr*, LuauBytecodeType> exprTypes;
+    DenseHashMap<AstName, AstLocal*> classLocals{};
 
-    DenseHashMap2<AstExprCall*, int> inlineBuiltins;
-    DenseHashMap2<AstExprCall*, int> inlineBuiltinsBackup;
+    DenseHashMap<AstExprCall*, int> inlineBuiltins;
+    DenseHashMap<AstExprCall*, int> inlineBuiltinsBackup;
 
     Compile::ExprConstantChangeLog exprChanges;
     Compile::LocalConstantChangeLog localChanges;
@@ -5420,7 +5519,7 @@ struct Compiler
     BuiltinAstTypes builtinTypes;
     AstNameTable& names;
 
-    const DenseHashMap2<AstExprCall*, int>* builtinsFold = nullptr;
+    const DenseHashMap<AstExprCall*, int>* builtinsFold = nullptr;
     bool builtinsFoldLibraryK = false;
 
     // compileFunction state, gets reset for every function
@@ -5447,8 +5546,8 @@ struct Compiler
     struct Exports
     {
         AstLocal exportTableLocal;
-        DenseHashMap2<AstLocal*, uint8_t> exportedClasses;
-        DenseHashSet2<AstLocal*> exportedFunctions;
+        DenseHashMap<AstLocal*, uint8_t> exportedClasses;
+        DenseHashSet<AstLocal*> exportedFunctions;
         std::vector<AstLocal*> exportedVariables;
         int32_t exportedTableCid = -1;
         bool hasExports = false;
