@@ -3054,26 +3054,77 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         break;
     case IrCmd::FORGLOOP:
+    {
         // register layout: ra + 1 = table, ra + 2 = internal index, ra + 3 .. ra + aux = iteration variables
         regs.spill(index);
+
+        int ra = vmRegOp(OP_A(inst));
+        int aux = intOp(OP_B(inst));
+
         // clear extra variables since we might have more than two
-        if (intOp(OP_B(inst)) > 2)
+        if (aux > 2)
         {
             CODEGEN_ASSERT(LUA_TNIL == 0);
-            for (int i = 2; i < intOp(OP_B(inst)); ++i)
-                build.str(wzr, mem(rBase, (vmRegOp(OP_A(inst)) + 3 + i) * sizeof(TValue) + offsetof(TValue, tt)));
+            for (int i = 2; i < aux; ++i)
+                build.str(wzr, mem(rBase, (ra + 3 + i) * sizeof(TValue) + offsetof(TValue, tt)));
         }
-        // we use full iter fallback for now; in the future it could be worthwhile to accelerate array iteration here
+
+        // x1 = table and w2 = index are also the second and third arguments of the node
+        // fallback below, so the array walk leaves them where the call already wants them
+        build.ldr(x1, mem(rBase, (ra + 1) * sizeof(TValue) + offsetof(TValue, value.gc)));
+        build.ldr(w2, mem(rBase, (ra + 2) * sizeof(TValue) + offsetof(TValue, value.p)));
+
+        // x4 = &array[index]
+        build.ldr(x4, mem(x1, offsetof(LuaTable, array)));
+        build.add(x4, x4, w2, kTValueSizeLog2); // implicit uxtw
+
+        Label arrayLoop, skipArray, skipArrayNil;
+
+        // the array part is walked inline, and only the node part is worth a call
+        build.setLabel(arrayLoop);
+        build.ldr(w6, mem(x1, offsetof(LuaTable, sizearray)));
+        build.cmp(w2, w6);
+        build.b(ConditionA64::UnsignedGreaterEqual, skipArray);
+
+        // the index recorded is one past the element handed out, so it advances either way
+        build.add(w2, w2, uint16_t(1));
+
+        CODEGEN_ASSERT(LUA_TNIL == 0);
+        build.ldr(w6, mem(x4, offsetof(TValue, tt)));
+        build.cbz(w6, skipArrayNil);
+
+        // setpvalue(ra + 2, index, LU_TAG_ITERATOR), where only the low half is the index.
+        // The upper half and the tag were set before the loop and do not change.
+        build.str(w2, mem(rBase, (ra + 2) * sizeof(TValue) + offsetof(TValue, value.p)));
+
+        // setnvalue(ra + 3, double(index))
+        build.scvtf(d0, w2);
+        build.str(d0, mem(rBase, (ra + 3) * sizeof(TValue) + offsetof(TValue, value.n)));
+        build.mov(w6, LUA_TNUMBER);
+        build.str(w6, mem(rBase, (ra + 3) * sizeof(TValue) + offsetof(TValue, tt)));
+
+        // setobj2s(L, ra + 4, e)
+        build.ldr(q0, mem(x4, 0));
+        build.str(q0, mem(rBase, (ra + 4) * sizeof(TValue)));
+
+        build.b(labelOp(OP_C(inst)));
+
+        build.setLabel(skipArrayNil);
+        // index was already advanced, so only the element pointer has to catch up
+        build.add(x4, x4, uint16_t(sizeof(TValue)));
+        build.b(arrayLoop);
+
+        build.setLabel(skipArray);
+        // the array is exhausted, so the node part is what is left
         build.mov(x0, rState);
-        build.ldr(x1, mem(rBase, (vmRegOp(OP_A(inst)) + 1) * sizeof(TValue) + offsetof(TValue, value.gc)));
-        build.ldr(w2, mem(rBase, (vmRegOp(OP_A(inst)) + 2) * sizeof(TValue) + offsetof(TValue, value.p)));
-        build.add(x3, rBase, uint16_t(vmRegOp(OP_A(inst)) * sizeof(TValue)));
-        build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, forgLoopTableIter)));
-        build.blr(x4);
-        // note: no emitUpdateBase necessary because forgLoopTableIter does not reallocate stack
+        build.add(x3, rBase, uint16_t(ra * sizeof(TValue)));
+        build.ldr(x5, mem(rNativeContext, offsetof(NativeContext, forgLoopNodeIter)));
+        build.blr(x5);
+        // note: no emitUpdateBase necessary because forgLoopNodeIter does not reallocate stack
         build.cbnz(w0, labelOp(OP_C(inst)));
         jumpOrFallthrough(blockOp(OP_D(inst)), next);
         break;
+    }
     case IrCmd::FORGLOOP_FALLBACK:
         regs.spill(index);
         build.mov(x0, rState);
