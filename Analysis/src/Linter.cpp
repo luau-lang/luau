@@ -3497,6 +3497,136 @@ private:
     }
 };
 
+class LintMisleadingCondition : AstVisitor
+{
+public:
+    LUAU_NOINLINE static void process(LintContext& context)
+    {
+        LintMisleadingCondition pass;
+        pass.context = &context;
+
+        context.root->visit(&pass);
+    }
+
+private:
+    LintContext* context;
+
+    bool checkCondition(AstExpr* cond, const char ** msg, bool * negated)
+    {
+        *negated = false;
+        if (const auto* unary = cond->as<AstExprUnary>())
+            if (unary-> op == AstExprUnary::Op::Not)
+            {
+                *negated = true;
+                cond = unary->expr;
+            }
+
+        const std::optional<TypeId> type = context->getType(cond);
+        if (!type)
+            return true;
+        if (isBoolean(*type))
+            return true;  // boolean is a valid condition
+        if (isOptional(*type))
+            return true;  // anything that can be nil is a valid condition
+        if (const auto utv = get<UnionType>(follow(type)))
+            return std::any_of(begin(utv), end(utv), isBoolean); // anything union with boolean or true or false is a valid condition
+
+        if (isNumber(*type))
+        {
+            *msg = *negated ? "(not num) is always false; did you mean (num == 0)?" : "(num) is always true; did you mean (num ~= 0)?";
+            if (const auto* call = cond->as<AstExprCall>())
+                if (const auto* func = call->func->as<AstExprIndexName>())
+                    if (const auto* global = func->expr->as<AstExprGlobal>())
+                        if (global->name == "bit32")
+                            if (func->index == "band")
+                                *msg = *negated ? "(not bit32.band(X, Y)) is always false; did you mean (not bit32.btest(X, Y))?" :
+                                "(bit32.band(X, Y)) is always true; did you mean (bit32.btest(X, Y))?";
+            return false;
+        }
+        if (isString(*type))
+        {
+            *msg = *negated ? "(not str) is always false; did you mean (str == \"\")?" : "(str) is always true; did you mean (str ~= \"\")?";
+            return false;
+        }
+        if (getTableType(*type))
+        {
+            *msg = *negated ? "(not tbl) is always false; did you mean (next(tbl) == nil)?" : "(tbl) is always true; did you mean (next(tbl) ~= nil)?";
+            return false;  // just nil is weird enough that it's probably intentional. Also it would req
+        }
+
+        *msg = *negated ? "condition is always false" : "condition is always true";
+        return false;
+    }
+
+    bool visit(AstStatIf* node) override
+    {
+        const char * msg;
+        bool negated;
+        if (!checkCondition(node->condition, &msg, &negated))
+            emitWarning(*context, LintWarning::Code_MisleadingCondition, node->location, "%s", msg);
+
+        return true;
+    }
+
+    bool visit(AstExprIfElse* node) override
+    {
+        const char * msg;
+        bool negated;
+        if (!checkCondition(node->condition, &msg, &negated))
+            emitWarning(*context, LintWarning::Code_MisleadingCondition, node->location, "%s", msg);
+
+        return true;
+    }
+
+    bool visit(AstExprBinary* node) override
+    {
+        const char * msg;
+        bool negated;
+
+        if (node->op == AstExprBinary::Or)
+        {
+            if (!checkCondition(node->left, &msg, &negated))
+                emitWarning(
+                    *context,
+                    LintWarning::Code_MisleadingCondition,
+                    node->location,
+                    "The or expression %s the right side because %s",
+                    negated ? "always evaluates to" : "never evaluates",
+                    msg
+                );
+        }
+        else if (node->op == AstExprBinary::And)
+        {
+            if (!checkCondition(node->left, &msg, &negated))
+                if (!node->left->as<AstExprCall>()) // silence "func() and ..." due to it's idiomatic usage for side-effects
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_MisleadingCondition,
+                        node->location,
+                        "The and expression %s the right side because %s",
+                        negated ? "never evaluates" : "always evaluates to",
+                        msg
+                    );
+        }
+
+        return true;
+    }
+
+    bool visit(AstExprCall* node) override
+    {
+        const char * msg;
+        bool negated;
+        if (const auto* global = node->func->as<AstExprGlobal>())
+            if (global->name == "assert")
+                if (node->args.size >= 1)
+                    if (!checkCondition(node->args.data[0], &msg, &negated))
+                        emitWarning(*context, LintWarning::Code_MisleadingCondition, node->location, "%s", msg);
+
+        return true;
+    }
+};
+
+
 std::vector<LintWarning> lint(
     AstStat* root,
     const AstNameTable& names,
@@ -3594,6 +3724,9 @@ std::vector<LintWarning> lint(
         if (hasNativeCommentDirective(hotcomments))
             LintRedundantNativeAttribute::process(context);
     }
+
+    if (context.warningEnabled(LintWarning::Code_MisleadingCondition))
+        LintMisleadingCondition::process(context);
 
     std::sort(context.result.begin(), context.result.end(), WarningComparator());
 
