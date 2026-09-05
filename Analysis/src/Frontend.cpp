@@ -461,6 +461,7 @@ static TypeCheckLimits makeTypeCheckLimits(const FrontendOptions& options)
 
 Frontend::Frontend(SolverMode mode, FileResolver* fileResolver, ConfigResolver* configResolver, FrontendOptions options)
     : useNewLuauSolver(mode)
+    , vectorSize(VectorSize::Three)
     , builtinTypes(NotNull{&builtinTypes_})
     , fileResolver(fileResolver)
     , moduleResolver(this)
@@ -474,6 +475,7 @@ Frontend::Frontend(SolverMode mode, FileResolver* fileResolver, ConfigResolver* 
 
 Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options)
     : useNewLuauSolver(FFlag::LuauSolverV2 ? SolverMode::New : SolverMode::Old)
+    , vectorSize(VectorSize::Three)
     , builtinTypes(NotNull{&builtinTypes_})
     , fileResolver(fileResolver)
     , moduleResolver(this)
@@ -493,6 +495,16 @@ void Frontend::setLuauSolverMode(SolverMode mode)
 SolverMode Frontend::getLuauSolverMode() const
 {
     return useNewLuauSolver.load();
+}
+
+void Frontend::setVectorSize(VectorSize size)
+{
+    vectorSize.store(size);
+}
+
+VectorSize Frontend::getVectorSize() const
+{
+    return vectorSize.load();
 }
 
 void Frontend::parse(const ModuleName& name)
