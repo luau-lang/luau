@@ -625,8 +625,11 @@ void luaV_dobitwiseimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* 
         unsigned ub;
         unsigned uc;
 
-        luai_num2unsigned(ub, nvalue(b));
-        luai_num2unsigned(uc, nvalue(c));
+        double nb = nvalue(b);
+        double nc = nvalue(c);
+
+        luai_num2unsigned(ub, nb);
+        luai_num2unsigned(uc, nc);
 
         switch (op)
         {
