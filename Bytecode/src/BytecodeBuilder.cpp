@@ -519,7 +519,6 @@ int32_t BytecodeBuilder::addClassShape(ClassShape shape)
 
 void BytecodeBuilder::emitABC(LuauOpcode op, uint8_t a, uint8_t b, uint8_t c)
 {
-    printf("emitABC: opcode=%d A=%d B=%d C=%d\n", int(op), a, b, c);
     uint32_t insn = uint32_t(op) | (a << 8) | (b << 16) | (c << 24);
 
     insns.push_back(insn);
