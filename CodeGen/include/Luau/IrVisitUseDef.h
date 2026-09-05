@@ -56,6 +56,12 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
 
         visitor.def(OP_A(inst));
         break;
+    case IrCmd::DO_BITWISE:
+        visitor.maybeUse(OP_B(inst));
+        visitor.maybeUse(OP_C(inst));
+
+        visitor.def(OP_A(inst));
+        break;
     case IrCmd::GET_TABLE:
         visitor.use(OP_B(inst));
         visitor.maybeUse(OP_C(inst)); // Argument can also be a VmConst

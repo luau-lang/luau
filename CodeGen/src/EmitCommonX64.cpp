@@ -208,6 +208,42 @@ void callArithHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, Ope
     emitUpdateBase(build);
 }
 
+void callBitwiseHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, OperandX64 b, OperandX64 c, TMS tm)
+{
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(ra));
+    callWrap.addArgument(SizeX64::qword, b);
+    callWrap.addArgument(SizeX64::qword, c);
+
+    switch (tm)
+    {
+    case TM_BAND:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_dobitwiseband)]);
+        break;
+    case TM_BOR:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_dobitwisebor)]);
+        break;
+    case TM_BXOR:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_dobitwisexor)]);
+        break;
+    case TM_SHL:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_dobitwiseshl)]);
+        break;
+    case TM_SHR:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_dobitwiseshr)]);
+        break;
+    case TM_BNOT:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_dobitwisenot)]);
+        break;
+    default:
+        CODEGEN_ASSERT(!"Invalid dobitwise helper operation tag");
+        break;
+    }
+
+    emitUpdateBase(build);
+}
+
 void callLengthHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb)
 {
     IrCallWrapperX64 callWrap(regs, build);

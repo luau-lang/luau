@@ -2263,6 +2263,51 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         emitUpdateBase(build);
         break;
+    case IrCmd::DO_BITWISE:
+        regs.spill(index);
+
+        build.mov(x0, rState);
+        build.add(x1, rBase, uint16_t(vmRegOp(OP_A(inst)) * sizeof(TValue)));
+
+        if (OP_B(inst).kind == IrOpKind::VmConst)
+            emitAddOffset(build, x2, rConstants, vmConstOp(OP_B(inst)) * sizeof(TValue));
+        else
+            build.add(x2, rBase, uint16_t(vmRegOp(OP_B(inst)) * sizeof(TValue)));
+
+        if (OP_C(inst).kind == IrOpKind::VmConst)
+            emitAddOffset(build, x3, rConstants, vmConstOp(OP_C(inst)) * sizeof(TValue));
+        else
+            build.add(x3, rBase, uint16_t(vmRegOp(OP_C(inst)) * sizeof(TValue)));
+
+        switch (TMS(intOp(OP_D(inst))))
+        {
+        case TM_BAND:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_dobitwiseband)));
+            break;
+        case TM_BOR:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_dobitwisebor)));
+            break;
+        case TM_BXOR:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_dobitwisexor)));
+            break;
+        case TM_SHL:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_dobitwiseshl)));
+            break;
+        case TM_SHR:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_dobitwiseshr)));
+            break;
+        case TM_BNOT:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_dobitwisenot)));
+            break;
+        default:
+            CODEGEN_ASSERT(!"Invalid dobitwise helper operation tag");
+            break;
+        }
+
+        build.blr(x4);
+
+        emitUpdateBase(build);
+        break;
     case IrCmd::DO_LEN:
         regs.spill(index);
         build.mov(x0, rState);

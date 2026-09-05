@@ -17,6 +17,7 @@ LUAI_FUNC l_noret luaG_typeerrorL(lua_State* L, const TValue* o, const char* opn
 LUAI_FUNC l_noret luaG_forerrorL(lua_State* L, const TValue* o, const char* what);
 LUAI_FUNC l_noret luaG_concaterror(lua_State* L, StkId p1, StkId p2);
 LUAI_FUNC l_noret luaG_aritherror(lua_State* L, const TValue* p1, const TValue* p2, TMS op);
+LUAI_FUNC l_noret luaG_bitwiseerror(lua_State* L, const TValue* p1, const TValue* p2, TMS op);
 LUAI_FUNC l_noret luaG_ordererror(lua_State* L, const TValue* p1, const TValue* p2, TMS op);
 LUAI_FUNC l_noret luaG_indexerror(lua_State* L, const TValue* p1, const TValue* p2);
 LUAI_FUNC l_noret luaG_methoderror(lua_State* L, const TValue* p1, const TString* p2);

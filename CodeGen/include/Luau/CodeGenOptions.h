@@ -51,6 +51,12 @@ enum class HostMetamethod
     LessEqual,
     Length,
     Concat,
+    Band,
+    Bor,
+    Bxor,
+    Shl,
+    Shr,
+    Bnot,
 };
 
 using HostUserdataOperationBytecodeType = uint8_t (*)(uint8_t type, const char* member, size_t memberLength);

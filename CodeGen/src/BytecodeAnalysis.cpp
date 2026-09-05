@@ -699,6 +699,18 @@ static HostMetamethod opcodeToHostMetamethod(LuauOpcode op)
         return HostMetamethod::Sub;
     case LOP_DIVRK:
         return HostMetamethod::Div;
+    case LOP_BAND:
+        return HostMetamethod::Band;
+    case LOP_BOR:
+        return HostMetamethod::Bor;
+    case LOP_BXOR:
+        return HostMetamethod::Bxor;
+    case LOP_SHL:
+        return HostMetamethod::Shl;
+    case LOP_SHR:
+        return HostMetamethod::Shr;
+    case LOP_BNOT:
+        return HostMetamethod::Bnot;
     default:
         CODEGEN_ASSERT(!"opcode is not assigned to a host metamethod");
     }
@@ -1206,6 +1218,54 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
                 bcType.result = regTags[ra];
                 break;
             }
+            case LOP_BAND:
+            case LOP_BOR:
+            case LOP_BXOR:
+            case LOP_SHL:
+            case LOP_SHR:
+            {
+                int ra = LUAU_INSN_A(*pc);
+                int rb = LUAU_INSN_B(*pc);
+                int rc = LUAU_INSN_C(*pc);
+
+                bcType.a = getRegTag(regTags, bcTypeInfo, rb, i);
+                bcType.b = getRegTag(regTags, bcTypeInfo, rc, i);
+
+                regTags[ra] = LBC_TYPE_ANY;
+
+                if (bcType.a == LBC_TYPE_NUMBER && bcType.b == LBC_TYPE_NUMBER)
+                    regTags[ra] = LBC_TYPE_NUMBER;
+                else if (hostHooks.userdataMetamethodBytecodeType &&
+                         (isCustomUserdataBytecodeType(bcType.a) || isCustomUserdataBytecodeType(bcType.b)))
+                    regTags[ra] = hostHooks.userdataMetamethodBytecodeType(
+                        bcType.a,
+                        bcType.b,
+                        opcodeToHostMetamethod(op)
+                    );
+
+                bcType.result = regTags[ra];
+                break;
+            }
+            case LOP_BNOT:
+            {
+                int ra = LUAU_INSN_A(*pc);
+                int rb = LUAU_INSN_B(*pc);
+
+                bcType.a = getRegTag(regTags, bcTypeInfo, rb, i);
+
+                regTags[ra] = LBC_TYPE_ANY;
+                if (bcType.a == LBC_TYPE_NUMBER)
+                    regTags[ra] = LBC_TYPE_NUMBER;
+                else if (hostHooks.userdataMetamethodBytecodeType && isCustomUserdataBytecodeType(bcType.a))
+                    regTags[ra] = hostHooks.userdataMetamethodBytecodeType(
+                        bcType.a,
+                        LBC_TYPE_ANY,
+                        HostMetamethod::Bnot
+                    );
+                bcType.result = regTags[ra];
+                break;
+            }
+            
             case LOP_LENGTH:
             {
                 int ra = LUAU_INSN_A(*pc);

@@ -519,6 +519,7 @@ int32_t BytecodeBuilder::addClassShape(ClassShape shape)
 
 void BytecodeBuilder::emitABC(LuauOpcode op, uint8_t a, uint8_t b, uint8_t c)
 {
+    printf("emitABC: opcode=%d A=%d B=%d C=%d\n", int(op), a, b, c);
     uint32_t insn = uint32_t(op) | (a << 8) | (b << 16) | (c << 24);
 
     insns.push_back(insn);
@@ -1744,6 +1745,11 @@ void BytecodeBuilder::validateInstructions() const
         case LOP_IDIV:
         case LOP_MOD:
         case LOP_POW:
+        case LOP_BAND:
+        case LOP_BOR:
+        case LOP_BXOR:
+        case LOP_SHL:
+        case LOP_SHR:
             VREG(LUAU_INSN_A(insn));
             VREG(LUAU_INSN_B(insn));
             VREG(LUAU_INSN_C(insn));
@@ -2738,6 +2744,30 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
     case LOP_POW:
         formatAppend(result, "POW R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
         break;
+    
+    case LOP_BAND:
+        formatAppend(result, "BAND R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        break;
+
+    case LOP_BOR:
+        formatAppend(result, "BOR R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        break;
+
+    case LOP_BXOR:
+        formatAppend(result, "BXOR R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        break;
+
+    case LOP_SHL:
+        formatAppend(result, "SHL R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        break;
+
+    case LOP_SHR:
+        formatAppend(result, "SHR R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        break;
+
+    case LOP_BNOT:
+        formatAppend(result, "BNOT R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+       break;
 
     case LOP_ADDK:
         formatAppend(result, "ADDK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));

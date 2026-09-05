@@ -1253,6 +1253,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         // For GC to work correctly, all values containing a GCO have to be stored on stack - otherwise a live reference might be missed
     case IrCmd::CMP_ANY:
     case IrCmd::DO_ARITH:
+    case IrCmd::DO_BITWISE:
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
     case IrCmd::SET_TABLE:
@@ -1300,6 +1301,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         // Creating new native execution frames can invalidate shared extended spill area
     case IrCmd::CMP_ANY:
     case IrCmd::DO_ARITH:
+    case IrCmd::DO_BITWISE:
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
     case IrCmd::SET_TABLE:

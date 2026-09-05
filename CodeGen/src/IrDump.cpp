@@ -353,6 +353,8 @@ const char* getCmdName(IrCmd cmd)
         return "INVOKE_FASTPCALL";
     case IrCmd::DO_ARITH:
         return "DO_ARITH";
+    case IrCmd::DO_BITWISE:
+        return "DO_BITWISE";
     case IrCmd::DO_LEN:
         return "DO_LEN";
     case IrCmd::GET_TABLE:

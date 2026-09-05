@@ -41,6 +41,12 @@ struct NativeContext
     void (*luaV_doarithmod)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
     void (*luaV_doarithpow)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
     void (*luaV_doarithunm)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_dobitwiseband)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_dobitwisebor)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_dobitwisexor)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_dobitwiseshl)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_dobitwiseshr)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_dobitwisenot)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
     void (*luaV_dolen)(lua_State* L, StkId ra, const TValue* rb) = nullptr;
     void (*luaV_gettable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;
     void (*luaV_settable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;

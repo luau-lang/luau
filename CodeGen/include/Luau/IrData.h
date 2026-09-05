@@ -603,6 +603,13 @@ enum class IrCmd : uint8_t
     // D: int (TMS enum with arithmetic type)
     DO_ARITH,
 
+    // Perform Bitwise operion on TValues of any type
+    // A: Rn (where to store the result)
+    // B: Rn (lhs)
+    // C: Rn or Kn (rhs)
+    // D: int (TMS enum with bitwise type)
+    DO_BITWISE,
+
     // Get length of a TValue of any type
     // A: Rn (where to store the result)
     // B: Rn

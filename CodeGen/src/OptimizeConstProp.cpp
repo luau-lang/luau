@@ -3378,6 +3378,10 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.invalidate(OP_A(inst));
         state.invalidateUserCall();
         break;
+    case IrCmd::DO_BITWISE:
+        state.invalidate(OP_A(inst));
+        state.invalidateUserCall();
+        break;
     case IrCmd::DO_LEN:
         state.invalidate(OP_A(inst));
         state.invalidateUserCall(); // TODO: if argument is a string, there will be no user call

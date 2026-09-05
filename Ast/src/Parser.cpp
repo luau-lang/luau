@@ -1509,6 +1509,12 @@ const std::unordered_set<std::string> kAllowedMetamethods{
     "__iter",
     "__len",
     "__idiv",
+    "__band",
+    "__bor",
+    "__bxor",
+    "__shl",
+    "__shr",
+    "__bnot",
 };
 
 const std::unordered_set<std::string> kExplicitlyDisallowedMetamethods{

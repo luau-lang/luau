@@ -611,6 +611,83 @@ template void luaV_doarithimpl<TM_MOD>(lua_State* L, StkId ra, const TValue* rb,
 template void luaV_doarithimpl<TM_POW>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
 template void luaV_doarithimpl<TM_UNM>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
 
+template<TMS op>
+void luaV_dobitwiseimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc)
+{
+    TValue tempb, tempc;
+    const TValue* b;
+    const TValue* c;
+
+    if ((b = luaV_tonumber(rb, &tempb)) != NULL &&
+        (c = luaV_tonumber(rc, &tempc)) != NULL)
+    {
+        // same 32-bit unsigned conversion that is used in the VM execution
+        unsigned ub;
+        unsigned uc;
+
+        luai_num2unsigned(ub, nvalue(b));
+        luai_num2unsigned(uc, nvalue(c));
+
+        switch (op)
+        {
+        case TM_BAND:
+            setnvalue(ra, double(ub & uc));
+            break;
+
+        case TM_BOR:
+            setnvalue(ra, double(ub | uc));
+            break;
+
+        case TM_BXOR:
+            setnvalue(ra, double(ub ^ uc));
+            break;
+
+        case TM_SHL:
+        {
+            unsigned shift = uc;
+
+            if (shift >= 32)
+                luaG_runerror(L, "invalid bitwise shift");
+
+            setnvalue(ra, double(ub << shift));
+            break;
+        }
+
+        case TM_SHR:
+        {
+            unsigned shift = uc;
+
+            if (shift >= 32)
+                luaG_runerror(L, "invalid bitwise shift");
+
+            setnvalue(ra, double(ub >> shift));
+            break;
+        }
+
+        case TM_BNOT:
+            setnvalue(ra, double(~ub));
+            break;
+
+        default:
+            LUAU_ASSERT(0);
+            break;
+        }
+    }
+    else
+    {
+        if (!call_binTM(L, rb, rc, ra, op))
+            luaG_bitwiseerror(L, rb, rc, op);
+    }
+}
+
+// instantiate private template implementation for external callers
+template void luaV_dobitwiseimpl<TM_BAND>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+template void luaV_dobitwiseimpl<TM_BOR>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+template void luaV_dobitwiseimpl<TM_BXOR>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+template void luaV_dobitwiseimpl<TM_SHL>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+template void luaV_dobitwiseimpl<TM_SHR>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+template void luaV_dobitwiseimpl<TM_BNOT>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+
 void luaV_dolen(lua_State* L, StkId ra, const TValue* rb)
 {
     const TValue* tm = NULL;

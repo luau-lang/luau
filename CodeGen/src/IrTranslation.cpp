@@ -983,6 +983,211 @@ void translateInstBinaryRK(IrBuilder& build, const Instruction* pc, int pcpos, T
     );
 }
 
+void translateInstBitwise(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm)
+{
+    BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
+
+    int ra = LUAU_INSN_A(*pc);
+    int rb = LUAU_INSN_B(*pc);
+    int rc = LUAU_INSN_C(*pc);
+
+    if (isUserdataBytecodeType(bcTypes.a) || isUserdataBytecodeType(bcTypes.b))
+    {
+        if (build.hostHooks.userdataMetamethod &&
+            build.hostHooks.userdataMetamethod(
+                build,
+                bcTypes.a,
+                bcTypes.b,
+                ra,
+                build.vmReg(rb),
+                build.vmReg(rc),
+                tmToHostMetamethod(tm),
+                pcpos))
+            return;
+
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+        build.inst(
+            IrCmd::DO_BITWISE,
+            build.vmReg(ra),
+            build.vmReg(rb),
+            build.vmReg(rc),
+            build.constInt(tm)
+        );
+        return;
+    }
+
+    IrOp fallback;
+
+    IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
+    build.inst(
+        IrCmd::CHECK_TAG,
+        tb,
+        build.constTag(LUA_TNUMBER),
+        bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
+    );
+
+    IrOp tc = build.inst(IrCmd::LOAD_TAG, build.vmReg(rc));
+    build.inst(
+        IrCmd::CHECK_TAG,
+        tc,
+        build.constTag(LUA_TNUMBER),
+        bcTypes.b == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
+    );
+
+    IrOp vb = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rb));
+    IrOp vc = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rc));
+
+    IrOp vbu = build.inst(IrCmd::NUM_TO_UINT, vb);
+
+    IrOp result;
+
+    if (tm == TM_SHL || tm == TM_SHR)
+    {
+        IrOp shift = build.inst(IrCmd::NUM_TO_INT, vc);
+
+        bool knownGoodShift = unsigned(build.function.asIntOp(shift).value_or(-1)) < 32u;
+
+        if (!knownGoodShift)
+        {
+            build.inst(
+                IrCmd::CHECK_CMP_INT,
+                shift,
+                build.constInt(32),
+                build.cond(IrCondition::UnsignedLess),
+                build.vmExit(pcpos)
+            );
+        }
+
+        switch (tm)
+        {
+        case TM_SHL:
+            result = build.inst(IrCmd::BITLSHIFT_UINT, vbu, shift);
+            break;
+
+        case TM_SHR:
+            result = build.inst(IrCmd::BITRSHIFT_UINT, vbu, shift);
+            break;
+
+        default:
+            CODEGEN_ASSERT(!"Unknown bitwise shift");
+        }
+    }
+    else
+    {
+        IrOp vcu = build.inst(IrCmd::NUM_TO_UINT, vc);
+
+        switch (tm)
+        {
+        case TM_BAND:
+            result = build.inst(IrCmd::BITAND_UINT, vbu, vcu);
+            break;
+
+        case TM_BOR:
+            result = build.inst(IrCmd::BITOR_UINT, vbu, vcu);
+            break;
+
+        case TM_BXOR:
+            result = build.inst(IrCmd::BITXOR_UINT, vbu, vcu);
+            break;
+
+        default:
+            CODEGEN_ASSERT(!"Unknown bitwise operation");
+        }
+    }
+
+    IrOp value = build.inst(IrCmd::UINT_TO_NUM, result);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), value);
+
+    if (ra != rb && ra != rc)
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+
+    if (fallback.kind != IrOpKind::None)
+    {
+        IrOp next = build.blockAtInst(pcpos + 1);
+        FallbackStreamScope scope(build, fallback, next);
+
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+        build.inst(
+            IrCmd::DO_BITWISE,
+            build.vmReg(ra),
+            build.vmReg(rb),
+            build.vmReg(rc),
+            build.constInt(tm)
+        );
+        build.inst(IrCmd::JUMP, next);
+    }
+}
+
+void translateInstBitwiseNot(IrBuilder& build, const Instruction* pc, int pcpos)
+{
+    BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
+
+    int ra = LUAU_INSN_A(*pc);
+    int rb = LUAU_INSN_B(*pc);
+
+    if (isUserdataBytecodeType(bcTypes.a))
+    {
+        if (build.hostHooks.userdataMetamethod &&
+            build.hostHooks.userdataMetamethod(
+                build,
+                bcTypes.a,
+                bcTypes.b,
+                ra,
+                build.vmReg(rb),
+                {},
+                tmToHostMetamethod(TM_BNOT),
+                pcpos))
+            return;
+
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+        build.inst(
+            IrCmd::DO_BITWISE,
+            build.vmReg(ra),
+            build.vmReg(rb),
+            build.vmReg(rb),
+            build.constInt(TM_BNOT)
+        );
+        return;
+    }
+
+    IrOp fallback;
+
+    IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
+
+    build.inst(
+        IrCmd::CHECK_TAG,
+        tb,
+        build.constTag(LUA_TNUMBER),
+        bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback, pcpos)
+    );
+
+    IrOp vb = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rb));
+    IrOp vbu = build.inst(IrCmd::NUM_TO_UINT, vb);
+    IrOp result = build.inst(IrCmd::BITNOT_UINT, vbu);
+    IrOp value = build.inst(IrCmd::UINT_TO_NUM, result);
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), value);
+
+    if (ra != rb)
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+
+    if (fallback.kind != IrOpKind::None)
+    {
+        IrOp next = build.blockAtInst(pcpos + 1);
+        FallbackStreamScope scope(build, fallback, next);
+
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+        build.inst(
+            IrCmd::DO_BITWISE,
+            build.vmReg(ra),
+            build.vmReg(rb),
+            build.vmReg(rb),
+            build.constInt(TM_BNOT)
+        );
+        build.inst(IrCmd::JUMP, next);
+    }
+}
+
 void translateInstNot(IrBuilder& build, const Instruction* pc)
 {
     int ra = LUAU_INSN_A(*pc);

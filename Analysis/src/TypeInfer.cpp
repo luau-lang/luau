@@ -2605,6 +2605,16 @@ std::string opToMetaTableEntry(const AstExprBinary::Op& op)
         return "__pow";
     case AstExprBinary::Concat:
         return "__concat";
+    case AstExprBinary::BitAnd:
+        return "__band";
+    case AstExprBinary::BitOr:
+        return "__bor";
+    case AstExprBinary::BitXor:
+        return "__bxor";
+    case AstExprBinary::ShiftLeft:
+        return "__shl";
+    case AstExprBinary::ShiftRight:
+        return "__shr";
     default:
         return "";
     }

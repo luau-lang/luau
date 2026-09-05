@@ -43,6 +43,8 @@ void translateInstJumpxEqSShortcut(IrBuilder& build, const Instruction* pc, int 
 void translateInstBinary(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm);
 void translateInstBinaryK(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm);
 void translateInstBinaryRK(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm);
+void translateInstBitwise(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm);
+void translateInstBitwiseNot(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstNot(IrBuilder& build, const Instruction* pc);
 void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstLength(IrBuilder& build, const Instruction* pc, int pcpos);

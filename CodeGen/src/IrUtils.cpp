@@ -322,6 +322,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::CHECK_FASTCALL_RES:
     case IrCmd::INVOKE_FASTPCALL:
     case IrCmd::DO_ARITH:
+    case IrCmd::DO_BITWISE:
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
     case IrCmd::SET_TABLE:
@@ -539,6 +540,18 @@ HostMetamethod tmToHostMetamethod(int tm)
         return HostMetamethod::Length;
     case TM_CONCAT:
         return HostMetamethod::Concat;
+    case TM_BAND:
+        return HostMetamethod::Band;
+    case TM_BOR:
+        return HostMetamethod::Bor;
+    case TM_BXOR:
+        return HostMetamethod::Bxor;
+    case TM_SHL:
+        return HostMetamethod::Shl;
+    case TM_SHR:
+        return HostMetamethod::Shr;
+    case TM_BNOT:
+        return HostMetamethod::Bnot;
     default:
         CODEGEN_ASSERT(!"invalid tag method for host");
         break;

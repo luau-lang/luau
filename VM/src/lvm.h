@@ -19,6 +19,9 @@ LUAI_FUNC int luaV_equalval(lua_State* L, const TValue* t1, const TValue* t2);
 template<TMS op>
 void luaV_doarithimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
 
+template<TMS op>
+void luaV_dobitwiseimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+
 LUAI_FUNC void luaV_dolen(lua_State* L, StkId ra, const TValue* rb);
 LUAI_FUNC const TValue* luaV_tonumber(const TValue* obj, TValue* n);
 LUAI_FUNC const LUA_VECTOR_TYPE* luaV_tovector(const TValue* obj);

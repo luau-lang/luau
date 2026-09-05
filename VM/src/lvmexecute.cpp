@@ -2484,6 +2484,11 @@ reentry:
                     setnvalue(ra, double(r));
                     VM_NEXT();
                 }
+                else
+                {
+                    VM_PROTECT(luaV_dobitwiseimpl<TM_BAND>(L, ra, rb, rc));
+                    VM_NEXT();
+                }
             }
 
             VM_CASE(LOP_BOR)
@@ -2504,6 +2509,11 @@ reentry:
                     setnvalue(ra, double(r));
                     VM_NEXT();
                 }
+                else
+                {
+                    VM_PROTECT(luaV_dobitwiseimpl<TM_BOR>(L, ra, rb, rc));
+                    VM_NEXT();
+                }
             }
 
             VM_CASE(LOP_BXOR)
@@ -2522,6 +2532,11 @@ reentry:
                     uint32_t r = u1 ^ u2;
 
                     setnvalue(ra, double(r));
+                    VM_NEXT();
+                }
+                else
+                {
+                    VM_PROTECT(luaV_dobitwiseimpl<TM_BXOR>(L, ra, rb, rc));
                     VM_NEXT();
                 }
             }
@@ -2548,6 +2563,9 @@ reentry:
                         VM_NEXT();
                     }
                 }
+
+                VM_PROTECT(luaV_dobitwiseimpl<TM_SHL>(L, ra, rb, rc));
+                VM_NEXT();
             }
 
             VM_CASE(LOP_SHR)
@@ -2572,6 +2590,9 @@ reentry:
                         VM_NEXT();
                     }
                 }
+
+                VM_PROTECT(luaV_dobitwiseimpl<TM_SHR>(L, ra, rb, rc));
+                VM_NEXT();
             }
 
             VM_CASE(LOP_BNOT)
@@ -2590,6 +2611,9 @@ reentry:
                     setnvalue(ra, double(r));
                     VM_NEXT();
                 }
+
+                VM_PROTECT(luaV_dobitwiseimpl<TM_BNOT>(L, ra, rb, rb));
+                VM_NEXT();
             }
 
             VM_CASE(LOP_NEWTABLE)

@@ -26,6 +26,12 @@ static const std::string kNames[] = {
     "__sub",
     "__type",
     "__unm",
+    "__band",
+    "__bor",
+    "__bxor",
+    "__shl",
+    "__shr",
+    "__bnot",
     "abs",
     "acos",
     "arshift",
@@ -245,7 +251,8 @@ static const std::string kExternTypes[] = {
 
 static const std::string kBuiltinTypes[] = {
     "len", "unm", "add", "sub",   "mul",      "div",   "idiv",   "pow",          "mod",          "concat",
-    "lt",  "le",  "eq",  "keyof", "rawkeyof", "index", "rawget", "setmetatable", "getmetatable",
+    "lt",  "le",  "eq",  "keyof", "rawkeyof", "index", "rawget", "setmetatable", "getmetatable", "band",
+    "bor", "bxor","shl", "shr",   "bnot",
 };
 
 static const std::string kValidClassMetamethods[] = {
@@ -264,7 +271,13 @@ static const std::string kValidClassMetamethods[] = {
     "__lt",
     "__le",
     "__len",
-    "__iter"
+    "__iter",
+    "__band",
+    "__bor",
+    "__bxor",
+    "__shl",
+    "__shr",
+    "__bnot"
 };
 
 struct BuiltinLibrary

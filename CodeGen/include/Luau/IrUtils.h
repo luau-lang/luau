@@ -94,6 +94,7 @@ inline bool canInvalidateSafeEnv(IrCmd cmd)
     {
     case IrCmd::CMP_ANY:
     case IrCmd::DO_ARITH:
+    case IrCmd::DO_BITWISE:
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
     case IrCmd::SET_TABLE:

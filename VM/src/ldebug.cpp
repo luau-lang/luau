@@ -307,6 +307,18 @@ l_noret luaG_aritherror(lua_State* L, const TValue* p1, const TValue* p2, TMS op
         luaG_runerror(L, "attempt to perform arithmetic (%s) on %s and %s", opname, t1, t2);
 }
 
+l_noret luaG_bitwiseerror(lua_State* L, const TValue* p1, const TValue* p2, TMS op)
+{
+    const char* t1 = luaT_objtypename(L, p1);
+    const char* t2 = luaT_objtypename(L, p2);
+    const char* opname = luaT_eventname[op] + 2; // skip __ from metamethod name
+
+    if (t1 == t2)
+        luaG_runerror(L, "attempt to perform bitwise operation (%s) on %s", opname, t1);
+    else
+        luaG_runerror(L, "attempt to perform bitwise operation (%s) on %s and %s", opname, t1, t2);
+}
+
 l_noret luaG_ordererror(lua_State* L, const TValue* p1, const TValue* p2, TMS op)
 {
     const char* t1 = luaT_objtypename(L, p1);

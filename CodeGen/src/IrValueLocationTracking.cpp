@@ -137,6 +137,7 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         invalidateRestoreVmRegs(vmRegOp(OP_A(inst)), -1);
         break;
     case IrCmd::DO_ARITH:
+    case IrCmd::DO_BITWISE:
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
     case IrCmd::GET_CACHED_IMPORT:

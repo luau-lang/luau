@@ -37,6 +37,13 @@ void initFunctions(NativeContext& context)
     context.luaV_doarithpow = luaV_doarithimpl<TM_POW>;
     context.luaV_doarithunm = luaV_doarithimpl<TM_UNM>;
 
+    context.luaV_dobitwiseband = luaV_dobitwiseimpl<TM_BAND>;
+    context.luaV_dobitwisebor = luaV_dobitwiseimpl<TM_BOR>;
+    context.luaV_dobitwisexor = luaV_dobitwiseimpl<TM_BXOR>;
+    context.luaV_dobitwiseshl = luaV_dobitwiseimpl<TM_SHL>;
+    context.luaV_dobitwiseshr = luaV_dobitwiseimpl<TM_SHR>;
+    context.luaV_dobitwisenot = luaV_dobitwiseimpl<TM_BNOT>;
+
     context.luaV_dolen = luaV_dolen;
     context.luaV_gettable = luaV_gettable;
     context.luaV_settable = luaV_settable;

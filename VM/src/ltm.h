@@ -30,6 +30,13 @@ typedef enum
     TM_POW,
     TM_UNM,
 
+    TM_BAND,
+    TM_BOR,
+    TM_BXOR,
+    TM_SHL,
+    TM_SHR,
+    TM_BNOT,
+
     TM_LT,
     TM_LE,
     TM_CONCAT,

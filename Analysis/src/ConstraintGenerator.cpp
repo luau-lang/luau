@@ -66,7 +66,8 @@ static bool isValidClassMetamethod(const Name& name)
 {
     return name == "__call" || name == "__concat" || name == "__unm" || name == "__add" || name == "__sub" || name == "__mul" || name == "__div" ||
            name == "__mod" || name == "__pow" || name == "__tostring" || name == "__eq" || name == "__lt" || name == "__le" || name == "__iter" ||
-           name == "__len" || name == "__idiv";
+           name == "__len" || name == "__idiv" || name == "__band" || name == "__bor" || name == "__bxor" || name == "__shl" || name == "__shr" ||
+           name == "__bnot";
 }
 
 static std::optional<AstExpr*> matchRequire(const AstExprCall& call)

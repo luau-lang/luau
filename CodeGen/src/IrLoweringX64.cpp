@@ -2197,6 +2197,13 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         callArithHelper(regs, build, vmRegOp(OP_A(inst)), opb, opc, TMS(intOp(OP_D(inst))));
         break;
     }
+    case IrCmd::DO_BITWISE:
+    {
+        OperandX64 opb = OP_B(inst).kind == IrOpKind::VmReg ? luauRegAddress(vmRegOp(OP_B(inst))) : luauConstantAddress(vmConstOp(OP_B(inst)));
+        OperandX64 opc = OP_C(inst).kind == IrOpKind::VmReg ? luauRegAddress(vmRegOp(OP_C(inst))) : luauConstantAddress(vmConstOp(OP_C(inst)));
+        callBitwiseHelper(regs, build, vmRegOp(OP_A(inst)), opb, opc, TMS(intOp(OP_D(inst))));
+        break;
+    }
     case IrCmd::DO_LEN:
         callLengthHelper(regs, build, vmRegOp(OP_A(inst)), vmRegOp(OP_B(inst)));
         break;

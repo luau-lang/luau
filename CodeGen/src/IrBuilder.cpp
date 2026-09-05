@@ -528,6 +528,24 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_NOT:
         translateInstNot(*this, pc);
         break;
+    case LOP_BAND:
+        translateInstBitwise(*this, pc, i, TM_BAND);
+        break;
+    case LOP_BOR:
+        translateInstBitwise(*this, pc, i, TM_BOR);
+        break;
+    case LOP_BXOR:
+        translateInstBitwise(*this, pc, i, TM_BXOR);
+        break;
+    case LOP_SHL:
+        translateInstBitwise(*this, pc, i, TM_SHL);
+        break;
+    case LOP_SHR:
+        translateInstBitwise(*this, pc, i, TM_SHR);
+        break;
+    case LOP_BNOT:
+        translateInstBitwiseNot(*this, pc, i);
+        break;
     case LOP_MINUS:
         translateInstMinus(*this, pc, i);
         break;
