@@ -488,6 +488,11 @@ struct BytecodeGraphSerializer
         case LOP_POW:
         case LOP_AND:
         case LOP_OR:
+        case LOP_BAND:
+        case LOP_BOR:
+        case LOP_BXOR:
+        case LOP_SHL:
+        case LOP_SHR:
             bcb.emitABC(insn.op, getRegister(insnOp), getRegInput(insn, 0), getRegInput(insn, 1));
             break;
 
@@ -509,6 +514,7 @@ struct BytecodeGraphSerializer
 
         case LOP_NOT:
         case LOP_MINUS:
+        case LOP_BNOT:
         case LOP_LENGTH:
             bcb.emitABC(insn.op, getRegister(insnOp), getRegInput(insn, 0), 0);
             break;

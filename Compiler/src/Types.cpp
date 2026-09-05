@@ -617,6 +617,9 @@ struct TypeMapVisitor : AstVisitor
         case AstExprUnary::Op::Not:
             recordResolvedType(node, &builtinTypes.booleanType);
             break;
+        case AstExprUnary::Op::BitNot:
+            recordResolvedType(node, &builtinTypes.numberType);
+            break;
         case AstExprUnary::Op::Minus:
         {
             const AstType** typePtr = resolvedExprs.find(node->expr);
@@ -646,10 +649,11 @@ struct TypeMapVisitor : AstVisitor
         node->right->visit(this);
 
         // Comparisons result in a boolean
-        if (node->op == AstExprBinary::CompareNe || node->op == AstExprBinary::CompareEq || node->op == AstExprBinary::CompareLt ||
-            node->op == AstExprBinary::CompareLe || node->op == AstExprBinary::CompareGt || node->op == AstExprBinary::CompareGe)
+        if (node->op == AstExprBinary::Concat || node->op == AstExprBinary::And || node->op == AstExprBinary::Or ||
+            node->op == AstExprBinary::BitAnd || node->op == AstExprBinary::BitOr || node->op == AstExprBinary::BitXor ||
+            node->op == AstExprBinary::ShiftLeft || node->op == AstExprBinary::ShiftRight)
         {
-            recordResolvedType(node, &builtinTypes.booleanType);
+            recordResolvedType(node, &builtinTypes.numberType);
             return false;
         }
 

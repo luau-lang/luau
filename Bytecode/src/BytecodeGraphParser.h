@@ -820,6 +820,11 @@ struct BytecodeGraphParser
             case LOP_POW:
             case LOP_AND:
             case LOP_OR:
+            case LOP_BAND:
+            case LOP_BOR:
+            case LOP_BXOR:
+            case LOP_SHL:
+            case LOP_SHR:
                 addVmRegInput(node, LUAU_INSN_B(insn));
                 addVmRegInput(node, LUAU_INSN_C(insn));
                 addProducer(LUAU_INSN_A(insn), nodeOp);
@@ -848,6 +853,7 @@ struct BytecodeGraphParser
             }
 
             case LOP_NOT:
+            case LOP_BNOT:
             case LOP_MINUS:
             case LOP_LENGTH:
                 addVmRegInput(node, LUAU_INSN_B(insn));
