@@ -742,6 +742,9 @@ struct Printer
             case AstExprUnary::Op::Not:
                 writer.keyword("not");
                 break;
+            case AstExprUnary::Op::BitNot:
+                writer.keyword("~");
+                break;
             case AstExprUnary::Op::Minus:
                 writer.symbol("-");
                 break;
@@ -768,6 +771,11 @@ struct Printer
                 case AstExprBinary::FloorDiv:
                 case AstExprBinary::Mod:
                 case AstExprBinary::Pow:
+                case AstExprBinary::BitAnd:
+                case AstExprBinary::BitXor:
+                case AstExprBinary::BitOr:
+                case AstExprBinary::ShiftLeft:
+                case AstExprBinary::ShiftRight:
                 case AstExprBinary::CompareLt:
                 case AstExprBinary::CompareGt:
                     writer.maybeSpace(a->right->location.begin, 2);

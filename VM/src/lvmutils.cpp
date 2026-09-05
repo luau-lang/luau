@@ -665,8 +665,11 @@ void luaV_dobitwiseimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* 
         }
 
         case TM_BNOT:
-            setnvalue(ra, double(~ub));
+        {
+            uint32_t result = ~uint32_t(ub);
+            setnvalue(ra, double(result));
             break;
+        }
 
         default:
             LUAU_ASSERT(0);

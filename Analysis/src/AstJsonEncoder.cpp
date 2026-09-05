@@ -604,6 +604,8 @@ struct AstJsonEncoder : public AstVisitor
         {
         case AstExprUnary::Op::Not:
             return writeString("Not");
+        case AstExprUnary::Op::BitNot:
+            return writeString("BitNot");
         case AstExprUnary::Op::Minus:
             return writeString("Minus");
         case AstExprUnary::Op::Len:
@@ -660,6 +662,14 @@ struct AstJsonEncoder : public AstVisitor
             return writeString("And");
         case AstExprBinary::Or:
             return writeString("Or");
+        case AstExprBinary::BitAnd:
+            return writeString("BitAnd");
+        case AstExprBinary::BitOr:
+            return writeString("BitOr");
+        case AstExprBinary::ShiftLeft:
+            return writeString("ShiftLeft");
+        case AstExprBinary::ShiftRight:
+            return writeString("ShiftRight");
         default:
             LUAU_ASSERT(!"Unknown Op");
         }
