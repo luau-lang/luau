@@ -594,7 +594,8 @@ public:
     {
         Not,
         Minus,
-        Len
+        Len,
+        BitNot
     };
 
     AstExprUnary(const Location& location, Op op, AstExpr* expr);
@@ -630,6 +631,11 @@ public:
         CompareGe,
         And,
         Or,
+        BitAnd,
+        BitOr,
+        BitXor,
+        ShiftLeft,
+        ShiftRight,
 
         Op__Count
     };

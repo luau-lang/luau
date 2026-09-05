@@ -172,6 +172,12 @@ std::string Lexeme::toString() const
             return "invalid UTF-8 sequence";
         }
 
+    case ShiftLeft:
+        return "'<<'";
+
+    case ShiftRight:
+        return "'>>'";
+
     default:
         if (type < Char_END)
             return format("'%c'", type);
@@ -820,6 +826,11 @@ Lexeme Lexer::readNext()
             consume();
             return Lexeme(Location(start, 2), Lexeme::LessEqual);
         }
+        else if (peekch() == '<')
+        {
+            consume();
+            return Lexeme(Location(start, 2), Lexeme::ShiftLeft);
+        }
         else
             return Lexeme(Location(start, 1), '<');
     }
@@ -832,6 +843,11 @@ Lexeme Lexer::readNext()
         {
             consume();
             return Lexeme(Location(start, 2), Lexeme::GreaterEqual);
+        }
+        else if (peekch() == '>')
+        {
+            consume();
+            return Lexeme(Location(start, 2), Lexeme::ShiftRight);
         }
         else
             return Lexeme(Location(start, 1), '>');

@@ -134,7 +134,8 @@ LUAU_FASTFLAGVARIABLE(LuauFastpcallInterrupt)
         VM_DISPATCH_OP(LOP_JUMPXEQKB), VM_DISPATCH_OP(LOP_JUMPXEQKN), VM_DISPATCH_OP(LOP_JUMPXEQKS), VM_DISPATCH_OP(LOP_IDIV), \
         VM_DISPATCH_OP(LOP_IDIVK), VM_DISPATCH_OP(LOP_GETUDATAKS), VM_DISPATCH_OP(LOP_SETUDATAKS), VM_DISPATCH_OP(LOP_NAMECALLUDATA), \
         VM_DISPATCH_OP(LOP_NEWCLASSMEMBER), VM_DISPATCH_OP(LOP_CALLFB), VM_DISPATCH_OP(LOP_CMPPROTO), VM_DISPATCH_OP(LOP_FASTPCALL), \
-        VM_DISPATCH_OP(LOP_NEWCLASS),
+        VM_DISPATCH_OP(LOP_NEWCLASS), VM_DISPATCH_OP(LOP_BAND), VM_DISPATCH_OP(LOP_BOR), VM_DISPATCH_OP(LOP_BXOR), VM_DISPATCH_OP(LOP_SHL), \
+        VM_DISPATCH_OP(LOP_SHR), VM_DISPATCH_OP(LOP_BNOT),
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VM_USE_CGOTO 1
@@ -2461,6 +2462,132 @@ reentry:
                 {
                     // slow-path, may invoke C/Lua via metamethods
                     VM_PROTECT(luaV_dolen(L, ra, rb));
+                    VM_NEXT();
+                }
+            }
+
+            VM_CASE(LOP_BAND)
+            {
+                VM_CASE_INSTRUCTION insn = *pc++;
+                VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
+                VM_CASE_STKID rb = VM_REG(LUAU_INSN_B(insn));
+                VM_CASE_STKID rc = VM_REG(LUAU_INSN_C(insn));
+
+                if (LUAU_LIKELY(ttisnumber(rb) && ttisnumber(rc)))
+                {
+                    unsigned u1, u2;
+                    luai_num2unsigned(u1, nvalue(rb));
+                    luai_num2unsigned(u2, nvalue(rc));
+
+                    uint32_t r = u1 & u2;
+
+                    setnvalue(ra, double(r));
+                    VM_NEXT();
+                }
+            }
+
+            VM_CASE(LOP_BOR)
+            {
+                VM_CASE_INSTRUCTION insn = *pc++;
+                VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
+                VM_CASE_STKID rb = VM_REG(LUAU_INSN_B(insn));
+                VM_CASE_STKID rc = VM_REG(LUAU_INSN_C(insn));
+
+                if (LUAU_LIKELY(ttisnumber(rb) && ttisnumber(rc)))
+                {
+                    unsigned u1, u2;
+                    luai_num2unsigned(u1, nvalue(rb));
+                    luai_num2unsigned(u2, nvalue(rc));
+
+                    uint32_t r = u1 | u2;
+
+                    setnvalue(ra, double(r));
+                    VM_NEXT();
+                }
+            }
+
+            VM_CASE(LOP_BXOR)
+            {
+                VM_CASE_INSTRUCTION insn = *pc++;
+                VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
+                VM_CASE_STKID rb = VM_REG(LUAU_INSN_B(insn));
+                VM_CASE_STKID rc = VM_REG(LUAU_INSN_C(insn));
+
+                if (LUAU_LIKELY(ttisnumber(rb) && ttisnumber(rc)))
+                {
+                    unsigned u1, u2;
+                    luai_num2unsigned(u1, nvalue(rb));
+                    luai_num2unsigned(u2, nvalue(rc));
+
+                    uint32_t r = u1 ^ u2;
+
+                    setnvalue(ra, double(r));
+                    VM_NEXT();
+                }
+            }
+
+            VM_CASE(LOP_SHL)
+            {
+                VM_CASE_INSTRUCTION insn = *pc++;
+                VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
+                VM_CASE_STKID rb = VM_REG(LUAU_INSN_B(insn));
+                VM_CASE_STKID rc = VM_REG(LUAU_INSN_C(insn));
+
+                if (LUAU_LIKELY(ttisnumber(rb) && ttisnumber(rc)))
+                {
+                    unsigned u;
+                    luai_num2unsigned(u, nvalue(rb));
+
+                    int s = int(nvalue(rc));
+
+                    if (unsigned(s) < 32)
+                    {
+                        uint32_t r = u << s;
+
+                        setnvalue(ra, double(r));
+                        VM_NEXT();
+                    }
+                }
+            }
+
+            VM_CASE(LOP_SHR)
+            {
+                VM_CASE_INSTRUCTION insn = *pc++;
+                VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
+                VM_CASE_STKID rb = VM_REG(LUAU_INSN_B(insn));
+                VM_CASE_STKID rc = VM_REG(LUAU_INSN_C(insn));
+
+                if (LUAU_LIKELY(ttisnumber(rb) && ttisnumber(rc)))
+                {
+                    unsigned u;
+                    luai_num2unsigned(u, nvalue(rb));
+
+                    int s = int(nvalue(rc));
+
+                    if (unsigned(s) < 32)
+                    {
+                        uint32_t r = u >> s;
+
+                        setnvalue(ra, double(r));
+                        VM_NEXT();
+                    }
+                }
+            }
+
+            VM_CASE(LOP_BNOT)
+            {
+                VM_CASE_INSTRUCTION insn = *pc++;
+                VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
+                VM_CASE_STKID rb = VM_REG(LUAU_INSN_B(insn));
+
+                if (LUAU_LIKELY(ttisnumber(rb)))
+                {
+                    unsigned u;
+                    luai_num2unsigned(u, nvalue(rb));
+
+                    uint32_t r = ~u;
+
+                    setnvalue(ra, double(r));
                     VM_NEXT();
                 }
             }

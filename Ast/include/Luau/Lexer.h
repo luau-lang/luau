@@ -37,6 +37,10 @@ struct Lexeme
         // An interpolated string with no expressions (like `x`)
         InterpStringSimple,
 
+        // Bit operations like << >>
+        ShiftLeft,
+        ShiftRight,
+
         AddAssign,
         SubAssign,
         MulAssign,

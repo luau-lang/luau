@@ -471,6 +471,20 @@ enum LuauOpcode
     // AUX: constant table index of unreified class object
     LOP_NEWCLASS,
 
+    // Bit operations
+    // A: target register of operation
+    // B: source register 1
+    // C: source register 2
+    LOP_BAND, // &
+    LOP_BOR,  // |
+    LOP_BXOR, // ~
+    LOP_SHL,  // <<
+    LOP_SHR,  // >>
+    
+    // A: target register
+    // B: source register
+    LOP_BNOT, // unary ~
+
     // Enum entry for number of opcodes, not a valid opcode by itself!
     LOP__COUNT
 };

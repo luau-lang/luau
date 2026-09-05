@@ -3505,6 +3505,8 @@ std::optional<AstExprUnary::Op> Parser::parseUnaryOp(const Lexeme& l)
         return AstExprUnary::Op::Minus;
     else if (l.type == '#')
         return AstExprUnary::Op::Len;
+    else if (l.type == '~')
+        return AstExprUnary::Op::BitNot;
     else
         return std::nullopt;
 }
@@ -3543,6 +3545,16 @@ std::optional<AstExprBinary::Op> Parser::parseBinaryOp(const Lexeme& l)
         return AstExprBinary::And;
     else if (l.type == Lexeme::ReservedOr)
         return AstExprBinary::Or;
+    else if (l.type == '&')
+        return AstExprBinary::BitAnd;
+    else if (l.type == '|')
+        return AstExprBinary::BitOr;
+    else if (l.type == '~')
+        return AstExprBinary::BitXor;
+    else if (l.type == Lexeme::ShiftLeft)
+        return AstExprBinary::ShiftLeft;
+    else if (l.type == Lexeme::ShiftRight)
+        return AstExprBinary::ShiftRight;
     else
         return std::nullopt;
 }
@@ -3644,7 +3656,12 @@ AstExpr* Parser::parseExpr(unsigned int limit)
         {3, 3},  // '>'
         {3, 3},  // '>='
         {2, 2},  // logical and
-        {1, 1}   // logical or
+        {1, 1},  // logical or
+        {6, 6},  // bitwise and '&'
+        {4, 4},  // bitwise or '|'
+        {5, 5},  // bitwise xor '~'
+        {7, 7},  // lshift '<<'
+        {7, 7}   // rshift '>>'
     };
 
     static_assert(sizeof(binaryPriority) / sizeof(binaryPriority[0]) == size_t(AstExprBinary::Op__Count), "binaryPriority needs an entry per op");

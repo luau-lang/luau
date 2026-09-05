@@ -1842,6 +1842,9 @@ struct Compiler
         case AstExprUnary::Op::Len:
             return LOP_LENGTH;
 
+        case AstExprUnary::Op::BitNot:
+            return LOP_BNOT;
+
         default:
             LUAU_ASSERT(!"Unexpected unary operation");
             return LOP_NOP;
@@ -1875,6 +1878,31 @@ struct Compiler
 
         default:
             LUAU_ASSERT(!"Unexpected binary operation");
+            return LOP_NOP;
+        }
+    }
+
+    LuauOpcode getBinaryOpBitwise(AstExprBinary::Op op)
+    {
+        switch (op)
+        {
+        case AstExprBinary::BitAnd:
+            return LOP_BAND;
+
+        case AstExprBinary::BitOr:
+            return LOP_BOR;
+        
+        case AstExprBinary::BitXor:
+            return LOP_BXOR;
+        
+        case AstExprBinary::ShiftLeft:
+            return LOP_SHL;
+
+        case AstExprBinary::ShiftRight:
+            return LOP_SHR;
+
+        default:
+            LUAU_ASSERT(!"Unexpected bitwise operation");
             return LOP_NOP;
         }
     }
@@ -2463,6 +2491,19 @@ struct Compiler
         case AstExprBinary::Or:
         {
             compileExprAndOr(expr, target, targetTemp);
+        }
+        break;
+        
+        case AstExprBinary::BitAnd:
+        case AstExprBinary::BitOr:
+        case AstExprBinary::BitXor:
+        case AstExprBinary::ShiftLeft:
+        case AstExprBinary::ShiftRight:
+        {
+            uint8_t rl = compileExprAuto(expr->left, rs);
+            uint8_t rr = compileExprAuto(expr->right, rs);
+
+            bytecode.emitABC(getBinaryOpBitwise(expr->op), target, rl, rr);
         }
         break;
 
