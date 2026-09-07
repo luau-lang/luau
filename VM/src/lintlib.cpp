@@ -122,11 +122,12 @@ static int int64_idiv(lua_State* L)
     if ((a == LLONG_MIN) && (b == -1))
         luaL_error(L, "integer overflow");
 
+    // floored division: adjust when the signs differ and the division is inexact
     int64_t result = a / b;
-    if ((result < 0) && (a % b))
-        lua_pushinteger64(L, result - 1);
-    else
-        lua_pushinteger64(L, result);
+    if ((a % b) && ((a < 0) != (b < 0)))
+        result -= 1;
+
+    lua_pushinteger64(L, result);
 
     return 1;
 }

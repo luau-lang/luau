@@ -2420,15 +2420,12 @@ static int luauF_integeridiv(lua_State* L, StkId res, TValue* arg0, int nresults
         if ((a1 == LLONG_MIN) && (a2 == -1))
             return -1;
 
+        // floored division: adjust when the signs differ and the division is inexact
         int64_t result = a1 / a2;
-        if ((result < 0) && (a1 % a2))
-        {
-            setlvalue(res, result - 1);
-        }
-        else
-        {
-            setlvalue(res, result);
-        }
+        if ((a1 % a2) && ((a1 < 0) != (a2 < 0)))
+            result -= 1;
+
+        setlvalue(res, result);
         return 1;
     }
 

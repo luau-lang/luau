@@ -704,25 +704,27 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         break;
     case IrCmd::IDIV_INT64:
-        // floored division: q = a / b, then if (q < 0 && a % b != 0) q -= 1
+        // floored division: q = a / b, then if (rem != 0 && sign(rem) != sign(b)) q -= 1
         inst.regA64 = regs.allocReg(KindA64::x, index); // can't reuse: both operands needed for remainder
         {
             RegisterA64 temp1 = tempInt64(OP_A(inst));
             RegisterA64 temp2 = tempInt64(OP_B(inst));
             RegisterA64 tempRem = regs.allocTemp(KindA64::x);
             RegisterA64 tempAdj = regs.allocTemp(KindA64::x);
+            RegisterA64 tempSign = regs.allocTemp(KindA64::x);
 
-            build.sdiv(inst.regA64, temp1, temp2); // result = a / b
+            build.sdiv(inst.regA64, temp1, temp2); // quotient = a / b
             build.mov(tempRem, inst.regA64);       // copy quotient; rem requires dst to initially hold quotient
-            build.rem(tempRem, temp1, temp2);
+            build.rem(tempRem, temp1, temp2);      // tempRem = C-style remainder
 
-            build.sub(tempAdj, inst.regA64, uint16_t(1)); // adjusted = result - 1
+            build.sub(tempAdj, inst.regA64, uint16_t(1)); // tempAdj = quotient - 1 (floored candidate)
+            build.eor(tempSign, tempRem, temp2);          // sign check: negative if signs differ
+
+            build.cmp(tempSign, uint16_t(0));
+            build.csel(tempAdj, tempAdj, inst.regA64, ConditionA64::Less); // if signs differ then q-1 else q
 
             build.cmp(tempRem, uint16_t(0));
-            build.csel(tempAdj, tempAdj, inst.regA64, ConditionA64::NotEqual); // (remainder != 0) ? result-1 : result
-
-            build.cmp(inst.regA64, uint16_t(0));
-            build.csel(inst.regA64, tempAdj, inst.regA64, ConditionA64::Less); // (result < 0) ? tempAdj : result
+            build.csel(inst.regA64, tempAdj, inst.regA64, ConditionA64::NotEqual); // if rem != 0 then adjusted else q
         }
         break;
     case IrCmd::CHECK_DIV_INT64:

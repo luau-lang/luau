@@ -146,6 +146,36 @@ assert(integer.idiv(-7i, 3i) == -3i)
 assert(integer.idiv(noinline(32i), 7i) == 4i)
 assert(integer.idiv(noinline(-7i), 3i) == -3i)
 
+-- a true quotient in (-1, 0) truncates to 0, so flooring has to look at the sign
+-- of the operands rather than the sign of the quotient
+assert(integer.idiv(-1i, 2i) == -1i)
+assert(integer.idiv(1i, -2i) == -1i)
+assert(integer.idiv(-3i, 4i) == -1i)
+assert(integer.idiv(2i, -3i) == -1i)
+assert(integer.idiv(noinline(-1i), 2i) == -1i)
+assert(integer.idiv(noinline(1i), -2i) == -1i)
+assert(integer.idiv(noinline(-3i), 4i) == -1i)
+assert(integer.idiv(noinline(2i), -3i) == -1i)
+
+-- integer.idiv must agree with the floor division operator on numbers
+for _, pair in {{-1, 2}, {1, -2}, {-3, 4}, {3, -4}, {-7, 3}, {7, -3}, {-7, -3}, {32, 7}} do
+    local a, b = pair[1], pair[2]
+    assert(integer.idiv(integer.create(a), integer.create(b)) == integer.create(a // b))
+end
+
+-- and the division identity b * idiv(a, b) + mod(a, b) == a must hold, which
+-- pins idiv against the flooring integer.mod beside it
+for _, pair in {{-1, 2}, {1, -2}, {-3, 4}, {3, -4}, {-7, 2}, {7, -2}, {-7, -3}, {0, 5}} do
+    local a, b = integer.create(pair[1]), integer.create(pair[2])
+    assert(integer.add(integer.mul(b, integer.idiv(a, b)), integer.mod(a, b)) == a)
+end
+
+-- boundaries
+assert(integer.idiv(integer.minsigned, 2i) == -4611686018427387904i)
+assert(integer.idiv(integer.maxsigned, -2i) == -4611686018427387904i)
+assert(integer.idiv(0i, 5i) == 0i)
+assert(integer.idiv(0i, -5i) == 0i)
+
 local success,errmsg = pcall(function() integer.idiv(5i,0i) end)
 assert(not success)
 assert(string.find(errmsg,"division by zero"))
