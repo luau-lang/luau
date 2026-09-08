@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAGVARIABLE(LuauFixFreeIndexerPropLookup)
 
 namespace Luau
 {
@@ -3502,6 +3503,12 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
             TypeId fauxLiteral = arena->addType(SingletonType{StringSingleton{propName}});
             if (fastIsSubtype(fauxLiteral, ttv->indexer->indexType))
                 return {/* blockedTypes */ {}, ttv->indexer->indexResultType, /* isIndex */ true};
+
+            if (FFlag::LuauFixFreeIndexerPropLookup && context == ValueContext::RValue && get<FreeType>(follow(ttv->indexer->indexType)))
+            {
+                unify(constraint, builtinTypes->stringType, ttv->indexer->indexType);
+                return {/* blockedTypes */ {}, ttv->indexer->indexResultType, /* isIndex */ true};
+            }
         }
 
         if (ttv->state == TableState::Free)

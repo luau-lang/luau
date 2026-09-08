@@ -34,6 +34,8 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
+LUAU_FASTFLAG(LuauFixFreeIndexerPropLookup)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -7590,6 +7592,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_table_with_indexer_grown_from_generic_call_is_not_any")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDoNotLeakGenericsInIndexer, true},
+        {FFlag::LuauFixFreeIndexerPropLookup, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function setDefault<K, V>(t: { [K]: V? }): V
+            return nil :: any
+        end
+
+        local t = {hello = "world"}
+        setDefault(t)
+
+        local x = t["h"]
+        local y = t.hello
+    )"));
+
+    CHECK_EQ("{ [string]: unknown?, hello: string }", toString(requireType("t"), {true}));
+    CHECK_EQ("unknown?", toString(requireType("x")));
+    CHECK_EQ("string", toString(requireType("y")));
 }
 
 TEST_SUITE_END();

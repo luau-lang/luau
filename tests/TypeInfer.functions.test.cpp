@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixFreeIndexerPropLookup)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4500,7 +4501,11 @@ TEST_CASE_FIXTURE(Fixture, "oss_2670_generic_leaking_indexer_1")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauDoNotLeakGenericsInIndexer, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDoNotLeakGenericsInIndexer, true},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+        {FFlag::LuauFixFreeIndexerPropLookup, true},
+    };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function setDefault<K, V>(t: { [K]: V? }): V
@@ -4514,9 +4519,8 @@ TEST_CASE_FIXTURE(Fixture, "oss_2670_generic_leaking_indexer_1")
 
     )"));
 
-    CHECK_EQ("{ [unknown]: unknown?, hello: string }", toString(requireType("t"), {true}));
-    // TODO CLI-181248: This seems incorrect.
-    CHECK_EQ("any", toString(requireType("x"), {true}));
+    CHECK_EQ("{ [string]: unknown?, hello: string }", toString(requireType("t"), {true}));
+    CHECK_EQ("unknown?", toString(requireType("x"), {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2670_generic_leaking_indexer_2")
