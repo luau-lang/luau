@@ -89,6 +89,21 @@ struct WarningComparator
     }
 };
 
+static void emitWarningImpl(
+    LintContext& context,
+    LintWarning::Code code,
+    const Location& location,
+    std::optional<Location> relatedLocation,
+    const char* format,
+    va_list args
+)
+{
+    std::string message = vformat(format, args);
+
+    LintWarning warning = {code, location, std::move(message), relatedLocation};
+    context.result.push_back(std::move(warning));
+}
+
 LUAU_PRINTF_ATTR(4, 5)
 static void emitWarning(LintContext& context, LintWarning::Code code, const Location& location, const char* format, ...)
 {
@@ -97,11 +112,27 @@ static void emitWarning(LintContext& context, LintWarning::Code code, const Loca
 
     va_list args;
     va_start(args, format);
-    std::string message = vformat(format, args);
+    emitWarningImpl(context, code, location, std::nullopt, format, args);
     va_end(args);
+}
 
-    LintWarning warning = {code, location, std::move(message)};
-    context.result.push_back(warning);
+LUAU_PRINTF_ATTR(5, 6)
+static void emitWarning(
+    LintContext& context,
+    LintWarning::Code code,
+    const Location& location,
+    const Location& relatedLocation,
+    const char* format,
+    ...
+)
+{
+    if (!context.warningEnabled(code))
+        return;
+
+    va_list args;
+    va_start(args, format);
+    emitWarningImpl(context, code, location, relatedLocation, format, args);
+    va_end(args);
 }
 
 static bool similar(AstExpr* lhs, AstExpr* rhs)
@@ -762,6 +793,7 @@ private:
                     *context,
                     LintWarning::Code_LocalShadow,
                     local->location,
+                    shadow->location,
                     "Variable '%s' shadows previous declaration at line %d",
                     local->name.value,
                     shadow->location.begin.line + 1
@@ -777,6 +809,7 @@ private:
                     *context,
                     LintWarning::Code_LocalShadow,
                     local->location,
+                    global->firstRef->location,
                     "Variable '%s' shadows a global variable used at line %d",
                     local->name.value,
                     global->firstRef->location.begin.line + 1
@@ -2114,6 +2147,7 @@ private:
                     *context,
                     LintWarning::Code_UninitializedLocal,
                     l.firstUse->location,
+                    local->location,
                     "Variable '%s' defined at line %d is never initialized or assigned; initialize with 'nil' to silence",
                     local->name.value,
                     local->location.begin.line + 1
@@ -2254,6 +2288,7 @@ private:
             *context,
             LintWarning::Code_DuplicateFunction,
             location,
+            otherLocation,
             "Duplicate function definition: '%s' also defined on line %d",
             name.c_str(),
             otherLocation.begin.line + 1
@@ -2952,6 +2987,7 @@ private:
                             *context,
                             LintWarning::Code_DuplicateCondition,
                             conditions[i]->location,
+                            conditions[j]->location,
                             "Condition has already been checked on column %d",
                             conditions[j]->location.begin.column + 1
                         );
@@ -2960,6 +2996,7 @@ private:
                             *context,
                             LintWarning::Code_DuplicateCondition,
                             conditions[i]->location,
+                            conditions[j]->location,
                             "Condition has already been checked on line %d",
                             conditions[j]->location.begin.line + 1
                         );
@@ -3008,6 +3045,7 @@ private:
                         *context,
                         LintWarning::Code_DuplicateLocal,
                         local->location,
+                        local->shadow->location,
                         "Variable '%s' already defined on column %d",
                         local->name.value,
                         local->shadow->location.begin.column + 1
@@ -3017,6 +3055,7 @@ private:
                         *context,
                         LintWarning::Code_DuplicateLocal,
                         local->location,
+                        local->shadow->location,
                         "Variable '%s' already defined on line %d",
                         local->name.value,
                         local->shadow->location.begin.line + 1
@@ -3042,12 +3081,19 @@ private:
             if (local->shadow && locals[local->shadow] == node && !ignoreDuplicate(local))
             {
                 if (local->shadow == node->self)
-                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, "Function parameter 'self' already defined implicitly");
+                    emitWarning(
+                        *context,
+                        LintWarning::Code_DuplicateLocal,
+                        local->location,
+                        local->shadow->location,
+                        "Function parameter 'self' already defined implicitly"
+                    );
                 else if (local->shadow->location.begin.line == local->location.begin.line)
                     emitWarning(
                         *context,
                         LintWarning::Code_DuplicateLocal,
                         local->location,
+                        local->shadow->location,
                         "Function parameter '%s' already defined on column %d",
                         local->name.value,
                         local->shadow->location.begin.column + 1
@@ -3057,6 +3103,7 @@ private:
                         *context,
                         LintWarning::Code_DuplicateLocal,
                         local->location,
+                        local->shadow->location,
                         "Function parameter '%s' already defined on line %d",
                         local->name.value,
                         local->shadow->location.begin.line + 1

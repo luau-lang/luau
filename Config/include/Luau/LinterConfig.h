@@ -3,6 +3,7 @@
 
 #include "Luau/Location.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -57,6 +58,7 @@ struct LintWarning
     Code code;
     Location location;
     std::string text;
+    std::optional<Location> relatedLocation;
 
     static const char* getName(Code code);
     static Code parseName(const char* name);

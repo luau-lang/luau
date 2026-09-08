@@ -44,6 +44,7 @@ TEST_CASE_FIXTURE(Fixture, "UnknownGlobal")
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Unknown global 'foo'; consider assigning to it first");
+    CHECK(!result.warnings[0].relatedLocation);
 }
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobal")
@@ -329,6 +330,8 @@ print(arg)
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'arg' shadows previous declaration at line 2");
+    REQUIRE(result.warnings[0].relatedLocation);
+    CHECK_EQ(*result.warnings[0].relatedLocation, Location{{1, 6}, {1, 9}});
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "LocalShadowGlobal")
@@ -347,6 +350,8 @@ return bar()
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'global' shadows a global variable used at line 3");
+    REQUIRE(result.warnings[0].relatedLocation);
+    CHECK_EQ(*result.warnings[0].relatedLocation, Location{{2, 0}, {2, 6}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "LocalShadowArgument")
@@ -362,6 +367,8 @@ return bar()
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'a' shadows previous declaration at line 2");
+    REQUIRE(result.warnings[0].relatedLocation);
+    CHECK_EQ(*result.warnings[0].relatedLocation, Location{{1, 13}, {1, 14}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "LocalUnused")
@@ -1388,6 +1395,8 @@ end
 
     REQUIRE(3 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'x' defined at line 4 is never initialized or assigned; initialize with 'nil' to silence");
+    REQUIRE(result.warnings[0].relatedLocation);
+    CHECK_EQ(*result.warnings[0].relatedLocation, Location{{3, 10}, {3, 11}});
     CHECK_EQ(result.warnings[1].text, "Assigning 2 values to 3 variables initializes extra variables with nil; add 'nil' to value list to silence");
     CHECK_EQ(result.warnings[2].text, "Variable 'c' defined at line 12 is never initialized or assigned; initialize with 'nil' to silence");
 }
@@ -1418,6 +1427,8 @@ TEST_CASE_FIXTURE(Fixture, "DuplicateGlobalFunction")
 
     CHECK_EQ(LintWarning::Code_DuplicateFunction, w.code);
     CHECK_EQ("Duplicate function definition: 'x' also defined on line 2", w.text);
+    REQUIRE(w.relatedLocation);
+    CHECK_EQ(*w.relatedLocation, Location{{1, 17}, {1, 18}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateLocalFunction")
@@ -1443,6 +1454,8 @@ TEST_CASE_FIXTURE(Fixture, "DuplicateLocalFunction")
     REQUIRE_EQ(1, result.warnings.size());
 
     CHECK_EQ(LintWarning::Code_DuplicateFunction, result.warnings[0].code);
+    REQUIRE(result.warnings[0].relatedLocation);
+    CHECK_EQ(*result.warnings[0].relatedLocation, Location{{1, 23}, {1, 24}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateMethod")
@@ -1462,6 +1475,8 @@ TEST_CASE_FIXTURE(Fixture, "DuplicateMethod")
 
     CHECK_EQ(LintWarning::Code_DuplicateFunction, w.code);
     CHECK_EQ("Duplicate function definition: 'T.x' also defined on line 3", w.text);
+    REQUIRE(w.relatedLocation);
+    CHECK_EQ(*w.relatedLocation, Location{{2, 17}, {2, 20}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "DontTriggerTheWarningIfTheFunctionsAreInDifferentScopes")
@@ -2280,14 +2295,30 @@ _ = if true then 1 elseif true then 2 else 3
     REQUIRE(8 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 2");
     CHECK_EQ(result.warnings[0].location.begin.line + 1, 4);
+    REQUIRE(result.warnings[0].relatedLocation);
+    CHECK_EQ(*result.warnings[0].relatedLocation, Location{{1, 3}, {1, 7}});
     CHECK_EQ(result.warnings[1].text, "Condition has already been checked on column 5");
+    REQUIRE(result.warnings[1].relatedLocation);
+    CHECK_EQ(*result.warnings[1].relatedLocation, Location{{13, 4}, {13, 8}});
     CHECK_EQ(result.warnings[2].text, "Condition has already been checked on column 5");
+    REQUIRE(result.warnings[2].relatedLocation);
+    CHECK_EQ(*result.warnings[2].relatedLocation, Location{{14, 4}, {14, 8}});
     CHECK_EQ(result.warnings[3].text, "Condition has already been checked on column 6");
+    REQUIRE(result.warnings[3].relatedLocation);
+    CHECK_EQ(*result.warnings[3].relatedLocation, Location{{15, 5}, {15, 9}});
     CHECK_EQ(result.warnings[4].text, "Condition has already been checked on column 6");
+    REQUIRE(result.warnings[4].relatedLocation);
+    CHECK_EQ(*result.warnings[4].relatedLocation, Location{{16, 5}, {16, 9}});
     CHECK_EQ(result.warnings[5].text, "Condition has already been checked on column 6");
+    REQUIRE(result.warnings[5].relatedLocation);
+    CHECK_EQ(*result.warnings[5].relatedLocation, Location{{16, 5}, {16, 9}});
     CHECK_EQ(result.warnings[6].text, "Condition has already been checked on column 15");
     CHECK_EQ(result.warnings[6].location.begin.line + 1, 19);
+    REQUIRE(result.warnings[6].relatedLocation);
+    CHECK_EQ(*result.warnings[6].relatedLocation, Location{{18, 14}, {18, 19}});
     CHECK_EQ(result.warnings[7].text, "Condition has already been checked on column 8");
+    REQUIRE(result.warnings[7].relatedLocation);
+    CHECK_EQ(*result.warnings[7].relatedLocation, Location{{22, 7}, {22, 11}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsExpr")
@@ -2304,6 +2335,8 @@ end
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 4");
     CHECK_EQ(result.warnings[0].location.begin.line + 1, 5);
+    REQUIRE(result.warnings[0].relatedLocation);
+    CHECK_EQ(*result.warnings[0].relatedLocation, Location{{3, 3}, {3, 86}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateLocal")
@@ -2324,9 +2357,15 @@ return foo, moo, a1, a2
 
     REQUIRE(4 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Function parameter 'a1' already defined on column 14");
+    REQUIRE(result.warnings[0].relatedLocation);
+    CHECK_EQ(*result.warnings[0].relatedLocation, Location{{1, 13}, {1, 15}});
     CHECK_EQ(result.warnings[1].text, "Variable 'a1' is never used; prefix with '_' to silence");
     CHECK_EQ(result.warnings[2].text, "Variable 'a1' already defined on column 7");
+    REQUIRE(result.warnings[2].relatedLocation);
+    CHECK_EQ(*result.warnings[2].relatedLocation, Location{{5, 6}, {5, 8}});
     CHECK_EQ(result.warnings[3].text, "Function parameter 'self' already defined implicitly");
+    REQUIRE(result.warnings[3].relatedLocation);
+    CHECK_EQ(*result.warnings[3].relatedLocation, Location{{8, 0}, {8, 8}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "MisleadingAndOr")
