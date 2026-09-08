@@ -36,6 +36,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodArityCount)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
@@ -2015,16 +2016,36 @@ void TypeChecker2::visitCall(AstExprCall* call)
         {
             const bool isVariadic = Luau::isVariadic(fn->argTypes);
 
+            // A __call metamethod receives the callee as its first argument.
+            size_t actualArgCount = argHead.size();
+            if (FFlag::LuauFixCallMetamethodArityCount && result2.metamethods.contains(fnTy))
+                actualArgCount += 1;
+
             auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
-            reportError(CountMismatch{minParams, optMaxParams, argHead.size(), CountMismatch::Arg, isVariadic}, call->func->location);
+            reportError(CountMismatch{minParams, optMaxParams, actualArgCount, CountMismatch::Arg, isVariadic}, call->func->location);
             return;
         }
     }
 
     if (!result2.arityMismatches.empty())
     {
+        size_t actualArgCount = argHead.size();
+        if (FFlag::LuauFixCallMetamethodArityCount)
+        {
+            const bool allMetamethods = std::all_of(
+                result2.arityMismatches.begin(),
+                result2.arityMismatches.end(),
+                [&](TypeId ty)
+                {
+                    return result2.metamethods.contains(follow(ty));
+                }
+            );
+            if (allMetamethods)
+                actualArgCount += 1;
+        }
+
         std::stringstream ss;
-        ss << "No overload for function accepts " << argHead.size() << " arguments.";
+        ss << "No overload for function accepts " << actualArgCount << " arguments.";
         reportError(GenericError{ss.str()}, call->func->location);
         reportAvailableOverloads(module->errors, call->func->location, module->name, result2.arityMismatches);
         return;

@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixCallMetamethodArityCount)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -2394,6 +2395,54 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_argument_types")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(get<TypeMismatch>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_arity_mismatch_counts_self")
+{
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodArityCount, true};
+
+    CheckResult result = check(R"(
+        type T = setmetatable<{}, { __call: (T, a: number) -> () }>
+        type U = setmetatable<{}, { __call: (U, a: number, b: number) -> () }>
+
+        local t = (nil :: any) :: T
+        local u = (nil :: any) :: U
+
+        t(1, 2)
+        u(1)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    const CountMismatch* tooMany = get<CountMismatch>(result.errors[0]);
+    REQUIRE(tooMany);
+    CHECK_EQ(2, tooMany->expected);
+    CHECK_EQ(3, tooMany->actual);
+    CHECK_EQ("Argument count mismatch. Function expects 2 arguments, but 3 are specified", toString(result.errors[0]));
+
+    const CountMismatch* tooFew = get<CountMismatch>(result.errors[1]);
+    REQUIRE(tooFew);
+    CHECK_EQ(3, tooFew->expected);
+    CHECK_EQ(2, tooFew->actual);
+    CHECK_EQ("Argument count mismatch. Function expects 3 arguments, but only 2 are specified", toString(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "overloaded_call_metamethod_arity_mismatch_counts_self")
+{
+    ScopedFastFlag _{FFlag::LuauFixCallMetamethodArityCount, true};
+
+    CheckResult result = check(R"(
+        type T = setmetatable<{}, { __call: ((T, a: number) -> ()) & ((T, a: number, b: number) -> ()) }>
+
+        local t = (nil :: any) :: T
+        t(1, 2, 3)
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+
+    const GenericError* err = get<GenericError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("No overload for function accepts 4 arguments.", err->message);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_checks_variadic_argument_types")
