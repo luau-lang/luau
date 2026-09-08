@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAGVARIABLE(LuauMetatableIndexOptionalProp)
 
 namespace Luau
 {
@@ -3551,13 +3552,35 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     else if (auto mt = get<MetatableType>(subjectType); mt && context == ValueContext::RValue)
     {
         auto result = lookupTableProp(constraint, mt->table, propName, context, inConditional, suppressSimplification, seen);
-        if (!result.blockedTypes.empty() || result.propType)
+        if (!result.blockedTypes.empty())
+            return result;
+
+        bool propIsOptional = FFlag::LuauMetatableIndexOptionalProp && result.propType && isOptional(follow(*result.propType));
+        if (result.propType && !propIsOptional)
             return result;
 
         TypeId mtt = follow(mt->metatable);
 
+        auto combineOptionalProp = [&](TablePropLookupResult indexResult) -> TablePropLookupResult {
+            if (!propIsOptional)
+                return indexResult;
+
+            if (!indexResult.blockedTypes.empty())
+                return indexResult;
+
+            if (!indexResult.propType)
+                return {{}, result.propType};
+
+            return {{}, simplifyUnion(
+                             constraint->scope,
+                             constraint->location,
+                             stripNil(builtinTypes, *arena, *result.propType),
+                             *indexResult.propType
+                         )};
+        };
+
         if (get<BlockedType>(mtt))
-            return {{mtt}, std::nullopt};
+            return propIsOptional ? result : TablePropLookupResult{{mtt}, std::nullopt};
         else if (auto metatable = get<TableType>(mtt))
         {
             auto indexProp = metatable->props.find("__index");
@@ -3576,19 +3599,25 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
             {
                 TypePack rets = extendTypePack(*arena, builtinTypes, ft->retTypes, 1);
                 if (1 == rets.head.size())
-                    return {{}, rets.head[0]};
+                    return combineOptionalProp({{}, rets.head[0]});
                 else
                 {
                     // This should probably be an error: We need the first result of the MT.__index method,
                     // but it returns 0 values.  See CLI-68672
-                    return {{}, builtinTypes->nilType};
+                    return combineOptionalProp({{}, builtinTypes->nilType});
                 }
             }
             else
-                return lookupTableProp(constraint, indexType, propName, context, inConditional, suppressSimplification, seen);
+                return combineOptionalProp(
+                    lookupTableProp(constraint, indexType, propName, context, inConditional, suppressSimplification, seen)
+                );
         }
         else if (get<MetatableType>(mtt))
-            return lookupTableProp(constraint, mtt, propName, context, inConditional, suppressSimplification, seen);
+            return combineOptionalProp(
+                lookupTableProp(constraint, mtt, propName, context, inConditional, suppressSimplification, seen)
+            );
+        else if (propIsOptional)
+            return result;
     }
     else if (auto ct = get<ExternType>(subjectType))
     {

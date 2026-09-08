@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauMetatableIndexOptionalProp)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -1622,6 +1623,46 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "property_lookup_through_tabletypevar_metatab
     UnknownProperty* up = get<UnknownProperty>(result.errors[0]);
     REQUIRE_MESSAGE(up, result.errors[0].data);
     CHECK_EQ(up->key, "z");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_index_fills_in_optional_property")
+{
+    ScopedFastFlag sff_LuauSolverV2{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff_MetatableIndexOptionalProp{FFlag::LuauMetatableIndexOptionalProp, true};
+
+    CheckResult result = check(R"(
+        local nya: setmetatable<{meow: string?}, {__index: {meow: string}}>
+        local purr: string = nya.meow
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireType("purr")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_index_function_fills_in_optional_property")
+{
+    ScopedFastFlag sff_LuauSolverV2{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff_MetatableIndexOptionalProp{FFlag::LuauMetatableIndexOptionalProp, true};
+
+    CheckResult result = check(R"(
+        local nya: setmetatable<{meow: number?}, {__index: (any, string) -> number}>
+        local n: number = nya.meow
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_index_does_not_change_optional_property_without_index_entry")
+{
+    ScopedFastFlag sff_LuauSolverV2{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff_MetatableIndexOptionalProp{FFlag::LuauMetatableIndexOptionalProp, true};
+
+    CheckResult result = check(R"(
+        local nya: setmetatable<{meow: string?}, {__tostring: (any) -> string}>
+        local purr: string = nya.meow
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "missing_metatable_for_sealed_tables_do_not_get_inferred")
