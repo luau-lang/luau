@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixNeverPackArity)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 
 using namespace Luau;
@@ -662,6 +663,28 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(number) -> (string, string) <!: (number) -> 
 TEST_CASE_FIXTURE(SubtypeFixture, "(number) -> string <!: (number) -> (string, string)")
 {
     CHECK_IS_NOT_SUBTYPE(numberToStringType, numberToTwoStringsType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "pack_with_never_is_subtype_of_pack_of_any_arity")
+{
+    ScopedFastFlag sff{FFlag::LuauFixNeverPackArity, true};
+
+    TypeId never = getBuiltins()->neverType;
+    TypeId trueTy = getBuiltins()->trueType;
+
+    CHECK_IS_SUBTYPE(pack({never}), pack({trueTy, trueTy}));
+    CHECK_IS_SUBTYPE(pack({never}), pack({}));
+    CHECK_IS_SUBTYPE(pack({never, getBuiltins()->stringType}), pack({getBuiltins()->numberType}));
+    CHECK_IS_SUBTYPE(pack({trueTy, never}), pack({trueTy, trueTy, trueTy}));
+
+    CHECK_IS_SUBTYPE(fn({}, {never}), fn({}, {trueTy, trueTy}));
+    CHECK_IS_SUBTYPE(fn({}, {never}), fn({}, {}));
+
+    // Arity mismatches without `never` are still rejected, and `never` does not
+    // excuse a pairwise head mismatch.
+    CHECK_IS_NOT_SUBTYPE(pack({trueTy}), pack({trueTy, trueTy}));
+    CHECK_IS_NOT_SUBTYPE(pack({trueTy}), pack({never, never}));
+    CHECK_IS_NOT_SUBTYPE(pack({getBuiltins()->stringType, never}), pack({getBuiltins()->numberType, never}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "(number, ...string) -> string <: (number) -> string")

@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixNeverPackArity)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4671,6 +4672,43 @@ TEST_CASE_FIXTURE(Fixture, "let_generalization_multiple_values")
     CHECK_EQ("string", toString(requireType("r2"), {true}));
     CHECK_EQ("number", toString(requireType("r3"), {true}));
     CHECK_EQ("string", toString(requireType("r4"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_returning_never_is_subtype_of_function_returning_multiple_values")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFixNeverPackArity, true};
+
+    CheckResult result = check(R"(
+        local foo: () -> (never) = nil :: any
+        local bar: () -> (true) = foo
+        local baz: () -> (true, true) = foo
+        local qux: () -> () = foo
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "return_error_call_in_function_with_multiple_return_values")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFixNeverPackArity, true};
+
+    CheckResult result = check(R"(
+        local function test(enum: "a" | "b"): (boolean, string)
+            if enum == "a" then
+                return true, enum
+            elseif enum == "b" then
+                return false, enum
+            else
+                return error(enum)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

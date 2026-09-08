@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixNeverPackArity)
 
 
 namespace Luau
@@ -986,6 +987,18 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     return cache(env, std::move(result), subTy, superTy);
 }
 
+// A pack with `never` in its head is uninhabited, so it is a subtype of a pack of any arity.
+static bool headContainsNever(const std::vector<TypeId>& head)
+{
+    for (TypeId ty : head)
+    {
+        if (is<NeverType>(follow(ty)))
+            return true;
+    }
+
+    return false;
+}
+
 /*
  * Subtyping of packs is fairly involved. There are three parts to the test.
  *
@@ -1038,6 +1051,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
             if (earlyExit == EarlyExit::Yes)
                 return *result;
         }
+        else if (FFlag::LuauFixNeverPackArity && headContainsNever(subHead))
+            return *result;
         else
         {
             result->andAlso({false});
@@ -1052,6 +1067,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
             if (earlyExit == EarlyExit::Yes)
                 return *result;
         }
+        else if (FFlag::LuauFixNeverPackArity && headContainsNever(subHead))
+            return *result;
         else
             return {false};
     }
