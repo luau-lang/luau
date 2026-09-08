@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixLiteralAgainstIntersectionOfUnion)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1680,6 +1681,102 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_intersection_boun
 
     CHECK("string" == toString(requireType("b")));
     CHECK("string" == toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_literal_against_intersection_of_union_of_tables")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixLiteralAgainstIntersectionOfUnion, true},
+    };
+
+    // `Meow & { sound: nil }` eliminates the `{ can_meow: true, sound: string }`
+    // arm of the union, so a literal matching the remaining arm must be accepted.
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Meow = {
+            can_meow: true,
+            sound: string,
+        } | {
+            can_meow: false,
+            sound: nil,
+        }
+
+        type Meownt = Meow & {
+            sound: nil
+        }
+
+        local a: Meownt = {
+            can_meow = false
+        }
+
+        local b: Meownt = {
+            can_meow = false,
+            sound = nil,
+        }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_literal_against_intersection_of_union_of_tables_reports_precise_error")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixLiteralAgainstIntersectionOfUnion, true},
+    };
+
+    CheckResult result = check(R"(
+        type Meow = {
+            can_meow: true,
+            sound: string,
+        } | {
+            can_meow: false,
+            sound: nil,
+        }
+
+        type Meownt = Meow & {
+            sound: nil
+        }
+
+        local meownt: Meownt = {
+            can_meow = true
+        }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Expected this to be 'false', but got 'true'", toString(result.errors[0]));
+    CHECK_EQ(Location{{14, 23}, {14, 27}}, result.errors[0].location);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_literal_against_intersection_of_union_of_tables_adding_fields")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixLiteralAgainstIntersectionOfUnion, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Meow = {
+            can_meow: true,
+            sound: string,
+        } | {
+            can_meow: false,
+            sound: nil,
+        }
+
+        type Meower = Meow & {
+            direction: number
+        }
+
+        local a: Meower = {
+            can_meow = false,
+            direction = 1,
+        }
+
+        local b: Meower = {
+            can_meow = true,
+            sound = "meow",
+            direction = 2,
+        }
+    )"));
 }
 
 TEST_SUITE_END();

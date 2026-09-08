@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauFixLiteralAgainstIntersectionOfUnion)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -3675,6 +3676,28 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
             TypeId simplified = simplifyIntersection(builtinTypes, NotNull{module->internalTypes.get()}, std::move(parts)).result;
             if (is<TableType>(simplified))
                 return testPotentialLiteralIsSubtype(expr, simplified);
+
+            if (FFlag::LuauFixLiteralAgainstIntersectionOfUnion)
+            {
+                // The intersection may contain a union of tables, e.g.
+                //
+                //  ({ tag: "a", x: string } | { tag: "b", x: nil }) & { x: nil }
+                //
+                // Intersecting the parts pairwise distributes the intersection
+                // over the union, eliminating the uninhabited arms and leaving
+                // a table or a union of tables that we know how to handle.
+                std::optional<TypeId> distributed;
+                for (TypeId part : itv)
+                {
+                    if (!distributed)
+                        distributed = follow(part);
+                    else
+                        distributed = follow(simplifyIntersection(builtinTypes, NotNull{module->internalTypes.get()}, *distributed, part).result);
+                }
+
+                if (distributed && *distributed != expectedType && is<TableType, UnionType>(*distributed))
+                    return testPotentialLiteralIsSubtype(expr, *distributed);
+            }
         }
 
         return testIsSubtype(exprType, expectedType, expr->location);
