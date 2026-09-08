@@ -326,6 +326,9 @@ public:
      */
     bool isBlocked(TypeId ty) const;
 
+    // Returns true if `ty` is a BlockedType whose value is (transitively) produced by the result of `constraint`.
+    bool isBlockedOnResultOf(TypeId ty, NotNull<const Constraint> constraint) const;
+
     /**
      * @returns true if the TypePackId is in a blocked state.
      */

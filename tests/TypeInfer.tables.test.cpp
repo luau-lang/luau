@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauFixFunctionCallBlockedOnOwnResult)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -7590,6 +7591,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2241_assign_generic_call_result_to_read_of_same_property")
+{
+    ScopedFastFlag sff{FFlag::LuauFixFunctionCallBlockedOnOwnResult, true};
+
+    CheckResult result = check(R"(
+        local function f<T>(m: T): T return m end
+        local self = {}
+        self.a = f(self.a)
+        return self
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2241_testez_bind_self_pattern")
+{
+    ScopedFastFlag sff{FFlag::LuauFixFunctionCallBlockedOnOwnResult, true};
+
+    CheckResult result = check(R"(
+        local function bindSelf(self, method)
+            return function(...)
+                return method(self, ...)
+            end
+        end
+
+        local Expectation = {}
+        Expectation.__index = Expectation
+
+        function Expectation.new(value)
+            local self = { value = value, matchers = {} }
+            setmetatable(self, Expectation)
+            self.a = bindSelf(self, self.a)
+            self.an = self.a
+            self.ok = bindSelf(self, self.ok)
+            return self
+        end
+
+        return Expectation
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

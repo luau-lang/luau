@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauFixFunctionCallBlockedOnOwnResult)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -1640,6 +1641,18 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     {
         if (isBlocked(t))
         {
+            if (FFlag::LuauFixFunctionCallBlockedOnOwnResult && isBlockedOnResultOf(t, constraint))
+            {
+                // The argument can only be resolved once this call has been
+                // dispatched, so it carries no information: replace it with
+                // a fresh free type to break the cycle.
+                TypeId f = freshType(arena, builtinTypes, constraint->scope, Polarity::Mixed);
+                trackInteriorFreeType(constraint->scope, f);
+                const BlockedType* bt = get<BlockedType>(follow(t));
+                bind(NotNull{bt->getOwner()}, follow(t), f);
+                continue;
+            }
+
             block(t, constraint);
             blocked = true;
         }
@@ -3971,6 +3984,56 @@ bool ConstraintSolver::isBlocked(TypeId ty) const
     }
 
     return nullptr != get<BlockedType>(ty) || nullptr != get<PendingExpansionType>(ty);
+}
+
+bool ConstraintSolver::isBlockedOnResultOf(TypeId ty, NotNull<const Constraint> constraint) const
+{
+    std::vector<const Constraint*> worklist;
+    DenseHashSet<const Constraint*> seen;
+
+    if (const BlockedType* bt = get<BlockedType>(follow(ty)); bt && bt->getOwner())
+        worklist.push_back(bt->getOwner());
+
+    while (!worklist.empty())
+    {
+        const Constraint* c = worklist.back();
+        worklist.pop_back();
+
+        if (c == constraint.get())
+            return true;
+
+        if (seen.contains(c))
+            continue;
+        seen.insert(c);
+
+        if (auto uc = get<UnpackConstraint>(*c))
+        {
+            TypePackId sourcePack = follow(uc->sourcePack);
+            if (const BlockedTypePack* btp = get<BlockedTypePack>(sourcePack); btp && btp->owner)
+                worklist.push_back(btp->owner);
+        }
+
+        if (auto fcc = get<FunctionCallConstraint>(*c))
+        {
+            auto [head, tail] = flatten(follow(fcc->argsPack));
+            for (TypeId t : head)
+            {
+                if (const BlockedType* bt = get<BlockedType>(follow(t)); bt && bt->getOwner())
+                    worklist.push_back(bt->getOwner());
+            }
+
+            if (tail)
+            {
+                if (const BlockedTypePack* btp = get<BlockedTypePack>(follow(*tail)); btp && btp->owner)
+                    worklist.push_back(btp->owner);
+            }
+
+            if (const BlockedType* bt = get<BlockedType>(follow(fcc->fn)); bt && bt->getOwner())
+                worklist.push_back(bt->getOwner());
+        }
+    }
+
+    return false;
 }
 
 bool ConstraintSolver::isBlocked(TypePackId tp) const
