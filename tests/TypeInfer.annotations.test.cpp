@@ -12,6 +12,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixCastBetweenTablesWithUnrelatedIndexers)
 
 using namespace Luau;
 
@@ -443,6 +444,49 @@ TEST_CASE_FIXTURE(Fixture, "as_expr_warns_on_unrelated_cast")
 
     CHECK_EQ("Cannot cast 'number' into 'string' because the types are unrelated", toString(result.errors[0]));
     CHECK_EQ("string", toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "as_expr_warns_on_cast_between_tables_with_unrelated_indexer_keys")
+{
+    ScopedFastFlag sff{FFlag::LuauFixCastBetweenTablesWithUnrelatedIndexers, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local t: {[number]: string} = {}
+        local u = t :: {[boolean]: boolean}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Cannot cast '{string}' into '{ [boolean]: boolean }' because the types are unrelated", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "as_expr_warns_on_cast_between_tables_with_unrelated_indexer_values")
+{
+    ScopedFastFlag sff{FFlag::LuauFixCastBetweenTablesWithUnrelatedIndexers, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local t: {[string]: number} = {}
+        local u = t :: {[string]: boolean}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypesAreUnrelated>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "as_expr_allows_cast_between_tables_with_overlapping_indexers")
+{
+    ScopedFastFlag sff{FFlag::LuauFixCastBetweenTablesWithUnrelatedIndexers, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local t: {[number]: string} = {}
+        local u = t :: {[number | string]: string?}
+        local v = t :: {[number]: any}
+        local w = t :: {[unknown]: string}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_annotations_inside_function_bodies")

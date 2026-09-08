@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauFixCastBetweenTablesWithUnrelatedIndexers)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -2899,6 +2900,35 @@ void TypeChecker2::visit(AstExprTypeAssertion* expr)
     case NormalizationResult::HitLimits:
         reportError(NormalizationTooComplex{}, expr->location);
         return;
+    }
+
+    if (FFlag::LuauFixCastBetweenTablesWithUnrelatedIndexers)
+    {
+        // The empty table inhabits every table type with an indexer, so the
+        // intersection of two such tables is always inhabited. Casting between
+        // tables whose indexers cannot overlap is still almost certainly a
+        // mistake, so we check the indexer types directly.
+        const TableType* computedTable = get<TableType>(follow(computedType));
+        const TableType* annotationTable = get<TableType>(follow(annotationType));
+
+        if (computedTable && annotationTable && computedTable->indexer && annotationTable->indexer)
+        {
+            NormalizationResult keysInhabited =
+                normalizer.isIntersectionInhabited(computedTable->indexer->indexType, annotationTable->indexer->indexType);
+            NormalizationResult valuesInhabited =
+                normalizer.isIntersectionInhabited(computedTable->indexer->indexResultType, annotationTable->indexer->indexResultType);
+
+            if (keysInhabited == NormalizationResult::False || valuesInhabited == NormalizationResult::False)
+            {
+                reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);
+                return;
+            }
+            else if (keysInhabited == NormalizationResult::HitLimits || valuesInhabited == NormalizationResult::HitLimits)
+            {
+                reportError(NormalizationTooComplex{}, expr->location);
+                return;
+            }
+        }
     }
 
     switch (normalizer.isIntersectionInhabited(computedType, annotationType))
