@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixFreezeTypestateAfterSetmetatable)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1275,6 +1276,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_on_metatable")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_then_setmetatable_on_same_local")
+{
+    ScopedFastFlag sff{FFlag::LuauFixFreezeTypestateAfterSetmetatable, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local x = {}
+        table.freeze(x)
+        setmetatable(x, {})
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_then_setmetatable_still_freezes")
+{
+    ScopedFastFlag sff{FFlag::LuauFixFreezeTypestateAfterSetmetatable, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local x = { a = 1 }
+        table.freeze(x)
+        local y = setmetatable(x, {})
+        x.a = 2
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<PropertyAccessViolation>(result.errors[0]));
+    CHECK_EQ("{ @metatable {  }, { read a: number } }", toString(requireType("y"), {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_errors_on_no_args")

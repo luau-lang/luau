@@ -53,6 +53,7 @@ LUAU_FASTFLAGVARIABLE(LuauUdtfPopulateEnv)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
+LUAU_FASTFLAGVARIABLE(LuauFixFreezeTypestateAfterSetmetatable)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
 
@@ -3028,6 +3029,8 @@ InferencePack ConstraintGenerator::checkExprCall(
         return InferencePack{arena->addTypePack({resultTy}), {refinementArena.variadic(returnRefinements)}};
     }
 
+    TypeId typestateResultTy = nullptr;
+
     if (shouldTypestateForFirstArgument(*call) && call->args.size > 0 && isLValue(call->args.data[0]))
     {
         AstExpr* targetExpr = call->args.data[0];
@@ -3037,6 +3040,9 @@ InferencePack ConstraintGenerator::checkExprCall(
         {
             scope->lvalueTypes[*def] = resultTy;
             updateRValueRefinements(scope, *def, resultTy);
+
+            if (FFlag::LuauFixFreezeTypestateAfterSetmetatable)
+                typestateResultTy = resultTy;
         }
     }
 
@@ -3079,10 +3085,13 @@ InferencePack ConstraintGenerator::checkExprCall(
             std::move(explicitTypePackIds),
             FFlag::LuauCyclicRequireTypeInference ? &module->astTypes : nullptr,
             &module->astOverloadResolvedTypes,
+            typestateResultTy,
         }
     );
 
     getMutable<BlockedTypePack>(rets)->owner = callConstraint.get();
+    if (typestateResultTy)
+        getMutable<BlockedType>(typestateResultTy)->setOwner(callConstraint.get());
 
     cgraph->addDependencyOf(checkConstraint, callConstraint);
     forEachConstraint(
