@@ -238,6 +238,9 @@ void setupArguments(lua_State* L, int argc, char** argv)
 
 std::string runCode(lua_State* L, const std::string& source)
 {
+    // every REPL input is loaded into the same thread and can modify globals defined by earlier inputs, so the environment isn't safe
+    lua_setsafeenv(L, LUA_GLOBALSINDEX, false);
+
     std::string bytecode = Luau::compile(source, copts());
 
     if (luau_load(L, "=stdin", bytecode.data(), bytecode.size(), 0) != 0)

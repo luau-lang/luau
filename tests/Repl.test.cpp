@@ -156,6 +156,13 @@ TEST_CASE_FIXTURE(ReplFixture, "MultipleArguments")
     CHECK(getCapturedOutput() == "3\t\"three\"");
 }
 
+TEST_CASE_FIXTURE(ReplFixture, "GlobalTableFieldModifiedInLaterInput")
+{
+    runCode(L, "state = {i = 0}");
+    runCode(L, "local before = state.i; state.i = state.i + 1; return before, state.i");
+    CHECK(getCapturedOutput() == "0\t1");
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("ReplCodeCompletion");
