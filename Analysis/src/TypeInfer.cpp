@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAGVARIABLE(LuauFixOldSolverStringSingletonComparison)
 
 namespace Luau
 {
@@ -2699,7 +2700,17 @@ static std::optional<bool> areEqComparable(NotNull<TypeArena> arena, NotNull<Nor
     case NormalizationResult::HitLimits:
         return std::nullopt;
     case NormalizationResult::False:
+    {
+        if (FFlag::LuauFixOldSolverStringSingletonComparison)
+        {
+            // Disjoint string singletons are still comparable; the result is simply always false/true.
+            std::shared_ptr<const NormalizedType> na = normalizer->normalize(a);
+            std::shared_ptr<const NormalizedType> nb = normalizer->normalize(b);
+            if (na && nb && na->isSubtypeOfString() && nb->isSubtypeOfString())
+                return true;
+        }
         return false;
+    }
     case NormalizationResult::True:
         return true;
     }

@@ -8,6 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixOldSolverStringSingletonComparison)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -868,6 +869,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "singleton_when_type_is_blocked")
     )"));
 }
 
+TEST_CASE_FIXTURE(Fixture, "disjoint_string_singletons_are_comparable_old_solver")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, true},
+        {FFlag::LuauFixOldSolverStringSingletonComparison, true},
+    };
 
+    CheckResult result = check(R"(
+        local chunks = {"abc", "def"}
+        for i = 1, #chunks do
+            local a = chunks[i]
+            if a ~= "def" or a ~= "abc" then
+                return
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
 
 TEST_SUITE_END();
