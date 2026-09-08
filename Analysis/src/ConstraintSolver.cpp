@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAGVARIABLE(LuauFixWriteOnlyPropMetatableLookup)
 
 namespace Luau
 {
@@ -3553,6 +3554,16 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
         auto result = lookupTableProp(constraint, mt->table, propName, context, inConditional, suppressSimplification, seen);
         if (!result.blockedTypes.empty() || result.propType)
             return result;
+
+        if (FFlag::LuauFixWriteOnlyPropMetatableLookup)
+        {
+            // A write-only property cannot be read, so we must not fall through to __index.
+            if (auto tt = get<TableType>(follow(mt->table)))
+            {
+                if (auto it = tt->props.find(propName); it != tt->props.end() && it->second.isWriteOnly())
+                    return {{}, builtinTypes->errorType};
+            }
+        }
 
         TypeId mtt = follow(mt->metatable);
 

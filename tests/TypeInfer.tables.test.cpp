@@ -27,6 +27,7 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
+LUAU_FASTFLAG(LuauFixWriteOnlyPropMetatableLookup)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
@@ -4547,6 +4548,47 @@ TEST_CASE_FIXTURE(Fixture, "read_from_write_only_property")
     CHECK("{ write x: number }" == toString(pav->table, {true}));
     CHECK("x" == pav->key);
     CHECK(PropertyAccessViolation::CannotRead == pav->context);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "read_from_write_only_property_through_metatable_index_does_not_leak_internal_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixWriteOnlyPropMetatableLookup, true},
+    };
+
+    CheckResult result = check(R"(
+        local Proxy = {}
+
+        Proxy.__index = function<T>(self: Proxy<T>, key: any)
+            return self.__realTable[key]
+        end
+
+        Proxy.__newindex = function<T>(self: Proxy<T>, key: any, value: any)
+            self.__realTable[key] = value
+        end
+
+        type ProxyInterface<T> = {
+            write __realTable: T
+        }
+        export type Proxy<T> = setmetatable<ProxyInterface<T>, typeof(Proxy)>
+
+        return function<T>(realTable: T): Proxy<T>
+            return setmetatable({
+                __realTable = realTable
+            }, Proxy)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    for (const TypeError& e : result.errors)
+    {
+        const PropertyAccessViolation* pav = get<PropertyAccessViolation>(e);
+        REQUIRE(pav);
+        CHECK("__realTable" == pav->key);
+        CHECK(PropertyAccessViolation::CannotRead == pav->context);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "write_to_unusually_named_read_only_property")
