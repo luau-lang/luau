@@ -1260,6 +1260,7 @@ std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
 // A tag to mark a type which doesn't derive directly from the root type as overriding the return of `typeof`.
 // Any classes which derive from this type will have typeof return this type.
 inline constexpr char kTypeofRootTag[] = "typeofRoot";
+inline constexpr char kRefinementDiscriminantTag[] = "refinementDiscriminant";
 
 void attachTag(TypeId ty, const std::string& tagName);
 void attachTag(Property& prop, const std::string& tagName);

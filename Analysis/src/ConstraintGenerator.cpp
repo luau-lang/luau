@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauRefinedTableKeepsSiblingKeys)
 
 namespace Luau
 {
@@ -737,6 +738,8 @@ void ConstraintGenerator::computeRefinement(
             table->props[*key->propName] = Property::readonly(discriminantTy);
             table->scope = scope.get();
             table->state = TableState::Sealed;
+            if (FFlag::LuauRefinedTableKeepsSiblingKeys)
+                attachTag(nextDiscriminantTy, kRefinementDiscriminantTag);
 
             discriminantTy = nextDiscriminantTy;
         }

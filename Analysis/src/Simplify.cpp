@@ -20,6 +20,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
 LUAU_FASTFLAGVARIABLE(LuauCheckReadTyWhenRelatingExtern)
 LUAU_FASTFLAGVARIABLE(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauRefinedTableKeepsSiblingKeys)
 
 namespace Luau
 {
@@ -1397,6 +1398,9 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
             {
                 TableType merged{TableState::Sealed, TypeLevel{}, lt->scope};
                 merged.props = lt->props;
+                if (FFlag::LuauRefinedTableKeepsSiblingKeys && hasTag(lt->tags, kRefinementDiscriminantTag) &&
+                    hasTag(rt->tags, kRefinementDiscriminantTag))
+                    merged.tags.push_back(kRefinementDiscriminantTag);
 
                 for (const auto& [name, rightProp] : rt->props)
                     merged.props[name] = rightProp;
@@ -1667,6 +1671,9 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
                 TableType result;
                 result.state = TableState::Sealed;
                 result.props[propName] = Property::readonly(union_(*leftProp.readTy, *rightProp.readTy));
+                if (FFlag::LuauRefinedTableKeepsSiblingKeys && hasTag(lt->tags, kRefinementDiscriminantTag) &&
+                    hasTag(rt->tags, kRefinementDiscriminantTag))
+                    result.tags.push_back(kRefinementDiscriminantTag);
                 return arena->addType(std::move(result));
             }
         }

@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauRefinedTableKeepsSiblingKeys)
 
 using namespace Luau;
 
@@ -465,6 +466,104 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_test_a_tested_n
             REQUIRE_EQ("unknown", toString(up->table));
         }
     }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_test_sibling_props")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRefinedTableKeepsSiblingKeys, true},
+    };
+
+    CheckResult result = check(R"(
+        local t: unknown = {a = true, b = true}
+        if type(t) == "table" then
+            if t.a and t.b then
+                print("hello")
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_test_multiple_props_for_nil")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRefinedTableKeepsSiblingKeys, true},
+    };
+
+    CheckResult result = check(R"(
+        type Thing = { foo: string, bar: number }
+        local function cast_to_thing(value: unknown): Thing?
+            if type(value) == "table" and value.foo ~= nil and value.bar ~= nil then
+                return value :: Thing
+            end
+            return nil
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_typeof_multiple_props")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRefinedTableKeepsSiblingKeys, true},
+    };
+
+    CheckResult result = check(R"(
+        type Thing = { foo: string, bar: number, baz: boolean }
+        local function cast_to_thing(value: unknown): Thing?
+            if type(value) == "table" and type(value.foo) == "string" and type(value.bar) == "number" and type(value.baz) == "boolean" then
+                return value :: Thing
+            end
+            return nil
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_declared_table_then_test_missing_sibling_prop_still_errors")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRefinedTableKeepsSiblingKeys, true},
+    };
+
+    CheckResult result = check(R"(
+        local t: {a: number} = {a = 1}
+        if t.a and t.b then
+            print("hello")
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<UnknownProperty>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_and_test_two_props")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRefinedTableKeepsSiblingKeys, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(x: unknown): string
+            if typeof(x) == 'table' then
+                if typeof(x.foo) == 'string' and typeof(x.bar) == 'string' then
+                    return x.foo .. x.bar
+                end
+            end
+            return ''
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_to_undefined_method_is_not_a_refinement")

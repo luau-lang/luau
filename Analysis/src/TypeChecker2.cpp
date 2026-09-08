@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauRefinedTableKeepsSiblingKeys)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -4181,6 +4182,9 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
                 return {NormalizationResult::True, {tt->indexer->indexResultType}};
             }
         }
+
+        if (FFlag::LuauRefinedTableKeepsSiblingKeys && inConditional(typeContext) && hasTag(ty, kRefinementDiscriminantTag))
+            return {NormalizationResult::True, {builtinTypes->unknownType}};
 
         return {NormalizationResult::False, {builtinTypes->unknownType}};
     }
