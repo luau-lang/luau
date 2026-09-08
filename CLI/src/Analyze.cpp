@@ -104,8 +104,17 @@ static bool reportModuleResult(Luau::Frontend& frontend, const Luau::ModuleName&
         return false;
     }
 
+    const Luau::Config& config = frontend.configResolver->getConfig(name, {});
+
+    bool hasFatalErrors = false;
+
     for (auto& error : cr->errors)
+    {
         reportError(frontend, format, error);
+
+        if (config.typeErrors || Luau::get_if<Luau::SyntaxError>(&error.data))
+            hasFatalErrors = true;
+    }
 
     std::string humanReadableName = frontend.fileResolver->getHumanReadableModuleName(name);
     for (auto& error : cr->lintResult.errors)
@@ -125,7 +134,7 @@ static bool reportModuleResult(Luau::Frontend& frontend, const Luau::ModuleName&
         printf("%s", annotated.c_str());
     }
 
-    return cr->errors.empty() && cr->lintResult.errors.empty();
+    return !hasFatalErrors && cr->lintResult.errors.empty();
 }
 
 static void displayHelp(const char* argv0)
