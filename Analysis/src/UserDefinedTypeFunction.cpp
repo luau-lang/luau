@@ -7,6 +7,7 @@
 #include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
 #include "Luau/TypeFunctionError.h"
+#include "Luau/TypePack.h"
 #include "Luau/UserDefinedTypeFunction.h"
 #include "Luau/VisitType.h"
 
@@ -15,6 +16,7 @@
 
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
+LUAU_FASTFLAG(LuauUdtfVariadicArguments)
 
 namespace Luau
 {
@@ -225,13 +227,43 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
         return {std::nullopt, Reduction::Erroneous, {}, {}};
     }
 
+    AstName name = typeFunction->userFuncData.definition->name;
+
     // If type functions cannot be evaluated because of errors in the code, we do not generate any additional ones
     if (!ctx->typeFunctionRuntime->allowEvaluation || typeFunction->userFuncData.definition->hasErrors)
         return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
 
+    std::vector<TypeId> allArgs;
+    if (FFlag::LuauUdtfVariadicArguments)
+    {
+        allArgs = typeParams;
+        for (TypePackId tp : packParams)
+        {
+            auto [head, tail] = flatten(tp);
+            allArgs.insert(allArgs.end(), head.begin(), head.end());
+
+            if (tail)
+            {
+                TypePackId t = follow(*tail);
+                if (is<FreeTypePack, BlockedTypePack>(t))
+                    return {std::nullopt, Reduction::MaybeOk, {}, {t}};
+
+                return {
+                    std::nullopt,
+                    Reduction::Erroneous,
+                    {},
+                    {},
+                    format("'%s' type function: variadic arguments must be a finite list of types", name.value)
+                };
+            }
+        }
+    }
+
+    const std::vector<TypeId>& args = FFlag::LuauUdtfVariadicArguments ? allArgs : typeParams;
+
     FindUserTypeFunctionBlockers check{ctx};
 
-    for (auto typeParam : typeParams)
+    for (auto typeParam : args)
         check.traverse(follow(typeParam));
 
     // Check that our environment doesn't depend on any type aliases that are blocked
@@ -262,8 +294,6 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
             return {std::nullopt, Reduction::Erroneous, {}, {}};
         }
     }
-
-    AstName name = typeFunction->userFuncData.definition->name;
 
     lua_State* global = ctx->typeFunctionRuntime->state.get();
 
@@ -369,7 +399,7 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
     resetTypeFunctionState(L);
 
     // Push serialized arguments onto the stack
-    for (auto typeParam : typeParams)
+    for (auto typeParam : args)
     {
         TypeId ty = follow(typeParam);
         // This is checked at the top of the function, and should still be true.
@@ -410,12 +440,12 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
     if (FFlag::LuauTypeFunctionStructuredErrors)
     {
-        if (auto error = checkResultForError(L, name.value, lua_pcall(L, int(typeParams.size()), 1, 0)))
+        if (auto error = checkResultForError(L, name.value, lua_pcall(L, int(args.size()), 1, 0)))
             return {std::nullopt, Reduction::Erroneous, {}, {}, toString(*error), ctx->typeFunctionRuntime->messages};
     }
     else
     {
-        if (auto error = checkResultForError_DEPRECATED(L, name.value, lua_pcall(L, int(typeParams.size()), 1, 0)))
+        if (auto error = checkResultForError_DEPRECATED(L, name.value, lua_pcall(L, int(args.size()), 1, 0)))
             return {std::nullopt, Reduction::Erroneous, {}, {}, std::move(error), ctx->typeFunctionRuntime->messages};
     }
 

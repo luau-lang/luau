@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
 LUAU_FASTFLAG(LuauUdtfPopulateEnv)
+LUAU_FASTFLAG(LuauUdtfVariadicArguments)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
@@ -3699,6 +3700,93 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_variadic_arguments")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauUdtfVariadicArguments, true};
+
+    CheckResult result = check(R"(
+        type function merge(base, ...)
+            local result = types.newtable()
+            for k, v in base:properties() do result:setproperty(k, v.read) end
+            for _, extra in {...} do
+                for k, v in extra:properties() do result:setproperty(k, v.read) end
+            end
+            return result
+        end
+        type A = { a: number }
+        type B = { b: string }
+        type C = { c: boolean }
+        local x: merge<A> = { a = 1 }
+        local y: merge<A, B> = { a = 1, b = "" }
+        local z: merge<A, B, C> = { a = 1, b = "", c = true }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("y")) == "{ a: number, b: string }");
+    CHECK(toString(requireType("z")) == "{ a: number, b: string, c: boolean }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_variadic_arguments_count")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauUdtfVariadicArguments, true};
+
+    CheckResult result = check(R"(
+        type function count(...)
+            return types.singleton(tostring(#{...}))
+        end
+        local a: count<> = "0"
+        local b: count<number, string, boolean> = "3"
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_variadic_arguments_non_finite_pack_errors")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauUdtfVariadicArguments, true};
+
+    CheckResult countResult = check(R"(
+        type function count(...)
+            return types.singleton(tostring(#{...}))
+        end
+        local c: count<number> = "2"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, countResult);
+
+    CheckResult result = check(R"(
+        type function f(...)
+            return types.number
+        end
+        type Wrap<T...> = f<T...>
+        local x: Wrap<number, string> = 1
+        local y: f<...number>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]).find("variadic arguments must be a finite list of types") != std::string::npos);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_variadic_arguments_flag_off")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauUdtfVariadicArguments, false};
+
+    CheckResult result = check(R"(
+        type function merge(base, ...)
+            return base
+        end
+        type A = { a: number }
+        type B = { b: string }
+        local x: merge<A, B> = { a = 1, b = "" }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_SUITE_END();

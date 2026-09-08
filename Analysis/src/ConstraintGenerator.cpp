@@ -50,6 +50,7 @@ LUAU_FASTFLAGVARIABLE(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAGVARIABLE(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauUdtfPopulateEnv)
+LUAU_FASTFLAGVARIABLE(LuauUdtfVariadicArguments)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
@@ -1007,6 +1008,15 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
                 quantifiedTypeParams.push_back(genericTy);
             }
 
+            std::vector<TypePackId> typePackParams;
+            std::vector<GenericTypePackDefinition> quantifiedTypePackParams;
+            if (FFlag::LuauUdtfVariadicArguments && function->body->vararg)
+            {
+                TypePackId tp = arena->addTypePack(GenericTypePack{format("T%zu", function->body->args.size)});
+                typePackParams.push_back(tp);
+                quantifiedTypePackParams.push_back(GenericTypePackDefinition{tp});
+            }
+
             if (FFlag::LuauTypeFunctionStructuredErrors)
             {
                 if (std::optional<TypeFunctionError> error = typeFunctionRuntime->registerFunction(function))
@@ -1024,10 +1034,16 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
             udtfData.definition = function;
 
             TypeId typeFunctionTy = arena->addType(
-                TypeFunctionInstanceType{NotNull{&builtinTypes->typeFunctions->userFunc}, std::move(typeParams), {}, function->name, udtfData}
+                TypeFunctionInstanceType{
+                    NotNull{&builtinTypes->typeFunctions->userFunc},
+                    std::move(typeParams),
+                    std::move(typePackParams),
+                    function->name,
+                    udtfData
+                }
             );
 
-            TypeFun typeFunction{std::move(quantifiedTypeParams), typeFunctionTy};
+            TypeFun typeFunction{std::move(quantifiedTypeParams), std::move(quantifiedTypePackParams), typeFunctionTy};
 
             typeFunction.definitionLocation = function->location;
 
