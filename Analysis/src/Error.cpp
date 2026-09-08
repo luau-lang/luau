@@ -20,6 +20,7 @@ LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTINTVARIABLE(LuauCyclicSccWarningDisplayLimit, 10)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAGVARIABLE(LuauFixNotATablePrimitiveMessage)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -203,6 +204,12 @@ struct ErrorConverter
 
     std::string operator()(const Luau::NotATable& e) const
     {
+        if (FFlag::LuauFixNotATablePrimitiveMessage)
+        {
+            if (auto pt = get<PrimitiveType>(follow(e.ty)); pt && pt->type == PrimitiveType::Table)
+                return "Cannot index a value of type 'table' because its keys and values are unknown; annotate or cast it to a specific table type";
+        }
+
         return "Expected type table, got '" + Luau::toString(e.ty) + "' instead";
     }
 

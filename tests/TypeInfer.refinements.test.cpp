@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauFixNotATablePrimitiveMessage)
 
 using namespace Luau;
 
@@ -3371,6 +3372,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_unannotated_to_truthy")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_refined_table_primitive_reports_helpful_error")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixNotATablePrimitiveMessage, true},
+    };
+
+    CheckResult result = check(R"(
+        local function is(object: unknown)
+            if type(object) == "table" then
+                print(object[1])
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<NotATable>(result.errors[0]));
+    CHECK_EQ(
+        "Cannot index a value of type 'table' because its keys and values are unknown; annotate or cast it to a specific table type",
+        toString(result.errors[0])
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
