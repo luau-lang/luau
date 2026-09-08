@@ -41,6 +41,7 @@ LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
+LUAU_FASTFLAGVARIABLE(LuauTypeAssertionExpectedType)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -3599,6 +3600,15 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIfElse* ifEls
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert)
 {
+    if (FFlag::LuauTypeAssertionExpectedType)
+    {
+        TypeId annotationType = resolveType(scope, typeAssert->annotation, /* inTypeArguments */ false);
+        // Lambdas nested in the asserted expression must stay ungeneralized so the
+        // annotation's parameter types can be pushed into them.
+        check(scope, typeAssert->expr, annotationType, /* forceSingleton */ false, /* generalize */ false);
+        return Inference{annotationType};
+    }
+
     check(scope, typeAssert->expr, std::nullopt);
     return Inference{resolveType(scope, typeAssert->annotation, /* inTypeArguments */ false)};
 }

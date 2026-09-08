@@ -21,6 +21,7 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauTypeAssertionExpectedType)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
@@ -3318,6 +3319,36 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generic_function_statement")
     // NOTE: This is the inferred generic of the implementation, not the
     // explicit `T` from `Object.foobar`.
     CHECK_EQ("T", toString(requireTypeAtPosition({9, 21})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_assertion_provides_expected_type_to_table_function_fields")
+{
+    ScopedFastFlag sff{FFlag::LuauTypeAssertionExpectedType, true};
+
+    CheckResult result = check(R"(
+        export type testTable = {
+            test: (foo: string, bar: number) -> ()
+        }
+
+        return {
+            test = function(foo, bar)
+                local x: number = foo
+                local y: string = bar
+            end,
+        } :: testTable
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    auto tm1 = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm1);
+    CHECK_EQ("number", toString(tm1->wantedType));
+    CHECK_EQ("string", toString(tm1->givenType));
+
+    auto tm2 = get<TypeMismatch>(result.errors[1]);
+    REQUIRE(tm2);
+    CHECK_EQ("string", toString(tm2->wantedType));
+    CHECK_EQ("number", toString(tm2->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_calls_should_not_crash")
