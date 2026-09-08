@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
 LUAU_FASTFLAG(LuauUdtfPopulateEnv)
+LUAU_FASTFLAG(LuauUdtfExternalTypeAliases)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
@@ -3699,6 +3700,69 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "external_type_aliases_in_annotations")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag luauUdtfExternalTypeAliases{FFlag::LuauUdtfExternalTypeAliases, true};
+
+    CheckResult result = check(R"(
+        type buf = buffer
+        type Pair<T> = { first: T, second: T }
+
+        type function meow()
+            local b: buf = buffer.create(1)
+            local p: Pair<number> = { first = 1, second = 2 }
+            return if p.first < p.second and buffer.len(b) == 1 then types.number else types.string
+        end
+
+        local x: meow<> = 1
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "external_type_aliases_in_annotations_are_type_checked")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag luauUdtfExternalTypeAliases{FFlag::LuauUdtfExternalTypeAliases, true};
+
+    CheckResult result = check(R"(
+        type buf = buffer
+
+        type function meow()
+            local b: buf = "not a buffer"
+            return types.number
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Expected this to be 'buffer', but got 'string'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "external_type_aliases_in_annotations_from_nested_scope")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag luauUdtfExternalTypeAliases{FFlag::LuauUdtfExternalTypeAliases, true};
+
+    CheckResult result = check(R"(
+        type Outer = number
+
+        do
+            type Inner = string
+
+            type function meow()
+                local a: Outer = 1
+                local b: Inner = "a"
+                return if a == 1 and b == "a" then types.number else types.string
+            end
+
+            local x: meow<> = 1
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

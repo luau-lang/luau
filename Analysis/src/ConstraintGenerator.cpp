@@ -50,6 +50,7 @@ LUAU_FASTFLAGVARIABLE(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAGVARIABLE(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauUdtfPopulateEnv)
+LUAU_FASTFLAGVARIABLE(LuauUdtfExternalTypeAliases)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
@@ -1249,6 +1250,10 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
                     }
                     else if (!get<TypeFunctionInstanceType>(follow(tf.type)))
                     {
+                        // Type annotations inside the type function body can refer to aliases visible at the definition site
+                        if (FFlag::LuauUdtfExternalTypeAliases && !scope->privateTypeBindings.count(name))
+                            scope->privateTypeBindings[name] = tf;
+
                         if (userFuncData.environmentAlias.find(name))
                             return;
 
