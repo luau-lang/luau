@@ -22,6 +22,7 @@
 #include <iterator>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicTypes)
+LUAU_FASTFLAGVARIABLE(LuauFixEndLocationUnderflow)
 LUAU_FASTINTVARIABLE(LuauTypeInferRecursionLimit, 165)
 LUAU_FASTINTVARIABLE(LuauTypeInferIterationLimit, 20000)
 LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
@@ -4107,8 +4108,16 @@ static Location getEndLocation(const AstExprFunction& function)
     if (loc.begin.line != loc.end.line)
     {
         Position begin = loc.end;
-        begin.column = std::max(0u, begin.column - 3);
-        loc = Location(begin, 3);
+        if (FFlag::LuauFixEndLocationUnderflow)
+        {
+            begin.column = begin.column >= 3 ? begin.column - 3 : 0;
+            loc = Location(begin, loc.end);
+        }
+        else
+        {
+            begin.column = std::max(0u, begin.column - 3);
+            loc = Location(begin, 3);
+        }
     }
 
     return loc;

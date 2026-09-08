@@ -36,6 +36,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixEndLocationUnderflow)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
@@ -345,8 +346,16 @@ Location TypeChecker2::getEndLocation(const AstExprFunction* function)
     if (loc.begin.line != loc.end.line)
     {
         Position begin = loc.end;
-        begin.column = std::max(0u, begin.column - 3);
-        loc = Location(begin, 3);
+        if (FFlag::LuauFixEndLocationUnderflow)
+        {
+            begin.column = begin.column >= 3 ? begin.column - 3 : 0;
+            loc = Location(begin, loc.end);
+        }
+        else
+        {
+            begin.column = std::max(0u, begin.column - 3);
+            loc = Location(begin, 3);
+        }
     }
 
     return loc;

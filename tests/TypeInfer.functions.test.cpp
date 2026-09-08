@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixEndLocationUnderflow)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -935,6 +936,21 @@ TEST_CASE_FIXTURE(Fixture, "report_exiting_without_return_nonstrict")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     FunctionExitsWithoutReturning* err = get<FunctionExitsWithoutReturning>(result.errors[0]);
     CHECK(err);
+}
+
+TEST_CASE_FIXTURE(Fixture, "report_exiting_without_return_location_does_not_underflow_at_eof")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, true}, {FFlag::LuauFixEndLocationUnderflow, true}};
+
+    // The function is never closed, so its location ends at <eof> on column 0.
+    CheckResult result = check("local function f(): boolean\n\tif true then\n\t-- end\nend\n\n");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<SyntaxError>(result.errors[0]));
+
+    REQUIRE(get<FunctionExitsWithoutReturning>(result.errors[1]));
+    CHECK(result.errors[1].location.begin == Position{5, 0});
+    CHECK(result.errors[1].location.end == Position{5, 0});
 }
 
 TEST_CASE_FIXTURE(Fixture, "report_exiting_without_return_strict")
