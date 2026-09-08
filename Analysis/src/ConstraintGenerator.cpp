@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixFunctionStatOnFreeIndexee)
 
 namespace Luau
 {
@@ -1830,7 +1831,19 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
         updateRValueRefinements(sig.bodyScope, def, sig.signature);
     }
 
-    if (auto indexName = function->name->as<AstExprIndexName>())
+    bool pushExpectedType = true;
+    if (auto indexName = function->name->as<AstExprIndexName>(); indexName && FFlag::LuauFixFunctionStatOnFreeIndexee)
+    {
+        // Reading `impl.fn` on a free type (e.g. an unannotated parameter) would
+        // add a fresh property to it, which then generalizes into a generic
+        // instead of the function being defined here. There's no expected
+        // type to push in that case, so skip the read.
+        TypeId indexeeTy = follow(check(scope, indexName->expr).ty);
+        if (get<FreeType>(indexeeTy) && !propIndexPairsSeen.find({indexeeTy, indexName->index.value}))
+            pushExpectedType = false;
+    }
+
+    if (auto indexName = function->name->as<AstExprIndexName>(); indexName && pushExpectedType)
     {
         auto beginProp = checkpoint(this);
         auto [fn, _] = check(scope, indexName);

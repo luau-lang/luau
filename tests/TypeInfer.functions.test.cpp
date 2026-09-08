@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixFunctionStatOnFreeIndexee)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4671,6 +4672,62 @@ TEST_CASE_FIXTURE(Fixture, "let_generalization_multiple_values")
     CHECK_EQ("string", toString(requireType("r2"), {true}));
     CHECK_EQ("number", toString(requireType("r3"), {true}));
     CHECK_EQ("string", toString(requireType("r4"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_statement_on_free_parameter_infers_property_as_function")
+{
+    ScopedFastFlag sff{FFlag::LuauFixFunctionStatOnFreeIndexee, true};
+
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    CheckResult result = check(R"(
+        local function trait1(impl)
+            impl.fn = function(): string
+                return "meow"
+            end
+            return impl
+        end
+
+        local function trait2(impl)
+            function impl.fn(): string
+                return "meow"
+            end
+            return impl
+        end
+
+        local implemented1 = trait1({} :: any)
+        local implemented2 = trait2({} :: any)
+        local var1: string = implemented1.fn()
+        local var2: string = implemented2.fn()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("trait1")), toString(requireType("trait2")));
+    CHECK_EQ("({ fn: () -> string }) -> { fn: () -> string }", toString(requireType("trait2")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "method_statement_on_free_parameter_infers_property_as_function")
+{
+    ScopedFastFlag sff{FFlag::LuauFixFunctionStatOnFreeIndexee, true};
+
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    CheckResult result = check(R"(
+        local function trait(impl)
+            function impl:fn(): string
+                return "meow"
+            end
+            return impl
+        end
+
+        local implemented = trait({} :: any)
+        local var: string = implemented:fn()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();
