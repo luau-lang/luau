@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAG(LuauFixPartialExplicitInstantiation)
 
 namespace Luau
 {
@@ -3121,7 +3122,10 @@ TypeId ConstraintSolver::instantiateFunctionType(
 
     while (typeParametersIter != ft->generics.end())
     {
-        replacements[*typeParametersIter++] = freshType(arena, builtinTypes, scope, Polarity::Mixed);
+        TypeId freshTy = freshType(arena, builtinTypes, scope, Polarity::Mixed);
+        if (FFlag::LuauFixPartialExplicitInstantiation)
+            trackInteriorFreeType(scope, freshTy);
+        replacements[*typeParametersIter++] = freshTy;
     }
 
     DenseHashMap<TypePackId, TypePackId> replacementPacks;

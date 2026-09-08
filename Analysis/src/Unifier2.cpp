@@ -26,6 +26,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
+LUAU_FASTFLAGVARIABLE(LuauFixPartialExplicitInstantiation)
 
 namespace Luau
 {
@@ -34,6 +35,31 @@ static bool isOptionalOrFree(TypeId ty)
 {
     ty = follow(ty);
     return isOptional(ty) || (get<FreeType>(ty) != nullptr);
+}
+
+static bool indexerKeyAcceptsPropertyName(TypeId indexType, const std::string& name)
+{
+    indexType = follow(indexType);
+
+    if (isPrim(indexType, PrimitiveType::String))
+        return true;
+
+    if (const SingletonType* singleton = get<SingletonType>(indexType))
+    {
+        const StringSingleton* str = get<StringSingleton>(singleton);
+        return str && str->value == name;
+    }
+
+    if (const UnionType* ut = get<UnionType>(indexType))
+    {
+        for (TypeId option : ut)
+        {
+            if (indexerKeyAcceptsPropertyName(option, name))
+                return true;
+        }
+    }
+
+    return false;
 }
 
 static bool areCompatible(TypeId left, TypeId right)
@@ -593,7 +619,25 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
          * If we are trying to reconcile an unsealed table with a table that has
          * an indexer, we therefore conclude that the unsealed table has the
          * same indexer.
+         *
+         * Any properties that the indexer would cover must then agree with
+         * the indexer result type.
          */
+
+        if (FFlag::LuauFixPartialExplicitInstantiation)
+        {
+            for (const auto& [propName, subProp] : subTable->props)
+            {
+                if (!indexerKeyAcceptsPropertyName(superTable->indexer->indexType, propName))
+                    continue;
+
+                if (subProp.readTy)
+                    result &= unify_(*subProp.readTy, superTable->indexer->indexResultType);
+
+                if (subProp.writeTy && !superTable->indexer->isReadOnly)
+                    result &= unify_(superTable->indexer->indexResultType, *subProp.writeTy);
+            }
+        }
 
         if (FFlag::LuauDoNotLeakGenericsInIndexer)
         {

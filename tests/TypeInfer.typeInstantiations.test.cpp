@@ -7,6 +7,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixPartialExplicitInstantiation)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
 
@@ -568,6 +569,79 @@ TEST_CASE_FIXTURE(Fixture, "typeof_in_method_call_type_args_no_crash")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     // We assign to an unknown global.
     CHECK(get<UnknownSymbol>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "partial_instantiation_infers_remaining_generics")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixPartialExplicitInstantiation, true},
+    };
+
+    CheckResult result = check(R"(
+        local function create<K, V>(items: { read [K]: V }): V
+            return nil :: any
+        end
+
+        local x = create<<"cat" | "dog">>({ cat = 1, dog = 2 })
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "partial_instantiation_stored_as_variable")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixPartialExplicitInstantiation, true},
+    };
+
+    CheckResult result = check(R"(
+        local function create<K, V>(items: { read [K]: V }): V
+            return nil :: any
+        end
+
+        local g = create<<"cat" | "dog">>
+        local x = g({ cat = 1, dog = 2 })
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("({ read [\"cat\" | \"dog\"]: number }) -> number", toString(requireType("g")));
+    CHECK_EQ("number", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "partial_instantiation_generic_indexer_result_in_table_alias")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixPartialExplicitInstantiation, true},
+    };
+
+    CheckResult result = check(R"(
+        type EnumItem<K, V> = {
+            read Value: V,
+        }
+
+        type Enum<K, V> = {
+            read [K]: EnumItem<K, V>?,
+        }
+
+        local function create<K, V>(name: string, items: { read [K]: V }): Enum<K, V>
+            return nil :: any
+        end
+
+        local animals = create<<"cat" | "dog" | "mouse">>("Animals", {
+            cat = 1,
+            dog = 2,
+            mouse = 12,
+        })
+
+        local x = assert(animals.dog).Value
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("x")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "typeof_local_in_type_pack_no_crash")
