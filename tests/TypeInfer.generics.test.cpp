@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixIntersectionGenericBounds)
 
 using namespace Luau;
 
@@ -2177,6 +2178,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pus
             if math.random() > 0.5 then return self else return nil end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_intersected_with_singleton_union_in_table_argument")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixIntersectionGenericBounds, true},
+    };
+
+    CheckResult result = check(R"(
+        type Allowed = "Bar" | "Baz"
+
+        local function foo<T>(x: { T & Allowed })
+        end
+
+        foo({ "Bar", "Baz" })
+        foo({ "Baz", "Bar" })
+        foo({ "Bar" })
+
+        local t: { Allowed } = { "Bar", "Baz" }
+        foo(t)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

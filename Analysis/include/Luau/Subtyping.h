@@ -283,6 +283,12 @@ private:
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const UnionType* subUnion, TypeId superTy, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const IntersectionType* superIntersection, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const IntersectionType* subIntersection, TypeId superTy, NotNull<Scope> scope);
+    std::optional<SubtypingResult> tryNonGenericIntersectionComponents(
+        SubtypingEnvironment& env,
+        const IntersectionType* subIntersection,
+        TypeId superTy,
+        NotNull<Scope> scope
+    );
 
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const NegationType* subNegation, TypeId superTy, NotNull<Scope> scope);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeId subTy, const NegationType* superNegation, NotNull<Scope> scope);

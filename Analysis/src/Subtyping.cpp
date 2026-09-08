@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixIntersectionGenericBounds)
 
 
 namespace Luau
@@ -902,9 +903,21 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = isCovariantWith(env, subUnion, superTy, scope);
     else if (auto superUnion = get<UnionType>(superTy))
     {
-        result = isCovariantWith(env, subTy, superUnion, scope);
-        if (!result.isSubtype && !result.normalizationTooComplex)
-            result = trySemanticSubtyping(env, subTy, superTy, scope, result);
+        std::optional<SubtypingResult> nonGenericResult;
+        if (FFlag::LuauFixIntersectionGenericBounds)
+        {
+            if (auto subIntersection = get<IntersectionType>(subTy))
+                nonGenericResult = tryNonGenericIntersectionComponents(env, subIntersection, superTy, scope);
+        }
+
+        if (nonGenericResult)
+            result = *nonGenericResult;
+        else
+        {
+            result = isCovariantWith(env, subTy, superUnion, scope);
+            if (!result.isSubtype && !result.normalizationTooComplex)
+                result = trySemanticSubtyping(env, subTy, superTy, scope, result);
+        }
     }
     else if (auto superIntersection = get<IntersectionType>(superTy))
         result = isCovariantWith(env, subTy, superIntersection, scope);
@@ -1734,11 +1747,48 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     return *result;
 }
 
+std::optional<SubtypingResult> Subtyping::tryNonGenericIntersectionComponents(
+    SubtypingEnvironment& env,
+    const IntersectionType* subIntersection,
+    TypeId superTy,
+    NotNull<Scope> scope
+)
+{
+    // A & B <: T holds if any component is a subtype of T. Components that are
+    // mapped generics can always be made to satisfy this by binding, which would
+    // record spurious bounds even though the relation is already satisfied by a
+    // different component, so we try the non-generic components first.
+    size_t i = 0;
+    for (TypeId ty : subIntersection)
+    {
+        size_t index = i++;
+        if (env.containsMappedType(ty))
+            continue;
+
+        SubtypingResult next = isCovariantWith(env, ty, superTy, scope);
+
+        if (next.normalizationTooComplex)
+            return SubtypingResult{false, /* normalizationTooComplex */ true};
+
+        if (next.isSubtype)
+            return next.withSubComponent(TypePath::Index{index, TypePath::Index::Variant::Intersection});
+    }
+
+    return std::nullopt;
+}
+
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const IntersectionType* subIntersection, TypeId superTy, NotNull<Scope> scope)
 {
     // As per TAPL: A & B <: T iff A <: T || B <: T
     std::unique_ptr<SubtypingResult> result = std::make_unique<SubtypingResult>();
     result->isSubtype = false;
+
+    if (FFlag::LuauFixIntersectionGenericBounds)
+    {
+        if (auto nonGenericResult = tryNonGenericIntersectionComponents(env, subIntersection, superTy, scope))
+            return *nonGenericResult;
+    }
+
     size_t i = 0;
     for (TypeId ty : subIntersection)
     {
