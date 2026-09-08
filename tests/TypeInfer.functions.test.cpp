@@ -24,12 +24,16 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixOverloadedTableLiteralArgs)
+LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
+LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4671,6 +4675,86 @@ TEST_CASE_FIXTURE(Fixture, "let_generalization_multiple_values")
     CHECK_EQ("string", toString(requireType("r2"), {true}));
     CHECK_EQ("number", toString(requireType("r3"), {true}));
     CHECK_EQ("string", toString(requireType("r4"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "overloaded_function_accepts_table_literal_with_missing_optional_props")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff[]{
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauImproveUniqueTableWidthSubtyping, true},
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+        {FFlag::LuauFixOverloadedTableLiteralArgs, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type TypedDict = {
+            Key1: {any}?,
+            Key2: {any}?
+        }
+
+        type TypedDict2 = {
+            Key3: {any}?,
+            Key4: {any}?
+        }
+
+        local foo: ((false, TypedDict) -> ()) & ((true, TypedDict2) -> ()) = nil :: any
+        foo(false, {})
+        foo(true, {})
+        foo(false, {Key1 = nil})
+        foo(false, {Key2 = nil})
+        foo(true, {Key3 = nil})
+        foo(true, {Key4 = nil})
+        foo(false, {Key1 = nil, Key2 = nil})
+        foo(true, {Key3 = nil, Key4 = nil})
+        foo(false, {Key1 = {}})
+        foo(true, {Key3 = {1, 2}})
+        foo(true, {Key3 = {"a", 1}})
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "overloaded_function_accepts_table_literal_with_optional_primitive_props")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff[]{
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauImproveUniqueTableWidthSubtyping, true},
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+        {FFlag::LuauFixOverloadedTableLiteralArgs, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local f: ((false, {x: number?}) -> ()) & ((true, {y: string?}) -> ()) = nil :: any
+        f(false, {x = 1})
+        f(false, {})
+        f(true, {y = "hello"})
+        f(true, {})
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "overloaded_function_still_rejects_table_literal_with_wrong_prop_type")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff[]{
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauImproveUniqueTableWidthSubtyping, true},
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+        {FFlag::LuauFixOverloadedTableLiteralArgs, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local f: ((false, {x: number?}) -> ()) & ((true, {y: string?}) -> ()) = nil :: any
+        f(false, {x = "not a number"})
+        f(true, {y = 5})
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

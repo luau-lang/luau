@@ -339,6 +339,7 @@ private:
         SubtypingEnvironment& env,
         const TableIndexer& subIndexer,
         const TableIndexer& superIndexer,
+        bool forceCovariantTest,
         NotNull<Scope> scope
     );
     SubtypingResult isCovariantWith(

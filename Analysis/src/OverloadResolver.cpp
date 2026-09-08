@@ -13,6 +13,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauFixOverloadedTableLiteralArgs)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
@@ -545,7 +546,7 @@ void OverloadResolver::testFunction(
 
     TypeId prospectiveFunction = arena->addType(FunctionType{argsPack, builtinTypes->anyTypePack});
 
-    if (!FFlag::LuauBidirectionalInferenceSimplifyTables)
+    if (FFlag::LuauFixOverloadedTableLiteralArgs || !FFlag::LuauBidirectionalInferenceSimplifyTables)
         subtyping.uniqueTypes = uniqueTypes;
 
     SubtypingResult r = subtyping.isSubtype(fnTy, prospectiveFunction, scope);

@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAGVARIABLE(LuauFixOverloadedTableLiteralArgs)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
@@ -947,8 +948,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = isCovariantWith(env, p, scope);
     else if (auto p = get2<TableType, TableType>(subTy, superTy))
     {
-        const bool forceCovariantTest =
-            FFlag::LuauBidirectionalInferenceSimplifyTables ? false : uniqueTypes != nullptr && uniqueTypes->contains(subTy);
+        const bool forceCovariantTest = (FFlag::LuauFixOverloadedTableLiteralArgs || !FFlag::LuauBidirectionalInferenceSimplifyTables) &&
+                                        uniqueTypes != nullptr && uniqueTypes->contains(subTy);
         result = isCovariantWith(env, p.first, p.second, forceCovariantTest, scope);
         if (result.isSubtype && !p.first->indexer && p.second->indexer && p.first->state != TableState::Sealed)
         {
@@ -2032,8 +2033,8 @@ SubtypingResult Subtyping::isCovariantWith(
 {
     SubtypingResult result{true};
 
-    // Either this flag is off or `forceCovariantTest` is false.
-    LUAU_ASSERT(!FFlag::LuauBidirectionalInferenceSimplifyTables || !forceCovariantTest);
+    // Force covariant testing requires this fix or disabled table simplification.
+    LUAU_ASSERT(FFlag::LuauFixOverloadedTableLiteralArgs || !FFlag::LuauBidirectionalInferenceSimplifyTables || !forceCovariantTest);
 
     if (subTable->props.empty() && !subTable->indexer && subTable->state == TableState::Sealed && superTable->indexer)
     {
@@ -2162,7 +2163,7 @@ SubtypingResult Subtyping::isCovariantWith(
             // We say covariant here, but the implementation of
             // isCovariantWith() properly handles variance of the index
             // result type.
-            record(isCovariantWith(env, *subTable->indexer, *superTable->indexer, scope));
+            record(isCovariantWith(env, *subTable->indexer, *superTable->indexer, forceCovariantTest, scope));
         }
         else if (subTable->state != TableState::Sealed)
         {
@@ -2338,7 +2339,7 @@ SubtypingResult Subtyping::isCovariantWith(
     {
         // NOTE: despite the name, this will internally check that the two
         // indexers are invariant with one another.
-        result.andAlso(isCovariantWith(env, *subExternType->indexer, *superTable->indexer, scope));
+        result.andAlso(isCovariantWith(env, *subExternType->indexer, *superTable->indexer, /*forceCovariantTest*/ false, scope));
     }
     else if (superTable->indexer && !subExternType->indexer)
     {
@@ -2558,6 +2559,7 @@ SubtypingResult Subtyping::isCovariantWith(
     SubtypingEnvironment& env,
     const TableIndexer& subIndexer,
     const TableIndexer& superIndexer,
+    bool forceCovariantTest,
     NotNull<Scope> scope
 )
 {
@@ -2574,6 +2576,10 @@ SubtypingResult Subtyping::isCovariantWith(
 
     // Value-type variance: read-only super → covariant; read-write super → invariant.
     if (superIndexer.isReadOnly)
+        result.andAlso(
+            isCovariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope).withBothComponent(TypePath::TypeField::IndexResult)
+        );
+    else if (FFlag::LuauFixOverloadedTableLiteralArgs && forceCovariantTest)
         result.andAlso(
             isCovariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope).withBothComponent(TypePath::TypeField::IndexResult)
         );
