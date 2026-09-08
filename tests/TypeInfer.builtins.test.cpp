@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixTableCreateInference)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1315,6 +1316,70 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_persistent_skip")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_create_without_value_infers_element_type_from_assignments")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixTableCreateInference, true}};
+
+    CheckResult result = check(R"(
+        --!strict
+        local t = table.create(5)
+
+        for i = 1, 5 do
+            t[i] = i
+        end
+
+        t[1] += 1
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("{number}", toString(requireType("t")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_create_without_value_infers_properties_from_assignments")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixTableCreateInference, true}};
+
+    CheckResult result = check(R"(
+        --!strict
+        local t = table.create(2)
+        t.x = 1
+        t.y = "two"
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("{ x: number, y: string }", toString(requireType("t")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_create_with_value_still_infers_element_type_from_value")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixTableCreateInference, true}};
+
+    CheckResult result = check(R"(
+        --!strict
+        local t = table.create(5, "s")
+        local s: {string} = t
+        local n: {number} = t
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("{string}", toString(requireType("t")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_create_with_multi_value_count_argument_uses_declared_signature")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixTableCreateInference, true}};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function two(): (number, string) return 2, "s" end
+        local t = table.create(two())
+        local s: {string} = t
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("{string}", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_persistent_skip")

@@ -26,6 +26,7 @@
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
+LUAU_FASTFLAGVARIABLE(LuauFixTableCreateInference)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -81,6 +82,17 @@ struct MagicPack final : MagicFunction
 };
 
 struct MagicClone final : MagicFunction
+{
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
+    bool infer(const MagicFunctionCallContext& context) override;
+};
+
+struct MagicTableCreate final : MagicFunction
 {
     std::optional<WithPredicate<TypePackId>> handleOldSolver(
         struct TypeChecker&,
@@ -521,6 +533,9 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         attachMagicFunction(*ttv->props["pack"].readTy, std::make_shared<MagicPack>());
         attachMagicFunction(*ttv->props["clone"].readTy, std::make_shared<MagicClone>());
         attachMagicFunction(*ttv->props["freeze"].readTy, std::make_shared<MagicFreeze>());
+
+        if (FFlag::LuauFixTableCreateInference)
+            attachMagicFunction(*ttv->props["create"].readTy, std::make_shared<MagicTableCreate>());
     }
 
     TypeId requireTy = getGlobalBinding(globals, "require");
@@ -1750,6 +1765,38 @@ static std::optional<TypeId> freezeTable(TypeId inputType, const MagicFunctionCa
     }
 
     return std::nullopt;
+}
+
+std::optional<WithPredicate<TypePackId>> MagicTableCreate::handleOldSolver(
+    struct TypeChecker&,
+    const std::shared_ptr<struct Scope>&,
+    const class AstExprCall&,
+    WithPredicate<TypePackId>
+)
+{
+    return std::nullopt;
+}
+
+// `table.create(n)` with no fill value produces an empty table, so we infer an
+// unsealed table (as we would for `{}`) whose indexer is learned from later
+// assignments, rather than instantiating `<V>(number, V?) -> {V}` to `{unknown}`.
+bool MagicTableCreate::infer(const MagicFunctionCallContext& context)
+{
+    if (context.callSite->args.size != 1)
+        return false;
+
+    AstExpr* countExpr = context.callSite->args.data[0];
+    if (countExpr->is<AstExprCall>() || countExpr->is<AstExprVarargs>())
+        return false;
+
+    TypeArena* arena = context.solver->arena;
+
+    TypeId resultType = arena->addType(TableType{TableState::Unsealed, TypeLevel{}, context.constraint->scope.get()});
+    trackInteriorFreeType(context.constraint->scope.get(), resultType);
+
+    asMutable(context.result)->ty.emplace<BoundTypePack>(arena->addTypePack({resultType}));
+
+    return true;
 }
 
 std::optional<WithPredicate<TypePackId>> MagicFreeze::handleOldSolver(
