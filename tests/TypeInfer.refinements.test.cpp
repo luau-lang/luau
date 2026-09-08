@@ -12,6 +12,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAvoidTrivialPhis)
+LUAU_FASTFLAG(LuauFixCapturedUpvalueInLoop)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
@@ -3393,6 +3394,54 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
 
     // `x` is annotated `number?`, but the then-branch still refines it by `truthy` down to `number`.
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_optional_upvalue_inside_loop_in_nested_function")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixCapturedUpvalueInLoop, true},
+    };
+
+    CheckResult result = check(R"(
+        local function outer(foo: { value: boolean }?)
+            local function inner()
+                for index = 1, 20 do
+                    if foo and foo.value then
+                        local x = foo
+                    end
+                end
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("{ read value: true, write value: boolean }", toString(requireTypeAtPosition({5, 34})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_optional_upvalue_inside_nested_loops_in_nested_function")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixCapturedUpvalueInLoop, true},
+    };
+
+    CheckResult result = check(R"(
+        local function outer(foo: { value: boolean }?)
+            local function inner()
+                while true do
+                    for _, v in ipairs({ 1, 2, 3 }) do
+                        if foo then
+                            local x = foo.value
+                        end
+                    end
+                end
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

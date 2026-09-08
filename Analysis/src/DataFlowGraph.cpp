@@ -13,6 +13,7 @@
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauAvoidTrivialPhis)
+LUAU_FASTFLAGVARIABLE(LuauFixCapturedUpvalueInLoop)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 namespace Luau
@@ -338,10 +339,19 @@ DefId DataFlowGraphBuilder::lookup(Symbol symbol, Location location)
             DefId captureDef = defArena->phi({});
             capture.captureDefs.push_back(captureDef);
 
-            // If we are outside of a loop scope, then we don't want to actually bind
-            // uses of `symbol` to this new phi node since it will not get populated.
-            if (!outsideLoopScope)
+            if (FFlag::LuauFixCapturedUpvalueInLoop)
+            {
+                // Bind the capture in the function scope itself so that every use of
+                // `symbol` within this function, including uses nested inside loops,
+                // resolves to the same def and refinements apply to all of them.
+                current->bindings[symbol] = captureDef;
+            }
+            else if (!outsideLoopScope)
+            {
+                // If we are outside of a loop scope, then we don't want to actually bind
+                // uses of `symbol` to this new phi node since it will not get populated.
                 scope->bindings[symbol] = captureDef;
+            }
 
             return NotNull{captureDef};
         }
