@@ -2,6 +2,12 @@
 
 #include "Luau/Scope.h"
 
+#include "Luau/Common.h"
+
+#include <algorithm>
+
+LUAU_FASTFLAGVARIABLE(LuauFixUpvalueOrRefinement)
+
 namespace Luau
 {
 
@@ -223,9 +229,32 @@ void Scope::inheritAssignments(const ScopePtr& childScope)
 // Updates the `this` scope with the refinements from the `childScope` excluding ones that doesn't exist in `this`.
 void Scope::inheritRefinements(const ScopePtr& childScope)
 {
+    // A phi node for a captured upvalue may only have been bound in a scope
+    // that is a sibling of `childScope`, so fall back to checking whether any
+    // of its operands is visible from this scope.
+    auto isVisible = [this](DefId def)
+    {
+        if (lookup(def))
+            return true;
+
+        if (!FFlag::LuauFixUpvalueOrRefinement || !get<Phi>(def))
+            return false;
+
+        std::vector<DefId> operands;
+        collectOperands(def, &operands);
+        return std::any_of(
+            operands.begin(),
+            operands.end(),
+            [&](DefId operand)
+            {
+                return operand != def && lookup(operand).has_value();
+            }
+        );
+    };
+
     for (const auto& [k, a] : childScope->rvalueRefinements)
     {
-        if (lookup(NotNull{k}))
+        if (isVisible(NotNull{k}))
             rvalueRefinements[k] = a;
     }
 

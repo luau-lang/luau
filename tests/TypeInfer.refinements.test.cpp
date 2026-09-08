@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauFixUpvalueOrRefinement)
 
 using namespace Luau;
 
@@ -3393,6 +3394,59 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
 
     // `x` is annotated `number?`, but the then-branch still refines it by `truthy` down to `number`.
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "early_return_with_or_refines_both_upvalues")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUpvalueOrRefinement, true},
+    };
+
+    CheckResult result = check(R"(
+        local x: string? = "a"
+        local y: string? = "b"
+        function f()
+            if not y or not x then
+                return
+            end
+
+            local w: string = y
+            local z: string = x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({8, 30})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({9, 30})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "early_return_with_and_refines_both_upvalues")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUpvalueOrRefinement, true},
+    };
+
+    CheckResult result = check(R"(
+        local x: string? = "a"
+        local y: string? = "b"
+        function f()
+            if y and x then
+            else
+                return
+            end
+
+            local w: string = y
+            local z: string = x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({9, 30})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({10, 30})));
 }
 
 TEST_SUITE_END();
