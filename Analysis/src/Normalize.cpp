@@ -25,6 +25,7 @@ LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAGVARIABLE(LuauFixStructurallyEqualOverloadReturns)
 
 namespace Luau
 {
@@ -3069,7 +3070,7 @@ std::optional<TypeId> Normalizer::intersectionOfFunctions(TypeId here, TypeId th
     TypePackId argTypes;
     TypePackId retTypes;
 
-    if (hftv->retTypes == tftv->retTypes)
+    if (hftv->retTypes == tftv->retTypes || (FFlag::LuauFixStructurallyEqualOverloadReturns && *hftv->retTypes == *tftv->retTypes))
     {
         std::optional<TypePackId> argTypesOpt = unionOfTypePacks(hftv->argTypes, tftv->argTypes);
         if (!argTypesOpt)

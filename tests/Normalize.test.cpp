@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauIncludeExternTypeExtensionsWithTopExternType)
+LUAU_FASTFLAG(LuauFixStructurallyEqualOverloadReturns)
 
 using namespace Luau;
 
@@ -1341,5 +1342,49 @@ _[_] ^= _(_(_))
     );
 }
 #endif
+
+TEST_CASE_FIXTURE(NormalizeFixture, "overloads_with_structurally_equal_return_types_are_merged")
+{
+    ScopedFastFlag sff{FFlag::LuauFixStructurallyEqualOverloadReturns, true};
+
+    CHECK("(\"a\" | \"b\" | \"c\") -> () -> string" == toString(normal(R"(
+        (("a") -> () -> string) & (("b") -> () -> string) & (("c") -> () -> string)
+    )")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "many_overloads_with_structurally_equal_return_types_do_not_hit_normalization_limits")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFixStructurallyEqualOverloadReturns, true};
+
+    CheckResult result = check(R"(
+        type t = (("Folder") -> () -> string)
+            & (("BillboardGui") -> () -> string)
+            & (("CanvasGroup") -> () -> string)
+            & (("Frame") -> () -> string)
+            & (("ImageButton") -> () -> string)
+            & (("ImageLabel") -> () -> string)
+            & (("ScreenGui") -> () -> string)
+            & (("ScrollingFrame") -> () -> string)
+            & (("SurfaceGui") -> () -> string)
+            & (("TextBox") -> () -> string)
+            & (("TextButton") -> () -> string)
+            & (("TextLabel") -> () -> string)
+            & (("UIAspectRatioConstraint") -> () -> string)
+            & (("UICorner") -> () -> string)
+            & (("UIGradient") -> () -> string)
+            & (("") -> () -> string)
+
+        local f: t = nil :: any
+        local a: () -> string = f("Frame")
+        local b = f("NotAnOverload")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<MultipleNonviableOverloads>(result.errors[0]));
+    CHECK(get<ExtraInformation>(result.errors[1]));
+    CHECK(result.errors[0].location.begin.line == 20);
+}
 
 TEST_SUITE_END();
