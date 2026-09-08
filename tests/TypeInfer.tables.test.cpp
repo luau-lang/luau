@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauFixReadOnlyIndexerUnification)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -4756,6 +4757,24 @@ TEST_CASE_FIXTURE(Fixture, "read_only_array_shorthand")
     auto* pav = get<PropertyAccessViolation>(result.errors[0]);
     REQUIRE(pav);
     CHECK(PropertyAccessViolation::CannotWrite == pav->context);
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_generic_in_multiple_arguments_is_union")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixReadOnlyIndexerUnification, true}};
+
+    CheckResult result = check(R"(
+        local function combine<T>(a: { read T }, b: { read T }): { T }
+            return {}
+        end
+
+        local x: { number } = {}
+        local y: { boolean } = {}
+        local z = combine(x, y)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("{boolean | number}" == toString(requireType("z")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_value_not_contravariant")
