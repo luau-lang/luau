@@ -15,6 +15,7 @@
 
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
+LUAU_FASTFLAGVARIABLE(LuauUdtfClearAliasSerializationErrors)
 
 namespace Luau
 {
@@ -341,6 +342,12 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
                         allocTypeUserData(L, serializedTy->type, /* frozen */ true);
                         lua_setfield(L, -2, name.c_str());
+                    }
+                    else if (FFlag::LuauUdtfClearAliasSerializationErrors)
+                    {
+                        // Skipped aliases must not leak serialization errors into the evaluation of the current function
+                        runtimeBuilder->errors.clear();
+                        runtimeBuilder->errors_DEPRECATED.clear();
                     }
                 }
                 else
