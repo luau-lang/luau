@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauFixSetmetatableLiteralSubtyping)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -7590,6 +7591,88 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2684_setmetatable_literal_with_refined_property_type")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFixSetmetatableLiteralSubtyping, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local AnimMeta = {}
+        AnimMeta.__index = AnimMeta
+
+        export type uuid = {istruthy: boolean}
+        export type AnimStruct = {
+            id: uuid,
+        }
+        export type Anim = setmetatable<AnimStruct, typeof(AnimMeta)>
+
+        local function _new(id: uuid?): Anim
+            assert(id and id.istruthy)
+            return setmetatable({
+                id = id,
+            }, AnimMeta)
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2684_setmetatable_literal_still_reports_bad_property")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFixSetmetatableLiteralSubtyping, true};
+
+    CheckResult result = check(R"(
+        local AnimMeta = {}
+        AnimMeta.__index = AnimMeta
+
+        export type uuid = {istruthy: boolean}
+        export type AnimStruct = {
+            id: uuid,
+        }
+        export type Anim = setmetatable<AnimStruct, typeof(AnimMeta)>
+
+        local function _new(id: uuid?): Anim
+            assert(id and id.istruthy)
+            return setmetatable({
+                id = "not a uuid",
+            }, AnimMeta)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_MESSAGE(get<TypeMismatch>(result.errors[0]), "Expected TypeMismatch but got " << toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2684_setmetatable_literal_still_reports_bad_metatable")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFixSetmetatableLiteralSubtyping, true};
+
+    CheckResult result = check(R"(
+        local AnimMeta = {}
+        AnimMeta.__index = AnimMeta
+        local OtherMeta = { foo = 1 }
+
+        export type uuid = {istruthy: boolean}
+        export type AnimStruct = {
+            id: uuid,
+        }
+        export type Anim = setmetatable<AnimStruct, typeof(AnimMeta)>
+
+        local function _new(id: uuid?): Anim
+            assert(id and id.istruthy)
+            return setmetatable({
+                id = id,
+            }, OtherMeta)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_MESSAGE(get<TypeMismatch>(result.errors[0]), "Expected TypeMismatch but got " << toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

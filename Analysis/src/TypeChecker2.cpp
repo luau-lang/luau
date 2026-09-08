@@ -39,6 +39,7 @@ LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAGVARIABLE(LuauFixSetmetatableLiteralSubtyping)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
@@ -762,7 +763,14 @@ void TypeChecker2::visit(AstStatReturn* ret)
     // at least an argument underflow, then we grab the last type out of
     // the type pack head and use that to check the subtype of
     auto lastExpr = ret->list.data[ret->list.size - 1];
-    if (head.size() < ret->list.size || lastExpr->is<AstExprCall>() || lastExpr->is<AstExprVarargs>())
+    if (FFlag::LuauFixSetmetatableLiteralSubtyping && head.size() == ret->list.size && lastExpr->is<AstExprCall>() &&
+        matchSetMetatable(*lastExpr->as<AstExprCall>()) && get<MetatableType>(follow(head.back())))
+    {
+        auto lastType = head[ret->list.size - 1];
+        isSubtype &= testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
+        actualHead.push_back(lastType);
+    }
+    else if (head.size() < ret->list.size || lastExpr->is<AstExprCall>() || lastExpr->is<AstExprVarargs>())
     {
         actualTail = lookupPack(lastExpr);
     }
@@ -3635,6 +3643,20 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
         bool passes = testPotentialLiteralIsSubtype(binExpr->left, relaxedExpectedLhs);
         passes &= testPotentialLiteralIsSubtype(binExpr->right, expectedType);
         return passes;
+    }
+    else if (auto call = expr->as<AstExprCall>();
+             FFlag::LuauFixSetmetatableLiteralSubtyping && call && call->args.size == 2 && matchSetMetatable(*call))
+    {
+        // `setmetatable({ ... }, mt)` is literal _enough_: the table portion
+        // is a fresh value, so it can be tested covariantly.
+        auto exprMetatable = get<MetatableType>(exprType);
+        auto expectedMetatable = get<MetatableType>(expectedType);
+        if (exprMetatable && expectedMetatable)
+        {
+            bool passes = testPotentialLiteralIsSubtype(call->args.data[0], expectedMetatable->table);
+            passes &= testIsSubtype(exprMetatable->metatable, expectedMetatable->metatable, call->args.data[1]->location);
+            return passes;
+        }
     }
     // FIXME: We probably should do a check for `and` here.
 
