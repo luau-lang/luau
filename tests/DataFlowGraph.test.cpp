@@ -13,6 +13,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver);
+LUAU_FASTFLAG(LuauFixUpvalueRefinementInLoop);
 
 struct DataFlowGraphFixture
 {
@@ -718,6 +719,31 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "dfg_captured_local_is_assigned_a_functi
     REQUIRE(f2phi);
     CHECK(f2phi->operands.size() == 1);
     CHECK(f2phi->operands.at(0) == f3);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "captured_upvalue_uses_inside_loop_share_a_def")
+{
+    ScopedFastFlag sff{FFlag::LuauFixUpvalueRefinementInLoop, true};
+
+    dfg(R"(
+        local x = {}
+
+        local function f()
+            for i = 1, 1 do
+                if x.Bar then
+                    x.Bar()
+                end
+            end
+        end
+    )");
+
+    DefId x1 = getDef<AstExprLocal, 1>(); // if x.Bar
+    DefId x2 = getDef<AstExprLocal, 2>(); // x.Bar()
+    DefId xBar1 = getDef<AstExprIndexName, 1>();
+    DefId xBar2 = getDef<AstExprIndexName, 2>();
+
+    CHECK(x1 == x2);
+    CHECK(xBar1 == xBar2);
 }
 
 TEST_SUITE_END();

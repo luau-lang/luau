@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauFixUpvalueRefinementInLoop)
 
 using namespace Luau;
 
@@ -3393,6 +3394,130 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
 
     // `x` is annotated `number?`, but the then-branch still refines it by `truthy` down to `number`.
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_optional_property_of_upvalue_inside_for_loop")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUpvalueRefinementInLoop, true},
+    };
+
+    CheckResult result = check(R"(
+        type Foo = {
+            Bar: (() -> ())?,
+        }
+
+        local x: Foo = {}
+
+        local function _DoSomething()
+            for i = 1, 1 do
+                if x.Bar then
+                    x.Bar()
+                end
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_optional_property_of_upvalue_inside_while_loop")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUpvalueRefinementInLoop, true},
+    };
+
+    CheckResult result = check(R"(
+        type Foo = {
+            Bar: (() -> ())?,
+        }
+
+        local x: Foo = {}
+
+        local function _DoSomething()
+            while math.random() > 0.5 do
+                if x.Bar then
+                    x.Bar()
+                end
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_optional_upvalue_inside_nested_loops")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUpvalueRefinementInLoop, true},
+    };
+
+    CheckResult result = check(R"(
+        local x: number? = nil
+
+        local function _DoSomething()
+            for i = 1, 1 do
+                for j = 1, 1 do
+                    if x then
+                        local y: number = x
+                    end
+                end
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "while_loop_condition_applies_refinements_to_upvalue")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUpvalueRefinementInLoop, true},
+    };
+
+    CheckResult result = check(R"(
+        type walkoptions = {
+            recursive: boolean?,
+        }
+
+        function bing(path : string  | walkoptions, opts: walkoptions?)
+            return function ()
+                while opts and opts.recursive do
+                end
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "if_inside_while_loop_applies_refinements_to_upvalue")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUpvalueRefinementInLoop, true},
+    };
+
+    CheckResult result = check(R"(
+        type walkoptions = {
+            recursive: boolean?,
+        }
+
+        function bing(path : string  | walkoptions, opts: walkoptions?)
+            return function ()
+                while true do
+                    if opts and opts.recursive then
+                    end
+                end
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();
