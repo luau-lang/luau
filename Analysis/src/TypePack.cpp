@@ -185,12 +185,12 @@ TypePackIterator TypePackIterator::operator++(int)
     return copy;
 }
 
-bool TypePackIterator::operator!=(const TypePackIterator& rhs)
+bool TypePackIterator::operator!=(const TypePackIterator& rhs) const
 {
     return !(*this == rhs);
 }
 
-bool TypePackIterator::operator==(const TypePackIterator& rhs)
+bool TypePackIterator::operator==(const TypePackIterator& rhs) const
 {
     return tp == rhs.tp && currentIndex == rhs.currentIndex;
 }

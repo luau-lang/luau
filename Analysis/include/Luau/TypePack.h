@@ -162,8 +162,8 @@ struct TypePackIterator
 
     TypePackIterator& operator++();
     TypePackIterator operator++(int);
-    bool operator!=(const TypePackIterator& rhs);
-    bool operator==(const TypePackIterator& rhs);
+    bool operator!=(const TypePackIterator& rhs) const;
+    bool operator==(const TypePackIterator& rhs) const;
 
     const TypeId& operator*();
 

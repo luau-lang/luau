@@ -537,7 +537,7 @@ int main(int argc, char** argv)
     context.setOption("no-version", true);
     context.applyCommandLine(argc, argv);
 
-    if (doctest::parseFlag(argc, argv, "--list-fflags"))
+    if (doctest::detail::parseFlag(argc, argv, "--list-fflags"))
     {
         for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
         {
@@ -550,24 +550,24 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    doctest::getListeners();
-    if (doctest::parseFlag(argc, argv, "--verbose"))
+    doctest::detail::getListeners();
+    if (doctest::detail::parseFlag(argc, argv, "--verbose"))
         verbose = true;
 
-    if (doctest::parseFlag(argc, argv, "--codegen"))
+    if (doctest::detail::parseFlag(argc, argv, "--codegen"))
         codegen = true;
 
-    if (doctest::parseFlag(argc, argv, "--jit-inliner"))
+    if (doctest::detail::parseFlag(argc, argv, "--jit-inliner"))
         jitInliner = true;
 
-    if (doctest::parseFlag(argc, argv, "--progress"))
+    if (doctest::detail::parseFlag(argc, argv, "--progress"))
         progressEnabled = true;
 
-    if (doctest::parseFlag(argc, argv, "--timing"))
+    if (doctest::detail::parseFlag(argc, argv, "--timing"))
         timingEnabled = true;
 
     doctest::String optlevel;
-    if (doctest::parseOption(argc, argv, "-O", &optlevel))
+    if (doctest::detail::parseOption(argc, argv, "-O", &optlevel))
     {
         try
         {
@@ -585,33 +585,33 @@ int main(int argc, char** argv)
     }
 
     int rseed = -1;
-    if (doctest::parseIntOption(argc, argv, "--random-seed=", doctest::option_int, rseed))
+    if (doctest::detail::parseIntOption(argc, argv, "--random-seed=", doctest::detail::option_int, rseed))
         randomSeed = unsigned(rseed);
 
-    if (doctest::parseOption(argc, argv, "--randomize") && !randomSeed)
+    if (doctest::detail::parseOption(argc, argv, "--randomize") && !randomSeed)
     {
         randomSeed = unsigned(time(nullptr));
         printf("Using RNG seed %u\n", *randomSeed);
     }
 
-    if (std::vector<doctest::String> flags; doctest::parseCommaSepArgs(argc, argv, "--fflags=", flags))
+    if (std::vector<doctest::String> flags; doctest::detail::parseCommaSepArgs(argc, argv, "--fflags=", flags))
         setFastFlags(flags);
 
-    if (doctest::parseFlag(argc, argv, "--list_content"))
+    if (doctest::detail::parseFlag(argc, argv, "--list_content"))
     {
         const char* ltc[] = {argv[0], "--list-test-cases"};
         context.applyCommandLine(2, ltc);
     }
 
     doctest::String filter;
-    if (doctest::parseOption(argc, argv, "--run_test", &filter) && filter[0] == '=')
+    if (doctest::detail::parseOption(argc, argv, "--run_test", &filter) && filter[0] == '=')
     {
-        if (doctest::parseOption(argc, argv, "--run_suites_in_file"))
+        if (doctest::detail::parseOption(argc, argv, "--run_suites_in_file"))
         {
             fprintf(stderr, "ERROR: Cannot pass both --run_test and --run_suites_in_file\n");
             return 1;
         }
-        if (doctest::parseOption(argc, argv, "--run_cases_in_file"))
+        if (doctest::detail::parseOption(argc, argv, "--run_cases_in_file"))
         {
             fprintf(stderr, "ERROR: Cannot pass both --run_test and --run_cases_in_file\n");
             return 1;
@@ -631,7 +631,7 @@ int main(int argc, char** argv)
     }
 
     doctest::String suite_filter_path;
-    if (doctest::parseOption(argc, argv, "--run_suites_in_file", &suite_filter_path) && suite_filter_path[0] == '=')
+    if (doctest::detail::parseOption(argc, argv, "--run_suites_in_file", &suite_filter_path) && suite_filter_path[0] == '=')
     {
         const char* filter_file = suite_filter_path.c_str() + 1;
         std::ifstream filter_stream(filter_file);
@@ -642,7 +642,7 @@ int main(int argc, char** argv)
     }
 
     doctest::String case_filter_path;
-    if (doctest::parseOption(argc, argv, "--run_cases_in_file", &case_filter_path) && case_filter_path[0] == '=')
+    if (doctest::detail::parseOption(argc, argv, "--run_cases_in_file", &case_filter_path) && case_filter_path[0] == '=')
     {
         const char* filter_file = case_filter_path.c_str() + 1;
         std::ifstream filter_stream(filter_file);
@@ -661,7 +661,7 @@ int main(int argc, char** argv)
         cb();
 
     int result = context.run();
-    if (doctest::parseFlag(argc, argv, "--help") || doctest::parseFlag(argc, argv, "-h"))
+    if (doctest::detail::parseFlag(argc, argv, "--help") || doctest::detail::parseFlag(argc, argv, "-h"))
     {
         printf("Additional command line options:\n");
         printf(" -O[n]                                 Changes default optimization level (1) for conformance runs\n");
