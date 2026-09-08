@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 LUAU_FLAGVERSION(LuauCheckTypeForDeprecated, 2)
+LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteBracketedTableKey)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
@@ -2318,11 +2319,15 @@ AutocompleteResult autocomplete_(
                             result.erase(std::string(stringKey->value.data, stringKey->value.size));
                     }
 
+                    // A bracketed key like `[foo]` is an arbitrary expression, so offer general expression suggestions too
+                    bool bracketedIdentifierKey =
+                        FFlag::LuauFixAutocompleteBracketedTableKey && key && kind == AstExprTable::Item::Kind::General && node->is<AstExprGlobal>();
+
                     // If we know for sure that a key is being written, do not offer general expression suggestions
-                    if (!key)
+                    if (!key || bracketedIdentifierKey)
                         autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position, result);
 
-                    return {std::move(result), ancestry, AutocompleteContext::Property};
+                    return {std::move(result), ancestry, bracketedIdentifierKey ? AutocompleteContext::Expression : AutocompleteContext::Property};
                 }
 
                 break;

@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAG(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAG(LuauFixAutocompleteBracketedTableKey)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
@@ -2772,6 +2773,27 @@ local t: Test = { first = 1, @1 }
     CHECK_EQ(ac.entryMap.count("first"), 0);
     CHECK(ac.entryMap.count("second"));
     CHECK_EQ(ac.context, AutocompleteContext::Property);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "suggest_expressions_in_bracketed_table_key")
+{
+    ScopedFastFlag sff{FFlag::LuauFixAutocompleteBracketedTableKey, true};
+
+    check(R"(
+local PI_RAD = math.pi
+local PI_RAD_ONE_HALF = math.pi * 1/2
+
+type lookup_table = {[number]: number}
+
+local LOOKUP_TABLE: lookup_table = {
+    [P@1] = 1
+}
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("PI_RAD"));
+    CHECK(ac.entryMap.count("PI_RAD_ONE_HALF"));
+    CHECK_EQ(ac.context, AutocompleteContext::Expression);
 }
 
 TEST_CASE_FIXTURE(ACFixture, "suggest_table_keys_no_initial_character_3")
