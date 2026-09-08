@@ -1160,6 +1160,19 @@ TEST_CASE_FIXTURE(Fixture, "function_cast_error_uses_correct_language")
         local c: (string, number)->number = foo -- no error
     )");
 
+    // With the new solver, `(unknown, unknown) -> number` is assignable to `(string) -> number` because the missing second argument is `nil`.
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauSubtypingMissingPackElementsAsNil)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        auto tm = get<TypeMismatch>(result.errors[0]);
+        REQUIRE(tm);
+
+        CHECK_EQ("(number, number) -> (number, number)", toString(tm->wantedType));
+        CHECK_EQ("(unknown, unknown) -> number", toString(tm->givenType));
+        return;
+    }
+
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     auto tm1 = get<TypeMismatch>(result.errors[0]);
