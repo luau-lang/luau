@@ -30,6 +30,8 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauInferGenericsForLambdaArgs)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1440,12 +1442,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument
         table.sort(a, function(x, y) return x.x < y.x end)
     )");
 
-    // FIXME CLI-161355: We *should* be able to bidirectionally push the type
-    // of `a` into the lambda, but for now we claim that the inner lambda has
-    // type ({ read x: unknown }, { read x: unknown }) -> bool, and then
-    // error because you canont compare `unknown`s.
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(get<GenericError>(result.errors[0]));
+    if (FFlag::LuauInferGenericsForLambdaArgs)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    else
+    {
+        // FIXME CLI-161355: We *should* be able to bidirectionally push the type
+        // of `a` into the lambda, but for now we claim that the inner lambda has
+        // type ({ read x: unknown }, { read x: unknown }) -> bool, and then
+        // error because you canont compare `unknown`s.
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(get<GenericError>(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_any_is_compatible_with_a_generic_TypePack")
@@ -3262,6 +3271,73 @@ TEST_CASE_FIXTURE(Fixture, "oss_1871")
     )"));
 
     CHECK_EQ("string", toString(requireTypeAtPosition({8, 25})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2713_generic_self_type_is_pushed_into_lambda_argument")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+        {FFlag::LuauInferGenericsForLambdaArgs, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local Component = {}
+        Component.__index = Component
+
+        type Component<T> = typeof(setmetatable(
+            {} :: {
+                properties: T?,
+                renderFunction: ((T) -> ())?,
+            },
+            Component
+        ))
+
+        function Component.new(): Component<any>
+            return setmetatable({} :: any, Component)
+        end
+
+        function Component.props<T>(self: Component<any>, value: T): Component<T>
+            self.properties = value
+            return self
+        end
+
+        function Component.onRender<T>(self: Component<T>, renderFunction: (T) -> ()): Component<T>
+            self.renderFunction = renderFunction
+            return self
+        end
+
+        Component.new()
+            :props({
+                text = "hello",
+                count = 5,
+            })
+            :onRender(function(props)
+                print(props.text:upper())
+            end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("{ count: number, text: string }", toString(requireTypeAtPosition({33, 23})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2713_generic_inferred_from_other_arguments_is_pushed_into_lambda")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauInferGenericsForLambdaArgs, true}};
+
+    CheckResult result = check(R"(
+        local function withValue<T>(value: T, callback: (T) -> ()) end
+
+        withValue({ text = "hello", count = 5 }, function(props)
+            print(props.text:upper())
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("{ count: number, text: string }", toString(requireTypeAtPosition({4, 19})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "io_manager_oop_ish")

@@ -647,6 +647,19 @@ SubtypingResult Subtyping::isSubtype(
     const std::vector<TypePackId>& bindableGenericPacks
 )
 {
+    DenseHashMap<TypeId, SubtypingEnvironment::GenericBounds> genericBounds;
+    return isSubtype(subTp, superTp, scope, bindableGenerics, bindableGenericPacks, genericBounds);
+}
+
+SubtypingResult Subtyping::isSubtype(
+    TypePackId subTp,
+    TypePackId superTp,
+    NotNull<Scope> scope,
+    const std::vector<TypeId>& bindableGenerics,
+    const std::vector<TypePackId>& bindableGenericPacks,
+    DenseHashMap<TypeId, SubtypingEnvironment::GenericBounds>& outGenericBounds
+)
+{
     SubtypingEnvironment env;
     for (TypeId g : bindableGenerics)
         env.mappedGenerics[follow(g)] = {SubtypingEnvironment::GenericBounds{}};
@@ -669,6 +682,7 @@ SubtypingResult Subtyping::isSubtype(
                 continue;
             if (const GenericType* gen = get<GenericType>(bg))
                 result.andAlso(checkGenericBounds(bounds->back(), env, scope, gen->name));
+            outGenericBounds[bg] = bounds->back();
         }
     }
 

@@ -256,6 +256,17 @@ struct Subtyping
         const std::vector<TypePackId>& bindableGenericPacks
     );
 
+    // Like the above, but also reports the bounds that were collected for each
+    // bindable generic over the course of the test.
+    SubtypingResult isSubtype(
+        TypePackId subTp,
+        TypePackId superTp,
+        NotNull<Scope> scope,
+        const std::vector<TypeId>& bindableGenerics,
+        const std::vector<TypePackId>& bindableGenericPacks,
+        DenseHashMap<TypeId, SubtypingEnvironment::GenericBounds>& outGenericBounds
+    );
+
 private:
     DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> resultCache;
 

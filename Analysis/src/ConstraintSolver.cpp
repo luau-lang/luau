@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauInferGenericsForLambdaArgs)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -1964,10 +1965,122 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     const std::vector<TypeId> expectedArgs = extendTypePack(*arena, builtinTypes, ftv->argTypes, c.callSite->args.size + typeOffset).head;
     const std::vector<TypeId> argPackHead = flatten(argsPack).first;
 
+    // Consider:
+    //
+    //  local function onRender<T>(self: Component<T>, cb: (T) -> ()) --[[...]] end
+    //  onRender(component, function(props) --[[...]] end)
+    //
+    // The expected type of the lambda is `(T) -> ()`, and we cannot push a
+    // generic into its parameters. However, the other arguments frequently
+    // determine what `T` must be. When that is the case, we substitute the
+    // inferred type for the generic before pushing the expected type into the
+    // lambda so that its parameters are inferred as they would be for a
+    // non-generic function.
+    DenseHashMap<TypeId, TypeId> inferredGenerics;
+    DenseHashMap<TypePackId, TypePackId> inferredGenericPacks;
+
+    if (FFlag::LuauInferGenericsForLambdaArgs && !genericTypesAndPacks.empty())
+    {
+        bool hasLambdaWithGenerics = false;
+        std::vector<TypeId> subHead;
+        std::vector<TypeId> superHead;
+
+        const size_t argCount = std::min(expectedArgs.size(), argPackHead.size());
+        for (size_t i = 0; i < argCount; ++i)
+        {
+            TypeId expectedArgTy = follow(expectedArgs[i]);
+            if (!containsGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
+                continue;
+
+            const bool isLambda = i >= typeOffset && unwrapGroup(c.callSite->args.data[i - typeOffset])->is<AstExprFunction>();
+            if (isLambda)
+            {
+                hasLambdaWithGenerics = true;
+                continue;
+            }
+
+            subHead.push_back(follow(argPackHead[i]));
+            superHead.push_back(expectedArgTy);
+        }
+
+        if (hasLambdaWithGenerics && !subHead.empty())
+        {
+            // The types of the other arguments may not be known yet, e.g. the
+            // receiver of a chained method call. Wait for them before pushing
+            // types into the lambda.
+            bool blocked = false;
+            for (TypeId argTy : subHead)
+            {
+                if (isBlocked(argTy))
+                {
+                    block(argTy, constraint);
+                    blocked = true;
+                }
+            }
+
+            if (blocked && !force)
+                return false;
+
+            DenseHashMap<TypeId, SubtypingEnvironment::GenericBounds> genericBounds;
+            subtyping->isSubtype(
+                arena->addTypePack(std::move(subHead)),
+                arena->addTypePack(std::move(superHead)),
+                constraint->scope,
+                ftv->generics,
+                ftv->genericPacks,
+                genericBounds
+            );
+
+            for (TypeId generic : ftv->generics)
+            {
+                generic = follow(generic);
+                const SubtypingEnvironment::GenericBounds* bounds = genericBounds.find(generic);
+                if (!bounds)
+                    continue;
+
+                const TypeIds& candidates = bounds->lowerBound.empty() ? bounds->upperBound : bounds->lowerBound;
+                if (candidates.empty())
+                    continue;
+
+                bool usable = true;
+                for (TypeId candidate : candidates)
+                {
+                    candidate = follow(candidate);
+                    if (is<FreeType, BlockedType, GenericType, PendingExpansionType>(candidate) || isBlocked(candidate) ||
+                        containsGeneric(candidate, NotNull{&genericTypesAndPacks}))
+                        usable = false;
+                }
+
+                if (!usable)
+                    continue;
+
+                TypeId inferred = nullptr;
+                if (candidates.size() == 1)
+                    inferred = *candidates.begin();
+                else if (bounds->lowerBound.empty())
+                    inferred = arena->addType(IntersectionType{std::vector<TypeId>(candidates.begin(), candidates.end())});
+                else
+                    inferred = arena->addType(UnionType{std::vector<TypeId>(candidates.begin(), candidates.end())});
+
+                inferredGenerics[generic] = inferred;
+            }
+
+            for (const auto& [generic, _] : inferredGenerics)
+                genericTypesAndPacks.erase(generic);
+        }
+    }
+
     for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
     {
         TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
         AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
+
+        if (FFlag::LuauInferGenericsForLambdaArgs && !inferredGenerics.empty())
+        {
+            Replacer replacer{arena, NotNull{&inferredGenerics}, NotNull{&inferredGenericPacks}};
+            if (std::optional<TypeId> replaced = replacer.substitute(expectedArgTy))
+                expectedArgTy = follow(*replaced);
+        }
 
         PushTypeResult result = pushTypeInto(
             c.astTypes, c.astExpectedTypes, NotNull{this}, constraint, NotNull{&genericTypesAndPacks}, NotNull{&u2}, subtyping, expectedArgTy, expr

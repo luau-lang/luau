@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauInferGenericsForLambdaArgs)
 
 using namespace Luau;
 
@@ -1433,7 +1434,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument_3")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (!FFlag::DebugLuauForceOldSolver)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauInferGenericsForLambdaArgs)
+        REQUIRE_EQ("{ c: number, s: number }", toString(requireType("r")));
+    else if (!FFlag::DebugLuauForceOldSolver)
         REQUIRE_EQ("{ c: number, s: number } | { c: number, s: number }", toString(requireType("r")));
     else
         REQUIRE_EQ("{| c: number, s: number |}", toString(requireType("r")));

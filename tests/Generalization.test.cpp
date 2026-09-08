@@ -18,6 +18,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauBetterInferredGenericNames)
 LUAU_FASTFLAG(LuauIterativeTypeSearcher)
+LUAU_FASTFLAG(LuauInferGenericsForLambdaArgs)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -387,12 +388,21 @@ TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
         end)
     )"));
 
-    // `unknown` is correct here
-    // - The lambda given can be generalized to `(unknown) -> ()`
-    // - We can substitute the `T` in `func` for either `{}` or `unknown` and
-    //   still have a well typed program.
-    // We *probably* can do a better job bidirectionally inferring the types.
-    CHECK_EQ("unknown", toString(requireTypeAtPosition(Position{3, 23})));
+    if (FFlag::LuauInferGenericsForLambdaArgs)
+    {
+        // `T` is inferred to be `{}` from the first argument, and that is
+        // then pushed into the lambda.
+        CHECK_EQ("{  }", toString(requireTypeAtPosition(Position{3, 23})));
+    }
+    else
+    {
+        // `unknown` is correct here
+        // - The lambda given can be generalized to `(unknown) -> ()`
+        // - We can substitute the `T` in `func` for either `{}` or `unknown` and
+        //   still have a well typed program.
+        // We *probably* can do a better job bidirectionally inferring the types.
+        CHECK_EQ("unknown", toString(requireTypeAtPosition(Position{3, 23})));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
