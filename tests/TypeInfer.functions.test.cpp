@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixNeverCallFallthrough)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -973,6 +974,64 @@ TEST_CASE_FIXTURE(Fixture, "report_exiting_without_return_strict")
 
     FunctionExitsWithoutReturning* inferredErr = get<FunctionExitsWithoutReturning>(result.errors[1]);
     CHECK(inferredErr);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_to_function_returning_never_is_not_a_fallthrough")
+{
+    ScopedFastFlag sff{FFlag::LuauFixNeverCallFallthrough, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local process = {}
+        function process.exit(code: number?): never
+            error("exit")
+        end
+
+        local exitfn: (number?) -> never = process.exit
+
+        local function f1(x: number): number
+            if x > 0 then
+                return x
+            end
+            process.exit(1)
+        end
+
+        local function f2(x: number): number
+            if x > 0 then
+                return x
+            end
+            exitfn(1)
+        end
+
+        local function f3(x: number): number
+            if x > 0 then
+                return x
+            end
+            error("bad")
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_to_function_not_returning_never_is_still_a_fallthrough")
+{
+    ScopedFastFlag sff{FFlag::LuauFixNeverCallFallthrough, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function log(msg: string) end
+
+        local function f(x: number): number
+            if x > 0 then
+                return x
+            end
+            log("bad")
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields_errors_spanning_argument")

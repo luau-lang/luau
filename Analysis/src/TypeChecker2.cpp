@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauFixNeverCallFallthrough)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -374,6 +375,19 @@ bool TypeChecker2::isErrorCall(const AstExprCall* call)
     return false;
 }
 
+bool TypeChecker2::isNeverCall(AstExprCall* call)
+{
+    TypePackId* tp = module->astTypePacks.find(call);
+    if (!tp)
+        return false;
+
+    const TypePack* pack = get<TypePack>(follow(*tp));
+    if (!pack || pack->head.empty())
+        return false;
+
+    return is<NeverType>(follow(pack->head[0]));
+}
+
 bool TypeChecker2::hasBreak(AstStat* node)
 {
     if (AstStatBlock* stat = node->as<AstStatBlock>())
@@ -443,6 +457,12 @@ const AstStat* TypeChecker2::getFallthrough(const AstStat* node)
     {
         if (AstExprCall* call = stat->expr->as<AstExprCall>(); call && isErrorCall(call))
             return nullptr;
+
+        if (FFlag::LuauFixNeverCallFallthrough)
+        {
+            if (AstExprCall* call = stat->expr->as<AstExprCall>(); call && isNeverCall(call))
+                return nullptr;
+        }
 
         return stat;
     }

@@ -109,6 +109,7 @@ private:
     static bool allowsNoReturnValues(const TypePackId tp);
     static Location getEndLocation(const AstExprFunction* function);
     bool isErrorCall(const AstExprCall* call);
+    bool isNeverCall(AstExprCall* call);
     bool hasBreak(AstStat* node);
     const AstStat* getFallthrough(const AstStat* node);
     std::optional<StackPusher> pushStack(AstNode* node);
