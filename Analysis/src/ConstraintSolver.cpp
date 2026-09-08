@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauFixAssignIndexBlockedRhs)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -1124,7 +1125,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
 bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     if (FFlag::LuauForceLess)
-         force = false;
+        force = false;
 
     /*
      * for .. in loops can play out in a bunch of different ways depending on
@@ -2607,6 +2608,21 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
     // Important: In every codepath through this function, the type `c.propType`
     // must be bound to something, even if it's just the errorType.
 
+    // When growing a new indexer on a table, the rhs may still be blocked (eg
+    // it is the result of a call that itself reads from this indexer). Storing
+    // the blocked type in the indexer would make the call depend on its own
+    // result, so we introduce a free type for the indexer result instead.
+    auto newIndexResultType = [&]() -> TypeId
+    {
+        if (!FFlag::LuauFixAssignIndexBlockedRhs || !isBlocked(rhsType))
+            return rhsType;
+
+        TypeId resultType = freshType(arena, builtinTypes, constraint->scope, Polarity::Mixed);
+        trackInteriorFreeType(constraint->scope, resultType);
+        unify(constraint, rhsType, resultType);
+        return resultType;
+    };
+
     auto tableStuff = [&](TableType* lhsTable) -> std::optional<bool>
     {
         if (lhsTable->indexer)
@@ -2619,8 +2635,9 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
 
         if (lhsTable->state == TableState::Unsealed || lhsTable->state == TableState::Free)
         {
-            lhsTable->indexer = TableIndexer{indexType, rhsType};
-            bind(constraint, c.propType, rhsType);
+            TypeId indexResultType = newIndexResultType();
+            lhsTable->indexer = TableIndexer{indexType, indexResultType};
+            bind(constraint, c.propType, indexResultType);
             return true;
         }
 
@@ -2636,7 +2653,7 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
         }
 
         TypeId newUpperBound =
-            arena->addType(TableType{/*props*/ {}, TableIndexer{indexType, rhsType}, TypeLevel{}, constraint->scope, TableState::Free});
+            arena->addType(TableType{/*props*/ {}, TableIndexer{indexType, newIndexResultType()}, TypeLevel{}, constraint->scope, TableState::Free});
         const TableType* newTable = get<TableType>(newUpperBound);
         LUAU_ASSERT(newTable);
 
@@ -2691,8 +2708,9 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
 
                 if (tbl->state == TableState::Unsealed || tbl->state == TableState::Free)
                 {
-                    tbl->indexer = TableIndexer{indexType, rhsType};
-                    parts.insert(rhsType);
+                    TypeId indexResultType = newIndexResultType();
+                    tbl->indexer = TableIndexer{indexType, indexResultType};
+                    parts.insert(indexResultType);
                 }
             }
             else if (auto cls = get<ExternType>(follow(t)))

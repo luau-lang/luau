@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauFixAssignIndexBlockedRhs)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -7590,6 +7591,46 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2441_index_assignment_of_blocked_call_result_free_table")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {{FFlag::LuauFixAssignIndexBlockedRhs, true}, {FFlag::DebugLuauAssertOnForcedConstraint, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function keyBinary(binary, container, key, ...)
+            local result = binary(container[key], ...)
+            container[key] = result
+            return result
+        end
+
+        return keyBinary
+    )"));
+
+    CHECK_EQ("<T, U>((U, ...any) -> (U, ...unknown), { [T]: U }, T, ...any) -> U", toString(requireType("keyBinary")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2441_index_assignment_of_blocked_call_result_unsealed_table")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {{FFlag::LuauFixAssignIndexBlockedRhs, true}, {FFlag::DebugLuauAssertOnForcedConstraint, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(binary, key)
+            local container = {}
+            local r = binary(container[key])
+            container[key] = r
+            container[key] = r
+            return container
+        end
+
+        return f
+    )"));
+
+    CHECK_EQ("<T, U>((U) -> (U, ...unknown), T) -> { [T]: U }", toString(requireType("f")));
 }
 
 TEST_SUITE_END();
