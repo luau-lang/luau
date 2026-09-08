@@ -31,6 +31,7 @@ PushTypeResult pushTypeInto(
     NotNull<ConstraintSolver> solver,
     NotNull<const Constraint> constraint,
     NotNull<DenseHashSet<const void*>> genericTypesAndPacks,
+    NotNull<const DenseHashMap<TypeId, TypeId>> genericReplacements,
     NotNull<Unifier2> unifier,
     NotNull<Subtyping> subtyping,
     TypeId expectedType,

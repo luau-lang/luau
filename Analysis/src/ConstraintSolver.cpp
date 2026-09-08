@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceGenericSiblingArgs)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -1964,13 +1965,76 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     const std::vector<TypeId> expectedArgs = extendTypePack(*arena, builtinTypes, ftv->argTypes, c.callSite->args.size + typeOffset).head;
     const std::vector<TypeId> argPackHead = flatten(argsPack).first;
 
+    DenseHashMap<TypeId, TypeId> genericReplacements;
+    DenseHashSet<TypeId> conflicting;
+    if (FFlag::LuauBidirectionalInferenceGenericSiblingArgs)
+    {
+        for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
+        {
+            TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
+            if (!genericTypesAndPacks.contains(expectedArgTy))
+                continue;
+
+            AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
+            if (expr->is<AstExprFunction>())
+                continue;
+
+            TypeId argTy = follow(argPackHead[i + typeOffset]);
+            std::optional<TypeId> candidate;
+            if (!isBlocked(argTy) && !get<PendingExpansionType>(argTy) && !get<TypeFunctionInstanceType>(argTy))
+            {
+                if (auto ft = get<FreeType>(argTy))
+                {
+                    if (ft->primitiveType)
+                        candidate = *ft->primitiveType;
+                }
+                else if (!is<GenericType, ErrorType, AnyType, UnknownType, NeverType>(argTy))
+                {
+                    candidate = argTy;
+                }
+            }
+
+            if (!candidate)
+            {
+                conflicting.insert(expectedArgTy);
+                continue;
+            }
+
+            *candidate = follow(*candidate);
+            if (conflicting.contains(expectedArgTy))
+                continue;
+
+            if (auto existing = genericReplacements.find(expectedArgTy))
+            {
+                if (follow(*existing) != *candidate)
+                    conflicting.insert(expectedArgTy);
+            }
+            else
+            {
+                genericReplacements[expectedArgTy] = *candidate;
+            }
+        }
+
+        for (TypeId conflictingGeneric : conflicting)
+            genericReplacements.erase(conflictingGeneric);
+    }
+
     for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
     {
         TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
         AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
 
         PushTypeResult result = pushTypeInto(
-            c.astTypes, c.astExpectedTypes, NotNull{this}, constraint, NotNull{&genericTypesAndPacks}, NotNull{&u2}, subtyping, expectedArgTy, expr
+            c.astTypes,
+            c.astExpectedTypes,
+            NotNull{this},
+            constraint,
+            NotNull{&genericTypesAndPacks},
+            NotNull{&genericReplacements},
+            NotNull{&u2},
+            subtyping,
+            expectedArgTy,
+            expr
         );
 
         // Consider:
@@ -3180,8 +3244,18 @@ bool ConstraintSolver::tryDispatch(const PushTypeConstraint& c, NotNull<const Co
     }
 
     DenseHashSet<const void*> empty;
+    DenseHashMap<TypeId, TypeId> emptyReplacements;
     PushTypeResult result = pushTypeInto(
-        c.astTypes, c.astExpectedTypes, NotNull{this}, NotNull{constraint}, NotNull{&empty}, NotNull{&u2}, subtyping, c.expectedType, c.expr
+        c.astTypes,
+        c.astExpectedTypes,
+        NotNull{this},
+        NotNull{constraint},
+        NotNull{&empty},
+        NotNull{&emptyReplacements},
+        NotNull{&u2},
+        subtyping,
+        c.expectedType,
+        c.expr
     );
 
     // If we're forcing this constraint, just early exit: we can continue

@@ -14,6 +14,7 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
+LUAU_FASTFLAG(LuauBidirectionalInferenceGenericSiblingArgs)
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRelaxConstraintOrderingForFunctionCheck)
@@ -123,6 +124,7 @@ struct BidirectionalTypePusher
     NotNull<ConstraintSolver> solver;
     NotNull<const Constraint> constraint;
     NotNull<DenseHashSet<const void*>> genericTypesAndPacks;
+    NotNull<const DenseHashMap<TypeId, TypeId>> genericReplacements;
     NotNull<Unifier2> unifier;
     NotNull<Subtyping> subtyping;
 
@@ -136,6 +138,7 @@ struct BidirectionalTypePusher
         NotNull<ConstraintSolver> solver,
         NotNull<const Constraint> constraint,
         NotNull<DenseHashSet<const void*>> genericTypesAndPacks,
+        NotNull<const DenseHashMap<TypeId, TypeId>> genericReplacements,
         NotNull<Unifier2> unifier,
         NotNull<Subtyping> subtyping
     )
@@ -144,6 +147,7 @@ struct BidirectionalTypePusher
         , solver{solver}
         , constraint{constraint}
         , genericTypesAndPacks{genericTypesAndPacks}
+        , genericReplacements{genericReplacements}
         , unifier{unifier}
         , subtyping{subtyping}
     {
@@ -280,9 +284,21 @@ struct BidirectionalTypePusher
                 auto limit = std::min({lambdaArgTys.size(), expectedLambdaArgTys.size(), exprLambda->args.size});
                 for (size_t argIndex = 0; argIndex < limit; argIndex++)
                 {
-                    if (!exprLambda->args.data[argIndex]->annotation && get<FreeType>(follow(lambdaArgTys[argIndex])) &&
-                        !containsGeneric(expectedLambdaArgTys[argIndex], NotNull{genericTypesAndPacks}))
-                        solver->bind(NotNull{constraint}, lambdaArgTys[argIndex], expectedLambdaArgTys[argIndex]);
+                    if (!exprLambda->args.data[argIndex]->annotation && get<FreeType>(follow(lambdaArgTys[argIndex])))
+                    {
+                        TypeId expectedArgTy = follow(expectedLambdaArgTys[argIndex]);
+                        if (FFlag::LuauBidirectionalInferenceGenericSiblingArgs)
+                        {
+                            if (auto replacement = genericReplacements->find(expectedArgTy))
+                            {
+                                solver->bind(NotNull{constraint}, lambdaArgTys[argIndex], *replacement);
+                                continue;
+                            }
+                        }
+
+                        if (!containsGeneric(expectedArgTy, NotNull{genericTypesAndPacks}))
+                            solver->bind(NotNull{constraint}, lambdaArgTys[argIndex], expectedArgTy);
+                    }
                 }
 
 
@@ -419,13 +435,14 @@ PushTypeResult pushTypeInto(
     NotNull<ConstraintSolver> solver,
     NotNull<const Constraint> constraint,
     NotNull<DenseHashSet<const void*>> genericTypesAndPacks,
+    NotNull<const DenseHashMap<TypeId, TypeId>> genericReplacements,
     NotNull<Unifier2> unifier,
     NotNull<Subtyping> subtyping,
     TypeId expectedType,
     const AstExpr* expr
 )
 {
-    BidirectionalTypePusher btp{astTypes, astExpectedTypes, solver, constraint, genericTypesAndPacks, unifier, subtyping};
+    BidirectionalTypePusher btp{astTypes, astExpectedTypes, solver, constraint, genericTypesAndPacks, genericReplacements, unifier, subtyping};
     (void)btp.pushType(expectedType, expr);
     return {std::move(btp.incompleteInferences)};
 }

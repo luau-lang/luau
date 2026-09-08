@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauBidirectionalInferenceGenericSiblingArgs)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1446,6 +1447,121 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument
     // error because you canont compare `unknown`s.
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(get<GenericError>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_lambda_arg_from_sibling_generic_arg")
+{
+    ScopedFastFlag sff{FFlag::LuauBidirectionalInferenceGenericSiblingArgs, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function map<T, U>(v: T, fn: (T) -> U): U
+            return fn(v)
+        end
+
+        local a = map(5, function(x)
+            return x * 2
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number" == toString(requireType("a")));
+    CHECK("(number) -> number" == toString(requireTypeAtPosition(Position{6, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_lambda_arg_from_sibling_generic_arg_string")
+{
+    ScopedFastFlag sff{FFlag::LuauBidirectionalInferenceGenericSiblingArgs, true};
+
+    CheckResult result = check(R"(
+        local function map<T, U>(v: T, fn: (T) -> U): U
+            return fn(v)
+        end
+
+        local a = map("abc", function(x)
+            return x .. "!"
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("string" == toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_lambda_arg_from_sibling_generic_arg_table")
+{
+    ScopedFastFlag sff{FFlag::LuauBidirectionalInferenceGenericSiblingArgs, true};
+
+    CheckResult result = check(R"(
+        local function map<T, U>(v: T, fn: (T) -> U): U
+            return fn(v)
+        end
+
+        local a = map({a = 1}, function(x)
+            return x.a * 2
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number" == toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_lambda_arg_from_sibling_generic_arg_multiple_generics")
+{
+    ScopedFastFlag sff{FFlag::LuauBidirectionalInferenceGenericSiblingArgs, true};
+
+    CheckResult result = check(R"(
+        local function zipWith<T, U, V>(a: T, b: U, fn: (T, U) -> V): V
+            return fn(a, b)
+        end
+
+        local r = zipWith(1, "x", function(a, b)
+            return tostring(a * 2) .. b
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("string" == toString(requireType("r")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_lambda_arg_from_sibling_generic_arg_conflicting_siblings")
+{
+    ScopedFastFlag sff{FFlag::LuauBidirectionalInferenceGenericSiblingArgs, true};
+
+    CheckResult result = check(R"(
+        local function pick<T, U>(a: T, b: T, fn: (T) -> U): U
+            return fn(a)
+        end
+
+        local r = pick(1, "x", function(x)
+            return x
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("<T>(T) -> T" == toString(requireTypeAtPosition(Position{5, 40})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_lambda_arg_from_sibling_generic_arg_unresolved_sibling")
+{
+    ScopedFastFlag sff{FFlag::LuauBidirectionalInferenceGenericSiblingArgs, true};
+
+    CheckResult result = check(R"(
+        local function map<T, U>(v: T, fn: (T) -> U): U
+            return fn(v)
+        end
+
+        local function id<T>(v: T): T
+            return v
+        end
+
+        local a = map(id(5), function(x)
+            return x * 2
+        end)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[0]));
+    CHECK("number" == toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_any_is_compatible_with_a_generic_TypePack")

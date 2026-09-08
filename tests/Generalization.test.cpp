@@ -18,6 +18,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauBetterInferredGenericNames)
 LUAU_FASTFLAG(LuauIterativeTypeSearcher)
+LUAU_FASTFLAG(LuauBidirectionalInferenceGenericSiblingArgs)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -392,7 +393,7 @@ TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback")
     // - We can substitute the `T` in `func` for either `{}` or `unknown` and
     //   still have a well typed program.
     // We *probably* can do a better job bidirectionally inferring the types.
-    CHECK_EQ("unknown", toString(requireTypeAtPosition(Position{3, 23})));
+    CHECK_EQ(FFlag::LuauBidirectionalInferenceGenericSiblingArgs ? "{  }" : "unknown", toString(requireTypeAtPosition(Position{3, 23})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generics_dont_leak_into_callback_2")
