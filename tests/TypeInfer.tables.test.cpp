@@ -24,6 +24,8 @@ LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauFixTableLiteralUnionExtraProps)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
@@ -7590,6 +7592,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_literal_picks_union_arm_that_declares_all_literal_props")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+        {FFlag::LuauFixTableLiteralUnionExtraProps, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Tag = { tag: string, name: string }
+        type Access = { read: number?, write: number? }
+
+        local a: Tag | Access = { read = 1 }
+        local b: Tag | Access = { write = 2 }
+        local c: Tag | Access = { tag = "x", name = "y" }
+        local d: { [string]: Tag | Access } = { foo = { read = 1 }, bar = { tag = "x", name = "y" } }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_literal_picks_widest_indexer_union_arm")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+        {FFlag::LuauFixTableLiteralUnionExtraProps, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Access = { read: number?, write: number? }
+        type Props = { [string]: number } | { [string]: number | Access }
+
+        local a: Props = { x = 1 }
+        local b: Props = { x = { read = 1 } }
+        local c: Props = { x = 1, y = { read = 1, write = 2 } }
+        local d: Props = { ["x"] = { write = 1 } }
+
+        local plain: { [string]: number } = {}
+        local e: Props = plain
+    )"));
 }
 
 TEST_SUITE_END();

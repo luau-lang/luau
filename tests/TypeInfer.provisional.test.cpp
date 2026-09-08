@@ -24,6 +24,8 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauFixTableLiteralUnionExtraProps)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -1434,6 +1436,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typech
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+        {FFlag::LuauFixTableLiteralUnionExtraProps, true},
     };
 
     CheckResult result = check(R"(
@@ -1452,11 +1456,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typech
         bark{ [molly] = { left = laika }, [draco] = { right = cindy } }
     )");
 
-
-    // FIXME(CLI-178738): This should actually be no errors.
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(get<TypeMismatch>(result.errors[0]));
-    CHECK(get<TypeMismatch>(result.errors[1]));
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "while_loops_fail_to_apply_refinements_1")

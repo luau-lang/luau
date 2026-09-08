@@ -24,6 +24,8 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixTableLiteralUnionExtraProps)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -762,7 +764,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_can_do_readonly_or_writeonly_types")
 {
-    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+        {FFlag::LuauFixTableLiteralUnionExtraProps, true},
+    };
 
     CheckResult result = check(R"(
         type function gettable()
@@ -773,11 +779,62 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_can_do_readonly_or_writeonly_t
         local function ok(idx: gettable<>): never return idx end
     )");
 
-    // FIXME(CLI-178738): The first error should not exist, only the one described above.
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[1]);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK(toString(tm->givenType) == "{ write bar: string, read foo: number }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_readonly_props_typecheck")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+        {FFlag::LuauFixTableLiteralUnionExtraProps, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        type function t()
+            return types.newtable({
+                [types.singleton("sts")] = {
+                    read = types.number,
+                }
+            })
+        end
+
+        local x: t<> = { sts = 1 }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("x")) == "{ read sts: number }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_newtable_mixed_props_typecheck")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+        {FFlag::LuauFixTableLiteralUnionExtraProps, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        type function t()
+            return types.newtable({
+                [types.singleton("st")] = types.number,
+                [types.singleton("sts")] = {
+                    read = types.number,
+                    write = types.number,
+                }
+            })
+        end
+
+        local x: t<> = { st = 1, sts = 2 }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("x")) == "{ st: number, sts: number }");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_methods_work")

@@ -13,6 +13,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAGVARIABLE(LuauFixTableLiteralUnionExtraProps)
+
 namespace Luau
 {
 
@@ -746,6 +748,88 @@ std::optional<TypeId> extractMatchingTableType(
 
     if (potentialTables.size() == 1)
         return {*potentialTables.begin()};
+
+    if (FFlag::LuauFixTableLiteralUnionExtraProps && potentialTables.size() > 1)
+    {
+        // Several candidates remain. If the literal mentions properties that
+        // some candidates do not declare (and cannot absorb via an indexer),
+        // the user most likely intended one of the candidates that does, e.g.
+        //
+        //  local t: { tag: string } | { read: number?, write: number? } = { read = 42 }
+        //
+        // Here `{ read: number?, write: number? }` is the only sensible pick.
+        TypeIds coveringTables;
+
+        for (TypeId ty : potentialTables)
+        {
+            const TableType* tt = get<TableType>(ty);
+            LUAU_ASSERT(tt);
+
+            bool coversAllProps = true;
+            if (!tt->indexer)
+            {
+                for (const auto& [name, _] : exprTable->props)
+                {
+                    if (tt->props.find(name) == tt->props.end())
+                    {
+                        coversAllProps = false;
+                        break;
+                    }
+                }
+            }
+
+            if (coversAllProps)
+                coveringTables.insert(ty);
+        }
+
+        if (coveringTables.size() == 1)
+            return {*coveringTables.begin()};
+
+        // If the remaining candidates are all indexers over the same key type,
+        // drop any candidate whose value type is strictly contained in another
+        // candidate's value type, e.g.
+        //
+        //  { [string]: number } | { [string]: number | { read: number? } }
+        //
+        // Anything that fits the first arm also fits the second, so the second
+        // is the one to push into the literal.
+        TypeIds indexerTables;
+        for (TypeId ty : coveringTables)
+        {
+            if (get<TableType>(ty)->indexer)
+                indexerTables.insert(ty);
+        }
+
+        if (indexerTables.size() > 1 && indexerTables.size() == coveringTables.size())
+        {
+            TypeIds widestTables;
+            for (TypeId ty : indexerTables)
+            {
+                const TableIndexer& indexer = *get<TableType>(ty)->indexer;
+                bool subsumed = false;
+
+                for (TypeId other : indexerTables)
+                {
+                    if (other == ty)
+                        continue;
+
+                    const TableIndexer& otherIndexer = *get<TableType>(other)->indexer;
+                    if (relate(indexer.indexType, otherIndexer.indexType) == Relation::Coincident &&
+                        relate(otherIndexer.indexResultType, indexer.indexResultType) == Relation::Superset)
+                    {
+                        subsumed = true;
+                        break;
+                    }
+                }
+
+                if (!subsumed)
+                    widestTables.insert(ty);
+            }
+
+            if (widestTables.size() == 1)
+                return {*widestTables.begin()};
+        }
+    }
 
     return std::nullopt;
 }
