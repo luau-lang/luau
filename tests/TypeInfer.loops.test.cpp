@@ -17,6 +17,7 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauUnpackBlocksOnBlockedTail)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -1634,6 +1635,40 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_inside_lambdas
     REQUIRE(err);
     CHECK_EQ("number", toString(err->wantedType));
     CHECK_EQ("string", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "multiple_assignment_from_call_in_loop_does_not_widen_to_optional")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauUnpackBlocksOnBlockedTail, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local function n(x: number): number return x end
+
+        local function fa(x: number): (number, number)
+            local a, b = 0, 0
+            for i = 1, x do
+                a, b = x, n(b * a)
+            end
+            return a, b
+        end
+
+        local function fb(x: number): (number, number)
+            local a, b = 0, 0
+            for i = 1, x do
+                a, b = x, n(-b)
+            end
+            return a, b
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("(number) -> (number, number)", toString(requireType("fa")));
+    CHECK_EQ("(number) -> (number, number)", toString(requireType("fb")));
 }
 
 TEST_SUITE_END();

@@ -48,6 +48,7 @@ LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArgumentsDedup)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAGVARIABLE(LuauForceLess)
+LUAU_FASTFLAGVARIABLE(LuauUnpackBlocksOnBlockedTail)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
@@ -2733,6 +2734,9 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
         return block(sourcePack, constraint);
 
     TypePack srcPack = extendTypePack(*arena, builtinTypes, sourcePack, c.resultPack.size());
+
+    if (FFlag::LuauUnpackBlocksOnBlockedTail && srcPack.head.size() < c.resultPack.size() && srcPack.tail && isBlocked(*srcPack.tail))
+        return block(*srcPack.tail, constraint);
 
     auto resultIter = begin(c.resultPack);
     auto resultEnd = end(c.resultPack);
