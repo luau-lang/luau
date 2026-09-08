@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAG(LuauIterateGenericTableIntersection)
 
 namespace Luau
 {
@@ -3380,6 +3381,28 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
     }
     else if (auto primitiveTy = get<PrimitiveType>(iteratorTy); primitiveTy && primitiveTy->type == PrimitiveType::Type::Table)
         unpack(builtinTypes->unknownType);
+    else if (auto iteratorIntersection = get<IntersectionType>(iteratorTy); iteratorIntersection && FFlag::LuauIterateGenericTableIntersection)
+    {
+        // An intersection like `T & table` or `T & {[K]: V}` is iterable via
+        // its table part, so dispatch on the most informative such part.
+        std::optional<TypeId> tablePart;
+        for (TypeId part : iteratorIntersection)
+        {
+            part = follow(part);
+            if (is<TableType, MetatableType>(part))
+            {
+                tablePart = part;
+                break;
+            }
+            else if (auto pt = get<PrimitiveType>(part); pt && pt->type == PrimitiveType::Type::Table && !tablePart)
+                tablePart = part;
+        }
+
+        if (tablePart)
+            return tryDispatchIterableTable(*tablePart, c, constraint, force);
+
+        unpack(builtinTypes->errorType);
+    }
     else
     {
         unpack(builtinTypes->errorType);

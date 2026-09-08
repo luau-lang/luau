@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauIterateGenericTableIntersection)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -1162,6 +1163,20 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
     else if (iteratorNorm && iteratorNorm->hasTables())
     {
         // Ok. All tables can be iterated.
+    }
+    else if (
+        FFlag::LuauIterateGenericTableIntersection && iteratorNorm &&
+        std::any_of(
+            begin(iteratorNorm->tyvars),
+            end(iteratorNorm->tyvars),
+            [](const auto& tyvar)
+            {
+                return tyvar.second->hasTables();
+            }
+        )
+    )
+    {
+        // Ok. A type variable intersected with a table (eg `T & table`) can also be iterated.
     }
     else if (!iteratorNorm || !iteratorNorm->shouldSuppressErrors())
     {

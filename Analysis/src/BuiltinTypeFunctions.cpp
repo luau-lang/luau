@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
+LUAU_FASTFLAGVARIABLE(LuauIterateGenericTableIntersection)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 
 namespace Luau
@@ -2647,7 +2648,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , refineFunc{"refine", refineTypeFunction, /*canReduceGenerics*/ true}
     , singletonFunc{"singleton", singletonTypeFunction}
     , unionFunc{"union", unionTypeFunction}
-    , intersectFunc{"intersect", intersectTypeFunction}
+    , intersectFunc{"intersect", intersectTypeFunction, /*canReduceGenerics*/ FFlag::LuauIterateGenericTableIntersection}
     , keyofFunc{"keyof", keyofTypeFunction}
     , rawkeyofFunc{"rawkeyof", rawkeyofTypeFunction}
     , indexFunc{"index", indexTypeFunction}

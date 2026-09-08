@@ -17,6 +17,7 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauIterateGenericTableIntersection)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -1634,6 +1635,65 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_inside_lambdas
     REQUIRE(err);
     CHECK_EQ("number", toString(err->wantedType));
     CHECK_EQ("string", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_over_generic_refined_to_table")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauIterateGenericTableIntersection, true}};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function foo<src>(src: src): src
+            if type(src) ~= "table" then
+                return src
+            end
+
+            for _, value in src do
+            end
+
+            table.freeze(src)
+            return src
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_over_generic_intersected_with_indexer_table")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauIterateGenericTableIntersection, true}};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function f<T>(t: T & {[string]: number})
+            for k, v in t do
+                local k2: string = k
+                local v2: number = v
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    ScopePtr scope = findScopeAtPosition(*getMainModule(), Position{5, 22});
+    REQUIRE(scope);
+    CHECK_EQ("string", toString(requireType(scope, "k")));
+    CHECK_EQ("number", toString(requireType(scope, "v")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_over_generic_intersected_with_non_table_is_an_error")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauIterateGenericTableIntersection, true}};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function f<T>(t: T & number)
+            for k, v in t do
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<CannotCallNonFunction>(result.errors[0]));
 }
 
 TEST_SUITE_END();
