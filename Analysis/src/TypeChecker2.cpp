@@ -43,6 +43,7 @@ LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAGVARIABLE(LuauFixReadOnlyIndexerUnionWrite)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
 
@@ -2223,7 +2224,25 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
     else if (auto ut = get<UnionType>(exprType))
     {
         // if all of the typeArguments are a table type, the union must be a table, and so we shouldn't error.
-        if (!std::all_of(begin(ut), end(ut), getTableType))
+        if (std::all_of(begin(ut), end(ut), getTableType))
+        {
+            if (FFlag::LuauFixReadOnlyIndexerUnionWrite && context == ValueContext::LValue)
+            {
+                // A write must be valid for every component, so a read-only indexer in any of them rejects it.
+                for (TypeId option : ut)
+                {
+                    const TableType* tt = getTableType(option);
+                    if (tt && tt->indexer && tt->indexer->isReadOnly)
+                    {
+                        reportError(
+                            PropertyAccessViolation{follow(option), "indexer", PropertyAccessViolation::CannotWrite}, indexExpr->location
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+        else
         {
             switch (shouldSuppressErrors(NotNull{&normalizer}, exprType))
             {

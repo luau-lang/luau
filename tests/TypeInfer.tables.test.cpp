@@ -27,6 +27,7 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
+LUAU_FASTFLAG(LuauFixReadOnlyIndexerUnionWrite)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
@@ -4694,6 +4695,52 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_write_rejected")
     auto* pav = get<PropertyAccessViolation>(result.errors[0]);
     REQUIRE(pav);
     CHECK(PropertyAccessViolation::CannotWrite == pav->context);
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_union_write_rejected")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixReadOnlyIndexerUnionWrite, true}};
+
+    CheckResult result = check(R"(
+        type A = { read [number]: unknown }
+        type B = { [number]: unknown }
+
+        local function f(u: A | B, v: B | A, w: A | { x: number })
+            u[1] = 1
+            v[1] = 1
+            w[1] = 1
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+
+    for (const TypeError& e : result.errors)
+    {
+        auto* pav = get<PropertyAccessViolation>(e);
+        REQUIRE(pav);
+        CHECK(PropertyAccessViolation::CannotWrite == pav->context);
+        CHECK("indexer" == pav->key);
+    }
+
+    CHECK("Property indexer of table 'A' is read-only" == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_union_read_and_read_write_union_ok")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixReadOnlyIndexerUnionWrite, true}};
+
+    CheckResult result = check(R"(
+        type A = { read [number]: unknown }
+        type B = { [number]: unknown }
+        type C = { [number]: string }
+
+        local function f(u: A | B, v: B | C): unknown
+            v[1] = 1
+            return u[1]
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_covariance")
