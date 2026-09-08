@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeUseTaggedMetatable)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionRetainTableAlias)
 
 namespace Luau
 {
@@ -930,6 +931,9 @@ static int setTableProp(lua_State* L)
     if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
         luaL_error(L, "type.setproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
+    if (FFlag::LuauTypeFunctionRetainTableAlias)
+        tftt->aliasSource = std::nullopt;
+
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     auto tfst = get<TypeFunctionSingletonType>(key);
     if (!tfst)
@@ -966,6 +970,9 @@ static int setReadTableProp(lua_State* L)
 
     if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
         luaL_error(L, "type.setreadproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
+
+    if (FFlag::LuauTypeFunctionRetainTableAlias)
+        tftt->aliasSource = std::nullopt;
 
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     auto tfst = get<TypeFunctionSingletonType>(key);
@@ -1014,6 +1021,9 @@ static int setWriteTableProp(lua_State* L)
 
     if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
         luaL_error(L, "type.setwriteproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
+
+    if (FFlag::LuauTypeFunctionRetainTableAlias)
+        tftt->aliasSource = std::nullopt;
 
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     auto tfst = get<TypeFunctionSingletonType>(key);
@@ -1139,6 +1149,9 @@ static int setTableIndexer(lua_State* L)
     if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
         luaL_error(L, "type.setindexer: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
 
+    if (FFlag::LuauTypeFunctionRetainTableAlias)
+        tftt->aliasSource = std::nullopt;
+
     TypeFunctionTypeId key = getTypeUserData(L, 2);
     TypeFunctionTypeId value = getTypeUserData(L, 3);
 
@@ -1182,6 +1195,9 @@ static int setTableMetatable(lua_State* L)
 
     if (FFlag::LuauTypeFunctionSupportsFrozen && self->frozen)
         luaL_error(L, "type.setmetatable: cannot be called to mutate a frozen type, use `types.copy` to make a copy");
+
+    if (FFlag::LuauTypeFunctionRetainTableAlias)
+        tftt->aliasSource = std::nullopt;
 
     TypeFunctionTypeId arg = getTypeUserData(L, 2);
     if (!get<TypeFunctionTableType>(arg))

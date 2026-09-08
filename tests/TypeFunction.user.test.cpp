@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauTypeFunctionRetainTableAlias)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -749,9 +750,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")
         type function serialize_table(arg)
             return arg
         end
-        type type_being_serialized = { boolean: boolean, number: number, [string]: number }
         -- forcing an error here to check the exact type of the table
-        local function ok(idx: serialize_table<type_being_serialized>): nil return idx end
+        local function ok(idx: serialize_table<{ boolean: boolean, number: number, [string]: number }>): nil return idx end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -3613,7 +3613,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag tostringMetamethod{FFlag::LuauUdtfTypeToStringMetamethod, true};
+    ScopedFastFlag sffs[] = {{FFlag::LuauUdtfTypeToStringMetamethod, true}, {FFlag::LuauTypeFunctionRetainTableAlias, false}};
 
     CheckResult results = check(R"(
         type function foo(ty)
@@ -3699,6 +3699,159 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_retains_table_alias")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTypeFunctionRetainTableAlias, true}};
+
+    CheckResult result = check(R"(
+        type Object = {
+            foo: number,
+        }
+
+        type function getType(ty)
+            return ty
+        end
+
+        local function getObject(): getType<Object>
+            return {
+                foo = 42,
+            }
+        end
+
+        local obj = getObject()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("obj")) == "Object");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_retains_generic_table_alias")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTypeFunctionRetainTableAlias, true}};
+
+    CheckResult result = check(R"(
+        type Box<T> = {
+            value: T,
+        }
+
+        type function getType(ty)
+            return ty
+        end
+
+        local function getBox(): getType<Box<number>>
+            return {
+                value = 42,
+            }
+        end
+
+        local box = getBox()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("box")) == "Box<number>");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_retains_table_alias_from_union_component")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTypeFunctionRetainTableAlias, true}};
+
+    CheckResult result = check(R"(
+        type function removeOptional(ty)
+            if ty:is("union") then
+                for _, component in ty:components() do
+                    if not (component:is("nil") or component:is("false")) then
+                        return component
+                    end
+                end
+            end
+
+            return ty
+        end
+
+        type Object = {
+            foo: number,
+        }
+
+        local function assert<T>(value: T): removeOptional<T>
+            if not value then
+                error("Assertion failed", 2)
+            end
+
+            return value
+        end
+
+        local objectOrNil: Object | nil = {
+            foo = 42,
+        }
+
+        local object = assert(objectOrNil)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("object")) == "Object");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_drops_table_alias_when_mutated")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTypeFunctionSupportsFrozen, true}, {FFlag::LuauTypeFunctionRetainTableAlias, true}
+    };
+
+    CheckResult result = check(R"(
+        type Object = {
+            foo: number,
+        }
+
+        type function addBar(ty)
+            local copy = types.copy(ty)
+            copy:setproperty(types.singleton("bar"), types.string)
+            return copy
+        end
+
+        local function getObject(): addBar<Object>
+            return {
+                foo = 42,
+                bar = "",
+            }
+        end
+
+        local obj = getObject()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("obj")) == "{ bar: string, foo: number }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_drops_table_alias_when_mutated_in_place")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauTypeFunctionSupportsFrozen, false}, {FFlag::LuauTypeFunctionRetainTableAlias, true}
+    };
+
+    CheckResult result = check(R"(
+        type Object = {
+            foo: number,
+        }
+
+        type function addBar(ty)
+            ty:setproperty(types.singleton("bar"), types.string)
+            return ty
+        end
+
+        local function getObject(): addBar<Object>
+            return {
+                foo = 42,
+                bar = "",
+            }
+        end
+
+        local obj = getObject()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("obj")) == "{ bar: string, foo: number }");
 }
 
 TEST_SUITE_END();

@@ -221,6 +221,10 @@ struct TypeFunctionTableType
 
     // Should always be a TypeFunctionTableType
     std::optional<TypeFunctionTypeId> metatable;
+
+    // The original table this type was serialized from, if it is unmodified. Used to retain the alias (name and
+    // instantiated type parameters) of the original type when deserializing. Cleared by any mutation.
+    std::optional<TypeId> aliasSource;
 };
 
 struct TypeFunctionExternType

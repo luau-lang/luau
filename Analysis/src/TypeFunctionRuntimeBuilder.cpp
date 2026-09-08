@@ -22,6 +22,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
+LUAU_FASTFLAG(LuauTypeFunctionRetainTableAlias)
 
 namespace Luau
 {
@@ -215,8 +216,14 @@ private:
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionIntersectionType{{}});
         else if (get<NegationType>(ty))
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionNegationType{{}});
-        else if (get<TableType>(ty))
-            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionTableType{{}, std::nullopt, std::nullopt});
+        else if (auto t = get<TableType>(ty))
+        {
+            std::optional<TypeId> aliasSource;
+            if (FFlag::LuauTypeFunctionRetainTableAlias && t->name)
+                aliasSource = ty;
+
+            target = typeFunctionRuntime->typeArena.allocate(TypeFunctionTableType{{}, std::nullopt, std::nullopt, aliasSource});
+        }
         else if (get<MetatableType>(ty))
             target = typeFunctionRuntime->typeArena.allocate(TypeFunctionTableType{{}, std::nullopt, std::nullopt});
         else if (get<FunctionType>(ty))
@@ -773,7 +780,21 @@ private:
         else if (get<TypeFunctionNegationType>(ty))
             target = state->ctx->arena->addType(NegationType{state->ctx->builtins->unknownType});
         else if (auto t = get<TypeFunctionTableType>(ty); t && !t->metatable.has_value())
-            target = state->ctx->arena->addType(TableType{TableType::Props{}, std::nullopt, TypeLevel{}, TableState::Sealed});
+        {
+            TableType table{TableType::Props{}, std::nullopt, TypeLevel{}, TableState::Sealed};
+
+            if (FFlag::LuauTypeFunctionRetainTableAlias && t->aliasSource)
+            {
+                if (auto source = get<TableType>(follow(*t->aliasSource)))
+                {
+                    table.name = source->name;
+                    table.instantiatedTypeParams = source->instantiatedTypeParams;
+                    table.instantiatedTypePackParams = source->instantiatedTypePackParams;
+                }
+            }
+
+            target = state->ctx->arena->addType(std::move(table));
+        }
         else if (auto m = get<TypeFunctionTableType>(ty); m && m->metatable.has_value())
         {
             TypeId emptyTable = state->ctx->arena->addType(TableType{TableType::Props{}, std::nullopt, TypeLevel{}, TableState::Sealed});
