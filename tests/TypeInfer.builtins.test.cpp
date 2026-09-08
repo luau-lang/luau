@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixOverloadResolutionPrefersMostSpecific)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -2052,6 +2053,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_function")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Argument count mismatch. Function 'table.freeze' expects 1 argument, but none are specified", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "os_date_star_t_returns_DateTypeResult")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixOverloadResolutionPrefersMostSpecific, true}};
+
+    CheckResult result = check(R"(
+        local x = os.date("*t")
+        local y = os.date("!*t", 0)
+        local s = os.date("%Y")
+        print(x.nope)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<UnknownProperty>(result.errors[0]));
+    CHECK_EQ("DateTypeResult", toString(requireType("x")));
+    CHECK_EQ("DateTypeResult", toString(requireType("y")));
+    CHECK_EQ("string", toString(requireType("s")));
 }
 
 TEST_SUITE_END();

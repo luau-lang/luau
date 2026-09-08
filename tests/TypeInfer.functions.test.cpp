@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixOverloadResolutionPrefersMostSpecific)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -3527,6 +3528,39 @@ TEST_CASE_FIXTURE(Fixture, "overload_selection_ambiguous_call")
     CHECK_EQ("number", toString(err->arguments));
     CHECK_EQ("((boolean | number) -> \"two\") & ((number | string) -> \"one\")", toString(err->function));
     // FIXME CLI-180645: This probably ought to be `"one" | "two"`
+    CHECK_EQ("*error-type*", toString(requireType("g")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_prefers_most_specific_overload")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixOverloadResolutionPrefersMostSpecific, true}};
+
+    auto result = check(R"(
+        local f: (("*t" | "!*t", number?) -> "one") & ((string?, number?) -> "two")
+        local g = f("*t")
+        local h = f("*t", 0)
+        local i = f("%Y")
+        local j = f()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("\"one\"", toString(requireType("g")));
+    CHECK_EQ("\"one\"", toString(requireType("h")));
+    CHECK_EQ("\"two\"", toString(requireType("i")));
+    CHECK_EQ("\"two\"", toString(requireType("j")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_equally_specific_overloads_are_still_ambiguous")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixOverloadResolutionPrefersMostSpecific, true}};
+
+    auto result = check(R"(
+        local f: ((number | string) -> "one") & ((number | boolean) -> "two")
+        local g = f(42)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<AmbiguousFunctionCall>(result.errors[0]));
     CHECK_EQ("*error-type*", toString(requireType("g")));
 }
 

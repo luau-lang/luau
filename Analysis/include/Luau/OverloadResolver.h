@@ -153,6 +153,8 @@ struct OverloadResolver
     ) const;
 
 private:
+    void pruneToMostSpecificOverload(OverloadResolution& result);
+
     void testFunctionOrUnion(
         OverloadResolution& result,
         TypeId fnTy,

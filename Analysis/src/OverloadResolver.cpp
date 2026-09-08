@@ -16,6 +16,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
+LUAU_FASTFLAGVARIABLE(LuauFixOverloadResolutionPrefersMostSpecific)
 
 namespace Luau
 {
@@ -177,6 +178,54 @@ static bool areUnsatisfiedArgumentsOptional(const SubtypingReasonings& reasoning
     return true;
 }
 
+void OverloadResolver::pruneToMostSpecificOverload(OverloadResolution& result)
+{
+    if (result.ok.size() < 2)
+        return;
+
+    std::vector<const FunctionType*> fns;
+    fns.reserve(result.ok.size());
+    for (TypeId ty : result.ok)
+    {
+        if (result.metamethods.contains(ty))
+            return;
+
+        const FunctionType* ftv = get<FunctionType>(follow(ty));
+        if (!ftv || !ftv->generics.empty() || !ftv->genericPacks.empty())
+            return;
+
+        fns.push_back(ftv);
+    }
+
+    // An overload is the most specific one if its argument pack is a subtype
+    // of every other candidate's argument pack.
+    std::optional<TypeId> mostSpecific;
+    for (size_t i = 0; i < fns.size(); ++i)
+    {
+        bool isMostSpecific = true;
+        for (size_t j = 0; j < fns.size() && isMostSpecific; ++j)
+        {
+            if (i == j)
+                continue;
+
+            isMostSpecific = subtyping.isSubtype(fns[i]->argTypes, fns[j]->argTypes, scope, {}).isSubtype;
+        }
+
+        if (!isMostSpecific)
+            continue;
+
+        // Two candidates that are each a subtype of the other are equally
+        // specific, so the call stays ambiguous.
+        if (mostSpecific)
+            return;
+
+        mostSpecific = result.ok[i];
+    }
+
+    if (mostSpecific)
+        result.ok = {*mostSpecific};
+}
+
 OverloadResolution OverloadResolver::resolveOverload(
     TypeId ty,
     TypePackId argsPack,
@@ -196,6 +245,9 @@ OverloadResolution OverloadResolver::resolveOverload(
     }
     else
         testFunctionOrUnion(result, ty, argsPack, fnLocation, uniqueTypes);
+
+    if (FFlag::LuauFixOverloadResolutionPrefersMostSpecific)
+        pruneToMostSpecificOverload(result);
 
     return result;
 }
