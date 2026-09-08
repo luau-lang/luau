@@ -423,6 +423,9 @@ private:
     NormalizationResult isInhabited(TypeId ty, Set<TypeId>& seen);
     NormalizationResult isInhabited(const NormalizedType* norm, Set<TypeId>& seen);
 
+    // Returns the cached intersection with the same set of parts as `ty`, registering `ty` if there is none.
+    TypeId canonicalIntersection(TypeId ty);
+
     // Check for intersections being inhabited
     NormalizationResult isIntersectionInhabited(TypeId left, TypeId right, SeenTablePropPairs& seenTablePropPairs, Set<TypeId>& seenSet);
 

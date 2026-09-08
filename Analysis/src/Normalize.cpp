@@ -25,6 +25,7 @@ LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAGVARIABLE(LuauFixInhabitanceRecursiveIntersection)
 
 namespace Luau
 {
@@ -560,10 +561,16 @@ NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
     if (!get<IntersectionType>(ty) && !get<UnionType>(ty) && !get<TableType>(ty) && !get<MetatableType>(ty))
         return NormalizationResult::True;
 
-    if (seen.count(ty))
+    // Normalizing a table intersection allocates a fresh intersection for each
+    // property shared by both tables, so a recursive intersection is never
+    // pointer-identical to the one we came from. Key the seen set on a
+    // canonical instance for the set of parts instead.
+    TypeId seenKey = FFlag::LuauFixInhabitanceRecursiveIntersection ? canonicalIntersection(ty) : ty;
+
+    if (seen.count(seenKey))
         return NormalizationResult::True;
 
-    seen.insert(ty);
+    seen.insert(seenKey);
 
     if (const TableType* ttv = get<TableType>(ty))
     {
@@ -1135,6 +1142,24 @@ TypeId Normalizer::unionType(TypeId here, TypeId there)
     cachedUnions[cacheTypeIds(std::move(tmps))] = result;
 
     return result;
+}
+
+TypeId Normalizer::canonicalIntersection(TypeId ty)
+{
+    const IntersectionType* itv = get<IntersectionType>(ty);
+    if (!itv)
+        return ty;
+
+    TypeIds parts;
+    for (TypeId part : itv)
+        parts.insert(follow(part));
+
+    auto cacheHit = cachedIntersections.find(&parts);
+    if (cacheHit != cachedIntersections.end())
+        return cacheHit->second;
+
+    cachedIntersections[cacheTypeIds(std::move(parts))] = ty;
+    return ty;
 }
 
 TypeId Normalizer::intersectionType(TypeId here, TypeId there)

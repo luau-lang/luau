@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauIncludeExternTypeExtensionsWithTopExternType)
+LUAU_FASTFLAG(LuauFixInhabitanceRecursiveIntersection)
 
 using namespace Luau;
 
@@ -1305,6 +1306,31 @@ return function<T, U>(
 	return array
 end
 )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gh2056_cast_to_recursive_intersection_of_prototypes_is_not_too_complex")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixInhabitanceRecursiveIntersection, true};
+
+    CheckResult result = check(R"(
+        type BaseButtonPrototype = {
+            set_active: (plugin_button: { read button: number }, active: boolean) -> (),
+            __index: BaseButtonPrototype
+        }
+
+        type PluginActionButtonPrototype = BaseButtonPrototype & {
+            on_trigger: (plugin_action_button: PluginActionButton, f: () -> ()) -> (() -> ()),
+            __index: PluginActionButtonPrototype,
+        }
+
+        export type PluginActionButton = typeof(setmetatable({} :: {
+            read button: number,
+            enabled: boolean,
+        }, {} :: PluginActionButtonPrototype))
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_flatten_type_pack_cycle")
