@@ -29,6 +29,7 @@ LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
+LUAU_FASTFLAGVARIABLE(LuauFixSetmetatableNil)
 
 namespace Luau
 {
@@ -2339,8 +2340,11 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
             return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
     }
 
+    // `setmetatable(t, nil)` removes the metatable of `t`, so the result is the underlying table(s).
+    const bool removingMetatable = FFlag::LuauFixSetmetatableNil && isNil(metatableTy);
+
     // if the supposed metatable is not a table, we will fail to reduce.
-    if (!get<TableType>(metatableTy) && !get<MetatableType>(metatableTy))
+    if (!removingMetatable && !get<TableType>(metatableTy) && !get<MetatableType>(metatableTy))
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 
     if (targetNorm->tables.size() == 1)
@@ -2364,6 +2368,9 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
             if (auto mt = get<MetatableType>(table))
                 table = mt->table;
         }
+
+        if (removingMetatable)
+            return {table, Reduction::MaybeOk, {}, {}};
 
         TypeId withMetatable = ctx->arena->addType(MetatableType{table, metatableTy});
 
@@ -2392,7 +2399,7 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
                 componentTy = mt->table;
         }
 
-        TypeId withMetatable = ctx->arena->addType(MetatableType{componentTy, metatableTy});
+        TypeId withMetatable = removingMetatable ? componentTy : ctx->arena->addType(MetatableType{componentTy, metatableTy});
         SimplifyResult simplified = simplifyUnion(ctx->builtins, ctx->arena, result, withMetatable);
 
         if (!simplified.blockedTypes.empty())

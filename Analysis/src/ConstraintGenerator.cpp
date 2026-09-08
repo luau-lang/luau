@@ -53,6 +53,7 @@ LUAU_FASTFLAGVARIABLE(LuauUdtfPopulateEnv)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
+LUAU_FASTFLAG(LuauFixSetmetatableNil)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
 
@@ -2976,7 +2977,22 @@ InferencePack ConstraintGenerator::checkExprCall(
 
         TypeId resultTy = nullptr;
 
-        if (FFlag::LuauSetmetatableOverrides)
+        if (FFlag::LuauFixSetmetatableNil && isNil(follow(mt)))
+        {
+            if (isTableUnion(target))
+            {
+                const UnionType* targetUnion = get<UnionType>(target);
+                UnionBuilder ub{arena, builtinTypes};
+
+                for (TypeId ty : targetUnion)
+                    ub.add(findSetmetatableTargetOf(ty));
+
+                resultTy = ub.build();
+            }
+            else
+                resultTy = findSetmetatableTargetOf(target);
+        }
+        else if (FFlag::LuauSetmetatableOverrides)
         {
             if (isTableUnion(target))
             {
