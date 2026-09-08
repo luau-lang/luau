@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -2049,6 +2050,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "improved_function_arg_mismatch_error_nonstri
 
 TEST_CASE_FIXTURE(Fixture, "luau_subtyping_is_np_hard")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     // The case that _should_ succeed here (`z = x`) does not currently in the new solver.
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
 
@@ -2085,11 +2088,7 @@ z = y -- Not OK, so the line is colorable
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     const std::string expected =
-        "Expected this to be\n\t"
-        R"('("blue" | "red") -> ("blue" | "red") -> ("blue" | "red") -> false')"
-        "\nbut got\n\t"
-        R"('(("blue" | "red") -> ("blue" | "red") -> ("blue" | "red") -> boolean) & (("blue" | "red") -> ("blue") -> ("blue") -> false) & (("blue" | "red") -> ("red") -> ("red") -> false) & (("blue") -> ("blue") -> ("blue" | "red") -> false) & (("red") -> ("red") -> ("blue" | "red") -> false)')"
-        "; none of the intersection parts are compatible";
+        "Expected this to be '(Color) -> (Color) -> (Color) -> false', but got 'Line'; none of the intersection parts are compatible";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 

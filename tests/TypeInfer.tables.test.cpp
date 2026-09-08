@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -5305,25 +5306,25 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "length_of_array_is_number")
 TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_with_a_metatable_table_path")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
 
     CheckResult result = check(R"(
-        type self = {} & {}
         type Class = typeof(setmetatable())
         local function _(): Class
-            return setmetatable({}::self, {})
+            return setmetatable({}::({} & {}), {})
         end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
 
     // We shouldn't allow `setmetatable()` to type check
-    CHECK(result.errors.at(0).location == Location{{2, 21}, {2, 43}});
+    CHECK(result.errors.at(0).location == Location{{1, 21}, {1, 43}});
     CHECK("Type function instance setmetatable<unknown, unknown> is uninhabited" == toString(result.errors.at(0)));
 
-    CHECK(result.errors.at(1).location == Location{{2, 28}, {2, 40}});
+    CHECK(result.errors.at(1).location == Location{{1, 28}, {1, 40}});
     CHECK("Argument count mismatch. Function expects 2 arguments, but none are specified" == toString(result.errors.at(1)));
 
-    CHECK(result.errors.at(2).location == Location{{3, 8}, {5, 11}});
+    CHECK(result.errors.at(2).location == Location{{2, 8}, {4, 11}});
     CHECK("Type function instance setmetatable<unknown, unknown> is uninhabited" == toString(result.errors.at(2)));
 
     if (FFlag::LuauNewTypePathErrorMessages)
@@ -6135,6 +6136,7 @@ TEST_CASE_FIXTURE(Fixture, "narrow_table_literal_check_call_singleton")
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1450")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
 
     CheckResult results = check(R"(
         local keycodes = {
@@ -6163,7 +6165,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1450")
     REQUIRE(err);
     // NOTE: Single line with just `"Ctrl"`
     CHECK_EQ(results.errors[0].location, Location{{17, 16}, {17, 22}});
-    CHECK_EQ(R"("Alt" | "Space" | "Tab")", toString(err->wantedType));
+    CHECK_EQ("Keycode", toString(err->wantedType));
     CHECK_EQ(R"("Ctrl")", toString(err->givenType));
 }
 

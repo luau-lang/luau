@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass);
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 namespace
 {
@@ -405,6 +406,8 @@ end
 
 TEST_CASE_FIXTURE(ClassesFixture, "class_refers_to_later_type_alias")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         class Foo
             public bar: BarType
@@ -417,7 +420,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "class_refers_to_later_type_alias")
         end
     )"));
 
-    CHECK_EQ("(Foo) -> number | string", toString(requireType("getbar")));
+    CHECK_EQ("(Foo) -> BarType", toString(requireType("getbar")));
 }
 
 TEST_CASE_FIXTURE(ClassesFixture, "accept_read_only_tables")

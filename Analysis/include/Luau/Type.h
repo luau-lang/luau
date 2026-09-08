@@ -752,12 +752,14 @@ struct NoRefineType
 struct UnionType
 {
     std::vector<TypeId> options;
+    std::optional<std::string> name;
 };
 
 // `T & U`
 struct IntersectionType
 {
     std::vector<TypeId> parts;
+    std::optional<std::string> name;
 };
 
 struct LazyType

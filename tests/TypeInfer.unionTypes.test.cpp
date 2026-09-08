@@ -10,6 +10,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -395,9 +396,10 @@ TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors")
 
 TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors_2")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
-        type A = { x: number } & { y: number }
-        function f(a: A?)
+        function f(a: ({ x: number } & { y: number })?)
             a.x = 2
         end
     )");
@@ -515,14 +517,14 @@ local oh : boolean = t.y
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_union_part")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
 type Z = { z: number }
 
-type XYZ = X | Y | Z
-
-function f(a: XYZ)
+function f(a: X | Y | Z)
     local b: { w: number } = a
 end
     )");
@@ -561,14 +563,14 @@ Table type 'X' not compatible with type '{ w: number }' because the former is mi
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
         type X = { x: number }
         type Y = { y: number }
         type Z = { z: number }
 
-        type XYZ = X | Y | Z
-
-        local a: XYZ = { w = 4 }
+        local a: X | Y | Z = { w = 4 }
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);

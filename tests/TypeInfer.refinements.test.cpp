@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 using namespace Luau;
 
@@ -2030,12 +2031,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dataflow_analysis_can_tell_refinements_when_
 
 TEST_CASE_FIXTURE(Fixture, "cat_or_dog_through_a_local")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
         type Cat = { tag: "cat", catfood: string }
         type Dog = { tag: "dog", dogfood: string }
-        type Animal = Cat | Dog
-
-        local function f(animal: Animal)
+        local function f(animal: Cat | Dog)
             local tag = animal.tag
             if tag == "dog" then
                 local dog = animal
@@ -2047,8 +2048,8 @@ TEST_CASE_FIXTURE(Fixture, "cat_or_dog_through_a_local")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
+    CHECK_EQ("Cat | Dog", toString(requireTypeAtPosition({6, 28})));
     CHECK_EQ("Cat | Dog", toString(requireTypeAtPosition({8, 28})));
-    CHECK_EQ("Cat | Dog", toString(requireTypeAtPosition({10, 28})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "prove_that_dataflow_analysis_isnt_doing_alias_tracking_yet")
@@ -2715,6 +2716,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cli_140033_refine_union_of_exter
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function_union")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sffAlias{FFlag::LuauUnionIntersectionAliasNames, true};
 
     CheckResult result = check(R"(
         type Disconnectable = {
@@ -2738,8 +2740,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function_union")
     // functions containing `function` here, but it looks like a side
     // effect of how we execute `hasProp`.
     std::string expectedError = "Cannot call a value of type function in union:\n"
-                                "  ((ExternScriptConnection) -> ()) | function | t2 where t1 = ExternScriptConnection | { Disconnect: t2 } | { "
-                                "disconnect: (t1) -> (...any) } ; t2 = (t1) -> (...any)";
+                                "  ((Disconnectable) -> (...any)) | ((ExternScriptConnection) -> ()) | function";
 
     CHECK_EQ(toString(result.errors[1]), expectedError);
 }

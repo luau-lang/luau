@@ -10,6 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -42,6 +43,8 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_simple")
 
 TEST_CASE_FIXTURE(Fixture, "definition_file_loading")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     loadDefinition(R"(
         declare foo: number
         export type Asdf = number | string
@@ -55,7 +58,7 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_loading")
 
     std::optional<TypeFun> globalAsdfTy = getFrontend().globals.globalScope->lookupType("Asdf");
     REQUIRE(bool(globalAsdfTy));
-    CHECK_EQ(toString(globalAsdfTy->type), "number | string");
+    CHECK_EQ(toString(globalAsdfTy->type), "Asdf");
 
     TypeId globalBarTy = getGlobalBinding(getFrontend().globals, "bar");
     CHECK_EQ(toString(globalBarTy), "(number) -> string");

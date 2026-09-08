@@ -14,6 +14,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -121,9 +122,10 @@ TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
 
 TEST_CASE_FIXTURE(Fixture, "nil_or_nil_is_nil_not_question_mark")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
-      type nil_ty = nil | nil
-      local a : nil_ty = nil
+      local a : nil | nil = nil
   )");
     ToStringOptions opts;
     opts.useLineBreaks = false;
@@ -132,9 +134,10 @@ TEST_CASE_FIXTURE(Fixture, "nil_or_nil_is_nil_not_question_mark")
 
 TEST_CASE_FIXTURE(Fixture, "long_disjunct_of_nil_is_nil_not_question_mark")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
-      type nil_ty = nil | nil | nil | nil | nil
-      local a : nil_ty = nil
+      local a : nil | nil | nil | nil | nil = nil
   )");
     ToStringOptions opts;
     opts.useLineBreaks = false;
@@ -976,21 +979,23 @@ TEST_CASE_FIXTURE(Fixture, "record_type_compositions_table")
 
 TEST_CASE_FIXTURE(Fixture, "record_type_compositions_union_intersection")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult checkResult = check(R"(
         type TableA = {}
         type TableB = {}
 
-        type Composite1 = TableA | TableB
-        type Composite2 = TableA & TableB
+        local composite1: TableA | TableB
+        local composite2: TableA & TableB
     )");
 
     LUAU_REQUIRE_NO_ERRORS(checkResult);
 
     ToStringOptions opts;
 
-    for (const auto& aliasName : {"Composite1", "Composite2"})
+    for (const auto& name : {"composite1", "composite2"})
     {
-        TypeId ty = requireTypeAlias(aliasName);
+        TypeId ty = requireType(name);
         ToStringResult result = toStringDetailed(ty, opts);
 
         REQUIRE_EQ(result.typeSpans.size(), 2);
@@ -1009,18 +1014,20 @@ TEST_CASE_FIXTURE(Fixture, "record_type_compositions_union_intersection")
 
 TEST_CASE_FIXTURE(Fixture, "record_type_compositions_union_handle_resorted_results")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult checkResult = check(R"(
         type Zebra = {}
         type Alpha = {}
 
-        type Composite = Zebra | Alpha
+        local composite: Zebra | Alpha
     )");
 
     LUAU_REQUIRE_NO_ERRORS(checkResult);
 
     ToStringOptions opts;
 
-    TypeId ty = requireTypeAlias("Composite");
+    TypeId ty = requireType("composite");
     ToStringResult result = toStringDetailed(ty, opts);
 
     CHECK_EQ(result.name, "Alpha | Zebra");

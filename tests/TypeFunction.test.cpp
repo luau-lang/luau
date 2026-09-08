@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -238,6 +239,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_add_function_at_work")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "mul_function_with_union_of_multiplicatives")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -256,7 +259,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mul_function_with_union_of_multiplicatives")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK(toString(requireTypeAlias("T")) == "Vec2 | Vec3");
+    CHECK(toString(requireTypeAlias("T")) == "T");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "mul_function_with_union_of_multiplicatives_2")
@@ -342,6 +345,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_inhabited_with_normalization"
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -358,11 +363,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("\"x\" | \"y\"", toString(tm->wantedType));
-    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tm->givenType));
+    CHECK_EQ("KeysOfMyObject", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works_with_metatables")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -381,11 +388,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works_with_metatables")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tm->wantedType));
-    CHECK_EQ("\"w\" | \"x\" | \"y\" | \"z\"", toString(tm->givenType));
+    CHECK_EQ("KeysOfMyObject", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_single_entry_no_uniontype")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -400,7 +409,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_single_entry_no_uniontype")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK(toString(requireTypeAlias("keyof_A")) == "\"abc\"");
-    CHECK(toString(requireTypeAlias("keyof_B")) == "\"a1\" | \"a2\"");
+    CHECK(toString(requireTypeAlias("keyof_B")) == "keyof_B");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_errors_if_it_has_nontable_part")
@@ -423,6 +432,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_errors_if_it_has_nontabl
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_string_indexer")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -446,11 +457,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_string_indexer")
     tm = get<TypeMismatch>(result.errors[1]);
     REQUIRE(tm);
     CHECK_EQ("\"z\"", toString(tm->wantedType));
-    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tm->givenType));
+    CHECK_EQ("KeysOfMyObjects", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_common_subset_if_union_of_differing_tables")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -467,7 +480,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_common_subset_if_union_o
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("\"z\"", toString(tm->wantedType));
-    CHECK_EQ("\"y\" | \"z\"", toString(tm->givenType));
+    CHECK_EQ("KeysOfMyObject", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_never_for_empty_table")
@@ -487,6 +500,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_never_for_empty_table")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_works")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -503,11 +518,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_works")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("\"x\" | \"y\"", toString(tm->wantedType));
-    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tm->givenType));
+    CHECK_EQ("KeysOfMyObject", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_ignores_metatables")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -526,7 +543,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_ignores_metatables")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("\"x\" | \"y\"", toString(tm->wantedType));
-    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tm->givenType));
+    CHECK_EQ("KeysOfMyObject", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_errors_if_it_has_nontable_part")
@@ -549,6 +566,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_errors_if_it_has_nont
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_common_subset_if_union_of_differing_tables")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -565,7 +584,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_common_subset_if_unio
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("\"z\"", toString(tm->wantedType));
-    CHECK_EQ("\"y\" | \"z\"", toString(tm->givenType));
+    CHECK_EQ("KeysOfMyObject", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_never_for_empty_table")
@@ -585,6 +604,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_never_for_empty_table
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_works_on_extern_types")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -600,7 +621,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_works_on_extern_types"
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("\"BaseMethod\"", toString(tm->wantedType));
-    CHECK_EQ("\"BaseField\" | \"BaseMethod\" | \"Touched\"", toString(tm->givenType));
+    CHECK_EQ("KeysOfMyObject", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "keyof_type_function_errors_if_it_has_nonclass_part")
@@ -688,6 +709,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "vector2_multiply_is_overloaded")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_rfc_example")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -713,7 +736,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_rfc_example")
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ("\"cat\" | \"dog\" | \"fox\" | \"monkey\"", toString(tm->wantedType));
+    CHECK_EQ("AnimalType", toString(tm->wantedType));
     CHECK_EQ("\"cactus\"", toString(tm->givenType));
 }
 
@@ -838,6 +861,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "didnt_quite_exceed_distributivity_limits")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_equivalence_with_distributivity")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -865,8 +890,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_equivalence_with_distributivity")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK(toString(requireTypeAlias("T")) == "A | B");
-    CHECK(toString(requireTypeAlias("U")) == "A | A | B | B");
+    CHECK(toString(requireTypeAlias("T")) == "T");
+    CHECK(toString(requireTypeAlias("U")) == "U");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "we_shouldnt_warn_that_a_reducible_type_function_is_uninhabited")
@@ -1323,6 +1348,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_errors_w_var_indexer")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_indexer")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1334,11 +1361,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_inde
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK(toString(requireTypeAlias("stringType")) == "string?");
+    CHECK(toString(requireTypeAlias("stringType")) == "stringType");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_indexee")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1351,11 +1380,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_inde
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK(toString(requireTypeAlias("numberType")) == "number?");
+    CHECK(toString(requireTypeAlias("numberType")) == "numberType");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_index_metatables")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1371,7 +1402,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_index_metatable
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK(toString(requireTypeAlias("nilType")) == "nil");
-    CHECK(toString(requireTypeAlias("numberType")) == "number?");
+    CHECK(toString(requireTypeAlias("numberType")) == "numberType");
 }
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "rawget_type_function_errors_w_extern_types")
@@ -1723,6 +1754,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "undefined_add_application")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_should_not_assert_on_empty_string_props")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1739,8 +1772,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_should_not_assert_on_empty_string_prop
     )");
 
     LUAU_REQUIRE_NO_ERRORS(results);
-    CHECK_EQ(R"("" | "one")", toString(requireTypeAlias("FoobarKeys")));
-    CHECK_EQ(R"("" | "two")", toString(requireTypeAlias("TableKeys")));
+    CHECK_EQ("FoobarKeys", toString(requireTypeAlias("FoobarKeys")));
+    CHECK_EQ("TableKeys", toString(requireTypeAlias("TableKeys")));
 }
 
 struct TFFixture

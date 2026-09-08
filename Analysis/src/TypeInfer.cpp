@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 namespace Luau
 {
@@ -1597,6 +1598,15 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& ty
         // We can't modify typeArguments that come from other modules
         if (follow(ty)->owningArena == currentModule->internalTypes.get())
             mtv->syntheticName = name;
+    }
+    else if (
+        FFlag::LuauUnionIntersectionAliasNames && follow(ty)->owningArena == currentModule->internalTypes.get() &&
+        binding->typeParams.empty() && binding->typePackParams.empty())
+    {
+        if (auto utv = getMutable<UnionType>(follow(ty)); utv && !utv->name)
+            utv->name = name;
+        else if (auto itv = getMutable<IntersectionType>(follow(ty)); itv && !itv->name)
+            itv->name = name;
     }
 
     TypeId& bindingType = bindingsMap[name].type;

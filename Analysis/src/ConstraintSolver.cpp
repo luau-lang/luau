@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAGVARIABLE(LuauUnionIntersectionAliasNames)
 
 namespace Luau
 {
@@ -1285,9 +1286,20 @@ bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constr
     }
     else if (MetatableType* mtv = getMutable<MetatableType>(target))
         mtv->syntheticName = c.name;
-    else if (get<IntersectionType>(target) || get<UnionType>(target))
+    else if (
+        FFlag::LuauUnionIntersectionAliasNames && !c.synthetic && c.typeParameters.empty() && c.typePackParameters.empty() &&
+        !target->persistent)
     {
-        // nothing (yet)
+        if (UnionType* ut = getMutable<UnionType>(target))
+        {
+            if (!ut->name)
+                ut->name = c.name;
+        }
+        else if (IntersectionType* it = getMutable<IntersectionType>(target))
+        {
+            if (!it->name)
+                it->name = c.name;
+        }
     }
 
     return true;

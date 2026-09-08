@@ -8,6 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -205,6 +206,8 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
         type MyEnum = "foo" | "bar" | "baz"
         local a : MyEnum = "bang"
@@ -213,10 +216,10 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ(R"(Expected this to be '"bar" | "baz" | "foo"', but got '"bang"')", toString(result.errors[0]));
+        CHECK_EQ(R"(Expected this to be 'MyEnum', but got '"bang"')", toString(result.errors[0]));
     else
         CHECK_EQ(
-            "Expected this to be '\"bar\" | \"baz\" | \"foo\"', but got '\"bang\"'; none of the union options are compatible",
+            "Expected this to be 'MyEnum', but got '\"bang\"'; none of the union options are compatible",
             toString(result.errors[0])
         );
 }

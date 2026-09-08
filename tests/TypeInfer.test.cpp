@@ -32,6 +32,7 @@ LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauCheckReadTyWhenRelatingExtern)
 LUAU_FASTFLAG(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 using namespace Luau;
 
@@ -1140,6 +1141,7 @@ end
 TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 {
     DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -1184,11 +1186,11 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
             "Expected this to be exactly\n\t"
             "'(Policies, FieldSpecifier) -> string'"
             "\nbut got\n\t"
-            "'(Policies, FieldSpecifier & { from: number? }) -> ('a, b...)'"
+            "'(Policies, ReadFieldOptions) -> ('a, b...)'"
             "\ncaused by:\n"
             "  Argument #2 type is not compatible.\n"
             "Expected this to be exactly\n\t"
-            "'FieldSpecifier & { from: number? }'"
+            "'ReadFieldOptions'"
             "\nbut got\n\t"
             "'FieldSpecifier'"
             "\ncaused by:\n"
@@ -1688,13 +1690,17 @@ TEST_CASE_FIXTURE(Fixture, "leading_bar")
 
 TEST_CASE_FIXTURE(Fixture, "leading_bar_question_mark")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
         type Bar = |?
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK("Expected type, got '?'" == toString(result.errors[0]));
-    CHECK("*error-type*?" == toString(requireTypeAlias("Bar")));
+    ToStringOptions opts;
+    opts.exhaustive = true;
+    CHECK("*error-type*?" == toString(requireTypeAlias("Bar"), opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "leading_ampersand")

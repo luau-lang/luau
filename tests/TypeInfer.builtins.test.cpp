@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -375,6 +376,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_unpacks_arg_types_correctly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_union_of_tables")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
         type A = {tag: "A", x: number}
         type B = {tag: "B", y: string}
@@ -388,7 +391,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_union_of_tables")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK("{ @metatable {  }, A } | { @metatable {  }, B }" == toString(requireTypeAlias("X")));
+        CHECK("X" == toString(requireTypeAlias("X")));
     else
         CHECK("{ @metatable {|  |}, A } | { @metatable {|  |}, B }" == toString(requireTypeAlias("X")));
 }
@@ -1362,6 +1365,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_intersection_of_tables")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
         type FIRST = {
             some: string,
@@ -1379,7 +1384,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_intersection_of_tables")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("{ some: string } & { thing: string }", toString(requireType("c"), {true}));
-    CHECK_EQ("FIRST & { thing: string }", toString(requireType("c")));
+    CHECK_EQ("SECOND", toString(requireType("c")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "typeof_unresolved_function")

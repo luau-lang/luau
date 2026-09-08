@@ -24,6 +24,7 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -660,14 +661,15 @@ return wrapStrictTable(Constants, "Constants")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "intersection_of_functions_of_different_arities")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     check(R"(
         type A = (any) -> ()
         type B = (any, any) -> ()
-        type T = A & B
 
         local a: A
         local b: B
-        local t: T
+        local t: A & B
     )");
 
     [[maybe_unused]] TypeId a = requireType("a");

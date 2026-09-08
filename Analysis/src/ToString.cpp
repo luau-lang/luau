@@ -41,6 +41,7 @@ LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 namespace Luau
 {
@@ -110,6 +111,28 @@ struct FindCyclicTypes final : TypeVisitor
 
             return exhaustive;
         }
+
+        return true;
+    }
+
+    bool visit(TypeId ty, const UnionType& ut) override
+    {
+        if (!visited.insert(ty))
+            return false;
+
+        if (FFlag::LuauUnionIntersectionAliasNames && !exhaustive && ut.name)
+            return false;
+
+        return true;
+    }
+
+    bool visit(TypeId ty, const IntersectionType& it) override
+    {
+        if (!visited.insert(ty))
+            return false;
+
+        if (FFlag::LuauUnionIntersectionAliasNames && !exhaustive && it.name)
+            return false;
 
         return true;
     }
@@ -933,8 +956,14 @@ struct TypeStringifier
         state.emit("*no-refine*");
     }
 
-    void operator()(TypeId, const UnionType& uv)
+    void operator()(TypeId ty, const UnionType& uv)
     {
+        if (FFlag::LuauUnionIntersectionAliasNames && !state.exhaustive && uv.name)
+        {
+            state.emitAndRecordSpan(*uv.name, ty);
+            return;
+        }
+
         if (state.hasSeen(&uv))
         {
             state.result.cycle = true;
@@ -1047,6 +1076,12 @@ struct TypeStringifier
 
     void operator()(TypeId ty, const IntersectionType& uv)
     {
+        if (FFlag::LuauUnionIntersectionAliasNames && !state.exhaustive && uv.name)
+        {
+            state.emitAndRecordSpan(*uv.name, ty);
+            return;
+        }
+
         if (state.hasSeen(&uv))
         {
             state.result.cycle = true;

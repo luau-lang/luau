@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauInstantiationCheckArguments)
 LUAU_FASTFLAG(LuauInstantiationCheckArgumentsDedup)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -53,6 +54,81 @@ TEST_CASE_FIXTURE(Fixture, "names_are_ascribed")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("T", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "union_alias_name_is_preserved_in_errors")
+{
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
+    CheckResult result = check(R"(
+        type A = { b: (self: A, a: number) -> A } | { c: number }
+        function foo(a: A) end
+        local x: A
+        foo(1234)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]).find("A") != std::string::npos);
+    CHECK(toString(result.errors[0]).find("where") == std::string::npos);
+    CHECK_EQ("A", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "non_recursive_union_alias_name_is_preserved")
+{
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
+    CheckResult result = check(R"(
+        type B = { b: (a: number) -> number } | { c: number }
+        function foo(a: B) end
+        local x: B
+        foo(1234)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]).find("B") != std::string::npos);
+    CHECK(toString(result.errors[0]).find("where") == std::string::npos);
+    CHECK_EQ("B", toString(requireType("x")));
+    CHECK_EQ("{ b: (number) -> number } | { c: number }", toString(requireType("x"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "intersection_alias_name_is_preserved")
+{
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
+    CheckResult result = check(R"(
+        type I = { a: number } & { b: string }
+        local x: I
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("I", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_union_alias_is_not_named")
+{
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
+    CheckResult result = check(R"(
+        type Opt<T> = T | nil
+        local x: Opt<number>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number?", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "aliasing_a_named_union_does_not_rename_it")
+{
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
+    CheckResult result = check(R"(
+        type A = number | string
+        type B = A
+        local x: B
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("A", toString(requireType("x")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")

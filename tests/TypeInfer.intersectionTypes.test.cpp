@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauUnionIntersectionAliasNames)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -317,6 +318,8 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write")
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
         type X = { x: number }
         type Y = { y: number }
@@ -329,12 +332,13 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto e = toString(result.errors[0]);
-    CHECK_EQ("Cannot add property 'z' to table 'X & Y'", e);
+    CHECK_EQ("Cannot add property 'z' to table 'XY'", e);
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
 {
     ScopedFastFlag _{FFlag::LuauCheckFunctionStatementTypes, true};
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
 
     CheckResult result = check(R"(
         type X = { x: (number) -> number }
@@ -352,7 +356,7 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
     LUAU_REQUIRE_ERROR_COUNT(4, result);
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'X & Y'");
+        CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'XY'");
         auto err1 = get<TypeMismatch>(result.errors[1]);
         REQUIRE(err1);
         CHECK_EQ("number", toString(err1->givenType));
@@ -361,7 +365,7 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
         REQUIRE(err2);
         CHECK_EQ("(string, number) -> string", toString(err2->givenType));
         CHECK_EQ("(string) -> string", toString(err2->wantedType));
-        CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'X & Y'");
+        CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'XY'");
     }
     else
     {
@@ -373,9 +377,9 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
                                      "  Argument count mismatch. Function expects 2 arguments, but only 1 is specified";
 
         CHECK_EQ(expected, toString(result.errors[0]));
-        CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'X & Y'");
+        CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'XY'");
         CHECK_EQ(toString(result.errors[2]), "Expected this to be 'string', but got 'number'");
-        CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'X & Y'");
+        CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'XY'");
     }
 }
 
@@ -422,12 +426,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersection_setmetatable")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_part")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
 type Z = { z: number }
-type XYZ = X & Y & Z
-local a: XYZ = 3
+local a: X & Y & Z = 3
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -460,13 +465,14 @@ Expected this to be 'X', but got 'number')";
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_all")
 {
+    ScopedFastFlag sff{FFlag::LuauUnionIntersectionAliasNames, true};
+
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
 type Z = { z: number }
-type XYZ = X & Y & Z
 
-function f(a: XYZ): number
+function f(a: X & Y & Z): number
     return a
 end
     )");
