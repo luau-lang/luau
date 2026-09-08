@@ -19,6 +19,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixSimilarNameSuggestions)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
@@ -1484,6 +1485,47 @@ TEST_CASE_FIXTURE(Fixture, "found_like_key_in_table_function_call")
     CHECK(candidates.find("Foo") != candidates.end());
 
     CHECK_EQ(toString(te), "Key 'fOo' not found in table 't'.  Did you mean 'Foo'?");
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_literal_missing_field_suggests_similar_key")
+{
+    ScopedFastFlag sff{FFlag::LuauFixSimilarNameSuggestions, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local tbl: { Animals: {} }
+        tbl = { animals = {} }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(
+        "Table type '{ animals: {  } }' not compatible with type '{ Animals: {  } }' because the former is missing field 'Animals'",
+        toString(result.errors[0])
+    );
+    CHECK_EQ("Key 'animals' not found in table '{ Animals: {  } }'.  Did you mean 'Animals'?", toString(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_literal_missing_field_no_suggestion_for_unrelated_key")
+{
+    ScopedFastFlag sff{FFlag::LuauFixSimilarNameSuggestions, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local tbl: { Animals: {} }
+        tbl = { golang = {} }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_literal_missing_field_suggestion_valid_key")
+{
+    ScopedFastFlag sff{FFlag::LuauFixSimilarNameSuggestions, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local ok: { Animals: {} } = { Animals = {} }
+    )"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "found_like_key_in_table_property_access")

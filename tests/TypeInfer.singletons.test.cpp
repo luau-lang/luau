@@ -8,6 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixSimilarNameSuggestions)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -77,6 +78,35 @@ TEST_CASE_FIXTURE(Fixture, "string_singletons_mismatch")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Expected this to be '\"foo\"', but got '\"bar\"'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "string_singletons_mismatch_suggests_similar_option")
+{
+    ScopedFastFlag sff{FFlag::LuauFixSimilarNameSuggestions, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local a: "Animals" | "BeautifulLuminescentSkies" = "animals"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(
+        "Expected this to be '\"Animals\" | \"BeautifulLuminescentSkies\"', but got '\"animals\"'; did you mean \"Animals\"?",
+        toString(result.errors[0])
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "string_singletons_mismatch_no_suggestion_for_unrelated_value")
+{
+    ScopedFastFlag sff{FFlag::LuauFixSimilarNameSuggestions, true};
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local a: "Animals" | "BeautifulLuminescentSkies" = "https://go.dev/"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]).find("did you mean") == std::string::npos);
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_singletons_escape_chars")

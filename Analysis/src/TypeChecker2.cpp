@@ -14,6 +14,7 @@
 #include "Luau/Normalize.h"
 #include "Luau/OverloadResolver.h"
 #include "Luau/Subtyping.h"
+#include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
@@ -45,11 +46,40 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauFixSimilarNameSuggestions)
+LUAU_FASTINT(LuauSuggestionDistance)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
+
+static std::optional<Name> findSimilarName(std::string_view needle, const std::vector<Name>& candidates)
+{
+    if (FInt::LuauSuggestionDistance == 0)
+        return std::nullopt;
+
+    std::optional<Name> result;
+    size_t bestDistance = std::numeric_limits<size_t>::max();
+
+    for (const Name& candidate : candidates)
+    {
+        if (candidate == needle)
+            continue;
+
+        size_t maxDistance = std::min<size_t>(
+            size_t(FInt::LuauSuggestionDistance), std::max<size_t>(1, std::min(needle.size(), candidate.size()) / 2)
+        );
+        size_t distance = editDistance(needle, candidate);
+        if (distance <= maxDistance && distance < bestDistance)
+        {
+            result = candidate;
+            bestDistance = distance;
+        }
+    }
+
+    return result;
+}
 
 // TypeInfer.h
 // TODO move these
@@ -3549,7 +3579,38 @@ void TypeChecker2::explainError(TypeId subTy, TypeId superTy, Location location,
     Reasonings reasonings = explainReasonings(subTy, superTy, location, result);
 
     if (!reasonings.suppressed)
-        reportError(TypeMismatch{superTy, subTy, reasonings.toString()}, location);
+    {
+        std::string reason = reasonings.toString();
+
+        if (FFlag::LuauFixSimilarNameSuggestions)
+        {
+            if (auto subSingleton = get<StringSingleton>(get<SingletonType>(follow(subTy))))
+            {
+                std::vector<Name> candidates;
+
+                if (auto superSingleton = get<StringSingleton>(get<SingletonType>(follow(superTy))))
+                    candidates.push_back(superSingleton->value);
+                else if (auto superUnion = get<UnionType>(follow(superTy)))
+                {
+                    for (TypeId option : superUnion->options)
+                    {
+                        if (auto singleton = get<StringSingleton>(get<SingletonType>(follow(option))))
+                            candidates.push_back(singleton->value);
+                    }
+                }
+
+                if (auto suggestion = findSimilarName(subSingleton->value, candidates))
+                {
+                    if (reason.empty())
+                        reason = "did you mean \"" + *suggestion + "\"?";
+                    else
+                        reason += ". Did you mean \"" + *suggestion + "\"?";
+                }
+            }
+        }
+
+        reportError(TypeMismatch{superTy, subTy, std::move(reason)}, location);
+    }
 }
 
 void TypeChecker2::explainError(TypePackId subTy, TypePackId superTy, Location location, const SubtypingResult& result)
@@ -3764,7 +3825,30 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
         for (const auto& key : missingKeys)
             if (key)
                 temp.push_back(*key);
-        reportError(MissingProperties{expectedType, exprType, std::move(temp)}, expr->location);
+
+        reportError(MissingProperties{expectedType, exprType, temp}, expr->location);
+
+        if (FFlag::LuauFixSimilarNameSuggestions && !expectedTableType->indexer)
+        {
+            for (const auto& item : exprTable->items)
+            {
+                if (!isRecord(item))
+                    continue;
+
+                const AstArray<char>& s = item.key->as<AstExprConstantString>()->value;
+                std::string keyStr{s.data, s.data + s.size};
+                if (expectedTableType->props.count(keyStr))
+                    continue;
+
+                if (auto suggestion = findSimilarName(keyStr, temp))
+                {
+                    reportError(
+                        UnknownPropButFoundLikeProp{expectedType, keyStr, std::set<Name>{*suggestion}}, item.key->location
+                    );
+                }
+            }
+        }
+
         return false;
     }
 
