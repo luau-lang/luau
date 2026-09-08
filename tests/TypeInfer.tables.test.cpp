@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauFixMetatableShapeExtension)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -7590,6 +7591,56 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2578_metatable_property_lookup_survives_intersection_with_not_nil")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauAlwaysIntersectTablesWithTables, true},
+        {FFlag::LuauFixMetatableShapeExtension, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type T = {} & setmetatable<{}, { __index: { P: number } }>
+
+        for _, v in {} :: {T} do
+            local p: number = v.P
+        end
+
+        type function negation(t) return types.negationof(t) end
+
+        local a = {} :: negation<nil> & T
+        local pa: number = a.P
+
+        local b = {} :: T & negation<nil>
+        local pb: number = b.P
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2578_metatable_property_write_survives_intersection_with_not_nil")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauAlwaysIntersectTablesWithTables, true},
+        {FFlag::LuauFixMetatableShapeExtension, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type B = setmetatable<{ a: number }, {}> & {}
+
+        type function negation(t) return types.negationof(t) end
+
+        for _, v in {} :: {B & negation<nil>} do
+            v.a = 5
+        end
+
+        for _, v in {} :: {negation<nil> & B} do
+            v.a = 5
+        end
+    )"));
 }
 
 TEST_SUITE_END();

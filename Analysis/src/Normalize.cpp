@@ -25,6 +25,7 @@ LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAGVARIABLE(LuauFixMetatableShapeExtension)
 
 namespace Luau
 {
@@ -2502,7 +2503,17 @@ void Normalizer::intersectExternTypesWithShape(NormalizedExternType& heres, Type
     // in this case, we want to take the foreign function types we have here, and we want to intersect a table type into them.
     // the idea here is that table types function as structural definitions for the shape of some data type.
 
-    auto shape = get<TableType>(there);
+    const TableType* shape = get<TableType>(there);
+    const MetatableType* mtShape = nullptr;
+
+    if (FFlag::LuauFixMetatableShapeExtension && !shape)
+    {
+        // A table with a metatable also describes a shape; its properties may
+        // additionally be provided through the metatable's `__index`.
+        mtShape = get<MetatableType>(there);
+        if (mtShape)
+            shape = get<TableType>(follow(mtShape->table));
+    }
 
     // if the type we're intersecting with isn't a table type, it can't be used to describe a shape.
     if (!shape)
@@ -2512,7 +2523,9 @@ void Normalizer::intersectExternTypesWithShape(NormalizedExternType& heres, Type
     // if any intersection of their property types is uninhabited, then the whole thing is uninhabited.
     // but if the type is inhabited, we'll want to add it to the shapes on the externtype.
 
-    bool isCoincident = true;
+    // A metatable shape always carries information beyond its own properties,
+    // so it is never coincident with the extern type.
+    bool isCoincident = mtShape == nullptr;
     for (const auto& [name, shapeProp] : shape->props)
     {
         for (auto it = heres.ordering.begin(); it != heres.ordering.end(); it++)

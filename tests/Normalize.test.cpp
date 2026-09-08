@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauIncludeExternTypeExtensionsWithTopExternType)
+LUAU_FASTFLAG(LuauFixMetatableShapeExtension)
 
 using namespace Luau;
 
@@ -1200,6 +1201,38 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_table_and_truthy")
     //
     // ... but Luau simplifies `table & { x: number }` to just mean `table`.
     CHECK("(userdata & { x: number }) | { x: number }" == toString(ty));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_metatable_and_truthy")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauAlwaysIntersectTablesWithTables, true},
+        {FFlag::LuauIncludeExternTypeExtensionsWithTopExternType, true},
+        {FFlag::LuauFixMetatableShapeExtension, true},
+    };
+
+    TableType indexTable{{{"P", Property::rw(getBuiltins()->numberType)}}, std::nullopt, {}, TableState::Sealed};
+    TypeId indexTy = arena.addType(std::move(indexTable));
+    TableType mtTable{{{"__index", Property::rw(indexTy)}}, std::nullopt, {}, TableState::Sealed};
+    TypeId mtTy = arena.addType(std::move(mtTable));
+    TypeId emptyTy = arena.addType(TableType{{}, std::nullopt, {}, TableState::Sealed});
+    TypeId tbl = arena.addType(MetatableType{emptyTy, mtTy});
+
+    IntersectionBuilder ib{NotNull{&arena}, NotNull{builtinTypes}};
+    ib.add(builtinTypes->truthyType);
+    ib.add(tbl);
+
+    auto norm = normalize(ib.build());
+    REQUIRE(norm);
+    TypeId ty = typeFromNormal(*norm);
+
+    // The metatable must be retained on the extern type portion so that
+    // properties provided through `__index` remain visible.
+    CHECK(
+        "(userdata & { @metatable { __index: { P: number } }, {  } }) | { @metatable { __index: { P: number } }, {  } }" == toString(ty)
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalizer_should_be_able_to_detect_cyclic_tables_and_not_stack_overflow")
