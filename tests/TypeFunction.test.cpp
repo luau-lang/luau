@@ -16,6 +16,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
+LUAU_FASTFLAG(LuauFixSelfBoundTypeFunctionReduction)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 
 struct TypeFunctionFixture : Fixture
@@ -1352,6 +1353,42 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_inde
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK(toString(requireTypeAlias("numberType")) == "number?");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_reducing_to_itself_is_an_error")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixSelfBoundTypeFunctionReduction, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local propertyKeys:{propertyKey} = nil::never
+        type propertyKey = index<typeof(propertyKeys), number>
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK(get<UninhabitedTypeFunction>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_reducing_to_itself_is_an_error_when_used")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixSelfBoundTypeFunctionReduction, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local propertyKeys:{propertyKey} = nil::never
+        type propertyKey = index<typeof(propertyKeys), number>
+        local propertyKey:propertyKey = propertyKeys
+        if propertyKey then end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK(get<UninhabitedTypeFunction>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_index_metatables")

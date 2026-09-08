@@ -32,6 +32,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
+LUAU_FASTFLAGVARIABLE(LuauFixSelfBoundTypeFunctionReduction)
 
 namespace Luau
 {
@@ -377,6 +378,16 @@ struct TypeFunctionReducer
     {
         for (auto& message : reduction.messages)
             result.messages.emplace_back(location, UserDefinedTypeFunctionError{std::move(message)});
+
+        // A reduction that produces the subject itself would create a self-bound type; treat it as uninhabited instead.
+        if (FFlag::LuauFixSelfBoundTypeFunctionReduction && reduction.result && follow(*reduction.result) == subject)
+        {
+            if (FFlag::DebugLuauLogTypeFamilies)
+                printf("%s reduced to itself\n", toString(subject, {true}).c_str());
+
+            reduction.result = std::nullopt;
+            reduction.reductionStatus = Reduction::Erroneous;
+        }
 
         if (reduction.result)
         {
