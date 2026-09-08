@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixIntersectionOfUnionPropLookup)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
 
 namespace
@@ -669,6 +670,44 @@ TEST_CASE_FIXTURE(SimplifyFixture, "{ read x: Child } & { x: Parent }")
 
     // TODO: This could be { read x: Child, write x: Parent }
     CHECK("{ read x: Child } & { x: Parent }" == toString(intersect(leftTy, rightTy)));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "tables_with_disjoint_read_only_tags_are_never")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIntersectionOfUnionPropLookup, true};
+
+    // { read tag: "hello", prop: number } & { read tag: "world" }
+    TypeId t1 = mkTable({{"tag", Property::readonly(helloTy)}, {"prop", numberTy}});
+    TypeId t2 = mkTable({{"tag", Property::readonly(worldTy)}});
+
+    CHECK(neverTy == intersect(t1, t2));
+    CHECK(neverTy == intersect(t2, t1));
+
+    // { read tag: "hello", prop: number } & { read tag: "hello" }
+    TypeId t3 = mkTable({{"tag", Property::readonly(helloTy)}});
+
+    CHECK(t1 == intersect(t1, t3));
+    CHECK(t1 == intersect(t3, t1));
+
+    // { tag: string } & { read tag: "hello" } must not drop the write type of `tag`.
+    TypeId t4 = mkTable({{"tag", stringTy}});
+
+    CHECK("{ read tag: \"hello\" } & { tag: string }" == intersectStr(t4, t3));
+    CHECK("{ read tag: \"hello\" } & { tag: string }" == intersectStr(t3, t4));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "union_of_tagged_tables_and_read_only_tag")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIntersectionOfUnionPropLookup, true};
+
+    // ({ read tag: "hello", prop: number } | { read tag: "world", prop: string }) & { read tag: "hello" }
+    TypeId t1 = mkTable({{"tag", Property::readonly(helloTy)}, {"prop", numberTy}});
+    TypeId t2 = mkTable({{"tag", Property::readonly(worldTy)}, {"prop", stringTy}});
+    TypeId u = arena->addType(UnionType{{t1, t2}});
+    TypeId t3 = mkTable({{"tag", Property::readonly(helloTy)}});
+
+    CHECK(t1 == intersect(u, t3));
+    CHECK(t1 == intersect(t3, u));
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "intersect_parts_empty_table_non_empty")

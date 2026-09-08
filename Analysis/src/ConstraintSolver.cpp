@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAG(LuauFixIntersectionOfUnionPropLookup)
 
 namespace Luau
 {
@@ -3706,6 +3707,28 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     }
     else if (auto itv = get<IntersectionType>(subjectType))
     {
+        if (FFlag::LuauFixIntersectionOfUnionPropLookup && !suppressSimplification)
+        {
+            // (A | B) & C is only inhabited by the union options that overlap
+            // with C, so distribute the intersection before looking up the
+            // property.  Otherwise the options that are incompatible with C
+            // (e.g. because they have a different singleton tag) contribute
+            // properties that can never be observed.
+            bool hasUnion = false;
+            for (TypeId ty : itv)
+                hasUnion |= get<UnionType>(follow(ty)) != nullptr;
+
+            if (hasUnion)
+            {
+                std::optional<TypeId> simplified;
+                for (TypeId ty : itv)
+                    simplified = simplified ? simplifyIntersection(constraint->scope, constraint->location, *simplified, ty) : ty;
+
+                if (simplified && follow(*simplified) != subjectType && !get<IntersectionType>(follow(*simplified)))
+                    return lookupTableProp(constraint, *simplified, propName, context, inConditional, suppressSimplification, seen);
+            }
+        }
+
         std::vector<TypeId> blocked;
         std::set<TypeId> options;
 

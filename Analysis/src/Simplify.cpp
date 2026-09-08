@@ -20,6 +20,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
 LUAU_FASTFLAGVARIABLE(LuauCheckReadTyWhenRelatingExtern)
 LUAU_FASTFLAGVARIABLE(LuauRelateIndexersTypo)
+LUAU_FASTFLAGVARIABLE(LuauFixIntersectionOfUnionPropLookup)
 
 namespace Luau
 {
@@ -1354,7 +1355,10 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
             const bool leftPropIsRefinable = leftProp.isShared() || leftProp.isReadOnly();
 
             auto it = rt->props.find(propName);
-            if (it != rt->props.end() && leftPropIsRefinable && it->second.isShared())
+            const bool rightPropIsRefinable =
+                it != rt->props.end() && (it->second.isShared() || (FFlag::LuauFixIntersectionOfUnionPropLookup && it->second.isReadOnly()));
+
+            if (it != rt->props.end() && leftPropIsRefinable && rightPropIsRefinable)
             {
                 Relation r = relate(*leftProp.readTy, *it->second.readTy);
 
@@ -1364,9 +1368,14 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
                     return builtinTypes->neverType;
                 case Relation::Superset:
                 case Relation::Coincident:
-                    return right;
+                    // { read x: T } & { read x: U, ... } is just the right table
+                    // when U <: T, but a shared left property contributes a
+                    // write type that we cannot drop.
+                    if (it->second.isShared() || leftProp.isReadOnly())
+                        return right;
+                    break;
                 case Relation::Subset:
-                    if (1 == rt->props.size() && leftProp.isShared())
+                    if (1 == rt->props.size() && leftProp.isShared() && it->second.isShared())
                         return left;
                     break;
                 default:

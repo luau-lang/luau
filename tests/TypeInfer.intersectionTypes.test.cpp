@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixIntersectionOfUnionPropLookup)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1680,6 +1681,46 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_intersection_boun
 
     CHECK("string" == toString(requireType("b")));
     CHECK("string" == toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "method_call_on_intersection_of_tagged_union_and_read_only_tag")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixIntersectionOfUnionPropLookup, true},
+    };
+
+    CheckResult result = check(R"(
+        type intersectiontype = type & { read tag: "intersection" }
+        type uniontype = type & { read tag: "union" }
+
+        type basictypedata = {
+            read tag: "other"
+        }
+
+        type uniontypedata = {
+            read tag: "union",
+            components: (self: uniontype) -> { type },
+        }
+
+        type intersectiontypedata = {
+            read tag: "intersection",
+            components: (self: intersectiontype) -> { type },
+        }
+
+        type type = basictypedata | uniontypedata | intersectiontypedata
+
+        local x = (nil :: any) :: uniontype
+        local a = x:components()
+
+        local y = (nil :: any) :: type
+        assert(y.tag == "union")
+        local b = y:components()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("{basictypedata | intersectiontypedata | uniontypedata}" == toString(requireType("a")));
+    CHECK("{basictypedata | intersectiontypedata | uniontypedata}" == toString(requireType("b")));
 }
 
 TEST_SUITE_END();
