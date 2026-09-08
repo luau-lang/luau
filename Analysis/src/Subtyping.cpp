@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixReadOnlyIndexerKeyCovariance)
 
 
 namespace Luau
@@ -2570,9 +2571,12 @@ SubtypingResult Subtyping::isCovariantWith(
         return result;
     }
 
-    result = isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope).withBothComponent(TypePath::TypeField::IndexLookup);
+    // Read-only super → both key and value types are covariant; read-write super → invariant.
+    if (FFlag::LuauFixReadOnlyIndexerKeyCovariance && superIndexer.isReadOnly)
+        result = isCovariantWith(env, subIndexer.indexType, superIndexer.indexType, scope).withBothComponent(TypePath::TypeField::IndexLookup);
+    else
+        result = isInvariantWith(env, subIndexer.indexType, superIndexer.indexType, scope).withBothComponent(TypePath::TypeField::IndexLookup);
 
-    // Value-type variance: read-only super → covariant; read-write super → invariant.
     if (superIndexer.isReadOnly)
         result.andAlso(
             isCovariantWith(env, subIndexer.indexResultType, superIndexer.indexResultType, scope).withBothComponent(TypePath::TypeField::IndexResult)

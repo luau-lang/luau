@@ -26,6 +26,7 @@ LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauFixReadOnlyIndexerKeyCovariance)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
@@ -4774,6 +4775,66 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_value_not_contravariant")
     REQUIRE(tm);
     CHECK("{ read [string]: number }" == toString(tm->wantedType));
     CHECK("{ read [string]: number | string }" == toString(tm->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "read_only_indexer_key_covariance")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixReadOnlyIndexerKeyCovariance, true}};
+
+    // Key type is covariant for read-only indexers: { [number]: V } <: { read [unknown]: V }
+    CheckResult result = check(R"(
+        local function valuesOf<V>(t: { read [unknown]: V }): { V }
+            local values = {}
+            for _, v in t do
+                table.insert(values, v)
+            end
+
+            return values
+        end
+
+        local t: { string } = {}
+        local v = valuesOf(t)
+
+        local narrowKey: { read [number]: boolean } = {}
+        local wideKey: { read [unknown]: boolean } = narrowKey
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("{string}" == toString(requireType("v")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_key_not_contravariant")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixReadOnlyIndexerKeyCovariance, true}};
+
+    CheckResult result = check(R"(
+        local wideKey: { read [unknown]: boolean } = {}
+        local narrowKey: { read [number]: boolean } = wideKey
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK("{read boolean}" == toString(tm->wantedType));
+    CHECK("{ read [unknown]: boolean }" == toString(tm->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_write_indexer_key_stays_invariant")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixReadOnlyIndexerKeyCovariance, true}};
+
+    CheckResult result = check(R"(
+        local narrowKey: { [number]: boolean } = {}
+        local wideKey: { [unknown]: boolean } = narrowKey
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK("{ [unknown]: boolean }" == toString(tm->wantedType));
+    CHECK("{boolean}" == toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_tostring")
