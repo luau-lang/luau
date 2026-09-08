@@ -21,6 +21,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAG(LuauFixIntersectionMetatableEntry)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -1783,6 +1784,39 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "negating_a_non_literal_integer_is_an_error")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metamethod_lookup_on_intersection_operands")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixIntersectionMetatableEntry, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type BaseClass = typeof(setmetatable(
+            {},
+            ({} :: any) :: {__add: (BaseClass, BaseClass) -> BaseClass})
+        )
+        type SubClass = BaseClass & {extraField: string}
+
+        local function add1(x: BaseClass, y: BaseClass): BaseClass
+            return x + y
+        end
+
+        local function add2(x: SubClass, y: BaseClass): BaseClass
+            return x + y
+        end
+
+        local function add3(x: BaseClass, y: SubClass): BaseClass
+            return x + y
+        end
+
+        local function add4(x: SubClass, y: SubClass): BaseClass
+            return x + y
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

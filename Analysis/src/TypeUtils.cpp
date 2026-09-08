@@ -13,6 +13,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAGVARIABLE(LuauFixIntersectionMetatableEntry)
+
 namespace Luau
 {
 
@@ -50,6 +52,20 @@ std::optional<TypeId> findMetatableEntry(
 )
 {
     type = follow(type);
+
+    if (FFlag::LuauFixIntersectionMetatableEntry)
+    {
+        if (const IntersectionType* itv = get<IntersectionType>(type))
+        {
+            for (TypeId part : itv)
+            {
+                if (std::optional<TypeId> result = findMetatableEntry(builtinTypes, errors, part, entry, location))
+                    return result;
+            }
+
+            return std::nullopt;
+        }
+    }
 
     std::optional<TypeId> metatable = getMetatable(type, builtinTypes);
     if (!metatable)
