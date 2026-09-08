@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauIncludeExternTypeExtensionsWithTopExternType)
+LUAU_FASTFLAG(LuauFixNormalizeNeverTableIntersection)
 
 using namespace Luau;
 
@@ -1031,6 +1032,19 @@ TEST_CASE_FIXTURE(NormalizeFixture, "read_only_props_3")
 
     CHECK(R"({ read x: "hello" })" == toString(normal(R"({ read x: "hello" } & { read x: string })"), {true}));
     CHECK("never" == toString(normal(R"({ read x: "hello" } & { read x: "world" })"), {true}));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "uninhabited_table_intersection_does_not_absorb_later_intersections")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixNormalizeNeverTableIntersection, true},
+    };
+
+    CHECK(
+        R"({ read tag: "b", read value: number })" ==
+        toString(normal(R"((({ read tag: "a" } | { read tag: "b", read value: number }) & { read tag: "b" }) & { read tag: "b" })"), {true})
+    );
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "final_types_are_cached")

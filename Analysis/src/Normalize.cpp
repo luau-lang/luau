@@ -25,6 +25,7 @@ LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAGVARIABLE(LuauFixNormalizeNeverTableIntersection)
 
 namespace Luau
 {
@@ -2791,9 +2792,9 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         return here;
 
     if (get<NeverType>(here))
-        return there;
+        return FFlag::LuauFixNormalizeNeverTableIntersection ? here : there;
     else if (get<NeverType>(there))
-        return here;
+        return FFlag::LuauFixNormalizeNeverTableIntersection ? there : here;
     else if (get<AnyType>(here))
         return there;
     else if (get<AnyType>(there))
@@ -3026,7 +3027,11 @@ void Normalizer::intersectTablesWithTable(TypeIds& heres, TypeId there, SeenTabl
     for (TypeId here : heres)
     {
         if (std::optional<TypeId> inter = intersectionOfTables(here, there, seenTablePropPairs, seenSetTypes))
+        {
+            if (FFlag::LuauFixNormalizeNeverTableIntersection && get<NeverType>(*inter))
+                continue;
             tmp.insert(*inter);
+        }
     }
     heres.retain(tmp);
     heres.insert(tmp.begin(), tmp.end());
@@ -3044,7 +3049,11 @@ void Normalizer::intersectTables(TypeIds& heres, const TypeIds& theres)
             Set<TypeId> seenSetTypes;
             SeenTablePropPairs seenTablePropPairs;
             if (std::optional<TypeId> inter = intersectionOfTables(here, there, seenTablePropPairs, seenSetTypes))
+            {
+                if (FFlag::LuauFixNormalizeNeverTableIntersection && get<NeverType>(*inter))
+                    continue;
                 tmp.insert(*inter);
+            }
         }
     }
 

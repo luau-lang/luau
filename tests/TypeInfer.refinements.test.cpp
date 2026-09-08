@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauFixNormalizeNeverTableIntersection)
 
 using namespace Luau;
 
@@ -3371,6 +3372,35 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_unannotated_to_truthy")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_intersection_of_metatable_union_with_discriminant_twice")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixNormalizeNeverTableIntersection, true},
+    };
+
+    CheckResult result = check(R"(
+        type basictypedata = { read tag: "other" }
+        type singletontypedata = { read tag: "singleton", value: (self: unknown) -> number }
+        type typedata = basictypedata | singletontypedata
+        type type = setmetatable<typedata, {}>
+        type singletontype = type & { read tag: "singleton" }
+
+        local function getSingleton(): singletontype
+            return nil :: any
+        end
+
+        local x = getSingleton()
+        assert(x.tag == "singleton")
+        local y = x
+        local n = x:value()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("{ @metatable {  }, singletontypedata }", toString(requireType("y")));
+    CHECK_EQ("number", toString(requireType("n")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
