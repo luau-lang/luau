@@ -13,6 +13,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceIndexerFilter)
+
 namespace Luau
 {
 
@@ -736,6 +738,28 @@ std::optional<TypeId> extractMatchingTableType(
                 {
                     isDisjoint = true;
                     break;
+                }
+            }
+
+            // Also filter on indexers, so that for a union like
+            //
+            //  { [number]: T } | { [string]: U }
+            //
+            // ... a literal `{ 42 }` selects the first member and a
+            // literal `{ foo = 42 }` selects the second.
+            if (FFlag::LuauBidirectionalInferenceIndexerFilter && !isDisjoint && tt->indexer)
+            {
+                const TypeId expectedKeyType = follow(tt->indexer->indexType);
+
+                if (exprTable->indexer)
+                {
+                    if (relate(expectedKeyType, follow(exprTable->indexer->indexType)) == Relation::Disjoint)
+                        isDisjoint = true;
+                }
+                else if (!exprTable->props.empty() && tt->props.empty())
+                {
+                    if (relate(expectedKeyType, builtinTypes->stringType) == Relation::Disjoint)
+                        isDisjoint = true;
                 }
             }
 

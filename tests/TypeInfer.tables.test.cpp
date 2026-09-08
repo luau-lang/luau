@@ -31,6 +31,8 @@ LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
+LUAU_FASTFLAG(LuauBidirectionalInferenceIndexerFilter)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
@@ -7554,6 +7556,47 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2597_constraint_forcing_bad_refinement")
     )"));
 
     CHECK_EQ("({ @metatable MyClass, { _t: T } }) -> ()", toString(requireTypeAtPosition({16, 28})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1822_recursive_union_with_multiple_table_members")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+        {FFlag::LuauBidirectionalInferenceIndexerFilter, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Value = string | { Value } | { [string]: Value }
+
+        local function takes_value(v: Value) end
+
+        takes_value({ "meow" })
+        takes_value({ meow = "foo" })
+        takes_value({ { "meow" }, { meow = { "foo" } } })
+
+        local v: Value = { "meow", { "nested" } }
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_inference_selects_union_member_by_indexer")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
+        {FFlag::LuauBidirectionalInferenceIndexerFilter, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Union = { number | string } | { [string]: number | string }
+
+        local a: Union = { 1, "two" }
+        local b: Union = { one = 1, two = "two" }
+    )"));
+
+    CHECK_EQ("{number | string}", toString(requireTypeAtPosition({3, 25})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_1")
