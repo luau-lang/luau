@@ -29,6 +29,7 @@ LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
+LUAU_FASTFLAGVARIABLE(LuauFixNumericBinopRhsMetamethodFallback)
 
 namespace Luau
 {
@@ -478,6 +479,22 @@ TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(
     }
 
     std::optional<TypePackId> retPack = solveFunctionCall(ctx, location, *mmType, argPack);
+
+    if (FFlag::LuauFixNumericBinopRhsMetamethodFallback && !retPack.has_value() && !reversed)
+    {
+        // The lhs metamethod exists but does not accept these operands (e.g. `vector`'s builtin `__add`
+        // only accepts another `vector`). Mirror the runtime and fall back to the rhs metamethod.
+        std::optional<TypeId> rhsMmType = findMetatableEntry(ctx->builtins, dummy, rhsTy, metamethod, location);
+        if (rhsMmType && follow(*rhsMmType) != *mmType)
+        {
+            rhsMmType = follow(*rhsMmType);
+            if (isPending(*rhsMmType, ctx->solver))
+                return {std::nullopt, Reduction::MaybeOk, {*rhsMmType}, {}};
+
+            retPack = solveFunctionCall(ctx, location, *rhsMmType, ctx->arena->addTypePack({lhsTy, rhsTy}));
+        }
+    }
+
     if (!retPack.has_value())
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 

@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauFixNumericBinopRhsMetamethodFallback)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -2174,6 +2175,91 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     REQUIRE(get<NormalizationTooComplex>(result.errors[0]));
     REQUIRE(get<NormalizationTooComplex>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2551_vector_on_lhs_falls_back_to_rhs_metamethod")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauFixNumericBinopRhsMetamethodFallback, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type argumentType = number | string | boolean | vector | example
+
+        local mt = {
+            __add = function(lhs: argumentType, rhs: argumentType)
+                return lhs
+            end
+        }
+        type example = setmetatable<{ x: number, y: number, z: number }, typeof(mt)>
+
+        local a: example = setmetatable({ x = 0, y = 0, z = 0 }, mt)
+        local b = vector.create(1, 2, 3)
+
+        local x = b + a
+        local y = a + b
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType("x")), toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2551_vector_on_lhs_falls_back_to_rhs_mul_metamethod")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauFixNumericBinopRhsMetamethodFallback, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local mt = {
+            __mul = function(lhs: vector | example, rhs: vector | example): string
+                return "ok"
+            end
+        }
+        type example = setmetatable<{ x: number }, typeof(mt)>
+
+        local a: example = setmetatable({ x = 0 }, mt)
+        local b = vector.create(1, 2, 3)
+
+        local x = b * a
+        local v = b * b
+        local n = b * 2
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireType("x")));
+    CHECK_EQ("vector", toString(requireType("v")));
+    CHECK_EQ("vector", toString(requireType("n")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2551_vector_on_lhs_still_errors_when_neither_metamethod_applies")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauFixNumericBinopRhsMetamethodFallback, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local mt = {
+            __add = function(lhs: number, rhs: number): number
+                return lhs + rhs
+            end
+        }
+        type example = setmetatable<{ x: number }, typeof(mt)>
+
+        local a: example = setmetatable({ x = 0 }, mt)
+        local b = vector.create(1, 2, 3)
+
+        local x = b + a
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(
+        "Operator '+' could not be applied to operands of types vector and example; there is no corresponding overload for __add",
+        toString(result.errors[0])
+    );
 }
 
 TEST_SUITE_END();
