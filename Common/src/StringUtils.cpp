@@ -9,6 +9,8 @@
 #include <string.h>
 #include <stdint.h>
 
+LUAU_FASTFLAGVARIABLE(LuauFixEscapeInterpOnlyChars)
+
 namespace Luau
 {
 
@@ -243,7 +245,12 @@ std::string escape(std::string_view s, bool escapeForInterpString)
 
     for (uint8_t c : s)
     {
-        if (c >= ' ' && c != '\\' && c != '\'' && c != '\"' && c != '`' && c != '{')
+        bool needsEscape = c < ' ' || c == '\\' || c == '\'' || c == '\"';
+
+        if (c == '`' || c == '{')
+            needsEscape = escapeForInterpString || !FFlag::LuauFixEscapeInterpOnlyChars;
+
+        if (!needsEscape)
             r += c;
         else
         {

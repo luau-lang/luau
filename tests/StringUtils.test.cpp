@@ -1,9 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/StringUtils.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 #include <iostream>
+
+LUAU_FASTFLAG(LuauFixEscapeInterpOnlyChars)
 
 namespace
 {
@@ -122,6 +125,20 @@ TEST_CASE("EditDistanceSupportsUnicode")
 
     // UTF-8 extreme characters
     CHECK_EQ(Luau::editDistance("A block", "R̴̨̢̟̚ŏ̶̳̳͚́ͅb̶̡̻̞̐̿ͅl̸̼͝ợ̷̜͓̒̏͜͝ẍ̴̝̦̟̰́̒́̌ block"), 85);
+}
+
+TEST_CASE("EscapeOnlyEscapesBraceAndBacktickForInterpolatedStrings")
+{
+    ScopedFastFlag sff{FFlag::LuauFixEscapeInterpOnlyChars, true};
+
+    CHECK_EQ(Luau::escape("{"), "{");
+    CHECK_EQ(Luau::escape("`"), "`");
+    CHECK_EQ(Luau::escape("hello {name}"), "hello {name}");
+    CHECK_EQ(Luau::escape("a\"b\\c\n"), "a\\\"b\\\\c\\n");
+
+    CHECK_EQ(Luau::escape("{", /* escapeForInterpString = */ true), "\\{");
+    CHECK_EQ(Luau::escape("`", /* escapeForInterpString = */ true), "\\`");
+    CHECK_EQ(Luau::escape("hello {name}", /* escapeForInterpString = */ true), "hello \\{name}");
 }
 
 TEST_SUITE_END();

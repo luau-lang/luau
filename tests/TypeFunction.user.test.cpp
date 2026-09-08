@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixEscapeInterpOnlyChars)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -358,6 +359,26 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_strsingleton_methods_work")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_string_singleton_with_brace_is_not_escaped")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixEscapeInterpOnlyChars, true},
+    };
+
+    CheckResult result = check(R"(
+        type function getbrace()
+            return types.singleton("{")
+        end
+        local x: getbrace<> = "{"
+        local y: number = x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("\"{\"", toString(requireType("x")));
+    CHECK(toString(result.errors[0]).find("'\"{\"'") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_union_serialization_works")
