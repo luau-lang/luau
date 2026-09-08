@@ -26,6 +26,7 @@
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
+LUAU_FASTFLAG(LuauFixFreezeTypestateCycle)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -1784,6 +1785,21 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
         // we aren't type stating this builtin and should fall back to
         // regular inference.
         return false;
+    }
+
+    if (FFlag::LuauFixFreezeTypestateCycle && resultTy && inputType == follow(*resultTy))
+    {
+        // The argument's type is the very type this call is supposed to
+        // produce (e.g. `local t: typeof(t) = {}; table.freeze(t)`).
+        if (FFlag::LuauCyclicRequireTypeInference)
+            context.solver->reportError(OccursCheckFailed{}, context.callSite->location, *context.constraint->moduleName);
+        else
+            context.solver->DEPRECATED_reportError(OccursCheckFailed{}, context.callSite->location);
+
+        asMutable(*resultTy)->ty.emplace<BoundType>(context.solver->builtinTypes->errorType);
+        asMutable(context.result)->ty.emplace<BoundTypePack>(context.solver->builtinTypes->errorTypePack);
+
+        return true;
     }
 
     std::optional<TypeId> frozenType = freezeTable(inputType, context);

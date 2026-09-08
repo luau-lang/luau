@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAG(LuauFixFreezeTypestateCycle)
 
 namespace Luau
 {
@@ -1635,10 +1636,21 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     auto [argsHead, argsTail] = flatten(argsPack);
 
+    // A blocked argument owned by this very constraint (e.g. the typestate
+    // result of `table.freeze(t)` flowing back in through `t: typeof(t)`) can
+    // never be resolved by anyone else; blocking on it would deadlock.
+    auto isOwnBlockedType = [&](TypeId t)
+    {
+        if (!FFlag::LuauFixFreezeTypestateCycle)
+            return false;
+        const BlockedType* bt = get<BlockedType>(follow(t));
+        return bt && bt->getOwner() == constraint.get();
+    };
+
     bool blocked = false;
     for (TypeId t : argsHead)
     {
-        if (isBlocked(t))
+        if (isBlocked(t) && !isOwnBlockedType(t))
         {
             block(t, constraint);
             blocked = true;

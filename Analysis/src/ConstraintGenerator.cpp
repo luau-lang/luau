@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixFreezeTypestateCycle)
 
 namespace Luau
 {
@@ -3028,10 +3029,13 @@ InferencePack ConstraintGenerator::checkExprCall(
         return InferencePack{arena->addTypePack({resultTy}), {refinementArena.variadic(returnRefinements)}};
     }
 
+    TypeId typestateResultTy = nullptr;
+
     if (shouldTypestateForFirstArgument(*call) && call->args.size > 0 && isLValue(call->args.data[0]))
     {
         AstExpr* targetExpr = call->args.data[0];
         auto resultTy = arena->addType(BlockedType{});
+        typestateResultTy = resultTy;
 
         if (auto def = dfg->getDefOptional(targetExpr))
         {
@@ -3083,6 +3087,9 @@ InferencePack ConstraintGenerator::checkExprCall(
     );
 
     getMutable<BlockedTypePack>(rets)->owner = callConstraint.get();
+
+    if (FFlag::LuauFixFreezeTypestateCycle && typestateResultTy)
+        getMutable<BlockedType>(typestateResultTy)->setOwner(callConstraint);
 
     cgraph->addDependencyOf(checkConstraint, callConstraint);
     forEachConstraint(

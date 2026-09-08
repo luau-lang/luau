@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixFreezeTypestateCycle)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1238,6 +1239,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_does_not_retroactively_block_mu
 
     CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("number", toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_of_self_referential_typeof_alias_does_not_leak_blocked_types")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixFreezeTypestateCycle, true}};
+
+    // The annotation `P` resolves to `typeof(t)` _after_ the freeze, so the
+    // argument to `table.freeze` is the very type the call is supposed to
+    // produce. This used to deadlock the solver and leak blocked types.
+    CheckResult result = check(R"(
+        --!strict
+        local t: P = { a = true }
+        table.freeze(t)
+        type P = typeof(t)
+
+        local new = table.freeze(setmetatable({}, {
+            __call = function<T>(properties: P & T): T
+                local self = table.clone(t)
+                for key, value in pairs(properties) do
+                    self[key] = value
+                end
+                return self
+            end
+        }))
+
+        return new
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<OccursCheckFailed>(result.errors[0]));
+    CHECK_EQ(Location{{3, 8}, {3, 23}}, result.errors[0].location);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_no_generic_table")
