@@ -11,6 +11,8 @@ using namespace Luau;
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
+LUAU_FASTFLAG(LuauDeclaredExternTypeMethodGenerics)
+
 TEST_SUITE_BEGIN("DefinitionTests");
 
 TEST_CASE_FIXTURE(Fixture, "definition_file_simple")
@@ -147,6 +149,34 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_extern_types")
     CHECK_EQ(toString(requireType("method2")), "string");
     CHECK_EQ(toString(requireType("metamethod")), "Bar");
     CHECK_EQ(toString(requireType("inheritedMethod")), "number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "definition_file_extern_type_generic_methods")
+{
+    ScopedFastFlag sff{FFlag::LuauDeclaredExternTypeMethodGenerics, true};
+
+    loadDefinition(R"(
+        declare extern type Foo with
+            function query<T...>(self, ...: T...): () -> number
+            function map<T, U>(self, x: T, f: (T) -> U): U
+            function pass<T...>(self, ...: T...): T...
+        end
+    )");
+
+    CheckResult result = check(R"(
+        local x: Foo
+        local q = x:query(1, "two")
+        local m = x:map(1, function(n: number): string return "" end)
+        local a, b = x:pass(1, "two")
+        local query = x.query
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType("q")), "() -> number");
+    CHECK_EQ(toString(requireType("m")), "string");
+    CHECK_EQ(toString(requireType("a")), "number");
+    CHECK_EQ(toString(requireType("b")), "string");
+    CHECK_EQ(toString(requireType("query")), "<T...>(Foo, T...) -> () -> number");
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")

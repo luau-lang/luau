@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauTrackPrefixLocal)
 LUAU_FASTFLAG(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauDeclaredExternTypeMethodGenerics)
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
 
@@ -2238,6 +2239,48 @@ TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
     CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
     CHECK(prop2.ty->is<AstTypeReference>());
     CHECK(prop2.location == Location({7, 12}, {7, 25}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_extern_type_generic_method_declarations")
+{
+    ScopedFastFlag sff{FFlag::LuauDeclaredExternTypeMethodGenerics, true};
+
+    AstStatBlock* stat = parseEx(R"(
+        declare extern type Foo with
+            function query<T...>(self, ...: T...): () -> number
+            function map<T, U>(self, x: T, f: (T) -> U): U
+        end
+    )")
+                             .root;
+
+    REQUIRE_EQ(stat->body.size, 1);
+
+    AstStatDeclareExternType* declaredExternType = stat->body.data[0]->as<AstStatDeclareExternType>();
+    REQUIRE(declaredExternType);
+    REQUIRE_EQ(declaredExternType->props.size, 2);
+
+    AstDeclaredExternTypeProperty& query = declaredExternType->props.data[0];
+    CHECK(query.name == "query");
+    CHECK(query.isMethod);
+    AstTypeFunction* queryTy = query.ty->as<AstTypeFunction>();
+    REQUIRE(queryTy);
+    CHECK_EQ(queryTy->generics.size, 0);
+    REQUIRE_EQ(queryTy->genericPacks.size, 1);
+    CHECK(queryTy->genericPacks.data[0]->name == "T");
+    CHECK_EQ(queryTy->argTypes.types.size, 0);
+    REQUIRE(queryTy->argTypes.tailType);
+    CHECK(queryTy->argTypes.tailType->is<AstTypePackGeneric>());
+
+    AstDeclaredExternTypeProperty& map = declaredExternType->props.data[1];
+    CHECK(map.name == "map");
+    CHECK(map.isMethod);
+    AstTypeFunction* mapTy = map.ty->as<AstTypeFunction>();
+    REQUIRE(mapTy);
+    REQUIRE_EQ(mapTy->generics.size, 2);
+    CHECK(mapTy->generics.data[0]->name == "T");
+    CHECK(mapTy->generics.data[1]->name == "U");
+    CHECK_EQ(mapTy->genericPacks.size, 0);
+    CHECK_EQ(mapTy->argTypes.types.size, 2);
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_extern_type_declarations")

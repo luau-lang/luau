@@ -119,6 +119,9 @@ struct ConstraintGenerator
     // The private scope of type aliases for which the type parameters belong to.
     DenseHashMap<const AstStatTypeAlias*, ScopePtr> astTypeAliasDefiningScopes;
 
+    // The private scope of extern type declarations that the generic parameters of their methods belong to.
+    DenseHashMap<const AstStatDeclareExternType*, ScopePtr> astExternTypeDefiningScopes;
+
     NotNull<const DataFlowGraph> dfg;
     RefinementArena refinementArena;
 

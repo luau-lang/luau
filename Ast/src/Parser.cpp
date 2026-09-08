@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAGVARIABLE(LuauDeclaredExternTypeMethodGenerics)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -1744,13 +1745,20 @@ AstDeclaredExternTypeProperty Parser::parseDeclaredExternTypeMethod(const AstArr
 
     Name fnName = parseName("function name");
 
-    // TODO: generic method declarations CLI-39909
     AstArray<AstGenericType*> generics;
     AstArray<AstGenericTypePack*> genericPacks;
-    generics.size = 0;
-    generics.data = nullptr;
-    genericPacks.size = 0;
-    genericPacks.data = nullptr;
+
+    if (FFlag::LuauDeclaredExternTypeMethodGenerics)
+    {
+        std::tie(generics, genericPacks) = parseGenericTypeList(/* withDefaultValues= */ false);
+    }
+    else
+    {
+        generics.size = 0;
+        generics.data = nullptr;
+        genericPacks.size = 0;
+        genericPacks.data = nullptr;
+    }
 
     MatchLexeme matchParen = lexer.current();
     expectAndConsume('(', "function parameter list start");

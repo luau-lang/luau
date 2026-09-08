@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauDeclaredExternTypeMethodGenerics)
 
 namespace Luau
 {
@@ -1053,6 +1054,9 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
             }
 
             ScopePtr defnScope = childScope(classDeclaration, scope);
+
+            if (FFlag::LuauDeclaredExternTypeMethodGenerics)
+                astExternTypeDefiningScopes[classDeclaration] = defnScope;
 
             TypeId initialType = arena->addType(BlockedType{});
             TypeFun initialFun{initialType};
@@ -2371,11 +2375,21 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
         }
     }
 
+    // Method generics must be resolved in the scope registered for this declaration so that
+    // TypeChecker2 can find their signature scopes by location.
+    ScopePtr propScope = scope;
+    if (FFlag::LuauDeclaredExternTypeMethodGenerics)
+    {
+        if (ScopePtr* defnScope = astExternTypeDefiningScopes.find(declaredExternType))
+            propScope = *defnScope;
+    }
+
     for (const AstDeclaredExternTypeProperty& externProp : declaredExternType->props)
     {
         Name propName(externProp.name.value);
-        TypeId propTy =
-            resolveType(scope, externProp.ty, /* inTypeArguments */ false, /* replaceErrorWithFresh */ false, /* initialPolarity */ Polarity::Mixed);
+        TypeId propTy = resolveType(
+            propScope, externProp.ty, /* inTypeArguments */ false, /* replaceErrorWithFresh */ false, /* initialPolarity */ Polarity::Mixed
+        );
 
         bool assignToMetatable = isMetamethod(propName);
 
