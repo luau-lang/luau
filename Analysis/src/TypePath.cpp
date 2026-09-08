@@ -19,6 +19,7 @@
 
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixEmptyGenericPackTailErrorReporting)
 
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal
@@ -638,7 +639,8 @@ struct TraversalState
 
         auto [flatHead, flatTail] = flatten(*currentPack);
 
-        if (flatHead.size() <= slice.start_index)
+        // A slice starting right at the end of the head is the (possibly empty) tail.
+        if (FFlag::LuauFixEmptyGenericPackTailErrorReporting ? flatHead.size() < slice.start_index : flatHead.size() <= slice.start_index)
             return false;
 
         std::vector<TypeId> headSlice;

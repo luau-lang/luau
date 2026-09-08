@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixEmptyGenericPackTailErrorReporting)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -2463,6 +2464,41 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_each_offendi
     CHECK_EQ(errors[1].location, Location{{4, 18}, {4, 21}});
 }
 
+TEST_CASE_FIXTURE(Fixture, "calling_function_with_empty_generic_pack_tail_reports_empty_pack")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixEmptyGenericPackTailErrorReporting, true}};
+
+    CheckResult result = check(R"(
+        local function outer<T...>()
+            local function inner(first: boolean, ...: T...)
+            end
+
+            inner(true)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypePackMismatch>(result.errors[0]));
+    CHECK_EQ("Expected this to be 'T...', but got '()'", toString(result.errors[0]));
+    CHECK_EQ(result.errors[0].location, Location{{5, 12}, {5, 17}});
+}
+
+TEST_CASE_FIXTURE(Fixture, "calling_function_with_generic_pack_tail_and_forwarded_pack_is_ok")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixEmptyGenericPackTailErrorReporting, true}};
+
+    CheckResult result = check(R"(
+        local function outer<T...>(...: T...)
+            local function inner(first: boolean, ...: T...)
+            end
+
+            inner(true, ...)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
@@ -2485,10 +2521,20 @@ TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(Location{{2, 21}, {2, 22}} == result.errors.at(0).location);
     auto err = get<TypePackMismatch>(result.errors[0]);
-    // FIXME: This seems incorrect?
-    CHECK_EQ("a", toString(err->givenTp));
+    REQUIRE(err);
+    if (FFlag::LuauFixEmptyGenericPackTailErrorReporting)
+    {
+        // Nothing was passed for `b...`, so the error names the empty pack and points at the callee.
+        CHECK(Location{{2, 19}, {2, 20}} == result.errors.at(0).location);
+        CHECK_EQ("()", toString(err->givenTp));
+    }
+    else
+    {
+        CHECK(Location{{2, 21}, {2, 22}} == result.errors.at(0).location);
+        // FIXME: This seems incorrect?
+        CHECK_EQ("a", toString(err->givenTp));
+    }
     CHECK_EQ("b...", toString(err->wantedTp));
 }
 

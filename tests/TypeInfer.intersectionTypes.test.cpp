@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixEmptyGenericPackTailErrorReporting)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1324,7 +1325,18 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_4")
         CHECK_EQ(toString(tm->wantedType), "(number?) -> ()");
         CHECK_EQ(toString(tm->givenType), "((a...) -> ()) & ((number, a...) -> number)");
         const std::string expected =
-            FFlag::LuauNewTypePathErrorMessages
+            FFlag::LuauNewTypePathErrorMessages && FFlag::LuauFixEmptyGenericPackTailErrorReporting
+                ? "Expected this to be\n\t"
+                  "'(number?) -> ()'"
+                  "\nbut got\n\t"
+                  "'((a...) -> ()) & ((number, a...) -> number)'"
+                  "; \nthis is because \n\t"
+                  " * Expected the 1st parameter to be a supertype of `nil`, but got `number`\n\t"
+                  " * Expected the return types to be `()`, but got `number`\n\t"
+                  " * the parameter type pack tail is `a...` and the parameters from the 1st onward are `number?`, and `a...` is not a supertype of "
+                  "`number?`\n\t"
+                  " * the parameter type pack tail is `a...` and the parameters from the 2nd onward are `()`, and `a...` is not a supertype of `()`"
+            : FFlag::LuauNewTypePathErrorMessages
                 ? "Expected this to be\n\t"
                   "'(number?) -> ()'"
                   "\nbut got\n\t"

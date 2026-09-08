@@ -16,6 +16,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
+LUAU_FASTFLAG(LuauFixEmptyGenericPackTailErrorReporting)
 
 namespace Luau
 {
@@ -350,7 +351,13 @@ void OverloadResolver::reportErrors(
 
     if (failedSuperPack && get<GenericTypePack>(*failedSuperPack))
     {
-        maybeEmplaceError(&errors, argLocation, moduleName, &reason, failedSuperPack, failedSubPack.value_or(builtinTypes->emptyTypePack));
+        const TypePackId givenPack = failedSubPack.value_or(builtinTypes->emptyTypePack);
+
+        // No argument was passed for the generic tail, so there is nothing to point at but the call itself.
+        if (FFlag::LuauFixEmptyGenericPackTailErrorReporting && finite(givenPack) && size(givenPack) == 0)
+            argLocation = fnLocation;
+
+        maybeEmplaceError(&errors, argLocation, moduleName, &reason, failedSuperPack, givenPack);
         return;
     }
 

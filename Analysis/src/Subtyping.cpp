@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixEmptyGenericPackTailErrorReporting)
 
 
 namespace Luau
@@ -1140,7 +1141,13 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
         }
         else if (auto g = get<GenericTypePack>(*superTail))
         {
-            result->andAlso(isTailCovariantWithTail(env, scope, Nothing{}, *superTail, g));
+            if (FFlag::LuauFixEmptyGenericPackTailErrorReporting)
+            {
+                // The generic tail was compared against the empty remainder of the subtype pack.
+                result->andAlso(isTailCovariantWithTail(env, scope, Nothing{}, *superTail, g).withSubComponent(TypePath::PackSlice{headSize}));
+            }
+            else
+                result->andAlso(isTailCovariantWithTail(env, scope, Nothing{}, *superTail, g));
         }
         else if (is<FreeTypePack>(*superTail))
         {
