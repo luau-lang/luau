@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFlattenNestedUnionAnnotations)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1680,6 +1681,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_intersection_boun
 
     CHECK("string" == toString(requireType("b")));
     CHECK("string" == toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parenthesized_intersection_annotations_are_flattened")
+{
+    ScopedFastFlag sff{FFlag::LuauFlattenNestedUnionAnnotations, true};
+
+    CheckResult result = check(R"(
+        type A = { a: number }
+        type B = { b: number }
+        type C = { c: number }
+        type D = { d: number }
+        type Foo = (A & B) & C
+        type Bar = A & (B & (C & D))
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    const IntersectionType* foo = get<IntersectionType>(requireTypeAlias("Foo"));
+    REQUIRE(foo);
+    CHECK_EQ(3, foo->parts.size());
+    for (TypeId part : foo->parts)
+        CHECK(!get<IntersectionType>(follow(part)));
+
+    const IntersectionType* bar = get<IntersectionType>(requireTypeAlias("Bar"));
+    REQUIRE(bar);
+    CHECK_EQ(4, bar->parts.size());
+    for (TypeId part : bar->parts)
+        CHECK(!get<IntersectionType>(follow(part)));
 }
 
 TEST_SUITE_END();

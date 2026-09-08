@@ -41,6 +41,7 @@ LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
+LUAU_FASTFLAGVARIABLE(LuauFlattenNestedUnionAnnotations)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -67,6 +68,14 @@ static bool isValidClassMetamethod(const Name& name)
     return name == "__call" || name == "__concat" || name == "__unm" || name == "__add" || name == "__sub" || name == "__mul" || name == "__div" ||
            name == "__mod" || name == "__pow" || name == "__tostring" || name == "__eq" || name == "__lt" || name == "__le" || name == "__iter" ||
            name == "__len" || name == "__idiv";
+}
+
+static const AstType* unwrapTypeGroups(const AstType* ty)
+{
+    while (const AstTypeGroup* group = ty->as<AstTypeGroup>())
+        ty = group->type;
+
+    return ty;
 }
 
 static std::optional<AstExpr*> matchRequire(const AstExprCall& call)
@@ -4805,7 +4814,18 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
             std::vector<TypeId> parts;
             for (AstType* part : unionAnnotation->types)
             {
-                parts.push_back(resolveType_(scope, part, inTypeArguments));
+                TypeId partTy = resolveType_(scope, part, inTypeArguments);
+
+                if (FFlag::LuauFlattenNestedUnionAnnotations && unwrapTypeGroups(part)->is<AstTypeUnion>())
+                {
+                    if (auto nestedUnion = get<UnionType>(partTy))
+                    {
+                        parts.insert(parts.end(), nestedUnion->options.begin(), nestedUnion->options.end());
+                        continue;
+                    }
+                }
+
+                parts.push_back(partTy);
             }
 
             result = arena->addType(UnionType{std::move(parts)});
@@ -4820,7 +4840,18 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
             std::vector<TypeId> parts;
             for (AstType* part : intersectionAnnotation->types)
             {
-                parts.push_back(resolveType_(scope, part, inTypeArguments));
+                TypeId partTy = resolveType_(scope, part, inTypeArguments);
+
+                if (FFlag::LuauFlattenNestedUnionAnnotations && unwrapTypeGroups(part)->is<AstTypeIntersection>())
+                {
+                    if (auto nestedIntersection = get<IntersectionType>(partTy))
+                    {
+                        parts.insert(parts.end(), nestedIntersection->parts.begin(), nestedIntersection->parts.end());
+                        continue;
+                    }
+                }
+
+                parts.push_back(partTy);
             }
 
             result = arena->addType(IntersectionType{std::move(parts)});

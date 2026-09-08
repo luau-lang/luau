@@ -10,6 +10,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFlattenNestedUnionAnnotations)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -1118,6 +1119,31 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2025")
 
         table.insert(foo, bar) 
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parenthesized_union_annotations_are_flattened")
+{
+    ScopedFastFlag sff{FFlag::LuauFlattenNestedUnionAnnotations, true};
+
+    CheckResult result = check(R"(
+        type Foo = ("hello" | "goodbye") | "foo"
+        type Bar = "a" | ("b" | ("c" | "d")) | "e"
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    const UnionType* foo = get<UnionType>(requireTypeAlias("Foo"));
+    REQUIRE(foo);
+    CHECK_EQ(3, foo->options.size());
+    for (TypeId option : foo->options)
+        CHECK(!get<UnionType>(follow(option)));
+    CHECK_EQ(R"("foo" | "goodbye" | "hello")", toString(requireTypeAlias("Foo")));
+
+    const UnionType* bar = get<UnionType>(requireTypeAlias("Bar"));
+    REQUIRE(bar);
+    CHECK_EQ(5, bar->options.size());
+    for (TypeId option : bar->options)
+        CHECK(!get<UnionType>(follow(option)));
 }
 
 TEST_SUITE_END();
