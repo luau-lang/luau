@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauReadOnlyTableBuiltins)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1916,6 +1917,42 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "instantiation_works_on_builtins")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Expected this to be 'string', but got 'number'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_library_read_only_functions_accept_read_only_tables")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyTableBuiltins, true}};
+
+    CheckResult result = check(R"(
+        local function f(t: { read [number]: string })
+            local a = table.unpack(t)
+            local b = unpack(t)
+            local c = table.concat(t, ",")
+            local d = table.find(t, "x")
+            local e = table.maxn(t)
+            local g = table.getn(t)
+            table.foreachi(t, function(i, v) end)
+            local h = table.move(t, 1, 2, 1, {})
+            return a, b, c, d, e, g, h
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("({read string}) -> (string, string, string, number?, number, number, {string})", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_library_mutating_functions_reject_read_only_tables")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReadOnlyTableBuiltins, true}};
+
+    CheckResult result = check(R"(
+        local function f(t: { read [number]: string })
+            table.insert(t, "x")
+            table.sort(t)
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_on_any_should_not_error")

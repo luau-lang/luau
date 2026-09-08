@@ -5,6 +5,7 @@ LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAGVARIABLE(LuauReadOnlyTableBuiltins)
 
 namespace Luau
 {
@@ -56,6 +57,17 @@ declare function select<A...>(i: string | number, ...: A...): ...any
 declare function loadstring<A...>(src: string, chunkname: string?): (((A...) -> any)?, string?)
 
 @checked declare function newproxy(mt: boolean?): any
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionUnpackReadOnlySrc = R"BUILTIN_SRC(
+
+-- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.
+declare function unpack<V>(tab: {read V}, i: number?, j: number?): ...V
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionUnpackSrc = R"BUILTIN_SRC(
 
 -- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.
 declare function unpack<V>(tab: {V}, i: number?, j: number?): ...V
@@ -211,6 +223,32 @@ declare table: {
     foreachi: <V>({V}, (number, V) -> ()) -> (),
 
     move: <V>(src: {V}, a: number, b: number, t: number, dst: {V}?) -> {V},
+
+    clear: (table: {}) -> (),
+    isfrozen: (t: {}) -> boolean,
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionTableReadOnlySrc = R"BUILTIN_SRC(
+
+declare table: {
+    concat: <V>(t: {read V}, sep: string?, i: number?, j: number?) -> string,
+    insert: (<V>(t: {V}, value: V) -> ()) & (<V>(t: {V}, pos: number, value: V) -> ()),
+    maxn: <V>(t: {read V}) -> number,
+    remove: <V>(t: {V}, number?) -> V?,
+    sort: <V>(t: {V}, comp: ((V, V) -> boolean)?) -> (),
+    create: <V>(count: number, value: V?) -> {V},
+    find: <V>(haystack: {read V}, needle: V, init: number?) -> number?,
+
+    unpack: <V>(list: {read V}, i: number?, j: number?) -> ...V,
+    pack: <V>(...V) -> { n: number, [number]: V },
+
+    getn: <V>(t: {read V}) -> number,
+    foreach: <K, V>(t: {read [K]: V}, f: (K, V) -> ()) -> (),
+    foreachi: <V>({read V}, (number, V) -> ()) -> (),
+
+    move: <V>(src: {read V}, a: number, b: number, t: number, dst: {V}?) -> {V},
 
     clear: (table: {}) -> (),
     isfrozen: (t: {}) -> boolean,
@@ -394,15 +432,18 @@ declare class: {
 }
 )CLASS_SRC";
 
-std::string getBuiltinDefinitionSource()
+std::string getBuiltinDefinitionSource(SolverMode mode)
 {
     std::string result = kBuiltinDefinitionBaseSrc;
+
+    bool readOnlyBuiltins = FFlag::LuauReadOnlyTableBuiltins && mode == SolverMode::New;
+    result += readOnlyBuiltins ? kBuiltinDefinitionUnpackReadOnlySrc : kBuiltinDefinitionUnpackSrc;
 
     result += kBuiltinDefinitionBit32Src;
     result += kBuiltinDefinitionMathSrc;
     result += kBuiltinDefinitionOsSrc;
     result += kBuiltinDefinitionCoroutineSrc;
-    result += kBuiltinDefinitionTableSrc;
+    result += readOnlyBuiltins ? kBuiltinDefinitionTableReadOnlySrc : kBuiltinDefinitionTableSrc;
     result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
     if (FFlag::LuauIntegerType2 && FFlag::LuauIntegerLibrary)
