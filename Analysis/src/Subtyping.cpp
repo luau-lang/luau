@@ -23,6 +23,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauSubtypingRecursionLimit, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAGVARIABLE(LuauFixInexactTableMissingProps)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
@@ -2130,16 +2131,32 @@ SubtypingResult Subtyping::isCovariantWith(
         {
             SubtypingResult result;
 
+            // A unique table literal is exact, so a missing property is `nil`. Any other table is inexact: a missing
+            // property may hold anything on read (`unknown`) and cannot be written.
             if (FFlag::LuauImproveUniqueTableWidthSubtyping)
             {
                 if (forceCovariantTest)
                     result = isCovariantWith(env, Property::rw(builtinTypes->nilType), superProp, name, forceCovariantTest, scope);
                 else
-                    result = isCovariantWith(env, Property::readonly(builtinTypes->nilType), superProp, name, forceCovariantTest, scope);
+                    result = isCovariantWith(
+                        env,
+                        Property::readonly(FFlag::LuauFixInexactTableMissingProps ? builtinTypes->unknownType : builtinTypes->nilType),
+                        superProp,
+                        name,
+                        forceCovariantTest,
+                        scope
+                    );
             }
             else
             {
-                result = isCovariantWith(env, Property::readonly(builtinTypes->nilType), superProp, name, forceCovariantTest, scope);
+                result = isCovariantWith(
+                    env,
+                    Property::readonly(FFlag::LuauFixInexactTableMissingProps ? builtinTypes->unknownType : builtinTypes->nilType),
+                    superProp,
+                    name,
+                    forceCovariantTest,
+                    scope
+                );
             }
 
             // We must ignore the actual reasoning from here because the subtype doesn't have a property to traverse into later.
@@ -2609,6 +2626,38 @@ SubtypingResult Subtyping::isCovariantWith(
             res.andAlso(isCovariantWith(env, *subProp.readTy, *superProp.readTy, scope).withBothComponent(TypePath::Property::read(name)));
         if (superProp.writeTy.has_value() && subProp.writeTy.has_value() && !forceCovariantTest)
             res.andAlso(isContravariantWith(env, *subProp.writeTy, *superProp.writeTy, scope).withBothComponent(TypePath::Property::write(name)));
+
+        if (FFlag::LuauFixInexactTableMissingProps && !superProp.isReadWrite())
+        {
+            if (superProp.readTy.has_value() && !subProp.readTy.has_value())
+            {
+                if (FFlag::LuauPropertyModifierMismatchErrors)
+                    res.andAlso(
+                        SubtypingResult{false}
+                            .withSubComponent(TypePath::Property::write(name))
+                            .withSuperComponent(TypePath::Property::read(name))
+                            .withPropertyModifierViolation()
+                    );
+                else
+                    res.andAlso(
+                        SubtypingResult{false}.withSubComponent(TypePath::Property::write(name)).withSuperComponent(TypePath::Property::read(name))
+                    );
+            }
+            if (superProp.writeTy.has_value() && !subProp.writeTy.has_value())
+            {
+                if (FFlag::LuauPropertyModifierMismatchErrors)
+                    res.andAlso(
+                        SubtypingResult{false}
+                            .withSubComponent(TypePath::Property::read(name))
+                            .withSuperComponent(TypePath::Property::write(name))
+                            .withPropertyModifierViolation()
+                    );
+                else
+                    res.andAlso(
+                        SubtypingResult{false}.withSubComponent(TypePath::Property::read(name)).withSuperComponent(TypePath::Property::write(name))
+                    );
+            }
+        }
 
         if (superProp.isReadWrite())
         {

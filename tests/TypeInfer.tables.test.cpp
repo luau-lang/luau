@@ -26,6 +26,7 @@ LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauFixInexactTableMissingProps)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
@@ -6821,6 +6822,80 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_allow_laundering")
         local laundered = foo(t) -- via width subtyping
         laundered.x = nil
         assert(type(t) == "number")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "inexact_table_is_not_subtype_of_table_with_nil_property")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauFixInexactTableMissingProps, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local a = { value = "hey" }
+        local empty: {} = a
+        local b: { write value: nil } = empty
+        local c: { read value: nil } = empty
+        local d: { value: nil } = empty
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "inexact_table_is_subtype_of_table_with_read_unknown_property")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauFixInexactTableMissingProps, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local function f(t: {}): { read foo: unknown }
+            return t
+        end
+
+        local function g(t: {}): { read foo: any }
+            return t
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "read_only_property_is_not_subtype_of_write_only_property")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauFixInexactTableMissingProps, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local r: { read x: number } = { x = 1 }
+        local w: { write x: number } = r
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "write_only_property_is_not_subtype_of_read_only_property")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauFixInexactTableMissingProps, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local w: { write x: number } = { x = 1 }
+        local r: { read x: number } = w
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
