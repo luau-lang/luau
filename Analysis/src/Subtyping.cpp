@@ -1043,9 +1043,14 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
         {
             // A pack that is shorter than the one it is compared against is implicitly padded with `nil`, eg.
             //     (string) <: (string, number?)
+            //
+            // There is no sub path to point at for the missing elements, so a failure is reported against the packs as a whole.
             for (size_t i = headSize; i < superHead.size(); ++i)
-                result->andAlso(isCovariantWith(env, builtinTypes->nilType, superHead[i], scope)
-                                    .withSuperComponent(TypePath::Index{i, TypePath::Index::Variant::Pack}));
+            {
+                SubtypingResult elementResult = isCovariantWith(env, builtinTypes->nilType, superHead[i], scope);
+                elementResult.reasoning.clear();
+                result->andAlso(std::move(elementResult));
+            }
 
             if (!result->isSubtype)
                 return *result;
