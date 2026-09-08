@@ -29,6 +29,7 @@ LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauStringTableSubtypeReasoning)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
 
@@ -2507,8 +2508,13 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Prim
 
                     if (auto stringTable = get<TableType>(*it->second.readTy))
                     {
-                        result.orElse(isCovariantWith(env, stringTable, superTable, /*forceCovariantTest*/ false, scope)
-                                          .withSubPath(TypePath::PathBuilder().mt().readProp("__index").build()));
+                        SubtypingResult stringResult =
+                            isCovariantWith(env, stringTable, superTable, /*forceCovariantTest*/ false, scope);
+                        // Only explain the failure through `typeof(string)` when there is a concrete property
+                        // mismatch to point at; otherwise, the `__index` detour just confuses the reader.
+                        if (!FFlag::LuauStringTableSubtypeReasoning || !stringResult.reasoning.empty())
+                            stringResult.withSubPath(TypePath::PathBuilder().mt().readProp("__index").build());
+                        result.orElse(stringResult);
                     }
                 }
             }
@@ -2544,8 +2550,13 @@ SubtypingResult Subtyping::isCovariantWith(
 
                     if (auto stringTable = get<TableType>(*it->second.readTy))
                     {
-                        result.orElse(isCovariantWith(env, stringTable, superTable, /*forceCovariantTest*/ false, scope)
-                                          .withSubPath(TypePath::PathBuilder().mt().readProp("__index").build()));
+                        SubtypingResult stringResult =
+                            isCovariantWith(env, stringTable, superTable, /*forceCovariantTest*/ false, scope);
+                        // Only explain the failure through `typeof(string)` when there is a concrete property
+                        // mismatch to point at; otherwise, the `__index` detour just confuses the reader.
+                        if (!FFlag::LuauStringTableSubtypeReasoning || !stringResult.reasoning.empty())
+                            stringResult.withSubPath(TypePath::PathBuilder().mt().readProp("__index").build());
+                        result.orElse(stringResult);
                     }
                 }
             }

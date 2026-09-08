@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauStringTableSubtypeReasoning)
 
 using namespace Luau;
 
@@ -1870,16 +1871,25 @@ TEST_CASE_FIXTURE(SubtypeFixture, "string_table_mt")
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
-    // This check is weird. Because we don't have built-in types, we don't have
-    // the string metatable. That means subtyping will see that the entire
-    // metatable is empty, and abort there, without looking at the metatable
-    // properties (because there aren't any).
-    CHECK(
-        result.reasoning == std::vector{SubtypingReasoning{
-                                /* subPath */ TypePath::PathBuilder().mt().readProp("__index").build(),
-                                /* superPath */ TypePath::kEmpty,
-                            }}
-    );
+    if (!FFlag::LuauStringTableSubtypeReasoning)
+    {
+        // This check is weird. Because we don't have built-in types, we don't have
+        // the string metatable. That means subtyping will see that the entire
+        // metatable is empty, and abort there, without looking at the metatable
+        // properties (because there aren't any).
+        CHECK(
+            result.reasoning == std::vector{SubtypingReasoning{
+                                    /* subPath */ TypePath::PathBuilder().mt().readProp("__index").build(),
+                                    /* superPath */ TypePath::kEmpty,
+                                }}
+        );
+    }
+    else
+    {
+        // With the flag enabled, the empty typeof(string) result is reported without
+        // adding a confusing __index detour.
+        CHECK(result.reasoning.empty());
+    }
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "negation")

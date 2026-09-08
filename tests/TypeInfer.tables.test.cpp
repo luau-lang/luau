@@ -20,6 +20,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauStringTableSubtypeReasoning)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
@@ -3731,12 +3733,18 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
 
         TypeMismatch* tm1 = get<TypeMismatch>(result.errors[0]);
         REQUIRE(tm1);
-        CHECK("typeof(string)" == toString(tm1->givenType));
+        if (FFlag::LuauStringTableSubtypeReasoning)
+            CHECK("string" == toString(tm1->givenType));
+        else
+            CHECK("typeof(string)" == toString(tm1->givenType));
         CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (T...) }" == toString(tm1->wantedType));
 
         TypeMismatch* tm2 = get<TypeMismatch>(result.errors[1]);
         REQUIRE(tm2);
-        CHECK("typeof(string)" == toString(tm2->givenType));
+        if (FFlag::LuauStringTableSubtypeReasoning)
+            CHECK("\"bar\"" == toString(tm2->givenType));
+        else
+            CHECK("typeof(string)" == toString(tm2->givenType));
         CHECK("t1 where t1 = { read absolutely_no_scalar_has_this_method: (t1) -> (T...) }" == toString(tm2->wantedType));
 
         TypeMismatch* tm3 = get<TypeMismatch>(result.errors[2]);
@@ -7590,6 +7598,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_assigned_to_array_annotation_has_plain_error_message")
+{
+    // https://github.com/luau-lang/luau/issues/2128
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauStringTableSubtypeReasoning, true}};
+
+    CheckResult result = check(R"(
+        local command: { string } = { "pdfunite" }
+        command = table.concat(command, " ")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Expected this to be '{string}', but got 'string'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_assigned_to_table_with_mismatched_string_method_keeps_reasoning")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauStringTableSubtypeReasoning, true}};
+
+    CheckResult result = check(R"(
+        local x: { upper: number } = "hello"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]).find("__index") != std::string::npos);
 }
 
 TEST_SUITE_END();
