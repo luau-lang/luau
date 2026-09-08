@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauReportCallResultTypeFunctionErrors)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -1099,6 +1100,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_w_bad_indexer")
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(toString(result.errors[0]) == "Property '\"d\"' does not exist on type 'MyObject'");
     CHECK(toString(result.errors[1]) == "Property 'boolean' does not exist on type 'MyObject'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_reported_at_call_site")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauReportCallResultTypeFunctionErrors, true};
+
+    CheckResult result = check(R"(
+        local function foo<t>(): index<t, "hi">
+            return nil :: any
+        end
+
+        local a = foo()
+        local b: any = a
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"hi\"' does not exist on type 'unknown'");
+    CHECK(result.errors[0].location == Location{{5, 18}, {5, 23}});
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_on_function_metamethods")

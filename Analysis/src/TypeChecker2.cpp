@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauReportCallResultTypeFunctionErrors)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -1929,6 +1930,17 @@ void TypeChecker2::visitCall(AstExprCall* call)
     {
         if (result2.ok.size() > 1)
             reportError(AmbiguousFunctionCall{fnTy, argsPack}, call->location);
+        else if (FFlag::LuauReportCallResultTypeFunctionErrors)
+        {
+            // The selected overload's own type functions are known to be
+            // inhabited, but instantiating a generic callee can produce fresh
+            // instances in the result that only exist at this call site.
+            if (TypePackId* resultPack = module->astTypePacks.find(call))
+            {
+                for (TypeId ty : *resultPack)
+                    checkForTypeFunctionInhabitance(follow(ty), call->location);
+            }
+        }
         return;
     }
 
