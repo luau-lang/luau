@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauFixGenericLambdaArgInference)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -72,6 +73,57 @@ size_t HashSubtypeConstraintRecord::operator()(const SubtypeConstraintRecord& c)
 }
 
 static void dump(ConstraintSolver* cs, ToStringOptions& opts);
+
+// Structurally matches a declared parameter type against the type of an
+// already-known argument, recording a binding for every generic of the callee
+// that appears in a bare or table position. This is deliberately conservative:
+// bindings are only used to seed bidirectional inference of lambda arguments.
+static void inferGenericsFromArgument(
+    TypeId expectedTy,
+    TypeId actualTy,
+    const DenseHashSet<const void*>& generics,
+    DenseHashMap<TypeId, TypeId>& bindings,
+    DenseHashSet<TypeId>& seen
+)
+{
+    expectedTy = follow(expectedTy);
+    actualTy = follow(actualTy);
+
+    if (seen.contains(expectedTy))
+        return;
+    seen.insert(expectedTy);
+
+    if (is<FreeType, BlockedType, PendingExpansionType, GenericType, TypeFunctionInstanceType, ErrorType, AnyType>(actualTy))
+        return;
+
+    if (generics.contains(expectedTy))
+    {
+        if (!bindings.contains(expectedTy))
+            bindings[expectedTy] = actualTy;
+        return;
+    }
+
+    const TableType* expectedTable = getTableType(expectedTy);
+    const TableType* actualTable = getTableType(actualTy);
+    if (!expectedTable || !actualTable)
+        return;
+
+    for (const auto& [name, expectedProp] : expectedTable->props)
+    {
+        auto it = actualTable->props.find(name);
+        if (it == actualTable->props.end())
+            continue;
+
+        if (expectedProp.readTy && it->second.readTy)
+            inferGenericsFromArgument(*expectedProp.readTy, *it->second.readTy, generics, bindings, seen);
+    }
+
+    if (expectedTable->indexer && actualTable->indexer)
+    {
+        inferGenericsFromArgument(expectedTable->indexer->indexType, actualTable->indexer->indexType, generics, bindings, seen);
+        inferGenericsFromArgument(expectedTable->indexer->indexResultType, actualTable->indexer->indexResultType, generics, bindings, seen);
+    }
+}
 
 [[maybe_unused]] static void dumpBindings(NotNull<Scope> scope, ToStringOptions& opts)
 {
@@ -1964,10 +2016,40 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     const std::vector<TypeId> expectedArgs = extendTypePack(*arena, builtinTypes, ftv->argTypes, c.callSite->args.size + typeOffset).head;
     const std::vector<TypeId> argPackHead = flatten(argsPack).first;
 
+    // Consider:
+    //
+    //  local function read<T>(value: T, fn: (T) -> ()) end
+    //  read(a, function(value) end)
+    //
+    // `T` can be learned from `a` and then pushed into the lambda so that
+    // `value` is not left free while the lambda body is being solved.
+    DenseHashMap<TypeId, TypeId> inferredGenerics;
+    if (FFlag::LuauFixGenericLambdaArgInference && !ftv->generics.empty())
+    {
+        DenseHashSet<TypeId> seen;
+        for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
+        {
+            AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
+            if (expr->is<AstExprFunction>())
+                continue;
+
+            inferGenericsFromArgument(expectedArgs[i + typeOffset], argPackHead[i + typeOffset], genericTypesAndPacks, inferredGenerics, seen);
+        }
+    }
+
     for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
     {
         TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
         AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
+
+        if (FFlag::LuauFixGenericLambdaArgInference && !inferredGenerics.empty() && expr->is<AstExprFunction>() &&
+            containsGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
+        {
+            DenseHashMap<TypePackId, TypePackId> noPackReplacements;
+            Replacer replacer{arena, NotNull{&inferredGenerics}, NotNull{&noPackReplacements}};
+            if (std::optional<TypeId> substituted = replacer.substitute(expectedArgTy))
+                expectedArgTy = follow(*substituted);
+        }
 
         PushTypeResult result = pushTypeInto(
             c.astTypes, c.astExpectedTypes, NotNull{this}, constraint, NotNull{&genericTypesAndPacks}, NotNull{&u2}, subtyping, expectedArgTy, expr

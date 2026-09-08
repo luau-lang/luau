@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixGenericLambdaArgInference)
 
 using namespace Luau;
 
@@ -1433,7 +1434,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument_3")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (!FFlag::DebugLuauForceOldSolver)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauFixGenericLambdaArgInference)
+        REQUIRE_EQ("{ c: number, s: number }", toString(requireType("r")));
+    else if (!FFlag::DebugLuauForceOldSolver)
         REQUIRE_EQ("{ c: number, s: number } | { c: number, s: number }", toString(requireType("r")));
     else
         REQUIRE_EQ("{| c: number, s: number |}", toString(requireType("r")));
@@ -2176,6 +2179,61 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pus
         function Child:Func()
             if math.random() > 0.5 then return self else return nil end
         end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1941_generic_inferred_from_argument_is_pushed_into_lambda")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixGenericLambdaArgInference, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local a: { a: number } = nil :: any
+        local function read<T>(value: T, fn: (T) -> ()) end
+
+        read(a, function(value)
+            local n = value.a
+            local m = n + 1
+        end)
+    )"));
+
+    CHECK_EQ("{ a: number }", toString(requireTypeAtPosition({5, 22})));
+    CHECK_EQ("number", toString(requireTypeAtPosition({6, 22})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1941_generic_inferred_from_table_argument_is_pushed_into_lambda")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixGenericLambdaArgInference, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function map<T, U>(t: {T}, f: (T) -> U): {U}
+            return {}
+        end
+
+        local r = map({1, 2, 3}, function(x) return x + 1 end)
+        local r2 = map({{a = 1}}, function(x) return x.a + 1 end)
+    )"));
+
+    CHECK_EQ("{number}", toString(requireType("r")));
+    CHECK_EQ("{number}", toString(requireType("r2")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1941_generic_only_used_by_lambdas_is_left_alone")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixGenericLambdaArgInference, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function both<T>(f: (T) -> (), g: (T) -> ()) end
+
+        both(function(x: number) end, function(y) end)
     )"));
 }
 
