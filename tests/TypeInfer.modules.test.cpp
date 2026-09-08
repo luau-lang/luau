@@ -22,6 +22,8 @@ LUAU_FASTFLAG(LuauExportAnnotationBinding)
 LUAU_FASTINT(LuauSolverConstraintLimit)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauReportImportedTypeUsedBeforeRequire)
+LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 
 using namespace Luau;
 
@@ -128,6 +130,66 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "require_types")
 
     TypeId hType = requireType(b, "h");
     REQUIRE_MESSAGE(bool(get<TableType>(hType)), "Expected table but got " << toString(hType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "imported_type_used_before_require_is_unknown")
+{
+    ScopedFastFlag sff{FFlag::LuauReportImportedTypeUsedBeforeRequire, true};
+    ScopedFastFlag sffStrictVisitInstantiatedType{FFlag::LuauStrictVisitInstantiatedType, true};
+
+    fileResolver.source["game/A"] = R"(
+        export type foo = string
+        return {}
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        type bar = imported.foo
+        local function f(param: imported.foo) end
+        local imported = require(game.A)
+        type quux = imported.foo
+        local function g(param: imported.foo) end
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = getFrontend().check("game/B");
+    LUAU_REQUIRE_ERROR_COUNT(2, bResult);
+
+    for (const TypeError& error : bResult.errors)
+    {
+        const UnknownSymbol* unknown = get<UnknownSymbol>(error);
+        REQUIRE(unknown);
+        CHECK(unknown->context == UnknownSymbol::Context::Type);
+        CHECK(unknown->name == "imported.foo");
+        CHECK(toString(error) == "Unknown type 'imported.foo'");
+    }
+
+    CHECK(bResult.errors[0].location.begin.line == 1);
+    CHECK(bResult.errors[1].location.begin.line == 2);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "imported_type_used_after_require_is_fine")
+{
+    ScopedFastFlag sff{FFlag::LuauReportImportedTypeUsedBeforeRequire, true};
+    ScopedFastFlag sffStrictVisitInstantiatedType{FFlag::LuauStrictVisitInstantiatedType, true};
+
+    fileResolver.source["game/A"] = R"(
+        export type foo = string
+        return {}
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        local imported = require(game.A)
+        type quux = imported.foo
+        local function g(param: imported.foo) end
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = getFrontend().check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "require_a_variadic_function")

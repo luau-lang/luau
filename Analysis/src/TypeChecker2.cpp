@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauReportImportedTypeUsedBeforeRequire)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -3070,8 +3071,12 @@ void TypeChecker2::visit(AstTypeReference* ty)
             // At this point however, the parameter is present in the scope because of how `ConstraintGenerator` is set up.
             // As a result, we can't use `scope->lookupType` to check for the existence of the type, because it will find
             // the parameter incorrectly, and thus accept a self-referece as a default value.
-            if (!ty->prefix && module->astTypeReferenceLookupFailures.contains(ty))
-                return reportError(UnknownSymbol{ty->name.value, UnknownSymbol::Context::Type}, ty->location);
+            if (module->astTypeReferenceLookupFailures.contains(ty) &&
+                (FFlag::LuauReportImportedTypeUsedBeforeRequire || !ty->prefix))
+            {
+                std::string symbol = ty->prefix ? std::string(ty->prefix->value) + "." + ty->name.value : ty->name.value;
+                return reportError(UnknownSymbol{std::move(symbol), UnknownSymbol::Context::Type}, ty->location);
+            }
         }
 
         size_t typesRequired = alias->typeParams.size();
