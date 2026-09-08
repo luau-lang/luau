@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauTrackPrefixLocal)
 LUAU_FASTFLAG(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauFixAttributesInDeclarationTypes)
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
 
@@ -5039,6 +5040,110 @@ TEST_CASE_FIXTURE(Fixture, "parse_declared_table_checked_member")
     auto func = prop.type->as<AstTypeFunction>();
     LUAU_ASSERT(func);
     LUAU_ASSERT(func->isCheckedFunction());
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_declared_callable_table_checked_member")
+{
+    ScopedFastFlag sff{FFlag::LuauFixAttributesInDeclarationTypes, true};
+
+    ParseOptions opts;
+    opts.allowDeclarationSyntax = true;
+
+    const std::string src = R"BUILTIN_SRC(
+    declare vector: ((x: number, y: number, z: number?) -> number) & {
+        create: @checked (x: number, y: number, z: number?) -> number,
+    }
+)BUILTIN_SRC";
+
+    ParseResult pr = tryParse(src, opts);
+    REQUIRE_EQ(pr.errors.size(), 0);
+
+    REQUIRE_EQ(pr.root->body.size, 1);
+    auto glob = pr.root->body.data[0]->as<AstStatDeclareGlobal>();
+    REQUIRE(glob);
+    auto intersection = glob->type->as<AstTypeIntersection>();
+    REQUIRE(intersection);
+    REQUIRE_EQ(intersection->types.size, 2);
+
+    auto group = intersection->types.data[0]->as<AstTypeGroup>();
+    REQUIRE(group);
+    auto callable = group->type->as<AstTypeFunction>();
+    REQUIRE(callable);
+    CHECK(!callable->isCheckedFunction());
+
+    auto tbl = intersection->types.data[1]->as<AstTypeTable>();
+    REQUIRE(tbl);
+    REQUIRE_EQ(tbl->props.size, 1);
+    auto func = tbl->props.data[0].type->as<AstTypeFunction>();
+    REQUIRE(func);
+    CHECK(func->isCheckedFunction());
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_declared_type_alias_checked_member")
+{
+    ScopedFastFlag sff{FFlag::LuauFixAttributesInDeclarationTypes, true};
+
+    ParseOptions opts;
+    opts.allowDeclarationSyntax = true;
+
+    const std::string src = R"BUILTIN_SRC(
+    export type Meta = {
+        __index: Meta,
+        targetLink: @checked <T>(self: T, link_target: number) -> T,
+        wrap: (cb: @checked (number) -> number) -> @checked (number) -> number,
+    }
+)BUILTIN_SRC";
+
+    ParseResult pr = tryParse(src, opts);
+    REQUIRE_EQ(pr.errors.size(), 0);
+
+    REQUIRE_EQ(pr.root->body.size, 1);
+    auto alias = pr.root->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(alias);
+    CHECK(alias->exported);
+    auto tbl = alias->type->as<AstTypeTable>();
+    REQUIRE(tbl);
+    REQUIRE_EQ(tbl->props.size, 3);
+
+    auto targetLink = tbl->props.data[1].type->as<AstTypeFunction>();
+    REQUIRE(targetLink);
+    CHECK(targetLink->isCheckedFunction());
+    CHECK_EQ(targetLink->generics.size, 1);
+
+    auto wrap = tbl->props.data[2].type->as<AstTypeFunction>();
+    REQUIRE(wrap);
+    CHECK(!wrap->isCheckedFunction());
+
+    REQUIRE_EQ(wrap->argTypes.types.size, 1);
+    auto argFn = wrap->argTypes.types.data[0]->as<AstTypeFunction>();
+    REQUIRE(argFn);
+    CHECK(argFn->isCheckedFunction());
+
+    auto ret = wrap->returnTypes->as<AstTypePackExplicit>();
+    REQUIRE(ret);
+    REQUIRE_EQ(ret->typeList.types.size, 1);
+    auto retFn = ret->typeList.types.data[0]->as<AstTypeFunction>();
+    REQUIRE(retFn);
+    CHECK(retFn->isCheckedFunction());
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_checked_type_outside_declaration_file_fails")
+{
+    ScopedFastFlag sff{FFlag::LuauFixAttributesInDeclarationTypes, true};
+
+    ParseOptions opts;
+    opts.allowDeclarationSyntax = false;
+
+    const std::string src = R"(
+    type T = {
+        create: @checked (x: number) -> number,
+    }
+)";
+
+    // tryParse forces allowDeclarationSyntax on, so call the parser directly
+    ParseResult pr = Parser::parse(src.c_str(), src.length(), nameTable, allocator, opts);
+    REQUIRE(!pr.errors.empty());
+    CHECK_EQ(pr.errors[0].getMessage(), "attributes are not allowed in declaration context");
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_checked_outside_decl_fails")

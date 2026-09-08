@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAGVARIABLE(LuauFixAttributesInDeclarationTypes)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -3281,6 +3282,9 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
 
     if (lexer.current().type == Lexeme::Attribute || lexer.current().type == Lexeme::AttributeOpen)
     {
+        if (FFlag::LuauFixAttributesInDeclarationTypes)
+            inDeclarationContext = inDeclarationContext || options.allowDeclarationSyntax;
+
         if (!inDeclarationContext)
         {
             return {reportTypeError(start, {}, "attributes are not allowed in declaration context")};

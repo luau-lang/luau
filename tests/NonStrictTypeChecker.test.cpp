@@ -21,6 +21,7 @@ LUAU_FASTINT(LuauNonStrictTypeCheckerRecursionLimit)
 LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(LuauAddRecursionCounterToNonStrictTypeChecker)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixAttributesInDeclarationTypes)
 
 using namespace Luau;
 
@@ -537,6 +538,26 @@ foo.bar("hi")
 )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     NONSTRICT_REQUIRE_CHECKED_ERR(Position(1, 8), "foo.bar", result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_checked_member_of_callable_table_definition")
+{
+    ScopedFastFlag sff{FFlag::LuauFixAttributesInDeclarationTypes, true};
+
+    loadDefinition(R"(
+declare vec: ((x: number, y: number, z: number?) -> number) & {
+    create: @checked (x: number, y: number, z: number?) -> number,
+}
+)");
+
+    CheckResult result = checkNonStrict(R"(
+local _a: number = vec.create(1, 2, 3)
+local _b: number = vec(4, 5, 6)
+vec.create("a", 2, 3)
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(3, 11), "vec.create", result);
 }
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "exprgroup_is_checked")
