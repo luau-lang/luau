@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauFixInferReadOnlyIndexer)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -1196,8 +1197,13 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
         TypeId valueTy = freshType(arena, builtinTypes, constraint->scope, Polarity::Mixed);
         trackInteriorFreeType(constraint->scope, keyTy);
         trackInteriorFreeType(constraint->scope, valueTy);
-        TypeId tableTy =
-            arena->addType(TableType{TableType::Props{}, TableIndexer{keyTy, valueTy}, TypeLevel{}, constraint->scope, TableState::Free});
+        TypeId tableTy = arena->addType(TableType{
+            TableType::Props{},
+            TableIndexer{keyTy, valueTy, /*isReadOnly*/ FFlag::LuauFixInferReadOnlyIndexer},
+            TypeLevel{},
+            constraint->scope,
+            TableState::Free
+        });
 
         trackInteriorFreeType(constraint->scope, tableTy);
 
@@ -2149,8 +2155,13 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         }
 
 
-        TypeId upperBound =
-            arena->addType(TableType{/* props */ {}, TableIndexer{indexType, resultType}, TypeLevel{}, ft->scope, TableState::Unsealed});
+        TypeId upperBound = arena->addType(TableType{
+            /* props */ {},
+            TableIndexer{indexType, resultType, /*isReadOnly*/ FFlag::LuauFixInferReadOnlyIndexer},
+            TypeLevel{},
+            ft->scope,
+            TableState::Unsealed
+        });
 
         TypeId sr = follow(simplifyIntersection(constraint->scope, constraint->location, ft->upperBound, upperBound));
 
@@ -2611,6 +2622,9 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
     {
         if (lhsTable->indexer)
         {
+            if (FFlag::LuauFixInferReadOnlyIndexer && (lhsTable->state == TableState::Unsealed || lhsTable->state == TableState::Free))
+                lhsTable->indexer->isReadOnly = false;
+
             unify(constraint, indexType, lhsTable->indexer->indexType);
             unify(constraint, rhsType, lhsTable->indexer->indexResultType);
             bind(constraint, c.propType, addUnion(arena, builtinTypes, {lhsTable->indexer->indexResultType, builtinTypes->nilType}));
@@ -2685,6 +2699,9 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
             {
                 if (tbl->indexer)
                 {
+                    if (FFlag::LuauFixInferReadOnlyIndexer && (tbl->state == TableState::Unsealed || tbl->state == TableState::Free))
+                        tbl->indexer->isReadOnly = false;
+
                     unify(constraint, indexType, tbl->indexer->indexType);
                     parts.insert(tbl->indexer->indexResultType);
                 }

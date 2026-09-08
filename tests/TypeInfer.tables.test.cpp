@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauFixInferReadOnlyIndexer)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -4696,6 +4697,80 @@ TEST_CASE_FIXTURE(Fixture, "read_only_indexer_write_rejected")
     CHECK(PropertyAccessViolation::CannotWrite == pav->context);
 }
 
+TEST_CASE_FIXTURE(Fixture, "read_only_indexer_inferred_for_read_only_parameter")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixInferReadOnlyIndexer, true}};
+
+    // A parameter that is only ever indexed for reading should be inferred
+    // with a read-only indexer so that `{read T}` tables can be passed in.
+    CheckResult result = check(R"(
+        local function findi(t, v)
+            for i = 1, #t do
+                if t[i] == v then
+                    return i
+                end
+            end
+
+            return -1
+        end
+
+        local t: { read string } = { "hello" }
+        local hello = findi(t, "hello")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("<T>({read T}, unknown) -> number" == toString(requireType("findi")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_write_indexer_inferred_for_written_parameter")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixInferReadOnlyIndexer, true}};
+
+    // Reading and then writing through the indexer must still produce a
+    // read-write indexer, and passing a read-only table must be rejected.
+    CheckResult result = check(R"(
+        local function swap(t, i, j)
+            local tmp = t[i]
+            t[i] = t[j]
+            t[j] = tmp
+        end
+
+        local rw: { string } = { "a", "b" }
+        swap(rw, 1, 2)
+
+        local ro: { read string } = { "a", "b" }
+        swap(ro, 1, 2)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(Location{{11, 13}, {11, 15}} == result.errors[0].location);
+    CHECK("<T, U>({ [T]: U }, T, T) -> ()" == toString(requireType("swap")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "read_only_indexer_inferred_for_iterated_parameter")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauIterableConstraintMutatesIterator, true},
+        {FFlag::LuauFixInferReadOnlyIndexer, true},
+    };
+
+    CheckResult result = check(R"(
+        local function count(t)
+            local n = 0
+            for _, _ in t do
+                n += 1
+            end
+            return n
+        end
+
+        local t: { read [string]: number } = { a = 1 }
+        local n = count(t)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "read_only_indexer_covariance")
 {
     ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}};
@@ -4881,11 +4956,18 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK(
-        "<T>({{ read Character: t1 }}, { Character: t1 }) -> () "
-        "where "
-        "t1 = { read FindFirstChild: (t1, string) -> (T, ...unknown) }" == toString(requireType("oc"))
-    );
+    if (FFlag::LuauFixInferReadOnlyIndexer)
+        CHECK(
+            "<T>({read { read Character: t1 }}, { Character: t1 }) -> () "
+            "where "
+            "t1 = { read FindFirstChild: (t1, string) -> (T, ...unknown) }" == toString(requireType("oc"))
+        );
+    else
+        CHECK(
+            "<T>({{ read Character: t1 }}, { Character: t1 }) -> () "
+            "where "
+            "t1 = { read FindFirstChild: (t1, string) -> (T, ...unknown) }" == toString(requireType("oc"))
+        );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tables_can_have_both_metatables_and_indexers")
@@ -4920,7 +5002,10 @@ TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("<T>({T}, T) -> T" == toString(requireType("foo")));
+    if (FFlag::LuauFixInferReadOnlyIndexer && !FFlag::DebugLuauForceOldSolver)
+        CHECK("<T>({read T}, T) -> T" == toString(requireType("foo")));
+    else
+        CHECK("<T>({T}, T) -> T" == toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parameter_was_set_an_indexer_and_bounded_by_string")
@@ -7345,7 +7430,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "indexer_and_subsequent_constraint")
         end
     )"));
 
-    CHECK_EQ("({ [string]: number }, string) -> number", toString(requireType("getnumberandabs")));
+    if (FFlag::LuauFixInferReadOnlyIndexer)
+        CHECK_EQ("({ read [string]: number }, string) -> number", toString(requireType("getnumberandabs")));
+    else
+        CHECK_EQ("({ [string]: number }, string) -> number", toString(requireType("getnumberandabs")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersection_of_indexers_1")
@@ -7573,7 +7661,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_1")
         end
     )"));
 
-    CHECK_EQ("({ read RootToDescendantCountMap: { [string]: number } }) -> ()", toString(requireType("setupRootMappingMove")));
+    if (FFlag::LuauFixInferReadOnlyIndexer)
+        CHECK_EQ("({ read RootToDescendantCountMap: { read [string]: number } }) -> ()", toString(requireType("setupRootMappingMove")));
+    else
+        CHECK_EQ("({ read RootToDescendantCountMap: { [string]: number } }) -> ()", toString(requireType("setupRootMappingMove")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
@@ -7589,7 +7680,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
         end
     )"));
 
-    CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+    if (FFlag::LuauFixInferReadOnlyIndexer)
+        CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { read [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+    else
+        CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
 }
 
 TEST_SUITE_END();

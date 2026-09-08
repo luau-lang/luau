@@ -14,6 +14,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixInferReadOnlyIndexer)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -699,7 +700,9 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
     TypeId ty = requireType("map");
     const FunctionType* ftv = get<FunctionType>(follow(ty));
 
-    if (!FFlag::DebugLuauForceOldSolver)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauFixInferReadOnlyIndexer)
+        CHECK_EQ("map<T, U>(arr: {read T}, fn: (T) -> (U, ...unknown)): {U}", toStringNamedFunction("map", *ftv));
+    else if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("map<T, U>(arr: {T}, fn: (T) -> (U, ...unknown)): {U}", toStringNamedFunction("map", *ftv));
     else
         CHECK_EQ("map<T, U>(arr: {T}, fn: (T) -> U): {U}", toStringNamedFunction("map", *ftv));
