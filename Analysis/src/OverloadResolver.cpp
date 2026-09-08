@@ -12,10 +12,14 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
+#include <algorithm>
+#include <functional>
+
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
+LUAU_FASTFLAGVARIABLE(LuauPreferExactArityOverload)
 
 namespace Luau
 {
@@ -177,6 +181,48 @@ static bool areUnsatisfiedArgumentsOptional(const SubtypingReasonings& reasoning
     return true;
 }
 
+// Returns true if the overload can only accept the argument pack because
+// trailing optional parameters were left out.
+static bool needsOmittedOptionalArguments(TypePackId argPack, TypeId overload)
+{
+    const FunctionType* ftv = get<FunctionType>(follow(overload));
+    if (!ftv)
+        return false;
+
+    const auto [argHead, argTail] = flatten(argPack);
+    if (argTail)
+        return false;
+
+    const auto [funArgHead, funArgTail] = flatten(ftv->argTypes);
+    return argHead.size() < funArgHead.size();
+}
+
+// If at least one viable overload matches the number of arguments supplied,
+// overloads that are viable only because optional parameters were omitted are
+// a strictly worse match and are dropped.
+static void preferOverloadsWithExactArity(OverloadResolution& result, TypePackId argPack)
+{
+    auto needsOmitted = [argPack](TypeId overload)
+    {
+        return needsOmittedOptionalArguments(argPack, overload);
+    };
+    auto pairNeedsOmitted = [&](const auto& overload)
+    {
+        return needsOmitted(overload.first);
+    };
+
+    const bool hasExactArityOverload = std::any_of(result.ok.begin(), result.ok.end(), std::not_fn(needsOmitted)) ||
+                                       std::any_of(result.potentialOverloads.begin(), result.potentialOverloads.end(), std::not_fn(pairNeedsOmitted));
+
+    if (!hasExactArityOverload)
+        return;
+
+    result.ok.erase(std::remove_if(result.ok.begin(), result.ok.end(), needsOmitted), result.ok.end());
+    result.potentialOverloads.erase(
+        std::remove_if(result.potentialOverloads.begin(), result.potentialOverloads.end(), pairNeedsOmitted), result.potentialOverloads.end()
+    );
+}
+
 OverloadResolution OverloadResolver::resolveOverload(
     TypeId ty,
     TypePackId argsPack,
@@ -196,6 +242,9 @@ OverloadResolution OverloadResolver::resolveOverload(
     }
     else
         testFunctionOrUnion(result, ty, argsPack, fnLocation, uniqueTypes);
+
+    if (FFlag::LuauPreferExactArityOverload)
+        preferOverloadsWithExactArity(result, argsPack);
 
     return result;
 }

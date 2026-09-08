@@ -20,6 +20,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauPreferExactArityOverload)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
@@ -3528,6 +3529,54 @@ TEST_CASE_FIXTURE(Fixture, "overload_selection_ambiguous_call")
     CHECK_EQ("((boolean | number) -> \"two\") & ((number | string) -> \"one\")", toString(err->function));
     // FIXME CLI-180645: This probably ought to be `"one" | "two"`
     CHECK_EQ("*error-type*", toString(requireType("g")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_prefers_exact_arity_over_omitted_optional_arguments")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauPreferExactArityOverload, true}};
+
+    auto result = check(R"(
+        type Source<T> = (() -> T) & ((T) -> T)
+
+        local text = (nil :: any) :: Source<string?>
+
+        local a = text()
+        local b = text("hi")
+        local c = text(nil)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string?", toString(requireType("a")));
+    CHECK_EQ("string?", toString(requireType("b")));
+    CHECK_EQ("string?", toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_prefers_shorter_overload_when_longer_only_matches_via_optional_argument")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauPreferExactArityOverload, true}};
+
+    auto result = check(R"(
+        local f: ((number) -> "one") & ((number, string?) -> "two") = nil :: any
+        local x = f(1)
+        local y = f(1, "s")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("\"one\"", toString(requireType("x")));
+    CHECK_EQ("\"two\"", toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_selection_still_ambiguous_when_all_candidates_omit_optional_arguments")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauPreferExactArityOverload, true}};
+
+    auto result = check(R"(
+        local f: ((number?) -> "one") & ((string?) -> "two") = nil :: any
+        local x = f()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<AmbiguousFunctionCall>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "overload_selection_pick_better_arity")
