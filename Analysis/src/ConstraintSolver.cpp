@@ -44,6 +44,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAGVARIABLE(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArguments)
+LUAU_FASTFLAGVARIABLE(LuauFixPartialExplicitInstantiation)
 LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArgumentsDedup)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
@@ -3121,7 +3122,10 @@ TypeId ConstraintSolver::instantiateFunctionType(
 
     while (typeParametersIter != ft->generics.end())
     {
-        replacements[*typeParametersIter++] = freshType(arena, builtinTypes, scope, Polarity::Mixed);
+        TypeId freeTy = freshType(arena, builtinTypes, scope, Polarity::Mixed);
+        if (FFlag::LuauFixPartialExplicitInstantiation)
+            trackInteriorFreeType(scope, freeTy);
+        replacements[*typeParametersIter++] = freeTy;
     }
 
     DenseHashMap<TypePackId, TypePackId> replacementPacks;

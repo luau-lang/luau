@@ -7,6 +7,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixPartialExplicitInstantiation)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
 
@@ -583,6 +584,44 @@ TEST_CASE_FIXTURE(Fixture, "typeof_local_in_type_pack_no_crash")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "partial_explicit_instantiation_unconstrained_generic_is_unknown")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixPartialExplicitInstantiation, true},
+    };
+
+    CheckResult result = check(R"(
+        local function foo<a, b>(): b
+            return nil :: any
+        end
+
+        local x = foo<<number>>()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("unknown", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "partial_explicit_instantiation_infers_remaining_generics_from_arguments")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixPartialExplicitInstantiation, true},
+    };
+
+    CheckResult result = check(R"(
+        local function bar<a, b>(v: b): b
+            return v
+        end
+
+        local x = bar<<number>>("hello")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireType("x")));
 }
 
 TEST_SUITE_END();
