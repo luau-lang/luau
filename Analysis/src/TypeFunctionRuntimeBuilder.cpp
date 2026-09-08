@@ -22,6 +22,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
+LUAU_FASTFLAGVARIABLE(LuauUdtfFlattenNestedTypePacks)
 
 namespace Luau
 {
@@ -497,6 +498,27 @@ private:
 
     void serializeChildren(const TypePack* t1, TypeFunctionTypePack* t2)
     {
+        if (FFlag::LuauUdtfFlattenNestedTypePacks)
+        {
+            // The tail may itself be a TypePack (e.g. `(number, S...)` after instantiation); the type function
+            // runtime only understands a flat head with a variadic or generic tail.
+            for (const TypeId& ty : t1->head)
+                t2->head.push_back(shallowSerialize(ty));
+
+            if (t1->tail.has_value())
+            {
+                auto [tailHead, tail] = flatten(*t1->tail);
+
+                for (const TypeId& ty : tailHead)
+                    t2->head.push_back(shallowSerialize(ty));
+
+                if (tail.has_value())
+                    t2->tail = shallowSerialize(*tail);
+            }
+
+            return;
+        }
+
         for (const TypeId& ty : t1->head)
             t2->head.push_back(shallowSerialize(ty));
 

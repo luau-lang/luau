@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauUdtfFlattenNestedTypePacks)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3699,6 +3700,65 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_parameters_with_nested_type_pack_tail")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauUdtfFlattenNestedTypePacks, true};
+
+    CheckResult result = check(R"(
+        type function count(ty: type)
+            local params = ty:parameters()
+            if params.tail then
+                return types.singleton("variadic")
+            end
+            return types.singleton(tostring(#(params.head :: {type})))
+        end
+
+        type channel = {
+            inbound: <S...>(self: channel, S...) -> count<(number, S...) -> ()>,
+        }
+
+        local channel = {} :: channel
+        local event = channel:inbound("a", true)
+        local _: number = event
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(toString(tm->wantedType), "number");
+    CHECK_EQ(toString(tm->givenType), "\"3\"");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_returns_with_nested_type_pack_tail")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauUdtfFlattenNestedTypePacks, true};
+
+    CheckResult result = check(R"(
+        type function count(ty: type)
+            local rets = ty:returns()
+            if rets.tail then
+                return types.singleton("variadic")
+            end
+            return types.singleton(tostring(#(rets.head :: {type})))
+        end
+
+        local function f<T...>(...: T...): count<() -> (number, T...)>
+            return nil :: any
+        end
+
+        local event = f("a", true)
+        local _: number = event
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(toString(tm->wantedType), "number");
+    CHECK_EQ(toString(tm->givenType), "\"3\"");
 }
 
 TEST_SUITE_END();
