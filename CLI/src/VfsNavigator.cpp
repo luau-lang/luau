@@ -140,12 +140,24 @@ NavigationStatus VfsNavigator::resetToStdIn()
     return NavigationStatus::Success;
 }
 
+static bool hasModuleSuffix(std::string_view path)
+{
+    for (std::string_view suffix : kSuffixes)
+    {
+        if (hasSuffix(path, suffix))
+            return true;
+    }
+    return false;
+}
+
 NavigationStatus VfsNavigator::resetToPath(const std::string& path)
 {
     std::string normalizedPath = normalizePath(path);
+    std::string absolutePath;
 
     if (isAbsolutePath(normalizedPath))
     {
+        absolutePath = normalizedPath;
         modulePath = getModulePath(normalizedPath);
         absoluteModulePath = modulePath;
 
@@ -159,13 +171,22 @@ NavigationStatus VfsNavigator::resetToPath(const std::string& path)
         if (!cwd)
             return NavigationStatus::NotFound;
 
+        absolutePath = normalizePath(*cwd + "/" + normalizedPath);
         modulePath = getModulePath(normalizedPath);
-        std::string joinedPath = normalizePath(*cwd + "/" + normalizedPath);
-        absoluteModulePath = getModulePath(joinedPath);
+        absoluteModulePath = getModulePath(absolutePath);
 
-        size_t firstSlash = joinedPath.find_first_of('/');
+        size_t firstSlash = absolutePath.find_first_of('/');
         LUAU_ASSERT(firstSlash != std::string::npos);
-        absolutePathPrefix = joinedPath.substr(0, firstSlash);
+        absolutePathPrefix = absolutePath.substr(0, firstSlash);
+    }
+
+    // A path that names an existing source file is already fully resolved: no
+    // ambiguity check is needed even if a sibling with another suffix exists.
+    if (hasModuleSuffix(normalizedPath) && isFile(normalizedPath))
+    {
+        realPath = normalizedPath;
+        absoluteRealPath = absolutePath;
+        return NavigationStatus::Success;
     }
 
     return updateRealPaths();
