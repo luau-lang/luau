@@ -23,6 +23,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauSubtypingRecursionLimit, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingRollbackGenericBoundsOnFailedIntersectionBranch)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
@@ -1742,7 +1743,15 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Inte
     size_t i = 0;
     for (TypeId ty : subIntersection)
     {
-        result->orElse(isCovariantWith(env, ty, superTy, scope).withSubComponent(TypePath::Index{i++, TypePath::Index::Variant::Intersection}));
+        std::optional<DenseHashMap<TypeId, std::vector<SubtypingEnvironment::GenericBounds>>> savedGenerics;
+        if (FFlag::LuauSubtypingRollbackGenericBoundsOnFailedIntersectionBranch && !env.mappedGenerics.empty())
+            savedGenerics = env.mappedGenerics;
+
+        SubtypingResult branch = isCovariantWith(env, ty, superTy, scope);
+        if (savedGenerics && !branch.isSubtype && !branch.normalizationTooComplex)
+            env.mappedGenerics = std::move(*savedGenerics);
+
+        result->orElse(std::move(branch).withSubComponent(TypePath::Index{i++, TypePath::Index::Variant::Intersection}));
 
         if (result->normalizationTooComplex)
             return SubtypingResult{false, /* normalizationTooComplex */ true};

@@ -11,6 +11,8 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauSubtypingRollbackGenericBoundsOnFailedIntersectionBranch)
+LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 
 using namespace Luau;
 
@@ -2131,6 +2133,33 @@ TEST_CASE_FIXTURE(Fixture, "variadic_generics_dont_leak")
     )");
 
     CHECK_EQ("(number, number) -> number", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2644_failed_intersection_branch_does_not_leak_generic_bounds")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauSubtypingRollbackGenericBoundsOnFailedIntersectionBranch, true},
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+    };
+
+    CheckResult result = check(R"(
+        local methods = table.freeze({
+            getValue = function<T>(self: Value<T>): T
+                return self.val
+            end
+        })
+
+        type Value<T> = { val: T } & typeof(methods)
+
+        local function test(v: Value<number>)
+            local raw = v:getValue()
+            return raw
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(t1 & { val: number }) -> number where t1 = { read getValue: <T>(t1 & { val: T }) -> T }", toString(requireType("test")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "id_function_do_not_leak_generic")
