@@ -10,6 +10,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauFixUnionMethodCallSelf)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -318,6 +320,57 @@ TEST_CASE_FIXTURE(Fixture, "optional_union_methods")
 
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
     CHECK_EQ("(A?) -> number", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_method_call_common_method_uses_each_self")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixUnionMethodCallSelf, true};
+
+    CheckResult result = check(R"(
+        type Foo = {baz: (Foo) -> number, a: string}
+        type Bar = {baz: (Bar) -> number, b: number}
+        local x: Foo | Bar = nil :: any
+        local r: number = x:baz()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_method_call_still_errors_when_member_method_rejects_self")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixUnionMethodCallSelf, true};
+
+    CheckResult result = check(R"(
+        type Foo = {baz: (Foo) -> number}
+        type Bar = {baz: (string) -> number}
+        local x: Foo | Bar = nil :: any
+        x:baz()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_method_call_still_errors_when_member_lacks_method")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixUnionMethodCallSelf, true};
+
+    CheckResult result = check(R"(
+        type Foo = {baz: (Foo) -> number}
+        type Bar = {b: number}
+        local x: Foo | Bar = nil :: any
+        x:baz()
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_union_follow")

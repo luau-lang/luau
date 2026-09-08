@@ -43,6 +43,7 @@ LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAGVARIABLE(LuauFixUnionMethodCallSelf)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
 
@@ -1907,6 +1908,12 @@ void TypeChecker2::visitCall(AstExprCall* call)
     findUniqueTypes(NotNull{&uniqueTypes}, argExprs, NotNull{&module->astTypes});
 
     TypePackId argsPack = module->internalTypes->addTypePack(args);
+    if (FFlag::LuauFixUnionMethodCallSelf && call->self && !args.head.empty())
+    {
+        if (tryCheckUnionMethodCall(call, fnTy, args, resolver, NotNull{&uniqueTypes}))
+            return;
+    }
+
     const OverloadResolution result2 = resolver.resolveOverload(fnTy, argsPack, call->func->location, NotNull{&uniqueTypes}, false);
 
     if (!result2.potentialOverloads.empty())
@@ -2051,6 +2058,52 @@ void TypeChecker2::visitCall(AstExprCall* call)
         }
         return;
     }
+}
+
+bool TypeChecker2::tryCheckUnionMethodCall(
+    AstExprCall* call,
+    TypeId fnTy,
+    const TypePack& args,
+    OverloadResolver& resolver,
+    NotNull<DenseHashSet<TypeId>> uniqueTypes
+)
+{
+    const UnionType* fnUnion = get<UnionType>(fnTy);
+    if (!fnUnion)
+        return false;
+
+    AstExprIndexName* indexExpr = call->func->as<AstExprIndexName>();
+    if (!indexExpr)
+        return false;
+
+    const TypeId selfTy = follow(args.head.front());
+    const UnionType* selfUnion = get<UnionType>(selfTy);
+    if (!selfUnion)
+        return false;
+
+    for (TypeId part : selfUnion)
+    {
+        part = follow(part);
+        if (get<UnionType>(part))
+            return false;
+
+        std::vector<TypeError> dummy;
+        DenseHashSet<TypeId> seen;
+        PropertyType prop =
+            hasIndexTypeFromType(part, indexExpr->index.value, ValueContext::RValue, indexExpr->location, seen, builtinTypes->stringType, dummy);
+        if (prop.present != NormalizationResult::True || !prop.result || !dummy.empty())
+            return false;
+
+        TypePack partArgs = args;
+        partArgs.head.front() = part;
+        TypePackId partArgsPack = module->internalTypes->addTypePack(std::move(partArgs));
+
+        OverloadResolution r = resolver.resolveOverload(follow(*prop.result), partArgsPack, call->func->location, uniqueTypes, false);
+        if (r.ok.size() != 1 || !r.potentialOverloads.empty())
+            return false;
+    }
+
+    return true;
 }
 
 void TypeChecker2::visit(AstExprCall* call)

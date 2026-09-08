@@ -25,6 +25,7 @@ struct Scope;
 struct PropertyType;
 struct PropertyTypes;
 struct StackPusher;
+struct OverloadResolver;
 
 struct Reasonings
 {
@@ -160,6 +161,13 @@ private:
     void visit(AstExprGlobal* expr);
     void visit(AstExprVarargs* expr);
     void visitCall(AstExprCall* call);
+    bool tryCheckUnionMethodCall(
+        AstExprCall* call,
+        TypeId fnTy,
+        const TypePack& args,
+        OverloadResolver& resolver,
+        NotNull<DenseHashSet<TypeId>> uniqueTypes
+    );
     void visit(AstExprCall* call);
     std::optional<TypeId> tryStripUnionFromNil(TypeId ty) const;
     TypeId stripFromNilAndReport(TypeId ty, const Location& location);
