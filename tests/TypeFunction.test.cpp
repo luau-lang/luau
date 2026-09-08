@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauFixSelfBoundTypeFunctionReduction)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -2174,6 +2175,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     REQUIRE(get<NormalizationTooComplex>(result.errors[0]));
     REQUIRE(get<NormalizationTooComplex>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2157_type_function_reducing_to_itself_doesnt_crash")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauFixSelfBoundTypeFunctionReduction, true};
+
+    CheckResult result = check(R"(
+        type T = index<{x: T}, "x">
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    for (const TypeError& e : result.errors)
+        CHECK(get<UninhabitedTypeFunction>(e));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2157_type_function_reducing_to_itself_doesnt_crash_incomplete_source")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauFixSelfBoundTypeFunctionReduction, true};
+
+    CheckResult result = check(R"(
+        type function application
+        type T = add<T, number>
+
+        type T = index<{x: T}, "x">
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();
