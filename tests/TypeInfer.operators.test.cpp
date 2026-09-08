@@ -21,6 +21,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAG(LuauFixUnionArithmeticChecks)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -467,6 +468,51 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_reports_invalid_vector_arith
         CHECK_EQ(toString(result.errors[0]), "Expected this to be 'vector', but got 'number'");
         CHECK_EQ(toString(result.errors[1]), "Expected this to be 'vector', but got 'number'");
     }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "arithmetic_on_union_of_vectors")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixUnionArithmeticChecks, true}};
+
+    CheckResult result = check(R"(
+        local a: vector | vector = vector.zero
+        local b: vector | vector = vector.zero
+        local c = a + b
+        local d = a - a
+        local e = b * 2
+        local f = -a
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("vector", toString(requireType("c")));
+    CHECK_EQ("vector", toString(requireType("d")));
+    CHECK_EQ("vector", toString(requireType("e")));
+    CHECK_EQ("vector", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "arithmetic_on_union_of_number_and_vector")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixUnionArithmeticChecks, true}};
+
+    CheckResult result = check(R"(
+        local a: number | vector = vector.zero
+        local b = a * 2
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number | vector", toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "arithmetic_on_union_with_unsupported_option_still_errors")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixUnionArithmeticChecks, true}};
+
+    CheckResult result = check(R"(
+        local a: vector | string = vector.zero
+        local b = a + a
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_result")

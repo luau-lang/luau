@@ -36,6 +36,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAGVARIABLE(LuauFixUnionArithmeticChecks)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
@@ -137,6 +138,30 @@ static std::optional<std::string> getIdentifierOfBaseVar(AstExpr* node)
         return getIdentifierOfBaseVar(expr->expr);
 
     return std::nullopt;
+}
+
+// Returns true if `ty` is a union whose options are all numbers or all have
+// the given metamethod. Arithmetic on such a union is already fully checked by
+// the type function that distributes over the options, so there is nothing
+// left for us to verify here.
+static bool isUnionOfArithmeticOperands(NotNull<BuiltinTypes> builtinTypes, TypeId ty, const char* metamethod)
+{
+    const UnionType* ut = get<UnionType>(follow(ty));
+    if (!ut)
+        return false;
+
+    for (TypeId option : ut)
+    {
+        option = follow(option);
+        if (isNumber(option))
+            continue;
+
+        ErrorVec dummy;
+        if (!findMetatableEntry(builtinTypes, dummy, option, metamethod, Location{}))
+            return false;
+    }
+
+    return true;
 }
 
 template<typename T>
@@ -2403,6 +2428,10 @@ void TypeChecker2::visit(AstExprUnary* expr)
 
     if (auto it = kUnaryOpMetamethods.find(expr->op); it != kUnaryOpMetamethods.end())
     {
+        if (FFlag::LuauFixUnionArithmeticChecks && expr->op == AstExprUnary::Op::Minus &&
+            isUnionOfArithmeticOperands(builtinTypes, operandType, it->second))
+            return;
+
         std::optional<TypeId> mm = findMetatableEntry(builtinTypes, module->errors, operandType, it->second, expr->location);
         if (mm)
         {
@@ -2606,6 +2635,10 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
     }
     if (auto it = kBinaryOpMetamethods.find(expr->op); it != kBinaryOpMetamethods.end())
     {
+        if (FFlag::LuauFixUnionArithmeticChecks && !isEquality && !isComparison && expr->op != AstExprBinary::Op::Concat &&
+            (isUnionOfArithmeticOperands(builtinTypes, leftType, it->second) || isUnionOfArithmeticOperands(builtinTypes, rightType, it->second)))
+            return expectedResult;
+
         std::optional<TypeId> leftMt = getMetatable(leftType, builtinTypes);
         std::optional<TypeId> rightMt = getMetatable(rightType, builtinTypes);
         bool matches = leftMt == rightMt;
