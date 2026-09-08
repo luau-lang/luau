@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 LUAU_FLAGVERSION(LuauCheckTypeForDeprecated, 2)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteEndAfterReturn)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
@@ -1473,6 +1474,63 @@ static bool isValidBreakContinueContext(const std::vector<AstNode*>& ancestry, P
     return false;
 }
 
+static void autocompleteEndKeyword(const std::vector<AstNode*>& ancestry, AutocompleteEntryMap& result)
+{
+    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it)
+    {
+        if (AstStatForIn* statForIn = (*it)->as<AstStatForIn>(); statForIn && !statForIn->body->hasEnd)
+            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        else if (AstStatFor* statFor = (*it)->as<AstStatFor>(); statFor && !statFor->body->hasEnd)
+            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        else if (AstStatIf* statIf = (*it)->as<AstStatIf>())
+        {
+            bool hasEnd = statIf->thenbody->hasEnd;
+            if (statIf->elsebody)
+            {
+                if (AstStatBlock* elseBlock = statIf->elsebody->as<AstStatBlock>())
+                    hasEnd = elseBlock->hasEnd;
+            }
+
+            if (!hasEnd)
+                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        }
+        else if (AstStatWhile* statWhile = (*it)->as<AstStatWhile>(); statWhile && !statWhile->body->hasEnd)
+            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        else if (AstExprFunction* exprFunction = (*it)->as<AstExprFunction>(); exprFunction && !exprFunction->body->hasEnd)
+            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        if (AstStatBlock* exprBlock = (*it)->as<AstStatBlock>(); exprBlock && !exprBlock->hasEnd)
+            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+    }
+}
+
+// A bare identifier that is the last value of a return statement may actually be the start of a keyword
+// that closes the enclosing block, e.g. `return x\n en|`.
+static void autocompleteBlockClosingKeywordsAfterReturn(const std::vector<AstNode*>& ancestry, AutocompleteEntryMap& result)
+{
+    if (ancestry.size() < 3)
+        return;
+
+    AstNode* node = ancestry.rbegin()[0];
+    AstStatReturn* statReturn = ancestry.rbegin()[1]->as<AstStatReturn>();
+    if (!statReturn || !isIdentifier(node) || statReturn->list.size == 0 || statReturn->list.data[statReturn->list.size - 1] != node)
+        return;
+
+    autocompleteEndKeyword(ancestry, result);
+
+    AstStatBlock* block = ancestry.rbegin()[2]->as<AstStatBlock>();
+    if (!block || block->hasEnd || ancestry.size() < 4)
+        return;
+
+    AstNode* blockParent = ancestry.rbegin()[3];
+    if (AstStatIf* statIf = blockParent->as<AstStatIf>(); statIf && !statIf->elsebody && statIf->thenbody == block)
+    {
+        result.emplace("else", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        result.emplace("elseif", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+    }
+    else if (AstStatRepeat* statRepeat = blockParent->as<AstStatRepeat>(); statRepeat && statRepeat->body == block)
+        result.emplace("until", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+}
+
 static AutocompleteEntryMap autocompleteStatement(
     const Module& module,
     const std::vector<AstNode*>& ancestry,
@@ -1527,31 +1585,7 @@ static AutocompleteEntryMap autocompleteStatement(
             result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
     }
 
-    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it)
-    {
-        if (AstStatForIn* statForIn = (*it)->as<AstStatForIn>(); statForIn && !statForIn->body->hasEnd)
-            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        else if (AstStatFor* statFor = (*it)->as<AstStatFor>(); statFor && !statFor->body->hasEnd)
-            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        else if (AstStatIf* statIf = (*it)->as<AstStatIf>())
-        {
-            bool hasEnd = statIf->thenbody->hasEnd;
-            if (statIf->elsebody)
-            {
-                if (AstStatBlock* elseBlock = statIf->elsebody->as<AstStatBlock>())
-                    hasEnd = elseBlock->hasEnd;
-            }
-
-            if (!hasEnd)
-                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        }
-        else if (AstStatWhile* statWhile = (*it)->as<AstStatWhile>(); statWhile && !statWhile->body->hasEnd)
-            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        else if (AstExprFunction* exprFunction = (*it)->as<AstExprFunction>(); exprFunction && !exprFunction->body->hasEnd)
-            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        if (AstStatBlock* exprBlock = (*it)->as<AstStatBlock>(); exprBlock && !exprBlock->hasEnd)
-            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-    }
+    autocompleteEndKeyword(ancestry, result);
 
     if (ancestry.size() >= 2)
     {
@@ -2422,6 +2456,8 @@ AutocompleteResult autocomplete_(
         AutocompleteResult ret = autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position);
         if (std::optional<AutocompleteEntry> generated = makeAnonymousAutofilled(module, scopeAtPosition, position, node, ancestry))
             ret.entryMap[kGeneratedAnonymousFunctionEntryName] = std::move(*generated);
+        if (FFlag::LuauAutocompleteEndAfterReturn)
+            autocompleteBlockClosingKeywordsAfterReturn(ancestry, ret.entryMap);
         return ret;
     }
     else if (node->asStat())

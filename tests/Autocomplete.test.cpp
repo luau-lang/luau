@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAG(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAG(LuauAutocompleteEndAfterReturn)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
@@ -1054,6 +1055,79 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_end_of_do_block")
     ac = autocomplete('2');
 
     CHECK(ac.entryMap.count("end"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_end_after_return")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteEndAfterReturn, true};
+
+    check(R"(
+        local function f()
+            return
+            en@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("end"), 1);
+    CHECK_EQ(ac.entryMap.count("else"), 0);
+    CHECK_EQ(ac.entryMap.count("until"), 0);
+
+    check(R"(
+        local function f()
+            local x = 1
+            return x
+            en@1
+    )");
+
+    ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("end"), 1);
+
+    check(R"(
+        local function f()
+            return 1,
+            en@1
+    )");
+
+    ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("end"), 1);
+
+    check(R"(
+        local function f()
+            return e@1, 1
+    )");
+
+    ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("end"), 0);
+
+    check(R"(
+        local function f()
+            return x
+        end
+        e@1
+    )");
+
+    ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("end"), 0);
+
+    check(R"(
+        if x then
+            return
+            e@1
+    )");
+
+    ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("end"), 1);
+    CHECK_EQ(ac.entryMap.count("else"), 1);
+    CHECK_EQ(ac.entryMap.count("elseif"), 1);
+
+    check(R"(
+        repeat
+            return
+            u@1
+    )");
+
+    ac = autocomplete('1');
+    CHECK_EQ(ac.entryMap.count("until"), 1);
 }
 
 TEST_CASE_FIXTURE(ACFixture, "stop_at_first_stat_when_recommending_keywords")
