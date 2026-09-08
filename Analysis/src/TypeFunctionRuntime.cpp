@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeUseTaggedMetatable)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAGVARIABLE(LuauFixNewtableArgumentErrors)
 
 namespace Luau
 {
@@ -834,6 +835,14 @@ static int getNegatedValue(lua_State* L)
     return 1;
 }
 
+static TypeFunctionTypeId checkTypeUserData(lua_State* L, int idx, const char* fname, const char* what)
+{
+    if (FFlag::LuauFixNewtableArgumentErrors && !isTypeUserData(L, idx))
+        luaL_error(L, "%s: expected %s to be a type, but got %s instead", fname, what, luaL_typename(L, idx));
+
+    return getTypeUserData(L, idx);
+}
+
 // Luau: `types.newtable(props: {[type]: type | { read: type, write: type }}?, indexer: {index: type, readresult: type, writeresult: type}?,
 // metatable: type?) -> type` Returns the type instance representing table
 static int createTable(lua_State* L)
@@ -849,7 +858,7 @@ static int createTable(lua_State* L)
         lua_pushnil(L);
         while (lua_next(L, 1) != 0)
         {
-            TypeFunctionTypeId key = getTypeUserData(L, -2);
+            TypeFunctionTypeId key = checkTypeUserData(L, -2, "types.newtable", "property key");
 
             auto tfst = get<TypeFunctionSingletonType>(key);
             if (!tfst)
@@ -864,20 +873,20 @@ static int createTable(lua_State* L)
                 lua_getfield(L, -1, "read");
                 std::optional<TypeFunctionTypeId> readTy;
                 if (!lua_isnil(L, -1))
-                    readTy = getTypeUserData(L, -1);
+                    readTy = checkTypeUserData(L, -1, "types.newtable", "property read type");
                 lua_pop(L, 1);
 
                 lua_getfield(L, -1, "write");
                 std::optional<TypeFunctionTypeId> writeTy;
                 if (!lua_isnil(L, -1))
-                    writeTy = getTypeUserData(L, -1);
+                    writeTy = checkTypeUserData(L, -1, "types.newtable", "property write type");
                 lua_pop(L, 1);
 
                 props[tfsst->value] = TypeFunctionProperty{readTy, writeTy};
             }
             else
             {
-                TypeFunctionTypeId value = getTypeUserData(L, -1);
+                TypeFunctionTypeId value = checkTypeUserData(L, -1, "types.newtable", "property value");
                 props[tfsst->value] = TypeFunctionProperty::rw(value);
             }
 
@@ -893,11 +902,11 @@ static int createTable(lua_State* L)
     {
         // Parse keyType and valueType
         lua_getfield(L, 2, "index");
-        TypeFunctionTypeId keyType = getTypeUserData(L, -1);
+        TypeFunctionTypeId keyType = checkTypeUserData(L, -1, "types.newtable", "indexer key type");
         lua_pop(L, 1);
 
         lua_getfield(L, 2, "readresult");
-        TypeFunctionTypeId valueType = getTypeUserData(L, -1);
+        TypeFunctionTypeId valueType = checkTypeUserData(L, -1, "types.newtable", "indexer value type");
         lua_pop(L, 1);
 
         indexer = TypeFunctionTableIndexer(keyType, valueType);

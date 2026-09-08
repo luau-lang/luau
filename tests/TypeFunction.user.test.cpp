@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixNewtableArgumentErrors)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -1073,6 +1074,71 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_createtable_bad_metatable")
     CHECK(
         e->message == "'badmetatable' type function errored at runtime: [string \"badmetatable\"]:3: types.newtable: expected to be given a table "
                       "type as a metatable, but got number instead"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_createtable_bad_props_value")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauFixNewtableArgumentErrors, true};
+
+    CheckResult result = check(R"(
+        type function badpropsvalue()
+            return types.newtable({[types.singleton("a")] = ("oops" :: any)})
+        end
+        local function bad(arg: badpropsvalue<>) end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    UserDefinedTypeFunctionError* e = get<UserDefinedTypeFunctionError>(result.errors[0]);
+    REQUIRE(e);
+    CHECK(
+        e->message == "'badpropsvalue' type function errored at runtime: [string \"badpropsvalue\"]:3: types.newtable: expected property value "
+                      "to be a type, but got string instead"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_createtable_bad_props_key")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauFixNewtableArgumentErrors, true};
+
+    CheckResult result = check(R"(
+        type function badpropskey()
+            return types.newtable({props = {[types.number] = types.never}})
+        end
+        local function bad(arg: badpropskey<>) end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    UserDefinedTypeFunctionError* e = get<UserDefinedTypeFunctionError>(result.errors[0]);
+    REQUIRE(e);
+    CHECK(
+        e->message ==
+        "'badpropskey' type function errored at runtime: [string \"badpropskey\"]:3: types.newtable: expected property key to be a type, "
+        "but got string instead"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_createtable_bad_indexer")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauFixNewtableArgumentErrors, true};
+
+    CheckResult result = check(R"(
+        type function badindexer()
+            return types.newtable(nil, ({index = "x", readresult = types.number} :: any))
+        end
+        local function bad(arg: badindexer<>) end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    UserDefinedTypeFunctionError* e = get<UserDefinedTypeFunctionError>(result.errors[0]);
+    REQUIRE(e);
+    CHECK(
+        e->message ==
+        "'badindexer' type function errored at runtime: [string \"badindexer\"]:3: types.newtable: expected indexer key type to be a type, "
+        "but got string instead"
     );
 }
 
