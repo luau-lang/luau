@@ -43,6 +43,7 @@ LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAGVARIABLE(LuauFixReturnCountMismatchLocation)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
 
@@ -779,8 +780,16 @@ void TypeChecker2::visit(AstStatReturn* ret)
     // we double error.
     if (isSubtype)
     {
+        // If there is no tail, every returned value already passed its own
+        // subtype test, so any remaining mismatch is about the number of
+        // values: point at the `return` keyword rather than the whole
+        // (potentially multi-line) value list.
+        Location errorLocation = ret->location;
+        if (FFlag::LuauFixReturnCountMismatchLocation && !actualTail)
+            errorLocation = Location{ret->location.begin, Position{ret->location.begin.line, ret->location.begin.column + 6}};
+
         auto reconstructedRetType = module->internalTypes->addTypePack(TypePack{std::move(actualHead), std::move(actualTail)});
-        testIsSubtype(reconstructedRetType, expectedRetType, ret->location);
+        testIsSubtype(reconstructedRetType, expectedRetType, errorLocation);
     }
 
     for (AstExpr* expr : ret->list)

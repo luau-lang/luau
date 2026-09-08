@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixReturnCountMismatchLocation)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1143,6 +1144,45 @@ TEST_CASE_FIXTURE(Fixture, "function_does_not_return_enough_values")
         CHECK_EQ(acm->expected, 2);
         CHECK_EQ(acm->actual, 1);
     }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "return_count_mismatch_is_reported_on_return_keyword")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixReturnCountMismatchLocation, true}};
+
+    CheckResult result = check(R"(
+        local function foo(): ({}, boolean)
+            return {
+                hello = true,
+                bar = {
+                    baz = vector.zero
+                }
+            }
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK("{  }, boolean" == toString(tpm->wantedTp));
+    CHECK("{  }" == toString(tpm->givenTp));
+    CHECK(Location{{2, 12}, {2, 18}} == result.errors[0].location);
+}
+
+TEST_CASE_FIXTURE(Fixture, "return_value_type_mismatch_is_still_reported_on_the_value")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixReturnCountMismatchLocation, true}};
+
+    CheckResult result = check(R"(
+        local function foo(): (number, boolean)
+            return 1,
+                "nope"
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(Location{{3, 16}, {3, 22}} == result.errors[0].location);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_cast_error_uses_correct_language")
