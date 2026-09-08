@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixPackArityMismatchSuppression)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -3716,6 +3717,46 @@ TEST_CASE_FIXTURE(Fixture, "function_argument_error_suppression")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "any_parameter_does_not_suppress_arity_mismatch")
+{
+    ScopedFastFlag sff[]{
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixPackArityMismatchSuppression, true},
+    };
+
+    CheckResult result = check(R"(
+        local function example(callback: (any, string) -> ())
+        end
+
+        local function something(value: number, anotherValue: any, again: boolean)
+        end
+
+        example(something)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(Location{{7, 16}, {7, 25}} == result.errors[0].location);
+}
+
+TEST_CASE_FIXTURE(Fixture, "any_parameter_still_suppresses_compatible_arity")
+{
+    ScopedFastFlag sff[]{
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixPackArityMismatchSuppression, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function example(callback: (any, string) -> ())
+        end
+
+        local function something(value: number, anotherValue: any)
+        end
+
+        example(something)
+    )"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "bidirectional_lambda_inference_applies_nilable_functions")

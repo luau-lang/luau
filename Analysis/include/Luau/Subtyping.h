@@ -45,6 +45,8 @@ struct SubtypingReasoning
     // read-write). In this case the leaf types at the path ends are the same,
     // so a plain "X is not a subtype of X" message would be misleading.
     bool isPropertyModifierViolation = false;
+    // The packs have incompatible arities; `any` cannot make this succeed, so it is never error-suppressing.
+    bool isArityMismatch = false;
 
     bool operator==(const SubtypingReasoning& other) const;
 };

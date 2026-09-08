@@ -47,6 +47,7 @@ LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauFixPackArityMismatchSuppression)
 
 namespace Luau
 {
@@ -3315,7 +3316,11 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
     for (const SubtypingReasoning& reasoning : r.reasoning)
     {
         if (reasoning.subPath.empty() && reasoning.superPath.empty())
+        {
+            if (FFlag::LuauFixPackArityMismatchSuppression && reasoning.isArityMismatch)
+                suppressed = false;
             continue;
+        }
 
         TypePathRenderMetadata subMetadata;
         TypePathRenderMetadata superMetadata;
@@ -3510,7 +3515,9 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
         // if we haven't already proved this isn't suppressing, we have to keep checking.
         if (suppressed)
         {
-            if (subLeafTy && superLeafTy)
+            if (FFlag::LuauFixPackArityMismatchSuppression && reasoning.isArityMismatch)
+                suppressed = false;
+            else if (subLeafTy && superLeafTy)
                 suppressed &= isErrorSuppressing(location, *subLeafTy) || isErrorSuppressing(location, *superLeafTy);
             else
                 suppressed &= isErrorSuppressing(location, *subLeafTp) || isErrorSuppressing(location, *superLeafTp);

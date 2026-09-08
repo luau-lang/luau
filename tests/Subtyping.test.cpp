@@ -21,6 +21,7 @@
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAG(LuauFixPackArityMismatchSuppression)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
@@ -1789,13 +1790,27 @@ TEST_CASE_FIXTURE(SubtypeFixture, "arity_mismatch")
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
-    CHECK(
-        result.reasoning == std::vector{SubtypingReasoning{
-                                /* subPath */ TypePath::PathBuilder().args().build(),
-                                /* superPath */ TypePath::PathBuilder().args().build(),
-                                /* variance */ SubtypingVariance::Contravariant,
-                            }}
-    );
+    CHECK(!result.isErrorSuppressing);
+
+    SubtypingReasoning expected{
+        /* subPath */ TypePath::PathBuilder().args().build(),
+        /* superPath */ TypePath::PathBuilder().args().build(),
+        /* variance */ SubtypingVariance::Contravariant,
+    };
+    expected.isArityMismatch = FFlag::LuauFixPackArityMismatchSuppression;
+    CHECK(result.reasoning == std::vector{expected});
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "arity_mismatch_with_any_is_not_error_suppressing")
+{
+    ScopedFastFlag sff{FFlag::LuauFixPackArityMismatchSuppression, true};
+
+    TypeId subTy = fn({getBuiltins()->numberType, getBuiltins()->anyType, getBuiltins()->booleanType}, {});
+    TypeId superTy = fn({getBuiltins()->anyType, getBuiltins()->stringType}, {});
+
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+    CHECK(!result.isErrorSuppressing);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "fn_arguments_tail")

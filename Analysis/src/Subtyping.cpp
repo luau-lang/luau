@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixPackArityMismatchSuppression)
 
 
 namespace Luau
@@ -39,13 +40,13 @@ namespace Luau
 bool SubtypingReasoning::operator==(const SubtypingReasoning& other) const
 {
     return subPath == other.subPath && superPath == other.superPath && variance == other.variance &&
-           isPropertyModifierViolation == other.isPropertyModifierViolation;
+           isPropertyModifierViolation == other.isPropertyModifierViolation && isArityMismatch == other.isArityMismatch;
 }
 
 size_t SubtypingReasoningHash::operator()(const SubtypingReasoning& r) const
 {
     return TypePath::PathHash()(r.subPath) ^ (TypePath::PathHash()(r.superPath) << 1) ^ (static_cast<size_t>(r.variance) << 1) ^
-           (static_cast<size_t>(r.isPropertyModifierViolation) << 2);
+           (static_cast<size_t>(r.isPropertyModifierViolation) << 2) ^ (static_cast<size_t>(r.isArityMismatch) << 3);
 }
 
 MappedGenericEnvironment::MappedGenericFrame::MappedGenericFrame(
@@ -1041,6 +1042,15 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
         else
         {
             result->andAlso({false});
+            if (FFlag::LuauFixPackArityMismatchSuppression)
+            {
+                // No tail can absorb the missing elements, so an `any` in the heads cannot make the packs compatible.
+                result->isErrorSuppressing = false;
+                if (result->reasoning.empty())
+                    result->reasoning.insert(SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty});
+                for (auto& r : result->reasoning)
+                    r.isArityMismatch = true;
+            }
             return *result;
         }
     }
