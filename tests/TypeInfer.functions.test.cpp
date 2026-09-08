@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
+LUAU_FASTFLAG(LuauFixUnifyTablePropsWithIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 
@@ -4514,7 +4515,10 @@ TEST_CASE_FIXTURE(Fixture, "oss_2670_generic_leaking_indexer_1")
 
     )"));
 
-    CHECK_EQ("{ [unknown]: unknown?, hello: string }", toString(requireType("t"), {true}));
+    if (FFlag::LuauFixUnifyTablePropsWithIndexer)
+        CHECK_EQ("{ [string]: string?, hello: string }", toString(requireType("t"), {true}));
+    else
+        CHECK_EQ("{ [unknown]: unknown?, hello: string }", toString(requireType("t"), {true}));
     // TODO CLI-181248: This seems incorrect.
     CHECK_EQ("any", toString(requireType("x"), {true}));
 }
@@ -4523,7 +4527,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2670_generic_leaking_indexer_2")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauDoNotLeakGenericsInIndexer, true};
+    // TODO CLI-181248: With LuauFixUnifyTablePropsWithIndexer, `K` is inferred
+    // as `string` here, which exposes that the free type stored in `t`'s
+    // indexer (`'K | number`) is lost during generalization (`t` ends up as
+    // `{ [number]: string }`) and the call is then reported as a mismatch.
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDoNotLeakGenericsInIndexer, true},
+        {FFlag::LuauFixUnifyTablePropsWithIndexer, false},
+    };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local set: <K, V>({ [K | number]: V | string }) -> V
@@ -4538,6 +4549,67 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2670_generic_leaking_indexer_2")
     // TODO CLI-181248: This also seems not entirely correct.
     CHECK_EQ("number?", toString(requireType("k"), {true}));
     CHECK_EQ("string", toString(requireType("v"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2470_generic_indexer_inferred_from_table_literal_props")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDoNotLeakGenericsInIndexer, true},
+        {FFlag::LuauFixUnifyTablePropsWithIndexer, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function decompose<K, V>(t: { read [K]: V }): { keys: { K }, values: { V } }
+            local keys = {}
+            local values = {}
+
+            for k, v in t do
+                table.insert(keys, k)
+                table.insert(values, v)
+            end
+
+            return { keys = keys, values = values }
+        end
+
+        local dec = decompose({
+            hello = 5,
+            bye = 10
+        })
+
+        for _, x in dec.values do
+            print(x + 1)
+        end
+    )"));
+
+    CHECK_EQ("{ keys: {string}, values: {number} }", toString(requireType("dec"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2470_generic_indexer_key_and_value_from_props")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDoNotLeakGenericsInIndexer, true},
+        {FFlag::LuauFixUnifyTablePropsWithIndexer, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function keyOf<K, V>(t: { [K]: V }): K
+            return nil :: any
+        end
+
+        local function valueOf<K, V>(t: { [K]: V }): V
+            return nil :: any
+        end
+
+        local k = keyOf({ hello = 5, bye = 10 })
+        local v = valueOf({ hello = 5, bye = "ten" })
+    )"));
+
+    CHECK_EQ("string", toString(requireType("k"), {true}));
+    CHECK_EQ("number | string", toString(requireType("v"), {true}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_callback_in_array")
