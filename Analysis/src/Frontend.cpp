@@ -1891,8 +1891,15 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
 
         double timestamp = getTimestamp();
 
-        std::vector<LintWarning> warnings =
-            Luau::lint(sourceModule.root, *sourceModule.names, environmentScope, module.get(), sourceModule.hotcomments, lintOptions);
+        std::vector<LintWarning> warnings = Luau::lint(
+            sourceModule.root,
+            *sourceModule.names,
+            environmentScope,
+            module.get(),
+            sourceModule.hotcomments,
+            lintOptions,
+            globals.globalTypeFunctionScope
+        );
 
         moduleInfo.stats.timeLint += getTimestamp() - timestamp;
 

@@ -31,7 +31,8 @@ std::vector<LintWarning> lint(
     const ScopePtr& env,
     const Module* module,
     const std::vector<HotComment>& hotcomments,
-    const LintOptions& options
+    const LintOptions& options,
+    const ScopePtr& typeFunctionEnv = nullptr
 );
 
 std::vector<AstName> getDeprecatedGlobals(const AstNameTable& names);

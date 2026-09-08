@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
+LUAU_FASTFLAG(LuauFixUnknownGlobalInTypeFunctions)
 
 using namespace Luau;
 
@@ -44,6 +45,49 @@ TEST_CASE_FIXTURE(Fixture, "UnknownGlobal")
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Unknown global 'foo'; consider assigning to it first");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "UnknownGlobalInTypeFunction")
+{
+    ScopedFastFlag sff{FFlag::LuauFixUnknownGlobalInTypeFunctions, true};
+
+    LintResult result = lint(R"(
+        --!nocheck
+        type function Id(t)
+            return t
+        end
+
+        type function Foo(t)
+            local s = types.string
+            print(string.format("%s", tostring(s)))
+            return Id(s)
+        end
+
+        local _: Foo<number>
+    )");
+
+    REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "UnknownGlobalInTypeFunctionStillReported")
+{
+    ScopedFastFlag sff{FFlag::LuauFixUnknownGlobalInTypeFunctions, true};
+
+    LintResult result = lint(R"(
+        --!nocheck
+        moduleGlobal = 1
+
+        type function Foo(t)
+            local _ = moduleGlobal
+            local _ = os.clock()
+            return foo
+        end
+    )");
+
+    REQUIRE(3 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Unknown global 'moduleGlobal'; consider assigning to it first");
+    CHECK_EQ(result.warnings[1].text, "Unknown global 'os'; consider assigning to it first");
+    CHECK_EQ(result.warnings[2].text, "Unknown global 'foo'; consider assigning to it first");
 }
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobal")

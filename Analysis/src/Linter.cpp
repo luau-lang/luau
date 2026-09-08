@@ -14,6 +14,7 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixUnknownGlobalInTypeFunctions)
 
 namespace Luau
 {
@@ -33,6 +34,7 @@ struct LintContext
 
     AstName placeholder;
     DenseHashMap<AstName, Global> builtinGlobals;
+    DenseHashMap<AstName, Global> typeFunctionBuiltinGlobals;
     ScopePtr scope;
     const Module* module;
 
@@ -256,6 +258,10 @@ private:
     std::vector<AstExprGlobal*> globalRefs;
     std::vector<FunctionInfo> functionStack;
 
+    // type function bodies are evaluated in a separate environment, so their global references are tracked separately
+    DenseHashSet<AstName> typeFunctionNames;
+    std::vector<AstExprGlobal*> typeFunctionGlobalRefs;
+    bool insideTypeFunction = false;
 
     LintGlobalLocal() = default;
 
@@ -284,6 +290,14 @@ private:
                 else
                     emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated", gv->name.value);
             }
+        }
+
+        for (AstExprGlobal* gv : typeFunctionGlobalRefs)
+        {
+            if (!context->typeFunctionBuiltinGlobals.contains(gv->name) && !typeFunctionNames.contains(gv->name))
+                emitWarning(
+                    *context, LintWarning::Code_UnknownGlobal, gv->location, "Unknown global '%s'; consider assigning to it first", gv->name.value
+                );
         }
 
         for (auto& global : globals)
@@ -337,8 +351,28 @@ private:
         return false;
     }
 
+    bool visit(AstStatTypeFunction* node) override
+    {
+        if (!FFlag::LuauFixUnknownGlobalInTypeFunctions)
+            return true;
+
+        typeFunctionNames.insert(node->name);
+
+        insideTypeFunction = true;
+        node->body->visit(this);
+        insideTypeFunction = false;
+
+        return false;
+    }
+
     bool visit(AstExprGlobal* node) override
     {
+        if (insideTypeFunction)
+        {
+            typeFunctionGlobalRefs.push_back(node);
+            return true;
+        }
+
         if (!functionStack.empty() && !functionStack.back().dominatedGlobals.contains(node->name))
         {
             Global& g = globals[node->name];
@@ -3268,7 +3302,7 @@ private:
     }
 };
 
-static void fillBuiltinGlobals(LintContext& context, const AstNameTable& names, const ScopePtr& env)
+static void fillBuiltinGlobals(DenseHashMap<AstName, LintContext::Global>& builtinGlobals, const AstNameTable& names, const ScopePtr& env)
 {
     ScopePtr current = env;
     while (true)
@@ -3279,7 +3313,7 @@ static void fillBuiltinGlobals(LintContext& context, const AstNameTable& names, 
 
             if (name.value)
             {
-                auto& g = context.builtinGlobals[name];
+                auto& g = builtinGlobals[name];
                 g.type = binding.typeId;
                 if (binding.deprecated)
                     g.deprecated = binding.deprecatedSuggestion.c_str();
@@ -3503,7 +3537,8 @@ std::vector<LintWarning> lint(
     const ScopePtr& env,
     const Module* module,
     const std::vector<HotComment>& hotcomments,
-    const LintOptions& options
+    const LintOptions& options,
+    const ScopePtr& typeFunctionEnv
 )
 {
     LintContext context;
@@ -3514,7 +3549,10 @@ std::vector<LintWarning> lint(
     context.scope = env;
     context.module = module;
 
-    fillBuiltinGlobals(context, names, env);
+    fillBuiltinGlobals(context.builtinGlobals, names, env);
+
+    if (FFlag::LuauFixUnknownGlobalInTypeFunctions && typeFunctionEnv)
+        fillBuiltinGlobals(context.typeFunctionBuiltinGlobals, names, typeFunctionEnv);
 
     if (context.warningEnabled(LintWarning::Code_UnknownGlobal) || context.warningEnabled(LintWarning::Code_DeprecatedGlobal) ||
         context.warningEnabled(LintWarning::Code_GlobalUsedAsLocal) || context.warningEnabled(LintWarning::Code_PlaceholderRead) ||
