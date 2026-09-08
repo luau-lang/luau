@@ -26,6 +26,7 @@
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
+LUAU_FASTFLAG(LuauFixFreezeTypestateClobber)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -1774,9 +1775,22 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
 
     TypeId inputType = follow(paramTypes[0]);
 
-    AstExpr* targetExpr = context.callSite->args.data[0];
-    std::optional<DefId> resultDef = dfg->getDefOptional(targetExpr);
-    std::optional<TypeId> resultTy = resultDef ? scope->lookup(*resultDef) : std::nullopt;
+    std::optional<TypeId> resultTy;
+
+    if (FFlag::LuauFixFreezeTypestateClobber)
+    {
+        // The constraint generator records the type-state result on the
+        // constraint itself; a later type-stating call on the same variable
+        // (eg `setmetatable(t, mt)`) may have replaced the type in scope.
+        if (auto fcc = get<FunctionCallConstraint>(*context.constraint); fcc && fcc->typestateResult)
+            resultTy = fcc->typestateResult;
+    }
+    else
+    {
+        AstExpr* targetExpr = context.callSite->args.data[0];
+        std::optional<DefId> resultDef = dfg->getDefOptional(targetExpr);
+        resultTy = resultDef ? scope->lookup(*resultDef) : std::nullopt;
+    }
 
     if (resultTy && !get<BlockedType>(follow(resultTy)))
     {

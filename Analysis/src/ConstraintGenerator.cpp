@@ -41,6 +41,7 @@ LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
+LUAU_FASTFLAGVARIABLE(LuauFixFreezeTypestateClobber)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -3028,6 +3029,8 @@ InferencePack ConstraintGenerator::checkExprCall(
         return InferencePack{arena->addTypePack({resultTy}), {refinementArena.variadic(returnRefinements)}};
     }
 
+    TypeId typestateResultTy = nullptr;
+
     if (shouldTypestateForFirstArgument(*call) && call->args.size > 0 && isLValue(call->args.data[0]))
     {
         AstExpr* targetExpr = call->args.data[0];
@@ -3037,6 +3040,7 @@ InferencePack ConstraintGenerator::checkExprCall(
         {
             scope->lvalueTypes[*def] = resultTy;
             updateRValueRefinements(scope, *def, resultTy);
+            typestateResultTy = resultTy;
         }
     }
 
@@ -3079,6 +3083,7 @@ InferencePack ConstraintGenerator::checkExprCall(
             std::move(explicitTypePackIds),
             FFlag::LuauCyclicRequireTypeInference ? &module->astTypes : nullptr,
             &module->astOverloadResolvedTypes,
+            FFlag::LuauFixFreezeTypestateClobber ? typestateResultTy : nullptr,
         }
     );
 

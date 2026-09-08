@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixFreezeTypestateClobber)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1272,6 +1273,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_on_metatable")
 
         local myTable = setmetatable({}, meta)
         table.freeze(myTable)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_then_setmetatable")
+{
+    ScopedFastFlag sff{FFlag::LuauFixFreezeTypestateClobber, true};
+
+    CheckResult result = check(R"(
+        local t = {}
+        table.freeze(t)
+        local x = setmetatable(t, {})
+        return x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (!FFlag::DebugLuauForceOldSolver)
+    {
+        const MetatableType* mt = get<MetatableType>(follow(requireType("x")));
+        REQUIRE(mt);
+        const TableType* frozen = get<TableType>(follow(mt->table));
+        REQUIRE(frozen);
+        CHECK(frozen->state == TableState::Sealed);
+        CHECK_EQ("{  }", toString(mt->metatable));
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_cast_to_typeof_setmetatable")
+{
+    ScopedFastFlag sff{FFlag::LuauFixFreezeTypestateClobber, true};
+
+    CheckResult result = check(R"(
+        --!nonstrict
+        local Math = {}
+
+        function Math.inrange(number: number, min: number, max: number): boolean
+            local highest, lowest = math.max(min, max), math.min(min, max)
+            return math.clamp(number, lowest, highest) == number
+        end
+
+        return table.freeze(Math) :: typeof(setmetatable(Math, math))
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
