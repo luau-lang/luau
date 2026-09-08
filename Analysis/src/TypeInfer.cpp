@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauFixTypeofRequireImportsTypes)
 
 namespace Luau
 {
@@ -1159,6 +1160,52 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
                         if (i < types.size())
                             varBindings[i].second.typeId = types[i];
                     }
+                }
+            }
+        }
+    }
+
+    if (FFlag::LuauFixTypeofRequireImportsTypes)
+    {
+        // Locals annotated with `typeof(require(...))` also get the exported type bindings imported into their 'namespace'
+        for (size_t i = 0; i < local.vars.size; ++i)
+        {
+            if (i < local.values.size)
+            {
+                if (const AstExprCall* valueCall = local.values.data[i]->as<AstExprCall>(); valueCall && matchRequire(*valueCall))
+                    continue;
+            }
+
+            const AstTypeTypeof* typeofAnnotation = local.vars.data[i]->annotation ? local.vars.data[i]->annotation->as<AstTypeTypeof>() : nullptr;
+            if (!typeofAnnotation)
+                continue;
+
+            const AstExprCall* call = typeofAnnotation->expr->as<AstExprCall>();
+            if (!call)
+                continue;
+
+            auto maybeRequire = matchRequire(*call);
+            if (!maybeRequire)
+                continue;
+
+            auto moduleInfo = resolver->resolveModuleInfo(currentModule->name, **maybeRequire);
+            if (!moduleInfo)
+                continue;
+
+            ModulePtr module = resolver->getModule(moduleInfo->name);
+            if (!module)
+                continue;
+
+            const Name name{local.vars.data[i]->name.value};
+            scope->importedTypeBindings[name] = module->exportedTypeBindings;
+            scope->importedModules[name] = moduleInfo->name;
+
+            for (const auto& [location, path] : requireCycles)
+            {
+                if (!path.empty() && path.front() == moduleInfo->name)
+                {
+                    for (auto& [_, tf] : scope->importedTypeBindings[name])
+                        tf = TypeFun{{}, {}, anyType};
                 }
             }
         }

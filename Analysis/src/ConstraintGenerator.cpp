@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixTypeofRequireImportsTypes)
 
 namespace Luau
 {
@@ -84,6 +85,23 @@ static std::optional<AstExpr*> matchRequire(const AstExprCall& call)
         return std::nullopt;
 
     return call.args.data[0];
+}
+
+// Matches `typeof(require(...))` annotations and returns the require argument.
+static std::optional<AstExpr*> matchTypeofRequire(const AstType* annotation)
+{
+    if (!annotation)
+        return std::nullopt;
+
+    const AstTypeTypeof* typeofAnnotation = annotation->as<AstTypeTypeof>();
+    if (!typeofAnnotation)
+        return std::nullopt;
+
+    const AstExprCall* call = typeofAnnotation->expr->as<AstExprCall>();
+    if (!call)
+        return std::nullopt;
+
+    return matchRequire(*call);
 }
 
 
@@ -1561,16 +1579,24 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
         }
     }
 
-    if (statLocal->values.size > 0)
+    if (statLocal->values.size > 0 || FFlag::LuauFixTypeofRequireImportsTypes)
     {
         // To correctly handle 'require', we need to import the exported type bindings into the variable 'namespace'.
-        for (size_t i = 0; i < statLocal->values.size && i < statLocal->vars.size; ++i)
+        // This also applies to locals annotated with `typeof(require(...))`.
+        size_t count = FFlag::LuauFixTypeofRequireImportsTypes ? statLocal->vars.size : std::min(statLocal->values.size, statLocal->vars.size);
+        for (size_t i = 0; i < count; ++i)
         {
-            const AstExprCall* call = statLocal->values.data[i]->as<AstExprCall>();
-            if (!call)
-                continue;
+            std::optional<AstExpr*> maybeRequire;
 
-            auto maybeRequire = matchRequire(*call);
+            if (i < statLocal->values.size)
+            {
+                if (const AstExprCall* call = statLocal->values.data[i]->as<AstExprCall>())
+                    maybeRequire = matchRequire(*call);
+            }
+
+            if (!maybeRequire && FFlag::LuauFixTypeofRequireImportsTypes)
+                maybeRequire = matchTypeofRequire(statLocal->vars.data[i]->annotation);
+
             if (!maybeRequire)
                 continue;
 

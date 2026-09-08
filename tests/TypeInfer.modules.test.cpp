@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauExportAnnotationBinding)
 LUAU_FASTINT(LuauSolverConstraintLimit)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixTypeofRequireImportsTypes)
 
 using namespace Luau;
 
@@ -116,6 +117,60 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "require_types")
 
     fileResolver.source["workspace/B"] = R"(
         local Hooty = require(workspace.A)
+
+        local h: Hooty.Point
+    )";
+
+    CheckResult bResult = getFrontend().check("workspace/B");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    ModulePtr b = getFrontend().moduleResolver.getModule("workspace/B");
+    REQUIRE(b != nullptr);
+
+    TypeId hType = requireType(b, "h");
+    REQUIRE_MESSAGE(bool(get<TableType>(hType)), "Expected table but got " << toString(hType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "require_types_via_typeof_require_annotation")
+{
+    ScopedFastFlag sff{FFlag::LuauFixTypeofRequireImportsTypes, true};
+
+    fileResolver.source["workspace/A"] = R"(
+        local tbl = {}
+        export type Point = {x: number, y: number}
+        tbl.ok = {x = 1, y = 2} :: Point
+        return tbl
+    )";
+
+    fileResolver.source["workspace/B"] = R"(
+        local debugMode = true
+        local Hooty: typeof(require(workspace.A)) = debugMode and require(workspace.A) or require(workspace.A)
+
+        local h: Hooty.Point = { x = 1, y = 2 }
+        local n: number = Hooty.ok.x
+    )";
+
+    CheckResult bResult = getFrontend().check("workspace/B");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    ModulePtr b = getFrontend().moduleResolver.getModule("workspace/B");
+    REQUIRE(b != nullptr);
+
+    TypeId hType = requireType(b, "h");
+    REQUIRE_MESSAGE(bool(get<TableType>(hType)), "Expected table but got " << toString(hType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "require_types_via_typeof_require_annotation_without_value")
+{
+    ScopedFastFlag sff{FFlag::LuauFixTypeofRequireImportsTypes, true};
+
+    fileResolver.source["workspace/A"] = R"(
+        export type Point = {x: number, y: number}
+        return {}
+    )";
+
+    fileResolver.source["workspace/B"] = R"(
+        local Hooty: typeof(require(workspace.A))
 
         local h: Hooty.Point
     )";
