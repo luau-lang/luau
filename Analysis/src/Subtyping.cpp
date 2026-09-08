@@ -30,6 +30,7 @@ LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
+LUAU_FASTFLAGVARIABLE(LuauFixTableNegatedStringSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
 
 
@@ -1944,7 +1945,14 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
     }
     else if (auto p = get<PrimitiveType>(negatedTy); p && is<TableType, MetatableType>(subTy))
     {
-        result = {p->type != PrimitiveType::Table};
+        if (p->type == PrimitiveType::Table)
+            result = {false};
+        // Strings inhabit table types that the string metatable's `__index`
+        // table conforms to (e.g. `{}`), so such tables are not disjoint from `string`.
+        else if (FFlag::LuauFixTableNegatedStringSubtyping && p->type == PrimitiveType::String)
+            result = SubtypingResult::negate(isCovariantWith(env, builtinTypes->stringType, subTy, scope));
+        else
+            result = {true};
         if (FFlag::LuauFixSuperNegationTypePaths)
             result = result.withSuperComponent(TypePath::TypeField::Negated);
     }
@@ -2664,6 +2672,32 @@ SubtypingResult Subtyping::isCovariantWith(
     result.andAlso(isCovariantWith(env, subNorm->threads, superNorm->threads, scope));
     result.andAlso(isCovariantWith(env, subNorm->buffers, superNorm->buffers, scope));
     result.andAlso(isCovariantWith(env, subNorm->tables, superNorm->tables, scope));
+    if (FFlag::LuauFixTableNegatedStringSubtyping && result.isSubtype && !superNorm->strings.isString())
+    {
+        // A table type that `string` conforms to (via the string metatable) is
+        // inhabited by strings, so the supertype must also admit every string.
+        bool subAdmitsString = false;
+        for (TypeId subTable : subNorm->tables)
+        {
+            if (isCovariantWith(env, builtinTypes->stringType, subTable, scope).isSubtype)
+            {
+                subAdmitsString = true;
+                break;
+            }
+        }
+
+        if (subAdmitsString)
+        {
+            SubtypingResult superAdmitsString{false};
+            for (TypeId superTable : superNorm->tables)
+            {
+                superAdmitsString.orElse(isCovariantWith(env, builtinTypes->stringType, superTable, scope));
+                if (superAdmitsString.isSubtype)
+                    break;
+            }
+            result.andAlso(superAdmitsString);
+        }
+    }
     result.andAlso(isCovariantWith(env, subNorm->functions, superNorm->functions, scope));
     // isCovariantWith(subNorm->tyvars, superNorm->tyvars);
     return result;

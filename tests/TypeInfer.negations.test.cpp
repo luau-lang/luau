@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauFixSuperNegationTypePaths)
+LUAU_FASTFLAG(LuauFixTableNegatedStringSubtyping)
 
 using namespace Luau;
 
@@ -117,6 +118,36 @@ TEST_CASE_FIXTURE(NegationFixture, "subtype_path_is_valid_for_intersections")
             "`boolean` cannot be `~(boolean & unknown)`",
         toString(result.errors[0])
     );
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "empty_table_is_not_a_subtype_of_negated_string")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixTableNegatedStringSubtyping, true};
+
+    CheckResult result = check(R"(
+        local a: {} = ""
+        local b: Not<string> = a
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "table_with_props_is_a_subtype_of_negated_string")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixTableNegatedStringSubtyping, true};
+
+    CheckResult result = check(R"(
+        local a: { x: number } = { x = 1 }
+        local b: Not<string> = a
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

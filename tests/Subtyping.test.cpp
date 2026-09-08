@@ -20,6 +20,7 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
+LUAU_FASTFLAG(LuauFixTableNegatedStringSubtyping)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
@@ -951,6 +952,18 @@ TEST_IS_SUBTYPE(tbl({}), negate(getBuiltins()->numberType));
 TEST_IS_NOT_SUBTYPE(tbl({}), negate(getBuiltins()->tableType));
 TEST_IS_SUBTYPE(meta({}), negate(getBuiltins()->numberType));
 TEST_IS_NOT_SUBTYPE(meta({}), negate(getBuiltins()->tableType));
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{} <!: ~string")
+{
+    ScopedFastFlag sff{FFlag::LuauFixTableNegatedStringSubtyping, true};
+    CHECK_IS_NOT_SUBTYPE(tbl({}), negate(getBuiltins()->stringType));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{x: number} <: ~string")
+{
+    ScopedFastFlag sff{FFlag::LuauFixTableNegatedStringSubtyping, true};
+    CHECK_IS_SUBTYPE(tbl({{"x", getBuiltins()->numberType}}), negate(getBuiltins()->stringType));
+}
 
 // Negated supertypes: Functions
 TEST_IS_SUBTYPE(numberToNumberType, negate(getBuiltins()->externType));
