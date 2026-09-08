@@ -8,6 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauMaybeSingletonNegation)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -868,6 +869,42 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "singleton_when_type_is_blocked")
     )"));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_literal_is_singleton_when_expected_type_has_negated_singleton")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauMaybeSingletonNegation, true}};
 
+    CheckResult result = check(R"(
+        --!strict
+        type function negate(ty)
+            return types.negationof(ty)
+        end
+
+        local myString: string & negate<"bye">
+        myString = "hello"
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_literal_is_singleton_when_narrowed_by_inequality")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauMaybeSingletonNegation, true}};
+
+    CheckResult result = check(R"(
+        local function expect<T>(x: T)
+            return {
+                toBe = function(y: T)
+                end
+            }
+        end
+
+        local myString: string = "x"
+        if myString ~= "hello" then
+            expect(myString).toBe("bye")
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
 
 TEST_SUITE_END();

@@ -29,6 +29,7 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauMaybeSingletonNegation)
 
 namespace Luau
 {
@@ -439,8 +440,16 @@ bool maybeSingleton(TypeId ty)
             if (maybeSingleton(part)) // will i regret this?
                 return true;
     if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(ty))
+    {
         if (tfit->function->name == "keyof" || tfit->function->name == "rawkeyof")
             return true;
+        // A user-defined type function can reduce to anything, including a singleton or its negation.
+        if (FFlag::LuauMaybeSingletonNegation && tfit->userFuncName)
+            return true;
+    }
+    if (FFlag::LuauMaybeSingletonNegation)
+        if (const NegationType* ntv = get<NegationType>(ty))
+            return maybeSingleton(ntv->ty);
     return false;
 }
 
