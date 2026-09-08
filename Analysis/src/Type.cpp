@@ -29,6 +29,7 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauLenOfIntersectTypeFunction)
 
 namespace Luau
 {
@@ -476,6 +477,20 @@ bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
         for (TypeId part : ity->parts)
         {
             if (hasLength(part, seen, recursionCount))
+                return true;
+        }
+
+        return false;
+    }
+
+    // An unreduced `intersect<...>` (e.g. a generic refined by `typeof`) has a length if any of its arguments does.
+    if (auto tfit = get<TypeFunctionInstanceType>(ty); FFlag::LuauLenOfIntersectTypeFunction && tfit && tfit->function->name == "intersect")
+    {
+        seen.insert(ty);
+
+        for (TypeId arg : tfit->typeArguments)
+        {
+            if (hasLength(arg, seen, recursionCount))
                 return true;
         }
 

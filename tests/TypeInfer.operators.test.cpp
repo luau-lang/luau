@@ -21,6 +21,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAG(LuauLenOfIntersectTypeFunction)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -1783,6 +1784,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "negating_a_non_literal_integer_is_an_error")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "unary_len_on_generic_refined_to_table")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauLenOfIntersectTypeFunction, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function f<T>(x: T): number
+            if typeof(x) == "table" then
+                return #x
+            end
+
+            return 0
+        end
+
+        local function g<T>(x: T): number
+            if typeof(x) == "string" then
+                return #x
+            end
+
+            return 0
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "unary_len_on_unrefined_generic_is_an_error")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauLenOfIntersectTypeFunction, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function f<T>(x: T): number
+            return #x
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<NotATable>(result.errors[0]));
 }
 
 TEST_SUITE_END();
