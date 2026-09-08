@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauIndexTypeFunctionIntersections)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -1267,6 +1268,52 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_index_metatables
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]) == "Property '\"Car\"' does not exist on type 'exampleClass2'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_intersection_index_metatables")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauIndexTypeFunctionIntersections, true},
+    };
+
+    CheckResult result = check(R"(
+        type AppleColor = {Color: {R: number, G: number, B: number}}
+        type AppleSize = {Size: {X: number, Y: number}}
+        local Apple = setmetatable({}, {
+            __index = {} :: (AppleColor & AppleSize)
+        })
+        type Apple = typeof(Apple)
+        type ColorOfApple = index<Apple, "Color">
+        type SizeOfApple = index<Apple, "Size">
+        local function ok(idx: ColorOfApple): {R: number, G: number, B: number} return idx end
+        local function ok2(idx: SizeOfApple): {X: number, Y: number} return idx end
+
+        type errTy = index<Apple, "Weight">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"Weight\"' does not exist on type 'Apple'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_intersects_overlapping_props_in_intersection_index_metatables")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauIndexTypeFunctionIntersections, true},
+    };
+
+    CheckResult result = check(R"(
+        type A = {Value: number}
+        type B = {Value: string}
+        local Obj = setmetatable({}, {
+            __index = (nil :: any) :: (A & B)
+        })
+        type ValueOfObj = index<typeof(Obj), "Value">
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("ValueOfObj")) == "number & string");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works")

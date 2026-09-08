@@ -29,6 +29,7 @@ LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
+LUAU_FASTFLAGVARIABLE(LuauIndexTypeFunctionIntersections)
 
 namespace Luau
 {
@@ -2054,6 +2055,37 @@ bool tblIndexInto(
             res = res && tblIndexInto(indexer, component, result, seenSet, ctx, isRaw);
         }
         return res;
+    }
+
+    if (FFlag::LuauIndexTypeFunctionIntersections)
+    {
+        if (auto intersectionTy = get<IntersectionType>(indexee))
+        {
+            // Indexing an intersection succeeds if any of its components can be indexed. The resulting type is the
+            // intersection of the results of every component that could be indexed.
+            std::vector<TypeId> partResults;
+            for (TypeId part : intersectionTy)
+            {
+                DenseHashSet<TypeId> partResult;
+                if (!tblIndexInto(indexer, part, partResult, seenSet, ctx, isRaw) || partResult.empty())
+                    continue;
+
+                if (partResult.size() == 1)
+                    partResults.push_back(*partResult.begin());
+                else
+                    partResults.push_back(ctx->arena->addType(UnionType{std::vector<TypeId>(partResult.begin(), partResult.end())}));
+            }
+
+            if (partResults.empty())
+                return false;
+
+            if (partResults.size() == 1)
+                result.insert(partResults.front());
+            else
+                result.insert(ctx->arena->addType(IntersectionType{std::move(partResults)}));
+
+            return true;
+        }
     }
 
     if (get<FunctionType>(indexee))
