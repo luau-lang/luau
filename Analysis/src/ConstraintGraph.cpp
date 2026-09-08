@@ -306,6 +306,38 @@ bool ConstraintGraph::DEPRECATED_hasStrictlyMoreThanOneDependency(ConstraintVert
     return deps->size() > 1;
 }
 
+bool ConstraintGraph::dependsOnWithoutGeneralization(ConstraintVertex vertex, ConstraintVertex target)
+{
+    DenseHashSet<ConstraintVertex, HashBlockedConstraintId> seen;
+    std::vector<ConstraintVertex> stack{vertex};
+
+    while (!stack.empty())
+    {
+        ConstraintVertex current = stack.back();
+        stack.pop_back();
+
+        if (seen.contains(current))
+            continue;
+        seen.insert(current);
+
+        if (auto c = current.get_if<const Constraint*>())
+        {
+            if (get<GeneralizationConstraint>(**c))
+                continue;
+        }
+
+        auto deps = findDependencyList(current);
+        for (ConstraintVertex dep : *deps)
+        {
+            if (dep == target)
+                return true;
+            stack.push_back(dep);
+        }
+    }
+
+    return false;
+}
+
 /**
  * For every vertex V and type T, we want to claim that T depends on V:
  * - Add a forward edge in [dependencies] from T to V

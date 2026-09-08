@@ -177,6 +177,15 @@ struct ConstraintGraph
     bool DEPRECATED_hasStrictlyMoreThanOneDependency(ConstraintVertex vertex);
 
     /**
+     * Return whether [target] is reachable from [vertex] by following
+     * dependency edges without passing through a GeneralizationConstraint.
+     *
+     * Used to detect dependency cycles that forcing a generalization cannot
+     * break.
+     */
+    bool dependsOnWithoutGeneralization(ConstraintVertex vertex, ConstraintVertex target);
+
+    /**
      * Find all of the reference counted types that are reachable from `target`
      * and shift the dependencies (and reverse dependencies) of source over
      * without rebinding source to target.

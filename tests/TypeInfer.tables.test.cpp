@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauForceBlockedFunctionCall)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -7590,6 +7591,53 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2366_assign_prop_from_call_to_same_prop")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauForceBlockedFunctionCall, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo()
+            local bar = setmetatable({}, nil)
+            bar.baz = bar.baz()
+            return bar
+        end
+        return foo
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2366_assign_prop_from_call_to_same_prop_with_index_metatable")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauForceBlockedFunctionCall, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local tbl = {}
+        function tbl:foo()
+            local bar = setmetatable({}, {
+                __index = {baz = function() return math.random() end}
+            })
+            bar.baz = bar.baz()
+            return bar
+        end
+        return tbl or tbl.foo
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2366_assign_prop_from_call_to_same_prop_minimal")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauForceBlockedFunctionCall, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local bar = {}
+        bar.baz = bar.baz()
+    )"));
 }
 
 TEST_SUITE_END();

@@ -48,6 +48,7 @@ LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArgumentsDedup)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAGVARIABLE(LuauForceLess)
+LUAU_FASTFLAGVARIABLE(LuauForceBlockedFunctionCall)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
@@ -951,7 +952,7 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
     else if (auto taec = get<TypeAliasExpansionConstraint>(*constraint))
         success = tryDispatch(*taec, constraint);
     else if (auto fcc = get<FunctionCallConstraint>(*constraint))
-        success = tryDispatch(*fcc, constraint);
+        success = tryDispatch(*fcc, constraint, force);
     else if (auto fcc = get<FunctionCheckConstraint>(*constraint))
         success = tryDispatch(*fcc, constraint, force);
     else if (auto fcc = get<DEPRECATED_PrimitiveTypeConstraint>(*constraint); !FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier && fcc)
@@ -1601,14 +1602,27 @@ void ConstraintSolver::fillInDiscriminantTypes(NotNull<const Constraint> constra
     }
 }
 
-bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint)
+bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     TypeId fn = follow(c.fn);
     TypePackId argsPack = follow(c.argsPack);
     TypePackId result = follow(c.result);
 
     if (isBlocked(fn))
+    {
+        // The callee may depend on the result of this very call, eg
+        // `t.k = t.k()` where `t` is an unsealed table: the type of `t.k` is
+        // the result of calling `t.k`. Forcing a generalization cannot break
+        // such a cycle, so cut it here by treating the call as erroneous.
+        if (FFlag::LuauForceBlockedFunctionCall && force && cgraph->dependsOnWithoutGeneralization(fn, result))
+        {
+            bind(constraint, c.result, builtinTypes->errorTypePack);
+            fillInDiscriminantTypes(constraint, c.discriminantTypes);
+            return true;
+        }
+
         return block(c.fn, constraint);
+    }
 
     if (get<AnyType>(fn))
     {
