@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauFixTypeFunctionUnboundMappedGenerics)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -118,6 +119,14 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "function_as_fn_arg")
         local b = swapper(false)
     )");
 
+    if (FFlag::LuauFixTypeFunctionUnboundMappedGenerics)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK("unknown" == toString(requireType("a")));
+        CHECK("unknown" == toString(requireType("b")));
+        return;
+    }
+
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK("unknown" == toString(requireType("a")));
     CHECK("unknown" == toString(requireType("b")));
@@ -148,6 +157,12 @@ TEST_CASE_FIXTURE(TypeFunctionFixture, "unsolvable_function")
         local a = impossible(123)
         local b = impossible(true)
     )");
+
+    if (FFlag::LuauFixTypeFunctionUnboundMappedGenerics)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        return;
+    }
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK("Expected this to be unreachable, but got 'number'" == toString(result.errors[0]));

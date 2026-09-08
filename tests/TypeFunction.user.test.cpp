@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixTypeFunctionUnboundMappedGenerics)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3699,6 +3700,81 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_in_generic_alias_argument_with_unbound_generic")
+{
+    ScopedFastFlag sff{FFlag::LuauFixTypeFunctionUnboundMappedGenerics, true};
+
+    CheckResult result = check(R"(
+        type function do_something(t: type): type
+            return t
+        end
+
+        type Repro<T> = { field: do_something<T> }
+
+        local function repro2<T>(r: Repro<T>)
+        end
+
+        repro2((nil :: any) :: Repro<number>)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_in_generic_alias_argument_with_unbound_generic_pack")
+{
+    ScopedFastFlag sff{FFlag::LuauFixTypeFunctionUnboundMappedGenerics, true};
+
+    CheckResult result = check(R"(
+        type function any_of(pack: type): type
+            if pack.tag ~= "function" then
+                return pack
+            end
+
+            local params = pack:parameters()
+            local head = params.head
+            if not head then
+                return types.any
+            end
+
+            return types.unionof(unpack(head))
+        end
+
+        type Pack<T...> = (T...) -> ()
+
+        type Repro<T...> = {
+            field: any_of<Pack<T...>>
+        }
+
+        local function repro<T...>(r: Repro<T...>)
+        end
+
+        repro((nil :: any) :: Repro<number>)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_in_generic_alias_argument_with_bound_generic_still_errors")
+{
+    ScopedFastFlag sff{FFlag::LuauFixTypeFunctionUnboundMappedGenerics, true};
+
+    CheckResult result = check(R"(
+        type function do_something(t: type): type
+            return t
+        end
+
+        type Repro<T> = { field: do_something<T> }
+
+        local function g<T>(x: T, r: Repro<T>)
+        end
+
+        g("hi", (nil :: any) :: Repro<number>)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
 }
 
 TEST_SUITE_END();

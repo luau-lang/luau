@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixTypeFunctionUnboundMappedGenerics)
 
 
 namespace Luau
@@ -502,6 +503,56 @@ struct ApplyMappedGenerics : Substitution
     }
 };
 
+struct UnboundMappedGenericFinder : TypeOnceVisitor
+{
+    NotNull<SubtypingEnvironment> env;
+    NotNull<InternalErrorReporter> iceReporter;
+    bool found = false;
+
+    UnboundMappedGenericFinder(SubtypingEnvironment& env, NotNull<InternalErrorReporter> iceReporter)
+        : TypeOnceVisitor("UnboundMappedGenericFinder", /* skipBoundTypes */ true)
+        , env(NotNull{&env})
+        , iceReporter(iceReporter)
+    {
+    }
+
+    bool visit(TypeId ty) override
+    {
+        return !found;
+    }
+
+    bool visit(TypePackId tp) override
+    {
+        return !found;
+    }
+
+    bool visit(TypeId ty, const GenericType&) override
+    {
+        if (env->containsMappedType(ty))
+        {
+            const auto& [lowerBound, upperBound] = env->getMappedTypeBounds(ty, iceReporter);
+            if (lowerBound.empty() && upperBound.empty())
+                found = true;
+        }
+
+        return false;
+    }
+
+    bool visit(TypePackId tp, const GenericTypePack&) override
+    {
+        const MappedGenericEnvironment::LookupResult lookupResult = env->lookupGenericPack(tp);
+        if (get_if<MappedGenericEnvironment::Unmapped>(&lookupResult))
+            found = true;
+
+        return false;
+    }
+
+    bool visit(TypeId, const ExternType&) override
+    {
+        return false;
+    }
+};
+
 std::optional<TypeId> SubtypingEnvironment::applyMappedGenerics(
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<TypeArena> arena,
@@ -855,27 +906,59 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     }
     else if (auto subTypeFunctionInstance = get<TypeFunctionInstanceType>(subTy))
     {
-        bool mappedGenericsApplied = false;
-        if (auto substSubTy = env.applyMappedGenerics(builtinTypes, arena, subTy, iceReporter))
+        bool unboundMappedGeneric = false;
+        if (FFlag::LuauFixTypeFunctionUnboundMappedGenerics)
         {
-            mappedGenericsApplied = *substSubTy != subTy;
-            subTypeFunctionInstance = get<TypeFunctionInstanceType>(*substSubTy);
+            UnboundMappedGenericFinder finder{env, iceReporter};
+            finder.traverse(subTy);
+            unboundMappedGeneric = finder.found;
+            if (unboundMappedGeneric)
+            {
+                result = {true};
+                result.isCacheable = false;
+            }
         }
 
-        result = isCovariantWith(env, subTypeFunctionInstance, superTy, scope);
-        result.isCacheable = !mappedGenericsApplied;
+        if (!unboundMappedGeneric)
+        {
+            bool mappedGenericsApplied = false;
+            if (auto substSubTy = env.applyMappedGenerics(builtinTypes, arena, subTy, iceReporter))
+            {
+                mappedGenericsApplied = *substSubTy != subTy;
+                subTypeFunctionInstance = get<TypeFunctionInstanceType>(*substSubTy);
+            }
+
+            result = isCovariantWith(env, subTypeFunctionInstance, superTy, scope);
+            result.isCacheable = !mappedGenericsApplied;
+        }
     }
     else if (auto superTypeFunctionInstance = get<TypeFunctionInstanceType>(superTy))
     {
-        bool mappedGenericsApplied = false;
-        if (auto substSuperTy = env.applyMappedGenerics(builtinTypes, arena, superTy, iceReporter))
+        bool unboundMappedGeneric = false;
+        if (FFlag::LuauFixTypeFunctionUnboundMappedGenerics)
         {
-            mappedGenericsApplied = *substSuperTy != superTy;
-            superTypeFunctionInstance = get<TypeFunctionInstanceType>(*substSuperTy);
+            UnboundMappedGenericFinder finder{env, iceReporter};
+            finder.traverse(superTy);
+            unboundMappedGeneric = finder.found;
+            if (unboundMappedGeneric)
+            {
+                result = {true};
+                result.isCacheable = false;
+            }
         }
 
-        result = isCovariantWith(env, subTy, superTypeFunctionInstance, scope);
-        result.isCacheable = !mappedGenericsApplied;
+        if (!unboundMappedGeneric)
+        {
+            bool mappedGenericsApplied = false;
+            if (auto substSuperTy = env.applyMappedGenerics(builtinTypes, arena, superTy, iceReporter))
+            {
+                mappedGenericsApplied = *substSuperTy != superTy;
+                superTypeFunctionInstance = get<TypeFunctionInstanceType>(*substSuperTy);
+            }
+
+            result = isCovariantWith(env, subTy, superTypeFunctionInstance, scope);
+            result.isCacheable = !mappedGenericsApplied;
+        }
     }
     else if (get<GenericType>(subTy) || get<GenericType>(superTy))
     {
