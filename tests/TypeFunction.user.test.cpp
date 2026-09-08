@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixClonePreservesTypeFunctionState)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -1698,6 +1699,53 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export_zero_arg")
 
     LUAU_REQUIRE_NO_ERRORS(bResult);
     CHECK(toString(requireType("x")) == "number");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "solved_udtf_in_generic_function_survives_module_export")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCloneTypeFunctionFromForeignArena, true},
+        {FFlag::LuauFixClonePreservesTypeFunctionState, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        export type SerdesNode<T> = {
+            _T: T,
+        }
+
+        type function GetTypeFromTypeNode(Node: type)
+            return Node:readproperty(types.singleton("_T"))
+        end
+
+        export type Lib = {
+            read Serialize: <T>(Node: T, Data: GetTypeFromTypeNode<T>) -> buffer,
+            read Deserialize: <T>(Node: SerdesNode<T>, Buffer: buffer) -> T,
+            read Test: SerdesNode<boolean>
+        }
+
+        local Lib: Lib = nil :: any
+        return Lib
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = check(R"(
+        --!strict
+        local Lib = require(game.A)
+
+        local Type = Lib.Test
+        local Result = Lib.Serialize(Type, true)
+        local Data = Lib.Deserialize(Type, Result)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+    CHECK(toString(requireType("Result")) == "buffer");
+    CHECK(toString(requireType("Data")) == "boolean");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error")

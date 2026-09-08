@@ -15,6 +15,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
+LUAU_FASTFLAGVARIABLE(LuauFixClonePreservesTypeFunctionState)
 LUAU_FASTFLAGVARIABLE(LuauExportTypecheckTypepacks)
 LUAU_FASTFLAGVARIABLE(LuauExportAnnotationBinding)
 
@@ -210,6 +211,11 @@ struct ClonePublicInterface : Substitution
             {
                 if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state == TypeFunctionInstanceState::Stuck)
                     result = arena->addType(ErrorType{ty});
+                else if (FFlag::LuauFixClonePreservesTypeFunctionState && tfit)
+                {
+                    if (auto clonedTfit = getMutable<TypeFunctionInstanceType>(result))
+                        clonedTfit->state = tfit->state;
+                }
             }
         }
 

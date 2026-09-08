@@ -43,6 +43,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAGVARIABLE(LuauCloneTypeFunctionFromForeignArena)
+LUAU_FASTFLAG(LuauFixClonePreservesTypeFunctionState)
 LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArguments)
 LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArgumentsDedup)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -1351,15 +1352,16 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
             // the reducer can mutate it during reduction.
             if (toReduce->owningArena != arena)
             {
-                toReduce = arena->addType(
-                    TypeFunctionInstanceType{
-                        tfit->function,
-                        tfit->typeArguments,
-                        tfit->packArguments,
-                        tfit->userFuncName,
-                        tfit->userFuncData,
-                    }
-                );
+                TypeFunctionInstanceType copy{
+                    tfit->function,
+                    tfit->typeArguments,
+                    tfit->packArguments,
+                    tfit->userFuncName,
+                    tfit->userFuncData,
+                };
+                if (FFlag::LuauFixClonePreservesTypeFunctionState)
+                    copy.state = tfit->state;
+                toReduce = arena->addType(std::move(copy));
 
                 if (FFlag::LuauCyclicRequireTypeInference)
                     pushConstraint(NotNull(constraint->scope.get()), constraint->location, ReduceConstraint{toReduce}, constraint->moduleName);
