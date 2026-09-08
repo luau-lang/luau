@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauUdtfNewTableRejectSplitIndexer)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -1074,6 +1075,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_createtable_bad_metatable")
         e->message == "'badmetatable' type function errored at runtime: [string \"badmetatable\"]:3: types.newtable: expected to be given a table "
                       "type as a metatable, but got number instead"
     );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_createtable_indexer_split_read_write_errors")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauUdtfNewTableRejectSplitIndexer, true}};
+
+    CheckResult result = check(R"(
+        type function ReadOnlyArray(v: type): type
+            return types.newtable(nil, {
+                writeresult = types.never,
+                index = types.number,
+                readresult = v,
+            })
+        end
+
+        local t = {} :: ReadOnlyArray<number>
+        t[1] = 10
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    UserDefinedTypeFunctionError* e = get<UserDefinedTypeFunctionError>(result.errors[0]);
+    REQUIRE(e);
+    CHECK(
+        e->message == "'ReadOnlyArray' type function errored at runtime: [string \"ReadOnlyArray\"]:3: types.newtable: luau does not yet support "
+                      "separate read/write types for indexers."
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_createtable_indexer_matching_read_write_works")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauUdtfNewTableRejectSplitIndexer, true}};
+
+    CheckResult result = check(R"(
+        type function Array(v: type): type
+            return types.newtable(nil, { index = types.number, readresult = v, writeresult = v })
+        end
+
+        local a = {} :: Array<number>
+        a[1] = 10
+        local x: number = a[1]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_complex_cyclic_serialization_works")

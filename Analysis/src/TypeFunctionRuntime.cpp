@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeUseTaggedMetatable)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAGVARIABLE(LuauUdtfNewTableRejectSplitIndexer)
 
 namespace Luau
 {
@@ -899,6 +900,18 @@ static int createTable(lua_State* L)
         lua_getfield(L, 2, "readresult");
         TypeFunctionTypeId valueType = getTypeUserData(L, -1);
         lua_pop(L, 1);
+
+        if (FFlag::LuauUdtfNewTableRejectSplitIndexer)
+        {
+            lua_getfield(L, 2, "writeresult");
+            if (!lua_isnil(L, -1))
+            {
+                TypeFunctionTypeId writeType = getTypeUserData(L, -1);
+                if (!(*valueType == *writeType))
+                    luaL_error(L, "types.newtable: luau does not yet support separate read/write types for indexers.");
+            }
+            lua_pop(L, 1);
+        }
 
         indexer = TypeFunctionTableIndexer(keyType, valueType);
     }
