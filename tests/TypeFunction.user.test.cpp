@@ -24,6 +24,8 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixDoubleNegationSubtyping)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -739,6 +741,52 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_two_negations_type_mismatch")
         toString(result.errors[0]) == "Expected this to be '~string', but got '~number'; \n"
                                       "Expected the negated type to be a supertype of `string`, but got `number`"
     );
+}
+
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_double_negation_is_identity")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixDoubleNegationSubtyping, true},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+    };
+
+    CheckResult result = check(R"(
+        type function nof(ty: type): type
+            return types.negationof(ty)
+        end
+
+        local a: nof<nof<"hi">> = "hi"
+        local b: nof<nof<false>> = false
+        local c: nof<nof<false>> = false :: false
+        local d: nof<nof<number>> = 5
+
+        local e: "hi" = a
+        local f: false = b
+        local g: number = d
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_double_negation_still_rejects_mismatch")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixDoubleNegationSubtyping, true},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+    };
+
+    CheckResult result = check(R"(
+        type function nof(ty: type): type
+            return types.negationof(ty)
+        end
+
+        local a: nof<nof<"hi">> = "bye"
+        local b: nof<nof<number>> = "hi"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_serialization_works")

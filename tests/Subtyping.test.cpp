@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauFixDoubleNegationSubtyping)
 
 using namespace Luau;
 
@@ -1895,6 +1896,30 @@ TEST_CASE_FIXTURE(SubtypeFixture, "negation")
                                 /* superPath */ Path(TypePath::TypeField::Negated),
                             }}
     );
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "double_negation_is_identity")
+{
+    ScopedFastFlag sff{FFlag::LuauFixDoubleNegationSubtyping, true};
+
+    TypeId hi = str("hi");
+
+    // ~~"hi" ~ "hi"
+    CHECK_IS_SUBTYPE(hi, negate(negate(hi)));
+    CHECK_IS_SUBTYPE(negate(negate(hi)), hi);
+    CHECK_IS_SUBTYPE(getBuiltins()->falseType, negate(negate(getBuiltins()->falseType)));
+    CHECK_IS_SUBTYPE(negate(negate(getBuiltins()->falseType)), getBuiltins()->falseType);
+    CHECK_IS_SUBTYPE(getBuiltins()->numberType, negate(negate(getBuiltins()->numberType)));
+    CHECK_IS_SUBTYPE(negate(negate(getBuiltins()->numberType)), getBuiltins()->numberType);
+
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->stringType, negate(negate(hi)));
+    CHECK_IS_NOT_SUBTYPE(negate(negate(getBuiltins()->stringType)), hi);
+    CHECK_IS_NOT_SUBTYPE(getBuiltins()->trueType, negate(negate(getBuiltins()->falseType)));
+    CHECK_IS_NOT_SUBTYPE(negate(negate(getBuiltins()->trueType)), getBuiltins()->falseType);
+
+    // ~~~"hi" ~ ~"hi"
+    CHECK_IS_SUBTYPE(getBuiltins()->numberType, negate(negate(negate(hi))));
+    CHECK_IS_NOT_SUBTYPE(hi, negate(negate(negate(hi))));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "multiple_reasonings")

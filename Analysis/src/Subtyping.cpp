@@ -30,6 +30,7 @@ LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
+LUAU_FASTFLAGVARIABLE(LuauFixDoubleNegationSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
 
 
@@ -1775,6 +1776,13 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Nega
         // ¬any ~ any
         result = isCovariantWith(env, negatedTy, superTy, scope).withSubComponent(TypePath::TypeField::Negated);
     }
+    else if (auto nn = get<NegationType>(negatedTy); nn && FFlag::LuauFixDoubleNegationSubtyping)
+    {
+        // ¬¬A ~ A
+        result = isCovariantWith(env, nn->ty, superTy, scope)
+                     .withSubComponent(TypePath::TypeField::Negated)
+                     .withSubComponent(TypePath::TypeField::Negated);
+    }
     else if (auto u = get<UnionType>(negatedTy))
     {
         // ¬(A ∪ B) ~ ¬A ∩ ¬B
@@ -1852,6 +1860,13 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
             result = isCovariantWith(env, subTy, negatedTy, scope).withSuperComponent(TypePath::TypeField::Negated);
         else
             result = isCovariantWith(env, subTy, negatedTy, scope);
+    }
+    else if (auto nn = get<NegationType>(negatedTy); nn && FFlag::LuauFixDoubleNegationSubtyping)
+    {
+        // ¬¬A ~ A
+        result = isCovariantWith(env, subTy, nn->ty, scope).withSuperComponent(TypePath::TypeField::Negated);
+        if (FFlag::LuauFixSuperNegationTypePaths)
+            result = result.withSuperComponent(TypePath::TypeField::Negated);
     }
     else if (auto u = get<UnionType>(negatedTy))
     {
