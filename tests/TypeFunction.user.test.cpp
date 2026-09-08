@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixTypeFunctionCallbackArgs)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3699,6 +3700,80 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_function_result_types_callback_params")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixTypeFunctionCallbackArgs, true};
+
+    CheckResult result = check(R"(
+        type function newfunction(params: type)
+            return types.newfunction({head = {params, params, params}})
+        end
+
+        type Replica<T> = {
+            OnSet: <Path>(self: Replica<T>, path: Path, callback: newfunction<Path>) -> (newfunction<Path>),
+        }
+
+        local r = {} :: Replica<{Speed: number}>
+
+        local foo = r:OnSet("Any", function(newValue, oldValue, pathString)
+            local _a: number = newValue
+            local _b: number = oldValue
+            local _c: number = pathString
+        end)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    for (const TypeError& e : result.errors)
+        CHECK_EQ(toString(e), "Expected this to be 'number', but got 'string'");
+    CHECK_EQ(toString(requireType("foo")), "(string, string, string) -> ()");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_function_result_types_callback_params_explicit_type_arguments")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixTypeFunctionCallbackArgs, true};
+
+    CheckResult result = check(R"(
+        type function GetValueByKey(T: type, Key: type): type
+            if not Key:is("singleton") then
+                return types.unknown
+            end
+            for k, v in T:properties() do
+                if k:value() == Key:value() then
+                    return v.read :: type
+                end
+            end
+            return types.unknown
+        end
+
+        type function MakeCallback(T: type, Key: type): type
+            local valType = GetValueByKey(T, Key)
+            return types.newfunction({head = {valType, valType, types.string}})
+        end
+
+        type MyData = { Speed: number, Name: string }
+
+        type Replica<T> = {
+            OnSet: <Path>(self: Replica<T>, path: Path, callback: MakeCallback<T, Path>) -> (),
+        }
+
+        local r = {} :: Replica<MyData>
+
+        r:OnSet<<"Speed">>("Speed", function(newValue, oldValue, pathString)
+            local _a: number = newValue + oldValue
+            local _b: string = pathString
+        end)
+
+        r:OnSet("Speed" :: "Speed", function(newValue, oldValue, pathString)
+            local _a: number = newValue + oldValue
+            local _b: string = pathString
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

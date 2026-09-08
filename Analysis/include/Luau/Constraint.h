@@ -124,6 +124,10 @@ struct FunctionCheckConstraint
     class AstExprCall* callSite = nullptr;
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
+
+    // Explicit type arguments supplied at the call site, e.g. `f<<T>>(...)`.
+    std::vector<TypeId> typeArguments;
+    std::vector<TypePackId> typePackArguments;
 };
 
 // prim FreeType ExpectedType PrimitiveType

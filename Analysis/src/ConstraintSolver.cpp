@@ -47,6 +47,7 @@ LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArguments)
 LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArgumentsDedup)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
+LUAU_FASTFLAGVARIABLE(LuauFixTypeFunctionCallbackArgs)
 LUAU_FASTFLAGVARIABLE(LuauForceLess)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
@@ -1964,10 +1965,76 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     const std::vector<TypeId> expectedArgs = extendTypePack(*arena, builtinTypes, ftv->argTypes, c.callSite->args.size + typeOffset).head;
     const std::vector<TypeId> argPackHead = flatten(argsPack).first;
 
+    // When a generic parameter of the callee also appears as a type argument
+    // of a type function in another parameter (e.g. `<T>(x: T, f: F<T>)`),
+    // that type function cannot reduce until the generic is known. Pair up
+    // generic parameters with the argument types that are already known so
+    // the type function instances pushed into lambdas can be reduced.
+    DenseHashMap<TypeId, TypeId> genericArgReplacements;
+    DenseHashMap<TypePackId, TypePackId> genericArgReplacementPacks;
+    if (FFlag::LuauFixTypeFunctionCallbackArgs)
+    {
+        for (size_t i = 0; i < c.typeArguments.size() && i < ftv->generics.size(); ++i)
+        {
+            TypeId generic = ftv->generics[i];
+            TypeId typeArgument = follow(c.typeArguments[i]);
+            if (genericTypesAndPacks.contains(generic) && !isBlocked(typeArgument))
+                genericArgReplacements[generic] = typeArgument;
+        }
+
+        for (size_t i = 0; i < c.typePackArguments.size() && i < ftv->genericPacks.size(); ++i)
+        {
+            TypePackId genericPack = ftv->genericPacks[i];
+            if (genericTypesAndPacks.contains(genericPack))
+                genericArgReplacementPacks[genericPack] = follow(c.typePackArguments[i]);
+        }
+
+        for (size_t i = 0; i < expectedArgs.size() && i < argPackHead.size(); ++i)
+        {
+            TypeId expectedArgTy = follow(expectedArgs[i]);
+            if (!genericTypesAndPacks.contains(expectedArgTy) || genericArgReplacements.contains(expectedArgTy))
+                continue;
+
+            TypeId argTy = follow(argPackHead[i]);
+            if (const FreeType* ft = get<FreeType>(argTy))
+            {
+                TypeId upperBound = follow(ft->upperBound);
+                if (get<UnknownType>(upperBound) || isBlocked(upperBound) || get<FreeType>(upperBound))
+                    continue;
+                argTy = upperBound;
+            }
+
+            if (isBlocked(argTy) || is<GenericType>(argTy))
+                continue;
+
+            genericArgReplacements[expectedArgTy] = argTy;
+        }
+    }
+
     for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
     {
         TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
         AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
+
+        if (FFlag::LuauFixTypeFunctionCallbackArgs && !genericArgReplacements.empty() && expr->is<AstExprFunction>())
+        {
+            if (auto tfit = get<TypeFunctionInstanceType>(expectedArgTy);
+                tfit && tfit->state == TypeFunctionInstanceState::Unsolved && containsGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
+            {
+                Replacer replacer{arena, NotNull{&genericArgReplacements}, NotNull{&genericArgReplacementPacks}};
+                if (std::optional<TypeId> replaced = replacer.substitute(expectedArgTy))
+                {
+                    if (*replaced != expectedArgTy)
+                    {
+                        if (FFlag::LuauCyclicRequireTypeInference)
+                            reproduceConstraints(constraint->scope, constraint->location, replacer, constraint->moduleName);
+                        else
+                            DEPRECATED_reproduceConstraints(constraint->scope, constraint->location, replacer);
+                        expectedArgTy = follow(*replaced);
+                    }
+                }
+            }
+        }
 
         PushTypeResult result = pushTypeInto(
             c.astTypes, c.astExpectedTypes, NotNull{this}, constraint, NotNull{&genericTypesAndPacks}, NotNull{&u2}, subtyping, expectedArgTy, expr

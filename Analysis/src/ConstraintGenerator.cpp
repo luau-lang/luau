@@ -38,6 +38,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauConstraintGeneratorRecursionLimit, 300)
 
 LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson)
+LUAU_FASTFLAG(LuauFixTypeFunctionCallbackArgs)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
@@ -3061,7 +3062,17 @@ InferencePack ConstraintGenerator::checkExprCall(
      */
 
     NotNull<Constraint> checkConstraint = addConstraint(
-        scope, call->func->location, FunctionCheckConstraint{fnType, argPack, call, NotNull{&module->astTypes}, NotNull{&module->astExpectedTypes}}
+        scope,
+        call->func->location,
+        FunctionCheckConstraint{
+            fnType,
+            argPack,
+            call,
+            NotNull{&module->astTypes},
+            NotNull{&module->astExpectedTypes},
+            FFlag::LuauFixTypeFunctionCallbackArgs ? explicitTypeIds : std::vector<TypeId>{},
+            FFlag::LuauFixTypeFunctionCallbackArgs ? explicitTypePackIds : std::vector<TypePackId>{}
+        }
     );
 
     addAllAsDependencies(funcBeginCheckpoint, funcEndCheckpoint, this, checkConstraint);
