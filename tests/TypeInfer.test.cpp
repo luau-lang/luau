@@ -32,6 +32,7 @@ LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauCheckReadTyWhenRelatingExtern)
 LUAU_FASTFLAG(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAG(LuauReportZeroValueCallInCondition)
 
 using namespace Luau;
 
@@ -929,6 +930,76 @@ local a = if false then "a" elseif false then "b" else "c"
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId aType = requireType("a");
     CHECK("string" == toString(aType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "tc_if_else_expression_condition_call_returns_nothing")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReportZeroValueCallInCondition, true}};
+
+    CheckResult result = check(R"(
+        local function foo()
+            print("Hello world")
+        end
+
+        local x = if foo() then "ready" else "not ready"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Function only returns 0 values, but 1 is required here", toString(result.errors[0]));
+    CHECK_EQ(Location{{5, 21}, {5, 26}}, result.errors[0].location);
+    CHECK_EQ("string", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "tc_statement_condition_call_returns_nothing")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReportZeroValueCallInCondition, true}};
+
+    CheckResult result = check(R"(
+        local function foo() end
+
+        if foo() then end
+        while foo() do end
+        repeat until foo()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    for (const TypeError& e : result.errors)
+        CHECK_EQ("Function only returns 0 values, but 1 is required here", toString(e));
+}
+
+TEST_CASE_FIXTURE(Fixture, "tc_condition_call_returning_values_is_ok")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReportZeroValueCallInCondition, true}};
+
+    CheckResult result = check(R"(
+        local function foo() end
+        local function bar(): boolean return true end
+        local function baz(...) return ... end
+        local any: any = nil
+
+        local a = if (foo()) then 1 else 2
+        local b = if bar() then 1 else 2
+        local c = if baz() then 1 else 2
+        local d = if any() then 1 else 2
+        if bar() then end
+        while (foo()) do end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "tc_condition_call_returns_nothing_and_has_bad_argument")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauReportZeroValueCallInCondition, true}};
+
+    CheckResult result = check(R"(
+        local function foo(x: number) end
+        if foo("hi") then end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK_EQ("Function only returns 0 values, but 1 is required here", toString(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_type_union")

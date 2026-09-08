@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauReportZeroValueCallInCondition)
 
 namespace Luau
 {
@@ -3140,7 +3141,12 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
     else if (expr->is<AstExprVarargs>())
         result = flattenPack(scope, expr->location, checkPack(scope, expr));
     else if (auto call = expr->as<AstExprCall>())
-        result = flattenPack(scope, expr->location, checkPack(scope, call)); // TODO: needs predicates too
+    {
+        InferencePack pack = checkPack(scope, call);
+        if (FFlag::LuauReportZeroValueCallInCondition)
+            module->astTypePacks[call] = pack.tp;
+        result = flattenPack(scope, expr->location, std::move(pack)); // TODO: needs predicates too
+    }
     else if (auto a = expr->as<AstExprFunction>())
         result = check(scope, a, expectedType, generalize);
     else if (auto indexName = expr->as<AstExprIndexName>())

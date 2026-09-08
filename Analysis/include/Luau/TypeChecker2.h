@@ -177,6 +177,7 @@ private:
     void visit(AstExprInstantiate* explicitTypeInstantiation);
     void visit(AstExprError* expr);
     TypeId flattenPack(TypePackId pack);
+    void visitCondition(AstExpr* condition);
     void visitTypeArguments(const AstArray<AstTypeOrPack>& typeArguments);
     void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks);
     void visit(AstType* ty);

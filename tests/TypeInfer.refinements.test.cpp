@@ -3086,7 +3086,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_conditional_context_in_if_should_not_ref
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
-        local function bing(_: any) end
+        local function bing(_: any) return true end
         local function foobar(x: unknown)
             assert(typeof(x) == "table")
             if bing(x.foo) then

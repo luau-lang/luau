@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauReportZeroValueCallInCondition)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -696,7 +697,7 @@ void TypeChecker2::visit(AstStatIf* ifStatement)
 {
     {
         InConditionalContext flipper{&typeContext};
-        visit(ifStatement->condition, ValueContext::RValue);
+        visitCondition(ifStatement->condition);
     }
 
     visit(ifStatement->thenbody);
@@ -706,14 +707,14 @@ void TypeChecker2::visit(AstStatIf* ifStatement)
 
 void TypeChecker2::visit(AstStatWhile* whileStatement)
 {
-    visit(whileStatement->condition, ValueContext::RValue);
+    visitCondition(whileStatement->condition);
     visit(whileStatement->body);
 }
 
 void TypeChecker2::visit(AstStatRepeat* repeatStatement)
 {
     visit(repeatStatement->body);
-    visit(repeatStatement->condition, ValueContext::RValue);
+    visitCondition(repeatStatement->condition);
 }
 
 void TypeChecker2::visit(AstStatBreak*) {}
@@ -2919,7 +2920,7 @@ void TypeChecker2::visit(AstExprIfElse* expr)
     InConditionalContext inContext(&typeContext, TypeContext::Default);
     {
         InConditionalContext inContext(&typeContext, TypeContext::Condition);
-        visit(expr->condition, ValueContext::RValue);
+        visitCondition(expr->condition);
     }
     visit(expr->trueExpr, ValueContext::RValue);
     visit(expr->falseExpr, ValueContext::RValue);
@@ -2951,6 +2952,32 @@ void TypeChecker2::visit(AstExprError* expr)
     // TODO!
     for (AstExpr* e : expr->expressions)
         visit(e, ValueContext::RValue);
+}
+
+void TypeChecker2::visitCondition(AstExpr* condition)
+{
+    const size_t errorCountBefore = module->errors.size();
+
+    visit(condition, ValueContext::RValue);
+
+    if (!FFlag::LuauReportZeroValueCallInCondition)
+        return;
+
+    // `if f() then` where `f` returns no values: the condition is always nil.
+    // An explicitly parenthesized `(f())` is a deliberate truncation and is allowed.
+    if (!condition->is<AstExprCall>())
+        return;
+
+    // Don't pile on if the call itself was already reported as ill-formed.
+    for (size_t i = errorCountBefore; i < module->errors.size(); ++i)
+    {
+        if (module->errors[i].location == condition->location)
+            return;
+    }
+
+    TypePackId pack = lookupPack(condition);
+    if (finite(pack) && size(pack) == 0)
+        reportError(CountMismatch{0, std::nullopt, 1, CountMismatch::FunctionResult}, condition->location);
 }
 
 TypeId TypeChecker2::flattenPack(TypePackId pack)
