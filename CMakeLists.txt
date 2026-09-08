@@ -150,6 +150,11 @@ else()
     list(APPEND LUAU_OPTIONS -Wall) # All warnings
     list(APPEND LUAU_OPTIONS -Wimplicit-fallthrough)
     list(APPEND LUAU_OPTIONS -Wsign-compare) # This looks to be included in -Wall for GCC but not clang
+    list(APPEND LUAU_OPTIONS -Wno-missing-field-initializers) # We rely on designated initializers and aggregate initialization to zero-initialize the remaining fields
+endif()
+
+if (MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    list(APPEND LUAU_OPTIONS -Wno-missing-field-initializers) # Same as above for clang-cl
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
@@ -185,6 +190,11 @@ if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 endif()
 
 target_compile_options(Luau.Ast PRIVATE ${LUAU_OPTIONS})
+target_compile_options(Luau.Bytecode PRIVATE ${LUAU_OPTIONS})
+target_compile_options(Luau.Inliner PRIVATE ${LUAU_OPTIONS})
+target_compile_options(Luau.Compiler PRIVATE ${LUAU_OPTIONS})
+target_compile_options(Luau.Config PRIVATE ${LUAU_OPTIONS})
+target_compile_options(Luau.Require PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.Analysis PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.CLI.lib PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.CodeGen PRIVATE ${LUAU_OPTIONS})

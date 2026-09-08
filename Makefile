@@ -105,6 +105,9 @@ LUAU_CONFORMANCE_SOURCE_DIR = "\"$(realpath .)/tests/conformance\""
 CXXFLAGS=-g -Wall
 LDFLAGS=
 
+# we rely on designated initializers and aggregate initialization to zero-initialize the remaining fields
+CXXFLAGS+=-Wno-missing-field-initializers
+
 # some gcc versions treat var in `if (type var = val)` as unused
 # some gcc versions treat variables used in constexpr if blocks as unused
 # some gcc versions warn maybe uninitialized on optional<std::string> members on structs
