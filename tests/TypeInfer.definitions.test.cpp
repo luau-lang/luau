@@ -10,6 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauFixPropertyAssignmentTypeState)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -680,13 +681,29 @@ local function foo(bar: noread)
 end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
-    CHECK(get<PropertyAccessViolation>(result.errors[0]));
-    CHECK(get<PropertyAccessViolation>(result.errors[1]));
-    CHECK(get<PropertyAccessViolation>(result.errors[2]));
-    CHECK_EQ(result.errors[0].location.begin.line, 7);
-    CHECK_EQ(result.errors[1].location.begin.line, 8);
-    CHECK_EQ(result.errors[2].location.begin.line, 9);
+    if (FFlag::LuauFixPropertyAssignmentTypeState)
+    {
+        // The assigned value flows into the read, so we also report that `number` is not a `buffer | boolean`.
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
+        CHECK(get<PropertyAccessViolation>(result.errors[0]));
+        CHECK(get<PropertyAccessViolation>(result.errors[1]));
+        CHECK(get<TypeMismatch>(result.errors[2]));
+        CHECK(get<PropertyAccessViolation>(result.errors[3]));
+        CHECK_EQ(result.errors[0].location.begin.line, 7);
+        CHECK_EQ(result.errors[1].location.begin.line, 8);
+        CHECK_EQ(result.errors[2].location.begin.line, 8);
+        CHECK_EQ(result.errors[3].location.begin.line, 9);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+        CHECK(get<PropertyAccessViolation>(result.errors[0]));
+        CHECK(get<PropertyAccessViolation>(result.errors[1]));
+        CHECK(get<PropertyAccessViolation>(result.errors[2]));
+        CHECK_EQ(result.errors[0].location.begin.line, 7);
+        CHECK_EQ(result.errors[1].location.begin.line, 8);
+        CHECK_EQ(result.errors[2].location.begin.line, 9);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "extern_read_write_dual_attribute")

@@ -4,6 +4,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixPropertyAssignmentTypeState)
 
 using namespace Luau;
 
@@ -876,6 +877,75 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_depends_on_sub_expression")
     REQUIRE(err);
     CHECK_EQ("{ @metatable { bar: number }, { foo: number } }", toString(err->wantedType, {/* exhaustive */ true}));
     CHECK_EQ("{ foo: number }", toString(err->givenType, {/* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "assigned_optional_property_is_not_nil_afterwards")
+{
+    ScopedFastFlag sff{FFlag::LuauFixPropertyAssignmentTypeState, true};
+
+    CheckResult result = check(R"(
+        type Item = {
+            specialAttributes: { string }?
+        }
+
+        local myItem: Item = {}
+        myItem.specialAttributes = {}
+        table.freeze(myItem.specialAttributes)
+        local attrs = myItem.specialAttributes
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("{string}" == toString(requireType("attrs")));
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "assigned_optional_property_inside_loop_body")
+{
+    ScopedFastFlag sff{FFlag::LuauFixPropertyAssignmentTypeState, true};
+
+    CheckResult result = check(R"(
+        type Item = {
+            specialAttributes: { string }?
+        }
+
+        local items: { Item } = {}
+        for _, item in items do
+            item.specialAttributes = {}
+            table.insert(item.specialAttributes, "x")
+            table.freeze(item.specialAttributes)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "assigned_optional_property_via_constant_string_index")
+{
+    ScopedFastFlag sff{FFlag::LuauFixPropertyAssignmentTypeState, true};
+
+    CheckResult result = check(R"(
+        local t: { n: number? } = {}
+        t["n"] = 5
+        local a = t["n"] + 1
+        t.n = nil
+        local b = t.n
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number" == toString(requireType("a")));
+    CHECK("nil" == toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "property_assignment_typestate_still_checks_the_declared_type")
+{
+    ScopedFastFlag sff{FFlag::LuauFixPropertyAssignmentTypeState, true};
+
+    CheckResult result = check(R"(
+        local t: { n: number? } = {}
+        t.n = "hello"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
 }
 
 TEST_SUITE_END();

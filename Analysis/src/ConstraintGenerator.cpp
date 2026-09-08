@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixPropertyAssignmentTypeState)
 
 namespace Luau
 {
@@ -3907,6 +3908,9 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexName* e
     auto apc =
         addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, expr->index.value, rhsType, expr->indexLocation, propTy, incremented});
     getMutable<BlockedType>(propTy)->setOwner(apc);
+
+    if (FFlag::LuauFixPropertyAssignmentTypeState)
+        scope->lvalueTypes[dfg->getDef(expr)] = rhsType;
 }
 
 void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexExpr* expr, TypeId rhsType)
@@ -3925,6 +3929,9 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexExpr* e
             scope, expr->location, AssignPropConstraint{lhsTy, std::move(propName), rhsType, expr->index->location, propTy, incremented}
         );
         getMutable<BlockedType>(propTy)->setOwner(apc);
+
+        if (FFlag::LuauFixPropertyAssignmentTypeState)
+            scope->lvalueTypes[dfg->getDef(expr)] = rhsType;
 
         return;
     }
