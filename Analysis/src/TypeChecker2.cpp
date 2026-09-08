@@ -45,11 +45,64 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixIndexTableWithSingletonUnion)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
 {
+
+namespace
+{
+
+std::optional<std::vector<std::string>> getStringSingletonKeys(TypeId ty)
+{
+    ty = follow(ty);
+    std::vector<std::string> keys;
+
+    if (auto singleton = get<SingletonType>(ty))
+    {
+        if (auto ss = get<StringSingleton>(singleton))
+            keys.push_back(ss->value);
+        else
+            return std::nullopt;
+    }
+    else if (auto ut = get<UnionType>(ty))
+    {
+        for (TypeId option : ut)
+        {
+            option = follow(option);
+            auto singleton = get<SingletonType>(option);
+            auto ss = singleton ? get<StringSingleton>(singleton) : nullptr;
+            if (!ss)
+                return std::nullopt;
+
+            keys.push_back(ss->value);
+        }
+    }
+    else
+        return std::nullopt;
+
+    return keys;
+}
+
+bool hasReadableProperties(const TableType& table, TypeId ty)
+{
+    auto keys = getStringSingletonKeys(ty);
+    if (!keys)
+        return false;
+
+    for (const std::string& key : *keys)
+    {
+        auto prop = table.props.find(key);
+        if (prop == table.props.end() || !prop->second.readTy)
+            return false;
+    }
+
+    return true;
+}
+
+} // namespace
 
 // TypeInfer.h
 // TODO move these
@@ -2193,7 +2246,7 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
             if (context == ValueContext::LValue && tt->indexer->isReadOnly)
                 reportError(PropertyAccessViolation{exprType, "indexer", PropertyAccessViolation::CannotWrite}, indexExpr->location);
         }
-        else
+        else if (!(FFlag::LuauFixIndexTableWithSingletonUnion && context == ValueContext::RValue && hasReadableProperties(*tt, indexType)))
             reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
     }
     else if (auto mt = get<MetatableType>(exprType))

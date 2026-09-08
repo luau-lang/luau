@@ -53,9 +53,46 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAGVARIABLE(LuauFixIndexTableWithSingletonUnion)
 
 namespace Luau
 {
+
+namespace
+{
+
+std::optional<std::vector<std::string>> getStringSingletonKeys(TypeId ty)
+{
+    ty = follow(ty);
+    std::vector<std::string> keys;
+
+    if (auto singleton = get<SingletonType>(ty))
+    {
+        if (auto ss = get<StringSingleton>(singleton))
+            keys.push_back(ss->value);
+        else
+            return std::nullopt;
+    }
+    else if (auto ut = get<UnionType>(ty))
+    {
+        for (TypeId option : ut)
+        {
+            option = follow(option);
+            auto singleton = get<SingletonType>(option);
+            auto ss = singleton ? get<StringSingleton>(singleton) : nullptr;
+            if (!ss)
+                return std::nullopt;
+
+            keys.push_back(ss->value);
+        }
+    }
+    else
+        return std::nullopt;
+
+    return keys;
+}
+
+} // namespace
 
 bool SubtypeConstraintRecord::operator==(const SubtypeConstraintRecord& other) const
 {
@@ -2168,6 +2205,42 @@ bool ConstraintSolver::tryDispatchHasIndexer(
             unify(constraint, indexType, indexer->indexType);
             bind(constraint, resultType, indexer->indexResultType);
             return true;
+        }
+
+        if (FFlag::LuauFixIndexTableWithSingletonUnion)
+        {
+            if (auto keys = getStringSingletonKeys(indexType))
+            {
+                std::vector<TypeId> propertyTypes;
+                bool allPropertiesFound = true;
+
+                for (const std::string& key : *keys)
+                {
+                    auto prop = tt->props.find(key);
+                    if (prop == tt->props.end() || !prop->second.readTy)
+                    {
+                        allPropertiesFound = false;
+                        break;
+                    }
+
+                    propertyTypes.push_back(*prop->second.readTy);
+                }
+
+                if (allPropertiesFound)
+                {
+                    if (propertyTypes.size() == 1)
+                        bind(constraint, resultType, propertyTypes.front());
+                    else
+                    {
+                        UnionBuilder ub{arena, builtinTypes};
+                        for (TypeId propertyType : propertyTypes)
+                            ub.add(propertyType);
+                        bind(constraint, resultType, ub.build());
+                    }
+
+                    return true;
+                }
+            }
         }
 
         if (tt->state == TableState::Unsealed)

@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauFixIndexTableWithSingletonUnion)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
@@ -1004,6 +1005,89 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_from_a_table_should_prefer_properti
     CHECK("number" == toString(requireType("c")));
 
     CHECK_MESSAGE(nullptr != get<TypeMismatch>(result.errors[0]), "Expected a TypeMismatch but got " << result.errors[0]);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_frozen_table_with_union_of_singleton_keys")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIndexTableWithSingletonUnion, true};
+    ScopedFastFlag sff_LuauSolverV2{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local t = table.freeze({ foo = "foo", bar = "bar", baz = "baz" })
+        local function f(k: "foo" | "bar" | "baz")
+            return t[k]
+        end
+        local result = f("foo")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireType("result")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_frozen_table_with_union_of_singleton_keys_mixed_types")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIndexTableWithSingletonUnion, true};
+    ScopedFastFlag sff_LuauSolverV2{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local t = table.freeze({ foo = "foo", bar = 1 })
+        local function f(k: "foo" | "bar")
+            return t[k]
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    std::string fType = toString(requireType("f"));
+    CHECK(fType.find("number") != std::string::npos);
+    CHECK(fType.find("string") != std::string::npos);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_frozen_table_with_single_singleton_key")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIndexTableWithSingletonUnion, true};
+    ScopedFastFlag sff_LuauSolverV2{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local t = table.freeze({ foo = "foo" })
+        local function f(k: "foo")
+            return t[k]
+        end
+        local result = f("foo")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireType("result")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_frozen_table_with_union_containing_missing_key")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIndexTableWithSingletonUnion, true};
+    ScopedFastFlag sff_LuauSolverV2{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local t = table.freeze({ foo = "foo" })
+        local function f(k: "foo" | "qux")
+            return t[k]
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<CannotExtendTable>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_sealed_table_with_union_of_singleton_keys")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIndexTableWithSingletonUnion, true};
+    ScopedFastFlag sff_LuauSolverV2{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local t: { foo: string, bar: string } = { foo = "foo", bar = "bar" }
+        local function f(k: "foo" | "bar")
+            return t[k]
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "any_when_indexing_into_an_unsealed_table_with_no_indexer_in_nonstrict_mode")
