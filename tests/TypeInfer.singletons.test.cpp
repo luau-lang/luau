@@ -8,6 +8,9 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauLiteralUpperBoundMaybeSingletonThroughFree)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -868,6 +871,85 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "singleton_when_type_is_blocked")
     )"));
 }
 
+TEST_CASE_FIXTURE(Fixture, "singleton_literal_passed_with_callback_through_generic")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+        {FFlag::LuauLiteralUpperBoundMaybeSingletonThroughFree, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function thing(x: "hello" | "bye")
+        end
+
+        local function thingDoer<A>(theThingToDo: (A) -> (), a: A)
+        end
+
+        thingDoer(thing, "hello")
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "singleton_literal_passed_with_callback_through_generic_pack")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+        {FFlag::LuauHigherOrderGenericInference, true},
+        {FFlag::LuauLiteralUpperBoundMaybeSingletonThroughFree, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function thing(x: "hello" | "bye")
+        end
+
+        local function thingDoer<A...>(theThingToDo: (A...) -> (), ...: A...)
+        end
+
+        thingDoer(thing, "hello")
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "singleton_literal_passed_with_callback_through_generic_mismatch")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+        {FFlag::LuauLiteralUpperBoundMaybeSingletonThroughFree, true},
+    };
+
+    CheckResult result = check(R"(
+        local function thing(x: "hello" | "bye")
+        end
+
+        local function thingDoer<A>(theThingToDo: (A) -> (), a: A)
+        end
+
+        thingDoer(thing, "goodbye")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "literal_passed_to_plain_generic_still_widens")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+        {FFlag::LuauLiteralUpperBoundMaybeSingletonThroughFree, true},
+    };
+
+    CheckResult result = check(R"(
+        local function id<T>(x: T): T
+            return x
+        end
+
+        local s = id("hello")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireType("s")));
+}
 
 
 TEST_SUITE_END();

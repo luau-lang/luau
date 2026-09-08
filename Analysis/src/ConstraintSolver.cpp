@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauLiteralUpperBoundMaybeSingletonThroughFree)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -800,6 +801,32 @@ void ConstraintSolver::initFreeTypeTracking()
 namespace
 {
 
+// Like `maybeSingleton`, but also looks through the upper bounds of free
+// types. A literal passed as an argument to a generic function picks up the
+// instantiated generic as its upper bound; if that generic is in turn bounded
+// by singletons, the literal should resolve to its singleton lower bound.
+bool maybeSingletonThroughFree(TypeId ty, DenseHashSet<TypeId>& seen)
+{
+    ty = follow(ty);
+
+    if (seen.contains(ty))
+        return false;
+    seen.insert(ty);
+
+    if (const FreeType* ft = get<FreeType>(ty))
+        return maybeSingletonThroughFree(ft->upperBound, seen);
+
+    if (const IntersectionType* itv = get<IntersectionType>(ty))
+    {
+        for (TypeId part : itv)
+            if (maybeSingletonThroughFree(part, seen))
+                return true;
+        return false;
+    }
+
+    return maybeSingleton(ty);
+}
+
 std::optional<TypeId> resolvePrimitiveLiteral(const FreeType& ft)
 {
     if (!ft.primitiveType)
@@ -809,8 +836,17 @@ std::optional<TypeId> resolvePrimitiveLiteral(const FreeType& ft)
     LUAU_ASSERT(is<PrimitiveType>(bindTo));
     TypeId upper = follow(ft.upperBound);
 
-    if (upper != bindTo && maybeSingleton(upper))
-        return follow(ft.lowerBound);
+    if (upper != bindTo)
+    {
+        if (FFlag::LuauLiteralUpperBoundMaybeSingletonThroughFree)
+        {
+            DenseHashSet<TypeId> seen;
+            if (maybeSingletonThroughFree(upper, seen))
+                return follow(ft.lowerBound);
+        }
+        else if (maybeSingleton(upper))
+            return follow(ft.lowerBound);
+    }
 
     return bindTo;
 }
