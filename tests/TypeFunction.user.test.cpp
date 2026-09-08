@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixPushTypeFunctionUnionIntoLiteral)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2923,6 +2924,46 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeof_into_type_function_should_not_crash")
         type func<parameters...> = typeof(function(...: parameters...) end)
         local whomp: <T>(arg1: T) -> identity<T>
         whomp(function(...) end :: func<any>)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2646_literal_pushed_into_union_with_type_function_is_not_cyclic")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixPushTypeFunctionUnionIntoLiteral, true},
+    };
+
+    CheckResult results = check(R"(
+        type function passthrough(ty: type): (type)
+            return ty
+        end
+
+        type strange<T> = <U>({
+            a: passthrough<index<U, "a">> | T
+        } & U) -> ()
+
+        local bad1: strange<boolean> = nil :: any
+        bad1({
+            a = true
+        })
+
+        local bad2: strange<string> = nil :: any
+        bad2({
+            a = ""
+        })
+
+        local ok1: strange<true | false> = nil :: any
+        ok1({
+            a = true
+        })
+
+        local ok2: strange<string | "any string"> = nil :: any
+        ok2({
+            a = ""
+        })
     )");
 
     LUAU_REQUIRE_NO_ERRORS(results);

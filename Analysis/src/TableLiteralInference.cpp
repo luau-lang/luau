@@ -15,6 +15,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterLambdaHandling)
+LUAU_FASTFLAGVARIABLE(LuauFixPushTypeFunctionUnionIntoLiteral)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRelaxConstraintOrderingForFunctionCheck)
 
@@ -243,21 +244,55 @@ struct BidirectionalTypePusher
                     return exprType;
                 }
 
+                TypeId pushedType = expectedType;
+                if (FFlag::LuauFixPushTypeFunctionUnionIntoLiteral)
+                {
+                    // A type function instance in the expected union may refer
+                    // back to the type being inferred for this literal (e.g.
+                    // `passthrough<index<U, "a">> | boolean` where `U` is the
+                    // table containing this literal). Binding the literal to the
+                    // whole union would then make the type function cyclic, so
+                    // only push the parts that aren't type function instances.
+                    if (auto utv = get<UnionType>(expectedType))
+                    {
+                        std::vector<TypeId> options;
+                        bool hasTypeFunction = false;
+
+                        for (TypeId option : utv)
+                        {
+                            if (get<TypeFunctionInstanceType>(follow(option)))
+                                hasTypeFunction = true;
+                            else
+                                options.push_back(option);
+                        }
+
+                        if (hasTypeFunction)
+                        {
+                            if (options.empty())
+                                return exprType;
+                            else if (options.size() == 1)
+                                pushedType = options[0];
+                            else
+                                pushedType = solver->arena->addType(UnionType{std::move(options)});
+                        }
+                    }
+                }
+
                 // if the upper bound is a subtype of the expected type, we can push the expected type in
-                Relation upperBoundRelation = relate(ft->upperBound, expectedType);
+                Relation upperBoundRelation = relate(ft->upperBound, pushedType);
                 if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
                 {
-                    solver->bind(constraint, exprType, expectedType);
+                    solver->bind(constraint, exprType, pushedType);
                     return exprType;
                 }
 
                 // likewise, if the lower bound is a subtype, we can force the expected type in
                 // if this is the case and the previous relation failed, it means that the primitive type
                 // constraint was going to have to select the lower bound for this type anyway.
-                Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
+                Relation lowerBoundRelation = relate(ft->lowerBound, pushedType);
                 if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
                 {
-                    solver->bind(constraint, exprType, expectedType);
+                    solver->bind(constraint, exprType, pushedType);
                     return exprType;
                 }
             }
