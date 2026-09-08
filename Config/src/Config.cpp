@@ -1,11 +1,14 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Config.h"
 
+#include "Luau/Common.h"
 #include "Luau/Lexer.h"
 #include "Luau/StringUtils.h"
 #include <algorithm>
 #include <memory>
 #include <string>
+
+LUAU_FASTFLAGVARIABLE(LuauFixLuaurcJson5)
 
 namespace Luau
 {
@@ -243,12 +246,88 @@ static Error fail(Lexer& lexer, const char* message)
     return format("Expected %s at line %d, got %s instead", message, cur.location.begin.line + 1, cur.toString().c_str());
 }
 
+static Error stripBlockComments(std::string& contents)
+{
+    bool inString = false;
+    char stringQuote = 0;
+    bool escaped = false;
+    int line = 1;
+
+    for (size_t i = 0; i < contents.size(); ++i)
+    {
+        char c = contents[i];
+
+        if (inString)
+        {
+            if (escaped)
+                escaped = false;
+            else if (c == '\\')
+                escaped = true;
+            else if (c == stringQuote)
+                inString = false;
+
+            if (c == '\n')
+                line++;
+
+            continue;
+        }
+
+        if (c == '"' || c == '\'')
+        {
+            inString = true;
+            stringQuote = c;
+        }
+        else if (c == '/' && i + 1 < contents.size() && contents[i + 1] == '*')
+        {
+            int commentLine = line;
+            bool terminated = false;
+
+            for (size_t j = i; j < contents.size(); ++j)
+            {
+                if (contents[j] == '*' && j + 1 < contents.size() && contents[j + 1] == '/')
+                {
+                    contents[j] = ' ';
+                    contents[j + 1] = ' ';
+                    i = j + 1;
+                    terminated = true;
+                    break;
+                }
+
+                if (contents[j] == '\n')
+                    line++;
+                else
+                    contents[j] = ' ';
+            }
+
+            if (!terminated)
+                return "Expected '*/' before end of file for block comment starting at line " + std::to_string(commentLine);
+        }
+
+        if (c == '\n')
+            line++;
+    }
+
+    return std::nullopt;
+}
+
 template<typename Action>
 static Error parseJson(const std::string& contents, Action action)
 {
     Allocator allocator;
     AstNameTable names(allocator);
-    Lexer lexer(contents.data(), contents.size(), names);
+    std::string json5Contents;
+    const std::string* lexerContents = &contents;
+
+    if (FFlag::LuauFixLuaurcJson5)
+    {
+        json5Contents = contents;
+        if (Error err = stripBlockComments(json5Contents))
+            return err;
+
+        lexerContents = &json5Contents;
+    }
+
+    Lexer lexer(lexerContents->data(), lexerContents->size(), names);
     next(lexer);
 
     std::vector<std::string> keys;
@@ -312,9 +391,10 @@ static Error parseJson(const std::string& contents, Action action)
                 else if (lexer.current().type != '}')
                     return fail(lexer, "',' or '}'");
             }
-            else if (lexer.current().type == Lexeme::QuotedString)
+            else if (lexer.current().type == Lexeme::QuotedString || (FFlag::LuauFixLuaurcJson5 && lexer.current().type == Lexeme::Name))
             {
-                std::string key(lexer.current().data, lexer.current().getLength());
+                std::string key = lexer.current().type == Lexeme::Name ? std::string(lexer.current().name)
+                                                                       : std::string(lexer.current().data, lexer.current().getLength());
                 next(lexer);
 
                 keys.push_back(key);

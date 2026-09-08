@@ -19,6 +19,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauFixLuaurcJson5)
+
 TEST_SUITE_BEGIN("ConfigTest");
 
 TEST_CASE("language_mode")
@@ -115,6 +117,64 @@ TEST_CASE("comments")
 
     CHECK(!config.enabledLint.isEnabled(LintWarning::Code_LocalShadow));
     CHECK(config.enabledLint.isEnabled(LintWarning::Code_ImportUnused));
+}
+
+TEST_CASE("json5_block_comments")
+{
+    ScopedFastFlag sff{FFlag::LuauFixLuaurcJson5, true};
+
+    Config config;
+    auto err = parseConfig(
+        R"(
+/* before the object */
+{
+    "lint": {
+        /*
+        "LocalShadow": true,
+        */
+        "ImportUnused": true /* after a value */,
+    },
+    "globals": ["/* not a comment */"],
+}
+)",
+        config
+    );
+    REQUIRE(!err);
+
+    CHECK(config.enabledLint.isEnabled(LintWarning::Code_LocalShadow));
+    CHECK(config.enabledLint.isEnabled(LintWarning::Code_ImportUnused));
+    CHECK(config.globals == std::vector<std::string>{"/* not a comment */"});
+}
+
+TEST_CASE("json5_unquoted_keys")
+{
+    ScopedFastFlag sff{FFlag::LuauFixLuaurcJson5, true};
+
+    Config config;
+    auto err = parseConfig(R"({ languageMode: "strict", lint: { LocalUnused: false, }, })", config);
+    REQUIRE(!err);
+
+    CHECK_EQ(int(Luau::Mode::Strict), int(config.mode));
+    CHECK(!config.enabledLint.isEnabled(LintWarning::Code_LocalUnused));
+}
+
+TEST_CASE("json5_unterminated_block_comment")
+{
+    ScopedFastFlag sff{FFlag::LuauFixLuaurcJson5, true};
+
+    Config config;
+    auto err = parseConfig("{ /* oops", config);
+    REQUIRE(err);
+    CHECK_EQ("Expected '*/' before end of file for block comment starting at line 1", *err);
+}
+
+TEST_CASE("json5_block_comment_requires_flag")
+{
+    ScopedFastFlag sff{FFlag::LuauFixLuaurcJson5, false};
+
+    Config config;
+    auto err = parseConfig(R"({ /* x */ "languageMode": "strict" })", config);
+    REQUIRE(err);
 }
 
 TEST_CASE("issue_severity")
