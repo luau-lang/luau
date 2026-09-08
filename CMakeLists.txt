@@ -41,6 +41,10 @@ if (LUAU_BUILD_SHARED)
     add_library(Luau.VM SHARED)
     add_library(Luau.Require SHARED)
     add_library(isocline SHARED)
+
+    # Luau.Common has no explicitly exported symbols; on Windows a DLL without exports doesn't produce an import library,
+    # which breaks linking for every target that depends on it
+    set_target_properties(Luau.Common PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 else()
     add_library(Luau.Common STATIC)
     add_library(Luau.CLI.lib STATIC)
