@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauFixOverloadedFunctionCheck)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -1927,6 +1928,31 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     // Most important detail: If a function argument is a lambda, we also want
     // to force unannotated argument types of that lambda to be the expected
     // types.
+
+    if (FFlag::LuauFixOverloadedFunctionCheck && get<IntersectionType>(fn))
+    {
+        // For an overloaded function, only perform bidirectional inference if
+        // the arguments select an unambiguous overload.
+        OverloadResolver resolver{
+            builtinTypes,
+            NotNull{arena},
+            normalizer,
+            typeFunctionRuntime,
+            constraint->scope,
+            NotNull{&iceReporter},
+            NotNull{&limits},
+            constraint->location
+        };
+
+        DenseHashSet<TypeId> uniqueTypes;
+        findUniqueTypes(NotNull{&uniqueTypes}, c.callSite->args, c.astTypes);
+
+        OverloadResolution res =
+            resolver.resolveOverload(fn, argsPack, c.callSite->func->location, NotNull{&uniqueTypes}, /* useFreeTypeBounds */ true);
+        SelectedOverload selected = res.getUnambiguousOverload();
+        if (selected.overload)
+            fn = follow(*selected.overload);
+    }
 
     // FIXME: Bidirectional type checking of overloaded functions is not yet supported.
     const FunctionType* ftv = get<FunctionType>(fn);

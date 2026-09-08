@@ -8,6 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixOverloadedFunctionCheck)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -868,6 +869,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "singleton_when_type_is_blocked")
     )"));
 }
 
+TEST_CASE_FIXTURE(Fixture, "singleton_inferred_from_selected_overload")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixOverloadedFunctionCheck, true}};
 
+    CheckResult result = check(R"(
+        local fn = function() end :: (<S>(S | "") -> S) & (() -> ())
+        local a = fn("hello")
+
+        local fn2 = function() end :: (("a" | "b") -> number) & ((number) -> string)
+        local b = fn2("a")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("\"hello\"", toString(requireType("a")));
+    CHECK_EQ("number", toString(requireType("b")));
+}
 
 TEST_SUITE_END();
