@@ -17,6 +17,7 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixNonIterableUnionError)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -322,6 +323,56 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     REQUIRE(get<CannotCallNonFunction>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_union_with_non_iterable_option")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixNonIterableUnionError, true}};
+
+    CheckResult result = check(R"(
+        local function foo(t: boolean | number | string | {})
+            for i, v in t do
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<CannotCallNonFunction>(result.errors[0]));
+    CHECK("Cannot call a value of type boolean" == toString(result.errors[0]));
+    CHECK(Location{{2, 24}, {2, 25}} == result.errors[0].location);
+}
+
+TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_union_with_table_without_indexer")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixNonIterableUnionError, true}};
+
+    CheckResult result = check(R"(
+        local function foo(t: {number} | {})
+            for i, v in t do
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK("Cannot iterate over a table without indexer" == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_on_union_of_iterable_types_is_ok")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixNonIterableUnionError, true}};
+
+    CheckResult result = check(R"(
+        local mt = {}
+        mt.__iter = function(_): () -> (number?, string) return function() return nil, "" end end
+        local obj = setmetatable({}, mt)
+
+        local function foo(t: {number} | {[string]: boolean} | typeof(obj) | (() -> (number?)) | setmetatable<{[number]: number}, {}>)
+            for i, v in t do
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_the_right_amount_of_values")

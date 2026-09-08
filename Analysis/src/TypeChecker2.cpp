@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauFixNonIterableUnionError)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -1161,11 +1162,55 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
     }
     else if (iteratorNorm && iteratorNorm->hasTables())
     {
-        // Ok. All tables can be iterated.
+        // Every option of a union must be iterable, not just some of them.
+        if (FFlag::LuauFixNonIterableUnionError && !iteratorNorm->shouldSuppressErrors())
+        {
+            if (const UnionType* utv = get<UnionType>(iteratorTy))
+                checkNonIterableUnionOptions(utv, forInStatement->values.data[0]->location);
+        }
     }
     else if (!iteratorNorm || !iteratorNorm->shouldSuppressErrors())
     {
         reportError(CannotCallNonFunction{iteratorTy}, forInStatement->values.data[0]->location);
+    }
+}
+
+void TypeChecker2::checkNonIterableUnionOptions(const UnionType* utv, Location location)
+{
+    for (TypeId option : utv)
+    {
+        option = follow(option);
+
+        while (const MetatableType* mtv = get<MetatableType>(option))
+        {
+            if (findMetatableEntry(builtinTypes, module->errors, option, "__iter", location))
+                break;
+
+            option = follow(mtv->table);
+        }
+
+        if (const TableType* ttv = get<TableType>(option))
+        {
+            if (!ttv->indexer)
+            {
+                reportError(GenericError{"Cannot iterate over a table without indexer"}, location);
+                return;
+            }
+
+            continue;
+        }
+
+        if (get<FunctionType>(option) || get<MetatableType>(option) || get<AnyType>(option) || get<ErrorType>(option) || get<NeverType>(option))
+            continue;
+
+        if (const PrimitiveType* ptv = get<PrimitiveType>(option); ptv && ptv->type == PrimitiveType::Table)
+            continue;
+
+        if (findMetatableEntry(builtinTypes, module->errors, option, "__iter", location))
+            continue;
+
+        reportError(CannotCallNonFunction{option}, location);
+        return;
     }
 }
 

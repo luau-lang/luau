@@ -133,6 +133,7 @@ private:
     void visit(AstStatLocal* local);
     void visit(AstStatFor* forStatement);
     void visit(AstStatForIn* forInStatement);
+    void checkNonIterableUnionOptions(const UnionType* utv, Location location);
     std::optional<TypeId> getBindingType(AstExpr* expr);
     void reportErrorsFromAssigningToNever(AstExpr* lhs, TypeId rhsType);
     void visit(AstStatAssign* assign);
