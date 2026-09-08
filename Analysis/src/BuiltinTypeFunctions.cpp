@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
+LUAU_FASTFLAGVARIABLE(LuauFixGetmetatableSelfReference)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 
 namespace Luau
@@ -2410,7 +2411,12 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
     return {result, Reduction::MaybeOk, {}, {}};
 }
 
-static TypeFunctionReductionResult<TypeId> getmetatableHelper(TypeId targetTy, const Location& location, NotNull<TypeFunctionContext> ctx)
+static TypeFunctionReductionResult<TypeId> getmetatableHelper(
+    TypeId instance,
+    TypeId targetTy,
+    const Location& location,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     targetTy = follow(targetTy);
 
@@ -2480,7 +2486,11 @@ static TypeFunctionReductionResult<TypeId> getmetatableHelper(TypeId targetTy, c
 
     std::optional<TypeId> metatableMetamethod = findMetatableEntry(ctx->builtins, dummy, targetTy, "__metatable", location);
 
-    if (metatableMetamethod)
+    // A `__metatable` entry that refers back to this very type function
+    // instance (e.g. `type T = setmetatable<{}, { __metatable: getmetatable<T> }>`)
+    // carries no information: the fixpoint of that reduction is the metatable
+    // itself, so fall back to it instead of binding the instance to itself.
+    if (metatableMetamethod && (!FFlag::LuauFixGetmetatableSelfReference || follow(*metatableMetamethod) != follow(instance)))
         return {metatableMetamethod, Reduction::MaybeOk, {}, {}};
 
     if (result)
@@ -2516,7 +2526,7 @@ TypeFunctionReductionResult<TypeId> getmetatableTypeFunction(
 
         for (auto option : ut->options)
         {
-            TypeFunctionReductionResult<TypeId> result = getmetatableHelper(option, location, ctx);
+            TypeFunctionReductionResult<TypeId> result = getmetatableHelper(instance, option, location, ctx);
 
             if (!result.result)
                 return result;
@@ -2536,7 +2546,7 @@ TypeFunctionReductionResult<TypeId> getmetatableTypeFunction(
 
         for (auto part : it->parts)
         {
-            TypeFunctionReductionResult<TypeId> result = getmetatableHelper(part, location, ctx);
+            TypeFunctionReductionResult<TypeId> result = getmetatableHelper(instance, part, location, ctx);
 
             if (!result.result)
             {
@@ -2563,7 +2573,7 @@ TypeFunctionReductionResult<TypeId> getmetatableTypeFunction(
         return {ctx->arena->addType(IntersectionType{std::move(parts)}), Reduction::MaybeOk, {}, {}};
     }
 
-    return getmetatableHelper(targetTy, location, ctx);
+    return getmetatableHelper(instance, targetTy, location, ctx);
 }
 
 TypeFunctionReductionResult<TypeId> objectofTypeFunction(

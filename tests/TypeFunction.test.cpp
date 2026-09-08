@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauFixGetmetatableSelfReference)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -1528,6 +1529,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_type_function_returns_nil_if_no
 
     auto booleanLiteralResult = requireTypeAlias("BooleanLiteralWithNoMetatable");
     CHECK_EQ(toString(booleanLiteralResult), "nil");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_self_referential_metatable_metamethod")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixGetmetatableSelfReference, true};
+
+    CheckResult result = check(R"(
+        type T = setmetatable<{}, { read __metatable: getmetatable<T> }>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireTypeAlias("T"), {true}), "{ @metatable t1, {  } } where t1 = { read __metatable: t1 }");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_correct_metatable")
