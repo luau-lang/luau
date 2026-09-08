@@ -3787,10 +3787,14 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
         if (FFlag::LuauFixBooleanLiteralEqualityRefinement && op == AstExprBinary::CompareEq)
         {
             // `cond == true` refines exactly like `cond`; `cond == false` like `not cond`.
+            RefinementId boolRefinement = nullptr;
             if (auto rhsBool = right->as<AstExprConstantBool>())
-                result = refinementArena.conjunction(result, rhsBool->value ? leftRefinement : refinementArena.negation(leftRefinement));
+                boolRefinement = rhsBool->value ? leftRefinement : refinementArena.negation(leftRefinement);
             else if (auto lhsBool = left->as<AstExprConstantBool>())
-                result = refinementArena.conjunction(result, lhsBool->value ? rightRefinement : refinementArena.negation(rightRefinement));
+                boolRefinement = lhsBool->value ? rightRefinement : refinementArena.negation(rightRefinement);
+
+            if (boolRefinement)
+                result = result ? refinementArena.conjunction(result, boolRefinement) : boolRefinement;
         }
 
         return {leftType, rightType, result};

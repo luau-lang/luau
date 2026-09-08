@@ -1461,7 +1461,11 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "refine_isa_compared_to_true")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("Part", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("Instance", toString(requireTypeAtPosition({5, 28})));
+
+    if (FFlag::DebugLuauForceOldSolver)
+        CHECK_EQ("Instance", toString(requireTypeAtPosition({5, 28})));
+    else
+        CHECK_EQ("Instance & ~Part", toString(requireTypeAtPosition({5, 28})));
 }
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "refine_isa_compared_to_false")
@@ -1488,7 +1492,7 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "refine_isa_compared_to_false")
     else
     {
         CHECK_EQ("Instance & ~Part", toString(requireTypeAtPosition({3, 28})));
-        CHECK_EQ("Instance", toString(requireTypeAtPosition({5, 28})));
+        CHECK_EQ("Part", toString(requireTypeAtPosition({5, 28})));
     }
 }
 
