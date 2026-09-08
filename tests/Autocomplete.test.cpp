@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAG(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAG(LuauAutocompleteOverloadedFunctionArgs)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
@@ -5931,6 +5932,122 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_binding_offers_member_completion")
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("foo"));
     CHECK(ac.entryMap.count("bar"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons_for_overloaded_function_alias")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteOverloadedFunctionArgs, true};
+
+    check(R"(
+        --!strict
+        type Alias = (("foo") -> ()) & (("bar") -> ()) & (("qux") -> ())
+        local f: Alias = nil :: any
+        f(@1)
+        f("@2")
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("\"foo\""));
+    CHECK(ac.entryMap.count("\"bar\""));
+    CHECK(ac.entryMap.count("\"qux\""));
+    CHECK_EQ(ac.context, AutocompleteContext::Expression);
+
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.count("foo"));
+    CHECK(ac.entryMap.count("bar"));
+    CHECK(ac.entryMap.count("qux"));
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons_for_overloaded_function_generic_alias")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteOverloadedFunctionArgs, true};
+
+    check(R"(
+        --!strict
+        type AliasGeneric<T> = (("foo") -> T) & (("bar") -> T) & (("qux") -> T)
+        type TableUsingAliasGeneric<T> = { alias: AliasGeneric<T> }
+        type TableGeneric<T> = { manually_written: (("foo") -> T) & (("bar") -> T) & (("qux") -> T) }
+
+        local f: AliasGeneric<number> = nil :: any
+        local t: TableUsingAliasGeneric<number> = nil :: any
+        local u: TableGeneric<number> = nil :: any
+        f(@1)
+        t.alias("@2")
+        u.manually_written(@3)
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("\"foo\""));
+    CHECK(ac.entryMap.count("\"bar\""));
+    CHECK(ac.entryMap.count("\"qux\""));
+
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.count("foo"));
+    CHECK(ac.entryMap.count("bar"));
+    CHECK(ac.entryMap.count("qux"));
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+
+    ac = autocomplete('3');
+    CHECK(ac.entryMap.count("\"foo\""));
+    CHECK(ac.entryMap.count("\"bar\""));
+    CHECK(ac.entryMap.count("\"qux\""));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons_for_overloaded_function_from_type_function")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteOverloadedFunctionArgs, true};
+
+    check(R"(
+        --!strict
+        type function AliasFunction(T: type): type
+            return types.intersectionof(
+                types.newfunction({ head = {types.singleton("foo")} }, { head = {T} }),
+                types.newfunction({ head = {types.singleton("bar")} }, { head = {T} }),
+                types.newfunction({ head = {types.singleton("qux")} }, { head = {T} })
+            )
+        end
+        type TableUsingAliasFunction<T> = { alias: AliasFunction<T> }
+
+        local f: AliasFunction<number> = nil :: any
+        local t: TableUsingAliasFunction<number> = nil :: any
+        f("@1")
+        t.alias(@2)
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("foo"));
+    CHECK(ac.entryMap.count("bar"));
+    CHECK(ac.entryMap.count("qux"));
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.count("\"foo\""));
+    CHECK(ac.entryMap.count("\"bar\""));
+    CHECK(ac.entryMap.count("\"qux\""));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons_for_overloaded_method_second_argument")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteOverloadedFunctionArgs, true};
+
+    check(R"(
+        --!strict
+        type Obj = { m: ((self: Obj, "foo", "one") -> ()) & ((self: Obj, "bar", "two") -> ()) }
+        local o: Obj = nil :: any
+        o:m(@1)
+        o:m("foo", "@2")
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("\"foo\""));
+    CHECK(ac.entryMap.count("\"bar\""));
+    CHECK(!ac.entryMap.count("\"one\""));
+
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.count("one"));
+    CHECK(ac.entryMap.count("two"));
+    CHECK_EQ(ac.context, AutocompleteContext::String);
 }
 
 TEST_SUITE_END();

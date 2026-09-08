@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 LUAU_FLAGVERSION(LuauCheckTypeForDeprecated, 2)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAG(LuauAutocompleteOverloadedFunctionArgs)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
@@ -119,7 +120,7 @@ static ParenthesesRecommendation getParenRecommendation(TypeId id, const std::ve
     return ParenthesesRecommendation::None;
 }
 
-static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* node, Position position)
+static std::optional<TypeId> findExpectedTypeAt(const Module& module, TypeArena* typeArena, AstNode* node, Position position)
 {
     auto expr = node->asExpr();
     if (!expr)
@@ -150,6 +151,9 @@ static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* n
                 }
 
                 ftv = get<FunctionType>(follow(funcType));
+
+                if (!ftv && FFlag::LuauAutocompleteOverloadedFunctionArgs && typeArena)
+                    return getExpectedArgumentTypeForOverloads(NotNull{typeArena}, funcType, 0, exprCall->self);
             }
             else
             {
@@ -159,6 +163,9 @@ static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* n
                     return std::nullopt;
 
                 ftv = get<FunctionType>(follow(*it));
+
+                if (!ftv && FFlag::LuauAutocompleteOverloadedFunctionArgs && typeArena)
+                    return getExpectedArgumentTypeForOverloads(NotNull{typeArena}, *it, 0, exprCall->self);
             }
 
             if (!ftv)
@@ -239,7 +246,7 @@ static TypeCorrectKind checkTypeCorrectKind(
 
     NotNull<Scope> moduleScope{module.getModuleScope().get()};
 
-    auto typeAtPosition = findExpectedTypeAt(module, node, position);
+    auto typeAtPosition = findExpectedTypeAt(module, typeArena, node, position);
 
     if (!typeAtPosition)
         return TypeCorrectKind::None;
@@ -1074,9 +1081,9 @@ std::optional<const T*> returnFirstNonnullOptionOfType(const UnionType* utv)
     return ret;
 }
 
-static std::optional<bool> functionIsExpectedAt(const Module& module, AstNode* node, Position position)
+static std::optional<bool> functionIsExpectedAt(const Module& module, TypeArena* typeArena, AstNode* node, Position position)
 {
-    auto typeAtPosition = findExpectedTypeAt(module, node, position);
+    auto typeAtPosition = findExpectedTypeAt(module, typeArena, node, position);
 
     if (!typeAtPosition)
         return std::nullopt;
@@ -1705,7 +1712,7 @@ static AutocompleteContext autocompleteExpression(
         TypeCorrectKind correctForTrue = checkTypeCorrectKind(module, typeArena, builtinTypes, node, position, builtinTypes->trueType);
         TypeCorrectKind correctForFalse = checkTypeCorrectKind(module, typeArena, builtinTypes, node, position, builtinTypes->falseType);
         TypeCorrectKind correctForFunction =
-            functionIsExpectedAt(module, node, position).value_or(false) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
+            functionIsExpectedAt(module, typeArena, node, position).value_or(false) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
 
         result["if"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false};
         result["true"] = {AutocompleteEntryKind::Keyword, builtinTypes->booleanType, false, false, correctForTrue};
@@ -1714,7 +1721,7 @@ static AutocompleteContext autocompleteExpression(
         result["not"] = {AutocompleteEntryKind::Keyword};
         result["function"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false, correctForFunction};
 
-        if (auto ty = findExpectedTypeAt(module, node, position))
+        if (auto ty = findExpectedTypeAt(module, typeArena, node, position))
             autocompleteStringSingleton(*ty, true, node, position, result);
     }
 

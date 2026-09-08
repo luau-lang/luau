@@ -299,6 +299,41 @@ TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, Ty
     }
 }
 
+std::optional<TypeId> getExpectedArgumentTypeForOverloads(NotNull<TypeArena> arena, TypeId fnType, size_t argIndex, bool self)
+{
+    const IntersectionType* itv = get<IntersectionType>(follow(fnType));
+    if (!itv)
+        return std::nullopt;
+
+    TypeIds options;
+
+    for (TypeId part : itv)
+    {
+        const FunctionType* ftv = get<FunctionType>(follow(part));
+        if (!ftv)
+            continue;
+
+        auto [head, tail] = flatten(ftv->argTypes);
+        size_t index = argIndex + (self ? 1 : 0);
+
+        if (index < head.size())
+            options.insert(follow(head[index]));
+        else if (tail)
+        {
+            if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*tail)))
+                options.insert(follow(vtp->ty));
+        }
+    }
+
+    if (options.empty())
+        return std::nullopt;
+
+    if (options.size() == 1)
+        return *options.begin();
+
+    return arena->addType(UnionType{options.take()});
+}
+
 std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types)
 {
     std::vector<TypeId> result;

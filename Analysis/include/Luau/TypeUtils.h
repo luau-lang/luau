@@ -101,6 +101,13 @@ std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, 
 // Returns a temporary TypePack that contains those types plus a tail.
 TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, TypePackId pack, size_t length);
 
+// For an overloaded function (an intersection of function types), returns the
+// union of the argument types that the overloads accept at `argIndex`. If
+// `self` is set, the first argument of each overload is skipped.
+// Returns nullopt if `fnType` is not an intersection of functions or no
+// overload accepts an argument at that position.
+std::optional<TypeId> getExpectedArgumentTypeForOverloads(NotNull<TypeArena> arena, TypeId fnType, size_t argIndex, bool self);
+
 /**
  * Reduces a union by decomposing to the any/error type if it appears in the
  * type list, and by merging child unions. Also strips out duplicate (by pointer

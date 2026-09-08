@@ -9,6 +9,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteOverloadedFunctionArgs)
 
 namespace Luau
 {
@@ -179,11 +180,22 @@ bool ExpectedTypeVisitor::visit(AstExprCall* expr)
 
     const FunctionType* ftv = get<FunctionType>(follow(*ty));
 
-    // FIXME: Bidirectional type checking of overloaded functions is not yet
-    // supported, which means we *also* do not provide autocomplete for
-    // the arguments of overloaded functions.
     if (!ftv)
+    {
+        // Bidirectional type checking of overloaded functions is not yet
+        // supported, but we can still provide the union of the argument types
+        // across all overloads as the expected type for autocomplete.
+        if (FFlag::LuauAutocompleteOverloadedFunctionArgs)
+        {
+            for (size_t idx = 0; idx < expr->args.size; ++idx)
+            {
+                if (auto expectedArgTy = getExpectedArgumentTypeForOverloads(arena, *ty, idx, expr->self))
+                    applyExpectedType(*expectedArgTy, expr->args.data[idx]);
+            }
+        }
+
         return true;
+    }
 
     auto it = begin(ftv->argTypes);
     size_t idx = 0;
