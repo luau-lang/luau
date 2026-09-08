@@ -13,6 +13,8 @@
 
 #include <optional>
 
+LUAU_FASTFLAGVARIABLE(LuauFixTypeFunctionGenericSaturation)
+
 namespace Luau
 {
 struct InstanceCollector2 : TypeOnceVisitor
@@ -67,6 +69,59 @@ struct InstanceCollector2 : TypeOnceVisitor
     }
 };
 
+// Detects whether a type mentions anything that an explicit annotation could pin down:
+// generic types, free types, or unreduced type function instances.
+struct UnresolvedTypeFinder : TypeOnceVisitor
+{
+    bool found = false;
+
+    UnresolvedTypeFinder()
+        : TypeOnceVisitor("UnresolvedTypeFinder", /* skipBoundTypes */ true)
+    {
+    }
+
+    bool visit(TypeId, const GenericType&) override
+    {
+        found = true;
+        return false;
+    }
+
+    bool visit(TypeId, const FreeType&) override
+    {
+        found = true;
+        return false;
+    }
+
+    bool visit(TypeId, const TypeFunctionInstanceType&) override
+    {
+        found = true;
+        return false;
+    }
+
+    bool visit(TypePackId, const GenericTypePack&) override
+    {
+        found = true;
+        return false;
+    }
+
+    bool visit(TypePackId, const FreeTypePack&) override
+    {
+        found = true;
+        return false;
+    }
+
+    bool visit(TypePackId, const TypeFunctionInstanceTypePack&) override
+    {
+        found = true;
+        return false;
+    }
+
+    bool visit(TypeId, const ExternType&) override
+    {
+        return false;
+    }
+};
+
 
 
 TypeFunctionReductionGuesser::TypeFunctionReductionGuesser(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, NotNull<Normalizer> normalizer)
@@ -78,6 +133,33 @@ TypeFunctionReductionGuesser::TypeFunctionReductionGuesser(NotNull<TypeArena> ar
 
 bool TypeFunctionReductionGuesser::isFunctionGenericsSaturated(const FunctionType& ftv, DenseHashSet<TypeId>& argsUsed)
 {
+    if (FFlag::LuauFixTypeFunctionGenericSaturation)
+    {
+        // A type function instance is stuck only because of the function's own generics
+        // when every one of its arguments is either one of those generics or a type that
+        // mentions no generic, free, or type function instance types. No annotation could
+        // make it reduce any further, so there is nothing to recommend.
+        if (argsUsed.empty())
+            return false;
+
+        DenseHashSet<TypeId> generics;
+        for (TypeId gt : ftv.generics)
+            generics.insert(follow(gt));
+
+        for (TypeId arg : argsUsed)
+        {
+            if (generics.contains(arg))
+                continue;
+
+            UnresolvedTypeFinder finder;
+            finder.traverse(arg);
+            if (finder.found)
+                return false;
+        }
+
+        return true;
+    }
+
     bool sameSize = ftv.generics.size() == argsUsed.size();
     bool allGenericsAppear = true;
     for (auto gt : ftv.generics)

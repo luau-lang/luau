@@ -24,6 +24,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
+LUAU_FASTFLAG(LuauFixTypeFunctionGenericSaturation)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
@@ -2679,6 +2680,69 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_return_type")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto err = get<ExplicitFunctionAnnotationRecommended>(result.errors.back());
     LUAU_ASSERT(err);
+    CHECK("false | number" == toString(err->recommendedReturn));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "tf_no_suggestion_when_type_function_is_stuck_only_on_generics")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixTypeFunctionGenericSaturation, true},
+    };
+
+    CheckResult result = check(R"(
+        local function add1(x)
+            return x + 1
+        end
+
+        local function add(x, y)
+            return x + y
+        end
+
+        local function add1_unused_arg(x, y)
+            return x + 1
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("<T>(T) -> add<T, number>" == toString(requireType("add1")));
+    CHECK("<T, U>(T, U) -> add<T, U>" == toString(requireType("add")));
+    CHECK("<T>(T, unknown) -> add<T, number>" == toString(requireType("add1_unused_arg")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "tf_no_suggestion_when_type_function_is_stuck_only_on_generics_flag_off")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixTypeFunctionGenericSaturation, false},
+    };
+
+    CheckResult result = check(R"(
+        local function add1(x)
+            return x + 1
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "tf_still_suggests_when_type_function_has_nested_unresolved_operands")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixTypeFunctionGenericSaturation, true},
+    };
+
+    CheckResult result = check(R"(
+        function fib(n)
+            return n < 2 and 1 or fib(n-1) + fib(n-2)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<ExplicitFunctionAnnotationRecommended>(result.errors.back());
+    REQUIRE(err);
     CHECK("false | number" == toString(err->recommendedReturn));
 }
 

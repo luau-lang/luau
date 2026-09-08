@@ -7,6 +7,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver);
+LUAU_FASTFLAG(LuauFixTypeFunctionGenericSaturation);
 
 TEST_SUITE_BEGIN("TypeInferUnknownNever");
 
@@ -351,8 +352,13 @@ TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[0]));
+        if (FFlag::LuauFixTypeFunctionGenericSaturation)
+            LUAU_REQUIRE_NO_ERRORS(result);
+        else
+        {
+            LUAU_REQUIRE_ERROR_COUNT(1, result);
+            CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[0]));
+        }
 
         // CLI-114134 Egraph-based simplification.
         // CLI-116549 x ~= nil : false when x : nil

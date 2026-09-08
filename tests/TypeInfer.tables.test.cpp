@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauFixTypeFunctionGenericSaturation)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -2340,7 +2341,12 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
         local c : string = t.m("hi")
     )");
 
-    if (!FFlag::DebugLuauForceOldSolver)
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauFixTypeFunctionGenericSaturation)
+    {
+        LUAU_CHECK_ERROR_COUNT(1, result);
+        LUAU_CHECK_ERROR(result, TypeMismatch);
+    }
+    else if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_CHECK_ERROR_COUNT(2, result);
         LUAU_CHECK_ERROR(result, ExplicitFunctionAnnotationRecommended);
@@ -3356,7 +3362,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_call_metamethod_basic")
         local foo = a(12)
     )");
 
-    if (!FFlag::DebugLuauForceOldSolver)
+    if (!FFlag::DebugLuauForceOldSolver && !FFlag::LuauFixTypeFunctionGenericSaturation)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK(get<ExplicitFunctionAnnotationRecommended>(result.errors[0]));
