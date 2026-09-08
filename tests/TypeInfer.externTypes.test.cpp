@@ -17,6 +17,7 @@ using std::nullopt;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauAllowIntersectionOfOneTableWithExtern)
+LUAU_FASTFLAG(LuauFixExternTypeUnknownPropertyMessage)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -387,6 +388,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "table_indexers_are_invariant")
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "table_class_unification_reports_sane_errors_for_missing_properties")
 {
+    ScopedFastFlag sff{FFlag::LuauFixExternTypeUnknownPropertyMessage, true};
+
     CheckResult result = check(R"(
         function foo(bar)
             bar.Y = 1 -- valid
@@ -406,8 +409,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "table_class_unification_reports_sane_error
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
-        REQUIRE_EQ("Key 'w' not found in external type 'Vector2'", toString(result.errors.at(0)));
-        REQUIRE_EQ("Key 'x' not found in external type 'Vector2'.  Did you mean 'X'?", toString(result.errors[1]));
+        REQUIRE_EQ("Key 'w' not found in type 'Vector2'", toString(result.errors.at(0)));
+        REQUIRE_EQ("Key 'x' not found in type 'Vector2'.  Did you mean 'X'?", toString(result.errors[1]));
     }
 }
 
@@ -427,6 +430,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "class_unification_type_mismatch_is_correct
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "optional_class_field_access_error")
 {
+    ScopedFastFlag sff{FFlag::LuauFixExternTypeUnknownPropertyMessage, true};
+
     CheckResult result = check(R"(
 local b: Vector2? = nil
 local a = b.X + b.Z
@@ -437,8 +442,23 @@ b.X = 2 -- real Vector2.X is also read-only
     LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors.at(0)));
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[1]));
-    CHECK_EQ("Key 'Z' not found in external type 'Vector2'", toString(result.errors[2]));
+    CHECK_EQ("Key 'Z' not found in type 'Vector2'", toString(result.errors[2]));
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[3]));
+}
+
+TEST_CASE_FIXTURE(ExternTypeFixture, "unknown_property_error_does_not_say_external_type")
+{
+    ScopedFastFlag sff{FFlag::LuauFixExternTypeUnknownPropertyMessage, true};
+
+    CheckResult result = check(R"(
+        local v: Vector2 = Vector2.New(1, 2)
+        local w = v.w
+        local x = v.x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ("Key 'w' not found in type 'Vector2'", toString(result.errors[0]));
+    CHECK_EQ("Key 'x' not found in type 'Vector2'.  Did you mean 'X'?", toString(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "detailed_class_unification_error")
@@ -614,6 +634,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "callable_extern_types")
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 {
+    ScopedFastFlag sff{FFlag::LuauFixExternTypeUnknownPropertyMessage, true};
+
     // Test reading from an index
     {
         CheckResult result = check(R"(
@@ -739,7 +761,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             local x : IndexableNumericKeyClass
             x.key = 1
         )");
-        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
+        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in type 'IndexableNumericKeyClass'");
     }
     {
         CheckResult result = check(R"(
@@ -747,7 +769,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             x["key"] = 1
         )");
         if (!FFlag::DebugLuauForceOldSolver)
-            CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
+            CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in type 'IndexableNumericKeyClass'");
         else
             CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'number', but got 'string'");
     }
@@ -765,7 +787,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             local x : IndexableNumericKeyClass
             local y = x.key
         )");
-        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in external type 'IndexableNumericKeyClass'");
+        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in type 'IndexableNumericKeyClass'");
     }
     {
         CheckResult result = check(R"(
@@ -773,7 +795,7 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
             local y = x["key"]
         )");
         if (!FFlag::DebugLuauForceOldSolver)
-            CHECK(toString(result.errors.at(0)) == "Key 'key' not found in external type 'IndexableNumericKeyClass'");
+            CHECK(toString(result.errors.at(0)) == "Key 'key' not found in type 'IndexableNumericKeyClass'");
         else
             CHECK_EQ(toString(result.errors.at(0)), "Expected this to be 'number', but got 'string'");
     }

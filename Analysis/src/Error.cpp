@@ -20,6 +20,7 @@ LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTINTVARIABLE(LuauCyclicSccWarningDisplayLimit, 10)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAGVARIABLE(LuauFixExternTypeUnknownPropertyMessage)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -196,7 +197,12 @@ struct ErrorConverter
         if (get<TableType>(t))
             return "Key '" + e.key + "' not found in table '" + Luau::toString(t) + "'";
         else if (get<ExternType>(t))
-            return "Key '" + e.key + "' not found in external type '" + Luau::toString(t) + "'";
+        {
+            if (FFlag::LuauFixExternTypeUnknownPropertyMessage)
+                return "Key '" + e.key + "' not found in type '" + Luau::toString(t) + "'";
+            else
+                return "Key '" + e.key + "' not found in external type '" + Luau::toString(t) + "'";
+        }
         else
             return "Type '" + Luau::toString(e.table) + "' does not have key '" + e.key + "'";
     }
@@ -368,7 +374,7 @@ struct ErrorConverter
 
         TypeId t = follow(e.table);
         if (get<ExternType>(t))
-            s += "external type";
+            s += FFlag::LuauFixExternTypeUnknownPropertyMessage ? "type" : "external type";
         else
             s += "table";
 
