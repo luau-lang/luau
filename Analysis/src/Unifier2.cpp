@@ -26,6 +26,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
+LUAU_FASTFLAGVARIABLE(LuauFixGenericUnionArmInference)
 
 namespace Luau
 {
@@ -458,6 +459,54 @@ UnifyResult Unifier2::unify_(TypeId subTy, const UnionType* superUnion)
     }
 
     UnifyResult result = UnifyResult::Ok;
+
+    if (FFlag::LuauFixGenericUnionArmInference)
+    {
+        auto resolveArm = [this](TypeId arm)
+        {
+            arm = follow(arm);
+            if (auto s = genericSubstitutions.find(arm))
+                arm = follow(*s);
+            return arm;
+        };
+
+        auto isFreeArm = [&resolveArm](TypeId arm)
+        {
+            return get<FreeType>(resolveArm(arm)) != nullptr;
+        };
+
+        auto structurallyMatches = [&resolveArm](TypeId sub, TypeId arm)
+        {
+            sub = follow(sub);
+            arm = resolveArm(arm);
+            return (get<FunctionType>(sub) && get<FunctionType>(arm)) || (get<TableType>(sub) && get<TableType>(arm) && areCompatible(sub, arm)) ||
+                   (get<MetatableType>(sub) && get<MetatableType>(arm)) || (get<ExternType>(sub) && get<ExternType>(arm));
+        };
+
+        bool hasFreeArm = false;
+        bool hasStructuralMatch = false;
+        for (TypeId arm : superUnion->options)
+        {
+            hasFreeArm |= isFreeArm(arm);
+            hasStructuralMatch |= structurallyMatches(subTy, arm);
+        }
+
+        // Prefer structural arms over bare free/generic arms when both match,
+        // so T | () -> T infers T = number from () -> number.
+        if (hasFreeArm && hasStructuralMatch)
+        {
+            for (TypeId arm : superUnion->options)
+            {
+                if (isFreeArm(arm))
+                    continue;
+
+                if (areCompatible(subTy, arm))
+                    result &= unify_(subTy, arm);
+            }
+
+            return result;
+        }
+    }
 
     // if the occurs check fails for any option, it fails overall
     for (auto superOption : superUnion->options)

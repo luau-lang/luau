@@ -11,6 +11,8 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauSolverV2)
+LUAU_FASTFLAG(LuauFixGenericUnionArmInference)
 
 using namespace Luau;
 
@@ -2131,6 +2133,62 @@ TEST_CASE_FIXTURE(Fixture, "variadic_generics_dont_leak")
     )");
 
     CHECK_EQ("(number, number) -> number", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_union_arm_prefers_structural_match")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauFixGenericUnionArmInference, true}};
+
+    CheckResult result = check(R"(
+        local function fn<T>(v: T | () -> T): T
+            return nil :: any
+        end
+
+        local function t(): number | () -> number
+            return nil :: any
+        end
+
+        local x = fn(t())
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_union_arm_falls_back_to_bare_generic")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauFixGenericUnionArmInference, true}};
+
+    CheckResult result = check(R"(
+        local function fn<T>(v: T | () -> T): T
+            return nil :: any
+        end
+
+        local x = fn("hello")
+        local y = fn(function() return true end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireType("x")));
+    CHECK_EQ("boolean", toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_union_arm_with_nil_still_infers")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauFixGenericUnionArmInference, true}};
+
+    CheckResult result = check(R"(
+        local function opt<T>(v: T?): T
+            return nil :: any
+        end
+
+        local a = opt(1)
+        local b = opt(nil :: string?)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("a")));
+    CHECK_EQ("string", toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "id_function_do_not_leak_generic")
