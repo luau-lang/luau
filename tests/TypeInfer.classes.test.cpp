@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass);
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
+LUAU_FASTFLAG(LuauSubstituteClassRelation)
 
 namespace
 {
@@ -356,6 +357,41 @@ TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class_but_not_a_c
     auto err = get<TypeMismatch>(modB.errors[0]);
     CHECK_EQ("class", toString(err->wantedType));
     CHECK_EQ("nil", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class_from_union")
+{
+    ScopedFastFlag _[3]{{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportValueTypecheck, true}, {FFlag::LuauSubstituteClassRelation, true}};
+
+    fileResolver.source["game/A"] = R"(
+        export class Point
+            public x: number
+        end
+
+        export class Line
+            public len: number
+        end
+
+        export function make(): Point | Line
+            return Point.new { x = 0 }
+        end
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        local A = require(game.A)
+        local Point = A.Point
+
+        local v = A.make()
+        if class.isinstance(v, Point) then
+            local y = v
+        else
+            local z = v
+        end
+    )";
+    CheckResult modB = getFrontend().check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(modB);
+    CHECK_EQ("Point", toString(requireTypeAtPosition("game/B", {6, 22})));
+    CHECK_EQ("Line", toString(requireTypeAtPosition("game/B", {8, 22})));
 }
 
 TEST_CASE_FIXTURE(ClassesFixture, "typed_self_parameter_after_class_declaration")
