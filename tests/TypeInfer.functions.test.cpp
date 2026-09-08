@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixUnionCallErrorMessage)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -2958,6 +2959,100 @@ TEST_CASE_FIXTURE(Fixture, "cannot_call_union_of_functions")
 We are unable to determine the appropriate result type for such a call.)";
         CHECK(expected == toString(result.errors[0]));
     }
+}
+
+TEST_CASE_FIXTURE(Fixture, "calling_union_of_functions_reports_which_members_reject_the_arguments")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixUnionCallErrorMessage, true}};
+
+    CheckResult result = check(R"(
+        type foo = (boolean) -> (string)
+        type bar = (number) -> (string)
+
+        local qux: foo | bar = nil :: any
+        local x = qux(1)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    std::string expected = R"(Cannot call a value of the union type:
+  | (boolean) -> string
+  | (number) -> string
+The arguments must be accepted by every function in the union, but the following do not accept them:
+  | (boolean) -> string)";
+    CHECK(expected == toString(result.errors[0]));
+    CHECK("string" == toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "calling_union_of_functions_returning_nothing_reports_which_members_reject_the_arguments")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixUnionCallErrorMessage, true}};
+
+    CheckResult result = check(R"(
+        type foo = (boolean) -> ()
+        type bar = (number) -> ()
+
+        local qux: foo | bar = nil :: any
+        qux(1)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    std::string expected = R"(Cannot call a value of the union type:
+  | (boolean) -> ()
+  | (number) -> ()
+The arguments must be accepted by every function in the union, but the following do not accept them:
+  | (boolean) -> ())";
+    CHECK(expected == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "calling_union_of_functions_reports_arity_mismatched_members")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixUnionCallErrorMessage, true}};
+
+    CheckResult result = check(R"(
+        local qux: ((number) -> ()) | ((number, number) -> ()) | ((string) -> ()) = nil :: any
+        qux(1)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    std::string expected = R"(Cannot call a value of the union type:
+  | (number) -> ()
+  | (number, number) -> ()
+  | (string) -> ()
+The arguments must be accepted by every function in the union, but the following do not accept them:
+  | (string) -> ()
+  | (number, number) -> ())";
+    CHECK(expected == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "calling_union_of_functions_that_all_accept_the_arguments_is_ok")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixUnionCallErrorMessage, true}};
+
+    CheckResult result = check(R"(
+        type foo = (number) -> (string)
+        type bar = (number | string) -> (string)
+
+        local qux: foo | bar = nil :: any
+        local x = qux(1)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("string" == toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "calling_union_with_non_function_member_still_reports_non_function")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixUnionCallErrorMessage, true}};
+
+    CheckResult result = check(R"(
+        local qux: ((boolean) -> ()) | number = nil :: any
+        qux(1)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    std::string expected = R"(Cannot call a value of type number in union:
+  ((boolean) -> ()) | number)";
+    CHECK(expected == toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_ast_stat_fun")

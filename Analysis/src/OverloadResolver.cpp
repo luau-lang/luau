@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 #include "Luau/Instantiation2.h"
 #include "Luau/Subtyping.h"
+#include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFunction.h"
@@ -16,6 +17,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
+LUAU_FASTFLAGVARIABLE(LuauFixUnionCallErrorMessage)
 
 namespace Luau
 {
@@ -625,6 +627,23 @@ void OverloadResolver::testFunctionOrUnion(
                 allConstraints.insert(allConstraints.end(), constraints.begin(), constraints.end());
 
             result.potentialOverloads.emplace_back(fnTy, std::move(allConstraints));
+        }
+        else if (FFlag::LuauFixUnionCallErrorMessage && innerResult.nonFunctions.empty())
+        {
+            // Every member of the union is callable, but at least one of them
+            // rejects the arguments. Since any member might be the one called,
+            // the arguments must be accepted by all of them.
+            std::string message = "Cannot call a value of the union type:";
+            for (TypeId t : ut)
+                message += "\n  | " + toString(t);
+
+            message += "\nThe arguments must be accepted by every function in the union, but the following do not accept them:";
+            for (const auto& [t, _reasons] : innerResult.incompatibleOverloads)
+                message += "\n  | " + toString(t);
+            for (TypeId t : innerResult.arityMismatches)
+                message += "\n  | " + toString(t);
+
+            result.incompatibleOverloads.emplace_back(fnTy, ErrorVec{{fnLocation, GenericError{std::move(message)}}});
         }
         else
         {
