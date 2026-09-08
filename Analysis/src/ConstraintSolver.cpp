@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAGVARIABLE(LuauFixStringSingletonPropLookup)
 
 namespace Luau
 {
@@ -3628,6 +3629,10 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
             return {{}, builtinTypes->errorType};
 
         return lookupTableProp(constraint, *indexProp->second.readTy, propName, context, inConditional, suppressSimplification, seen);
+    }
+    else if (auto st = get<SingletonType>(subjectType); FFlag::LuauFixStringSingletonPropLookup && st && get<StringSingleton>(st))
+    {
+        return lookupTableProp(constraint, builtinTypes->stringType, propName, context, inConditional, suppressSimplification, seen);
     }
     else if (auto ft = get<FreeType>(subjectType))
     {

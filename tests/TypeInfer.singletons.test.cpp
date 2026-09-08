@@ -8,6 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixStringSingletonPropLookup)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -868,6 +869,33 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "singleton_when_type_is_blocked")
     )"));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_singleton_method_call_uses_string_metatable")
+{
+    ScopedFastFlag sff{FFlag::LuauFixStringSingletonPropLookup, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local foo = "foo" :: "foo"
+        local a = foo:upper()
+        local b = foo.upper
+    )"));
+
+    CHECK_EQ("string", toString(requireType("a")));
+    CHECK_EQ("@checked (string) -> string", toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "calling_result_of_string_singleton_method_is_an_error")
+{
+    ScopedFastFlag sff{FFlag::LuauFixStringSingletonPropLookup, true};
+
+    CheckResult result = check(R"(
+        local foo = "foo" :: "foo"
+        local bar = "bar"
+        local _ = `{foo:upper(){bar}}`
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<CannotCallNonFunction>(result.errors[0]));
+}
 
 
 TEST_SUITE_END();
