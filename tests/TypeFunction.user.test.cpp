@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauUdtfPopulateEnv)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
+LUAU_FASTFLAG(LuauFixPreserveSolvedTypeFunctionState)
 LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
@@ -2947,6 +2948,69 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "externs_are_extern")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(results);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_referencing_definition_types_with_generic_methods_resolve")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixPreserveSolvedTypeFunctionState, true}};
+
+    loadDefinition(R"(
+        export type Object = {
+            DoThing: <T>() -> Object & index<{}, T>,
+        }
+        export type Collect = {
+            Tagged: Object,
+        }
+    )");
+
+    CheckResult results = check(R"(
+        type Creatables = {
+            Collections: Collect,
+        }
+
+        type function IntersectCreatables2(ty: type)
+            assert(false, Creatables:properties())
+            return types.never
+        end
+
+        local _obj: IntersectCreatables2<"Foo">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_referencing_required_types_with_generic_methods_resolve")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixPreserveSolvedTypeFunctionState, true}};
+
+    fileResolver.source["game/A"] = R"(
+        export type Object = {
+            DoThing: <T>() -> Object & index<{}, T>,
+        }
+        return {}
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult results = check(R"(
+        local A = require(game.A)
+
+        type Creatables = {
+            Collections: A.Object,
+        }
+
+        type function IntersectCreatables2(ty: type)
+            assert(false, "evaluated")
+            return types.never
+        end
+
+        local _obj: IntersectCreatables2<"Foo">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    CHECK(get<UserDefinedTypeFunctionError>(results.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_cannot_try_to_mutate_type_aliases")
