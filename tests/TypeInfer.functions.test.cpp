@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixOverloadErrorSuppression)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -240,6 +241,58 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
     REQUIRE(f.readTy);
     TypeId k = *f.readTy;
     REQUIRE(k);
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_with_error_suppressing_nested_table_argument_is_viable")
+{
+    ScopedFastFlag sff{FFlag::LuauFixOverloadErrorSuppression, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type f = ((boolean) -> ()) & (({ t: { read u: any } }) -> ())
+        local f: f = nil :: any
+
+        local p: {
+            t: {
+                read u: number,
+            },
+        } = nil :: any
+        f(p)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "overload_with_error_suppressing_nested_table_argument_is_viable_regardless_of_order")
+{
+    ScopedFastFlag sff{FFlag::LuauFixOverloadErrorSuppression, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type f = (({ t: { u: any } }) -> ()) & ((boolean) -> ())
+        local f: f = nil :: any
+
+        local p: { t: { u: number } } = nil :: any
+        f(p)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "overloads_with_genuine_mismatches_still_report_nonviable_overloads")
+{
+    ScopedFastFlag sff{FFlag::LuauFixOverloadErrorSuppression, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type f = ((boolean) -> ()) & (({ t: { read u: any } }) -> ())
+        local f: f = nil :: any
+
+        f("hello")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<MultipleNonviableOverloads>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_count")

@@ -7,6 +7,7 @@
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFunction.h"
+#include "Luau/TypeOrPack.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypePath.h"
 #include "Luau/TypeUtils.h"
@@ -16,6 +17,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
+LUAU_FASTFLAGVARIABLE(LuauFixOverloadErrorSuppression)
 
 namespace Luau
 {
@@ -495,6 +497,39 @@ void OverloadResolver::reportErrors(
     }
 }
 
+// An overload whose only subtyping failures involve error-suppressing types
+// (e.g. `any`) would have those errors suppressed if it were the sole
+// candidate, so it should also count as viable when other overloads exist.
+bool OverloadResolver::isErrorSuppressingFailure(TypeId fnTy, TypeId prospectiveFunction, const SubtypingReasonings& reasoning) const
+{
+    if (reasoning.empty())
+        return false;
+
+    for (const SubtypingReasoning& reason : reasoning)
+    {
+        std::optional<TypeOrPack> failedSuper = FFlag::LuauNewTypePathErrorMessages ? traverse(fnTy, reason.subPath, builtinTypes, arena, nullptr)
+                                                                                    : traverse_DEPRECATED(fnTy, reason.subPath, builtinTypes, arena);
+        std::optional<TypeOrPack> failedSub = FFlag::LuauNewTypePathErrorMessages
+                                                  ? traverse(prospectiveFunction, reason.superPath, builtinTypes, arena, nullptr)
+                                                  : traverse_DEPRECATED(prospectiveFunction, reason.superPath, builtinTypes, arena);
+
+        if (!failedSuper || !failedSub)
+            return false;
+
+        ErrorSuppression suppression = ErrorSuppression::DoNotSuppress;
+
+        if (const TypeId* superTy = get<TypeId>(*failedSuper); superTy && get<TypeId>(*failedSub))
+            suppression = shouldSuppressErrors(normalizer, *superTy, *get<TypeId>(*failedSub));
+        else if (const TypePackId* superTp = get<TypePackId>(*failedSuper); superTp && get<TypePackId>(*failedSub))
+            suppression = shouldSuppressErrors(normalizer, *superTp, *get<TypePackId>(*failedSub));
+
+        if (suppression != ErrorSuppression::Suppress)
+            return false;
+    }
+
+    return true;
+}
+
 // Test a single FunctionType against an argument list.  Reduces type functions
 // and does a proper arity check.
 void OverloadResolver::testFunction(
@@ -575,6 +610,13 @@ void OverloadResolver::testFunction(
             for (const auto& gbm : r.genericBoundsMismatches)
                 errors.emplace_back(fnLocation, gbm);
             result.incompatibleOverloads.emplace_back(fnTy, std::move(errors));
+        }
+        else if (FFlag::LuauFixOverloadErrorSuppression && isErrorSuppressingFailure(fnTy, prospectiveFunction, r.reasoning))
+        {
+            if (r.assumedConstraints.empty())
+                result.ok.emplace_back(fnTy);
+            else
+                result.potentialOverloads.emplace_back(fnTy, std::move(r.assumedConstraints));
         }
         else if (areUnsatisfiedArgumentsOptional(r.reasoning, argsPack, ftv->argTypes))
         {

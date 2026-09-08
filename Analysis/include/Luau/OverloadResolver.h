@@ -161,6 +161,8 @@ private:
         NotNull<DenseHashSet<TypeId>> uniqueTypes
     );
 
+    bool isErrorSuppressingFailure(TypeId fnTy, TypeId prospectiveFunction, const SubtypingReasonings& reasoning) const;
+
     void testFunction(OverloadResolution& result, TypeId fnTy, TypePackId argsPack, Location fnLocation, NotNull<DenseHashSet<TypeId>> uniqueTypes);
 
     void testFunctionOrCallMetamethod(
