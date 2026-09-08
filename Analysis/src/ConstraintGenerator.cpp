@@ -42,6 +42,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAGVARIABLE(LuauSetmetatableNilRemovesMetatable)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
@@ -2976,7 +2977,24 @@ InferencePack ConstraintGenerator::checkExprCall(
 
         TypeId resultTy = nullptr;
 
-        if (FFlag::LuauSetmetatableOverrides)
+        if (FFlag::LuauSetmetatableNilRemovesMetatable && FFlag::LuauSetmetatableOverrides && isNil(follow(mt)))
+        {
+            // setmetatable(t, nil) removes the metatable, so the result is
+            // the underlying table rather than `{ @metatable nil, t }`.
+            if (isTableUnion(target))
+            {
+                const UnionType* targetUnion = get<UnionType>(target);
+                UnionBuilder ub{arena, builtinTypes};
+
+                for (TypeId ty : targetUnion)
+                    ub.add(findSetmetatableTargetOf(ty));
+
+                resultTy = ub.build();
+            }
+            else
+                resultTy = findSetmetatableTargetOf(target);
+        }
+        else if (FFlag::LuauSetmetatableOverrides)
         {
             if (isTableUnion(target))
             {

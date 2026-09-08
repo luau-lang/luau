@@ -17,6 +17,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
+LUAU_FASTFLAG(LuauSetmetatableNilRemovesMetatable)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -1421,6 +1422,71 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_2")
     REQUIRE(err);
     CHECK_EQ("propA", err->key);
     CHECK_EQ("{ @metatable MT2, { Name: string } }", toString(err->table));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_nil_removes_metatable")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {{FFlag::LuauSetmetatableOverrides, true}, {FFlag::LuauSetmetatableNilRemovesMetatable, true}};
+
+    CheckResult result = check(R"(
+        local tbl = {
+            foo = 123,
+        }
+
+        setmetatable(tbl, {})
+        setmetatable(tbl, nil)
+
+        local foo = tbl.foo
+        local t: typeof(tbl) = tbl
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("foo")));
+    CHECK_EQ("{ foo: number }", toString(requireType("t"), {/* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_nil_removes_metatable_on_union")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {{FFlag::LuauSetmetatableOverrides, true}, {FFlag::LuauSetmetatableNilRemovesMetatable, true}};
+
+    CheckResult result = check(R"(
+        type A = { a: number }
+        type B = { b: string }
+
+        local function f(x: A | B)
+            setmetatable(x, {})
+            setmetatable(x, nil)
+            local y = x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("A | B", toString(requireTypeAtPosition({7, 22})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_nil_type_function")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {{FFlag::LuauSetmetatableOverrides, true}, {FFlag::LuauSetmetatableNilRemovesMetatable, true}};
+
+    CheckResult result = check(R"(
+        type MT = { __index: { propA: number } }
+        type T = setmetatable<setmetatable<{ Name: string }, MT>, nil>
+
+        local t: T
+        local ohno = t.propA
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("propA", err->key);
+    CHECK_EQ("{ Name: string }", toString(requireType("t"), {/* exhaustive */ true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_setmetatable_invalid_types")

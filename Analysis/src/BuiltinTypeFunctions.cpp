@@ -29,6 +29,7 @@ LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
+LUAU_FASTFLAG(LuauSetmetatableNilRemovesMetatable)
 
 namespace Luau
 {
@@ -2337,6 +2338,36 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
     {
         if (isPending(metatableTy, ctx->solver))
             return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
+    }
+
+    // setmetatable<T, nil> removes the metatable from T.
+    if (FFlag::LuauSetmetatableNilRemovesMetatable && FFlag::LuauSetmetatableOverrides && isNil(metatableTy))
+    {
+        TypeId result = ctx->builtins->neverType;
+
+        for (TypeId componentTy : targetNorm->tables)
+        {
+            ErrorVec dummy;
+
+            // a table with a `__metatable` metamethod is locked, so its metatable cannot be removed either.
+            if (findMetatableEntry(ctx->builtins, dummy, componentTy, "__metatable", location))
+                return {std::nullopt, Reduction::Erroneous, {}, {}};
+
+            if (auto mt = get<MetatableType>(componentTy))
+                componentTy = mt->table;
+
+            SimplifyResult simplified = simplifyUnion(ctx->builtins, ctx->arena, result, componentTy);
+
+            if (!simplified.blockedTypes.empty())
+            {
+                std::vector<TypeId> blockedTypes(simplified.blockedTypes.begin(), simplified.blockedTypes.end());
+                return {std::nullopt, Reduction::MaybeOk, std::move(blockedTypes), {}};
+            }
+
+            result = simplified.result;
+        }
+
+        return {result, Reduction::MaybeOk, {}, {}};
     }
 
     // if the supposed metatable is not a table, we will fail to reduce.
