@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAG(LuauAutocompleteDotMethodConversion)
+LUAU_FASTFLAG(LuauAutocompleteFunctionDefinition)
 LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
@@ -5931,6 +5932,134 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_binding_offers_member_completion")
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("foo"));
     CHECK(ac.entryMap.count("bar"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "function_definition_dot_suggests_writable_function_props")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionDefinition, true};
+
+    check(R"(
+        type Foo = {
+            read something_unrelated: () -> (),
+            read something_unrelated_method: (Foo) -> (),
+            callback: () -> () | false,
+            callback_method: (Foo) -> () | false,
+            count: number,
+        }
+
+        local foo: Foo = nil :: any
+
+        function foo.@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.context, AutocompleteContext::Property);
+    CHECK(ac.entryMap.count("callback"));
+    CHECK(ac.entryMap.count("callback_method"));
+    CHECK(!ac.entryMap.count("something_unrelated"));
+    CHECK(!ac.entryMap.count("something_unrelated_method"));
+    CHECK(!ac.entryMap.count("count"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "function_definition_colon_suggests_writable_methods")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionDefinition, true};
+
+    check(R"(
+        type Foo = {
+            read something_unrelated: () -> (),
+            read something_unrelated_method: (Foo) -> (),
+            callback: () -> () | false,
+            callback_method: (Foo) -> () | false,
+        }
+
+        local foo: Foo = nil :: any
+
+        function foo:@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.context, AutocompleteContext::Property);
+    CHECK(ac.entryMap.count("callback_method"));
+    CHECK(!ac.entryMap.count("callback"));
+    CHECK(!ac.entryMap.count("something_unrelated_method"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "function_definition_dot_suggests_props_of_plain_table")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionDefinition, true};
+
+    check(R"(
+        type Bar = {
+            my_function: (qux: string) -> ()
+        }
+
+        local bar: Bar = {} :: Bar
+
+        function bar.@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("my_function"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "function_definition_dot_with_partial_name")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionDefinition, true};
+
+    check(R"(
+        type Foo = {
+            callback: () -> (),
+            other: number,
+        }
+
+        local foo: Foo = nil :: any
+
+        function foo.cal@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("callback"));
+    CHECK(!ac.entryMap.count("other"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "function_definition_suggestions_old_solver")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauAutocompleteFunctionDefinition, true}, {FFlag::DebugLuauForceOldSolver, true}};
+
+    check(R"(
+        type Foo = {
+            read something_unrelated: () -> (),
+            callback: () -> () | false,
+            callback_method: (Foo) -> () | false,
+            count: number,
+        }
+
+        local foo: Foo = nil :: any
+
+        function foo.@1
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK_EQ(ac.context, AutocompleteContext::Property);
+    CHECK(ac.entryMap.count("callback"));
+    CHECK(ac.entryMap.count("callback_method"));
+    CHECK(!ac.entryMap.count("something_unrelated"));
+    CHECK(!ac.entryMap.count("count"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "function_definition_on_complete_function_is_unaffected")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteFunctionDefinition, true};
+
+    check(R"(
+        local t = {}
+        function t.foo(@1)
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.empty());
 }
 
 TEST_SUITE_END();

@@ -27,6 +27,7 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteDotMethodConversion)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteFunctionDefinition)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
@@ -714,6 +715,83 @@ static void autocompleteProps(
     else if (get<StringSingleton>(get<SingletonType>(ty)))
     {
         autocompleteProps(module, typeArena, builtinTypes, rootTy, builtinTypes->stringType, indexType, nodes, result, seen);
+    }
+}
+
+// Collects the function parts of a type: the function itself, or the function parts of a union/intersection
+static void collectFunctionParts(TypeId ty, std::vector<const FunctionType*>& result)
+{
+    ty = follow(ty);
+
+    if (auto ftv = get<FunctionType>(ty))
+        result.push_back(ftv);
+    else if (auto itv = get<IntersectionType>(ty))
+    {
+        for (TypeId part : itv->parts)
+            collectFunctionParts(part, result);
+    }
+    else if (auto utv = get<UnionType>(ty))
+    {
+        for (TypeId option : utv->options)
+            collectFunctionParts(option, result);
+    }
+}
+
+// `function foo.bar` / `function foo:bar` defines a property, so only writable, function-typed properties that can be
+// defined with the given operator are useful suggestions
+static void filterFunctionDefinitionProps(
+    const Module& module,
+    TypeArena* typeArena,
+    NotNull<BuiltinTypes> builtinTypes,
+    TypeId rootTy,
+    PropIndexType indexType,
+    AutocompleteEntryMap& result
+)
+{
+    LUAU_ASSERT(FFlag::LuauAutocompleteFunctionDefinition);
+
+    for (auto it = result.begin(); it != result.end();)
+    {
+        AutocompleteEntry& entry = it->second;
+
+        bool keep = entry.kind == AutocompleteEntryKind::Property && entry.type && !(entry.prop && (*entry.prop)->isReadOnly());
+
+        if (keep)
+        {
+            std::vector<const FunctionType*> functions;
+            collectFunctionParts(*entry.type, functions);
+
+            keep = false;
+
+            for (const FunctionType* ftv : functions)
+            {
+                if (indexType != PropIndexType::Colon || ftv->hasSelf)
+                {
+                    keep = true;
+                    break;
+                }
+
+                // A method definition requires the first argument to accept the table itself
+                if (std::optional<TypeId> firstArgTy = first(ftv->argTypes);
+                    firstArgTy && checkTypeMatch(module, rootTy, *firstArgTy, NotNull{module.getModuleScope().get()}, typeArena, builtinTypes))
+                {
+                    keep = true;
+                    break;
+                }
+            }
+        }
+
+        if (!keep)
+        {
+            it = result.erase(it);
+            continue;
+        }
+
+        entry.wrongIndexType = false;
+        entry.replaceDotWithColon = false;
+        entry.indexedWithSelf = indexType == PropIndexType::Colon;
+        entry.parens = ParenthesesRecommendation::None;
+        ++it;
     }
 }
 
@@ -2142,6 +2220,24 @@ AutocompleteResult autocomplete_(
         parent = ancestry.size() >= 2 ? ancestry.rbegin()[1] : &dummy;
     }
 
+    // `function foo.|` is parsed as a function body directly following the name, so the body ends up as the last node in
+    // the ancestry; the name is what is being written, so drop the body node and complete the name instead
+    if (FFlag::LuauAutocompleteFunctionDefinition && ancestry.size() >= 3)
+    {
+        auto func = node->as<AstExprFunction>();
+        auto indexName = parent->as<AstExprIndexName>();
+        auto statFunction = ancestry.rbegin()[2]->as<AstStatFunction>();
+
+        if (func && !func->argLocation && indexName && statFunction && statFunction->func == func && statFunction->name == indexName &&
+            position > indexName->opPosition && position <= indexName->indexLocation.end)
+        {
+            ancestry.pop_back();
+
+            node = ancestry.back();
+            parent = ancestry.rbegin()[1];
+        }
+    }
+
     if (auto indexName = node->as<AstExprIndexName>())
     {
         auto it = module->astTypes.find(indexName->expr);
@@ -2151,7 +2247,12 @@ AutocompleteResult autocomplete_(
         TypeId ty = follow(*it);
         PropIndexType indexType = indexName->op == ':' ? PropIndexType::Colon : PropIndexType::Point;
 
-        return {autocompleteProps(*module, typeArena, builtinTypes, ty, indexType, ancestry), ancestry, AutocompleteContext::Property};
+        AutocompleteEntryMap result = autocompleteProps(*module, typeArena, builtinTypes, ty, indexType, ancestry);
+
+        if (FFlag::LuauAutocompleteFunctionDefinition && parent->is<AstStatFunction>())
+            filterFunctionDefinitionProps(*module, typeArena, builtinTypes, ty, indexType, result);
+
+        return {std::move(result), ancestry, AutocompleteContext::Property};
     }
     else if (auto typeReference = node->as<AstTypeReference>())
     {
