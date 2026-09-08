@@ -1459,60 +1459,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typech
     CHECK(get<TypeMismatch>(result.errors[1]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "while_loops_fail_to_apply_refinements_1")
-{
-
-    DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    // CLI-191924 - Refinements are not correctly getting emitted for the `and` operator in while loops
-    // This test currently fails because the refinement on `opts` is not getting applied
-    // to the table access opts.recursive, either in this while loop, or within its body.
-    // We need to make sure that dataflowgraph can correctly apply refinements within this context
-    // so that this no longer yields an error.
-    LUAU_REQUIRE_ERROR(
-        check(R"(
-type walkoptions = {
-	recursive: boolean?,
-}
-
-function bing(path : string  | walkoptions, opts: walkoptions?)
-    return function ()
-        while opts and opts.recursive do
-        end
-    end
-end
-    )"),
-        OptionalValueAccess
-    );
-}
-
-TEST_CASE_FIXTURE(Fixture, "while_loops_fail_to_apply_refinements_2")
-{
-
-    DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    // CLI-191924 - Refinements are not correctly getting emitted for the `and` operator in while loops
-    // This test currently fails because the refinement on `opts` is not getting applied
-    // to the table access opts.recursive, either in this while loop, or within its body.
-    // We need to make sure that dataflowgraph can correctly apply refinements within this context
-    // so that this no longer yields an error.
-    LUAU_REQUIRE_ERROR(
-        check(R"(
-type walkoptions = {
-	recursive: boolean?,
-}
-
-function bing(path : string  | walkoptions, opts: walkoptions?)
-    return function ()
-        while true do
-            if opts and opts.recursive then
-            end
-        end
-    end
-end
-    )"),
-        OptionalValueAccess
-    );
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")
 {
     ScopedFastFlag sffs[] = {

@@ -12,6 +12,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAvoidTrivialPhis)
+LUAU_FASTFLAG(LuauFixUpvalueRefinementInLoops)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
@@ -3266,6 +3267,105 @@ TEST_CASE_FIXTURE(Fixture, "cli_181894_refinement_cancelled_by_for_loop")
         end
 
         local _ = closestChanger.Instances
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_upvalue_inside_loop_in_nested_function")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUpvalueRefinementInLoops, true},
+    };
+
+    CheckResult result = check(R"(
+        function f(g: (() -> ())?): ()
+            (function()
+                for i = 0, 1 do
+                    if g then
+                        g()
+                    end
+                end
+            end)()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("() -> ()", toString(requireTypeAtPosition({5, 24})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_upvalue_inside_while_and_for_in_loops_in_nested_function")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUpvalueRefinementInLoops, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(x: number?, t: {number})
+            local function inner()
+                while true do
+                    if x then
+                        local a: number = x
+                    end
+                end
+
+                for _, v in t do
+                    if x ~= nil then
+                        local b: number = x
+                    end
+                end
+            end
+
+            return inner
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "while_loops_apply_refinements_to_upvalues_1")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUpvalueRefinementInLoops, true},
+    };
+
+    // CLI-191924
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type walkoptions = {
+            recursive: boolean?,
+        }
+
+        function bing(path : string  | walkoptions, opts: walkoptions?)
+            return function ()
+                while opts and opts.recursive do
+                end
+            end
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "while_loops_apply_refinements_to_upvalues_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUpvalueRefinementInLoops, true},
+    };
+
+    // CLI-191924
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type walkoptions = {
+            recursive: boolean?,
+        }
+
+        function bing(path : string  | walkoptions, opts: walkoptions?)
+            return function ()
+                while true do
+                    if opts and opts.recursive then
+                    end
+                end
+            end
+        end
     )"));
 }
 
