@@ -16,6 +16,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
+LUAU_FASTFLAG(LuauFixUpvalueRefinementInLoops)
 LUAU_FASTINT(LuauNormalizeCacheLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
@@ -1464,12 +1465,9 @@ TEST_CASE_FIXTURE(Fixture, "while_loops_fail_to_apply_refinements_1")
 
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
     // CLI-191924 - Refinements are not correctly getting emitted for the `and` operator in while loops
-    // This test currently fails because the refinement on `opts` is not getting applied
+    // Without LuauFixUpvalueRefinementInLoops, the refinement on `opts` is not getting applied
     // to the table access opts.recursive, either in this while loop, or within its body.
-    // We need to make sure that dataflowgraph can correctly apply refinements within this context
-    // so that this no longer yields an error.
-    LUAU_REQUIRE_ERROR(
-        check(R"(
+    CheckResult result = check(R"(
 type walkoptions = {
 	recursive: boolean?,
 }
@@ -1480,9 +1478,12 @@ function bing(path : string  | walkoptions, opts: walkoptions?)
         end
     end
 end
-    )"),
-        OptionalValueAccess
-    );
+    )");
+
+    if (FFlag::LuauFixUpvalueRefinementInLoops)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERROR(result, OptionalValueAccess);
 }
 
 TEST_CASE_FIXTURE(Fixture, "while_loops_fail_to_apply_refinements_2")
@@ -1490,12 +1491,9 @@ TEST_CASE_FIXTURE(Fixture, "while_loops_fail_to_apply_refinements_2")
 
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
     // CLI-191924 - Refinements are not correctly getting emitted for the `and` operator in while loops
-    // This test currently fails because the refinement on `opts` is not getting applied
+    // Without LuauFixUpvalueRefinementInLoops, the refinement on `opts` is not getting applied
     // to the table access opts.recursive, either in this while loop, or within its body.
-    // We need to make sure that dataflowgraph can correctly apply refinements within this context
-    // so that this no longer yields an error.
-    LUAU_REQUIRE_ERROR(
-        check(R"(
+    CheckResult result = check(R"(
 type walkoptions = {
 	recursive: boolean?,
 }
@@ -1508,9 +1506,12 @@ function bing(path : string  | walkoptions, opts: walkoptions?)
         end
     end
 end
-    )"),
-        OptionalValueAccess
-    );
+    )");
+
+    if (FFlag::LuauFixUpvalueRefinementInLoops)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERROR(result, OptionalValueAccess);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2305_keyof_index_example")

@@ -12,6 +12,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAvoidTrivialPhis)
+LUAU_FASTFLAG(LuauFixUpvalueRefinementInLoops)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
@@ -3267,6 +3268,75 @@ TEST_CASE_FIXTURE(Fixture, "cli_181894_refinement_cancelled_by_for_loop")
 
         local _ = closestChanger.Instances
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "upvalue_refined_inside_numeric_for_loop")
+{
+    ScopedFastFlag _{FFlag::LuauFixUpvalueRefinementInLoops, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local var: number? = nil
+        local function f(): ()
+            for _ = 1, 1 do
+                if var then
+                    math.sin(var)
+                end
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireTypeAtPosition({6, 29})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "upvalue_refined_inside_while_and_repeat_loops")
+{
+    ScopedFastFlag _{FFlag::LuauFixUpvalueRefinementInLoops, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local var: number? = nil
+        local function f(): ()
+            while true do
+                if var then
+                    math.sin(var)
+                end
+                break
+            end
+            repeat
+                if var then
+                    math.sin(var)
+                end
+            until true
+            for _, _ in {1, 2, 3} do
+                if var then
+                    math.sin(var)
+                end
+            end
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "upvalue_refinement_does_not_leak_out_of_loop")
+{
+    ScopedFastFlag _{FFlag::LuauFixUpvalueRefinementInLoops, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local var: number? = nil
+        local function f(): ()
+            for _ = 1, 1 do
+                if var then
+                    math.sin(var)
+                end
+            end
+            math.sin(var)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("number?", toString(requireTypeAtPosition({9, 21})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unification_with_refinements_doesnt_impact_freevars")
