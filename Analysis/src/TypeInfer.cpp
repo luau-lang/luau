@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
+LUAU_FASTFLAG(LuauFixInstantiateExtraTypesAsPack)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 namespace Luau
@@ -3356,17 +3357,26 @@ TypeId TypeChecker::instantiateTypeParameters(
     size_t typeParamCount = 0;
     size_t typePackParamCount = 0;
 
+    // Extra types are collected into a single pack for the first generic pack.
+    std::vector<TypeId> extraTypes;
+
     for (const AstTypeOrPack& typeOrPack : explicitTypes)
     {
         if (typeOrPack.type)
         {
-            ++typeParamCount;
-
             if (typeParamsIter == typeParams.end())
             {
+                if (FFlag::LuauFixInstantiateExtraTypesAsPack && !typePackParams.empty())
+                {
+                    extraTypes.push_back(resolveType(scope, *typeOrPack.type));
+                    continue;
+                }
+
+                ++typeParamCount;
                 continue;
             }
 
+            ++typeParamCount;
             *typeParamsIter++ = resolveType(scope, *typeOrPack.type);
         }
         else
@@ -3381,6 +3391,13 @@ TypeId TypeChecker::instantiateTypeParameters(
 
             *typePackParamsIter++ = resolveTypePack(scope, *typeOrPack.typePack);
         }
+    }
+
+    if (FFlag::LuauFixInstantiateExtraTypesAsPack && !extraTypes.empty())
+    {
+        ++typePackParamCount;
+        typePackParams.insert(typePackParams.begin(), addTypePack(extraTypes));
+        typePackParams.pop_back();
     }
 
     if (typeParamCount > functionType->generics.size() || typePackParamCount > functionType->genericPacks.size())

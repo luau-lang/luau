@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixInstantiateExtraTypesAsPack)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -4357,6 +4358,13 @@ void TypeChecker2::checkTypeInstantiation(
             LUAU_ASSERT(typeOrPack.typePack);
             ++typePackCount;
         }
+    }
+
+    // Extra types are collected into a single pack for the first generic pack.
+    if (FFlag::LuauFixInstantiateExtraTypesAsPack && typeCount > ftv->generics.size() && !ftv->genericPacks.empty())
+    {
+        typeCount = ftv->generics.size();
+        ++typePackCount;
     }
 
     if (ftv->generics.size() < typeCount || ftv->genericPacks.size() < typePackCount)

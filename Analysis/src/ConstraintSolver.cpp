@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauFixInstantiateExtraTypesAsPack)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -3109,10 +3110,20 @@ TypeId ConstraintSolver::instantiateFunctionType(
     DenseHashMap<TypeId, TypeId> replacements;
     auto typeParametersIter = ft->generics.begin();
 
+    // Type arguments beyond the function's generic types are gathered into a
+    // single pack that fills the first generic pack, mirroring type aliases.
+    std::vector<TypeId> extraTypes;
+
     for (const TypeId typeArgument : typeArguments)
     {
         if (typeParametersIter == ft->generics.end())
         {
+            if (FFlag::LuauFixInstantiateExtraTypesAsPack && !ft->genericPacks.empty())
+            {
+                extraTypes.push_back(typeArgument);
+                continue;
+            }
+
             break;
         }
 
@@ -3124,10 +3135,14 @@ TypeId ConstraintSolver::instantiateFunctionType(
         replacements[*typeParametersIter++] = freshType(arena, builtinTypes, scope, Polarity::Mixed);
     }
 
+    std::vector<TypePackId> effectiveTypePackArguments = typePackArguments;
+    if (!extraTypes.empty())
+        effectiveTypePackArguments.insert(effectiveTypePackArguments.begin(), arena->addTypePack(std::move(extraTypes)));
+
     DenseHashMap<TypePackId, TypePackId> replacementPacks;
     auto typePackParametersIter = ft->genericPacks.begin();
 
-    for (const TypePackId typePackArgument : typePackArguments)
+    for (const TypePackId typePackArgument : effectiveTypePackArguments)
     {
         if (typePackParametersIter == ft->genericPacks.end())
         {
@@ -3151,8 +3166,8 @@ TypeId ConstraintSolver::instantiateFunctionType(
     ft2->generics.clear();
 
     // However, we only instantiate as many type pack arguments as are given.
-    if (!ft2->genericPacks.empty() && typePackArguments.size() < ft2->genericPacks.size())
-        ft2->genericPacks.erase(ft2->genericPacks.begin(), ft2->genericPacks.begin() + typePackArguments.size());
+    if (!ft2->genericPacks.empty() && effectiveTypePackArguments.size() < ft2->genericPacks.size())
+        ft2->genericPacks.erase(ft2->genericPacks.begin(), ft2->genericPacks.begin() + effectiveTypePackArguments.size());
     else
         ft2->genericPacks.clear();
 

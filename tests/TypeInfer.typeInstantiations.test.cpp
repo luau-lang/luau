@@ -7,6 +7,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixInstantiateExtraTypesAsPack)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
 
@@ -398,6 +399,66 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided_type_packs")
                 "Too many type parameters passed to 'f', which is typed as <T...>() -> (T...). Expected at most 1 type pack, but 2 provided."
             );
         }
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "extra_types_fill_type_pack")
+{
+    ScopedFastFlag sff{FFlag::LuauFixInstantiateExtraTypesAsPack, true};
+
+    SUBCASE_BOTH_SOLVERS()
+    {
+        CheckResult result = check(R"(
+        --!strict
+        local function foo<T...>(): (T...) -> ()
+            return nil :: any
+        end
+
+        local f = foo<<number>>()
+        local g = foo<<number, string>>()
+        )");
+
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK_EQ("(number) -> ()", toString(requireType("f")));
+        CHECK_EQ("(number, string) -> ()", toString(requireType("g")));
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "extra_types_fill_type_pack_after_types")
+{
+    ScopedFastFlag sff{FFlag::LuauFixInstantiateExtraTypesAsPack, true};
+
+    SUBCASE_BOTH_SOLVERS()
+    {
+        CheckResult result = check(R"(
+        --!strict
+        local function foo<T, U...>(): (T, U...) -> ()
+            return nil :: any
+        end
+
+        local f = foo<<boolean, number, string>>()
+        )");
+
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK_EQ("(boolean, number, string) -> ()", toString(requireType("f")));
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "extra_types_and_explicit_pack_too_many")
+{
+    ScopedFastFlag sff{FFlag::LuauFixInstantiateExtraTypesAsPack, true};
+
+    SUBCASE_BOTH_SOLVERS()
+    {
+        CheckResult result = check(R"(
+        --!strict
+        local function foo<T...>(): (T...) end
+
+        foo<<number, (string)>>()
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        LUAU_REQUIRE_ERROR(result, TypeInstantiationCountMismatch);
     }
 }
 
