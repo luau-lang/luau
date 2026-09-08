@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
+LUAU_FASTFLAGVARIABLE(LuauFixRefineIncompleteUnsealedTable)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 
 namespace Luau
@@ -1200,6 +1201,12 @@ bool occurs(TypeId haystack, TypeId needle)
     return occurs(haystack, needle, seen);
 }
 
+bool isIncompleteUnsealedTable(TypeId ty)
+{
+    const TableType* tt = get<TableType>(follow(ty));
+    return tt && tt->state == TableState::Unsealed && tt->remainingProps > 0;
+}
+
 } // namespace
 
 TypeFunctionReductionResult<TypeId> refineTypeFunction(
@@ -1266,6 +1273,13 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
     // check to see if both operand types are resolved enough, and wait to reduce if not
     if (targetIsPending)
         return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
+    else if (FFlag::LuauFixRefineIncompleteUnsealedTable && isIncompleteUnsealedTable(targetTy))
+    {
+        // Refining an unsealed table clones it. If the table still has
+        // pending property assignments, the clone would never receive
+        // them, so wait for the original table to be fully populated.
+        return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
+    }
     else
     {
         for (auto t : discriminantTypes)

@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauFixRefineIncompleteUnsealedTable)
 
 using namespace Luau;
 
@@ -3393,6 +3394,61 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
 
     // `x` is annotated `number?`, but the then-branch still refines it by `truthy` down to `number`.
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unsealed_table_with_pending_props_does_not_cycle")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixRefineIncompleteUnsealedTable, true},
+    };
+
+    CheckResult result = check(R"(
+        local T = {}
+
+        function T.f(self: typeof(T))
+            self._Build = 1
+        end
+
+        local function g(self: typeof(T))
+            if self.isHolding then
+            elseif self.isHovering then
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<UnknownProperty>(result.errors[0]));
+    CHECK(get<UnknownProperty>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unsealed_table_waits_for_pending_props")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixRefineIncompleteUnsealedTable, true},
+    };
+
+    CheckResult result = check(R"(
+        local T = {}
+
+        function T.f(self: typeof(T))
+            self._Build = 1
+        end
+
+        local function g(self: typeof(T)): number
+            if self.isHolding then
+            elseif self._Build then
+                return self._Build
+            end
+            return 0
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("isHolding", err->key);
 }
 
 TEST_SUITE_END();
