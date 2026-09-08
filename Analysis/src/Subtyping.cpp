@@ -23,6 +23,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauSubtypingRecursionLimit, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauSubtypingCheckPathValidity)
 LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPropertiesAsNil)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingRollbackGenericBoundsOnFailure)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
@@ -1639,7 +1640,18 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     size_t index = 0;
     for (TypeId ty : superUnion)
     {
-        SubtypingResult next = isCovariantWith(env, subTy, ty, scope);
+        SubtypingResult next;
+        if (FFlag::LuauSubtypingRollbackGenericBoundsOnFailure)
+        {
+            DenseHashMap<TypeId, std::vector<SubtypingEnvironment::GenericBounds>> savedBounds = env.mappedGenerics;
+            next = isCovariantWith(env, subTy, ty, scope);
+            if (!next.isSubtype)
+                env.mappedGenerics = std::move(savedBounds);
+        }
+        else
+        {
+            next = isCovariantWith(env, subTy, ty, scope);
+        }
 
         if (next.normalizationTooComplex)
             return SubtypingResult{false, /* normalizationTooComplex */ true};
@@ -1742,7 +1754,18 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Inte
     size_t i = 0;
     for (TypeId ty : subIntersection)
     {
-        result->orElse(isCovariantWith(env, ty, superTy, scope).withSubComponent(TypePath::Index{i++, TypePath::Index::Variant::Intersection}));
+        if (FFlag::LuauSubtypingRollbackGenericBoundsOnFailure)
+        {
+            DenseHashMap<TypeId, std::vector<SubtypingEnvironment::GenericBounds>> savedBounds = env.mappedGenerics;
+            SubtypingResult next = isCovariantWith(env, ty, superTy, scope);
+            if (!next.isSubtype)
+                env.mappedGenerics = std::move(savedBounds);
+            result->orElse(std::move(next).withSubComponent(TypePath::Index{i++, TypePath::Index::Variant::Intersection}));
+        }
+        else
+        {
+            result->orElse(isCovariantWith(env, ty, superTy, scope).withSubComponent(TypePath::Index{i++, TypePath::Index::Variant::Intersection}));
+        }
 
         if (result->normalizationTooComplex)
             return SubtypingResult{false, /* normalizationTooComplex */ true};

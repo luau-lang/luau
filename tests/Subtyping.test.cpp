@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauSubtypingRollbackGenericBoundsOnFailure)
 
 using namespace Luau;
 
@@ -205,6 +206,11 @@ struct SubtypeFixture : Fixture
     SubtypingResult isSubtype(TypeId subTy, TypeId superTy)
     {
         return subtyping.isSubtype(subTy, superTy, NotNull{rootScope.get()});
+    }
+
+    SubtypingResult isSubtype(TypeId subTy, TypeId superTy, const std::vector<TypeId>& generics)
+    {
+        return subtyping.isSubtype(arena.addTypePack({subTy}), arena.addTypePack({superTy}), NotNull{rootScope.get()}, generics);
     }
 
     SubtypingResult isSubtype(TypePackId subTy, TypePackId superTy)
@@ -1461,6 +1467,19 @@ TEST_CASE_FIXTURE(SubtypeFixture, "results_that_are_contingent_on_generics_are_n
     CHECK_IS_SUBTYPE(genericTToTType, numberToNumberType);
 
     CHECK(subtyping.peekCache().empty());
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "intersection_component_that_fails_does_not_leak_generic_bounds")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
+        {FFlag::LuauSubtypingRollbackGenericBoundsOnFailure, true},
+    };
+
+    // {} & { x: true } <: { x: T } should bind T := true, not nil | true
+    TypeId subTy = meet(tbl({}), tbl({{"x", getBuiltins()->trueType}}));
+    TypeId superTy = tbl({{"x", genericT}});
+    CHECK(isSubtype(subTy, superTy, {genericT}).isSubtype);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "dont_cache_tests_involving_cycles")

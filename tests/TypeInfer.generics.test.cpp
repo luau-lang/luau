@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauSubtypingRollbackGenericBoundsOnFailure)
 
 using namespace Luau;
 
@@ -2176,6 +2177,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pus
         function Child:Func()
             if math.random() > 0.5 then return self else return nil end
         end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_bounds_from_failed_intersection_component_are_discarded")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauSubtypingRollbackGenericBoundsOnFailure, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Alias<data> = {
+            invariant: data,
+        }
+        type Composed<data> = {} & Alias<data>
+
+        local mrrp: <T>(Composed<T>) -> T = nil :: any
+        local meow: <T>(Alias<T>) -> T = nil :: any
+
+        local a: Alias<true> = nil :: any
+        local b: Composed<true> = nil :: any
+
+        mrrp(b)
+        meow(a)
+        mrrp(a)
+        meow(b)
     )"));
 }
 
