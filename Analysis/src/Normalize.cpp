@@ -22,6 +22,7 @@ LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauAllowIntersectionOfOneTableWithExtern)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
+LUAU_FASTFLAGVARIABLE(LuauFixTypeFunctionTyvarIndex)
 LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeGuardAgainstNonTestableNegations)
@@ -659,6 +660,8 @@ static int tyvarIndex(TypeId ty)
         return ftv->index;
     else if (const BlockedType* btv = get<BlockedType>(ty))
         return btv->index;
+    else if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(ty); tfit && FFlag::LuauFixTypeFunctionTyvarIndex)
+        return tfit->index;
     else
         return 0;
 }

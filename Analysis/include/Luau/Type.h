@@ -681,6 +681,9 @@ struct TypeFunctionInstanceType
 
     TypeFunctionInstanceState state = TypeFunctionInstanceState::Unsolved;
 
+    // Distinguishes otherwise-unrelated irreducible instances when the normalizer treats them as type variables.
+    int index = Unifiable::freshIndex();
+
     TypeFunctionInstanceType(
         NotNull<const TypeFunction> function,
         std::vector<TypeId> typeArguments,

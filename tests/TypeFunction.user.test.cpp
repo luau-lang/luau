@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixTypeFunctionTyvarIndex)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3699,6 +3700,43 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cast_between_aliases_containing_generic_type_function_instances")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixTypeFunctionTyvarIndex, true};
+
+    CheckResult result = check(R"(
+        type function f(t: type): type
+            return t
+        end
+
+        type T0<T> = { f: f<T> }
+        type T1<T> = { f: f<T> }
+
+        local function test<T>(t0: T0<T>)
+            local t1 = t0 :: T1<T>
+            return t1
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "intersection_of_distinct_generic_type_function_instances_is_inhabited")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixTypeFunctionTyvarIndex, true};
+
+    CheckResult result = check(R"(
+        local function g<T, U>(a: keyof<T>)
+            local b = a :: keyof<U>
+            return b
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();
