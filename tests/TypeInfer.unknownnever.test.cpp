@@ -7,6 +7,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver);
+LUAU_FASTFLAG(LuauFixNeverPackSubtyping);
 
 TEST_SUITE_BEGIN("TypeInferUnknownNever");
 
@@ -427,6 +428,42 @@ TEST_CASE_FIXTURE(Fixture, "cast_from_never_does_not_error")
     CheckResult result = check(R"(
         local function f(x: never): number
             return x :: number
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "never_pack_is_subtype_of_generic_pack_and_multi_value_pack")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixNeverPackSubtyping, true},
+    };
+
+    CheckResult result = check(R"(
+        local function unreachable(): never
+            error("Unreachable")
+        end
+
+        local function myFuncA<T...>(...: T...): T...
+            if math.random() > 0.5 then
+                return ...
+            else
+                return unreachable()
+            end
+        end
+
+        local function myFuncB(): (number, number)
+            if math.random() > 0.5 then
+                return 1, 2
+            else
+                return unreachable()
+            end
+        end
+
+        local function myFuncC(): ()
+            return unreachable()
         end
     )");
 

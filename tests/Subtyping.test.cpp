@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixNeverPackSubtyping)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 
 using namespace Luau;
@@ -1536,6 +1537,37 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(number, number...) <!: (number, string...)")
     TypePackId rightTp = arena.addTypePack({builtinTypes->numberType}, arena.addTypePack(VariadicTypePack{builtinTypes->stringType}));
 
     CHECK_IS_NOT_SUBTYPE(leftTp, rightTp);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(never) <: A...")
+{
+    ScopedFastFlag sff{FFlag::LuauFixNeverPackSubtyping, true};
+
+    CHECK_IS_SUBTYPE(pack({builtinTypes->neverType}), genericAs);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(never) <: (number, number)")
+{
+    ScopedFastFlag sff{FFlag::LuauFixNeverPackSubtyping, true};
+
+    CHECK_IS_SUBTYPE(pack({builtinTypes->neverType}), pack({builtinTypes->numberType, builtinTypes->numberType}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(string, never) <: ()")
+{
+    ScopedFastFlag sff{FFlag::LuauFixNeverPackSubtyping, true};
+
+    CHECK_IS_SUBTYPE(pack({builtinTypes->stringType, builtinTypes->neverType}), pack({}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(never...) <: (number, string)")
+{
+    ScopedFastFlag sff{FFlag::LuauFixNeverPackSubtyping, true};
+
+    CHECK_IS_SUBTYPE(
+        arena.addTypePack({}, arena.addTypePack(VariadicTypePack{builtinTypes->neverType})),
+        pack({builtinTypes->numberType, builtinTypes->stringType})
+    );
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_check_for_error_suppression_in_union_type_path")

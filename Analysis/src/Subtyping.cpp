@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixNeverPackSubtyping)
 
 
 namespace Luau
@@ -1021,6 +1022,11 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
     result->isSubtype = true;
 
     if (subTp == superTp)
+        return {true};
+
+    // A type pack that contains `never` anywhere in its head, or in a variadic
+    // tail, is uninhabited, so it is a subtype of every type pack.
+    if (FFlag::LuauFixNeverPackSubtyping && containsNever(subTp))
         return {true};
 
     // Match head types pairwise
