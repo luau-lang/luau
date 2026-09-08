@@ -19,6 +19,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixTableFieldEmptyCallResult)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
@@ -7590,6 +7591,66 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_field_assigned_from_call_returning_nothing")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixTableFieldEmptyCallResult, true}};
+
+    CheckResult result = check(R"(
+        local function f() end
+        local t = { hello = f() }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<CountMismatch>(result.errors[0]));
+    CHECK_EQ("Function only returns 0 values, but 1 is required here", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_general_key_and_middle_list_item_from_call_returning_nothing")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixTableFieldEmptyCallResult, true}};
+
+    CheckResult result = check(R"(
+        local function f() end
+        local t = { [1] = f(), f(), 2 }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<CountMismatch>(result.errors[0]));
+    CHECK(get<CountMismatch>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_trailing_list_item_from_call_returning_nothing_is_ok")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixTableFieldEmptyCallResult, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f() end
+        local t = { 1, f() }
+        local u = { f() }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_field_from_call_returning_value_is_ok")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixTableFieldEmptyCallResult, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function g(): number return 1 end
+        local function h(): (number, string) return 1, "" end
+        local t = { a = g(), b = h(), h() }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_field_from_call_returning_any_pack_is_ok")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixTableFieldEmptyCallResult, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function f(...: any): ...any return ... end
+        local t = { a = f(), f(), 1 }
+    )"));
 }
 
 TEST_SUITE_END();

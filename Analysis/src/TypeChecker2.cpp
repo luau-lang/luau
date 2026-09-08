@@ -43,6 +43,7 @@ LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAG(LuauFixTableFieldEmptyCallResult)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
 
@@ -2379,11 +2380,22 @@ void TypeChecker2::visit(AstExprTable* expr)
 {
     InConditionalContext inContext(&typeContext, TypeContext::Default);
 
-    for (const AstExprTable::Item& item : expr->items)
+    for (size_t i = 0; i < expr->items.size; ++i)
     {
+        const AstExprTable::Item& item = expr->items.data[i];
+
         if (item.key)
             visit(item.key, ValueContext::RValue);
         visit(item.value, ValueContext::RValue);
+
+        if (FFlag::LuauFixTableFieldEmptyCallResult && item.value->is<AstExprCall>() &&
+            !(i == expr->items.size - 1 && item.kind == AstExprTable::Item::Kind::List))
+        {
+            TypePackId valuePack = lookupPack(item.value);
+            TypePack valueTypes = extendTypePack(*module->internalTypes, builtinTypes, valuePack, 1);
+            if (valueTypes.head.empty())
+                reportError(CountMismatch{0, std::nullopt, 1, CountMismatch::FunctionResult}, item.value->location);
+        }
     }
 }
 
