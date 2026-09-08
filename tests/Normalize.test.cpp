@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauIncludeExternTypeExtensionsWithTopExternType)
+LUAU_FASTFLAG(LuauNormalizeDropNeverTableIntersections)
 
 using namespace Luau;
 
@@ -848,6 +849,16 @@ TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_extern_types_with_intersect
 TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_metatables_where_the_metatable_is_top_or_bottom")
 {
     CHECK("{ @metatable *error-type*, {  } }" == toString(normal("Mt<{}, any> & Mt<{}, err>")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "conflicting_table_and_metatable_intersection_is_never")
+{
+    ScopedFastFlag sff{FFlag::LuauNormalizeDropNeverTableIntersections, true};
+    ScopedFastFlag solver{FFlag::DebugLuauForceOldSolver, false};
+
+    CHECK("never" == toString(normal(R"(
+        { fg: "a" } & Mt<{ fg: "s" }, {}> & { read fg: Not<false?> }
+    )")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "recurring_intersection")

@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauNormalizeDropNeverTableIntersections)
 
 using namespace Luau;
 
@@ -2152,6 +2153,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_should_preserve_error_suppressio
         end
     )");
 
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refining_intersection_of_table_and_metatable_with_conflicting_singleton_field_is_never")
+{
+    ScopedFastFlag solver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauNormalizeDropNeverTableIntersections, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type A = { fg: "a" }
+        type B = setmetatable<{ fg: "s" }, {}>
+        type T = A & B
+        local x: T = nil :: any
+        if x.fg then
+            local y = x
+            x.fg = "a"
+        end
+    )");
+
+    CHECK_EQ("never", toString(requireTypeAtPosition({7, 22})));
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
