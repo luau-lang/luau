@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauMagicFunctionsForOverloads)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -1696,7 +1697,8 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         fn = instantiateFunctionType(c.fn, c.typeArguments, c.typePackArguments, constraint->scope, constraint->location);
     }
 
-    fillInDiscriminantTypes(constraint, c.discriminantTypes);
+    if (!FFlag::LuauMagicFunctionsForOverloads)
+        fillInDiscriminantTypes(constraint, c.discriminantTypes);
 
     OverloadResolver resolver{
         builtinTypes,
@@ -1745,13 +1747,27 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
             // If we fail to select an unambiguous overload then unify the
             // result with error and move on.
             bind(constraint, c.result, builtinTypes->errorTypePack);
+            if (FFlag::LuauMagicFunctionsForOverloads)
+                fillInDiscriminantTypes(constraint, c.discriminantTypes);
             return true;
         }
 
         if (res.metamethods.contains(overloadToUse))
             argsPack = arena->addTypePack(TypePack{{fn}, argsPack});
+        else if (FFlag::LuauMagicFunctionsForOverloads && c.callSite)
+        {
+            // Overloads are only resolved here, so any magic attached to the
+            // selected overload has not had a chance to run yet.
+            if (const FunctionType* overloadFtv = get<FunctionType>(follow(overloadToUse)); overloadFtv && overloadFtv->magic)
+            {
+                usedMagic = overloadFtv->magic->infer(MagicFunctionCallContext{NotNull{this}, constraint, NotNull{c.callSite}, c.argsPack, result});
+                overloadFtv->magic->refine(MagicRefinementContext{constraint->scope, c.callSite, c.discriminantTypes});
+            }
+        }
     }
 
+    if (FFlag::LuauMagicFunctionsForOverloads)
+        fillInDiscriminantTypes(constraint, c.discriminantTypes);
 
     TypePackId retTp = arena->freshTypePack(constraint->scope, Polarity::Positive);
     trackInteriorFreeTypePack(constraint->scope, retTp);

@@ -2,6 +2,7 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/ConstraintSolver.h"
 #include "Luau/Error.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
@@ -30,6 +31,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauMagicFunctionsForOverloads)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4671,6 +4673,115 @@ TEST_CASE_FIXTURE(Fixture, "let_generalization_multiple_values")
     CHECK_EQ("string", toString(requireType("r2"), {true}));
     CHECK_EQ("number", toString(requireType("r3"), {true}));
     CHECK_EQ("string", toString(requireType("r4"), {true}));
+}
+
+namespace
+{
+
+struct MagicReturnsNumber final : MagicFunction
+{
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(TypeChecker&, const ScopePtr&, const AstExprCall&, WithPredicate<TypePackId>) override
+    {
+        return std::nullopt;
+    }
+
+    bool infer(const MagicFunctionCallContext& context) override
+    {
+        TypePackId numberPack = context.solver->arena->addTypePack({context.solver->builtinTypes->numberType});
+        asMutable(context.result)->ty.emplace<BoundTypePack>(numberPack);
+        return true;
+    }
+};
+
+struct MagicRefinesToNumber final : MagicFunction
+{
+    TypeId numberType;
+
+    explicit MagicRefinesToNumber(TypeId numberType)
+        : numberType(numberType)
+    {
+    }
+
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(TypeChecker&, const ScopePtr&, const AstExprCall&, WithPredicate<TypePackId>) override
+    {
+        return std::nullopt;
+    }
+
+    bool infer(const MagicFunctionCallContext&) override
+    {
+        return false;
+    }
+
+    void refine(const MagicRefinementContext& ctx) override
+    {
+        if (ctx.discriminantTypes.empty() || !ctx.discriminantTypes[0])
+            return;
+
+        TypeId discriminantTy = *ctx.discriminantTypes[0];
+        LUAU_ASSERT(get<BlockedType>(discriminantTy));
+        asMutable(discriminantTy)->ty.emplace<BoundType>(numberType);
+    }
+};
+
+} // namespace
+
+TEST_CASE_FIXTURE(Fixture, "magic_functions_are_called_for_overloaded_functions")
+{
+    ScopedFastFlag sff{FFlag::LuauMagicFunctionsForOverloads, true};
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    TypeArena& arena = getFrontend().globals.globalTypes;
+    unfreeze(arena);
+
+    TypePackId anyRet = arena.addTypePack({getBuiltins()->anyType});
+    TypeId stringOverload = arena.addType(FunctionType{arena.addTypePack({getBuiltins()->stringType}), anyRet});
+    getMutable<FunctionType>(stringOverload)->magic = std::make_shared<MagicReturnsNumber>();
+    TypeId numberOverload = arena.addType(FunctionType{arena.addTypePack({getBuiltins()->numberType}), anyRet});
+
+    addGlobalBinding(getFrontend().globals, "overloaded", arena.addType(IntersectionType{{stringOverload, numberOverload}}), "@test");
+    addGlobalBinding(getFrontend().globals, "plain", stringOverload, "@test");
+
+    freeze(arena);
+
+    CheckResult result = check(R"(
+        local a = overloaded("hello")
+        local b = overloaded(42)
+        local c = plain("hello")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("a")));
+    CHECK_EQ("any", toString(requireType("b")));
+    CHECK_EQ("number", toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "magic_function_refinements_are_applied_for_overloaded_functions")
+{
+    ScopedFastFlag sff{FFlag::LuauMagicFunctionsForOverloads, true};
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    TypeArena& arena = getFrontend().globals.globalTypes;
+    unfreeze(arena);
+
+    TypePackId booleanRet = arena.addTypePack({getBuiltins()->booleanType});
+    TypeId oneArg = arena.addType(FunctionType{arena.addTypePack({getBuiltins()->unknownType}), booleanRet});
+    getMutable<FunctionType>(oneArg)->magic = std::make_shared<MagicRefinesToNumber>(getBuiltins()->numberType);
+    TypeId twoArgs = arena.addType(FunctionType{arena.addTypePack({getBuiltins()->unknownType, getBuiltins()->stringType}), booleanRet});
+
+    addGlobalBinding(getFrontend().globals, "isNumber", arena.addType(IntersectionType{{oneArg, twoArgs}}), "@test");
+
+    freeze(arena);
+
+    CheckResult result = check(R"(
+        local function f(x: unknown)
+            if isNumber(x) then
+                local y = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
 }
 
 TEST_SUITE_END();
