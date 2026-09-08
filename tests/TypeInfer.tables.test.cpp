@@ -20,6 +20,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixIntersectTablesWithSharedProps)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
@@ -7590,6 +7591,54 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2621_table_literal_against_intersection_with_optional_shared_prop")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFixIntersectTablesWithSharedProps, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Base = { HeightLevel: number }
+
+        type WithExtras<T> = T & {
+            DisplayName: string,
+            HeightLevel: number?,
+        }
+
+        type WithExtrasFlipped<T> = {
+            DisplayName: string,
+            HeightLevel: number?,
+        } & T
+
+        local a: WithExtras<Base> = { DisplayName = "Guitar", HeightLevel = 2 }
+        local b: WithExtrasFlipped<Base> = { DisplayName = "Guitar", HeightLevel = 2 }
+        local c: Base & { DisplayName: string, HeightLevel: number? } = { DisplayName = "Guitar", HeightLevel = 2 }
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2621_table_literal_against_intersection_still_checks_shared_prop")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFixIntersectTablesWithSharedProps, true};
+
+    CheckResult result = check(R"(
+        type Base = { HeightLevel: number }
+
+        type WithExtras<T> = T & {
+            DisplayName: string,
+            HeightLevel: number?,
+        }
+
+        local a: WithExtras<Base> = { DisplayName = "Guitar", HeightLevel = "two" }
+        local b: WithExtras<Base> = { DisplayName = "Guitar" }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ("Expected this to be 'number', but got 'string'", toString(result.errors[0]));
+    CHECK(get<MissingProperties>(result.errors[1]));
 }
 
 TEST_SUITE_END();

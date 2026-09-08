@@ -17,6 +17,7 @@
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRelaxConstraintOrderingForFunctionCheck)
+LUAU_FASTFLAG(LuauFixIntersectTablesWithSharedProps)
 
 namespace Luau
 {
@@ -328,8 +329,26 @@ struct BidirectionalTypePusher
                 }
                 else if (auto itv = get<IntersectionType>(expectedType))
                 {
-                    for (const auto part : itv)
-                        (void)pushType(part, expr);
+                    std::optional<TypeId> simplifiedTable;
+                    if (FFlag::LuauFixIntersectTablesWithSharedProps)
+                    {
+                        // If the intersection is really just a table, push
+                        // that table in so that a property declared in more
+                        // than one component gets a single expected type.
+                        TypeIds parts;
+                        parts.insert(begin(itv), end(itv));
+                        TypeId simplified = simplifyIntersection(solver->builtinTypes, solver->arena, std::move(parts)).result;
+                        if (is<TableType>(simplified))
+                            simplifiedTable = simplified;
+                    }
+
+                    if (simplifiedTable)
+                        (void)pushType(*simplifiedTable, expr);
+                    else
+                    {
+                        for (const auto part : itv)
+                            (void)pushType(part, expr);
+                    }
 
                     // Reset the expected type for this expression prior,
                     // otherwise the expected type will be the last part

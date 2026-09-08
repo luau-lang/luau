@@ -20,6 +20,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
 LUAU_FASTFLAGVARIABLE(LuauCheckReadTyWhenRelatingExtern)
 LUAU_FASTFLAGVARIABLE(LuauRelateIndexersTypo)
+LUAU_FASTFLAGVARIABLE(LuauFixIntersectTablesWithSharedProps)
 
 namespace Luau
 {
@@ -1400,6 +1401,45 @@ std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
 
                 for (const auto& [name, rightProp] : rt->props)
                     merged.props[name] = rightProp;
+
+                return arena->addType(std::move(merged));
+            }
+
+            // If the two tables share some properties, we can still combine
+            // them as long as every shared property is read-write on both
+            // sides and one side's type is a subset of the other's.
+            if (FFlag::LuauFixIntersectTablesWithSharedProps)
+            {
+                TableType merged{TableState::Sealed, TypeLevel{}, lt->scope};
+                merged.props = lt->props;
+
+                for (const auto& [name, rightProp] : rt->props)
+                {
+                    auto leftIt = merged.props.find(name);
+                    if (leftIt == merged.props.end())
+                    {
+                        merged.props[name] = rightProp;
+                        continue;
+                    }
+
+                    const Property& leftProp = leftIt->second;
+                    if (!leftProp.isShared() || !rightProp.isShared())
+                        return std::nullopt;
+
+                    switch (relate(*leftProp.readTy, *rightProp.readTy))
+                    {
+                    case Relation::Disjoint:
+                        return builtinTypes->neverType;
+                    case Relation::Coincident:
+                    case Relation::Subset:
+                        break;
+                    case Relation::Superset:
+                        leftIt->second = rightProp;
+                        break;
+                    case Relation::Intersects:
+                        return std::nullopt;
+                    }
+                }
 
                 return arena->addType(std::move(merged));
             }

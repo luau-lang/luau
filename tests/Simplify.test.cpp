@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixIntersectTablesWithSharedProps)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
 
 namespace
@@ -401,6 +402,8 @@ TEST_CASE_FIXTURE(SimplifyFixture, "combine_disjoint_sealed_tables")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_do_not_simplify")
 {
+    ScopedFastFlag sff{FFlag::LuauFixIntersectTablesWithSharedProps, false};
+
     TypeId t1 = mkTable({{"prop", stringTy}});
     TypeId t2 = mkTable({{"prop", unknownTy}, {"second_prop", numberTy}});
 
@@ -412,10 +415,59 @@ TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_do_not_simplify")
 // both tables have multiple properties.
 TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_do_not_simplify_2")
 {
+    ScopedFastFlag sff{FFlag::LuauFixIntersectTablesWithSharedProps, false};
+
     TypeId t1 = mkTable({{"prop", stringTy}, {"third_prop", numberTy}});
     TypeId t2 = mkTable({{"prop", unknownTy}, {"second_prop", numberTy}});
 
     CHECK("{ prop: string, third_prop: number } & { prop: unknown, second_prop: number }" == toString(intersect(t1, t2)));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_intersect_shared_props")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIntersectTablesWithSharedProps, true};
+
+    TypeId t1 = mkTable({{"prop", stringTy}});
+    TypeId t2 = mkTable({{"prop", unknownTy}, {"second_prop", numberTy}});
+
+    CHECK("{ prop: string, second_prop: number }" == toString(intersect(t1, t2)));
+
+    TypeId t3 = mkTable({{"prop", stringTy}, {"third_prop", numberTy}});
+    TypeId t4 = mkTable({{"prop", unknownTy}, {"second_prop", numberTy}});
+
+    CHECK("{ prop: string, second_prop: number, third_prop: number }" == toString(intersect(t3, t4)));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_with_optional_shared_prop")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIntersectTablesWithSharedProps, true};
+
+    TypeId optionalNumber = arena->addType(UnionType{{numberTy, nilTy}});
+    TypeId t1 = mkTable({{"a", numberTy}});
+    TypeId t2 = mkTable({{"a", optionalNumber}, {"b", stringTy}});
+
+    CHECK("{ a: number, b: string }" == toString(intersect(t1, t2)));
+    CHECK("{ a: number, b: string }" == toString(intersect(t2, t1)));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_with_disjoint_shared_prop_are_never")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIntersectTablesWithSharedProps, true};
+
+    TypeId t1 = mkTable({{"a", numberTy}, {"b", stringTy}});
+    TypeId t2 = mkTable({{"a", stringTy}, {"c", numberTy}});
+
+    CHECK(neverTy == intersect(t1, t2));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_with_read_only_shared_prop_do_not_simplify")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIntersectTablesWithSharedProps, true};
+
+    TypeId t1 = mkTable({{"a", Property::readonly(numberTy)}, {"b", stringTy}});
+    TypeId t2 = mkTable({{"a", stringTy}, {"c", numberTy}});
+
+    CHECK(isIntersection(intersect(t1, t2)));
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "tables_and_top_table")
@@ -440,6 +492,8 @@ TEST_CASE_FIXTURE(SimplifyFixture, "tables_and_truthy")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "table_with_a_tag")
 {
+    ScopedFastFlag sff{FFlag::LuauFixIntersectTablesWithSharedProps, false};
+
     // {tag: string, prop: number} & {tag: "hello"}
     // I think we can decline to simplify this:
     TypeId t1 = mkTable({{"tag", stringTy}, {"prop", numberTy}});
@@ -447,6 +501,18 @@ TEST_CASE_FIXTURE(SimplifyFixture, "table_with_a_tag")
 
     CHECK("{ prop: number, tag: string } & { tag: \"hello\" }" == intersectStr(t1, t2));
     CHECK("{ prop: number, tag: string } & { tag: \"hello\" }" == intersectStr(t2, t1));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "table_with_a_tag_narrows_shared_prop")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIntersectTablesWithSharedProps, true};
+
+    // {tag: string, prop: number} & {tag: "hello"}
+    TypeId t1 = mkTable({{"tag", stringTy}, {"prop", numberTy}});
+    TypeId t2 = mkTable({{"tag", helloTy}});
+
+    CHECK("{ prop: number, tag: \"hello\" }" == intersectStr(t1, t2));
+    CHECK("{ prop: number, tag: \"hello\" }" == intersectStr(t2, t1));
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "nested_table_tag_test")
@@ -726,6 +792,8 @@ TEST_CASE_FIXTURE(SimplifyFixture, "relate_read_only_number_with_number")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "relate_coincident_minus_one_prop_tables")
 {
+    ScopedFastFlag sff{FFlag::LuauFixIntersectTablesWithSharedProps, false};
+
     // { x: number, y: boolean }
     TypeId leftTy = mkTable({{"x", Property::rw(builtinTypes->numberType)}, {"y", Property::rw(builtinTypes->booleanType)}});
 
