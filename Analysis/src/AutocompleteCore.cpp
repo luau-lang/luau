@@ -15,6 +15,7 @@
 #include "Luau/Subtyping.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
+#include "Luau/TypeUtils.h"
 
 #include <algorithm>
 #include <array>
@@ -32,6 +33,7 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 LUAU_FLAGVERSION(LuauCheckTypeForDeprecated, 2)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAG(LuauFixUnionTableLiteralAutocomplete)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
@@ -763,6 +765,39 @@ AutocompleteEntryMap autocompleteProps(
     AutocompleteEntryMap result;
     autocompleteProps(module, typeArena, builtinTypes, ty, indexType, nodes, result);
     return result;
+}
+
+// Completes the keys of a table literal given its expected type. If the
+// expected type is a union of tables, the keys of every member that could
+// still match the literal are offered.
+static AutocompleteEntryMap autocompleteTableLiteralKeys(
+    const Module& module,
+    TypeArena* typeArena,
+    NotNull<BuiltinTypes> builtinTypes,
+    TypeId expectedType,
+    const AstExprTable* exprTable,
+    const std::vector<AstNode*>& nodes
+)
+{
+    if (FFlag::LuauFixUnionTableLiteralAutocomplete)
+    {
+        if (auto utv = get<UnionType>(follow(expectedType)))
+        {
+            if (auto exprType = module.astTypes.find(exprTable))
+            {
+                TypeIds candidates = extractMatchingTableTypes(utv, *exprType, builtinTypes, NotNull{typeArena}, exprTable);
+                if (!candidates.empty())
+                {
+                    AutocompleteEntryMap result;
+                    for (TypeId candidate : candidates)
+                        autocompleteProps(module, typeArena, builtinTypes, candidate, PropIndexType::Key, nodes, result);
+                    return result;
+                }
+            }
+        }
+    }
+
+    return autocompleteProps(module, typeArena, builtinTypes, expectedType, PropIndexType::Key, nodes);
 }
 
 AutocompleteEntryMap autocompleteModuleTypes(const Module& module, const ScopePtr& scopeAtPosition, Position position, std::string_view moduleName)
@@ -2289,7 +2324,7 @@ AutocompleteResult autocomplete_(
             {
                 if (auto it = module->astExpectedTypes.find(exprTable))
                 {
-                    auto result = autocompleteProps(*module, typeArena, builtinTypes, *it, PropIndexType::Key, ancestry);
+                    auto result = autocompleteTableLiteralKeys(*module, typeArena, builtinTypes, *it, exprTable, ancestry);
 
                     if (auto nodeIt = module->astExpectedTypes.find(node->asExpr()))
                         autocompleteStringSingleton(*nodeIt, !node->is<AstExprConstantString>(), node, position, result);
@@ -2335,7 +2370,7 @@ AutocompleteResult autocomplete_(
 
         if (auto it = module->astExpectedTypes.find(exprTable))
         {
-            result = autocompleteProps(*module, typeArena, builtinTypes, *it, PropIndexType::Key, ancestry);
+            result = autocompleteTableLiteralKeys(*module, typeArena, builtinTypes, *it, exprTable, ancestry);
 
             // If the key type is a union of singleton strings,
             // suggest those too.

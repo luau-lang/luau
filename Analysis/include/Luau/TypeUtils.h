@@ -299,6 +299,19 @@ std::optional<TypeId> extractMatchingTableType(
 );
 
 /**
+ * @param exprTableAst The table literal being matched, if available. Constant
+ * string/boolean values written in it are used to rule out union members.
+ * @return Every table part of `expectedUnion` that is not disjoint with `exprType`.
+ */
+TypeIds extractMatchingTableTypes(
+    const UnionType* expectedUnion,
+    TypeId exprType,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena,
+    const AstExprTable* exprTableAst
+);
+
+/**
  * @param item A member of a table in an AST
  * @return Whether the item is a key-value pair with a statically defined string key.
  *

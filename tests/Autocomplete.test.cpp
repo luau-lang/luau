@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAG(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAG(LuauFixUnionTableLiteralAutocomplete)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
@@ -3106,12 +3107,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_on_string_singletons")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons_in_literal")
 {
-    if (!FFlag::DebugLuauForceOldSolver)
-        return;
-
-    // CLI-116814: Under the new solver, we fail to properly apply the expected
-    // type to `tag` as we fail to recognize that we can "break apart" unions
-    // when trying to apply an expected type.
+    ScopedFastFlag sff{FFlag::LuauFixUnionTableLiteralAutocomplete, true};
 
     check(R"(
         type tagged = {tag:"cat", fieldx:number} | {tag:"dog", fieldy:number}
@@ -3123,6 +3119,70 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons_in_literal")
     CHECK(ac.entryMap.count("cat"));
     CHECK(ac.entryMap.count("dog"));
     CHECK_EQ(ac.context, AutocompleteContext::String);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons_in_literal_of_union_of_tables")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixUnionTableLiteralAutocomplete, true}};
+
+    check(R"(
+        type EmitElement =
+            { id: "Roblox", amount: number } |
+            { id: "Rockstar", progress: number, eyeColor: string } |
+            { id: "Google", searchEngine: true }
+
+        local t: EmitElement = { id = "@1" }
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("Roblox"));
+    CHECK(ac.entryMap.count("Rockstar"));
+    CHECK(ac.entryMap.count("Google"));
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_keys_in_literal_of_union_of_tables_with_shared_discriminant")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixUnionTableLiteralAutocomplete, true}};
+
+    check(R"(
+        type EmitElement =
+            { id: "Roblox", amount: number } |
+            { id: "Roblox", progress: number, eyeColor: string } |
+            { id: "Google", searchEngine: true }
+
+        local t: EmitElement = { id = "Roblox", @1 }
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("amount"));
+    CHECK(ac.entryMap.count("progress"));
+    CHECK(ac.entryMap.count("eyeColor"));
+    CHECK(!ac.entryMap.count("searchEngine"));
+    CHECK(!ac.entryMap.count("id"));
+    CHECK_EQ(ac.context, AutocompleteContext::Property);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_keys_in_empty_literal_of_union_of_tables")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixUnionTableLiteralAutocomplete, true}};
+
+    check(R"(
+        type EmitElement =
+            { id: "Roblox", amount: number } |
+            { id: "Google", searchEngine: true }
+
+        local t: EmitElement = { @1 }
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("id"));
+    CHECK(ac.entryMap.count("amount"));
+    CHECK(ac.entryMap.count("searchEngine"));
+    CHECK_EQ(ac.context, AutocompleteContext::Property);
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")

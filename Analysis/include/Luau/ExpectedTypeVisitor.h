@@ -5,6 +5,7 @@
 #include "Luau/DenseHash.h"
 #include "Luau/NotNull.h"
 #include "Luau/Type.h"
+#include "Luau/TypeIds.h"
 
 namespace Luau
 {
@@ -74,6 +75,7 @@ private:
     NotNull<Scope> rootScope;
 
     void applyExpectedType(const TypeId expectedType, const AstExpr* expr);
+    void applyExpectedTypeFromCandidates(TypeId expectedType, const TypeIds& candidates, const AstExprTable* exprTable);
 };
 
 

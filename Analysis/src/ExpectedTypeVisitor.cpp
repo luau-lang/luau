@@ -9,6 +9,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAGVARIABLE(LuauFixUnionTableLiteralAutocomplete)
 
 namespace Luau
 {
@@ -230,7 +231,21 @@ void ExpectedTypeVisitor::applyExpectedType(TypeId expectedType, const AstExpr* 
             {
                 if (auto exprType = astTypes->find(expr))
                 {
-                    if (FFlag::LuauBidirectionalInferenceSimplifyTables)
+                    if (FFlag::LuauFixUnionTableLiteralAutocomplete)
+                    {
+                        TypeIds candidates = extractMatchingTableTypes(utv, *exprType, builtinTypes, arena, exprTable);
+                        if (candidates.size() == 1)
+                        {
+                            applyExpectedType(*candidates.begin(), expr);
+                            return;
+                        }
+                        else if (candidates.size() > 1)
+                        {
+                            applyExpectedTypeFromCandidates(expectedType, candidates, exprTable);
+                            return;
+                        }
+                    }
+                    else if (FFlag::LuauBidirectionalInferenceSimplifyTables)
                     {
                         if (auto tt = extractMatchingTableType(utv, *exprType, builtinTypes, arena))
                         {
@@ -318,6 +333,81 @@ void ExpectedTypeVisitor::applyExpectedType(TypeId expectedType, const AstExpr* 
     {
         applyExpectedType(expectedType, ternary->trueExpr);
         applyExpectedType(expectedType, ternary->falseExpr);
+    }
+}
+
+void ExpectedTypeVisitor::applyExpectedTypeFromCandidates(TypeId expectedType, const TypeIds& candidates, const AstExprTable* exprTable)
+{
+    // When several members of a union of tables could match the literal, the
+    // expected type of each property is the union of that property's type
+    // across every candidate, e.g. for:
+    //
+    //  local t: { id: "a", x: number } | { id: "b", y: string } = { id = _ }
+    //
+    // ... the expected type of `_` is `"a" | "b"`.
+    (*astExpectedTypes)[exprTable] = expectedType;
+
+    TypeIds possibleKeyTypes;
+    for (TypeId candidate : candidates)
+    {
+        const TableType* tt = get<TableType>(candidate);
+        LUAU_ASSERT(tt);
+        for (const auto& [name, _] : tt->props)
+            possibleKeyTypes.insert(arena->addType(SingletonType{StringSingleton{name}}));
+        if (tt->indexer)
+            possibleKeyTypes.insert(tt->indexer->indexType);
+    }
+
+    auto makeUnion = [&](TypeIds types) -> TypeId
+    {
+        if (types.empty())
+            return builtinTypes->neverType;
+        if (types.size() == 1)
+            return *types.begin();
+        return arena->addType(UnionType{types.take()});
+    };
+
+    TypeId expectedKeyType = makeUnion(std::move(possibleKeyTypes));
+
+    for (const AstExprTable::Item& item : exprTable->items)
+    {
+        if (isRecord(item))
+        {
+            const AstArray<char>& s = item.key->as<AstExprConstantString>()->value;
+            std::string keyStr{s.data, s.data + s.size};
+
+            applyExpectedType(expectedKeyType, item.key);
+
+            TypeIds valueTypes;
+            for (TypeId candidate : candidates)
+            {
+                const TableType* tt = get<TableType>(candidate);
+                if (auto it = tt->props.find(keyStr); it != tt->props.end() && it->second.readTy)
+                    valueTypes.insert(follow(*it->second.readTy));
+                else if (tt->indexer)
+                    valueTypes.insert(follow(tt->indexer->indexResultType));
+            }
+
+            if (!valueTypes.empty())
+                applyExpectedType(makeUnion(std::move(valueTypes)), item.value);
+        }
+        else if (item.kind == AstExprTable::Item::Kind::List || item.kind == AstExprTable::Item::Kind::General)
+        {
+            TypeIds valueTypes;
+            for (TypeId candidate : candidates)
+            {
+                const TableType* tt = get<TableType>(candidate);
+                if (tt->indexer)
+                    valueTypes.insert(follow(tt->indexer->indexResultType));
+            }
+
+            if (!valueTypes.empty())
+            {
+                applyExpectedType(makeUnion(std::move(valueTypes)), item.value);
+                if (item.kind == AstExprTable::Item::Kind::General)
+                    applyExpectedType(expectedKeyType, item.key);
+            }
+        }
     }
 }
 

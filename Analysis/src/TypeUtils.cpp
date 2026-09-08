@@ -652,16 +652,48 @@ std::optional<TypeId> extractMatchingTableType_DEPRECATED(const UnionType* expec
     return std::nullopt;
 }
 
-std::optional<TypeId> extractMatchingTableType(
+// If the value written for `key` in the table literal is a string or boolean
+// constant, returns the singleton type for it. Inference may have already
+// widened the property to `string` or `boolean`, so the literal itself is a
+// more precise witness of what the user intends.
+static std::optional<TypeId> literalSingletonForKey(const AstExprTable* exprTable, const std::string& key, NotNull<TypeArena> arena)
+{
+    if (!exprTable)
+        return std::nullopt;
+
+    for (const AstExprTable::Item& item : exprTable->items)
+    {
+        if (!isRecord(item))
+            continue;
+
+        const AstArray<char>& s = item.key->as<AstExprConstantString>()->value;
+        if (std::string_view{s.data, s.size} != key)
+            continue;
+
+        if (auto str = item.value->as<AstExprConstantString>())
+            return arena->addType(SingletonType{StringSingleton{std::string{str->value.data, str->value.size}}});
+        if (auto b = item.value->as<AstExprConstantBool>())
+            return arena->addType(SingletonType{BooleanSingleton{b->value}});
+
+        return std::nullopt;
+    }
+
+    return std::nullopt;
+}
+
+TypeIds extractMatchingTableTypes(
     const UnionType* expectedUnion,
     TypeId exprType,
     NotNull<BuiltinTypes> builtinTypes,
-    NotNull<TypeArena> arena
+    NotNull<TypeArena> arena,
+    const AstExprTable* exprTableAst
 )
 {
+    TypeIds potentialTables;
+
     const TableType* exprTable = get<TableType>(follow(exprType));
     if (!exprTable)
-        return std::nullopt;
+        return potentialTables;
 
     // Try to filter out tables based on property names, for example
     // if we are considering the type ...
@@ -673,8 +705,6 @@ std::optional<TypeId> extractMatchingTableType(
     //  { baz = true }
     //
     // ... the user probably intends the second definition.
-    TypeIds potentialTables;
-
     for (TypeId ty : expectedUnion)
     {
         // NOTE: This probably should just be replaced with normalization.
@@ -743,6 +773,48 @@ std::optional<TypeId> extractMatchingTableType(
                 potentialTables.insert(ty);
         }
     }
+
+    if (!exprTableAst || potentialTables.size() <= 1)
+        return potentialTables;
+
+    // Narrow further using constant values written in the literal, e.g. `id = "Roblox"`.
+    // Inference often widens these to `string`, so the structural pass above cannot see them.
+    // If narrowing would leave nothing (e.g. the user is still typing the value), keep the structural result.
+    TypeIds narrowed;
+    for (TypeId ty : potentialTables)
+    {
+        const TableType* tt = get<TableType>(ty);
+        LUAU_ASSERT(tt);
+
+        bool isDisjoint = false;
+        for (const auto& [name, expectedProp] : tt->props)
+        {
+            if (!expectedProp.readTy)
+                continue;
+
+            std::optional<TypeId> literalTy = literalSingletonForKey(exprTableAst, name, arena);
+            if (literalTy && relate(*literalTy, follow(*expectedProp.readTy)) == Relation::Disjoint)
+            {
+                isDisjoint = true;
+                break;
+            }
+        }
+
+        if (!isDisjoint)
+            narrowed.insert(ty);
+    }
+
+    return narrowed.empty() ? potentialTables : narrowed;
+}
+
+std::optional<TypeId> extractMatchingTableType(
+    const UnionType* expectedUnion,
+    TypeId exprType,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena
+)
+{
+    TypeIds potentialTables = extractMatchingTableTypes(expectedUnion, exprType, builtinTypes, arena, nullptr);
 
     if (potentialTables.size() == 1)
         return {*potentialTables.begin()};
