@@ -26,6 +26,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
+LUAU_FASTFLAGVARIABLE(LuauFixUnrelatedAliasTypeParams)
 
 namespace Luau
 {
@@ -550,26 +551,30 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
         }
     }
 
-    auto subTypeParamsIter = subTable->instantiatedTypeParams.begin();
-    auto superTypeParamsIter = superTable->instantiatedTypeParams.begin();
-
-    while (subTypeParamsIter != subTable->instantiatedTypeParams.end() && superTypeParamsIter != superTable->instantiatedTypeParams.end())
+    bool sameAlias = subTable->name && superTable->name && *subTable->name == *superTable->name;
+    if (!FFlag::LuauFixUnrelatedAliasTypeParams || sameAlias)
     {
-        result &= unify_(*subTypeParamsIter, *superTypeParamsIter);
+        auto subTypeParamsIter = subTable->instantiatedTypeParams.begin();
+        auto superTypeParamsIter = superTable->instantiatedTypeParams.begin();
 
-        subTypeParamsIter++;
-        superTypeParamsIter++;
-    }
+        while (subTypeParamsIter != subTable->instantiatedTypeParams.end() && superTypeParamsIter != superTable->instantiatedTypeParams.end())
+        {
+            result &= unify_(*subTypeParamsIter, *superTypeParamsIter);
 
-    auto subTypePackParamsIter = subTable->instantiatedTypePackParams.begin();
-    auto superTypePackParamsIter = superTable->instantiatedTypePackParams.begin();
+            subTypeParamsIter++;
+            superTypeParamsIter++;
+        }
 
-    while (subTypePackParamsIter != subTable->instantiatedTypePackParams.end() &&
-           superTypePackParamsIter != superTable->instantiatedTypePackParams.end())
-    {
-        result &= unify_(*subTypePackParamsIter, *superTypePackParamsIter);
-        subTypePackParamsIter++;
-        superTypePackParamsIter++;
+        auto subTypePackParamsIter = subTable->instantiatedTypePackParams.begin();
+        auto superTypePackParamsIter = superTable->instantiatedTypePackParams.begin();
+
+        while (subTypePackParamsIter != subTable->instantiatedTypePackParams.end() &&
+               superTypePackParamsIter != superTable->instantiatedTypePackParams.end())
+        {
+            result &= unify_(*subTypePackParamsIter, *superTypePackParamsIter);
+            subTypePackParamsIter++;
+            superTypePackParamsIter++;
+        }
     }
 
     if (subTable->indexer && superTable->indexer)

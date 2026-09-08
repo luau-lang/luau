@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixUnrelatedAliasTypeParams)
 
 using namespace Luau;
 
@@ -2177,6 +2178,62 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pus
             if math.random() > 0.5 then return self else return nil end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unrelated_parametric_aliases_do_not_share_type_arguments")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixUnrelatedAliasTypeParams, true};
+
+    CheckResult result = check(R"(
+        type Meow<Purr> = { read trill: Purr }
+        type Hiss<Nyanya> = { read mrrp: Nyanya }
+
+        local snarl: <Litter, Kittens>(object: Meow<Litter> & Hiss<Kittens>) -> (Litter, Kittens) = nil :: any
+        local squeak: Meow<number> & Hiss<string> = nil :: any
+
+        local scratch, warble = snarl(squeak)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("scratch")));
+    CHECK_EQ("string", toString(requireType("warble")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unrelated_parametric_alias_does_not_instantiate_generic")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixUnrelatedAliasTypeParams, true};
+
+    CheckResult result = check(R"(
+        type Meow<Purr> = { read trill: Purr }
+        type Hiss<Nyanya> = { read mrrp: Nyanya }
+
+        local explore: <Beg>(object: Hiss<Beg>) -> Beg = nil :: any
+        local chirrup: Meow<number> = nil :: any
+
+        local twitch = explore(chirrup)
+    )");
+
+    CHECK_EQ("unknown", toString(requireType("twitch")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "same_parametric_alias_still_instantiates_generic")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixUnrelatedAliasTypeParams, true};
+
+    CheckResult result = check(R"(
+        type Meow<Purr> = { read trill: Purr }
+
+        local f: <T>(object: Meow<T>) -> T = nil :: any
+        local m: Meow<number> = nil :: any
+
+        local r = f(m)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("r")));
 }
 
 TEST_SUITE_END();
