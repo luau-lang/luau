@@ -26,6 +26,7 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
+LUAU_FASTFLAGVARIABLE(LuauKeyofSingletonIndexer)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
@@ -1681,6 +1682,35 @@ namespace
 {
 
 /**
+ * Collects the string singleton keys of an indexer key type into `result`
+ * returns `false` if the indexer admits every string, in which case `result` should be ignored
+ */
+bool computeIndexerKeys(TypeId indexType, Set<std::optional<std::string>>& result)
+{
+    indexType = follow(indexType);
+
+    if (isPrim(indexType, PrimitiveType::String))
+        return false;
+
+    if (auto singleton = get<StringSingleton>(get<SingletonType>(indexType)))
+    {
+        result.insert(singleton->value);
+        return true;
+    }
+
+    if (auto utv = get<UnionType>(indexType))
+    {
+        for (TypeId option : utv)
+        {
+            if (!computeIndexerKeys(option, result))
+                return false;
+        }
+    }
+
+    return true;
+}
+
+/**
  * Computes the keys of `ty` into `result`
  * `isRaw` parameter indicates whether or not we should follow __index metamethods
  * returns `false` if `result` should be ignored because the answer is "all strings"
@@ -1702,9 +1732,18 @@ bool computeKeysOf(TypeId ty, Set<std::optional<std::string>>& result, DenseHash
     {
         if (tableTy->indexer)
         {
-            // if we have a string indexer, the answer is, again, "all strings"
-            if (isString(tableTy->indexer->indexType))
-                return false;
+            if (FFlag::LuauKeyofSingletonIndexer)
+            {
+                // a `string` indexer means the answer is, again, "all strings", but singleton keys are just more keys
+                if (!computeIndexerKeys(tableTy->indexer->indexType, result))
+                    return false;
+            }
+            else
+            {
+                // if we have a string indexer, the answer is, again, "all strings"
+                if (isString(tableTy->indexer->indexType))
+                    return false;
+            }
         }
 
         for (const auto& [key, _] : tableTy->props)

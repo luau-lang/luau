@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauKeyofSingletonIndexer)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -447,6 +448,65 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_string_indexer")
     REQUIRE(tm);
     CHECK_EQ("\"z\"", toString(tm->wantedType));
     CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tm->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_singleton_indexer")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauKeyofSingletonIndexer, true};
+
+    CheckResult result = check(R"(
+        type SingletonIndexer = { ["a"]: number }
+        type UnionIndexer = { x: number, ["y" | "z"]: number }
+        type StringInUnionIndexer = { x: number, ["y" | string]: number }
+
+        local function f1(idx: keyof<SingletonIndexer>): "a" return idx end
+        local function f2(idx: keyof<UnionIndexer>): "x" | "y" | "z" return idx end
+        local function f3(idx: keyof<StringInUnionIndexer>): "x" return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("\"x\"", toString(tm->wantedType));
+    CHECK_EQ("string", toString(tm->givenType));
+}
+
+// Reproduces https://github.com/luau-lang/luau/issues/2680
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_singleton_indexer_from_udtf")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauKeyofSingletonIndexer, true};
+
+    CheckResult result = check(R"(
+        type function EnumFormat(ty: type)
+            local keys = {}
+            for k in ty:properties() do
+                ty:setproperty(k, k)
+                table.insert(keys, k)
+            end
+            local union = types.unionof(table.unpack(keys))
+            ty:setindexer(union, union)
+            return ty
+        end
+
+        type Test = EnumFormat<{ Wall: string, Floor: string }>
+        type Item = keyof<Test>
+
+        local function f(x: Item): number return x end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("number", toString(tm->wantedType));
+    CHECK_EQ("\"Floor\" | \"Wall\"", toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_common_subset_if_union_of_differing_tables")
