@@ -11,6 +11,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixTableCloneReadOnly)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -1324,6 +1325,64 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_persistent_skip")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_of_frozen_table_is_writable")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixTableCloneReadOnly, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local def = table.freeze({ coerce = false, int = false, nan = false })
+        local newDef = table.clone(def)
+        newDef.int = true
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("{ coerce: boolean, int: boolean, nan: boolean }", toString(requireType("newDef"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_does_not_mutate_frozen_source")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixTableCloneReadOnly, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local def = table.freeze({ coerce = false, int = false, nan = false })
+        local newDef = table.clone(def)
+        newDef.int = true
+        def.int = true
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(5, result.errors[0].location.begin.line);
+
+    PropertyAccessViolation* pav = get<PropertyAccessViolation>(result.errors[0]);
+    REQUIRE(pav);
+    CHECK_EQ("int", pav->key);
+    CHECK_EQ(PropertyAccessViolation::CannotWrite, pav->context);
+    CHECK_EQ("{ read coerce: boolean, read int: boolean, read nan: boolean }", toString(requireType("def"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_of_read_only_annotated_table_is_writable")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixTableCloneReadOnly, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local t: { read x: number } = { x = 1 }
+        local c = table.clone(t)
+        c.x = 2
+    )"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_support_variadic_any_in_old_solver")

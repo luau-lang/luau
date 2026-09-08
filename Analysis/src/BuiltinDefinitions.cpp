@@ -26,6 +26,7 @@
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
+LUAU_FASTFLAGVARIABLE(LuauFixTableCloneReadOnly)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -1698,6 +1699,16 @@ bool MagicClone::infer(const MagicFunctionCallContext& context)
     if (auto tableType = getMutable<TableType>(resultType))
     {
         tableType->scope = context.constraint->scope.get();
+
+        if (FFlag::LuauFixTableCloneReadOnly)
+        {
+            // table.clone always produces a fresh, unfrozen table
+            for (auto& [_, prop] : tableType->props)
+            {
+                if (prop.isReadOnly())
+                    prop.writeTy = prop.readTy;
+            }
+        }
     }
 
     trackInteriorFreeType(context.constraint->scope.get(), resultType);
