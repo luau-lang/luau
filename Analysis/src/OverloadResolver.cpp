@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixSwallowedTypeFunctionErrors)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 
@@ -575,6 +576,12 @@ void OverloadResolver::testFunction(
             for (const auto& gbm : r.genericBoundsMismatches)
                 errors.emplace_back(fnLocation, gbm);
             result.incompatibleOverloads.emplace_back(fnTy, std::move(errors));
+        }
+        else if (FFlag::LuauFixSwallowedTypeFunctionErrors && !r.errors.empty())
+        {
+            for (TypeError& e : r.errors)
+                e.location = callLoc;
+            result.incompatibleOverloads.emplace_back(fnTy, std::move(r.errors));
         }
         else if (areUnsatisfiedArgumentsOptional(r.reasoning, argsPack, ftv->argTypes))
         {

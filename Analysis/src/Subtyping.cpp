@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixSwallowedTypeFunctionErrors)
 
 
 namespace Luau
@@ -862,7 +863,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
             subTypeFunctionInstance = get<TypeFunctionInstanceType>(*substSubTy);
         }
 
-        result = isCovariantWith(env, subTypeFunctionInstance, superTy, scope);
+        result = isCovariantWith(env, subTypeFunctionInstance, superTy, scope, mappedGenericsApplied);
         result.isCacheable = !mappedGenericsApplied;
     }
     else if (auto superTypeFunctionInstance = get<TypeFunctionInstanceType>(superTy))
@@ -874,7 +875,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
             superTypeFunctionInstance = get<TypeFunctionInstanceType>(*substSuperTy);
         }
 
-        result = isCovariantWith(env, subTy, superTypeFunctionInstance, scope);
+        result = isCovariantWith(env, subTy, superTypeFunctionInstance, scope, mappedGenericsApplied);
         result.isCacheable = !mappedGenericsApplied;
     }
     else if (get<GenericType>(subTy) || get<GenericType>(superTy))
@@ -2881,11 +2882,12 @@ SubtypingResult Subtyping::isCovariantWith(
     SubtypingEnvironment& env,
     const TypeFunctionInstanceType* subFunctionInstance,
     const TypeId superTy,
-    NotNull<Scope> scope
+    NotNull<Scope> scope,
+    bool substitutedGenerics
 )
 {
     // Reduce the type function instance
-    auto [ty, errors] = handleTypeFunctionReductionResult(subFunctionInstance, scope);
+    auto [ty, errors] = handleTypeFunctionReductionResult(subFunctionInstance, scope, substitutedGenerics);
 
     // If we return optional, that means the type function was irreducible - we can reduce that to never
     return isCovariantWith(env, ty, superTy, scope).withErrors(errors).withSubComponent(TypePath::Reduction{ty});
@@ -2895,11 +2897,12 @@ SubtypingResult Subtyping::isCovariantWith(
     SubtypingEnvironment& env,
     const TypeId subTy,
     const TypeFunctionInstanceType* superFunctionInstance,
-    NotNull<Scope> scope
+    NotNull<Scope> scope,
+    bool substitutedGenerics
 )
 {
     // Reduce the type function instance
-    auto [ty, errors] = handleTypeFunctionReductionResult(superFunctionInstance, scope);
+    auto [ty, errors] = handleTypeFunctionReductionResult(superFunctionInstance, scope, substitutedGenerics);
     return isCovariantWith(env, subTy, ty, scope).withErrors(errors).withSuperComponent(TypePath::Reduction{ty});
 }
 
@@ -2914,7 +2917,11 @@ TypeId Subtyping::makeAggregateType(const Container& container, TypeId orElse)
         return arena->addType(T{std::vector<TypeId>(begin(container), end(container))});
 }
 
-std::pair<TypeId, ErrorVec> Subtyping::handleTypeFunctionReductionResult(const TypeFunctionInstanceType* functionInstance, NotNull<Scope> scope)
+std::pair<TypeId, ErrorVec> Subtyping::handleTypeFunctionReductionResult(
+    const TypeFunctionInstanceType* functionInstance,
+    NotNull<Scope> scope,
+    bool substitutedGenerics
+)
 {
     TypeFunctionContext context{arena, builtinTypes, scope, normalizer, typeFunctionRuntime, iceReporter, NotNull{&limits}, NotNull{this}};
 
@@ -2928,6 +2935,16 @@ std::pair<TypeId, ErrorVec> Subtyping::handleTypeFunctionReductionResult(const T
     }
     if (result.reducedTypes.contains(function))
         return {function, errors};
+    if (FFlag::LuauFixSwallowedTypeFunctionErrors && substitutedGenerics)
+    {
+        // An instance produced by substituting generics is never visited by the type checker, so any user-defined type
+        // function error raised while reducing it would otherwise be lost.
+        for (TypeError& e : result.errors)
+        {
+            if (get<UserDefinedTypeFunctionError>(e))
+                errors.emplace_back(std::move(e));
+        }
+    }
     return {builtinTypes->neverType, errors};
 }
 

@@ -398,13 +398,15 @@ private:
         SubtypingEnvironment& env,
         const TypeFunctionInstanceType* subFunctionInstance,
         const TypeId superTy,
-        NotNull<Scope> scope
+        NotNull<Scope> scope,
+        bool substitutedGenerics
     );
     SubtypingResult isCovariantWith(
         SubtypingEnvironment& env,
         const TypeId subTy,
         const TypeFunctionInstanceType* superFunctionInstance,
-        NotNull<Scope> scope
+        NotNull<Scope> scope,
+        bool substitutedGenerics
     );
 
     // Pack subtyping
@@ -494,7 +496,11 @@ private:
     template<typename T, typename Container>
     TypeId makeAggregateType(const Container& container, TypeId orElse);
 
-    std::pair<TypeId, ErrorVec> handleTypeFunctionReductionResult(const TypeFunctionInstanceType* functionInstance, NotNull<Scope> scope);
+    std::pair<TypeId, ErrorVec> handleTypeFunctionReductionResult(
+        const TypeFunctionInstanceType* functionInstance,
+        NotNull<Scope> scope,
+        bool substitutedGenerics
+    );
 
     [[noreturn]] void unexpected(TypeId ty);
     [[noreturn]] void unexpected(TypePackId tp);

@@ -10,6 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixSwallowedTypeFunctionErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
@@ -1124,6 +1125,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_user_error_is_reported")
     UserDefinedTypeFunctionError* e = get<UserDefinedTypeFunctionError>(result.errors[0]);
     REQUIRE(e);
     CHECK(e->message == "'errors_if_string' type function errored at runtime: [string \"errors_if_string\"]:5: We are in a math class! not english");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_user_error_is_reported_when_reduced_during_subtyping")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixSwallowedTypeFunctionErrors, true};
+
+    CheckResult result = check(R"(
+        type function check(ty)
+            assert(ty.tag == "union")
+            return ty
+        end
+
+        local function foo<T>(x: check<T>)
+        end
+
+        foo(1)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    UserDefinedTypeFunctionError* e = get<UserDefinedTypeFunctionError>(result.errors[0]);
+    REQUIRE(e);
+    CHECK(e->message == "'check' type function errored at runtime: [string \"check\"]:3: assertion failed!");
+    CHECK(result.errors[0].location == Location{{9, 8}, {9, 14}});
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_type_overrides_call_metamethod")
