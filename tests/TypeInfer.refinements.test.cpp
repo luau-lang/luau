@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauFixSingletonReduceGenerics)
 
 using namespace Luau;
 
@@ -3393,6 +3394,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
 
     // `x` is annotated `number?`, but the then-branch still refines it by `truthy` down to `number`.
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "equality_refinement_on_generic_does_not_leak_singleton_type_function")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixSingletonReduceGenerics, true},
+    };
+
+    CheckResult result = check(R"(
+        local function findi(t, v)
+            for i = 1, #t do
+                if t[i] == v then
+                    return i, v
+                end
+            end
+
+            return -1, v
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("<T, U>({U}, T) -> (number, T)", toString(requireType("findi")));
 }
 
 TEST_SUITE_END();
