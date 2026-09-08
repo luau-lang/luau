@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauFixGetmetatableOfTableIsUnknown)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -1606,6 +1607,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_respects_metatable_metamethod")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(toString(requireTypeAlias("Metatable")), "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_of_table_primitive_is_unknown")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixGetmetatableOfTableIsUnknown, true};
+
+    CheckResult result = check(R"(
+        local function f(t: unknown)
+            if typeof(t) == "table" then
+                local mt = getmetatable(t)
+                return mt
+            end
+            return nil
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("f")), "(unknown) -> unknown");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_function_correct_cycle_check")

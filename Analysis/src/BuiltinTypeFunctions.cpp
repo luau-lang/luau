@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
+LUAU_FASTFLAGVARIABLE(LuauFixGetmetatableOfTableIsUnknown)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 
@@ -2437,8 +2438,12 @@ static TypeFunctionReductionResult<TypeId> getmetatableHelper(TypeId targetTy, c
         if (primitive->type == PrimitiveType::Table)
         {
             // If we have `table` then we could have something with a
-            // metatable, so claim the result is `table?`.
-            result = ctx->arena->addType(UnionType{{ctx->builtins->tableType, ctx->builtins->nilType}});
+            // metatable, and that metatable's `__metatable` field can be any
+            // value at all, so the result is `unknown`.
+            if (FFlag::LuauFixGetmetatableOfTableIsUnknown)
+                result = ctx->builtins->unknownType;
+            else
+                result = ctx->arena->addType(UnionType{{ctx->builtins->tableType, ctx->builtins->nilType}});
         }
         else
         {
