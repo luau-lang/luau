@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauTrackPrefixLocal)
 LUAU_FASTFLAG(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauFixReturnTypeFunctionUnion)
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
 
@@ -2979,6 +2980,114 @@ TEST_CASE_FIXTURE(Fixture, "parse_return_type_ast_type_pack_explicit")
     REQUIRE_EQ(1, returnTypePack->typeList.types.size);
     REQUIRE(!returnTypePack->typeList.tailType);
     CHECK(returnTypePack->typeList.types.data[0]->is<AstTypeReference>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_function_return_type_union_of_function_types")
+{
+    ScopedFastFlag sff{FFlag::LuauFixReturnTypeFunctionUnion, true};
+
+    AstStatBlock* stat = parse(R"(
+        local function baz(): () -> () | () -> ()
+            return function() end
+        end
+    )");
+    REQUIRE(stat);
+    REQUIRE_EQ(1, stat->body.size);
+
+    auto func = stat->body.data[0]->as<AstStatLocalFunction>();
+    REQUIRE(func);
+
+    auto returnTypePack = func->func->returnAnnotation->as<AstTypePackExplicit>();
+    REQUIRE(returnTypePack);
+    REQUIRE_EQ(1, returnTypePack->typeList.types.size);
+    REQUIRE(!returnTypePack->typeList.tailType);
+
+    auto unionType = returnTypePack->typeList.types.data[0]->as<AstTypeUnion>();
+    REQUIRE(unionType);
+    REQUIRE_EQ(2, unionType->types.size);
+    CHECK(unionType->types.data[0]->is<AstTypeFunction>());
+    CHECK(unionType->types.data[1]->is<AstTypeFunction>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_function_return_type_optional_and_intersection_of_function_type")
+{
+    ScopedFastFlag sff{FFlag::LuauFixReturnTypeFunctionUnion, true};
+
+    AstStatBlock* stat = parse(R"(
+        local function a(): () -> ()?
+        end
+        local function b(): (number) -> string & () -> ()
+        end
+    )");
+    REQUIRE(stat);
+    REQUIRE_EQ(2, stat->body.size);
+
+    auto funcA = stat->body.data[0]->as<AstStatLocalFunction>();
+    REQUIRE(funcA);
+    auto returnTypePackA = funcA->func->returnAnnotation->as<AstTypePackExplicit>();
+    REQUIRE(returnTypePackA);
+    REQUIRE_EQ(1, returnTypePackA->typeList.types.size);
+    REQUIRE(!returnTypePackA->typeList.tailType);
+
+    auto optionalType = returnTypePackA->typeList.types.data[0]->as<AstTypeUnion>();
+    REQUIRE(optionalType);
+    REQUIRE_EQ(2, optionalType->types.size);
+    CHECK(optionalType->types.data[0]->is<AstTypeFunction>());
+    CHECK(optionalType->types.data[1]->is<AstTypeOptional>());
+
+    auto funcB = stat->body.data[1]->as<AstStatLocalFunction>();
+    REQUIRE(funcB);
+    auto returnTypePackB = funcB->func->returnAnnotation->as<AstTypePackExplicit>();
+    REQUIRE(returnTypePackB);
+    REQUIRE_EQ(1, returnTypePackB->typeList.types.size);
+    REQUIRE(!returnTypePackB->typeList.tailType);
+
+    auto functionType = returnTypePackB->typeList.types.data[0]->as<AstTypeFunction>();
+    REQUIRE(functionType);
+    auto functionReturnTypePack = functionType->returnTypes->as<AstTypePackExplicit>();
+    REQUIRE(functionReturnTypePack);
+    REQUIRE_EQ(1, functionReturnTypePack->typeList.types.size);
+    REQUIRE(!functionReturnTypePack->typeList.tailType);
+
+    auto intersectionType = functionReturnTypePack->typeList.types.data[0]->as<AstTypeIntersection>();
+    REQUIRE(intersectionType);
+    REQUIRE_EQ(2, intersectionType->types.size);
+    CHECK(intersectionType->types.data[0]->is<AstTypeReference>());
+    CHECK(intersectionType->types.data[1]->is<AstTypeFunction>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_function_return_type_function_union_precedence_unchanged")
+{
+    ScopedFastFlag sff{FFlag::LuauFixReturnTypeFunctionUnion, true};
+
+    AstStatBlock* stat = parse(R"(
+        local function boo(): () -> (string) | () -> ()
+        end
+    )");
+    REQUIRE(stat);
+    REQUIRE_EQ(1, stat->body.size);
+
+    auto func = stat->body.data[0]->as<AstStatLocalFunction>();
+    REQUIRE(func);
+    auto returnTypePack = func->func->returnAnnotation->as<AstTypePackExplicit>();
+    REQUIRE(returnTypePack);
+    REQUIRE_EQ(1, returnTypePack->typeList.types.size);
+    REQUIRE(!returnTypePack->typeList.tailType);
+
+    auto functionType = returnTypePack->typeList.types.data[0]->as<AstTypeFunction>();
+    REQUIRE(functionType);
+    auto functionReturnTypePack = functionType->returnTypes->as<AstTypePackExplicit>();
+    REQUIRE(functionReturnTypePack);
+    REQUIRE_EQ(1, functionReturnTypePack->typeList.types.size);
+    REQUIRE(!functionReturnTypePack->typeList.tailType);
+
+    auto unionType = functionReturnTypePack->typeList.types.data[0]->as<AstTypeUnion>();
+    REQUIRE(unionType);
+    REQUIRE_EQ(2, unionType->types.size);
+    auto groupedType = unionType->types.data[0]->as<AstTypeGroup>();
+    REQUIRE(groupedType);
+    CHECK(groupedType->type->is<AstTypeReference>());
+    CHECK(unionType->types.data[1]->is<AstTypeFunction>());
 }
 
 TEST_CASE_FIXTURE(Fixture, "inner_and_outer_scope_of_functions_have_correct_end_position")

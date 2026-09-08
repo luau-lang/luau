@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAGVARIABLE(LuauFixReturnTypeFunctionUnion)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -2723,6 +2724,9 @@ AstTypePack* Parser::parseReturnType()
             returnArrowPosition
         );
     }
+
+    if (FFlag::LuauFixReturnTypeFunctionUnion)
+        tail = parseTypeSuffix(tail, begin.location);
 
     AstTypePackExplicit* node = allocator.alloc<AstTypePackExplicit>(Location{location, tail->location}, AstTypeList{copy(&tail, 1), nullptr});
     if (options.storeCstData)
