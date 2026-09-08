@@ -36,6 +36,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixIndexWithStringSingletonKeys)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
@@ -2194,7 +2195,18 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
                 reportError(PropertyAccessViolation{exprType, "indexer", PropertyAccessViolation::CannotWrite}, indexExpr->location);
         }
         else
-            reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
+        {
+            std::optional<std::vector<std::string>> keys =
+                FFlag::LuauFixIndexWithStringSingletonKeys ? getStringSingletonValues(indexType) : std::nullopt;
+
+            if (keys)
+            {
+                for (const std::string& key : *keys)
+                    checkIndexTypeFromType(exprType, key, context, indexExpr->location, indexType);
+            }
+            else
+                reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
+        }
     }
     else if (auto mt = get<MetatableType>(exprType))
     {

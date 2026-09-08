@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
+LUAU_FASTFLAG(LuauFixIndexWithStringSingletonKeys)
 LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
@@ -7590,6 +7591,87 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_sealed_table_with_keyof_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixIndexWithStringSingletonKeys, true},
+    };
+
+    // https://github.com/luau-lang/luau/issues/2397
+    CheckResult result = check(R"(
+        local t: {['a']: number, ['b']: number, ['c']: number} = {['a'] = 1, ['b'] = 2, ['c'] = 3}
+        local i: keyof<typeof(t)> = 'a'
+        local x = t[i]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "index_sealed_table_with_string_singleton_and_union_of_singletons")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixIndexWithStringSingletonKeys, true},
+    };
+
+    CheckResult result = check(R"(
+        local t: {['a']: number, ['b']: string, ['c']: number} = {['a'] = 1, ['b'] = 'two', ['c'] = 3}
+        local i1: 'a' = 'a'
+        local i2: 'a' | 'b' = 'b'
+        local i3: 'a' | 'b' | 'c' = 'c'
+        local x1 = t[i1]
+        local x2 = t[i2]
+        local x3 = t[i3]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("x1")));
+    CHECK_EQ("number | string", toString(requireType("x2")));
+    CHECK_EQ("number | string", toString(requireType("x3")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "index_sealed_table_with_union_containing_unknown_singleton_key_errors")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixIndexWithStringSingletonKeys, true},
+    };
+
+    CheckResult result = check(R"(
+        local t: {['a']: number, ['b']: number} = {['a'] = 1, ['b'] = 2}
+        local i: 'a' | 'd' = 'a'
+        local x = t[i]
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK(get<UnknownProperty>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "assign_to_sealed_table_with_union_of_string_singleton_keys")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixIndexWithStringSingletonKeys, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local t: {['a']: number, ['b']: number} = {['a'] = 1, ['b'] = 2}
+        local i: 'a' | 'b' = 'b'
+        t[i] = 5
+    )"));
+
+    CheckResult result = check(R"(
+        local t: {['a']: number, ['b']: number} = {['a'] = 1, ['b'] = 2}
+        local i: 'a' | 'b' = 'b'
+        t[i] = 'nope'
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
 }
 
 TEST_SUITE_END();

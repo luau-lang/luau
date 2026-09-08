@@ -43,6 +43,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings)
 LUAU_FASTFLAGVARIABLE(LuauCloneTypeFunctionFromForeignArena)
+LUAU_FASTFLAGVARIABLE(LuauFixIndexWithStringSingletonKeys)
 LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArguments)
 LUAU_FASTFLAGVARIABLE(LuauInstantiationCheckArgumentsDedup)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -2170,6 +2171,33 @@ bool ConstraintSolver::tryDispatchHasIndexer(
             return true;
         }
 
+        if (FFlag::LuauFixIndexWithStringSingletonKeys)
+        {
+            if (std::optional<std::vector<std::string>> keys = getStringSingletonValues(indexType))
+            {
+                UnionBuilder ub{arena, builtinTypes};
+                bool allPresent = true;
+
+                for (const std::string& key : *keys)
+                {
+                    auto it = tt->props.find(key);
+                    if (it == tt->props.end() || !it->second.readTy)
+                    {
+                        allPresent = false;
+                        break;
+                    }
+
+                    ub.add(*it->second.readTy);
+                }
+
+                if (allPresent)
+                {
+                    bind(constraint, resultType, ub.build());
+                    return true;
+                }
+            }
+        }
+
         if (tt->state == TableState::Unsealed)
         {
             // FIXME this is greedy.
@@ -2615,6 +2643,40 @@ bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const
             unify(constraint, rhsType, lhsTable->indexer->indexResultType);
             bind(constraint, c.propType, addUnion(arena, builtinTypes, {lhsTable->indexer->indexResultType, builtinTypes->nilType}));
             return true;
+        }
+
+        if (FFlag::LuauFixIndexWithStringSingletonKeys)
+        {
+            if (std::optional<std::vector<std::string>> keys = getStringSingletonValues(indexType))
+            {
+                std::vector<TypeId> writeTypes;
+                writeTypes.reserve(keys->size());
+
+                for (const std::string& key : *keys)
+                {
+                    auto it = lhsTable->props.find(key);
+                    if (it == lhsTable->props.end() || !it->second.writeTy)
+                    {
+                        writeTypes.clear();
+                        break;
+                    }
+
+                    writeTypes.push_back(*it->second.writeTy);
+                }
+
+                if (!writeTypes.empty())
+                {
+                    UnionBuilder ub{arena, builtinTypes};
+                    for (TypeId writeTy : writeTypes)
+                    {
+                        unify(constraint, rhsType, writeTy);
+                        ub.add(writeTy);
+                    }
+
+                    bind(constraint, c.propType, ub.build());
+                    return true;
+                }
+            }
         }
 
         if (lhsTable->state == TableState::Unsealed || lhsTable->state == TableState::Free)

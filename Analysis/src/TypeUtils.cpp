@@ -946,6 +946,43 @@ TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, st
     return ub.build();
 }
 
+std::optional<std::vector<std::string>> getStringSingletonValues(TypeId ty)
+{
+    ty = follow(ty);
+
+    std::vector<std::string> result;
+
+    auto addSingleton = [&](TypeId option) -> bool
+    {
+        const SingletonType* st = get<SingletonType>(follow(option));
+        if (!st)
+            return false;
+
+        const StringSingleton* ss = get<StringSingleton>(st);
+        if (!ss)
+            return false;
+
+        result.push_back(ss->value);
+        return true;
+    };
+
+    if (const UnionType* ut = get<UnionType>(ty))
+    {
+        for (TypeId option : ut)
+        {
+            if (!addSingleton(option))
+                return std::nullopt;
+        }
+    }
+    else if (!addSingleton(ty))
+        return std::nullopt;
+
+    if (result.empty())
+        return std::nullopt;
+
+    return result;
+}
+
 struct ContainsGenerics : public IterativeTypeVisitor
 {
     NotNull<DenseHashSet<const void*>> generics;

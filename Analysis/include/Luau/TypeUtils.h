@@ -397,6 +397,12 @@ TypeId addIntersection(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTy
 TypeId addUnion(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, std::initializer_list<TypeId> list);
 
 /**
+ * @return The set of string values `ty` can take if `ty` is a string singleton
+ *         or a union of string singletons, and nullopt otherwise.
+ */
+std::optional<std::vector<std::string>> getStringSingletonValues(TypeId ty);
+
+/**
  * @returns if `ty` contains a generic in the set `generics`.
  */
 bool containsGeneric(TypeId ty, NotNull<DenseHashSet<const void*>> generics);
