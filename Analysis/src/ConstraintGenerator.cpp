@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixGlobalSelfReferentialAssignment)
 
 namespace Luau
 {
@@ -3888,7 +3889,14 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprGlobal* glob
         {
             LUAU_ASSERT(bt->getOwner() == nullptr);
             uninitializedGlobals.erase(global->name);
-            emplaceType<BoundType>(asMutable(followedAnnotation), rhsType);
+
+            // If the right hand side is itself blocked, it may depend on this very global (eg `G = f(G)`).
+            // Binding the global directly to it would make the owning constraint wait on its own result, so
+            // we bind the global to a free type and let the subtype constraint below flow the type into it.
+            if (FFlag::LuauFixGlobalSelfReferentialAssignment && get<BlockedType>(follow(rhsType)))
+                emplaceType<BoundType>(asMutable(followedAnnotation), freshType(scope, Polarity::Mixed));
+            else
+                emplaceType<BoundType>(asMutable(followedAnnotation), rhsType);
         }
 
 

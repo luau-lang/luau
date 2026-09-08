@@ -32,6 +32,7 @@ LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauCheckReadTyWhenRelatingExtern)
 LUAU_FASTFLAG(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAG(LuauFixGlobalSelfReferentialAssignment)
 
 using namespace Luau;
 
@@ -1750,6 +1751,30 @@ TEST_CASE_FIXTURE(Fixture, "react_lua_follow_free_type_ub")
             end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "global_assigned_from_call_that_reads_the_same_global")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixGlobalSelfReferentialAssignment, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local function combo(n): number
+            return n
+        end
+
+        GizmoMode = combo(GizmoMode)
+    )");
+
+    // Only the "unknown global" complaint is expected; type inference must complete.
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    UnknownSymbol* us = get<UnknownSymbol>(result.errors[0]);
+    REQUIRE(us);
+    CHECK_EQ("GizmoMode", us->name);
+    CHECK_EQ("number", toString(requireType("GizmoMode")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "visit_error_nodes_in_lvalue")
