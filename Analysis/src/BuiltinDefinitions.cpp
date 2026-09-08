@@ -26,6 +26,7 @@
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
+LUAU_FASTFLAGVARIABLE(LuauFixRawGetOnTableType)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -157,6 +158,18 @@ struct MagicPcall final : MagicFunction
         WithPredicate<TypePackId>
     ) override;
     bool infer(const MagicFunctionCallContext& ctx) override;
+};
+
+struct MagicRawGet final : MagicFunction
+{
+    std::optional<WithPredicate<TypePackId>> handleOldSolver(
+        struct TypeChecker&,
+        const std::shared_ptr<struct Scope>&,
+        const class AstExprCall&,
+        WithPredicate<TypePackId>
+    ) override;
+    bool infer(const MagicFunctionCallContext& context) override;
+    bool typeCheck(const MagicFunctionTypeCheckContext& context) override;
 };
 
 TypeId makeUnion(TypeArena& arena, std::vector<TypeId>&& types)
@@ -487,6 +500,9 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     attachMagicFunction(getGlobalBinding(globals, "setmetatable"), std::make_shared<MagicSetMetatable>());
     attachMagicFunction(getGlobalBinding(globals, "select"), std::make_shared<MagicSelect>());
+
+    if (frontend.getLuauSolverMode() == SolverMode::New)
+        attachMagicFunction(getGlobalBinding(globals, "rawget"), std::make_shared<MagicRawGet>());
 
     if (TableType* ttv = getMutable<TableType>(getGlobalBinding(globals, "table")))
     {
@@ -1207,6 +1223,47 @@ bool MagicPcall::infer(const MagicFunctionCallContext& ctx)
     asMutable(ctx.result)->ty.emplace<BoundTypePack>(res);
 
     return true;
+}
+
+// `rawget` is declared as `<K, V>(tab: {[K]: V}, k: K) -> V?`, but the top table type `table` (e.g. the result of
+// refining `unknown` with `typeof(x) == "table"`) is not a subtype of `{[K]: V}`. Indexing any table without
+// invoking metamethods is always safe, so calls on `table` are accepted and produce `unknown`.
+static bool isRawGetOnTopTableType(TypePackId arguments, const AstExprCall* callSite)
+{
+    if (!FFlag::LuauFixRawGetOnTableType || callSite->args.size != 2)
+        return false;
+
+    const auto& [params, tail] = flatten(arguments);
+    if (params.empty())
+        return false;
+
+    return isPrim(follow(params[0]), PrimitiveType::Table);
+}
+
+std::optional<WithPredicate<TypePackId>> MagicRawGet::handleOldSolver(
+    TypeChecker& typechecker,
+    const ScopePtr& scope,
+    const AstExprCall& expr,
+    WithPredicate<TypePackId> withPredicate
+)
+{
+    return std::nullopt;
+}
+
+bool MagicRawGet::infer(const MagicFunctionCallContext& context)
+{
+    if (!isRawGetOnTopTableType(context.arguments, context.callSite))
+        return false;
+
+    TypePackId resultPack = context.solver->arena->addTypePack({context.solver->builtinTypes->unknownType});
+    asMutable(context.result)->ty.emplace<BoundTypePack>(resultPack);
+
+    return true;
+}
+
+bool MagicRawGet::typeCheck(const MagicFunctionTypeCheckContext& context)
+{
+    return isRawGetOnTopTableType(context.arguments, context.callSite);
 }
 
 TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)

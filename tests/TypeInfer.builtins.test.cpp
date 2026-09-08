@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixRawGetOnTableType)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -2052,6 +2053,47 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_function")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Argument count mismatch. Function 'table.freeze' expects 1 argument, but none are specified", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_accepts_top_table_type")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixRawGetOnTableType, true}};
+
+    CheckResult result = check(R"(
+        local tbl: unknown = nil
+        assert(typeof(tbl) == "table")
+        local foo = rawget(tbl, "hey")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("unknown", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_on_top_table_type_still_checks_argument_count")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixRawGetOnTableType, true}};
+
+    CheckResult result = check(R"(
+        local tbl: unknown = nil
+        assert(typeof(tbl) == "table")
+        local foo = rawget(tbl)
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_on_concrete_table_still_infers_value_type")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixRawGetOnTableType, true}};
+
+    CheckResult result = check(R"(
+        local t: { [string]: number } = {}
+        local x = rawget(t, "hey")
+        local y = rawget(5, "hey")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("number?", toString(requireType("x")));
 }
 
 TEST_SUITE_END();
