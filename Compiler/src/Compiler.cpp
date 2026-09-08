@@ -38,6 +38,7 @@ LUAU_FASTFLAGVARIABLE(LuauCompileCleanBlockDeadClose)
 LUAU_FASTFLAGVARIABLE(LuauCompileContinueEagerClose)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauCompileConcatTargetTop)
+LUAU_FASTFLAGVARIABLE(LuauCompileInlineUnusedVarargs)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauOptimizeExportTable)
@@ -116,6 +117,22 @@ static BytecodeBuilder::StringRef sref(AstArray<const char> data)
     LUAU_ASSERT(data.data);
     return {data.data, data.size};
 }
+
+struct VarargsUsageVisitor : AstVisitor
+{
+    bool used = false;
+
+    bool visit(AstExprVarargs* node) override
+    {
+        used = true;
+        return false;
+    }
+
+    bool visit(AstExprFunction* node) override
+    {
+        return false;
+    }
+};
 
 struct Compiler
 {
@@ -625,7 +642,15 @@ struct Compiler
         f.upvals = upvals;
 
         // record information for inlining
-        if (options.optimizationLevel >= 2 && !func->vararg && !func->self && !getfenvUsed && !setfenvUsed)
+        bool varargUsed = func->vararg;
+        if (FFlag::LuauCompileInlineUnusedVarargs && func->vararg)
+        {
+            VarargsUsageVisitor visitor;
+            func->body->visit(&visitor);
+            varargUsed = visitor.used;
+        }
+
+        if (options.optimizationLevel >= 2 && !varargUsed && !func->self && !getfenvUsed && !setfenvUsed)
         {
             if (FFlag::DebugLuauNoInline && func->hasAttribute(AstAttr::Type::DebugNoinline))
             {

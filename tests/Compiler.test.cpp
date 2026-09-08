@@ -32,6 +32,7 @@ LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileMoveElision)
 LUAU_FASTFLAG(LuauCompileConcatTargetTop)
+LUAU_FASTFLAG(LuauCompileInlineUnusedVarargs)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
@@ -6992,8 +6993,151 @@ RETURN R1 1
     );
 }
 
+TEST_CASE("InlineUnusedVarargs")
+{
+    ScopedFastFlag sff{FFlag::LuauCompileInlineUnusedVarargs, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function foo(a, b, ...)
+    return a + b
+end
+
+local x = foo(1, 2)
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['foo']
+LOADN R1 3
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function foo(a, b, ...)
+    return a + b
+end
+
+local x = foo(1, 2, math.random())
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['foo']
+GETIMPORT R2 3 [math.random]
+CALL R2 0 1
+LOADN R1 3
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function foo(a, ...)
+    return a, ...
+end
+
+local x = foo(1, 2)
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['foo']
+MOVE R1 R0
+LOADN R2 1
+LOADN R3 2
+CALL R1 2 1
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function foo(a, ...)
+    return select("#", ...)
+end
+
+local x = foo(1, 2)
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['foo']
+MOVE R1 R0
+LOADN R2 1
+LOADN R3 2
+CALL R1 2 1
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function foo(a, ...)
+    local t = {...}
+    return a
+end
+
+local x = foo(1, 2)
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['foo']
+MOVE R1 R0
+LOADN R2 1
+LOADN R3 2
+CALL R1 2 1
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function foo(a, ...)
+    local function inner(...)
+        return ...
+    end
+    return a
+end
+
+local x = foo(1, 2)
+return x
+)",
+                   2,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['foo']
+DUPCLOSURE R2 K1 ['inner']
+LOADN R1 1
+RETURN R1 1
+)"
+    );
+}
+
 TEST_CASE("InlineProhibited")
 {
+    ScopedFastFlag sff{FFlag::LuauCompileInlineUnusedVarargs, false};
+
     // we can't inline variadic functions
     CHECK_EQ(
         "\n" + compileFunction(

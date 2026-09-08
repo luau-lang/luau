@@ -262,4 +262,23 @@ if not limitedstack then
   assert(not ok and string.find(msg, "too many results to unpack"))
 end
 
+-- testing variadic functions that don't use the vararg pack (candidates for inlining)
+do
+  local count = 0
+
+  local function unusedvararg(a, b, ...)
+    return a + b
+  end
+
+  local function sideeffect()
+    count += 1
+    return 3
+  end
+
+  assert(unusedvararg(1, 2) == 3)
+  assert(unusedvararg(1, 2, sideeffect()) == 3)
+  assert(count == 1)
+  assert(select('#', unusedvararg(1, 2, 3, 4)) == 1)
+end
+
 return('OK')
