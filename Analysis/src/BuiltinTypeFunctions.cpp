@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
+LUAU_FASTFLAG(LuauKeyofWaitsForPendingTableMutations)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 
 namespace Luau
@@ -1761,6 +1762,34 @@ bool computeKeysOf(TypeId ty, Set<std::optional<std::string>>& result, DenseHash
     return false;
 }
 
+// Collects unsealed table parts of a keyof operand whose set of keys may still
+// change because they have unsolved property assignments.
+static void collectPendingKeyofParts(TypeId ty, NotNull<TypeFunctionContext> ctx, DenseHashSet<TypeId>& seen, std::vector<TypeId>& pending)
+{
+    ty = follow(ty);
+    if (seen.contains(ty))
+        return;
+    seen.insert(ty);
+
+    if (auto ut = get<UnionType>(ty))
+    {
+        for (TypeId part : ut)
+            collectPendingKeyofParts(part, ctx, seen, pending);
+    }
+    else if (auto it = get<IntersectionType>(ty))
+    {
+        for (TypeId part : it)
+            collectPendingKeyofParts(part, ctx, seen, pending);
+    }
+    else if (auto mt = get<MetatableType>(ty))
+        collectPendingKeyofParts(mt->table, ctx, seen, pending);
+    else if (auto tt = get<TableType>(ty))
+    {
+        if (tt->state == TableState::Unsealed && ctx->solver && ctx->solver->hasUnresolvedPropertyAssignments(ty))
+            pending.push_back(ty);
+    }
+}
+
 } // namespace
 
 TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
@@ -1777,6 +1806,15 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
     }
 
     TypeId operandTy = follow(typeParams.at(0));
+
+    if (FFlag::LuauKeyofWaitsForPendingTableMutations && !ctx->force)
+    {
+        DenseHashSet<TypeId> seen;
+        std::vector<TypeId> pending;
+        collectPendingKeyofParts(operandTy, ctx, seen, pending);
+        if (!pending.empty())
+            return {std::nullopt, Reduction::MaybeOk, std::move(pending), {}};
+    }
 
     std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(operandTy);
 

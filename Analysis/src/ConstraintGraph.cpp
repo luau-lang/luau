@@ -8,6 +8,7 @@
 
 LUAU_FASTFLAG(DebugLuauLogSolver)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAGVARIABLE(LuauKeyofWaitsForPendingTableMutations)
 
 namespace Luau
 {
@@ -299,6 +300,20 @@ bool ConstraintGraph::hasUnsolvedDependencies(ConstraintVertex vertex)
     return deps->size() > 0;
 }
 
+bool ConstraintGraph::hasUnsolvedPropertyAssignments(ConstraintVertex vertex)
+{
+    auto deps = findDependencyList(vertex);
+    for (ConstraintVertex dep : *deps)
+    {
+        if (auto c = dep.get_if<const Constraint*>())
+        {
+            if ((*c)->c.get_if<AssignPropConstraint>() || (*c)->c.get_if<AssignIndexConstraint>())
+                return true;
+        }
+    }
+    return false;
+}
+
 bool ConstraintGraph::DEPRECATED_hasStrictlyMoreThanOneDependency(ConstraintVertex vertex)
 {
     LUAU_ASSERT(!FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier);
@@ -382,6 +397,18 @@ void ConstraintGraph::shiftReferences(T source, T target)
     TypePackIds mutatedTypePacks;
     ReferenceCountInitializer rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
     rci.traverse(target);
+
+    if constexpr (std::is_same_v<T, TypeId>)
+    {
+        if (FFlag::LuauKeyofWaitsForPendingTableMutations)
+        {
+            // Constraints that may mutate a pending type may also mutate whatever
+            // an unsolved type function it is bound to eventually reduces to.
+            if (auto tfit = get<TypeFunctionInstanceType>(target); tfit && tfit->state == TypeFunctionInstanceState::Unsolved)
+                mutatedTypes.insert(target);
+        }
+    }
+
     copyDependenciesToReachableTypes(source, sourceDependencies, std::move(mutatedTypes), std::move(mutatedTypePacks));
 
     // Types in the constraint graph are always dynamically discovered, so

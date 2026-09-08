@@ -615,6 +615,7 @@ struct TypeFunctionReducer
                 return;
 
             ctx->userFuncName = tfit->userFuncName;
+            ctx->force = force;
 
             TypeFunctionReductionResult<TypeId> result = tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, ctx);
             handleTypeFunctionReduction(subject, std::move(result));

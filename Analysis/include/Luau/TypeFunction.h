@@ -45,6 +45,9 @@ struct TypeFunctionContext
 
     std::optional<AstName> userFuncName; // Name of the user-defined type function; only available for UDTFs
 
+    // True when the solver is forcing reductions; blocking on pending types is no longer useful.
+    bool force = false;
+
     // Some type functions will create fresh instances as part of
     // being solved, for example:
     //

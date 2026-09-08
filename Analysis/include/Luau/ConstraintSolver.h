@@ -379,6 +379,9 @@ public:
      */
     bool hasUnresolvedConstraints(TypeId ty);
 
+    // Returns true if there are unsolved constraints that may still add properties to the given type.
+    bool hasUnresolvedPropertyAssignments(TypeId ty);
+
     /** Attempts to unify subTy with superTy.  If doing so would require unifying
      * BlockedTypes, fail and block the constraint on those BlockedTypes.
      *

@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauKeyofWaitsForPendingTableMutations)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -382,6 +383,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works_with_metatables")
     REQUIRE(tm);
     CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tm->wantedType));
     CHECK_EQ("\"w\" | \"x\" | \"y\" | \"z\"", toString(tm->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_sees_props_assigned_to_pending_expansion_table")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauKeyofWaitsForPendingTableMutations, true};
+
+    CheckResult result = check(R"(
+        local tbl_A = {} :: typeof({entry1 = 1})
+        tbl_A.entry1b = "test"
+
+        type tbl_B = {entry2: nil}
+        local tbl_C = nil :: getmetatable< typeof( setmetatable({}, {entry3b="test"}) ) >
+        tbl_C.entry3 = "test"
+        tbl_C.entry4 = "test"
+
+        local tbl_ABC = nil :: typeof(tbl_A) & tbl_B & typeof(tbl_C)
+
+        local indexesABC = nil :: keyof<typeof(tbl_ABC)>
+    )");
+
+    CHECK_EQ("\"entry1\" | \"entry1b\" | \"entry2\" | \"entry3\" | \"entry3b\" | \"entry4\"", toString(requireType("indexesABC")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_single_entry_no_uniontype")

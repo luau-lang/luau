@@ -4181,6 +4181,12 @@ bool ConstraintSolver::hasUnresolvedConstraints(TypeId ty)
     return cgraph->hasUnsolvedDependencies(ty);
 }
 
+bool ConstraintSolver::hasUnresolvedPropertyAssignments(TypeId ty)
+{
+    ty = follow(ty);
+    return cgraph->hasUnsolvedPropertyAssignments(ty);
+}
+
 TypeId ConstraintSolver::simplifyIntersection(NotNull<Scope> scope, Location location, TypeId left, TypeId right)
 {
     return ::Luau::simplifyIntersection(builtinTypes, arena, left, right).result;

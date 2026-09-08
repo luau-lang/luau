@@ -171,6 +171,12 @@ struct ConstraintGraph
     bool hasUnsolvedDependencies(ConstraintVertex vertex);
 
     /**
+     * Return whether the vertex has any unsolved dependencies that may add
+     * properties or indexers to it (`AssignPropConstraint` / `AssignIndexConstraint`).
+     */
+    bool hasUnsolvedPropertyAssignments(ConstraintVertex vertex);
+
+    /**
      * HACK: Used for `PrimitiveTypeConstraint` to check whether the free type
      * it "controls" has other outstanding dependencies.
      */
