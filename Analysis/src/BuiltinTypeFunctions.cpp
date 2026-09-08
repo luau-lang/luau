@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
+LUAU_FASTFLAGVARIABLE(LuauFixRefineMetatableProperty)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 
@@ -1312,6 +1313,37 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
             {
                 SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, target, discriminant);
                 return {result.result, {}};
+            }
+        }
+
+        // A property refinement on a metatable type applies to the underlying table: refine that and re-wrap the result in the
+        // metatable so that the other properties (and the metatable itself) are preserved.
+        if (FFlag::LuauFixRefineMetatableProperty)
+        {
+            if (auto mt = get<MetatableType>(target); mt && is<TableType>(discriminant))
+            {
+                TypeId table = follow(mt->table);
+                if (is<TableType>(table))
+                {
+                    SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, table, discriminant);
+                    if (!std::all_of(
+                            begin(result.blockedTypes),
+                            end(result.blockedTypes),
+                            [](TypeId v)
+                            {
+                                return is<FreeType, GenericType>(follow(v));
+                            }
+                        ))
+                        return {nullptr, {result.blockedTypes.begin(), result.blockedTypes.end()}};
+
+                    TypeId refinedTable = follow(result.result);
+                    if (is<NeverType>(refinedTable))
+                        return {ctx->builtins->neverType, {}};
+                    if (refinedTable == table)
+                        return {target, {}};
+
+                    return {ctx->arena->addType(MetatableType{refinedTable, mt->metatable, mt->syntheticName}), {}};
+                }
             }
         }
 

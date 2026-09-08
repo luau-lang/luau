@@ -13,6 +13,8 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
+LUAU_FASTFLAG(LuauFixRefineMetatableProperty)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
 
@@ -3393,6 +3395,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
 
     // `x` is annotated `number?`, but the then-branch still refines it by `truthy` down to `number`.
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_metatable_property_falsy_keeps_metatable_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauDontBlockRefinementUnconditionally, true},
+        {FFlag::LuauFixRefineMetatableProperty, true},
+    };
+
+    CheckResult result = check(R"(
+        type Data = { tool: { lens: number }, anything: number }
+        local Class = {}
+        Class.__index = Class
+        type Class = typeof(setmetatable({} :: Data, Class))
+
+        function Class.test(self: Class)
+            if self.anything then
+                return
+            end
+
+            local a: string = self
+            local b: string = self.tool
+            local c: string = self.tool.lens
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK_EQ("Expected this to be 'string', but got 'Class'", toString(result.errors[0]));
+    CHECK_EQ("Expected this to be 'string', but got '{ lens: number }'", toString(result.errors[1]));
+    CHECK_EQ("Expected this to be 'string', but got 'number'", toString(result.errors[2]));
 }
 
 TEST_SUITE_END();
