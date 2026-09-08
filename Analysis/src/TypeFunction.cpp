@@ -32,6 +32,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
+LUAU_FASTFLAG(LuauIterateGenericTableIntersection)
 
 namespace Luau
 {
@@ -460,6 +461,12 @@ struct TypeFunctionReducer
     template<typename T, typename I>
     bool testParameters(T subject, const I* tfit)
     {
+        // An instance owned by another arena cannot be replaced, so generic
+        // arguments must leave it alone even if the function could reduce them.
+        bool canReduceGenerics = tfit->function->canReduceGenerics;
+        if (FFlag::LuauIterateGenericTableIntersection && subject->owningArena != ctx->arena)
+            canReduceGenerics = false;
+
         for (TypeId p : tfit->typeArguments)
         {
             SkipTestResult skip = testForSkippability(p);
@@ -475,7 +482,7 @@ struct TypeFunctionReducer
 
                 return false;
             }
-            if (skip == SkipTestResult::Irreducible || (skip == SkipTestResult::Generic && !tfit->function->canReduceGenerics))
+            if (skip == SkipTestResult::Irreducible || (skip == SkipTestResult::Generic && !canReduceGenerics))
             {
                 if (FFlag::DebugLuauLogTypeFamilies)
                 {
@@ -510,7 +517,7 @@ struct TypeFunctionReducer
         {
             SkipTestResult skip = testForSkippability(p);
 
-            if (skip == SkipTestResult::Irreducible || (skip == SkipTestResult::Generic && !tfit->function->canReduceGenerics))
+            if (skip == SkipTestResult::Irreducible || (skip == SkipTestResult::Generic && !canReduceGenerics))
             {
                 if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is irreducible due to a dependency on %s\n", toString(subject, {true}).c_str(), toString(p, {true}).c_str());
