@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauFixTypeofTableLiteralSealed)
 
 namespace Luau
 {
@@ -5945,6 +5946,13 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
     else if (auto typeOf = annotation.as<AstTypeTypeof>())
     {
         TypeId ty = checkExpr(scope, *typeOf->expr).type;
+
+        if (FFlag::LuauFixTypeofTableLiteralSealed && typeOf->expr->is<AstExprTable>())
+        {
+            if (auto ttv = getMutable<TableType>(follow(ty)); ttv && ttv->state == TableState::Unsealed)
+                ttv->state = TableState::Sealed;
+        }
+
         return ty;
     }
     else if (annotation.is<AstTypeOptional>())

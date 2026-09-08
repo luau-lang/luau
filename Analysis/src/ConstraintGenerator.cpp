@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixTypeofTableLiteralSealed)
 
 namespace Luau
 {
@@ -4790,6 +4791,16 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
     else if (auto tof = ty->as<AstTypeTypeof>())
     {
         TypeId exprType = check(scope, tof->expr).ty;
+
+        // A table literal inside a `typeof` annotation never exists as a value at runtime,
+        // so nothing may later extend it: seal it to prevent assignments through the
+        // annotated type from mutating the type itself.
+        if (FFlag::LuauFixTypeofTableLiteralSealed && tof->expr->is<AstExprTable>())
+        {
+            if (auto ttv = getMutable<TableType>(follow(exprType)); ttv && ttv->state == TableState::Unsealed)
+                ttv->state = TableState::Sealed;
+        }
+
         result = exprType;
     }
     else if (ty->is<AstTypeOptional>())

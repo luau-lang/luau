@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
+LUAU_FASTFLAG(LuauFixTypeofTableLiteralSealed)
 LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
@@ -7590,6 +7591,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "mutating_typeof_table_literal_annotation_does_not_change_the_type")
+{
+    ScopedFastFlag sff{FFlag::LuauFixTypeofTableLiteralSealed, true};
+
+    CheckResult result = check(R"(
+        local a: () -> typeof({}) = nil :: any
+
+        a().foo = true
+
+        local b = a()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("{  }", toString(requireType("b")));
 }
 
 TEST_SUITE_END();
