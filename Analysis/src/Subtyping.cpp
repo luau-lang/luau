@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixGenericUnionUpperBound)
 
 
 namespace Luau
@@ -894,7 +895,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     }
     else if (auto p = get2<UnionType, UnionType>(subTy, superTy))
     {
-        result = isCovariantWith(env, p.first, p.second, scope);
+        result = FFlag::LuauFixGenericUnionUpperBound ? isCovariantWith(env, p.first, superTy, p.second, scope)
+                                                      : isCovariantWith(env, p.first, p.second, scope);
         if (!result.isSubtype && !result.normalizationTooComplex)
             result = trySemanticSubtyping(env, subTy, superTy, scope, result);
     }
@@ -1660,6 +1662,18 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 LUAU_NOINLINE
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const UnionType* subUnion, const UnionType* superUnion, NotNull<Scope> scope)
 {
+    return isCovariantWith(env, subUnion, nullptr, superUnion, scope);
+}
+
+LUAU_NOINLINE
+SubtypingResult Subtyping::isCovariantWith(
+    SubtypingEnvironment& env,
+    const UnionType* subUnion,
+    TypeId superTy,
+    const UnionType* superUnion,
+    NotNull<Scope> scope
+)
+{
     // A | B | C <: D | E | F
     //
     // ... when all of A, B and C are subtypes of D | E | F. However, we can
@@ -1688,7 +1702,17 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Unio
     {
         if (!superUnionOptions.contains(ty))
         {
-            result->andAlso(isCovariantWith(env, ty, superUnion, scope).withSubComponent(TypePath::Index{subIndex, TypePath::Index::Variant::Union}));
+            // A mapped generic must be bound against the whole union supertype,
+            // rather than the first option it happens to be compatible with.
+            bool bindWholeUnion = false;
+            if (FFlag::LuauFixGenericUnionUpperBound && superTy && get<GenericType>(ty))
+            {
+                const auto bounds = env.mappedGenerics.find(ty);
+                bindWholeUnion = bounds && !bounds->empty();
+            }
+
+            SubtypingResult next = bindWholeUnion ? isCovariantWith(env, ty, superTy, scope) : isCovariantWith(env, ty, superUnion, scope);
+            result->andAlso(next.withSubComponent(TypePath::Index{subIndex, TypePath::Index::Variant::Union}));
             if (result->normalizationTooComplex)
                 return SubtypingResult{false, /* normalizationTooComplex */ true};
         }

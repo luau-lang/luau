@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixGenericUnionUpperBound)
 
 using namespace Luau;
 
@@ -2059,6 +2060,46 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gh1985_array_of_union_for_generic_2")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(res);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gh2265_array_of_union_with_generic_option")
+{
+    ScopedFastFlag _{FFlag::LuauFixGenericUnionUpperBound, true};
+
+    CheckResult res = check(R"(
+        local function get<T>(path: {T | ""}): T
+            return (nil :: any)
+        end
+
+        local a = get({"Inventory", "Test"})
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(res);
+    CHECK_EQ("\"Inventory\" | \"Test\"", toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gh2265_generic_in_invariant_union_binds_whole_union")
+{
+    ScopedFastFlag _{FFlag::LuauFixGenericUnionUpperBound, true};
+
+    CheckResult res = check(R"(
+        local function get<T>(path: {T | ""}): T
+            return (nil :: any)
+        end
+        local function get2<T>(path: {x: T | ""}): T
+            return (nil :: any)
+        end
+
+        local t: {"Inventory" | "Test" | ""} = {}
+        local a = get(t)
+
+        local t2: {x: "Inventory" | "Test" | ""} = {x = ""}
+        local b = get2(t2)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(res);
+    CHECK_EQ("\"\" | \"Inventory\" | \"Test\"", toString(requireType("a")));
+    CHECK_EQ("\"\" | \"Inventory\" | \"Test\"", toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_isfrozen_and_clear_work_on_any_table")

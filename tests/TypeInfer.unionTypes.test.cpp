@@ -10,6 +10,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixGenericUnionUpperBound)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -713,12 +714,17 @@ TEST_CASE_FIXTURE(Fixture, "union_of_generic_functions")
 {
     CheckResult result = check(R"(
         function f(x : <a>(a) -> a?)
-            local y : (<a>(a?) -> a?) | (<b>(b) -> b) = x -- Not OK
+            local y : (<a>(a?) -> a?) | (<b>(b) -> b) = x
         end
      )");
 
-    // TODO: should this example typecheck?
-    LUAU_REQUIRE_ERRORS(result);
+    // `<a>(a) -> a?` is a subtype of `<a>(a?) -> a?`: instantiating `a` with
+    // `a?` yields `(a?) -> a?`, so the assignment is accepted once the generic
+    // is bound against the whole `a?` union in the return position.
+    if (FFlag::LuauFixGenericUnionUpperBound && !FFlag::DebugLuauForceOldSolver)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_of_generic_typepack_functions")
