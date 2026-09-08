@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
+LUAU_FASTFLAGVARIABLE(LuauIndexTypeFunctionRejectsWriteOnlyProps)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 
 namespace Luau
@@ -1971,9 +1972,9 @@ bool searchPropsAndIndexer(
             TypeId propTy;
             if (prop.readTy)
                 propTy = follow(*prop.readTy);
-            else if (prop.writeTy)
+            else if (prop.writeTy && !FFlag::LuauIndexTypeFunctionRejectsWriteOnlyProps)
                 propTy = follow(*prop.writeTy);
-            else // found the property, but there was no type associated with it
+            else // found the property, but it cannot be read from
                 return false;
 
             // property is a union type -> we need to extend our reduction type

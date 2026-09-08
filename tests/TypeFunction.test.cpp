@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauIndexTypeFunctionRejectsWriteOnlyProps)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -1099,6 +1100,52 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_w_bad_indexer")
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(toString(result.errors[0]) == "Property '\"d\"' does not exist on type 'MyObject'");
     CHECK(toString(result.errors[1]) == "Property 'boolean' does not exist on type 'MyObject'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_on_write_only_property")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauIndexTypeFunctionRejectsWriteOnlyProps, true};
+
+    CheckResult result = check(R"(
+        type MyObject = {write a: string, b: number}
+        type errType1 = index<MyObject, "a">
+        type errType2 = index<MyObject, "a" | "b">
+        type okType = index<MyObject, "b">
+        type rawType = rawget<MyObject, "a">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(toString(result.errors[0]) == "Property '\"a\"' does not exist on type 'MyObject'");
+    CHECK(toString(result.errors[1]) == "Property '\"a\" | \"b\"' does not exist on type 'MyObject'");
+    CHECK_EQ(toString(requireTypeAlias("okType")), "number");
+    CHECK_EQ(toString(requireTypeAlias("rawType")), "nil");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_on_write_only_property_from_user_defined_type_function")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauIndexTypeFunctionRejectsWriteOnlyProps, true};
+
+    CheckResult result = check(R"(
+        type function sampleTable()
+            local nt = types.newtable()
+            nt:setwriteproperty(types.singleton("a"), types.string)
+            nt:setreadproperty(types.singleton("b"), types.number)
+            return nt
+        end
+
+        type errType = index<sampleTable<>, "a">
+        type okType = index<sampleTable<>, "b">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"a\"' does not exist on type '{ write a: string, read b: number }'");
+    CHECK_EQ(toString(requireTypeAlias("okType")), "number");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_on_function_metamethods")
