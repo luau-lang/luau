@@ -26,6 +26,7 @@
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
+LUAU_FASTFLAGVARIABLE(LuauFixSelectGenericPackTail)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -1400,6 +1401,16 @@ bool MagicSelect::infer(const MagicFunctionCallContext& context)
                 std::vector<TypeId> res(v.begin() + offset, v.end());
                 TypePackId resTypePack = context.solver->arena->addTypePack({std::move(res), tail});
                 asMutable(context.result)->ty.emplace<BoundTypePack>(resTypePack);
+            }
+            else if (FFlag::LuauFixSelectGenericPackTail)
+            {
+                // The selected range lies entirely inside the tail. A generic tail
+                // cannot be indexed into, and a missing tail means there is nothing
+                // to select; fall back to the declared `...any` return type.
+                if (!tail || get<GenericTypePack>(follow(*tail)))
+                    return false;
+
+                asMutable(context.result)->ty.emplace<BoundTypePack>(*tail);
             }
             else if (tail)
                 asMutable(context.result)->ty.emplace<BoundTypePack>(*tail);

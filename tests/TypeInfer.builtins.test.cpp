@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixSelectGenericPackTail)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -833,6 +834,44 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_strin
     CHECK_EQ("any", toString(requireType("bar")));
     CHECK_EQ("any", toString(requireType("baz")));
     CHECK_EQ("any", toString(requireType("quux")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_generic_typepack_tail")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixSelectGenericPackTail, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        function _f<t...>(...: t...)
+            local a = select(1, ...)
+            local b = select(2, ...)
+            local c = select(1, "x", ...)
+            return a, b, c
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("<t...>(t...) -> (any, any, string)", toString(requireType("_f")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "select_out_of_range_without_tail")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixSelectGenericPackTail, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local a = select(2, "a")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("any", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_format_as_method")
