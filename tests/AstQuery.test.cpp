@@ -6,6 +6,8 @@
 #include "doctest.h"
 #include "Fixture.h"
 
+LUAU_FASTFLAG(LuauFixAncestryEofGlobalFunction)
+
 using namespace Luau;
 
 struct DocumentationSymbolFixture : BuiltinsFixture
@@ -235,6 +237,47 @@ if true then
     AstStat* parentStat = ancestry[ancestry.size() - 2]->asStat();
     REQUIRE(bool(parentStat));
     REQUIRE(parentStat->is<AstStatIf>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "ast_ancestry_at_eof_in_global_function_body")
+{
+    ScopedFastFlag sff{FFlag::LuauFixAncestryEofGlobalFunction, true};
+
+    check(R"(function bar()
+    )");
+
+    std::vector<AstNode*> ancestry = findAstAncestryOfPosition(*getMainSourceModule(), Position(1, 4));
+    REQUIRE_EQ(ancestry.size(), 4);
+    CHECK(ancestry[0]->is<AstStatBlock>());
+    CHECK(ancestry[1]->is<AstStatFunction>());
+    CHECK(ancestry[2]->is<AstExprFunction>());
+    REQUIRE(ancestry[3]->is<AstStatBlock>());
+    CHECK(!ancestry[3]->as<AstStatBlock>()->hasEnd);
+}
+
+TEST_CASE_FIXTURE(Fixture, "ast_ancestry_at_eof_in_local_function_body")
+{
+    check(R"(local function foo()
+    )");
+
+    std::vector<AstNode*> ancestry = findAstAncestryOfPosition(*getMainSourceModule(), Position(1, 4));
+    REQUIRE_EQ(ancestry.size(), 4);
+    CHECK(ancestry[0]->is<AstStatBlock>());
+    CHECK(ancestry[1]->is<AstStatLocalFunction>());
+    CHECK(ancestry[2]->is<AstExprFunction>());
+    CHECK(ancestry[3]->is<AstStatBlock>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "find_node_at_eof_in_global_function_body")
+{
+    ScopedFastFlag sff{FFlag::LuauFixAncestryEofGlobalFunction, true};
+
+    check(R"(function bar()
+    )");
+
+    AstNode* node = findNodeAtPosition(*getMainSourceModule(), Position(1, 4));
+    REQUIRE(node);
+    CHECK(node->is<AstStatBlock>());
 }
 
 TEST_CASE_FIXTURE(Fixture, "ac_ast_ancestry_at_number_const")

@@ -12,11 +12,20 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAGVARIABLE(LuauFixAncestryEofGlobalFunction)
+
 namespace Luau
 {
 
 namespace
 {
+
+// Nodes that end at the very end of the document are considered to contain positions at or past the end of the document.
+// This matters for unfinished blocks, e.g. `function foo()\n    |` where the cursor sits at the end of the function body.
+bool containsPositionOrDocumentEnd(const Location& location, Position pos, Position documentEnd)
+{
+    return location.contains(pos) || (location.end == documentEnd && pos >= documentEnd);
+}
 
 struct AutocompleteNodeFinder : public AstVisitor
 {
@@ -157,7 +166,8 @@ struct FindNode : public AstVisitor
         visit(static_cast<AstNode*>(node));
         if (node->name->location.contains(pos))
             node->name->visit(this);
-        else if (node->func->location.contains(pos))
+        else if (FFlag::LuauFixAncestryEofGlobalFunction ? containsPositionOrDocumentEnd(node->func->location, pos, documentEnd)
+                                                         : node->func->location.contains(pos))
             node->func->visit(this);
         return false;
     }
@@ -202,7 +212,8 @@ bool FindFullAncestry::visit(AstStatFunction* node)
     visit(static_cast<AstNode*>(node));
     if (node->name->location.contains(pos))
         node->name->visit(this);
-    else if (node->func->location.contains(pos))
+    else if (FFlag::LuauFixAncestryEofGlobalFunction ? containsPositionOrDocumentEnd(node->func->location, pos, documentEnd)
+                                                     : node->func->location.contains(pos))
         node->func->visit(this);
     return false;
 }
