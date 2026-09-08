@@ -18,6 +18,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
 LUAU_FASTFLAG(LuauUdtfPopulateEnv)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
+LUAU_FASTFLAG(LuauFixUdtfStateAcrossModules)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
@@ -3699,6 +3700,60 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_over_extern_generic_across_modules")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag fixUdtfState{FFlag::LuauFixUdtfStateAcrossModules, true};
+
+    fileResolver.source["game/A"] = R"(
+--!strict
+local module = {}
+
+type function propsFor(ty: type)
+    local out = types.newtable()
+
+    if not ty:is("extern") then
+        return out
+    end
+
+    local current = ty
+    while current do
+        for key, rw in current:properties() do
+            if rw.write then
+                out:setproperty(key, types.optional(rw.write))
+            end
+        end
+        current = current:writeparent()
+    end
+
+    return out
+end
+
+function module.test<T>(obj: T, props: propsFor<T>)
+end
+
+module.test(ChildClass.New(), {
+    BaseField = 1
+})
+
+return module
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = check(R"(
+--!strict
+local module = require(game.A)
+
+module.test(ChildClass.New(), { BaseField = 2 })
+module.test(ChildClass.New(), { BaseField = "oops" })
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, bResult);
+    CHECK(get<TypeMismatch>(bResult.errors[0]));
 }
 
 TEST_SUITE_END();

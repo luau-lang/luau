@@ -17,6 +17,7 @@
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRelaxConstraintOrderingForFunctionCheck)
+LUAU_FASTFLAG(LuauFixUdtfStateAcrossModules)
 
 namespace Luau
 {
@@ -187,6 +188,11 @@ struct BidirectionalTypePusher
 
         if (auto tfit = get<TypeFunctionInstanceType>(expectedType); tfit && tfit->state == TypeFunctionInstanceState::Unsolved)
         {
+            // An instance the solver already gave up on (e.g. one owned by another
+            // module's arena) will never be solved, so don't keep waiting on it.
+            if (FFlag::LuauFixUdtfStateAcrossModules && !solver->isBlocked(expectedType))
+                return exprType;
+
             incompleteInferences.push_back(IncompleteInference{expectedType, exprType, expr});
             return exprType;
         }
