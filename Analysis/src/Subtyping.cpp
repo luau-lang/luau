@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixIntersectionSubtypeOfUnion)
 
 
 namespace Luau
@@ -1636,6 +1637,26 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
             return {true};
     }
 
+    // Likewise, A & B <: A | C holds trivially if a part of the intersection
+    // is the union itself or one of its options. Check this before
+    // decomposing the union so that we do not bind generics in the process.
+    const IntersectionType* subIntersection = FFlag::LuauFixIntersectionSubtypeOfUnion ? get<IntersectionType>(subTy) : nullptr;
+    if (subIntersection)
+    {
+        for (TypeId part : subIntersection)
+        {
+            part = follow(part);
+            if (get<UnionType>(part) == superUnion)
+                return {true};
+
+            for (TypeId ty : superUnion)
+            {
+                if (follow(ty) == part)
+                    return {true};
+            }
+        }
+    }
+
     size_t index = 0;
     for (TypeId ty : superUnion)
     {
@@ -1653,6 +1674,27 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 
     LUAU_ASSERT(!result.isSubtype);
     result.reasoning.clear();
+
+    // A & B <: C | D also holds if A <: C | D or B <: C | D, which the
+    // per-option decomposition above cannot discover on its own.
+    if (subIntersection)
+    {
+        size_t partIndex = 0;
+        for (TypeId part : subIntersection)
+        {
+            part = follow(part);
+            SubtypingResult next =
+                get<UnionType>(part) ? isCovariantWith(env, get<UnionType>(part), superUnion, scope) : isCovariantWith(env, part, superUnion, scope);
+
+            if (next.normalizationTooComplex)
+                return SubtypingResult{false, /* normalizationTooComplex */ true};
+
+            if (next.isSubtype)
+                return next.withSubComponent(TypePath::Index{partIndex, TypePath::Index::Variant::Intersection});
+
+            ++partIndex;
+        }
+    }
 
     return result;
 }

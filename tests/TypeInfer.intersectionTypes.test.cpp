@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixIntersectionSubtypeOfUnion)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1680,6 +1681,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_intersection_boun
 
     CHECK("string" == toString(requireType("b")));
     CHECK("string" == toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "array_literal_is_compatible_with_generic_intersected_with_recursive_union")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixIntersectionSubtypeOfUnion, true},
+    };
+
+    CheckResult result = check(R"(
+        type JSONAcceptable = string | number | boolean | nil | { JSONAcceptable } | { [string]: JSONAcceptable }
+        type JSONObject = { JSONAcceptable } | { [string]: JSONAcceptable }
+
+        local function decodeJson<T>(jsonString: string, validation: (T & JSONObject)?): T & JSONObject
+            return (nil :: any) :: T & JSONObject
+        end
+
+        decodeJson("{}", { 1 })
+        decodeJson("{}", { a = 1 })
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();
