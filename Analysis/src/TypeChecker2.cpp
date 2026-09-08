@@ -67,6 +67,9 @@ static std::optional<Name> findSimilarName(std::string_view needle, const std::v
         if (candidate == needle)
             continue;
 
+        if (std::min(needle.size(), candidate.size()) < 3)
+            continue;
+
         size_t maxDistance = std::min<size_t>(
             size_t(FInt::LuauSuggestionDistance), std::max<size_t>(1, std::min(needle.size(), candidate.size()) / 2)
         );

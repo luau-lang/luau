@@ -432,19 +432,33 @@ type Animal = Cat | Dog
 local a: Animal = { tag = 'cat', cafood = 'something' }
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (!FFlag::DebugLuauForceOldSolver)
+    if (FFlag::LuauFixSimilarNameSuggestions && !FFlag::DebugLuauForceOldSolver)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
         CHECK(
             R"(Table type '{ cafood: string, tag: "cat" }' not compatible with type 'Cat' because the former is missing field 'catfood')" ==
             toString(result.errors[0])
         );
+        CHECK_EQ("Key 'cafood' not found in table 'Cat'.  Did you mean 'catfood'?", toString(result.errors[1]));
+    }
     else
     {
-        const std::string expected = R"(Expected this to be 'Cat | Dog', but got 'a'
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        if (!FFlag::DebugLuauForceOldSolver)
+        {
+            CHECK(
+                R"(Table type '{ cafood: string, tag: "cat" }' not compatible with type 'Cat' because the former is missing field 'catfood')" ==
+                toString(result.errors[0])
+            );
+        }
+        else
+        {
+            const std::string expected = R"(Expected this to be 'Cat | Dog', but got 'a'
 caused by:
   None of the union options are compatible. For example:
 Table type 'a' not compatible with type 'Cat' because the former is missing field 'catfood')";
-        CHECK_EQ(expected, toString(result.errors[0]));
+            CHECK_EQ(expected, toString(result.errors[0]));
+        }
     }
 }
 

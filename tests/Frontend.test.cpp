@@ -17,6 +17,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver);
+LUAU_FASTFLAG(LuauFixSimilarNameSuggestions)
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauExportValueSyntax)
@@ -934,22 +935,34 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
 
     CheckResult result = fe.check("Module/A");
 
-    REQUIRE_EQ(1, result.errors.size());
-
     // When this test fails, it is because the TypeIds needed by the error have been deallocated.
     // It is thus basically impossible to predict what will happen when this assert is evaluated.
     // It could segfault, or you could see weird type names like the empty string or <VALUELESS BY EXCEPTION>
-    if (!FFlag::DebugLuauForceOldSolver)
+    if (FFlag::LuauFixSimilarNameSuggestions && !FFlag::DebugLuauForceOldSolver)
     {
+        REQUIRE_EQ(2, result.errors.size());
         CHECK_EQ(
             "Table type '{ count: string }' not compatible with type '{ Count: number }' because the former is missing field 'Count'",
             toString(result.errors[0])
         );
+        CHECK_EQ("Key 'count' not found in table '{ Count: number }'.  Did you mean 'Count'?", toString(result.errors[1]));
     }
     else
-        REQUIRE_EQ(
-            "Table type 'a' not compatible with type '{ Count: number }' because the former is missing field 'Count'", toString(result.errors[0])
-        );
+    {
+        REQUIRE_EQ(1, result.errors.size());
+
+        if (!FFlag::DebugLuauForceOldSolver)
+        {
+            CHECK_EQ(
+                "Table type '{ count: string }' not compatible with type '{ Count: number }' because the former is missing field 'Count'",
+                toString(result.errors[0])
+            );
+        }
+        else
+            REQUIRE_EQ(
+                "Table type 'a' not compatible with type '{ Count: number }' because the former is missing field 'Count'", toString(result.errors[0])
+            );
+    }
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "trace_requires_in_nonstrict_mode")
