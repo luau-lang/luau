@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauIndexUnknownIsError)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -3474,6 +3475,12 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     else if (get<AnyType>(subjectType) || get<NeverType>(subjectType) || get<ErrorType>(subjectType))
     {
         return {{}, subjectType};
+    }
+    else if (FFlag::LuauIndexUnknownIsError && get<UnknownType>(subjectType))
+    {
+        // `unknown` cannot be indexed; TypeChecker2 reports the error. Bind to
+        // the error type, consistent with the HasIndexer path.
+        return {{}, builtinTypes->errorType};
     }
     else if (auto ttv = getMutable<TableType>(subjectType))
     {

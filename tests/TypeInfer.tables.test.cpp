@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauIndexUnknownIsError)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -7590,6 +7591,31 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_unknown_is_consistent_regardless_of_index_syntax")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauIndexUnknownIsError, true};
+
+    CheckResult result = check(R"(
+        local function f(a: unknown, b: string)
+            local c = a[b]
+            local d = a[""]
+            local e = a["" :: string]
+            local g = a.x
+            return c, d, e, g
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK(get<NotATable>(result.errors[0]));
+    CHECK(get<UnknownProperty>(result.errors[1]));
+    CHECK(get<NotATable>(result.errors[2]));
+    CHECK(get<UnknownProperty>(result.errors[3]));
+
+    CHECK_EQ("(unknown, string) -> (*error-type*, *error-type*, *error-type*, *error-type*)", toString(requireType("f")));
 }
 
 TEST_SUITE_END();
