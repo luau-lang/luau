@@ -126,6 +126,7 @@ private:
     void visit(AstStatIf* ifStatement);
     void visit(AstStatWhile* whileStatement);
     void visit(AstStatRepeat* repeatStatement);
+    void checkConditionCall(AstExpr* condition);
     void visit(AstStatBreak*);
     void visit(AstStatContinue*);
     void visit(AstStatReturn* ret);

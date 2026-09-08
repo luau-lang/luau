@@ -21,6 +21,7 @@ LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
@@ -30,6 +31,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixCallCountMismatchInCondition)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1077,6 +1079,93 @@ TEST_CASE_FIXTURE(Fixture, "too_many_return_values_in_parentheses")
     CHECK_EQ(acm->context, CountMismatch::FunctionResult);
     CHECK_EQ(acm->expected, 1);
     CHECK_EQ(acm->actual, 2);
+}
+
+TEST_CASE_FIXTURE(Fixture, "zero_return_call_in_if_condition_reports_count_mismatch")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixCallCountMismatchInCondition, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type T = () -> ()
+        local x: T = nil :: any
+
+        local y = x()
+
+        if x() then end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    for (int i = 0; i < 2; ++i)
+    {
+        CountMismatch* acm = get<CountMismatch>(result.errors[i]);
+        REQUIRE(acm);
+        CHECK_EQ(acm->context, CountMismatch::FunctionResult);
+        CHECK_EQ(acm->expected, 0);
+        CHECK_EQ(acm->actual, 1);
+    }
+    CHECK_EQ(result.errors[1].location.begin.line, 7);
+}
+
+TEST_CASE_FIXTURE(Fixture, "zero_return_call_in_while_and_repeat_conditions_reports_count_mismatch")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixCallCountMismatchInCondition, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type T = () -> ()
+        local x: T = nil :: any
+
+        while x() do
+        end
+
+        repeat
+        until x()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    for (int i = 0; i < 2; ++i)
+    {
+        CountMismatch* acm = get<CountMismatch>(result.errors[i]);
+        REQUIRE(acm);
+        CHECK_EQ(acm->context, CountMismatch::FunctionResult);
+        CHECK_EQ(acm->expected, 0);
+        CHECK_EQ(acm->actual, 1);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "zero_return_call_in_condition_no_false_positives")
+{
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixCallCountMismatchInCondition, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type T = () -> ()
+        local x: T = nil :: any
+        local f: () -> boolean = nil :: any
+        local g: () -> ...boolean = nil :: any
+        local h: () -> (boolean, number) = nil :: any
+
+        if (x()) then end
+        if f() then end
+        if g() then end
+        if h() then end
+        while f() do end
+        repeat until h()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "too_many_return_values_no_function")

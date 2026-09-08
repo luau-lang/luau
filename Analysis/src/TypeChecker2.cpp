@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauFixCallCountMismatchInCondition)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -692,12 +693,27 @@ void TypeChecker2::visit(AstStatBlock* block)
         visit(statement);
 }
 
+void TypeChecker2::checkConditionCall(AstExpr* condition)
+{
+    if (!FFlag::LuauFixCallCountMismatchInCondition)
+        return;
+
+    AstExprCall* call = condition->as<AstExprCall>();
+    if (!call)
+        return;
+
+    TypePackId pack = lookupPack(call);
+    if (finite(pack) && size(pack) == 0)
+        reportError(CountMismatch{0, std::nullopt, 1, CountMismatch::FunctionResult}, condition->location);
+}
+
 void TypeChecker2::visit(AstStatIf* ifStatement)
 {
     {
         InConditionalContext flipper{&typeContext};
         visit(ifStatement->condition, ValueContext::RValue);
     }
+    checkConditionCall(ifStatement->condition);
 
     visit(ifStatement->thenbody);
     if (ifStatement->elsebody)
@@ -707,6 +723,7 @@ void TypeChecker2::visit(AstStatIf* ifStatement)
 void TypeChecker2::visit(AstStatWhile* whileStatement)
 {
     visit(whileStatement->condition, ValueContext::RValue);
+    checkConditionCall(whileStatement->condition);
     visit(whileStatement->body);
 }
 
@@ -714,6 +731,7 @@ void TypeChecker2::visit(AstStatRepeat* repeatStatement)
 {
     visit(repeatStatement->body);
     visit(repeatStatement->condition, ValueContext::RValue);
+    checkConditionCall(repeatStatement->condition);
 }
 
 void TypeChecker2::visit(AstStatBreak*) {}

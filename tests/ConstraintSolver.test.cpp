@@ -58,7 +58,7 @@ TEST_CASE_FIXTURE(Fixture, "table_prop_access_diamond")
 
         export type CatalogPage = { AssetDetails | BundleDetails }
 
-        local function isRestricted(item: number) end
+        local function isRestricted(item: number): boolean return false end
 
         -- Clear all item tiles and create new ones for the items in the specified page
         local function displayPage(catalogPage: CatalogPage)
