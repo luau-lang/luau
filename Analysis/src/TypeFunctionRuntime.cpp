@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeUseTaggedMetatable)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAGVARIABLE(LuauUdtfFixTableEqualityKeys)
 
 namespace Luau
 {
@@ -2321,6 +2322,32 @@ bool areEqual(AreEqualState& seen, const TypeFunctionTableType& lhs, const TypeF
 
         if (!areEqual(seen, *lhs.indexer->valueType, *rhs.indexer->valueType))
             return false;
+    }
+
+    if (FFlag::LuauUdtfFixTableEqualityKeys)
+    {
+        for (const auto& [name, lprop] : lhs.props)
+        {
+            auto r = rhs.props.find(name);
+            if (r == rhs.props.end())
+                return false;
+
+            const TypeFunctionProperty& rprop = r->second;
+
+            if (bool(lprop.readTy) != bool(rprop.readTy))
+                return false;
+
+            if (lprop.readTy && rprop.readTy && !areEqual(seen, **lprop.readTy, **rprop.readTy))
+                return false;
+
+            if (bool(lprop.writeTy) != bool(rprop.writeTy))
+                return false;
+
+            if (lprop.writeTy && rprop.writeTy && !areEqual(seen, **lprop.writeTy, **rprop.writeTy))
+                return false;
+        }
+
+        return true;
     }
 
     auto l = lhs.props.begin();

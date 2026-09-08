@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauUdtfFixTableEqualityKeys)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3699,6 +3700,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_table_equality_considers_keys")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag fixTableEqualityKeys{FFlag::LuauUdtfFixTableEqualityKeys, true};
+
+    CheckResult result = check(R"(
+        type function simpleEqual(a: type, b: type)
+            return a == b and types.singleton(true) or types.singleton(false)
+        end
+
+        local a: simpleEqual<{a: number}, {b: number}> = false
+        local b: simpleEqual<{first: any, second: false}, {a: any, b: false}> = false
+        local c: simpleEqual<{second: false, first: any}, {a: any, b: false}> = false
+        local d: simpleEqual<{c: false, d: any}, {a: any, b: false}> = false
+        local e: simpleEqual<{a: number, b: string}, {b: string, a: number}> = true
+        local f: simpleEqual<{a: number}, {a: string}> = false
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();
