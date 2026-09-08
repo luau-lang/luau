@@ -26,6 +26,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
+LUAU_FASTFLAGVARIABLE(LuauFixGenericIndexerFromProps)
 
 namespace Luau
 {
@@ -593,7 +594,33 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
          * If we are trying to reconcile an unsealed table with a table that has
          * an indexer, we therefore conclude that the unsealed table has the
          * same indexer.
+         *
+         * The properties of the unsealed table are also accessible through
+         * that indexer, so they must contribute to its key and value types.
          */
+
+        if (FFlag::LuauFixGenericIndexerFromProps)
+        {
+            TypeId indexType = follow(superTable->indexer->indexType);
+            if (TypeId* subst = genericSubstitutions.find(indexType))
+                indexType = follow(*subst);
+
+            // Only a bare type variable as the key can soundly absorb the
+            // string-keyed properties of the unsealed table.
+            if (get<FreeType>(indexType))
+            {
+                for (const auto& [propName, subProp] : subTable->props)
+                {
+                    if (superTable->props.count(propName))
+                        continue;
+
+                    result &= unify_(builtinTypes->stringType, indexType);
+
+                    if (subProp.readTy)
+                        result &= unify_(*subProp.readTy, superTable->indexer->indexResultType);
+                }
+            }
+        }
 
         if (FFlag::LuauDoNotLeakGenericsInIndexer)
         {

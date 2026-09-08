@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
+LUAU_FASTFLAG(LuauFixGenericIndexerFromProps)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 
@@ -4500,7 +4501,10 @@ TEST_CASE_FIXTURE(Fixture, "oss_2670_generic_leaking_indexer_1")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauDoNotLeakGenericsInIndexer, true};
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDoNotLeakGenericsInIndexer, true},
+        {FFlag::LuauFixGenericIndexerFromProps, true},
+    };
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local function setDefault<K, V>(t: { [K]: V? }): V
@@ -4514,7 +4518,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_2670_generic_leaking_indexer_1")
 
     )"));
 
-    CHECK_EQ("{ [unknown]: unknown?, hello: string }", toString(requireType("t"), {true}));
+    CHECK_EQ("{ [string]: string?, hello: string }", toString(requireType("t"), {true}));
     // TODO CLI-181248: This seems incorrect.
     CHECK_EQ("any", toString(requireType("x"), {true}));
 }
@@ -4538,6 +4542,39 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2670_generic_leaking_indexer_2")
     // TODO CLI-181248: This also seems not entirely correct.
     CHECK_EQ("number?", toString(requireType("k"), {true}));
     CHECK_EQ("string", toString(requireType("v"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1690_generic_indexer_instantiated_from_table_props")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauDoNotLeakGenericsInIndexer, true},
+        {FFlag::LuauFixGenericIndexerFromProps, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function DeepFind<K, V>(haystack: {[K]: V}, needle: V): (K, V)
+            for k, v in haystack do
+                if v == needle then
+                    return k, v
+                end
+            end
+            error("not found")
+        end
+
+        local a, b = DeepFind({
+            foo = 5,
+            bar = "baz"
+        }, "baz")
+
+        local c, d = DeepFind({ foo = 5 }, 5)
+    )"));
+
+    CHECK_EQ("string", toString(requireType("a"), {true}));
+    CHECK_EQ("number | string", toString(requireType("b"), {true}));
+    CHECK_EQ("string", toString(requireType("c"), {true}));
+    CHECK_EQ("number", toString(requireType("d"), {true}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_callback_in_array")
