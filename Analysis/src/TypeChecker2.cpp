@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauFixGenericFunctionLiteralArgs)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -1822,11 +1823,25 @@ void TypeChecker2::visitCall(AstExprCall* call)
 
     // FIXME: Similar to bidirectional inference prior, this does not support
     // overloaded functions nor generic typeArguments (yet).
-    if (auto fty = get<FunctionType>(fnTy); fty && fty->generics.empty() && fty->genericPacks.empty() && call->args.size > 0)
+    const FunctionType* fty = get<FunctionType>(fnTy);
+    const bool checkLiteralArgs =
+        fty && call->args.size > 0 && (FFlag::LuauFixGenericFunctionLiteralArgs || (fty->generics.empty() && fty->genericPacks.empty()));
+    if (checkLiteralArgs)
     {
         size_t selfOffset = call->self ? 1 : 0;
 
         std::vector<TypeId> paramsHead = extendTypePack(*module->internalTypes, builtinTypes, fty->argTypes, call->args.size + selfOffset).head;
+
+        // Parameters whose types mention the function's own generics cannot be
+        // checked against the literal directly; overload resolution handles them.
+        DenseHashSet<const void*> genericTypesAndPacks;
+        if (FFlag::LuauFixGenericFunctionLiteralArgs)
+        {
+            for (TypeId g : fty->generics)
+                genericTypesAndPacks.insert(follow(g));
+            for (TypePackId gp : fty->genericPacks)
+                genericTypesAndPacks.insert(follow(gp));
+        }
 
         for (size_t idx = 0; idx < call->args.size; ++idx)
         {
@@ -1849,6 +1864,8 @@ void TypeChecker2::visitCall(AstExprCall* call)
             if (!FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks)
                 argExprs.push_back(argExpr);
             if (idx + selfOffset >= paramsHead.size() || isErrorSuppressing(argExpr->location, argExprType))
+                args.head.push_back(argExprType);
+            else if (FFlag::LuauFixGenericFunctionLiteralArgs && containsGeneric(paramsHead[idx + selfOffset], NotNull{&genericTypesAndPacks}))
                 args.head.push_back(argExprType);
             else
             {

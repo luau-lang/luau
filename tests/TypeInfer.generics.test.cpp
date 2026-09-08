@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixGenericFunctionLiteralArgs)
 
 using namespace Luau;
 
@@ -2176,6 +2177,50 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pus
         function Child:Func()
             if math.random() > 0.5 then return self else return nil end
         end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unused_generics_do_not_break_optional_fields_in_table_literal_args")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFixGenericFunctionLiteralArgs, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function test1(d: {hi: number?})
+        end
+
+        local function test2<AnyGeneric, AnyGeneric2>(d: {hi: number?})
+        end
+
+        test1({})
+        test2({})
+        test2({ hi = nil })
+        test2<<any>>({})
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_function_literal_args_only_skip_params_that_mention_generics")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFixGenericFunctionLiteralArgs, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function test<T>(d: {hi: number?}, x: T): T
+            return x
+        end
+
+        local a: number = test({}, 5)
+        local b: string = test({ hi = 1 }, "hello")
+    )"));
+
+    LUAU_REQUIRE_ERROR_COUNT(1, check(R"(
+        local function test<T>(d: {hi: number?}, x: T): T
+            return x
+        end
+
+        test({ hi = "nope" }, 5)
     )"));
 }
 
