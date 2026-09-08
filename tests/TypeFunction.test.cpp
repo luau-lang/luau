@@ -16,6 +16,9 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
+LUAU_FASTFLAG(LuauFixExportedTypeFunctionState)
+LUAU_FASTFLAG(LuauForceLess)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 
 struct TypeFunctionFixture : Fixture
@@ -2115,6 +2118,39 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_t
         CHECK(toString(requireType("x")) == "*error-type<concat<string, unknown>>*");
     else
         CHECK(toString(requireType("x")) == "*error-type*");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "exported_irreducible_type_function_does_not_block_importing_module")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauForceLess, true},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+        {FFlag::LuauFixExportedTypeFunctionState, true},
+    };
+
+    fileResolver.source["game/A"] = R"(
+        type Modifiers = { flex: { mode: string } }
+        export type Interface = {
+            setModifier: <K>(name: K & keyof<Modifiers>, params: index<Modifiers, K>) -> ()
+        }
+        return {}
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = check(R"(
+        local A = require(game.A)
+        local w: A.Interface = nil :: any
+        w.setModifier("flex", { mode = "Fill" })
+        w.setModifier("flex", 5)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, bResult);
+    CHECK(get<TypeMismatch>(bResult.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_negation_of_nontestable_type_doesnt_crash_1")

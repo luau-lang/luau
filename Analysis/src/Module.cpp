@@ -17,6 +17,7 @@
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAGVARIABLE(LuauExportTypecheckTypepacks)
 LUAU_FASTFLAGVARIABLE(LuauExportAnnotationBinding)
+LUAU_FASTFLAGVARIABLE(LuauFixExportedTypeFunctionState)
 
 namespace Luau
 {
@@ -206,10 +207,15 @@ struct ClonePublicInterface : Substitution
             {
                 genericty->scope = nullptr;
             }
-            else if (FFlag::LuauCloneTypeFunctionFromForeignArena)
+            else if (auto tfit = get<TypeFunctionInstanceType>(ty))
             {
-                if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state == TypeFunctionInstanceState::Stuck)
+                if (FFlag::LuauCloneTypeFunctionFromForeignArena && tfit->state == TypeFunctionInstanceState::Stuck)
                     result = arena->addType(ErrorType{ty});
+                else if (FFlag::LuauFixExportedTypeFunctionState)
+                {
+                    if (auto clonedTfit = getMutable<TypeFunctionInstanceType>(result))
+                        clonedTfit->state = tfit->state;
+                }
             }
         }
 
