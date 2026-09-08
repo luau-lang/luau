@@ -26,6 +26,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
+LUAU_FASTFLAGVARIABLE(LuauFixIntersectionUnifyWholeSubtype)
 
 namespace Luau
 {
@@ -223,8 +224,9 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
     auto subIntersection = get<IntersectionType>(subTy);
     auto superIntersection = get<IntersectionType>(superTy);
 
-    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier && subIntersection && superIntersection)
-        return unify_(subIntersection, superIntersection);
+    if ((FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier || FFlag::LuauFixIntersectionUnifyWholeSubtype) && subIntersection &&
+        superIntersection)
+        return unify_(subTy, subIntersection, superIntersection);
     else if (subIntersection)
         return unify_(subIntersection, superTy);
     else if (superIntersection)
@@ -469,7 +471,7 @@ UnifyResult Unifier2::unify_(TypeId subTy, const UnionType* superUnion)
     return result;
 }
 
-UnifyResult Unifier2::unify_(const IntersectionType* subIntersection, const IntersectionType* superIntersection)
+UnifyResult Unifier2::unify_(TypeId subTy, const IntersectionType* subIntersection, const IntersectionType* superIntersection)
 {
     TypeIds superIntersectionMembers;
     superIntersectionMembers.insert(begin(superIntersection), end(superIntersection));
@@ -480,6 +482,37 @@ UnifyResult Unifier2::unify_(const IntersectionType* subIntersection, const Inte
     sharedMembers.retain(superIntersectionMembers);
 
     UnifyResult result = UnifyResult::Ok;
+
+    if (FFlag::LuauFixIntersectionUnifyWholeSubtype)
+    {
+        // A & B <: C & D iff A & B <: C and A & B <: D. After cancelling the
+        // shared members, unify whatever remains of the subtype as a single
+        // type against each remaining part of the supertype so that a free
+        // part of the supertype is bounded by the whole remainder rather than
+        // by each of its parts separately.
+        std::vector<TypeId> remainingSubParts;
+        for (auto subPart : subIntersection)
+        {
+            if (!sharedMembers.contains(subPart))
+                remainingSubParts.push_back(subPart);
+        }
+
+        TypeId remainingSubTy = subTy;
+        if (remainingSubParts.size() == 1)
+            remainingSubTy = remainingSubParts.front();
+        else if (remainingSubParts.size() > 1)
+            remainingSubTy = arena->addType(IntersectionType{std::move(remainingSubParts)});
+
+        for (auto superPart : superIntersection)
+        {
+            if (sharedMembers.contains(superPart))
+                continue;
+
+            result &= unify_(remainingSubTy, superPart);
+        }
+
+        return result;
+    }
 
     for (auto subPart : subIntersection)
     {

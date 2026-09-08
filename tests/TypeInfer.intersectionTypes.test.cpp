@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixIntersectionUnifyWholeSubtype)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1680,6 +1681,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_intersection_boun
 
     CHECK("string" == toString(requireType("b")));
     CHECK("string" == toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_intersected_with_intersection_infers_whole_intersection")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixIntersectionUnifyWholeSubtype, true}};
+
+    CheckResult result = check(R"(
+        type Alias1 = { read prop1: number }
+        type Alias2 = { read prop2: string }
+        type Alias3 = { read prop3: boolean }
+        type Intersect = Alias1 & Alias2
+
+        local mrrp: <T>(T & Intersect) -> T = nil :: any
+        local nested: <T>(T & Intersect & Alias3) -> T = nil :: any
+
+        local value: Intersect = nil :: any
+        local value3: Intersect & Alias3 = nil :: any
+
+        local a: Intersect = mrrp(value)
+        local b: Intersect & Alias3 = nested(value3)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("Alias1 & Alias2" == toString(requireType("a")));
+    CHECK("Alias1 & Alias2 & Alias3" == toString(requireType("b")));
 }
 
 TEST_SUITE_END();
