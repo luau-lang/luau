@@ -1,7 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
-#include "lua.h"
-
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -11,6 +9,8 @@
 #endif
 #include <windows.h>
 #endif
+
+#include "lua.h"
 
 #ifdef __APPLE__
 #include <mach/mach.h>
