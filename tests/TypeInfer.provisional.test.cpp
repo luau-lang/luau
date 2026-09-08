@@ -24,6 +24,7 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
+LUAU_FASTFLAG(LuauFixUnionIndexerCheck)
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -1418,16 +1419,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_and_many_nested_typeof_contexts")
 
 TEST_CASE_FIXTURE(Fixture, "indexing_union_of_indexers")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUnionIndexerCheck, true},
+    };
 
-    // CLI-169235: This is just wrong, we should be rejecting this code.
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function foo(
             t: { [string]: number } | { [number]: number }
         )
             return t[true]
         end
-    )"));
+    )");
+
+    // CLI-169235: We reject this code now, but we should probably report a single error against the union rather than one per option.
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(get<TypeMismatch>(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unions_should_work_with_bidirectional_typechecking")

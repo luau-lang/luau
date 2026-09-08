@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauFixUnionIndexerCheck)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -2223,7 +2224,19 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
     else if (auto ut = get<UnionType>(exprType))
     {
         // if all of the typeArguments are a table type, the union must be a table, and so we shouldn't error.
-        if (!std::all_of(begin(ut), end(ut), getTableType))
+        if (std::all_of(begin(ut), end(ut), getTableType))
+        {
+            if (FFlag::LuauFixUnionIndexerCheck)
+            {
+                for (TypeId option : ut)
+                {
+                    const TableType* tt = getTableType(option);
+                    if (tt && tt->indexer)
+                        testIsSubtype(indexType, tt->indexer->indexType, indexExpr->index->location);
+                }
+            }
+        }
+        else
         {
             switch (shouldSuppressErrors(NotNull{&normalizer}, exprType))
             {

@@ -10,6 +10,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixUnionIndexerCheck)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -1117,6 +1118,44 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2025")
         local baz: a? = bar.test
 
         table.insert(foo, bar) 
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2254_index_expr_on_union_of_tables_checks_indexers")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUnionIndexerCheck, true},
+    };
+
+    CheckResult result = check(R"(
+        type Serializable = nil | boolean | number | string | vector | { Serializable } | { [string]: Serializable }
+
+        local ser: Serializable = nil
+
+        assert(typeof(ser) == "table")
+        local c = ser["name" :: "name"]
+        local d = ser["name" :: string]
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(Location{{6, 22}, {6, 38}} == result.errors[0].location);
+    CHECK(get<TypeMismatch>(result.errors[1]));
+    CHECK(Location{{7, 22}, {7, 38}} == result.errors[1].location);
+}
+
+TEST_CASE_FIXTURE(Fixture, "index_expr_on_union_of_tables_with_compatible_indexers")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUnionIndexerCheck, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo(t: { [string]: number } | { [string]: boolean }, k: string)
+            return t[k]
+        end
     )"));
 }
 
