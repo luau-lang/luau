@@ -15,6 +15,7 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterLambdaHandling)
+LUAU_FASTFLAGVARIABLE(LuauFixGenericUnionLiteralInference)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRelaxConstraintOrderingForFunctionCheck)
 
@@ -242,6 +243,11 @@ struct BidirectionalTypePusher
                     solver->bind(constraint, exprType, ft->lowerBound);
                     return exprType;
                 }
+
+                // The expected type still refers to the function's own generics
+                // (e.g. `T | string`); binding the literal to it would leak `T`.
+                if (FFlag::LuauFixGenericUnionLiteralInference && containsGeneric(expectedType, genericTypesAndPacks))
+                    return exprType;
 
                 // if the upper bound is a subtype of the expected type, we can push the expected type in
                 Relation upperBoundRelation = relate(ft->upperBound, expectedType);

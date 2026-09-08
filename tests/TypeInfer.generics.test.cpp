@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixGenericUnionLiteralInference)
 
 using namespace Luau;
 
@@ -2177,6 +2178,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pus
             if math.random() > 0.5 then return self else return nil end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1471_literal_pushed_into_union_with_generic")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag _{FFlag::LuauFixGenericUnionLiteralInference, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo<T>(x: T, y: T | string): T
+            return x
+        end
+
+        local x: number = foo(1, "hi")
+        local y: string = foo("a", "b")
+    )"));
+
+    CHECK_EQ("number", toString(requireType("x")));
+    CHECK_EQ("string", toString(requireType("y")));
 }
 
 TEST_SUITE_END();

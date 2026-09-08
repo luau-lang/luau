@@ -26,6 +26,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
+LUAU_FASTFLAG(LuauFixGenericUnionLiteralInference)
 
 namespace Luau
 {
@@ -354,6 +355,28 @@ UnifyResult Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
 
     if (const UnionType* superUnion = get<UnionType>(superTy))
     {
+        if (FFlag::LuauFixGenericUnionLiteralInference)
+        {
+            // If the upper bound of subTy is already contained in one of the
+            // concrete options of the union, `subTy <: superTy` holds without
+            // needing to widen any free members. Consider:
+            //
+            //  local function foo<T>(x: T, y: T | string): T
+            //  foo(1, "hi")
+            //
+            // `"hi"` has upper bound `string`, so `T` should stay `number`.
+            for (TypeId option : superUnion->options)
+            {
+                option = follow(option);
+                if (get<FreeType>(option) || genericSubstitutions.find(option))
+                    continue;
+
+                Relation r = relate(upperBound, option);
+                if (r == Relation::Subset || r == Relation::Coincident)
+                    return UnifyResult::Ok;
+            }
+        }
+
         propagateToFreeMembers(superUnion->options);
         return doDefault();
     }
