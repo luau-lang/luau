@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAGVARIABLE(LuauFixIndexerStringSingletonKeys)
 
 namespace Luau
 {
@@ -96,6 +97,42 @@ static void dump(ConstraintSolver* cs, ToStringOptions& opts);
     }
 
     return true;
+}
+
+// If indexType is a string singleton or a union of string singletons that all name readable properties of tt,
+// returns the union of those property read types.
+static std::optional<TypeId> lookupPropsByStringSingletonKeys(
+    NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    const TableType* tt,
+    TypeId indexType
+)
+{
+    std::vector<TypeId> keys;
+    if (auto ut = get<UnionType>(indexType))
+    {
+        for (TypeId option : ut)
+            keys.push_back(option);
+    }
+    else
+        keys.push_back(indexType);
+
+    UnionBuilder ub{arena, builtinTypes};
+    for (TypeId key : keys)
+    {
+        key = follow(key);
+        auto singleton = get<SingletonType>(key);
+        auto ss = singleton ? get<StringSingleton>(singleton) : nullptr;
+        if (!ss)
+            return std::nullopt;
+
+        auto it = tt->props.find(ss->value);
+        if (it == tt->props.end() || !it->second.readTy)
+            return std::nullopt;
+
+        ub.add(*it->second.readTy);
+    }
+    return ub.build();
 }
 
 // used only in asserts
@@ -2168,6 +2205,15 @@ bool ConstraintSolver::tryDispatchHasIndexer(
             unify(constraint, indexType, indexer->indexType);
             bind(constraint, resultType, indexer->indexResultType);
             return true;
+        }
+
+        if (FFlag::LuauFixIndexerStringSingletonKeys)
+        {
+            if (std::optional<TypeId> propTy = lookupPropsByStringSingletonKeys(arena, builtinTypes, tt, indexType))
+            {
+                bind(constraint, resultType, *propTy);
+                return true;
+            }
         }
 
         if (tt->state == TableState::Unsealed)

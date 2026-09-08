@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixIndexerStringSingletonKeys)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3699,6 +3700,111 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_argument_table_indexed_with_keyof")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag luauFixIndexerStringSingletonKeys{FFlag::LuauFixIndexerStringSingletonKeys, true};
+
+    CheckResult result = check(R"(
+        local Schema = {
+            GuestId = { Category = "Misc" :: "Misc" },
+            Hair = { Category = "Hair" :: "Hair" },
+        }
+
+        type function CategoriesOf(schema: type)
+            local categories = types.newtable()
+            for key, property in schema:properties() do
+                local entry = property.read
+                if entry ~= nil then
+                    local category = entry:readproperty(types.singleton("Category"))
+                    if category ~= nil then
+                        categories:setproperty(key, category)
+                    end
+                end
+            end
+            return categories
+        end
+
+        type function ValueOf(input: type)
+            local result = types.never
+            for _, property in input:properties() do
+                if property.read then
+                    result = types.unionof(result, property.read)
+                end
+            end
+            return result
+        end
+
+        type Category = ValueOf<CategoriesOf<typeof(Schema)>>
+        type Entry = { read Category: Category }
+
+        local function useEntry(entry: Entry)
+            return entry.Category
+        end
+
+        local function useDynamicEntry(key: keyof<typeof(Schema)>)
+            local schema = Schema[key]
+            return useEntry(schema)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("\"Hair\" | \"Misc\"", toString(requireTypeAlias("Category")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_argument_table_indexed_with_keyof_reports_real_error")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag luauFixIndexerStringSingletonKeys{FFlag::LuauFixIndexerStringSingletonKeys, true};
+
+    CheckResult result = check(R"(
+        local Schema = {
+            GuestId = { Category = "Misc" :: "Misc" },
+            Hair = { Category = "Hair" :: "Hair" },
+        }
+
+        type function CategoriesOf(schema: type)
+            local categories = types.newtable()
+            for key, property in schema:properties() do
+                local entry = property.read
+                if entry ~= nil then
+                    local category = entry:readproperty(types.singleton("Category"))
+                    if category ~= nil then
+                        categories:setproperty(key, category)
+                    end
+                end
+            end
+            return categories
+        end
+
+        type function ValueOf(input: type)
+            local result = types.never
+            for _, property in input:properties() do
+                if property.read then
+                    result = types.unionof(result, property.read)
+                end
+            end
+            return result
+        end
+
+        type Category = ValueOf<CategoriesOf<typeof(Schema)>>
+        type Entry = { Category: Category }
+
+        local function useEntry(entry: Entry)
+            return entry.Category
+        end
+
+        local function useDynamicEntry(key: keyof<typeof(Schema)>)
+            local schema = Schema[key]
+            return useEntry(schema)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(toString(result.errors[0]).find("Type functions do not currently support") == std::string::npos);
 }
 
 TEST_SUITE_END();

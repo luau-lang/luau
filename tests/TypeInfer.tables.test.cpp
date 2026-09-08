@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauFixIndexerStringSingletonKeys)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -7590,6 +7591,57 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_unsealed_table_with_union_of_known_string_singletons")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag luauFixIndexerStringSingletonKeys{FFlag::LuauFixIndexerStringSingletonKeys, true};
+
+    CheckResult result = check(R"(
+        local u = {a = 1, b = "x"}
+        local function h(k: "a" | "b") return u[k] end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(\"a\" | \"b\") -> number | string", toString(requireType("h")));
+    CHECK(!get<TableType>(requireType("u"))->indexer);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_sealed_table_with_union_of_known_string_singletons")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag luauFixIndexerStringSingletonKeys{FFlag::LuauFixIndexerStringSingletonKeys, true};
+
+    CheckResult result = check(R"(
+        local t: {a: number, b: string} = {a = 1, b = "x"}
+        local function f(k: "a" | "b") return t[k] end
+        local function g(k: keyof<typeof(t)>) return t[k] end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(\"a\" | \"b\") -> number | string", toString(requireType("f")));
+    CHECK_EQ("(\"a\" | \"b\") -> number | string", toString(requireType("g")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_unsealed_table_with_unknown_string_singleton_still_adds_indexer")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag luauFixIndexerStringSingletonKeys{FFlag::LuauFixIndexerStringSingletonKeys, true};
+
+    CheckResult result = check(R"(
+        local u = {a = 1}
+        local function i(k: "a" | "zz") return u[k] end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(get<TableType>(requireType("u"))->indexer);
 }
 
 TEST_SUITE_END();

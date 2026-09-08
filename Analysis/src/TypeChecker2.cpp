@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixIndexerStringSingletonKeys)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -120,6 +121,33 @@ struct PropertyType
     NormalizationResult present;
     std::optional<TypeId> result;
 };
+
+static bool indexesKnownStringSingletonProps(const TableType* tt, TypeId indexType)
+{
+    std::vector<TypeId> keys;
+    if (auto ut = get<UnionType>(indexType))
+    {
+        for (TypeId option : ut)
+            keys.push_back(option);
+    }
+    else
+        keys.push_back(indexType);
+
+    for (TypeId key : keys)
+    {
+        key = follow(key);
+        auto singleton = get<SingletonType>(key);
+        auto ss = singleton ? get<StringSingleton>(singleton) : nullptr;
+        if (!ss)
+            return false;
+
+        auto it = tt->props.find(ss->value);
+        if (it == tt->props.end() || !it->second.readTy)
+            return false;
+    }
+
+    return true;
+}
 
 
 static std::optional<std::string> getIdentifierOfBaseVar(AstExpr* node)
@@ -2193,7 +2221,7 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
             if (context == ValueContext::LValue && tt->indexer->isReadOnly)
                 reportError(PropertyAccessViolation{exprType, "indexer", PropertyAccessViolation::CannotWrite}, indexExpr->location);
         }
-        else
+        else if (!(FFlag::LuauFixIndexerStringSingletonKeys && indexesKnownStringSingletonProps(tt, indexType)))
             reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
     }
     else if (auto mt = get<MetatableType>(exprType))
