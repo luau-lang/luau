@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixIntersectionGenericLowerBounds)
 
 using namespace Luau;
 
@@ -2177,6 +2178,50 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pus
             if math.random() > 0.5 then return self else return nil end
         end
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_in_field_of_intersection_typed_parameter")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixIntersectionGenericLowerBounds, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type Base = { createdAt: number }
+        type Holder<T> = Base & { value: T }
+
+        local function get<T>(holder: Holder<T>): T
+            return holder.value
+        end
+
+        local h: Holder<number> = { createdAt = 1, value = 5 }
+        local n: number = get(h)
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_in_field_of_intersection_typed_parameter_still_reports_mismatch")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixIntersectionGenericLowerBounds, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type Base = { createdAt: number }
+        type Holder<T> = Base & { value: T }
+
+        local function get<T>(holder: Holder<T>): T
+            return holder.value
+        end
+
+        local h: Holder<string> = { createdAt = 1, value = "five" }
+        local n: number = get(h)
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

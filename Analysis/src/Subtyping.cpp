@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixIntersectionGenericLowerBounds)
 
 
 namespace Luau
@@ -1740,12 +1741,102 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Inte
     std::unique_ptr<SubtypingResult> result = std::make_unique<SubtypingResult>();
     result->isSubtype = false;
     size_t i = 0;
+
+    if (!FFlag::LuauFixIntersectionGenericLowerBounds || env.mappedGenerics.empty())
+    {
+        for (TypeId ty : subIntersection)
+        {
+            result->orElse(isCovariantWith(env, ty, superTy, scope).withSubComponent(TypePath::Index{i++, TypePath::Index::Variant::Intersection}));
+
+            if (result->normalizationTooComplex)
+                return SubtypingResult{false, /* normalizationTooComplex */ true};
+        }
+
+        return *result;
+    }
+
+    // A property read from A & B has type A.prop & B.prop, so the lower
+    // bounds that each component contributes to a mapped generic must be
+    // intersected rather than accumulated. For example, in
+    //
+    //  { createdAt: number } & { value: number } <: { value: T }
+    //
+    // the first component has no `value` property, which we treat as `nil`,
+    // and it must not add `nil` to the lower bound of T alongside `number`.
+    // Contributions from components that are not subtypes are discarded.
+
+    // Maps a generic to the lower bounds it was given by each component that
+    // turned out to be a subtype.
+    DenseHashMap<TypeId, std::vector<TypeIds>> lowerBoundContributions;
+    size_t subtypeComponents = 0;
+
+    DenseHashMap<TypeId, TypeIds> originalLowerBounds;
+    for (const auto& [g, bounds] : env.mappedGenerics)
+    {
+        if (!bounds.empty())
+            originalLowerBounds[g] = bounds.back().lowerBound;
+    }
+
     for (TypeId ty : subIntersection)
     {
-        result->orElse(isCovariantWith(env, ty, superTy, scope).withSubComponent(TypePath::Index{i++, TypePath::Index::Variant::Intersection}));
+        SubtypingResult next =
+            isCovariantWith(env, ty, superTy, scope).withSubComponent(TypePath::Index{i++, TypePath::Index::Variant::Intersection});
 
-        if (result->normalizationTooComplex)
+        if (next.normalizationTooComplex)
             return SubtypingResult{false, /* normalizationTooComplex */ true};
+
+        for (auto& [g, bounds] : env.mappedGenerics)
+        {
+            const TypeIds* original = originalLowerBounds.find(g);
+            if (!original || bounds.empty())
+                continue;
+
+            TypeIds& lowerBound = bounds.back().lowerBound;
+            TypeIds added;
+            for (TypeId lb : lowerBound)
+            {
+                if (!original->contains(lb))
+                    added.insert(lb);
+            }
+
+            for (TypeId lb : added)
+                lowerBound.erase(lb);
+
+            if (next.isSubtype && !added.empty())
+                lowerBoundContributions[g].push_back(std::move(added));
+        }
+
+        if (next.isSubtype)
+            ++subtypeComponents;
+
+        result->orElse(std::move(next));
+    }
+
+    for (auto& [g, contributions] : lowerBoundContributions)
+    {
+        // If some component was a subtype without constraining the lower
+        // bound of this generic at all, then the intersection as a whole does
+        // not constrain it either.
+        if (contributions.size() != subtypeComponents)
+            continue;
+
+        std::vector<SubtypingEnvironment::GenericBounds>* boundsPtr = env.mappedGenerics.find(g);
+        LUAU_ASSERT(boundsPtr && !boundsPtr->empty());
+
+        TypeIds& lowerBound = boundsPtr->back().lowerBound;
+
+        if (contributions.size() == 1)
+        {
+            lowerBound.insert(contributions[0].begin(), contributions[0].end());
+            continue;
+        }
+
+        std::vector<TypeId> parts;
+        parts.reserve(contributions.size());
+        for (TypeIds& contribution : contributions)
+            parts.push_back(makeAggregateType<UnionType>(contribution.take(), builtinTypes->neverType));
+
+        lowerBound.insert(arena->addType(IntersectionType{std::move(parts)}));
     }
 
     return *result;
