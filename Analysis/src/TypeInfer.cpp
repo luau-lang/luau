@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAGVARIABLE(LuauFixInstantiateCallableTable)
 
 namespace Luau
 {
@@ -4485,7 +4486,7 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
         if (std::optional<TypeId> propTy = getIndexTypeFromType(scope, selfType, indexExpr->index.value, expr.location, /* addErrors= */ true))
         {
             functionType = *propTy;
-            actualFunctionType = instantiate(
+            actualFunctionType = instantiateCallee(
                 scope,
                 expr.typeArguments.size ? instantiateTypeParameters(scope, functionType, expr.typeArguments, expr.func, expr.location) : functionType,
                 expr.func->location
@@ -4500,7 +4501,7 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
     else
     {
         functionType = checkExpr(scope, *expr.func).type;
-        actualFunctionType = instantiate(scope, functionType, expr.func->location);
+        actualFunctionType = instantiateCallee(scope, functionType, expr.func->location);
     }
 
     TypePackId retPack;
@@ -5245,6 +5246,15 @@ TypeId TypeChecker::quantify(const ScopePtr& scope, TypeId ty, Location location
         Luau::quantify(ty, scope->level);
 
     return ty;
+}
+
+// Callable tables have their __call metamethod instantiated during overload resolution.
+TypeId TypeChecker::instantiateCallee(const ScopePtr& scope, TypeId ty, Location location)
+{
+    if (FFlag::LuauFixInstantiateCallableTable && get<MetatableType>(follow(ty)))
+        return ty;
+
+    return instantiate(scope, ty, location);
 }
 
 TypeId TypeChecker::instantiate(const ScopePtr& scope, TypeId ty, Location location, const TxnLog* log)

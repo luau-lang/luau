@@ -311,6 +311,7 @@ public:
      *
      */
     TypeId instantiate(const ScopePtr& scope, TypeId ty, Location location, const TxnLog* log = TxnLog::empty());
+    TypeId instantiateCallee(const ScopePtr& scope, TypeId ty, Location location);
 
     // Replace any free types or type packs by `any`.
     // This is used when exporting types from modules, to make sure free types don't leak.

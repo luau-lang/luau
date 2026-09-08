@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixInstantiateCallableTable)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -2461,6 +2462,54 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_metamethod_variadic_blames_each_offendi
 
     CHECK(get<TypeMismatch>(errors[1]));
     CHECK_EQ(errors[1].location, Location{{4, 18}, {4, 21}});
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_call_metamethod_with_unknown_self_infers_generics")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, true},
+        {FFlag::LuauFixInstantiateCallableTable, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f<T>(self: unknown, x: T): T
+            return x
+        end
+
+        local export = setmetatable({}, { __call = f })
+        local r = export(10)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("r")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_call_metamethod_with_unknown_self_infers_generic_packs")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, true},
+        {FFlag::LuauFixInstantiateCallableTable, true},
+    };
+
+    CheckResult result = check(R"(
+        local function retry<T..., A...>(max_attempts: number, callback: (T...) -> (A...), ...: T...): (boolean, A...)
+            return (nil :: any)
+        end
+
+        local function retry_call<T..., A...>(self: unknown, max_attempts: number, callback: (T...) -> (A...), ...: T...): (boolean, A...)
+            return retry(max_attempts, callback, ...)
+        end
+
+        local export = setmetatable({}, { __call = retry_call })
+
+        local success, result = export(10, function(foo: number)
+            return foo + 1
+        end, 10)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("boolean", toString(requireType("success")));
+    CHECK_EQ("number", toString(requireType("result")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
