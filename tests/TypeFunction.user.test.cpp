@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauUdtfPopulateEnv)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
+LUAU_FASTFLAG(LuauFixUnappliedTypeFunctionOnTypeofAlias)
 LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
@@ -2906,6 +2907,41 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1887_basic_match")
             return types.string
         end
         local f: foo = "123"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    LUAU_REQUIRE_ERROR(results, UnappliedTypeFunction);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2492_typeof_alias_is_not_an_unapplied_type_function")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUnappliedTypeFunctionOnTypeofAlias, true},
+    };
+
+    CheckResult results = check(R"(
+        type foo = typeof(-...)
+        type bar = typeof(...^...)
+        local a: foo
+        local b: bar
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(results);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2492_udtf_without_angle_brackets_still_reports")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUnappliedTypeFunctionOnTypeofAlias, true},
+    };
+
+    CheckResult results = check(R"(
+        type function foo()
+            return types.number
+        end
+        local a: foo = 1
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, results);

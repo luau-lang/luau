@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixUnappliedTypeFunctionOnTypeofAlias)
 
 namespace Luau
 {
@@ -4575,7 +4576,16 @@ TypeId ConstraintGenerator::resolveReferenceType(
             result = freshType(scope, Polarity::Mixed);
     }
 
-    if (is<TypeFunctionInstanceType>(follow(result)))
+    if (FFlag::LuauFixUnappliedTypeFunctionOnTypeofAlias)
+    {
+        const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(result));
+        if (tfit && tfit->userFuncData.definition)
+        {
+            reportError(ty->location, UnappliedTypeFunction{});
+            addConstraint(scope, ty->location, ReduceConstraint{result});
+        }
+    }
+    else if (is<TypeFunctionInstanceType>(follow(result)))
     {
         reportError(ty->location, UnappliedTypeFunction{});
         addConstraint(scope, ty->location, ReduceConstraint{result});
