@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeUseTaggedMetatable)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAGVARIABLE(LuauHideRootHiddenVariadicTail)
 
 namespace Luau
 {
@@ -2944,6 +2945,8 @@ private:
     void cloneChildren(TypeFunctionVariadicTypePack* v1, TypeFunctionVariadicTypePack* v2)
     {
         v2->type = shallowClone(v1->type);
+        if (FFlag::LuauHideRootHiddenVariadicTail)
+            v2->hidden = v1->hidden;
     }
 
     void cloneChildren(TypeFunctionGenericTypePack* g1, TypeFunctionGenericTypePack* g2)

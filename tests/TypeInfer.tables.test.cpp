@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauHideRootHiddenVariadicTail)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -3596,7 +3597,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_free_table_props")
     {
         CHECK_EQ("({ read blah: unknown }) -> ()", toString(requireType("a")));
         CHECK_EQ("({ read gwar: unknown }) -> ()", toString(requireType("b")));
-        CHECK_EQ("(...any) -> ({ read blah: unknown, read gwar: unknown }) -> ()", toString(getMainModule()->returnType));
+        CHECK_EQ(
+            FFlag::LuauHideRootHiddenVariadicTail ? "() -> ({ read blah: unknown, read gwar: unknown }) -> ()"
+                                                  : "(...any) -> ({ read blah: unknown, read gwar: unknown }) -> ()",
+            toString(getMainModule()->returnType)
+        );
     }
     else
     {
@@ -6024,7 +6029,11 @@ TEST_CASE_FIXTURE(Fixture, "oss_1859")
     auto err = get<TypeMismatch>(result.errors[0]);
     REQUIRE(err);
     CHECK_EQ("Cat", toString(err->wantedType));
-    CHECK_EQ("{ actions: { meow: (...any) -> string }, age: number, name: string }", toString(err->givenType));
+    CHECK_EQ(
+        FFlag::LuauHideRootHiddenVariadicTail ? "{ actions: { meow: () -> string }, age: number, name: string }"
+                                              : "{ actions: { meow: (...any) -> string }, age: number, name: string }",
+        toString(err->givenType)
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_1797_intersection_of_tables_arent_disjoint")

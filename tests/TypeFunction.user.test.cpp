@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauHideRootHiddenVariadicTail)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3699,6 +3700,35 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_function_preserves_hidden_variadic_tail")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauHideRootHiddenVariadicTail, true};
+
+    CheckResult result = check(R"(
+        type function Same(T: type): type
+            return T
+        end
+
+        local function noTailFunction(): ()
+        end
+
+        local noTailFunction2 = function()
+        end :: () -> ()
+
+        local test1: Same<typeof(noTailFunction)>
+        local test2: Same<typeof(noTailFunction2)>
+        local test3: Same<() -> ()>
+        local test4: Same<(...any) -> ()>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("() -> ()", toString(requireType("test1")));
+    CHECK_EQ("() -> ()", toString(requireType("test2")));
+    CHECK_EQ("() -> ()", toString(requireType("test3")));
+    CHECK_EQ("(...any) -> ()", toString(requireType("test4")));
 }
 
 TEST_SUITE_END();

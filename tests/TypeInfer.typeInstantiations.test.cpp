@@ -7,6 +7,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauHideRootHiddenVariadicTail)
 
 TEST_SUITE_BEGIN("TypeInferExplicitTypeInstantiations");
 
@@ -357,7 +358,10 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided")
         {
             REQUIRE_EQ(
                 toString(result.errors[0]),
-                "Too many type parameters passed to 'f', which is typed as <T>(...any) -> (). Expected at most 1 type parameter, but 2 provided."
+                FFlag::LuauHideRootHiddenVariadicTail
+                    ? "Too many type parameters passed to 'f', which is typed as <T>() -> (). Expected at most 1 type parameter, but 2 provided."
+                    : "Too many type parameters passed to 'f', which is typed as <T>(...any) -> (). Expected at most 1 type parameter, but 2 "
+                      "provided."
             );
         }
         else
@@ -388,7 +392,10 @@ TEST_CASE_FIXTURE(Fixture, "too_many_provided_type_packs")
         {
             REQUIRE_EQ(
                 toString(result.errors[0]),
-                "Too many type parameters passed to 'f', which is typed as <T...>(...any) -> (T...). Expected at most 1 type pack, but 2 provided."
+                FFlag::LuauHideRootHiddenVariadicTail
+                    ? "Too many type parameters passed to 'f', which is typed as <T...>() -> (T...). Expected at most 1 type pack, but 2 provided."
+                    : "Too many type parameters passed to 'f', which is typed as <T...>(...any) -> (T...). Expected at most 1 type pack, but 2 "
+                      "provided."
             );
         }
         else

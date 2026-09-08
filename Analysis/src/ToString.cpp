@@ -41,6 +41,7 @@ LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
+LUAU_FASTFLAG(LuauHideRootHiddenVariadicTail)
 
 namespace Luau
 {
@@ -725,7 +726,8 @@ struct TypeStringifier
 
         state.emit("(");
 
-        if (isEmpty(ftv.argTypes))
+        const VariadicTypePack* hiddenArgs = FFlag::LuauHideRootHiddenVariadicTail ? get<VariadicTypePack>(follow(ftv.argTypes)) : nullptr;
+        if (isEmpty(ftv.argTypes) || (hiddenArgs && hiddenArgs->hidden))
         {
             // if we've got an empty argument pack, we're done.
         }

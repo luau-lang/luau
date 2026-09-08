@@ -22,6 +22,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionSerdeIterationLimit, 100'000);
 
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(LuauTypeFunctionSerializeArgNames)
+LUAU_FASTFLAG(LuauHideRootHiddenVariadicTail)
 
 namespace Luau
 {
@@ -507,6 +508,8 @@ private:
     void serializeChildren(const VariadicTypePack* v1, TypeFunctionVariadicTypePack* v2)
     {
         v2->type = shallowSerialize(v1->ty);
+        if (FFlag::LuauHideRootHiddenVariadicTail)
+            v2->hidden = v1->hidden;
     }
 
     void serializeChildren(const GenericTypePack* v1, TypeFunctionGenericTypePack* v2)
@@ -1099,6 +1102,8 @@ private:
     void deserializeChildren(TypeFunctionVariadicTypePack* v2, VariadicTypePack* v1)
     {
         v1->ty = shallowDeserialize(v2->type);
+        if (FFlag::LuauHideRootHiddenVariadicTail)
+            v1->hidden = v2->hidden;
     }
 
     void deserializeChildren(TypeFunctionGenericTypePack* v2, GenericTypePack* v1)

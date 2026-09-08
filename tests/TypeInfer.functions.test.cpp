@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauHideRootHiddenVariadicTail)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4632,8 +4633,8 @@ TEST_CASE_FIXTURE(Fixture, "let_generalization_forin_iterator")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("(...any) -> number", toString(requireType("nums"), {true}));
-    CHECK_EQ("(...any) -> string", toString(requireType("strs"), {true}));
+    CHECK_EQ(FFlag::LuauHideRootHiddenVariadicTail ? "() -> number" : "(...any) -> number", toString(requireType("nums"), {true}));
+    CHECK_EQ(FFlag::LuauHideRootHiddenVariadicTail ? "() -> string" : "(...any) -> string", toString(requireType("strs"), {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "let_generalization_assign_statement")

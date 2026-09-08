@@ -130,6 +130,7 @@ struct TypeFunctionTypePack
 struct TypeFunctionVariadicTypePack
 {
     TypeFunctionTypeId type;
+    bool hidden = false;
 };
 
 struct TypeFunctionGenericTypePack

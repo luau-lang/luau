@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauExportAnnotationBinding)
 LUAU_FASTINT(LuauSolverConstraintLimit)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauHideRootHiddenVariadicTail)
 
 using namespace Luau;
 
@@ -869,7 +870,10 @@ return function(): _luau_blocked_type return nil :: any end
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(get<ConstraintSolvingIncompleteError>(result.errors[0]));
     CHECK(get<InternalError>(result.errors[1]));
-    CHECK("(...any) -> *error-type*" == toString(getFrontend().moduleResolver.getModule("game/A")->returnType));
+    CHECK(
+        (FFlag::LuauHideRootHiddenVariadicTail ? "() -> *error-type*" : "(...any) -> *error-type*") ==
+        toString(getFrontend().moduleResolver.getModule("game/A")->returnType)
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "internal_type_errors_are_only_reported_once")
@@ -889,7 +893,10 @@ return function(): { X: _luau_blocked_type, Y: _luau_blocked_type } return nil :
     // We always fail to solve all constraints here because we have an un-owned blocked type.
     CHECK(get<ConstraintSolvingIncompleteError>(result.errors[0]));
     CHECK(get<InternalError>(result.errors[1]));
-    CHECK("(...any) -> { X: *error-type*, Y: *error-type* }" == toString(getFrontend().moduleResolver.getModule("game/A")->returnType));
+    CHECK(
+        (FFlag::LuauHideRootHiddenVariadicTail ? "() -> { X: *error-type*, Y: *error-type* }" : "(...any) -> { X: *error-type*, Y: *error-type* }") ==
+        toString(getFrontend().moduleResolver.getModule("game/A")->returnType)
+    );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
@@ -1152,8 +1159,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_mutual_recursive_functions")
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
-    CHECK_EQ("(...any) -> number", toString(requireType(b, "a")));
-    CHECK_EQ("(...any) -> number", toString(requireType(b, "b")));
+    CHECK_EQ(FFlag::LuauHideRootHiddenVariadicTail ? "() -> number" : "(...any) -> number", toString(requireType(b, "a")));
+    CHECK_EQ(FFlag::LuauHideRootHiddenVariadicTail ? "() -> number" : "(...any) -> number", toString(requireType(b, "b")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_unassigned_local_stays_nil")
@@ -1255,7 +1262,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_function")
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
     CHECK_EQ("(number, number) -> number", toString(requireType(b, "add")));
     CHECK_EQ("(string) -> string", toString(requireType(b, "greet")));
-    CHECK_EQ("(...any) -> ()", toString(requireType(b, "noop")));
+    CHECK_EQ(FFlag::LuauHideRootHiddenVariadicTail ? "() -> ()" : "(...any) -> ()", toString(requireType(b, "noop")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_multret")
