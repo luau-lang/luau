@@ -30,6 +30,8 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixCallFreeTypeLowerBound)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4671,6 +4673,36 @@ TEST_CASE_FIXTURE(Fixture, "let_generalization_multiple_values")
     CHECK_EQ("string", toString(requireType("r2"), {true}));
     CHECK_EQ("number", toString(requireType("r3"), {true}));
     CHECK_EQ("string", toString(requireType("r4"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "calling_function_assigned_to_free_table_property_preserves_return_type")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauFixCallFreeTypeLowerBound, true},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function trait(impl)
+            function impl.hello_world(): string
+                return "jello world"
+            end
+            impl.other = function(): string
+                impl.hello_world()
+                return "meow"
+            end
+            return impl
+        end
+
+        local implemented = trait(...)
+        local var1: string = implemented.hello_world()
+        local var2: string = implemented.other()
+    )"));
+
+    CHECK_EQ("string", toString(requireType("var1")));
+    CHECK_EQ("string", toString(requireType("var2")));
 }
 
 TEST_SUITE_END();

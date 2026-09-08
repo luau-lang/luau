@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauFixCallFreeTypeLowerBound)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -1762,6 +1763,21 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     // TODO: This should probably use ConstraintSolver::unify
     const UnifyResult unifyResult = u2.unify(overloadToUse, inferredTy);
+
+    // If we are calling a free type that already has a lower bound (eg a
+    // function that was assigned to a property of a free table), unify that
+    // lower bound against the inferred function type so that the return type
+    // of the call is constrained by the known function rather than being left
+    // as an unconstrained free type pack.
+    if (FFlag::LuauFixCallFreeTypeLowerBound)
+    {
+        if (auto freeFn = get<FreeType>(follow(overloadToUse)))
+        {
+            TypeId lowerBound = follow(freeFn->lowerBound);
+            if (!get<NeverType>(lowerBound))
+                u2.unify(lowerBound, inferredTy);
+        }
+    }
 
     for (TypeId freeTy : u2.newFreshTypes)
         trackInteriorFreeType(constraint->scope, freeTy);
