@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixExternTypePropertiesInherited)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -945,6 +946,50 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_class_methods_works")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK(toString(tm->givenType) == "{ BaseField: number, read BaseMethod: (BaseClass, number) -> (), read Touched: Connection }");
+}
+
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_class_properties_include_inherited")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixExternTypePropertiesInherited, true}};
+
+    CheckResult result = check(R"(
+        type function getclass(arg)
+            local props = arg:properties()
+            return types.newtable(props)
+        end
+        -- forcing an error here to check the exact type of the table
+        local function ok(idx: getclass<ChildClass>): nil return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK(
+        toString(tm->givenType) ==
+        "{ BaseField: number, read BaseMethod: (BaseClass, number) -> (), read Method: (ChildClass) -> string, write Method: (ChildClass) -> string, read Touched: Connection }"
+    );
+}
+
+TEST_CASE_FIXTURE(ExternTypeFixture, "udtf_class_properties_child_overrides_parent")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixExternTypePropertiesInherited, true}};
+
+    CheckResult result = check(R"(
+        type function getclass(arg)
+            local props = arg:properties()
+            return types.newtable(props)
+        end
+        -- forcing an error here to check the exact type of the table
+        local function ok(idx: getclass<GrandChild>): nil return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK(
+        toString(tm->givenType) ==
+        "{ BaseField: number, read BaseMethod: (BaseClass, number) -> (), read Method: (GrandChild) -> string, write Method: (GrandChild) -> string, read Touched: Connection }"
+    );
 }
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "write_of_readonly_is_nil")

@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeUseTaggedMetatable)
 LUAU_FASTFLAGVARIABLE(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAGVARIABLE(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAGVARIABLE(LuauFixExternTypePropertiesInherited)
 
 namespace Luau
 {
@@ -1649,8 +1650,30 @@ static int getProps(lua_State* L)
 
     if (auto tfct = get<TypeFunctionExternType>(self))
     {
-        lua_createtable(L, int(tfct->props.size()), 0);
-        for (auto& [name, prop] : tfct->props)
+        // Properties are inherited from parent extern types; a child's property shadows its parent's.
+        TypeFunctionExternType::Props props;
+        if (FFlag::LuauFixExternTypePropertiesInherited)
+        {
+            std::vector<const TypeFunctionExternType*> chain;
+            std::set<const TypeFunctionExternType*> seen;
+            for (const TypeFunctionExternType* current = tfct; current && !seen.count(current);)
+            {
+                seen.insert(current);
+                chain.push_back(current);
+                current = current->readParent ? get<TypeFunctionExternType>(*current->readParent) : nullptr;
+            }
+
+            for (auto it = chain.rbegin(); it != chain.rend(); ++it)
+            {
+                for (const auto& [name, prop] : (*it)->props)
+                    props[name] = prop;
+            }
+        }
+        else
+            props = tfct->props;
+
+        lua_createtable(L, int(props.size()), 0);
+        for (auto& [name, prop] : props)
         {
             allocTypeUserData(L, TypeFunctionSingletonType{TypeFunctionStringSingleton{name}});
 
