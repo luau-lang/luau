@@ -13,6 +13,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAGVARIABLE(LuauFixIndexIntersectionMetatable)
+
 namespace Luau
 {
 
@@ -162,6 +164,14 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
         }
         else if (get<AnyType>(index))
             return builtinTypes->anyType;
+        else if (const auto& iti = get<IntersectionType>(index); iti && useNewSolver && FFlag::LuauFixIndexIntersectionMetatable)
+        {
+            for (TypeId part : iti)
+            {
+                if (auto res = findTablePropertyRespectingMeta(builtinTypes, errors, part, name, context, location, useNewSolver))
+                    return res;
+            }
+        }
         else
             errors.emplace_back(location, GenericError{"__index should either be a function or table. Got " + toString(index)});
 

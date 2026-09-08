@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauFixIndexIntersectionMetatable)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -1622,6 +1623,51 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "property_lookup_through_tabletypevar_metatab
     UnknownProperty* up = get<UnknownProperty>(result.errors[0]);
     REQUIRE_MESSAGE(up, result.errors[0].data);
     CHECK_EQ(up->key, "z");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "property_lookup_through_metatable_index_intersection")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFixIndexIntersectionMetatable, true};
+
+    CheckResult result = check(R"(
+        local t0 = {a = true}
+        local t1 = {s = ''}
+        local a = setmetatable({}, {__index = {} :: typeof(t0) & typeof(t1)})
+        local c = a.a
+        local b = a.s
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("boolean", toString(requireType("c")));
+    CHECK_EQ("string", toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "property_lookup_through_metatable_type_function_index_intersection")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff{FFlag::LuauFixIndexIntersectionMetatable, true};
+
+    CheckResult result = check(R"(
+        type Foo = { t: boolean } & { u: string }
+
+        local a: setmetatable<{}, { __index: Foo }> = nil :: any
+        local t = a.t
+        local u = a.u
+        local z = a.z
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    UnknownProperty* up = get<UnknownProperty>(result.errors[0]);
+    REQUIRE_MESSAGE(up, result.errors[0].data);
+    CHECK_EQ(up->key, "z");
+
+    CHECK_EQ("boolean", toString(requireType("t")));
+    CHECK_EQ("string", toString(requireType("u")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "missing_metatable_for_sealed_tables_do_not_get_inferred")
