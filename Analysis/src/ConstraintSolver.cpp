@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauFixLiteralGeneralizationThroughFreeBound)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -800,6 +801,35 @@ void ConstraintSolver::initFreeTypeTracking()
 namespace
 {
 
+// Like maybeSingleton, but also looks through free types (and intersections
+// containing them) to their upper bounds, so that a literal constrained by a
+// generic whose upper bound is a singleton union is bound to its singleton.
+bool upperBoundMaybeSingleton(TypeId ty, DenseHashSet<TypeId>& seen)
+{
+    ty = follow(ty);
+
+    if (seen.contains(ty))
+        return false;
+    seen.insert(ty);
+
+    if (maybeSingleton(ty))
+        return true;
+
+    if (const FreeType* ft = get<FreeType>(ty))
+        return upperBoundMaybeSingleton(ft->upperBound, seen);
+
+    if (const IntersectionType* itv = get<IntersectionType>(ty))
+    {
+        for (TypeId part : itv)
+        {
+            if (upperBoundMaybeSingleton(part, seen))
+                return true;
+        }
+    }
+
+    return false;
+}
+
 std::optional<TypeId> resolvePrimitiveLiteral(const FreeType& ft)
 {
     if (!ft.primitiveType)
@@ -811,6 +841,13 @@ std::optional<TypeId> resolvePrimitiveLiteral(const FreeType& ft)
 
     if (upper != bindTo && maybeSingleton(upper))
         return follow(ft.lowerBound);
+
+    if (FFlag::LuauFixLiteralGeneralizationThroughFreeBound && upper != bindTo)
+    {
+        DenseHashSet<TypeId> seen;
+        if (upperBoundMaybeSingleton(upper, seen))
+            return follow(ft.lowerBound);
+    }
 
     return bindTo;
 }

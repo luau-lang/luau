@@ -8,6 +8,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauFixLiteralGeneralizationThroughFreeBound)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -868,6 +870,46 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "singleton_when_type_is_blocked")
     )"));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_find_on_singleton_union_array")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+        {FFlag::LuauFixLiteralGeneralizationThroughFreeBound, true},
+    };
 
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local a = {
+            "A",
+            "B"
+        } :: {"A" | "B"}
+        local idx = table.find(a, "A")
+    )"));
+
+    CHECK_EQ("number?", toString(requireType("idx")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_call_with_singleton_upper_bound_keeps_literal")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+        {FFlag::LuauFixLiteralGeneralizationThroughFreeBound, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        local function first<V>(xs: {V}, x: V): V
+            return x
+        end
+
+        local a: {"A" | "B"} = {"A", "B"}
+        local v = first(a, "A")
+    )"));
+
+    // The literal must resolve to its singleton rather than widening to `string`.
+    CHECK(toString(requireType("v")).find("string") == std::string::npos);
+}
 
 TEST_SUITE_END();
