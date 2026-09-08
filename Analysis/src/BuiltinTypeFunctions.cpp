@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
+LUAU_FASTFLAGVARIABLE(LuauRawgetAbsentKeyIsUnknown)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 
 namespace Luau
@@ -2233,7 +2234,10 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
             for (TypeId ty : *typesToFind)
                 if (!tblIndexInto(ty, *tablesIter, properties, ctx, isRaw))
                 {
-                    if (isRaw)
+                    // tables are inexact, so a key that is not present may hold any value at runtime
+                    if (isRaw && FFlag::LuauRawgetAbsentKeyIsUnknown)
+                        return {ctx->builtins->unknownType, Reduction::MaybeOk, {}, {}};
+                    else if (isRaw)
                         properties.insert(ctx->builtins->nilType);
                     else
                         return {std::nullopt, Reduction::Erroneous, {}, {}};

@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauRawgetAbsentKeyIsUnknown)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -1334,7 +1335,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_inde
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK(toString(requireTypeAlias("stringType")) == "string?");
+    if (FFlag::LuauRawgetAbsentKeyIsUnknown)
+        CHECK(toString(requireTypeAlias("stringType")) == "unknown");
+    else
+        CHECK(toString(requireTypeAlias("stringType")) == "string?");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_indexee")
@@ -1351,7 +1355,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_inde
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK(toString(requireTypeAlias("numberType")) == "number?");
+    if (FFlag::LuauRawgetAbsentKeyIsUnknown)
+        CHECK(toString(requireTypeAlias("numberType")) == "unknown");
+    else
+        CHECK(toString(requireTypeAlias("numberType")) == "number?");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_index_metatables")
@@ -1370,8 +1377,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_index_metatable
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK(toString(requireTypeAlias("nilType")) == "nil");
-    CHECK(toString(requireTypeAlias("numberType")) == "number?");
+    if (FFlag::LuauRawgetAbsentKeyIsUnknown)
+    {
+        CHECK(toString(requireTypeAlias("nilType")) == "unknown");
+        CHECK(toString(requireTypeAlias("numberType")) == "unknown");
+    }
+    else
+    {
+        CHECK(toString(requireTypeAlias("nilType")) == "nil");
+        CHECK(toString(requireTypeAlias("numberType")) == "number?");
+    }
 }
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "rawget_type_function_errors_w_extern_types")
@@ -1398,7 +1413,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_queried_key_abs
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK(toString(requireTypeAlias("T")) == "nil");
+    if (FFlag::LuauRawgetAbsentKeyIsUnknown)
+        CHECK(toString(requireTypeAlias("T")) == "unknown");
+    else
+        CHECK(toString(requireTypeAlias("T")) == "nil");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_absent_key_on_inexact_table_is_unknown")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauRawgetAbsentKeyIsUnknown, true};
+
+    CheckResult result = check(R"(
+        local a = { missing = "hello" }
+        local b: {} = a
+        local c: rawget<{}, "missing"> = (nil :: any)
+        local d: nil = c
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Expected this to be 'nil', but got 'unknown'");
+    CHECK(toString(requireType("c")) == "unknown");
 }
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_len_type_function_follow")
