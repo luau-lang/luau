@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauFixIfNotAssignTypestate)
 
 namespace Luau
 {
@@ -2061,11 +2062,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatIf* ifState
 
             TypeId baseType = annotatedType ? *annotatedType : initType;
             TypeId boundType = createTypeFunctionInstance(
-                builtinTypes->typeFunctions->refineFunc,
-                {baseType, builtinTypes->truthyType},
-                {},
-                thenScope,
-                ifStatement->conditionLocal->location
+                builtinTypes->typeFunctions->refineFunc, {baseType, builtinTypes->truthyType}, {}, thenScope, ifStatement->conditionLocal->location
             );
 
             thenScope->bindings[ifStatement->conditionLocal] = Binding{boundType, ifStatement->conditionLocal->location};
@@ -2099,6 +2096,35 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatIf* ifState
             scope->inheritAssignments(thenScope);
         if (elsecf == ControlFlow::None)
             scope->inheritAssignments(elseScope);
+
+        if (FFlag::LuauFixIfNotAssignTypestate && thencf == ControlFlow::None && elsecf == ControlFlow::None)
+        {
+            if (const auto* joins = dfg->getIfJoins(ifStatement))
+            {
+                // Refinements of free types cannot be reduced yet and would only clutter the joined type, so those
+                // operands fall back to their unrefined type.
+                auto branchType = [&](const ScopePtr& branch, DefId def) -> std::optional<TypeId>
+                {
+                    std::optional<TypeId> ty = lookup(branch, ifStatement->location, def, /*prototype*/ false);
+                    if (!ty)
+                        return std::nullopt;
+
+                    std::optional<TypeId> unrefined = branch->lookupUnrefinedType(def);
+                    if (unrefined && get<FreeType>(follow(*unrefined)))
+                        return unrefined;
+
+                    return ty;
+                };
+
+                for (const auto& [phi, thenDef, elseDef] : *joins)
+                {
+                    std::optional<TypeId> thenTy = branchType(thenScope, thenDef);
+                    std::optional<TypeId> elseTy = branchType(elseScope, elseDef);
+                    if (thenTy && elseTy)
+                        scope->lvalueTypes[phi] = makeUnion(scope, ifStatement->location, *thenTy, *elseTy);
+                }
+            }
+        }
 
         if (thencf == elsecf)
             return thencf;
@@ -2689,7 +2715,12 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatError* erro
     return ControlFlow::None;
 }
 
-InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes, bool generalize)
+InferencePack ConstraintGenerator::checkPack(
+    const ScopePtr& scope,
+    AstArray<AstExpr*> exprs,
+    const std::vector<std::optional<TypeId>>& expectedTypes,
+    bool generalize
+)
 {
     LUAU_ASSERT(FFlag::LuauThreadGeneralizeThroughConstraintGeneration);
     std::vector<TypeId> head;
@@ -2717,7 +2748,11 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstArray<Ast
     return InferencePack{addTypePack(std::move(head), tail)};
 }
 
-InferencePack ConstraintGenerator::checkPack_DEPRECATED(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes)
+InferencePack ConstraintGenerator::checkPack_DEPRECATED(
+    const ScopePtr& scope,
+    AstArray<AstExpr*> exprs,
+    const std::vector<std::optional<TypeId>>& expectedTypes
+)
 {
     LUAU_ASSERT(!FFlag::LuauThreadGeneralizeThroughConstraintGeneration);
     std::vector<TypeId> head;

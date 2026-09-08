@@ -12,6 +12,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAvoidTrivialPhis)
+LUAU_FASTFLAG(LuauFixIfNotAssignTypestate)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
@@ -2862,6 +2863,80 @@ TEST_CASE_FIXTURE(Fixture, "table_name_index_without_prior_assignment_from_branc
     LUAU_REQUIRE_ERROR_COUNT(1, results);
     CHECK(get<OptionalValueAccess>(results.errors[0]));
     CHECK_EQ("{  }", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "if_not_assign_refines_after_branch")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixIfNotAssignTypestate, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo(signal: string?)
+            if not signal then
+                signal = "doge"
+            end
+            local _: string = signal
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "if_not_assign_lookup_cache_pattern")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixIfNotAssignTypestate, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Signal = { connect: (self: Signal, callback: () -> ()) -> () }
+        local function new(): Signal
+            return nil :: any
+        end
+
+        local lookup: { [number]: Signal? } = {}
+
+        local function insert(index: number, callback: () -> ())
+            local signal = lookup[index]
+            if not signal then
+                signal = new()
+                lookup[index] = signal
+            end
+
+            signal:connect(callback)
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "if_not_assign_with_else_branch_use")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixIfNotAssignTypestate, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo(signal: string?)
+            if not signal then
+                signal = "doge"
+            else
+                local _: string = signal
+            end
+            local _: string = signal
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_without_assign_does_not_refine_after_branch")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixIfNotAssignTypestate, true};
+
+    CheckResult result = check(R"(
+        local function foo(signal: string?)
+            if not signal then
+                print("x")
+            end
+            local _: string = signal
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "cli_120460_table_access_on_phi_node")

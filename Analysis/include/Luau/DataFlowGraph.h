@@ -48,6 +48,16 @@ struct DataFlowGraph
 
     std::optional<Symbol> getSymbolFromDef(const Def* def) const;
 
+    struct IfJoin
+    {
+        DefId phi;
+        DefId thenDef;
+        DefId elseDef;
+    };
+
+    // Phi nodes created for local bindings when joining the two branches of an `if`.
+    const std::vector<IfJoin>* getIfJoins(const AstStatIf* stat) const;
+
 private:
     DataFlowGraph(NotNull<DefArena> defArena, NotNull<RefinementKeyArena> keyArena);
 
@@ -68,6 +78,7 @@ private:
     DenseHashMap<const Def*, Symbol> defToSymbol;
 
     DenseHashMap<const AstExpr*, const RefinementKey*> astRefinementKeys;
+    DenseHashMap<const AstStatIf*, std::vector<IfJoin>> ifJoins{};
     friend struct DataFlowGraphBuilder;
 };
 
@@ -145,8 +156,8 @@ private:
 
     DfgScope* makeChildScope(DfgScope::ScopeType scopeType = DfgScope::Linear);
 
-    void join(DfgScope* p, DfgScope* a, DfgScope* b);
-    void joinBindings(DfgScope* p, const DfgScope& a, const DfgScope& b);
+    void join(DfgScope* p, DfgScope* a, DfgScope* b, std::vector<DataFlowGraph::IfJoin>* joins = nullptr);
+    void joinBindings(DfgScope* p, const DfgScope& a, const DfgScope& b, std::vector<DataFlowGraph::IfJoin>* joins = nullptr);
     void joinProps(DfgScope* result, const DfgScope& a, const DfgScope& b);
 
     DefId lookup(Symbol symbol, Location location);

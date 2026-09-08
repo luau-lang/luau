@@ -13,6 +13,7 @@
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauAvoidTrivialPhis)
+LUAU_FASTFLAGVARIABLE(LuauFixIfNotAssignTypestate)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 namespace Luau
@@ -110,6 +111,14 @@ std::optional<Symbol> DataFlowGraph::getSymbolFromDef(const Def* def) const
         return *ref;
 
     return std::nullopt;
+}
+
+const std::vector<DataFlowGraph::IfJoin>* DataFlowGraph::getIfJoins(const AstStatIf* stat) const
+{
+    if (auto joins = ifJoins.find(stat))
+        return joins;
+
+    return nullptr;
 }
 
 std::optional<DefId> DfgScope::lookup(Symbol symbol) const
@@ -219,14 +228,22 @@ DfgScope* DataFlowGraphBuilder::makeChildScope(DfgScope::ScopeType scopeType)
     return scopes.emplace_back(new DfgScope{currentScope(), scopeType}).get();
 }
 
-void DataFlowGraphBuilder::join(DfgScope* p, DfgScope* a, DfgScope* b)
+void DataFlowGraphBuilder::join(DfgScope* p, DfgScope* a, DfgScope* b, std::vector<DataFlowGraph::IfJoin>* joins)
 {
-    joinBindings(p, *a, *b);
+    joinBindings(p, *a, *b, joins);
     joinProps(p, *a, *b);
 }
 
-void DataFlowGraphBuilder::joinBindings(DfgScope* p, const DfgScope& a, const DfgScope& b)
+void DataFlowGraphBuilder::joinBindings(DfgScope* p, const DfgScope& a, const DfgScope& b, std::vector<DataFlowGraph::IfJoin>* joins)
 {
+    auto makePhi = [&](DefId def1, DefId def2, DefId thenDef, DefId elseDef)
+    {
+        DefId phi = defArena->phi(def1, def2);
+        if (joins)
+            joins->push_back({phi, thenDef, elseDef});
+        return phi;
+    };
+
     if (FFlag::LuauAvoidTrivialPhis)
     {
         auto join = [&](auto sym, auto def1, auto def2)
@@ -236,7 +253,7 @@ void DataFlowGraphBuilder::joinBindings(DfgScope* p, const DfgScope& a, const Df
             if (def1 == def2)
                 p->bindings[sym] = def1;
             else
-                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{def2});
+                p->bindings[sym] = makePhi(NotNull{def1}, NotNull{def2}, NotNull{def1}, NotNull{def2});
         };
 
         for (const auto& [sym, def1] : a.bindings)
@@ -250,7 +267,13 @@ void DataFlowGraphBuilder::joinBindings(DfgScope* p, const DfgScope& a, const Df
         for (const auto& [sym, def1] : b.bindings)
         {
             if (auto def2 = p->lookup(sym))
-                join(sym, def1, *def2);
+            {
+                // `def1` comes from the else branch and `*def2` comes from the parent.
+                if (def1 == *def2)
+                    p->bindings[sym] = def1;
+                else
+                    p->bindings[sym] = makePhi(NotNull{def1}, *def2, *def2, NotNull{def1});
+            }
         }
     }
     else
@@ -258,15 +281,15 @@ void DataFlowGraphBuilder::joinBindings(DfgScope* p, const DfgScope& a, const Df
         for (const auto& [sym, def1] : a.bindings)
         {
             if (auto def2 = b.bindings.find(sym))
-                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
+                p->bindings[sym] = makePhi(NotNull{def1}, NotNull{*def2}, NotNull{def1}, NotNull{*def2});
             else if (auto def2 = p->lookup(sym))
-                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
+                p->bindings[sym] = makePhi(NotNull{def1}, NotNull{*def2}, NotNull{def1}, NotNull{*def2});
         }
 
         for (const auto& [sym, def1] : b.bindings)
         {
             if (auto def2 = p->lookup(sym))
-                p->bindings[sym] = defArena->phi(NotNull{def1}, NotNull{*def2});
+                p->bindings[sym] = makePhi(NotNull{def1}, *def2, *def2, NotNull{def1});
         }
     }
 }
@@ -508,7 +531,17 @@ ControlFlow DataFlowGraphBuilder::visit(AstStatIf* i)
     else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
         scope->inherit(thenScope);
     else if ((thencf | elsecf) == ControlFlow::None)
-        join(scope, thenScope, elseScope);
+    {
+        if (FFlag::LuauFixIfNotAssignTypestate)
+        {
+            std::vector<DataFlowGraph::IfJoin> joins;
+            join(scope, thenScope, elseScope, &joins);
+            if (!joins.empty())
+                graph.ifJoins[i] = std::move(joins);
+        }
+        else
+            join(scope, thenScope, elseScope);
+    }
 
     if (thencf == elsecf)
         return thencf;
