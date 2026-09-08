@@ -26,6 +26,7 @@ LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
+LUAU_FASTFLAG(LuauFixBidirectionalInferenceForOverloadedCalls)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
@@ -4671,6 +4672,72 @@ TEST_CASE_FIXTURE(Fixture, "let_generalization_multiple_values")
     CHECK_EQ("string", toString(requireType("r2"), {true}));
     CHECK_EQ("number", toString(requireType("r3"), {true}));
     CHECK_EQ("string", toString(requireType("r4"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "lambda_argument_infers_from_single_function_overload")
+{
+    ScopedFastFlag sff{FFlag::LuauFixBidirectionalInferenceForOverloadedCalls, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type DispatchAtom<T> = (callback: (old: T) -> T) -> T
+        type SetAtom<T> = (newValue: T) -> T
+        type Molecule<T> = () -> T
+        type Atom<T> = Molecule<T> & DispatchAtom<T> & SetAtom<T>
+
+        local coins = (nil :: any) :: Atom<number>
+
+        local a = coins(10)
+        local b = coins()
+        local c = coins(function(old)
+            return old + 1
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number" == toString(requireType("a")));
+    CHECK("number" == toString(requireType("b")));
+    CHECK("number" == toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "lambda_argument_infers_singleton_union_from_single_function_overload")
+{
+    ScopedFastFlag sff{FFlag::LuauFixBidirectionalInferenceForOverloadedCalls, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type Atom<T> = (() -> T) & ((callback: (old: T) -> T) -> T) & ((newValue: T) -> T)
+
+        local gameState = (nil :: any) :: Atom<"Intermission" | "Game">
+
+        gameState(function(old)
+            if old == "Game" then
+                return "Intermission"
+            end
+            return "Game"
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "lambda_argument_with_ambiguous_function_overloads_does_not_pick_one")
+{
+    ScopedFastFlag sff{FFlag::LuauFixBidirectionalInferenceForOverloadedCalls, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type F = ((callback: (old: number) -> number) -> number) & ((callback: (old: string) -> string) -> string)
+
+        local f = (nil :: any) :: F
+
+        local x = f(function(old: string)
+            return old .. "!"
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("string" == toString(requireType("x")));
 }
 
 TEST_SUITE_END();

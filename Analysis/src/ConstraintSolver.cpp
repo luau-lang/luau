@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAGVARIABLE(LuauFixBidirectionalInferenceForOverloadedCalls)
 
 namespace Luau
 {
@@ -72,6 +73,97 @@ size_t HashSubtypeConstraintRecord::operator()(const SubtypeConstraintRecord& c)
 }
 
 static void dump(ConstraintSolver* cs, ToStringOptions& opts);
+
+static bool containsFunctionType(TypeId ty)
+{
+    ty = follow(ty);
+    if (get<FunctionType>(ty))
+        return true;
+
+    if (auto ut = get<UnionType>(ty))
+    {
+        for (TypeId option : ut)
+        {
+            if (get<FunctionType>(follow(option)))
+                return true;
+        }
+    }
+
+    return false;
+}
+
+// Given an overloaded function, pick the single overload that could be the
+// target of the call site so that bidirectional inference can push its
+// parameter types into the arguments. Overloads are filtered out by arity and,
+// for lambda arguments, by whether the corresponding parameter can be a
+// function at all. If more than one overload remains, we give up.
+static const FunctionType* selectOverloadForBidirectionalInference(
+    const IntersectionType* it,
+    NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    const AstExprCall* callSite
+)
+{
+    const size_t typeOffset = callSite->self ? 1 : 0;
+    const size_t argCount = callSite->args.size + typeOffset;
+
+    const FunctionType* candidate = nullptr;
+
+    for (TypeId part : it)
+    {
+        const FunctionType* ftv = get<FunctionType>(follow(part));
+        if (!ftv)
+            continue;
+
+        auto [head, tail] = flatten(ftv->argTypes);
+
+        if (argCount > head.size())
+        {
+            if (!tail)
+                continue;
+
+            TypePackId tp = follow(*tail);
+            if (!get<VariadicTypePack>(tp) && !get<FreeTypePack>(tp) && !get<GenericTypePack>(tp))
+                continue;
+        }
+
+        bool viable = true;
+        for (size_t i = argCount; i < head.size() && viable; ++i)
+        {
+            TypeId paramTy = follow(head[i]);
+            if (!isOptional(paramTy) && !get<AnyType>(paramTy) && !get<UnknownType>(paramTy))
+                viable = false;
+        }
+
+        if (!viable)
+            continue;
+
+        const std::vector<TypeId> params = extendTypePack(*arena, builtinTypes, ftv->argTypes, argCount).head;
+        for (size_t i = 0; i < callSite->args.size && i + typeOffset < params.size() && viable; ++i)
+        {
+            AstExpr* expr = unwrapGroup(callSite->args.data[i]);
+            if (!expr->is<AstExprFunction>())
+                continue;
+
+            TypeId paramTy = follow(params[i + typeOffset]);
+            if (get<AnyType>(paramTy) || get<UnknownType>(paramTy) || get<GenericType>(paramTy) || get<FreeType>(paramTy))
+                continue;
+
+            if (!containsFunctionType(paramTy))
+                viable = false;
+        }
+
+        if (!viable)
+            continue;
+
+        if (candidate)
+            return nullptr;
+
+        candidate = ftv;
+    }
+
+    return candidate;
+}
 
 [[maybe_unused]] static void dumpBindings(NotNull<Scope> scope, ToStringOptions& opts)
 {
@@ -1928,8 +2020,13 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     // to force unannotated argument types of that lambda to be the expected
     // types.
 
-    // FIXME: Bidirectional type checking of overloaded functions is not yet supported.
     const FunctionType* ftv = get<FunctionType>(fn);
+    if (!ftv && FFlag::LuauFixBidirectionalInferenceForOverloadedCalls)
+    {
+        if (const IntersectionType* it = get<IntersectionType>(fn))
+            ftv = selectOverloadForBidirectionalInference(it, arena, builtinTypes, c.callSite);
+    }
+
     if (!ftv)
         return true;
 
