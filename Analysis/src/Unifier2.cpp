@@ -26,6 +26,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
+LUAU_FASTFLAGVARIABLE(LuauFixDiscriminatedUnionAssign)
 
 namespace Luau
 {
@@ -34,6 +35,28 @@ static bool isOptionalOrFree(TypeId ty)
 {
     ty = follow(ty);
     return isOptional(ty) || (get<FreeType>(ty) != nullptr);
+}
+
+// Returns the singleton a property type is known to hold, if any. A free type
+// produced for a string literal in a table constructor carries the literal as
+// its lower bound.
+static const SingletonType* getKnownSingleton(TypeId ty)
+{
+    ty = follow(ty);
+    if (auto ft = get<FreeType>(ty))
+        ty = follow(ft->lowerBound);
+    return get<SingletonType>(ty);
+}
+
+static bool haveConflictingSingletons(const Property& leftProp, const Property& rightProp)
+{
+    if (!leftProp.readTy || !rightProp.readTy)
+        return false;
+
+    const SingletonType* leftSingleton = getKnownSingleton(*leftProp.readTy);
+    const SingletonType* rightSingleton = getKnownSingleton(*rightProp.readTy);
+
+    return leftSingleton && rightSingleton && !(*leftSingleton == *rightSingleton);
 }
 
 static bool areCompatible(TypeId left, TypeId right)
@@ -76,6 +99,8 @@ static bool areCompatible(TypeId left, TypeId right)
             if (!missingPropIsCompatible(leftProp, rightTable))
                 return false;
         }
+        else if (FFlag::LuauFixDiscriminatedUnionAssign && haveConflictingSingletons(leftProp, it->second))
+            return false;
     }
 
     for (const auto& [name, rightProp] : rightTable->props)

@@ -10,6 +10,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixDiscriminatedUnionAssign)
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -1118,6 +1119,66 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2025")
 
         table.insert(foo, bar) 
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1725_assign_table_literal_to_discriminated_union_with_shared_props")
+{
+    ScopedFastFlag sff{FFlag::LuauFixDiscriminatedUnionAssign, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type TextNode = { type: "Text", text: string }
+        type CodeBlockNode = { type: "CodeBlock", description: string, text: string }
+        type MarkdownNode = TextNode | CodeBlockNode
+
+        local function build(repr: string)
+            local blockNodes: { MarkdownNode } = {}
+
+            blockNodes[#blockNodes + 1] = {
+                type = "Text",
+                text = repr,
+            }
+
+            blockNodes[#blockNodes + 1] = {
+                type = "CodeBlock",
+                description = "Function Signature",
+                text = repr,
+            }
+
+            return blockNodes
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1725_assign_table_literal_to_discriminated_union_prop")
+{
+    ScopedFastFlag sff{FFlag::LuauFixDiscriminatedUnionAssign, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        --!strict
+        type A = { type: "A", text: string }
+        type B = { type: "B", text: string }
+
+        local t: { a: A | B } = { a = { type = "A", text = "" } }
+        local s: string = "x"
+        t.a = { type = "B", text = s }
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_1725_mismatched_discriminant_is_still_an_error")
+{
+    ScopedFastFlag sff{FFlag::LuauFixDiscriminatedUnionAssign, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type A = { type: "A", text: string }
+        type B = { type: "B", text: string }
+
+        local t: { A | B } = {}
+        t[1] = { type = "C", text = "" }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_SUITE_END();
