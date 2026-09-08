@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauSetmetatableExpectedType)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -2079,6 +2080,16 @@ void TypeChecker2::visit(AstExprCall* call)
     {
         for (AstExpr* arg : call->args)
             visit(arg, ValueContext::RValue);
+    }
+
+    if (FFlag::LuauSetmetatableExpectedType && matchSetMetatable(*call) && call->args.data[0]->is<AstExprTable>())
+    {
+        if (TypeId* expectedTy = module->astExpectedTypes.find(call->args.data[0]))
+        {
+            TypeId expected = follow(*expectedTy);
+            if (get<TableType>(expected) || get<UnionType>(expected) || get<IntersectionType>(expected))
+                testPotentialLiteralIsSubtype(call->args.data[0], expected);
+        }
     }
 
     visitCall(call);

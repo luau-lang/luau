@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauSetmetatableExpectedType)
 
 namespace Luau
 {
@@ -2763,7 +2764,7 @@ InferencePack ConstraintGenerator::checkPack(
     InferencePack result;
 
     if (AstExprCall* call = expr->as<AstExprCall>())
-        result = checkPack(scope, call);
+        result = checkPack(scope, call, FFlag::LuauSetmetatableExpectedType && !expectedTypes.empty() ? expectedTypes[0] : std::nullopt);
     else if (expr->is<AstExprVarargs>())
     {
         if (scope->varargPack)
@@ -2797,7 +2798,7 @@ InferencePack ConstraintGenerator::checkPack(
     return result;
 }
 
-InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall* call)
+InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall* call, std::optional<TypeId> expectedType)
 {
     Checkpoint funcBeginCheckpoint = checkpoint(this);
 
@@ -2809,7 +2810,37 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
 
     Checkpoint funcEndCheckpoint = checkpoint(this);
 
-    return checkExprCall(scope, call, fnType, funcBeginCheckpoint, funcEndCheckpoint);
+    return checkExprCall(scope, call, fnType, funcBeginCheckpoint, funcEndCheckpoint, expectedType);
+}
+
+std::optional<TypeId> ConstraintGenerator::getExpectedSetmetatableTarget(const ScopePtr& scope, TypeId expectedType)
+{
+    expectedType = follow(expectedType);
+
+    if (auto mt = get<MetatableType>(expectedType))
+        return mt->table;
+
+    if (auto pet = get<PendingExpansionType>(expectedType))
+    {
+        if (pet->typeArguments.empty())
+            return std::nullopt;
+
+        std::optional<TypeFun> alias =
+            pet->prefix ? scope->lookupImportedType(pet->prefix->value, pet->name.value) : scope->lookupType(pet->name.value);
+        if (!alias)
+            return std::nullopt;
+
+        auto tfit = get<TypeFunctionInstanceType>(follow(alias->type));
+        if (tfit && tfit->function == NotNull{&builtinTypes->typeFunctions->setmetatableFunc})
+            return pet->typeArguments[0];
+    }
+    else if (auto tfit = get<TypeFunctionInstanceType>(expectedType))
+    {
+        if (tfit->function == NotNull{&builtinTypes->typeFunctions->setmetatableFunc} && !tfit->typeArguments.empty())
+            return tfit->typeArguments[0];
+    }
+
+    return std::nullopt;
 }
 
 InferencePack ConstraintGenerator::checkExprCall(
@@ -2817,7 +2848,8 @@ InferencePack ConstraintGenerator::checkExprCall(
     AstExprCall* call,
     TypeId fnType,
     Checkpoint funcBeginCheckpoint,
-    Checkpoint funcEndCheckpoint
+    Checkpoint funcEndCheckpoint,
+    std::optional<TypeId> expectedType
 )
 {
     std::vector<AstExpr*> exprArgs;
@@ -2858,6 +2890,18 @@ InferencePack ConstraintGenerator::checkExprCall(
     }
 
     std::vector<std::optional<TypeId>> expectedTypesForCall = getExpectedCallTypesForFunctionOverloads(fnType);
+    std::optional<TypeId> expectedSetmetatableTarget;
+
+    if (FFlag::LuauSetmetatableExpectedType && expectedType && matchSetMetatable(*call))
+    {
+        if (std::optional<TypeId> expectedTarget = getExpectedSetmetatableTarget(scope, *expectedType))
+        {
+            if (expectedTypesForCall.empty())
+                expectedTypesForCall.resize(1);
+            expectedTypesForCall[0] = *expectedTarget;
+            expectedSetmetatableTarget = *expectedTarget;
+        }
+    }
 
     module->astOriginalCallTypes[call->func] = fnType;
 
@@ -2971,8 +3015,12 @@ InferencePack ConstraintGenerator::checkExprCall(
         LUAU_ASSERT(mt);
 
         target = follow(target);
-
         AstExpr* targetExpr = call->args.data[0];
+        if (expectedSetmetatableTarget && targetExpr->is<AstExprTable>())
+        {
+            addConstraint(scope, targetExpr->location, SubtypeConstraint{target, *expectedSetmetatableTarget});
+            target = *expectedSetmetatableTarget;
+        }
 
         TypeId resultTy = nullptr;
 
@@ -3140,7 +3188,11 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
     else if (expr->is<AstExprVarargs>())
         result = flattenPack(scope, expr->location, checkPack(scope, expr));
     else if (auto call = expr->as<AstExprCall>())
-        result = flattenPack(scope, expr->location, checkPack(scope, call)); // TODO: needs predicates too
+        result = flattenPack(
+            scope,
+            expr->location,
+            checkPack(scope, call, FFlag::LuauSetmetatableExpectedType ? expectedType : std::nullopt)
+        ); // TODO: needs predicates too
     else if (auto a = expr->as<AstExprFunction>())
         result = check(scope, a, expectedType, generalize);
     else if (auto indexName = expr->as<AstExprIndexName>())

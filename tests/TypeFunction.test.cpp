@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauSetmetatableExpectedType)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -2015,6 +2016,67 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2106_wait_for_pending_types_in_setmetata
     )"));
 
     CHECK_EQ("string", toString(requireType("g")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2297_setmetatable_infers_table_literal_from_expected_type")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauSetmetatableExpectedType, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local Controller = {}
+        type ControllerData = { Character: vector? }
+        export type Controller = setmetatable<ControllerData, typeof(Controller)>
+        function Controller.new(Camera: vector): Controller
+            return setmetatable({ Character = vector.zero }, Controller)
+        end
+        function Controller.newWorking(Camera: vector): Controller
+            local controllerData: ControllerData = { Character = vector.zero }
+            return setmetatable(controllerData, Controller)
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2297_setmetatable_infers_empty_and_nil_table_literal_from_expected_type")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauSetmetatableExpectedType, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local Controller = {}
+        type ControllerData = { Character: vector? }
+        export type Controller = setmetatable<ControllerData, typeof(Controller)>
+        function Controller.newEmpty(): Controller
+            return setmetatable({}, Controller)
+        end
+        function Controller.newNil(): Controller
+            return setmetatable({ Character = nil }, Controller)
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2297_setmetatable_expected_metatable_type")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauSetmetatableExpectedType, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local MT = {}
+        type Data = { Character: vector? }
+        type Proto = typeof(setmetatable({} :: Data, MT))
+        local x: Proto = setmetatable({ Character = vector.zero }, MT)
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2297_setmetatable_expected_type_still_reports_mismatch")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauSetmetatableExpectedType, true}};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        local Controller = {}
+        type ControllerData = { Character: vector? }
+        export type Controller = setmetatable<ControllerData, typeof(Controller)>
+        function Controller.new(Camera: vector): Controller
+            return setmetatable({ Character = "nope" }, Controller)
+        end
+    )"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2114_type_instantiation_on_type_function")
