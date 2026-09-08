@@ -26,6 +26,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
+LUAU_FASTFLAG(LuauFixSetmetatableGenericInference)
 
 namespace Luau
 {
@@ -89,6 +90,27 @@ static bool areCompatible(TypeId left, TypeId right)
     }
 
     return true;
+}
+
+// `setmetatable<T, MT>` reduces to `{ @metatable MT, T }`, so an instance that
+// is stuck on generics we are inferring can be unified component-wise with a
+// metatable type.
+static const TypeFunctionInstanceType* getGenericSetmetatable(TypeId ty, const DenseHashMap<TypeId, TypeId>& genericSubstitutions)
+{
+    const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(ty);
+    if (!tfit || tfit->function->name != "setmetatable" || tfit->typeArguments.size() != 2 || !tfit->packArguments.empty())
+        return nullptr;
+
+    if (tfit->state != TypeFunctionInstanceState::Unsolved)
+        return tfit;
+
+    for (TypeId arg : tfit->typeArguments)
+    {
+        if (genericSubstitutions.contains(follow(arg)))
+            return tfit;
+    }
+
+    return nullptr;
 }
 
 // returns `true` if `ty` is irresolvable and should be added to `incompleteSubtypes`.
@@ -175,6 +197,28 @@ UnifyResult Unifier2::unify_(TypeId subTy, TypeId superTy)
 
     if (subTy == superTy)
         return UnifyResult::Ok;
+
+    if (FFlag::LuauFixSetmetatableGenericInference)
+    {
+        if (auto superSetmetatable = getGenericSetmetatable(superTy, genericSubstitutions))
+        {
+            if (auto subMetatable = get<MetatableType>(subTy))
+            {
+                UnifyResult tableResult = unify_(subMetatable->table, superSetmetatable->typeArguments[0]);
+                UnifyResult metatableResult = unify_(subMetatable->metatable, superSetmetatable->typeArguments[1]);
+                return tableResult & metatableResult;
+            }
+        }
+        else if (auto subSetmetatable = getGenericSetmetatable(subTy, genericSubstitutions))
+        {
+            if (auto superMetatable = get<MetatableType>(superTy))
+            {
+                UnifyResult tableResult = unify_(subSetmetatable->typeArguments[0], superMetatable->table);
+                UnifyResult metatableResult = unify_(subSetmetatable->typeArguments[1], superMetatable->metatable);
+                return tableResult & metatableResult;
+            }
+        }
+    }
 
     // We have potentially done some unifications while dispatching either `SubtypeConstraint` or `PackSubtypeConstraint`,
     // so rather than implementing backtracking or traversing the entire type graph multiple times, we could push

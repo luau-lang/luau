@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixSetmetatableGenericInference)
 
 
 namespace Luau
@@ -874,7 +875,21 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
             superTypeFunctionInstance = get<TypeFunctionInstanceType>(*substSuperTy);
         }
 
-        result = isCovariantWith(env, subTy, superTypeFunctionInstance, scope);
+        const MetatableType* subMt = FFlag::LuauFixSetmetatableGenericInference ? get<MetatableType>(subTy) : nullptr;
+        const TypeFunctionInstanceType* originalInstance = get<TypeFunctionInstanceType>(superTy);
+
+        // setmetatable<T, MT> over generics being inferred: relate the metatable's components to the arguments directly.
+        if (subMt && mappedGenericsApplied && originalInstance->function->name == "setmetatable" && originalInstance->typeArguments.size() == 2 &&
+            originalInstance->packArguments.empty())
+        {
+            result = isCovariantWith(env, subMt->table, originalInstance->typeArguments[0], scope)
+                         .withBothComponent(TypePath::TypeField::Table)
+                         .andAlso(isCovariantWith(env, subMt->metatable, originalInstance->typeArguments[1], scope)
+                                      .withBothComponent(TypePath::TypeField::Metatable));
+        }
+        else
+            result = isCovariantWith(env, subTy, superTypeFunctionInstance, scope);
+
         result.isCacheable = !mappedGenericsApplied;
     }
     else if (get<GenericType>(subTy) || get<GenericType>(superTy))

@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauFixSetmetatableGenericInference)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -2015,6 +2016,58 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2106_wait_for_pending_types_in_setmetata
     )"));
 
     CHECK_EQ("string", toString(requireType("g")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2402_infer_generic_metatable_through_setmetatable_type_function")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixSetmetatableGenericInference, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Foo = { __brand: "Foo" }
+
+        local Bar = { __brand = "Bar" :: "Bar" }
+
+        function somefn<MT>(t: setmetatable<Foo, MT>): MT
+            return getmetatable(t)
+        end
+
+        local mt = somefn(setmetatable({ __brand = "Foo" :: "Foo" }, Bar))
+    )"));
+
+    CHECK_EQ("Bar", toString(requireType("mt")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2402_infer_generic_table_through_setmetatable_type_function")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixSetmetatableGenericInference, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local Bar = { __brand = "Bar" :: "Bar" }
+
+        function somefn<T>(t: setmetatable<T, typeof(Bar)>): T
+            return t :: any
+        end
+
+        local t = somefn(setmetatable({ __brand = "Foo" :: "Foo" }, Bar))
+    )"));
+
+    CHECK_EQ("{ __brand: \"Foo\" }", toString(requireType("t")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2402_setmetatable_type_function_generic_inference_still_rejects_mismatch")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixSetmetatableGenericInference, true}};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        type Foo = { __brand: "Foo" }
+
+        local Bar = { __brand = "Bar" :: "Bar" }
+
+        function somefn<MT>(t: setmetatable<Foo, MT>)
+        end
+
+        somefn(setmetatable({ __brand = "Baz" :: "Baz" }, Bar))
+    )"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2114_type_instantiation_on_type_function")
