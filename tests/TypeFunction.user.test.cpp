@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauMaybeSingletonUserDefinedTypeFunction)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3699,6 +3700,39 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_literal_argument_keeps_singleton_type_with_udtf_expected_type")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauMaybeSingletonUserDefinedTypeFunction, true};
+
+    CheckResult result = check(R"(
+        type myKeyOf<T> = keyof<T>
+        type function indexof(ty: type)
+            local indexer = ty:readindexer()
+            if indexer then
+                return types.unionof(myKeyOf(ty), indexer.index)
+            else
+                return myKeyOf(ty)
+            end
+        end
+
+        function setDefault<T, V>(t: T & {}, k: indexof<T>, v: V): V
+            local value: V = t[k] or v
+            t[k] = value
+            return value
+        end
+
+        type Contents = {
+            parseErrors: {string}?,
+        }
+
+        local contents: Contents = {}
+        local _errors: {string} = setDefault(contents, "parseErrors", {})
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -24,6 +24,7 @@
 #include <unordered_set>
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
+LUAU_FASTFLAGVARIABLE(LuauMaybeSingletonUserDefinedTypeFunction)
 
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
@@ -439,8 +440,13 @@ bool maybeSingleton(TypeId ty)
             if (maybeSingleton(part)) // will i regret this?
                 return true;
     if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(ty))
+    {
         if (tfit->function->name == "keyof" || tfit->function->name == "rawkeyof")
             return true;
+        // A user-defined type function may reduce to a singleton (e.g. by wrapping keyof).
+        if (FFlag::LuauMaybeSingletonUserDefinedTypeFunction && tfit->userFuncName)
+            return true;
+    }
     return false;
 }
 
