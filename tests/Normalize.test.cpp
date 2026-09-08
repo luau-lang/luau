@@ -14,6 +14,7 @@
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAG(LuauNormalizeIntersectFunctionsStructuralRetTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauIncludeExternTypeExtensionsWithTopExternType)
@@ -605,6 +606,32 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_of_negation")
 {
     CHECK("string" == toString(normal(R"(
         (string & Not<"hello">) | "hello"
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "intersect_functions_with_structurally_equal_return_types")
+{
+    ScopedFastFlag sff{FFlag::LuauNormalizeIntersectFunctionsStructuralRetTypes, true};
+
+    CHECK("(\"a\" | \"b\") -> any" == toString(normal(R"(
+        (("a") -> any) & (("b") -> any)
+    )")));
+
+    CHECK("(\"a\" | \"b\") -> nil" == toString(normal(R"(
+        (("a") -> nil) & (("b") -> nil)
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "intersect_many_overloads_with_same_return_type_does_not_hit_limits")
+{
+    ScopedFastFlag sff{FFlag::LuauNormalizeIntersectFunctionsStructuralRetTypes, true};
+
+    // Without merging overloads that share a return type, normalization
+    // union-saturates every subset of overloads (2^N) and runs out of fuel.
+    CHECK("(\"01\" | \"02\" | \"03\" | \"04\" | \"05\" | \"06\" | \"07\" | \"08\" | \"09\" | \"10\" | \"11\" | \"12\") -> any" == toString(normal(R"(
+        (("01") -> any) & (("02") -> any) & (("03") -> any) & (("04") -> any)
+        & (("05") -> any) & (("06") -> any) & (("07") -> any) & (("08") -> any)
+        & (("09") -> any) & (("10") -> any) & (("11") -> any) & (("12") -> any)
     )")));
 }
 

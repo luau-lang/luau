@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauNormalizeIntersectFunctionsStructuralRetTypes)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1680,6 +1681,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_intersection_boun
 
     CHECK("string" == toString(requireType("b")));
     CHECK("string" == toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "many_overloads_with_same_return_type_are_not_too_complex")
+{
+    ScopedFastFlag sff{FFlag::LuauNormalizeIntersectFunctionsStructuralRetTypes, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type F =
+            ((parameter: "01") -> any)
+        &   ((parameter: "02") -> any)
+        &   ((parameter: "03") -> any)
+        &   ((parameter: "04") -> any)
+        &   ((parameter: "05") -> any)
+        &   ((parameter: "06") -> any)
+        &   ((parameter: "07") -> any)
+        &   ((parameter: "08") -> any)
+        &   ((parameter: "09") -> any)
+        &   ((parameter: "10") -> any)
+        &   ((parameter: "11") -> any)
+        &   ((parameter: "12") -> any)
+
+        type G =
+            ((parameter: "01") -> ())
+        &   ((parameter: "02") -> ())
+        &   ((parameter: "03") -> ())
+        &   ((parameter: "04") -> ())
+        &   ((parameter: "05") -> ())
+        &   ((parameter: "06") -> ())
+        &   ((parameter: "07") -> ())
+        &   ((parameter: "08") -> ())
+        &   ((parameter: "09") -> nil)
+        &   ((parameter: "10") -> nil)
+        &   ((parameter: "11") -> nil)
+        &   ((parameter: "12") -> nil)
+        &   ((parameter: "13") -> nil)
+        &   ((parameter: "14") -> nil)
+        &   ((parameter: "15") -> nil)
+        &   ((parameter: "16") -> nil)
+        &   ((parameter: "17") -> nil)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();
