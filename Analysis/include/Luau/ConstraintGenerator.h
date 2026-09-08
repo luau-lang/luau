@@ -395,6 +395,7 @@ private:
     void visitLValue(const ScopePtr& scope, AstExprGlobal* global, TypeId rhsType);
     void visitLValue(const ScopePtr& scope, AstExprIndexName* expr, TypeId rhsType);
     void visitLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr, TypeId rhsType);
+    void recordPropertyAssignmentReadType(const ScopePtr& scope, AstExpr* expr, NotNull<Constraint> assignPropConstraint);
 
     struct FunctionSignature
     {

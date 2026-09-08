@@ -2435,11 +2435,19 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
     //    indexer
 
     // Important: In every codepath through this function, the type `c.propType`
-    // must be bound to something, even if it's just the errorType.
+    // must be bound to something, even if it's just the errorType. The same
+    // holds for `c.readType` when it is present.
+
+    auto bindReadType = [&](bool readable)
+    {
+        if (c.readType)
+            bind(constraint, c.readType, readable ? rhsType : builtinTypes->errorType);
+    };
 
     if (auto lhsExternType = get<ExternType>(lhsType))
     {
         const Property* prop = lookupExternTypeProp(lhsExternType, propName);
+        bindReadType(prop && prop->readTy.has_value());
         if (!prop || !prop->writeTy.has_value())
         {
             bind(constraint, c.propType, builtinTypes->anyType);
@@ -2464,6 +2472,7 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
         }
         else if (maybeTy)
         {
+            bindReadType(true);
             bind(constraint, c.propType, isIndex ? arena->addType(UnionType{{*maybeTy, builtinTypes->nilType}}) : *maybeTy);
             unify(constraint, rhsType, *maybeTy);
             return true;
@@ -2482,6 +2491,7 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
             // Food for thought: Could we block if simplification encounters a blocked type?
             lhsFree->upperBound = simplifyIntersection(constraint->scope, constraint->location, lhsFreeUpperBound, newUpperBound);
 
+            bindReadType(true);
             bind(constraint, c.propType, rhsType);
             return true;
         }
@@ -2499,6 +2509,14 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
 
     if (maybeTy)
     {
+        bool readable = true;
+        if (auto lhsTable = get<TableType>(lhsType))
+        {
+            if (auto it = lhsTable->props.find(propName); it != lhsTable->props.end())
+                readable = it->second.readTy.has_value();
+        }
+        bindReadType(readable);
+
         TypeId propTy = *maybeTy;
         bind(constraint, c.propType, isIndex ? arena->addType(UnionType{{propTy, builtinTypes->nilType}}) : propTy);
         unify(constraint, rhsType, propTy);
@@ -2519,6 +2537,7 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
 
             if (prop.writeTy.has_value())
             {
+                bindReadType(prop.readTy.has_value());
                 bind(constraint, c.propType, *prop.writeTy);
                 unify(constraint, rhsType, *prop.writeTy);
                 return true;
@@ -2529,12 +2548,14 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
                 if (lhsTable->state == TableState::Unsealed || lhsTable->state == TableState::Free)
                 {
                     prop.writeTy = prop.readTy;
+                    bindReadType(true);
                     bind(constraint, c.propType, *prop.writeTy);
                     unify(constraint, rhsType, *prop.writeTy);
                     return true;
                 }
                 else
                 {
+                    bindReadType(false);
                     bind(constraint, c.propType, builtinTypes->errorType);
                     return true;
                 }
@@ -2543,6 +2564,7 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
 
         if (lhsTable->indexer && maybeString(lhsTable->indexer->indexType))
         {
+            bindReadType(true);
             bind(constraint, c.propType, rhsType);
             unify(constraint, rhsType, lhsTable->indexer->indexResultType);
             return true;
@@ -2553,6 +2575,7 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
             // eg if inserting a free type 'a into a table {| |}, anything that
             // might affect {| |} is now known to potentially affect 'a
             cgraph->copyDependenciesOf(lhsType, rhsType);
+            bindReadType(true);
             bind(constraint, c.propType, rhsType);
             Property& newProp = lhsTable->props[propName];
             newProp.readTy = rhsType;
@@ -2585,6 +2608,7 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
         }
     }
 
+    bindReadType(false);
     bind(constraint, c.propType, builtinTypes->errorType);
 
     return true;

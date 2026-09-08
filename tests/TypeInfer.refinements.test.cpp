@@ -12,6 +12,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAvoidTrivialPhis)
+LUAU_FASTFLAG(LuauFixStaleRefinementAfterPropertyAssignment)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
@@ -2140,6 +2141,61 @@ TEST_CASE_FIXTURE(Fixture, "refinements_should_not_affect_assignment")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "property_assignment_invalidates_stale_refinement")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixStaleRefinementAfterPropertyAssignment, true};
+
+    CheckResult result = check(R"(
+        local function outer(foo: {value: boolean}?)
+            for index = 1, 20 do
+                if foo and foo.value then
+                    foo.value = false :: false
+                    local x: false = foo.value
+                end
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "property_assignment_narrows_subsequent_read")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixStaleRefinementAfterPropertyAssignment, true};
+
+    CheckResult result = check(R"(
+        local function f(foo: {value: boolean})
+            if foo.value then
+                foo.value = false :: false
+                local x: false = foo.value
+                foo["value"] = true :: true
+                local y: true = foo.value
+            end
+            local z: boolean = foo.value
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "property_assignment_does_not_narrow_write_only_property")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixStaleRefinementAfterPropertyAssignment, true};
+
+    CheckResult result = check(R"(
+        local function f(foo: {write value: number})
+            foo.value = 42
+            local x: string = foo.value
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<PropertyAccessViolation>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_should_preserve_error_suppression")

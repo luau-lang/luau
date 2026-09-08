@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixStaleRefinementAfterPropertyAssignment)
 
 namespace Luau
 {
@@ -3896,6 +3897,18 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprGlobal* glob
     }
 }
 
+void ConstraintGenerator::recordPropertyAssignmentReadType(const ScopePtr& scope, AstExpr* expr, NotNull<Constraint> assignPropConstraint)
+{
+    AssignPropConstraint* apc = getMutable<AssignPropConstraint>(*assignPropConstraint);
+    LUAU_ASSERT(apc);
+
+    TypeId readTy = arena->addType(BlockedType{});
+    getMutable<BlockedType>(readTy)->setOwner(assignPropConstraint);
+    apc->readType = readTy;
+
+    scope->lvalueTypes[dfg->getDef(expr)] = readTy;
+}
+
 void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexName* expr, TypeId rhsType)
 {
     TypeId lhsTy = check(scope, expr->expr).ty;
@@ -3907,6 +3920,9 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexName* e
     auto apc =
         addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, expr->index.value, rhsType, expr->indexLocation, propTy, incremented});
     getMutable<BlockedType>(propTy)->setOwner(apc);
+
+    if (FFlag::LuauFixStaleRefinementAfterPropertyAssignment)
+        recordPropertyAssignmentReadType(scope, expr, apc);
 }
 
 void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexExpr* expr, TypeId rhsType)
@@ -3925,6 +3941,9 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexExpr* e
             scope, expr->location, AssignPropConstraint{lhsTy, std::move(propName), rhsType, expr->index->location, propTy, incremented}
         );
         getMutable<BlockedType>(propTy)->setOwner(apc);
+
+        if (FFlag::LuauFixStaleRefinementAfterPropertyAssignment)
+            recordPropertyAssignmentReadType(scope, expr, apc);
 
         return;
     }

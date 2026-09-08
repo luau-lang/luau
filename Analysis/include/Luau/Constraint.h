@@ -235,6 +235,11 @@ struct AssignPropConstraint
     // not it should in turn decrement the prop count when this constraint is
     // dispatched.
     bool decrementPropCount = false;
+
+    /// The type that subsequent reads of the assigned property observe: the
+    /// assigned value's type when the property is readable, or the error type
+    /// otherwise. May be nullptr.
+    TypeId readType = nullptr;
 };
 
 struct AssignIndexConstraint
