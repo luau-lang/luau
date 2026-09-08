@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixIntersectFreeTypeDisjointUpperBound)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
 
 namespace
@@ -741,6 +742,28 @@ TEST_CASE_FIXTURE(SimplifyFixture, "relate_coincident_minus_one_prop_tables")
     // By width subtyping this could be { x: number, y: boolean }
     CHECK("{ x: number, y: boolean } | { x: number, y: boolean, z: string }" == toString(union_(leftTy, rightTy)));
     CHECK("{ x: number, y: boolean } | { x: number, y: boolean, z: string }" == toString(union_(rightTy, leftTy)));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "free_type_with_upper_bound_disjoint_from_other_type_is_never")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIntersectFreeTypeDisjointUpperBound, true};
+
+    TypeId boundedFreeTy = freshType(arena, getBuiltins(), &scope);
+    FreeType* ft = getMutable<FreeType>(boundedFreeTy);
+    REQUIRE(ft);
+    ft->lowerBound = helloTy;
+    ft->upperBound = helloTy;
+
+    CHECK(neverTy == intersect(boundedFreeTy, worldTy));
+    CHECK(neverTy == intersect(worldTy, boundedFreeTy));
+    CHECK(neverTy == intersect(boundedFreeTy, numberTy));
+
+    // The upper bound is not disjoint from these, so we can't decide anything.
+    CHECK(boundedFreeTy == intersect(boundedFreeTy, stringTy));
+    CHECK(boundedFreeTy == intersect(boundedFreeTy, helloTy));
+
+    // An unbounded free type tells us nothing.
+    CHECK("\"world\" & 'a" == intersectStr(freeTy, worldTy));
 }
 
 TEST_SUITE_END();

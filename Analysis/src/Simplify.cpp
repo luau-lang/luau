@@ -20,6 +20,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
 LUAU_FASTFLAGVARIABLE(LuauCheckReadTyWhenRelatingExtern)
 LUAU_FASTFLAGVARIABLE(LuauRelateIndexersTypo)
+LUAU_FASTFLAGVARIABLE(LuauFixIntersectFreeTypeDisjointUpperBound)
 
 namespace Luau
 {
@@ -1479,12 +1480,16 @@ TypeId TypeSimplifier::intersect(TypeId left, TypeId right)
         Relation r = relate(lf->upperBound, right);
         if (r == Relation::Subset || r == Relation::Coincident)
             return left;
+        if (FFlag::LuauFixIntersectFreeTypeDisjointUpperBound && r == Relation::Disjoint && !get<ErrorType>(right))
+            return builtinTypes->neverType;
     }
     else if (auto rf = get<FreeType>(right))
     {
         Relation r = relate(left, rf->upperBound);
         if (r == Relation::Superset || r == Relation::Coincident)
             return right;
+        if (FFlag::LuauFixIntersectFreeTypeDisjointUpperBound && r == Relation::Disjoint && !get<ErrorType>(left))
+            return builtinTypes->neverType;
     }
 
     if (isTypeVariable(left))

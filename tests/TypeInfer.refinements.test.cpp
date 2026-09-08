@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauFixIntersectFreeTypeDisjointUpperBound)
 
 using namespace Luau;
 
@@ -3393,6 +3394,40 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
 
     // `x` is annotated `number?`, but the then-branch still refines it by `truthy` down to `number`.
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "discriminate_table_literal_assigned_to_annotated_local_in_branch")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixIntersectFreeTypeDisjointUpperBound, true},
+    };
+
+    CheckResult result = check(R"(
+        type OperatorToken = {
+            Type: "Operator",
+            Operator: "+" | "-" | "*",
+        }
+
+        type Token = { Type: "EndOfFile" } | OperatorToken
+
+        local function f(shallow: boolean?)
+            local operator: Token
+
+            if shallow then
+                operator = { Type = "EndOfFile" }
+            else
+                operator = {} :: Token
+            end
+
+            if operator.Type == "Operator" then
+                local _optok: OperatorToken = operator
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("OperatorToken", toString(requireTypeAtPosition({18, 46})));
 }
 
 TEST_SUITE_END();
