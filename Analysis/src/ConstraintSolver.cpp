@@ -3561,7 +3561,8 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
 
         TypeId mtt = follow(mt->metatable);
 
-        auto combineOptionalProp = [&](TablePropLookupResult indexResult) -> TablePropLookupResult {
+        auto combineOptionalProp = [&](TablePropLookupResult indexResult) -> TablePropLookupResult
+        {
             if (!propIsOptional)
                 return indexResult;
 
@@ -3571,16 +3572,13 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
             if (!indexResult.propType)
                 return {{}, result.propType};
 
-            return {{}, simplifyUnion(
-                             constraint->scope,
-                             constraint->location,
-                             stripNil(builtinTypes, *arena, *result.propType),
-                             *indexResult.propType
-                         )};
+            return {
+                {}, simplifyUnion(constraint->scope, constraint->location, stripNil(builtinTypes, *arena, *result.propType), *indexResult.propType)
+            };
         };
 
         if (get<BlockedType>(mtt))
-            return propIsOptional ? result : TablePropLookupResult{{mtt}, std::nullopt};
+            return {{mtt}, std::nullopt};
         else if (auto metatable = get<TableType>(mtt))
         {
             auto indexProp = metatable->props.find("__index");
@@ -3608,14 +3606,10 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
                 }
             }
             else
-                return combineOptionalProp(
-                    lookupTableProp(constraint, indexType, propName, context, inConditional, suppressSimplification, seen)
-                );
+                return combineOptionalProp(lookupTableProp(constraint, indexType, propName, context, inConditional, suppressSimplification, seen));
         }
         else if (get<MetatableType>(mtt))
-            return combineOptionalProp(
-                lookupTableProp(constraint, mtt, propName, context, inConditional, suppressSimplification, seen)
-            );
+            return combineOptionalProp(lookupTableProp(constraint, mtt, propName, context, inConditional, suppressSimplification, seen));
         else if (propIsOptional)
             return result;
     }
