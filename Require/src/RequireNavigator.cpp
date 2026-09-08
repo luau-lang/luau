@@ -35,6 +35,15 @@ static std::string extractAlias(std::string_view path)
     return std::string{path.substr(aliasStartPos, aliasLen)};
 }
 
+static std::optional<std::string_view> getFileExtension(std::string_view component)
+{
+    if (component.size() >= 5 && component.substr(component.size() - 5) == ".luau")
+        return component.substr(component.size() - 5);
+    if (component.size() >= 4 && component.substr(component.size() - 4) == ".lua")
+        return component.substr(component.size() - 4);
+    return std::nullopt;
+}
+
 Navigator::Navigator(NavigationContext& navigationContext, ErrorHandler& errorHandler)
     : navigationContext(navigationContext)
     , errorHandler(errorHandler)
@@ -369,6 +378,12 @@ Error Navigator::navigateToChild(const std::string& component)
     std::string errorMessage = "could not resolve child component \"" + component + "\"";
     if (result == NavigationContext::NavigateResult::Ambiguous)
         errorMessage += " (ambiguous)";
+    if (auto extension = getFileExtension(component))
+    {
+        errorMessage += " (require paths must not include the \"";
+        errorMessage += std::string{*extension};
+        errorMessage += "\" file extension)";
+    }
     return errorMessage;
 }
 

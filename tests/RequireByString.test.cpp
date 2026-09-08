@@ -708,6 +708,38 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithAliasPointingToDirectory"
     }
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireAliasWithFileExtension")
+{
+    {
+        std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config/src/alias_with_extension_requirer";
+        runProtectedRequire(path);
+        assertOutputContainsAll(
+            {"false", "could not resolve child component \"dependency.luau\" (require paths must not include the \".luau\" file extension)"}
+        );
+    }
+    {
+        std::string path =
+            getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config_luau/src/alias_with_extension_requirer";
+        runProtectedRequire(path);
+        assertOutputContainsAll(
+            {"false", "could not resolve child component \"dependency.luau\" (require paths must not include the \".luau\" file extension)"}
+        );
+    }
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithFileExtension")
+{
+    runProtectedRequire(getLuauDirectory(PathType::Relative) + "/tests/require/without_config/dependency.luau");
+    assertOutputContainsAll(
+        {"false", "could not resolve child component \"dependency.luau\" (require paths must not include the \".luau\" file extension)"}
+    );
+
+    runProtectedRequire(getLuauDirectory(PathType::Relative) + "/tests/require/without_config/lua_dependency.lua");
+    assertOutputContainsAll(
+        {"false", "could not resolve child component \"lua_dependency.lua\" (require paths must not include the \".lua\" file extension)"}
+    );
+}
+
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireAliasThatDoesNotExist")
 {
     std::string nonExistentAlias = "@this.alias.does.not.exist";
