@@ -718,8 +718,7 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireAliasWithFileExtension")
         );
     }
     {
-        std::string path =
-            getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config_luau/src/alias_with_extension_requirer";
+        std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/config_tests/with_config_luau/src/alias_with_extension_requirer";
         runProtectedRequire(path);
         assertOutputContainsAll(
             {"false", "could not resolve child component \"dependency.luau\" (require paths must not include the \".luau\" file extension)"}
