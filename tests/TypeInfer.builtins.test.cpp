@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauStringByteOptionalFirstReturn)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -955,6 +956,35 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_lib_self_noself")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_byte_first_return_is_optional")
+{
+    ScopedFastFlag sff{FFlag::LuauStringByteOptionalFirstReturn, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local s = "abc"
+        local b = string.byte(s, 10)
+        local n: number = b
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("number?", toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_byte_definition")
+{
+    ScopedFastFlag sff{FFlag::LuauStringByteOptionalFirstReturn, true};
+
+    CheckResult result = check(R"(
+        local f = string.byte
+        local ok = string.byte("abc", 1) or 0
+        local n: number = ok
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("@checked (string, number?, number?) -> (number?, ...number)", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_definition")

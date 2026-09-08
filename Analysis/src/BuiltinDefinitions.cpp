@@ -26,6 +26,7 @@
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
+LUAU_FASTFLAGVARIABLE(LuauStringByteOptionalFirstReturn)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -1267,8 +1268,10 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
     const TypeId findFunc = arena->addType(std::move(findFuncTy));
     attachMagicFunction(findFunc, std::make_shared<MagicFind>());
 
-    // string.byte : string -> number? -> number? -> ...number
-    FunctionType stringDotByte{arena->addTypePack({stringType, optionalNumber, optionalNumber}), numberVariadicList};
+    // string.byte : string -> number? -> number? -> (number?, ...number)
+    const TypePackId stringDotByteRet =
+        FFlag::LuauStringByteOptionalFirstReturn ? arena->addTypePack(TypePack{{optionalNumber}, numberVariadicList}) : numberVariadicList;
+    FunctionType stringDotByte{arena->addTypePack({stringType, optionalNumber, optionalNumber}), stringDotByteRet};
     stringDotByte.isCheckedFunction = true;
 
     // string.char : .... number -> string
