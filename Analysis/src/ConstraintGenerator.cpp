@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixBooleanLiteralEqualityRefinement)
 
 namespace Luau
 {
@@ -3769,19 +3770,30 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
     {
         // We are checking a binary expression of the form a op b
         // Just because a op b is expected to return a bool, doesn't mean a, b are expected to be bools too
-        TypeId leftType = check(scope, left, {}, true).ty;
-        TypeId rightType = check(scope, right, {}, true).ty;
+        auto [leftType, leftRefinement] = check(scope, left, {}, true);
+        auto [rightType, rightRefinement] = check(scope, right, {}, true);
 
-        RefinementId leftRefinement = refinementArena.proposition(dfg->getRefinementKey(left), rightType);
-        RefinementId rightRefinement = refinementArena.proposition(dfg->getRefinementKey(right), leftType);
+        RefinementId leftEqRefinement = refinementArena.proposition(dfg->getRefinementKey(left), rightType);
+        RefinementId rightEqRefinement = refinementArena.proposition(dfg->getRefinementKey(right), leftType);
 
         if (op == AstExprBinary::CompareNe)
         {
-            leftRefinement = refinementArena.negation(leftRefinement);
-            rightRefinement = refinementArena.negation(rightRefinement);
+            leftEqRefinement = refinementArena.negation(leftEqRefinement);
+            rightEqRefinement = refinementArena.negation(rightEqRefinement);
         }
 
-        return {leftType, rightType, refinementArena.equivalence(leftRefinement, rightRefinement)};
+        RefinementId result = refinementArena.equivalence(leftEqRefinement, rightEqRefinement);
+
+        if (FFlag::LuauFixBooleanLiteralEqualityRefinement && op == AstExprBinary::CompareEq)
+        {
+            // `cond == true` refines exactly like `cond`; `cond == false` like `not cond`.
+            if (auto rhsBool = right->as<AstExprConstantBool>())
+                result = refinementArena.conjunction(result, rhsBool->value ? leftRefinement : refinementArena.negation(leftRefinement));
+            else if (auto lhsBool = left->as<AstExprConstantBool>())
+                result = refinementArena.conjunction(result, lhsBool->value ? rightRefinement : refinementArena.negation(rightRefinement));
+        }
+
+        return {leftType, rightType, result};
     }
     else
     {

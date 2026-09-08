@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauFixBooleanLiteralEqualityRefinement)
 
 using namespace Luau;
 
@@ -1441,6 +1442,109 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "discriminate_from_isa_of_x")
 
     CHECK(R"({ tag: "Part", x: Part })" == toString(requireTypeAtPosition({5, 28})));
     CHECK(R"({ tag: "Folder", x: Folder })" == toString(requireTypeAtPosition({7, 28})));
+}
+
+TEST_CASE_FIXTURE(RefinementExternTypeFixture, "refine_isa_compared_to_true")
+{
+    ScopedFastFlag sff{FFlag::LuauFixBooleanLiteralEqualityRefinement, true};
+
+    CheckResult result = check(R"(
+        local function f(x: Instance)
+            if x:IsA("Part") == true then
+                local foo = x
+            else
+                local bar = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Part", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("Instance", toString(requireTypeAtPosition({5, 28})));
+}
+
+TEST_CASE_FIXTURE(RefinementExternTypeFixture, "refine_isa_compared_to_false")
+{
+    ScopedFastFlag sff{FFlag::LuauFixBooleanLiteralEqualityRefinement, true};
+
+    CheckResult result = check(R"(
+        local function f(x: Instance)
+            if x:IsA("Part") == false then
+                local foo = x
+            else
+                local bar = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::DebugLuauForceOldSolver)
+    {
+        CHECK_EQ("Instance", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("Part", toString(requireTypeAtPosition({5, 28})));
+    }
+    else
+    {
+        CHECK_EQ("Instance & ~Part", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("Instance", toString(requireTypeAtPosition({5, 28})));
+    }
+}
+
+TEST_CASE_FIXTURE(RefinementExternTypeFixture, "refine_true_compared_to_isa")
+{
+    ScopedFastFlag sff{FFlag::LuauFixBooleanLiteralEqualityRefinement, true};
+
+    CheckResult result = check(R"(
+        local function f(x: Instance)
+            if true == x:IsA("Part") then
+                local foo = x
+            else
+                local bar = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Part", toString(requireTypeAtPosition({3, 28})));
+}
+
+TEST_CASE_FIXTURE(RefinementExternTypeFixture, "refine_parenthesized_typeguard_compared_to_true")
+{
+    ScopedFastFlag sff{FFlag::LuauFixBooleanLiteralEqualityRefinement, true};
+
+    CheckResult result = check(R"(
+        local function f(x: number | string)
+            if (typeof(x) == "number") == true then
+                local foo = x
+            else
+                local bar = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 28})));
+}
+
+TEST_CASE_FIXTURE(RefinementExternTypeFixture, "no_refinement_for_isa_compared_ne_false")
+{
+    ScopedFastFlag sff{FFlag::LuauFixBooleanLiteralEqualityRefinement, true};
+
+    CheckResult result = check(R"(
+        local function f(x: Instance)
+            if x:IsA("Part") ~= false then
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Instance", toString(requireTypeAtPosition({3, 28})));
 }
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "typeguard_cast_free_table_to_vector")

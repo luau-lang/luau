@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(LuauFixBooleanLiteralEqualityRefinement)
 
 namespace Luau
 {
@@ -3208,6 +3209,30 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
             if (auto lvalue = tryGetLValue(*expr.right))
                 predicates.emplace_back(EqPredicate{std::move(*lvalue), lhs.type, expr.location});
+
+            if (FFlag::LuauFixBooleanLiteralEqualityRefinement && expr.op == AstExprBinary::CompareEq)
+            {
+                if (auto rhsBool = expr.right->as<AstExprConstantBool>(); rhsBool && !lhs.predicates.empty())
+                {
+                    if (rhsBool->value)
+                    {
+                        for (auto& predicate : lhs.predicates)
+                            predicates.push_back(std::move(predicate));
+                    }
+                    else
+                        predicates.emplace_back(NotPredicate{std::move(lhs.predicates)});
+                }
+                else if (auto lhsBool = expr.left->as<AstExprConstantBool>(); lhsBool && !rhs.predicates.empty())
+                {
+                    if (lhsBool->value)
+                    {
+                        for (auto& predicate : rhs.predicates)
+                            predicates.push_back(std::move(predicate));
+                    }
+                    else
+                        predicates.emplace_back(NotPredicate{std::move(rhs.predicates)});
+                }
+            }
 
             if (!predicates.empty() && expr.op == AstExprBinary::CompareNe)
                 predicates = {NotPredicate{std::move(predicates)}};
