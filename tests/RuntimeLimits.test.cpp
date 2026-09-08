@@ -503,10 +503,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_runs_a_limited_number_of_iterati
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
-    ScopedFastInt sfis[] = {
-        {FInt::LuauSubtypingIterationLimit, 100},
-        {FInt::LuauTypeInferIterationLimit, 100},
-    };
+    // Only the subtyping limit is lowered here: if the unifier iteration limit were also lowered, the two limits would
+    // race on the same constraint and the winner depends on platform-specific iteration order.
+    ScopedFastInt sfi{FInt::LuauSubtypingIterationLimit, 100};
 
     CheckResult result = check(R"(
         local function l0<A...>()
