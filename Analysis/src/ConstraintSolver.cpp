@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAGVARIABLE(LuauIndexTableWithStringSingleton)
 
 namespace Luau
 {
@@ -2110,6 +2111,47 @@ bool ConstraintSolver::tryDispatchHasIndexer(
     subjectType = follow(subjectType);
     indexType = follow(indexType);
 
+    if (FFlag::LuauIndexTableWithStringSingleton)
+    {
+        if (auto ut = get<UnionType>(indexType))
+        {
+            bool allStringSingletons = true;
+            for (TypeId option : ut)
+            {
+                TypeId followedOption = follow(option);
+                auto singleton = get<SingletonType>(followedOption);
+                if (!singleton || !get<StringSingleton>(singleton))
+                {
+                    allStringSingletons = false;
+                    break;
+                }
+            }
+
+            if (allStringSingletons)
+            {
+                UnionBuilder ub{arena, builtinTypes};
+                bool success = false;
+
+                for (TypeId option : ut)
+                {
+                    TypeId r = arena->addType(BlockedType{});
+                    getMutable<BlockedType>(r)->setOwner(constraint.get());
+
+                    Set<TypeId> seenCopy = seen;
+                    bool ok = tryDispatchHasIndexer(recursionDepth, constraint, subjectType, option, r, seenCopy);
+                    if (!ok)
+                        continue;
+
+                    ub.add(follow(r));
+                    success = true;
+                }
+
+                bind(constraint, resultType, success ? ub.build() : builtinTypes->errorType);
+                return true;
+            }
+        }
+    }
+
     if (seen.contains(subjectType))
         return false;
     seen.insert(subjectType);
@@ -2163,6 +2205,22 @@ bool ConstraintSolver::tryDispatchHasIndexer(
     }
     else if (auto tt = getMutable<TableType>(subjectType))
     {
+        if (FFlag::LuauIndexTableWithStringSingleton)
+        {
+            if (auto singleton = get<SingletonType>(indexType))
+            {
+                if (auto ss = get<StringSingleton>(singleton))
+                {
+                    auto it = tt->props.find(ss->value);
+                    if (it != tt->props.end() && it->second.readTy)
+                    {
+                        bind(constraint, resultType, *it->second.readTy);
+                        return true;
+                    }
+                }
+            }
+        }
+
         if (auto indexer = tt->indexer)
         {
             unify(constraint, indexType, indexer->indexType);

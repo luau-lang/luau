@@ -19,6 +19,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
@@ -34,6 +35,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauIndexTableWithStringSingleton)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -7590,6 +7592,48 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_table_with_union_of_string_singletons")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauIndexTableWithStringSingleton, true}};
+
+    CheckResult result = check(R"(
+        local x: "hello" | "bye"
+        local t: { hello: number, bye: string }
+        local a = t[x]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number | string" == toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_table_with_string_singleton")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauIndexTableWithStringSingleton, true}};
+
+    CheckResult result = check(R"(
+        local x: "hello"
+        local t: { hello: number, bye: string }
+        local a = t[x]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number" == toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_table_with_string_singleton_missing_property")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauSolverV2, true}, {FFlag::LuauIndexTableWithStringSingleton, true}};
+
+    CheckResult result = check(R"(
+        local x: "hello" | "nope"
+        local t: { hello: number, bye: string }
+        local a = t[x]
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<UnknownProperty>(result.errors[0]));
 }
 
 TEST_SUITE_END();

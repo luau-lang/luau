@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauIndexTableWithStringSingleton)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -135,6 +136,38 @@ static std::optional<std::string> getIdentifierOfBaseVar(AstExpr* node)
 
     if (AstExprIndexName* expr = node->as<AstExprIndexName>())
         return getIdentifierOfBaseVar(expr->expr);
+
+    return std::nullopt;
+}
+
+static std::optional<std::vector<std::string>> getStringSingletonNames(TypeId ty)
+{
+    ty = follow(ty);
+
+    if (auto singleton = get<SingletonType>(ty))
+    {
+        if (auto ss = get<StringSingleton>(singleton))
+            return std::vector<std::string>{ss->value};
+    }
+
+    if (auto ut = get<UnionType>(ty))
+    {
+        std::vector<std::string> names;
+        for (TypeId option : ut)
+        {
+            auto singleton = get<SingletonType>(follow(option));
+            if (!singleton)
+                return std::nullopt;
+
+            auto ss = get<StringSingleton>(singleton);
+            if (!ss)
+                return std::nullopt;
+
+            names.push_back(ss->value);
+        }
+
+        return names;
+    }
 
     return std::nullopt;
 }
@@ -2184,6 +2217,17 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
 
     TypeId exprType = follow(lookupType(indexExpr->expr));
     TypeId indexType = follow(lookupType(indexExpr->index));
+
+    if (FFlag::LuauIndexTableWithStringSingleton)
+    {
+        if (auto names = getStringSingletonNames(indexType); names && !names->empty())
+        {
+            TypeId leftType = stripFromNilAndReport(exprType, indexExpr->location);
+            for (const std::string& name : *names)
+                checkIndexTypeFromType(leftType, name, context, indexExpr->location, indexType);
+            return;
+        }
+    }
 
     if (auto tt = get<TableType>(exprType))
     {
