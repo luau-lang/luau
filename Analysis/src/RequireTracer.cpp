@@ -2,7 +2,10 @@
 #include "Luau/RequireTracer.h"
 
 #include "Luau/Ast.h"
+#include "Luau/Common.h"
 #include "Luau/Module.h"
+
+LUAU_FASTFLAGVARIABLE(LuauRequireTracerSingletonStringAssertion)
 
 namespace Luau
 {
@@ -84,7 +87,11 @@ struct RequireTracer : AstVisitor
         else if (AstExprGroup* expr = node->as<AstExprGroup>())
             return expr->expr;
         else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
+        {
+            if (FFlag::LuauRequireTracerSingletonStringAssertion && expr->annotation->is<AstTypeSingletonString>())
+                return expr->expr;
             return expr->annotation;
+        }
         else if (AstTypeGroup* expr = node->as<AstTypeGroup>())
             return expr->type;
         else if (AstTypeTypeof* expr = node->as<AstTypeTypeof>())

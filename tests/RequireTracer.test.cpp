@@ -3,10 +3,13 @@
 #include "Luau/Parser.h"
 
 #include "Fixture.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
 using namespace Luau;
+
+LUAU_FASTFLAG(LuauRequireTracerSingletonStringAssertion)
 
 namespace
 {
@@ -258,6 +261,24 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "follow_type_annotation_2")
     REQUIRE(local != nullptr);
 
     CHECK_EQ("game/Redirect/Nested", result.exprs[local->values.data[0]].name);
+}
+
+TEST_CASE_FIXTURE(RequireTracerFixture, "follow_singleton_string_type_assertion")
+{
+    ScopedFastFlag sff{FFlag::LuauRequireTracerSingletonStringAssertion, true};
+
+    AstStatBlock* block = parse(R"(
+        local R = game.Test :: 'game.Test'
+        require(R)
+    )");
+    REQUIRE_EQ(2, block->body.size);
+
+    RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName", {});
+
+    AstStatLocal* local = block->body.data[0]->as<AstStatLocal>();
+    REQUIRE(local != nullptr);
+
+    CHECK_EQ("game/Test", result.exprs[local->values.data[0]].name);
 }
 
 TEST_SUITE_END();
