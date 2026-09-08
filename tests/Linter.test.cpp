@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
+LUAU_FASTFLAG(LuauLintTypeFunctionEnvironment)
 
 using namespace Luau;
 
@@ -2570,6 +2571,95 @@ a<<"hi">>("hi")
 )");
 
     REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "LocalShadowTypeFunctionGlobal")
+{
+    ScopedFastFlag sff{FFlag::LuauLintTypeFunctionEnvironment, true};
+
+    LintResult result = lint(R"(
+type function Pair(first, second)
+    if first:readproperty(types.singleton("__T")):is("nil") then
+        return second
+    end
+    return first
+end
+
+local types = { "a", "b" }
+for _, t in types do
+    print(t)
+end
+
+type T = Pair<number, string>
+)");
+
+    REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "LocalShadowInsideTypeFunction")
+{
+    ScopedFastFlag sff{FFlag::LuauLintTypeFunctionEnvironment, true};
+
+    LintResult result = lint(R"(
+type function First(first)
+    return types.any
+end
+
+type function Second(second)
+    local types = second
+    return types
+end
+
+type T = First<number> | Second<string>
+)");
+
+    REQUIRE(1 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].code, LintWarning::Code_LocalShadow);
+    CHECK_EQ(result.warnings[0].location.begin.line, 6);
+    CHECK_EQ(result.warnings[0].text, "Variable 'types' shadows a global variable used at line 3");
+}
+
+TEST_CASE_FIXTURE(Fixture, "UnknownGlobalTypeFunctionEnvironment")
+{
+    ScopedFastFlag sff{FFlag::LuauLintTypeFunctionEnvironment, true};
+
+    LintResult result = lint(R"(
+--!nocheck
+type function Wrap(first)
+    return types.unionof(first, types.singleton(nil))
+end
+
+type T = Wrap<number>
+
+local t = unknownglobal
+return t
+)");
+
+    REQUIRE(1 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].code, LintWarning::Code_UnknownGlobal);
+    CHECK_EQ(result.warnings[0].text, "Unknown global 'unknownglobal'; consider assigning to it first");
+}
+
+TEST_CASE_FIXTURE(Fixture, "GlobalUsedAsLocalTypeFunctionEnvironment")
+{
+    ScopedFastFlag sff{FFlag::LuauLintTypeFunctionEnvironment, true};
+
+    LintResult result = lint(R"(
+type function Wrap(first)
+    cached = types.unionof(first, types.singleton(nil))
+    return cached
+end
+
+cached = 5
+print(cached)
+
+type T = Wrap<number>
+)");
+
+    REQUIRE(1 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].code, LintWarning::Code_GlobalUsedAsLocal);
+    CHECK_EQ(result.warnings[0].location.begin.line, 2);
+    CHECK_EQ(result.warnings[0].text, "Global 'cached' is only used in the enclosing function 'Wrap'; consider changing it to local");
 }
 
 TEST_SUITE_END();

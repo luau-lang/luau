@@ -14,6 +14,7 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauLintTypeFunctionEnvironment)
 
 namespace Luau
 {
@@ -253,36 +254,52 @@ private:
     LintContext* context = nullptr;
 
     DenseHashMap<AstName, Global> globals;
+    DenseHashMap<AstName, Global> typeFunctionGlobals;
     std::vector<AstExprGlobal*> globalRefs;
+    std::vector<AstExprGlobal*> typeFunctionGlobalRefs;
     std::vector<FunctionInfo> functionStack;
+    bool inTypeFunction = false;
 
 
     LintGlobalLocal() = default;
 
-    void report()
+    DenseHashMap<AstName, Global>& currentGlobals()
     {
-        for (size_t i = 0; i < globalRefs.size(); ++i)
-        {
-            AstExprGlobal* gv = globalRefs[i];
-            Global* g = globals.find(gv->name);
+        return inTypeFunction ? typeFunctionGlobals : globals;
+    }
 
-            if (!g || (!g->assigned && !g->builtin))
-                emitWarning(
-                    *context, LintWarning::Code_UnknownGlobal, gv->location, "Unknown global '%s'; consider assigning to it first", gv->name.value
-                );
-            else if (g->deprecated)
+    std::vector<AstExprGlobal*>& currentGlobalRefs()
+    {
+        return inTypeFunction ? typeFunctionGlobalRefs : globalRefs;
+    }
+
+    void report(const DenseHashMap<AstName, Global>& globals, const std::vector<AstExprGlobal*>& globalRefs, bool reportUnknown)
+    {
+        if (reportUnknown)
+        {
+            for (size_t i = 0; i < globalRefs.size(); ++i)
             {
-                if (const char* replacement = *g->deprecated; replacement && strlen(replacement))
+                AstExprGlobal* gv = globalRefs[i];
+                const Global* g = globals.find(gv->name);
+
+                if (!g || (!g->assigned && !g->builtin))
                     emitWarning(
-                        *context,
-                        LintWarning::Code_DeprecatedGlobal,
-                        gv->location,
-                        "Global '%s' is deprecated, use '%s' instead",
-                        gv->name.value,
-                        replacement
+                        *context, LintWarning::Code_UnknownGlobal, gv->location, "Unknown global '%s'; consider assigning to it first", gv->name.value
                     );
-                else
-                    emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated", gv->name.value);
+                else if (g->deprecated)
+                {
+                    if (const char* replacement = *g->deprecated; replacement && strlen(replacement))
+                        emitWarning(
+                            *context,
+                            LintWarning::Code_DeprecatedGlobal,
+                            gv->location,
+                            "Global '%s' is deprecated, use '%s' instead",
+                            gv->name.value,
+                            replacement
+                        );
+                    else
+                        emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated", gv->name.value);
+                }
             }
         }
 
@@ -326,6 +343,14 @@ private:
         }
     }
 
+    void report()
+    {
+        report(globals, globalRefs, true);
+
+        if (FFlag::LuauLintTypeFunctionEnvironment)
+            report(typeFunctionGlobals, typeFunctionGlobalRefs, false);
+    }
+
     bool visit(AstExprFunction* node) override
     {
         functionStack.emplace_back(node);
@@ -337,11 +362,24 @@ private:
         return false;
     }
 
+    bool visit(AstStatTypeFunction* node) override
+    {
+        if (!FFlag::LuauLintTypeFunctionEnvironment)
+            return true;
+
+        bool oldInTypeFunction = inTypeFunction;
+        inTypeFunction = true;
+        node->body->visit(this);
+        inTypeFunction = oldInTypeFunction;
+
+        return false;
+    }
+
     bool visit(AstExprGlobal* node) override
     {
         if (!functionStack.empty() && !functionStack.back().dominatedGlobals.contains(node->name))
         {
-            Global& g = globals[node->name];
+            Global& g = currentGlobals()[node->name];
             g.readBeforeWritten = true;
         }
         trackGlobalRef(node);
@@ -372,7 +410,7 @@ private:
 
             if (AstExprGlobal* gv = var->as<AstExprGlobal>())
             {
-                Global& g = globals[gv->name];
+                Global& g = currentGlobals()[gv->name];
 
                 if (functionStack.empty())
                 {
@@ -419,7 +457,7 @@ private:
     {
         if (AstExprGlobal* gv = node->name->as<AstExprGlobal>())
         {
-            Global& g = globals[gv->name];
+            Global& g = currentGlobals()[gv->name];
 
             if (g.builtin)
                 emitWarning(
@@ -521,9 +559,9 @@ private:
 
     void trackGlobalRef(AstExprGlobal* node)
     {
-        Global& g = globals[node->name];
+        Global& g = currentGlobals()[node->name];
 
-        globalRefs.push_back(node);
+        currentGlobalRefs().push_back(node);
 
         if (!g.firstRef)
         {
@@ -717,6 +755,7 @@ private:
         bool import;
         bool used;
         bool arg;
+        bool typeFunction = false;
     };
 
     struct Global
@@ -729,6 +768,8 @@ private:
     DenseHashMap<AstLocal*, Local> locals;
     DenseHashMap<AstName, AstLocal*> imports;
     DenseHashMap<AstName, Global> globals;
+    DenseHashMap<AstName, Global> typeFunctionGlobals;
+    bool inTypeFunction = false;
 
     LintLocalHygiene() = default;
 
@@ -745,6 +786,8 @@ private:
 
     void reportUsedLocal(AstLocal* local, const Local& info)
     {
+        DenseHashMap<AstName, Global>& globalTable = info.typeFunction ? typeFunctionGlobals : globals;
+
         if (AstLocal* shadow = local->shadow)
         {
             // LintDuplicateFunctions will catch this.
@@ -767,7 +810,7 @@ private:
                     shadow->location.begin.line + 1
                 );
         }
-        else if (Global* global = globals.find(local->name))
+        else if (Global* global = globalTable.find(local->name))
         {
             if (global->builtin)
                 ; // there are many builtins with common names like 'table'; some of them are deprecated as well
@@ -848,6 +891,7 @@ private:
 
             l.defined = node;
             l.import = isRequireCall(node->values.data[0]);
+            l.typeFunction = inTypeFunction;
 
             if (l.import)
                 imports[node->vars.data[0]->name] = node->vars.data[0];
@@ -859,6 +903,7 @@ private:
                 Local& l = locals[node->vars.data[i]];
 
                 l.defined = node;
+                l.typeFunction = inTypeFunction;
             }
         }
 
@@ -871,6 +916,7 @@ private:
 
         l.defined = node;
         l.function = true;
+        l.typeFunction = inTypeFunction;
 
         return true;
     }
@@ -880,19 +926,33 @@ private:
         Local& l = locals[node->local];
 
         l.used = true;
+        l.typeFunction = inTypeFunction;
 
         return true;
     }
 
     bool visit(AstExprGlobal* node) override
     {
-        Global& global = globals[node->name];
+        Global& global = inTypeFunction ? typeFunctionGlobals[node->name] : globals[node->name];
 
         global.used = true;
         if (!global.firstRef)
             global.firstRef = node;
 
         return true;
+    }
+
+    bool visit(AstStatTypeFunction* node) override
+    {
+        if (!FFlag::LuauLintTypeFunctionEnvironment)
+            return true;
+
+        bool oldInTypeFunction = inTypeFunction;
+        inTypeFunction = true;
+        node->body->visit(this);
+        inTypeFunction = oldInTypeFunction;
+
+        return false;
     }
 
     bool visit(AstType* node) override
