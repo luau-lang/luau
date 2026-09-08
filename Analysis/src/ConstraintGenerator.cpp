@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixSelfAssignedUninitializedGlobal)
 
 namespace Luau
 {
@@ -3879,11 +3880,26 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprGlobal* glob
         DefId def = dfg->getDef(global);
         rootScope->lvalueTypes[def] = rhsType;
 
+        auto followedAnnotation = follow(*annotatedTy);
+
         // Ignore possible self-assignment, it doesn't create a new constraint
         if (annotatedTy == follow(rhsType))
-            return;
+        {
+            // Reading a global that has never been assigned yields nothing to bind its blocked type to,
+            // so resolve it to an error type rather than leaking the blocked type.
+            if (FFlag::LuauFixSelfAssignedUninitializedGlobal)
+            {
+                if (auto bt = get<BlockedType>(followedAnnotation); bt && uninitializedGlobals.contains(global->name))
+                {
+                    LUAU_ASSERT(bt->getOwner() == nullptr);
+                    uninitializedGlobals.erase(global->name);
+                    emplaceType<BoundType>(asMutable(followedAnnotation), builtinTypes->errorType);
+                }
+            }
 
-        auto followedAnnotation = follow(*annotatedTy);
+            return;
+        }
+
         if (auto bt = get<BlockedType>(followedAnnotation); bt && uninitializedGlobals.contains(global->name))
         {
             LUAU_ASSERT(bt->getOwner() == nullptr);

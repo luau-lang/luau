@@ -32,6 +32,7 @@ LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauCheckReadTyWhenRelatingExtern)
 LUAU_FASTFLAG(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAG(LuauFixSelfAssignedUninitializedGlobal)
 
 using namespace Luau;
 
@@ -2759,6 +2760,25 @@ TEST_CASE_FIXTURE(Fixture, "captured_globals_are_not_blocked")
 
         return {}
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "self_assigned_uninitialized_global_does_not_leak_blocked_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauForbidInternalTypes, true},
+        {FFlag::LuauFixSelfAssignedUninitializedGlobal, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        a = a
+        function a:test() end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Unknown global 'a'; consider assigning to it first", toString(result.errors[0]));
+    CHECK_EQ("*error-type*", toString(requireTypeAtPosition({2, 12})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_instantiation2")
