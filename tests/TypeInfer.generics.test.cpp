@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixGenericPackUnpack)
 
 using namespace Luau;
 
@@ -2145,6 +2146,44 @@ TEST_CASE_FIXTURE(Fixture, "id_function_do_not_leak_generic")
     )"));
 
     CHECK_EQ("(unknown) -> ()", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unpacking_generic_pack_yields_unknown_not_count_mismatch")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixGenericPackUnpack, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function foo<T...>(...: T...)
+            local a = ...
+            local b = (...)
+            local c, d = ...
+            return a, b, c, d
+        end
+    )"));
+
+    CHECK_EQ("<T...>(T...) -> (unknown, unknown, unknown, unknown)", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unpacking_generic_pack_into_annotated_locals")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixGenericPackUnpack, true},
+    };
+
+    CheckResult result = check(R"(
+        local function foo<T...>(...: T...)
+            local a: unknown = ...
+            local b: nil = ...
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK_EQ(Position{3, 27}, result.errors[0].location.begin);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_185450_instantiate_generics_prior_to_pushing")

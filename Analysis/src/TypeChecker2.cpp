@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixGenericPackUnpack)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -824,10 +825,15 @@ void TypeChecker2::visit(AstStatLocal* local)
             if (i < local->vars.size)
                 valueTypes = extendTypePack(*module->internalTypes, builtinTypes, valuePack, local->vars.size - i);
 
+            // A generic pack tail (e.g. `...: T...`) can hold any number of
+            // values of unknown type, so we can't report a count mismatch.
+            const bool genericTail =
+                FFlag::LuauFixGenericPackUnpack && valueTypes.tail && get<GenericTypePack>(follow(*valueTypes.tail));
+
             Location errorLocation;
             for (size_t j = i; j < local->vars.size; ++j)
             {
-                if (j - i >= valueTypes.head.size())
+                if (j - i >= valueTypes.head.size() && !genericTail)
                 {
                     errorLocation = local->vars.data[j]->location;
                     break;
@@ -837,13 +843,14 @@ void TypeChecker2::visit(AstStatLocal* local)
                 if (var->annotation)
                 {
                     TypeId varType = lookupAnnotation(var->annotation);
-                    testIsSubtype(valueTypes.head[j - i], varType, value->location);
+                    TypeId valueType = j - i < valueTypes.head.size() ? valueTypes.head[j - i] : builtinTypes->unknownType;
+                    testIsSubtype(valueType, varType, value->location);
 
                     visit(var->annotation);
                 }
             }
 
-            if (valueTypes.head.size() < local->vars.size - i)
+            if (!genericTail && valueTypes.head.size() < local->vars.size - i)
             {
                 reportError(
                     CountMismatch{

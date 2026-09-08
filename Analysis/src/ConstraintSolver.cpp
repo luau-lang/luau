@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAGVARIABLE(LuauFixGenericPackUnpack)
 
 namespace Luau
 {
@@ -2771,7 +2772,12 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
 
     // We know that resultPack does not have a tail, but we don't know if
     // sourcePack is long enough to fill every value.  Replace every remaining
-    // result TypeId with `nil`.
+    // result TypeId with `nil`.  If the source pack ends in a generic pack, we
+    // know nothing about the remaining values, so they are `unknown` instead.
+
+    TypeId fillType = builtinTypes->nilType;
+    if (FFlag::LuauFixGenericPackUnpack && srcPack.tail && get<GenericTypePack>(follow(*srcPack.tail)))
+        fillType = builtinTypes->unknownType;
 
     while (resultIter != resultEnd)
     {
@@ -2779,7 +2785,7 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
         LUAU_ASSERT(canMutate(resultTy, constraint));
         if (get<BlockedType>(resultTy) || get<PendingExpansionType>(resultTy))
         {
-            bind(constraint, resultTy, builtinTypes->nilType);
+            bind(constraint, resultTy, fillType);
         }
 
         ++resultIter;
