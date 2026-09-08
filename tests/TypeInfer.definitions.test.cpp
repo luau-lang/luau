@@ -10,6 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauFixDeclareFunctionGenericLeak)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -714,6 +715,60 @@ da.value = false
     REQUIRE(get<TypeMismatch>(result.errors[1]));
     CHECK_EQ(result.errors[0].location.begin.line, 4);
     CHECK_EQ(result.errors[1].location.begin.line, 6);
+}
+
+TEST_CASE_FIXTURE(Fixture, "declared_function_generics_do_not_leak_into_definition_file")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixDeclareFunctionGenericLeak, true},
+    };
+
+    unfreeze(getFrontend().globals.globalTypes);
+    LoadDefinitionFileResult result = getFrontend().loadDefinitionFile(
+        getFrontend().globals,
+        getFrontend().globals.globalScope,
+        R"(
+        declare function cool<T, U...>(arg: T, ...: U...): T
+
+        export type AT = T
+    )",
+        "@test",
+        /* captureComments */ false
+    );
+    freeze(getFrontend().globals.globalTypes);
+
+    REQUIRE(!result.success);
+    CHECK_EQ(result.parseResult.errors.size(), 0);
+    REQUIRE_EQ(result.module->errors.size(), 1);
+
+    UnknownSymbol* us = get<UnknownSymbol>(result.module->errors[0]);
+    REQUIRE(us);
+    CHECK_EQ(us->name, "T");
+    CHECK_EQ(us->context, UnknownSymbol::Type);
+}
+
+TEST_CASE_FIXTURE(Fixture, "declared_function_generics_still_usable_in_signature")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixDeclareFunctionGenericLeak, true},
+    };
+
+    loadDefinition(R"(
+        declare function cool<T, U...>(arg: T, ...: U...): (T, U...)
+    )");
+
+    CheckResult result = check(R"(
+        local x, y, z = cool("hi", 1, true)
+        local f = cool
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType("x")), "string");
+    CHECK_EQ(toString(requireType("y")), "number");
+    CHECK_EQ(toString(requireType("z")), "boolean");
+    CHECK_EQ(toString(requireType("f")), "<T, U...>(T, U...) -> (T, U...)");
 }
 
 TEST_SUITE_END();

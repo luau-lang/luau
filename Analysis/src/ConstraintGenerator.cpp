@@ -41,6 +41,7 @@ LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
+LUAU_FASTFLAGVARIABLE(LuauFixDeclareFunctionGenericLeak)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -2487,8 +2488,12 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareFunction* global)
 {
-    std::vector<std::pair<Name, GenericTypeDefinition>> generics = createGenerics(scope, global->generics);
-    std::vector<std::pair<Name, GenericTypePackDefinition>> genericPacks = createGenericPacks(scope, global->genericPacks);
+    ScopePtr funScope = scope;
+    if (FFlag::LuauFixDeclareFunctionGenericLeak && (global->generics.size > 0 || global->genericPacks.size > 0))
+        funScope = childScope(global, scope);
+
+    std::vector<std::pair<Name, GenericTypeDefinition>> generics = createGenerics(funScope, global->generics);
+    std::vector<std::pair<Name, GenericTypePackDefinition>> genericPacks = createGenericPacks(funScope, global->genericPacks);
 
     std::vector<TypeId> genericTys;
     genericTys.reserve(generics.size());
@@ -2504,8 +2509,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareFunc
         genericTps.push_back(generic.tp);
     }
 
-    ScopePtr funScope = scope;
-    if (!generics.empty() || !genericPacks.empty())
+    if (!FFlag::LuauFixDeclareFunctionGenericLeak && (!generics.empty() || !genericPacks.empty()))
         funScope = childScope(global, scope);
 
     TypePackId paramPack = resolveTypePack(
