@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixTableFreezeTypeState)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1238,6 +1239,52 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_does_not_retroactively_block_mu
 
     CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("number", toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_twice_on_same_local")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixTableFreezeTypeState, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type objTable = {x: string}
+        local o: objTable = {x="yo"}
+        local _o: objTable = table.freeze(o)
+        local of = table.freeze(o)
+        of.x = "error"
+    )");
+
+    // The annotated assignment is a genuine mismatch (read-only table into a
+    // read-write alias), and the write to the frozen result is rejected.
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(Location({4, 29}, {4, 44}) == result.errors[0].location);
+    CHECK("Property x of table 'objTable' is read-only" == toString(result.errors[1]));
+    CHECK(Location({6, 8}, {6, 12}) == result.errors[1].location);
+    CHECK_EQ("{ read x: string }", toString(requireType("of"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_twice_on_same_local_no_annotation")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauFixTableFreezeTypeState, true};
+
+    CheckResult result = check(R"(
+        local o = {x = "yo"}
+        local a = table.freeze(o)
+        local b = table.freeze(o)
+        local x = b.x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("{ read x: string }", toString(requireType("a"), {true}));
+    CHECK_EQ("{ read x: string }", toString(requireType("b"), {true}));
+    CHECK_EQ("string", toString(requireType("x")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_no_generic_table")

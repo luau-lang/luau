@@ -5,6 +5,7 @@
 #include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
+#include "Luau/Constraint.h"
 #include "Luau/ConstraintGenerator.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/DenseHash.h"
@@ -26,6 +27,7 @@
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
+LUAU_FASTFLAG(LuauFixTableFreezeTypeState)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -1774,9 +1776,18 @@ bool MagicFreeze::infer(const MagicFunctionCallContext& context)
 
     TypeId inputType = follow(paramTypes[0]);
 
-    AstExpr* targetExpr = context.callSite->args.data[0];
-    std::optional<DefId> resultDef = dfg->getDefOptional(targetExpr);
-    std::optional<TypeId> resultTy = resultDef ? scope->lookup(*resultDef) : std::nullopt;
+    std::optional<TypeId> resultTy;
+    if (FFlag::LuauFixTableFreezeTypeState)
+    {
+        if (const auto* fcc = get_if<FunctionCallConstraint>(&context.constraint->c); fcc && fcc->typeStateResult)
+            resultTy = fcc->typeStateResult;
+    }
+    else
+    {
+        AstExpr* targetExpr = context.callSite->args.data[0];
+        std::optional<DefId> resultDef = dfg->getDefOptional(targetExpr);
+        resultTy = resultDef ? scope->lookup(*resultDef) : std::nullopt;
+    }
 
     if (resultTy && !get<BlockedType>(follow(resultTy)))
     {

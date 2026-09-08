@@ -108,6 +108,10 @@ struct FunctionCallConstraint
     // When we dispatch this constraint, we update the key at this map to record
     // the overload that we selected.
     DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes = nullptr;
+
+    // For type-stating builtins (table.freeze), the blocked type that the first
+    // argument's type state is bound to once the call is solved.
+    TypeId typeStateResult = nullptr;
 };
 
 // function_check fn argsPack

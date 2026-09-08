@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixTableFreezeTypeState)
 
 namespace Luau
 {
@@ -3028,10 +3029,12 @@ InferencePack ConstraintGenerator::checkExprCall(
         return InferencePack{arena->addTypePack({resultTy}), {refinementArena.variadic(returnRefinements)}};
     }
 
+    TypeId typeStateResult = nullptr;
     if (shouldTypestateForFirstArgument(*call) && call->args.size > 0 && isLValue(call->args.data[0]))
     {
         AstExpr* targetExpr = call->args.data[0];
         auto resultTy = arena->addType(BlockedType{});
+        typeStateResult = resultTy;
 
         if (auto def = dfg->getDefOptional(targetExpr))
         {
@@ -3066,21 +3069,21 @@ InferencePack ConstraintGenerator::checkExprCall(
 
     addAllAsDependencies(funcBeginCheckpoint, funcEndCheckpoint, this, checkConstraint);
 
-    NotNull<Constraint> callConstraint = addConstraint(
-        scope,
-        call->func->location,
-        FunctionCallConstraint{
-            fnType,
-            argPack,
-            rets,
-            call,
-            std::move(discriminantTypes),
-            std::move(explicitTypeIds),
-            std::move(explicitTypePackIds),
-            FFlag::LuauCyclicRequireTypeInference ? &module->astTypes : nullptr,
-            &module->astOverloadResolvedTypes,
-        }
-    );
+    FunctionCallConstraint fcc{
+        fnType,
+        argPack,
+        rets,
+        call,
+        std::move(discriminantTypes),
+        std::move(explicitTypeIds),
+        std::move(explicitTypePackIds),
+        FFlag::LuauCyclicRequireTypeInference ? &module->astTypes : nullptr,
+        &module->astOverloadResolvedTypes,
+    };
+    if (FFlag::LuauFixTableFreezeTypeState)
+        fcc.typeStateResult = typeStateResult;
+
+    NotNull<Constraint> callConstraint = addConstraint(scope, call->func->location, std::move(fcc));
 
     getMutable<BlockedTypePack>(rets)->owner = callConstraint.get();
 
