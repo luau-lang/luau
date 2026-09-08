@@ -27,6 +27,7 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauFragmentACEnableTypeFunctionEvaluation)
+LUAU_FASTFLAG(LuauFragmentACIfConditionStart)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -851,26 +852,28 @@ if)",
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_partial_in_condition_at")
 {
+    ScopedFastFlag sff{FFlag::LuauFragmentACIfConditionStart, true};
     auto region = getAutocompleteRegion(
         R"(
 if true
 )",
         Position{1, 7}
     );
-    CHECK_EQ(Location{{1, 3}, {1, 7}}, region.fragmentLocation);
+    CHECK_EQ(Location{{1, 0}, {1, 7}}, region.fragmentLocation);
     REQUIRE(region.parentBlock);
     CHECK(region.nearestStatement->as<AstStatIf>());
 }
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_partial_in_condition_after")
 {
+    ScopedFastFlag sff{FFlag::LuauFragmentACIfConditionStart, true};
     auto region = getAutocompleteRegion(
         R"(
 if true
 )",
         Position{1, 8}
     );
-    CHECK_EQ(Location{{1, 3}, {1, 8}}, region.fragmentLocation);
+    CHECK_EQ(Location{{1, 0}, {1, 8}}, region.fragmentLocation);
     REQUIRE(region.parentBlock);
     CHECK(region.nearestStatement->as<AstStatIf>());
 }
@@ -4872,6 +4875,92 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_sin
             CHECK_EQ(frag.result->acResults.context, AutocompleteContext::String);
         },
         Position{1, 33}
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_singleton_comparison")
+{
+    ScopedFastFlag sff{FFlag::LuauFragmentACIfConditionStart, true};
+    std::string source = R"(
+        type Direction = "Left" | "Right"
+        local dir: Direction = "Left"
+    )";
+
+    std::string dest = R"(
+        type Direction = "Left" | "Right"
+        local dir: Direction = "Left"
+        if dir == "@1"
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("Left") == 1);
+            CHECK(frag.result->acResults.entryMap.count("Right") == 1);
+            CHECK_EQ(frag.result->acResults.context, AutocompleteContext::String);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_singleton_comparison_same_doc")
+{
+    ScopedFastFlag sff{FFlag::LuauFragmentACIfConditionStart, true};
+    std::string source = R"(
+        type Direction = "Left" | "Right"
+        local dir: Direction = "Left"
+        if dir == ""
+    )";
+
+    std::string dest = R"(
+        type Direction = "Left" | "Right"
+        local dir: Direction = "Left"
+        if dir == "@1"
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("Left") == 1);
+            CHECK(frag.result->acResults.entryMap.count("Right") == 1);
+            CHECK_EQ(frag.result->acResults.context, AutocompleteContext::String);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_autocomplete_string_singleton_comparison_then")
+{
+    ScopedFastFlag sff{FFlag::LuauFragmentACIfConditionStart, true};
+    std::string source = R"(
+        type Direction = "Left" | "Right"
+        local dir: Direction = "Left"
+        if dir == "" then end
+    )";
+
+    std::string dest = R"(
+        type Direction = "Left" | "Right"
+        local dir: Direction = "Left"
+        if dir == "@1" then end
+    )";
+
+    autocompleteFragmentInBothSolvers(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("Left") == 1);
+            CHECK(frag.result->acResults.entryMap.count("Right") == 1);
+            CHECK_EQ(frag.result->acResults.context, AutocompleteContext::String);
+        }
     );
 }
 

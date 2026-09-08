@@ -33,6 +33,7 @@ LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauFragmentACEnableTypeFunctionEvaluation)
+LUAU_FASTFLAGVARIABLE(LuauFragmentACIfConditionStart)
 
 namespace Luau
 {
@@ -205,6 +206,10 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
                 // wrong.
                 if (ifS->condition->location.begin > cursorPosition)
                     return empty;
+                // The fragment must include the `if` keyword so that the condition is parsed as an expression
+                // (e.g. `if x == "` becomes a comparison) rather than as a sequence of broken statements.
+                if (FFlag::LuauFragmentACIfConditionStart && ifS->condition->location.begin < cursorPosition)
+                    return nonEmpty;
                 return Location{ifS->condition->location.begin, cursorPosition};
             }
 
@@ -216,7 +221,11 @@ Location getFragmentLocation(AstStat* nearestStatement, const Position& cursorPo
                 {
                     auto elseIfConditionExtents = Location{elseIf->location.begin, elseIf->condition->location.end};
                     if (elseIfConditionExtents.containsClosed(cursorPosition))
+                    {
+                        if (FFlag::LuauFragmentACIfConditionStart && elseIf->condition->location.begin < cursorPosition)
+                            return nonEmpty;
                         return {elseIf->condition->location.begin, cursorPosition};
+                    }
                     if (elseIf->thenbody->hasEnd)
                         return empty;
                     else
