@@ -17,6 +17,7 @@ using std::nullopt;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauAllowIntersectionOfOneTableWithExtern)
+LUAU_FASTFLAG(LuauFixExternTypeSubtypeOfEmptyTable)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -1144,6 +1145,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_is_not_subtype_of_table")
     auto err = get<TypeMismatch>(result.errors[0]);
     CHECK_EQ("Color3", toString(err->givenType));
     CHECK_EQ("{Color3}", toString(err->wantedType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_is_not_subtype_of_empty_table")
+{
+    ScopedFastFlag sff{FFlag::LuauFixExternTypeSubtypeOfEmptyTable, true};
+
+    loadDefinition(R"(
+        declare extern type Color3 with
+        end
+    )");
+
+    CheckResult result = check(R"(
+        local function f(c: Color3): {}
+            return c
+        end
+
+        local _: {} = vector.zero
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("Color3", toString(err->givenType));
+    CHECK_EQ("{  }", toString(err->wantedType));
+    err = get<TypeMismatch>(result.errors[1]);
+    REQUIRE(err);
+    CHECK_EQ("vector", toString(err->givenType));
+    CHECK_EQ("{  }", toString(err->wantedType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_overload")

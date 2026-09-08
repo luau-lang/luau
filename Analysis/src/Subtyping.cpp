@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixExternTypeSubtypeOfEmptyTable)
 
 
 namespace Luau
@@ -2318,6 +2319,11 @@ SubtypingResult Subtyping::isCovariantWith(
 )
 {
     SubtypingResult result{true};
+
+    // An extern type is not a table, so it is not a subtype of the empty
+    // table type `{}` either.
+    if (FFlag::LuauFixExternTypeSubtypeOfEmptyTable && superTable->props.empty() && !superTable->indexer)
+        return {false};
 
     env.substitutions[superTy] = subTy;
 
