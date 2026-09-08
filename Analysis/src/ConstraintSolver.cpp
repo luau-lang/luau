@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAGVARIABLE(LuauFixGenericLambdaArgInference)
 
 namespace Luau
 {
@@ -110,6 +111,92 @@ static void dump(ConstraintSolver* cs, ToStringOptions& opts);
 
     return true;
 }
+
+namespace
+{
+
+struct ContainsFreeOrBlockedType : TypeOnceVisitor
+{
+    bool result = false;
+
+    ContainsFreeOrBlockedType()
+        : TypeOnceVisitor("ContainsFreeOrBlockedType", /* skipBoundTypes */ true)
+    {
+    }
+
+    bool visit(TypeId ty) override
+    {
+        if (result || ty->persistent)
+            return false;
+        return true;
+    }
+
+    bool visit(TypePackId tp) override
+    {
+        return !result;
+    }
+
+    bool visit(TypeId ty, const ExternType&) override
+    {
+        return false;
+    }
+
+    bool visit(TypeId ty, const TableType& tt) override
+    {
+        // Unifying against an unsealed table may mutate it (eg by adding an indexer).
+        if (tt.state == TableState::Unsealed || tt.state == TableState::Free)
+        {
+            result = true;
+            return false;
+        }
+        return !result;
+    }
+
+    bool visit(TypeId ty, const FreeType&) override
+    {
+        result = true;
+        return false;
+    }
+
+    bool visit(TypeId ty, const BlockedType&) override
+    {
+        result = true;
+        return false;
+    }
+
+    bool visit(TypeId ty, const PendingExpansionType&) override
+    {
+        result = true;
+        return false;
+    }
+
+    bool visit(TypeId ty, const TypeFunctionInstanceType&) override
+    {
+        result = true;
+        return false;
+    }
+
+    bool visit(TypePackId tp, const FreeTypePack&) override
+    {
+        result = true;
+        return false;
+    }
+
+    bool visit(TypePackId tp, const BlockedTypePack&) override
+    {
+        result = true;
+        return false;
+    }
+};
+
+bool containsFreeOrBlockedType(TypeId ty)
+{
+    ContainsFreeOrBlockedType visitor;
+    visitor.traverse(ty);
+    return visitor.result;
+}
+
+} // namespace
 
 std::pair<std::vector<TypeId>, std::vector<TypePackId>> saturateArguments(
     TypeArena* arena,
@@ -1961,8 +2048,105 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     // We don't attempt to perform bidirectional inference on the self type.
     const size_t typeOffset = c.callSite->self ? 1 : 0;
 
-    const std::vector<TypeId> expectedArgs = extendTypePack(*arena, builtinTypes, ftv->argTypes, c.callSite->args.size + typeOffset).head;
+    std::vector<TypeId> expectedArgs = extendTypePack(*arena, builtinTypes, ftv->argTypes, c.callSite->args.size + typeOffset).head;
     const std::vector<TypeId> argPackHead = flatten(argsPack).first;
+
+    if (FFlag::LuauFixGenericLambdaArgInference && !replacements.empty())
+    {
+        // Consider:
+        //
+        //  local function filterArray<T>(input: { T }, predicate: (number, T) -> boolean): { T }
+        //  local a: { string } = {}
+        //  filterArray(a, function(index, value) return false end)
+        //
+        // The expected type of the lambda mentions the generic `T`, so we
+        // cannot push it into the lambda's parameters as-is. However, we can
+        // tentatively unify the already-known (non-lambda) arguments against
+        // the expected argument types to discover what `T` must be, and then
+        // push the lambda's expected type with `T` substituted by `string`.
+        //
+        // We do this with throwaway free types in a separate unifier, and only
+        // consider arguments whose types cannot be mutated by unification, so
+        // that nothing leaks into the actual type graph.
+        Unifier2 probe{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
+        DenseHashMap<TypeId, TypeId> probeGenerics;
+
+        for (TypeId generic : ftv->generics)
+        {
+            generic = follow(generic);
+            if (const GenericType* gty = get<GenericType>(generic))
+            {
+                TypeId probeTy = freshType(arena, builtinTypes, constraint->scope.get(), gty->polarity);
+                probeGenerics[generic] = probeTy;
+                probe.genericSubstitutions[generic] = probeTy;
+            }
+        }
+
+        bool unifiedAnyArgument = false;
+        for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
+        {
+            AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
+            if (expr->is<AstExprFunction>())
+                continue;
+
+            TypeId actualArgTy = follow(argPackHead[i + typeOffset]);
+            if (containsFreeOrBlockedType(actualArgTy))
+                continue;
+
+            TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
+            if (!containsGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
+                continue;
+
+            probe.unify(actualArgTy, expectedArgTy);
+            unifiedAnyArgument = true;
+        }
+
+        DenseHashMap<TypeId, TypeId> inferredGenerics;
+        if (unifiedAnyArgument)
+        {
+            for (const auto& [generic, probeTy] : probeGenerics)
+            {
+                const FreeType* probeFree = get<FreeType>(probeTy);
+                LUAU_ASSERT(probeFree);
+                if (!probeFree)
+                    continue;
+
+                TypeId lowerBound = follow(probeFree->lowerBound);
+                TypeId upperBound = follow(probeFree->upperBound);
+
+                std::optional<TypeId> inferred;
+                if (!get<NeverType>(lowerBound) && !containsFreeOrBlockedType(lowerBound) &&
+                    !containsGeneric(lowerBound, NotNull{&genericTypesAndPacks}))
+                    inferred = lowerBound;
+                else if (!get<UnknownType>(upperBound) && !containsFreeOrBlockedType(upperBound) &&
+                         !containsGeneric(upperBound, NotNull{&genericTypesAndPacks}))
+                    inferred = upperBound;
+
+                if (inferred)
+                    inferredGenerics[generic] = *inferred;
+            }
+        }
+
+        if (!inferredGenerics.empty())
+        {
+            DenseHashMap<TypePackId, TypePackId> noPackReplacements;
+            Replacer replacer{arena, NotNull{&inferredGenerics}, NotNull{&noPackReplacements}};
+
+            for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size(); ++i)
+            {
+                AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
+                if (!expr->is<AstExprFunction>())
+                    continue;
+
+                TypeId& expectedArgTy = expectedArgs[i + typeOffset];
+                if (containsFreeOrBlockedType(follow(expectedArgTy)))
+                    continue;
+
+                if (std::optional<TypeId> substituted = replacer.substitute(expectedArgTy))
+                    expectedArgTy = *substituted;
+            }
+        }
+    }
 
     for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
     {

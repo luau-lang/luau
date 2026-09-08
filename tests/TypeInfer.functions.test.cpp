@@ -17,6 +17,7 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauFixGenericLambdaArgInference)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
@@ -4671,6 +4672,88 @@ TEST_CASE_FIXTURE(Fixture, "let_generalization_multiple_values")
     CHECK_EQ("string", toString(requireType("r2"), {true}));
     CHECK_EQ("number", toString(requireType("r3"), {true}));
     CHECK_EQ("string", toString(requireType("r4"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2002_generic_lambda_params_inferred_from_other_arguments")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+        {FFlag::LuauFixGenericLambdaArgInference, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function filterArray<T>(input: { T }, predicate: (number, T) -> boolean): { T }
+            return input
+        end
+
+        local a: { string } = {}
+
+        filterArray(a, function(index, value)
+            local _ = index
+            local _ = value
+            return false
+        end)
+    )"));
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({8, 23})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({9, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2002_generic_lambda_params_inferred_from_dictionary")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauAssertOnForcedConstraint, true},
+        {FFlag::LuauFixGenericLambdaArgInference, true},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function filterDictionary<K, V>(t: {[K]: V}, predicate: (key: K, value: V) -> boolean): {[K]: V}
+            local finalTable = {}
+            for k, v in t do
+                if predicate(k, v) then
+                    finalTable[k] = v
+                end
+            end
+            return finalTable
+        end
+
+        local players: { [number]: string } = {}
+
+        filterDictionary(players, function(key, value)
+            local _ = key
+            local _ = value
+            return true
+        end)
+    )"));
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({14, 23})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({15, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "oss_2002_generic_lambda_param_mismatch_is_reported_in_lambda")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixGenericLambdaArgInference, true},
+    };
+
+    CheckResult result = check(R"(
+        local function forEach<T>(input: { T }, callback: (T) -> ())
+        end
+
+        local a: { string } = {}
+
+        forEach(a, function(value)
+            local n: number = value
+        end)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("string", toString(requireTypeAtPosition({7, 30})));
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK_EQ(Location{{7, 30}, {7, 35}}, result.errors[0].location);
 }
 
 TEST_SUITE_END();
