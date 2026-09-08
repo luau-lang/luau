@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixPreserveTypeFunctionStateOnExport)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2593,6 +2594,39 @@ local y: foo<{ a: string }> = "x"
 
     CHECK(toString(requireType("x"), ToStringOptions{true}) == "number");
     CHECK(toString(requireType("y"), ToStringOptions{true}) == "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_udtf_in_exported_method_does_not_loop")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixPreserveTypeFunctionStateOnExport, true};
+
+    fileResolver.source["game/A"] = R"(
+--!strict
+local Example = {}
+
+type function notUnion(ty: type)
+    assert(not ty:is("union"))
+    return ty
+end
+
+function Example.Set<T>(self: Example, something: notUnion<T>)
+end
+
+type Example = typeof(Example)
+
+return Example
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = check(R"(
+--!strict
+local module = require(game.A)
+module:Set(4)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_implicit_export")
