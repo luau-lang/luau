@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAG(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAG(LuauAutocompleteSkipKeylessUnionVariants)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
@@ -2771,6 +2772,73 @@ local t: Test = { first = 1, @1 }
     auto ac = autocomplete('1');
     CHECK_EQ(ac.entryMap.count("first"), 0);
     CHECK(ac.entryMap.count("second"));
+    CHECK_EQ(ac.context, AutocompleteContext::Property);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "suggest_table_keys_union_with_recursive_array")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteSkipKeylessUnionVariants, true};
+
+    check(R"(
+type ViewStyle = {
+    flex: number,
+    flexBasis: number,
+}
+
+type RecursiveArray<T> = { T | RecursiveArray<T> }
+export type StyleProp<T> = T | RecursiveArray<T>
+
+export type ViewProps = {
+    style: StyleProp<ViewStyle>?,
+}
+
+local _props: ViewProps = {
+    style = {
+        @1
+    }
+}
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("flex"));
+    CHECK(ac.entryMap.count("flexBasis"));
+    CHECK_EQ(ac.context, AutocompleteContext::Property);
+
+    check(R"(
+type ViewStyle = {
+    flex: number,
+    flexBasis: number,
+}
+
+type RecursiveArray<T> = { T | RecursiveArray<T> }
+export type StyleProp<T> = T | RecursiveArray<T>
+
+export type ViewProps = {
+    style: StyleProp<ViewStyle>?,
+}
+
+local _props: ViewProps = {
+    style = {
+        fl@1
+    }
+}
+    )");
+
+    ac = autocomplete('1');
+    CHECK(ac.entryMap.count("flex"));
+    CHECK(ac.entryMap.count("flexBasis"));
+    CHECK_EQ(ac.context, AutocompleteContext::Property);
+
+    // Variants without known keys are ignored, but the common-key rule still applies between the others
+    check(R"(
+type Test = { first: number, second: number } | { second: number, third: number } | { number }
+local t: Test = { @1 }
+    )");
+
+    ac = autocomplete('1');
+    CHECK(ac.entryMap.count("second"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "first");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "third");
     CHECK_EQ(ac.context, AutocompleteContext::Property);
 }
 

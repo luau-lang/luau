@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 LUAU_FLAGVERSION(LuauCheckTypeForDeprecated, 2)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteSkipKeylessUnionVariants)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
@@ -659,9 +660,36 @@ static void autocompleteProps(
         if (iter == endIter)
             return;
 
-        autocompleteProps(module, typeArena, builtinTypes, rootTy, *iter, indexType, nodes, result, seen);
+        // When completing keys of a table literal, variants that have no known
+        // keys (e.g. arrays like `{T}` or non-table types) carry no information
+        // about which keys are valid, so they should not eliminate the keys of
+        // the other variants.
+        const bool skipKeylessVariants = FFlag::LuauAutocompleteSkipKeylessUnionVariants && indexType == PropIndexType::Key;
 
-        ++iter;
+        if (skipKeylessVariants)
+        {
+            while (iter != endIter)
+            {
+                AutocompleteEntryMap inner;
+                std::unordered_set<TypeId> innerSeen = seen;
+
+                autocompleteProps(module, typeArena, builtinTypes, rootTy, *iter, indexType, nodes, inner, innerSeen);
+
+                ++iter;
+
+                if (!inner.empty())
+                {
+                    result.insert(inner.begin(), inner.end());
+                    break;
+                }
+            }
+        }
+        else
+        {
+            autocompleteProps(module, typeArena, builtinTypes, rootTy, *iter, indexType, nodes, result, seen);
+
+            ++iter;
+        }
 
         while (iter != endIter)
         {
@@ -687,6 +715,12 @@ static void autocompleteProps(
             }
 
             autocompleteProps(module, typeArena, builtinTypes, rootTy, *iter, indexType, nodes, inner, innerSeen);
+
+            if (skipKeylessVariants && inner.empty())
+            {
+                ++iter;
+                continue;
+            }
 
             std::unordered_set<std::string> toRemove;
 
