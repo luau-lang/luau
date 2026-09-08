@@ -27,6 +27,7 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauFragmentACEnableTypeFunctionEvaluation)
+LUAU_FASTFLAG(LuauFixFragmentACLatestLocalDef)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -5558,6 +5559,142 @@ local a: test<number> = "@1"
             CHECK(frag.result->acResults.entryMap.count("test2") == 1);
         },
         Position{7, 19}
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "reassigned_local_uses_refined_type_not_binding_type")
+{
+    ScopedFastFlag sff{FFlag::LuauFixFragmentACLatestLocalDef, true};
+
+    const std::string source = R"(--!strict
+local mt = {}
+mt.__index = mt
+
+function mt.prepare(obj)
+    obj.Value1 = 2
+    return obj
+end
+
+local obj = setmetatable({}, mt)
+obj = mt.prepare(obj)
+
+)";
+
+    const std::string updated = R"(--!strict
+local mt = {}
+mt.__index = mt
+
+function mt.prepare(obj)
+    obj.Value1 = 2
+    return obj
+end
+
+local obj = setmetatable({}, mt)
+obj = mt.prepare(obj)
+
+obj.@1
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("Value1") == 1);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "reassigned_local_inside_function_uses_latest_definition")
+{
+    ScopedFastFlag sff{FFlag::LuauFixFragmentACLatestLocalDef, true};
+
+    const std::string source = R"(--!strict
+local name = {}
+name.__index = name
+
+function name.new()
+    local obj = setmetatable({}, name)
+    obj = name.prepare(obj)
+
+end
+
+function name.prepare(obj)
+    obj.Entry1 = {
+        entries = {} :: {string}
+    }
+    obj.Value1 = 2
+    return obj
+end
+
+return name
+)";
+
+    const std::string updated = R"(--!strict
+local name = {}
+name.__index = name
+
+function name.new()
+    local obj = setmetatable({}, name)
+    obj = name.prepare(obj)
+    obj.@1
+end
+
+function name.prepare(obj)
+    obj.Entry1 = {
+        entries = {} :: {string}
+    }
+    obj.Value1 = 2
+    return obj
+end
+
+return name
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("Entry1") == 1);
+            CHECK(frag.result->acResults.entryMap.count("Value1") == 1);
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "reassignment_after_cursor_does_not_affect_local_type")
+{
+    ScopedFastFlag sff{FFlag::LuauFixFragmentACLatestLocalDef, true};
+
+    const std::string source = R"(--!strict
+local obj = { Before = 1 } :: { Before: number }
+do
+end
+obj = { After = 2 }
+)";
+
+    const std::string updated = R"(--!strict
+local obj = { Before = 1 } :: { Before: number }
+do
+    obj.@1
+end
+obj = { After = 2 }
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK(frag.result->acResults.entryMap.count("Before") == 1);
+            CHECK(frag.result->acResults.entryMap.count("After") == 0);
+        }
     );
 }
 

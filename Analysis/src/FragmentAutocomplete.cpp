@@ -33,6 +33,7 @@ LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauFragmentACEnableTypeFunctionEvaluation)
+LUAU_FASTFLAGVARIABLE(LuauFixFragmentACLatestLocalDef)
 
 namespace Luau
 {
@@ -666,6 +667,35 @@ struct UsageFinder : public AstVisitor
     std::vector<std::pair<const Def*, Symbol>> symbolsToRefine;
 };
 
+// Finds the type of the most recent definition of `local` that flows into `position` by looking at the
+// `lvalueTypes` recorded for its defs in the stale scope chain. The new solver gives each assignment its own
+// def, so the binding type alone would be the union of every value the local ever held.
+static std::optional<TypeId> lookupLatestLocalDefType(const Scope* staleScope, const AstLocal* local, Position position)
+{
+    std::optional<TypeId> result;
+    std::optional<Location> bestLocation;
+
+    for (const Scope* scope = staleScope; scope; scope = scope->parent.get())
+    {
+        for (const auto& [def, ty] : scope->lvalueTypes)
+        {
+            if (!get<Cell>(NotNull{def}) || def->name.local != local)
+                continue;
+
+            if (def->location.begin >= position)
+                continue;
+
+            if (!bestLocation || bestLocation->begin < def->location.begin)
+            {
+                bestLocation = def->location;
+                result = ty;
+            }
+        }
+    }
+
+    return result;
+}
+
 // Runs the `UsageFinder` traversal on the fragment and grabs all of the types that are
 // referenced in the fragment. We'll clone these and place them in the appropriate spots
 // in the scope so that they are available during typechecking.
@@ -704,7 +734,11 @@ void cloneTypesFromFragment(
     {
         if (std::optional<std::pair<Symbol, Binding>> pair = staleScope->linearSearchForBindingPair(loc->name.value, true))
         {
-            destScope->lvalueTypes[d] = Luau::cloneIncremental(pair->second.typeId, *destArena, cloneState, destScope);
+            std::optional<TypeId> latest;
+            if (FFlag::LuauFixFragmentACLatestLocalDef)
+                latest = lookupLatestLocalDefType(staleScope, loc, program->location.begin);
+
+            destScope->lvalueTypes[d] = Luau::cloneIncremental(latest.value_or(pair->second.typeId), *destArena, cloneState, destScope);
             destScope->bindings[pair->first] = Luau::cloneIncremental(pair->second, *destArena, cloneState, destScope);
         }
     }
