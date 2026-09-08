@@ -151,6 +151,11 @@ struct ConstraintGenerator
 
     DenseHashMap<AstLocal*, std::unique_ptr<ClassDeclRecord>> classDeclRecords;
 
+    // Extern type declarations by name, so that a superclass declared later in
+    // the block can be visited before the extern type that extends it.
+    DenseHashMap<Name, AstStatDeclareExternType*> pendingExternTypeDeclarations;
+    DenseHashSet<const AstStatDeclareExternType*> visitedExternTypeDeclarations;
+
     DcrLogger* logger;
 
     bool recursionLimitMet = false;

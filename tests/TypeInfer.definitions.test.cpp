@@ -10,6 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauFixExternTypeForwardSuperclass)
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
@@ -234,6 +235,60 @@ TEST_CASE_FIXTURE(Fixture, "no_cyclic_defined_extern_types")
     freeze(getFrontend().globals.globalTypes);
 
     REQUIRE(!result.success);
+}
+
+TEST_CASE_FIXTURE(Fixture, "extern_type_can_extend_extern_type_declared_later")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixExternTypeForwardSuperclass, true}};
+
+    loadDefinition(R"(
+        declare extern type C extends B with
+            c: number
+        end
+
+        declare extern type B extends A with
+            b: number
+        end
+
+        declare extern type A with
+            a: number
+        end
+    )");
+
+    CheckResult result = check(R"(
+        local c: C = nil :: any
+        local a: A = c
+        local n: number = c.a + c.b + c.c
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("c")), "C");
+    CHECK_EQ(toString(requireType("a")), "A");
+}
+
+TEST_CASE_FIXTURE(Fixture, "extern_type_cannot_extend_itself")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixExternTypeForwardSuperclass, true}};
+
+    unfreeze(getFrontend().globals.globalTypes);
+    LoadDefinitionFileResult result = getFrontend().loadDefinitionFile(
+        getFrontend().globals,
+        getFrontend().globals.globalScope,
+        R"(
+        declare extern type Foo extends Foo with
+        end
+    )",
+        "@test",
+        /* captureComments */ false
+    );
+    freeze(getFrontend().globals.globalTypes);
+
+    REQUIRE(!result.success);
+    REQUIRE_EQ(result.module->errors.size(), 1);
+    GenericError* ge = get<GenericError>(result.module->errors[0]);
+    REQUIRE(ge);
+    CHECK_EQ("Cannot use non-class type 'Foo' as a superclass of class 'Foo'", ge->message);
 }
 
 TEST_CASE_FIXTURE(Fixture, "declaring_generic_functions")

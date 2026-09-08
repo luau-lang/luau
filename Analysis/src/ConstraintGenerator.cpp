@@ -41,6 +41,7 @@ LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTINTVARIABLE(LuauPrimitiveInferenceInTableLimit, 500)
 LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
+LUAU_FASTFLAGVARIABLE(LuauFixExternTypeForwardSuperclass)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -1060,6 +1061,9 @@ void ConstraintGenerator::prototypeTypeDefinitions(const ScopePtr& scope, AstSta
             scope->exportedTypeBindings[classDeclaration->name.value] = std::move(initialFun);
 
             typeNameLocations[classDeclaration->name.value] = classDeclaration->location;
+
+            if (FFlag::LuauFixExternTypeForwardSuperclass)
+                pendingExternTypeDeclarations[classDeclaration->name.value] = classDeclaration;
         }
         else if (auto classDecl = stat->as<AstStatClass>())
         {
@@ -2294,11 +2298,32 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareExte
     if (bindingIt == scope->exportedTypeBindings.end())
         return ControlFlow::None;
 
+    if (FFlag::LuauFixExternTypeForwardSuperclass)
+    {
+        // Extern types may be visited out of order when a later declaration
+        // is used as a superclass, so each declaration is only processed once.
+        if (!visitedExternTypeDeclarations.try_insert(declaredExternType))
+            return ControlFlow::None;
+    }
+
     std::optional<TypeId> superTy = std::make_optional(builtinTypes->externType);
     if (declaredExternType->superName)
     {
         Name superName = Name(declaredExternType->superName->value);
         std::optional<TypeFun> lookupType = scope->lookupType(superName);
+
+        if (FFlag::LuauFixExternTypeForwardSuperclass && lookupType && get<BlockedType>(follow(lookupType->type)))
+        {
+            // The superclass is declared later in this block; visit it first.
+            if (AstStatDeclareExternType** superDecl = pendingExternTypeDeclarations.find(superName))
+            {
+                if (!visitedExternTypeDeclarations.contains(*superDecl))
+                {
+                    visit(scope, *superDecl);
+                    lookupType = scope->lookupType(superName);
+                }
+            }
+        }
 
         if (!lookupType)
         {
