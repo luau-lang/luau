@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauFixLiteralIntersectionSubtype)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -3675,6 +3676,17 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
             TypeId simplified = simplifyIntersection(builtinTypes, NotNull{module->internalTypes.get()}, std::move(parts)).result;
             if (is<TableType>(simplified))
                 return testPotentialLiteralIsSubtype(expr, simplified);
+
+            if (FFlag::LuauFixLiteralIntersectionSubtype)
+            {
+                // Otherwise, a literal is a subtype of an intersection iff it is
+                // a subtype of each part, and each part can independently be
+                // checked with literal-aware (covariant) subtyping.
+                bool passes = true;
+                for (TypeId part : itv)
+                    passes &= testLiteralOrAstTypeIsSubtype(expr, part);
+                return passes;
+            }
         }
 
         return testIsSubtype(exprType, expectedType, expr->location);

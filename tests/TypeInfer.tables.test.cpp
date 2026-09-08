@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauFixLiteralIntersectionSubtype)
 LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
@@ -6473,6 +6474,46 @@ TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_intersection_other_intersect
             bar = "b",
         }
     )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_intersection_of_union_and_discriminant")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixLiteralIntersectionSubtype, true}};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Expression =
+            | { Type: "Term", Term: string }
+            | { Type: "BinaryOperation" }
+            | { Type: "FunctionArguments", Arguments: { Expression } }
+
+        local function _parseExpression()
+            local _argumentsExpr: Expression & { Type: "FunctionArguments" } = {
+                Type = "FunctionArguments",
+                Arguments = { {
+                    Type = "Term",
+                    Term = "hello"
+                } }
+            }
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_intersection_of_union_and_discriminant_still_errors")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixLiteralIntersectionSubtype, true}};
+
+    CheckResult result = check(R"(
+        type Expression =
+            | { Type: "Term", Term: string }
+            | { Type: "FunctionArguments", Arguments: { Expression } }
+
+        local _argumentsExpr: Expression & { Type: "FunctionArguments" } = {
+            Type = "Term",
+            Term = "hello",
+        }
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "do_not_force_on_simple_bidirectional_inference")
