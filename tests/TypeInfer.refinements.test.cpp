@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauAssertRefinementInAndExpr)
 
 using namespace Luau;
 
@@ -1077,6 +1078,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_a_to_be_truthy_then_assert_a_to_be_nu
 
     CHECK_EQ("number | string", toString(requireTypeAtPosition({3, 18})));
     CHECK_EQ("number", toString(requireTypeAtPosition({5, 18})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_in_rhs_of_and_refines_then_branch")
+{
+    ScopedFastFlag sff{FFlag::LuauAssertRefinementInAndExpr, true};
+
+    CheckResult result = check(R"(
+        local data: string? = "doge"
+
+        if true and assert(data) then
+            local value: string = data
+        end
+
+        local other: string? = "doge"
+
+        if assert(other) and true then
+            local value: string = other
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({4, 34})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({10, 34})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "merge_should_be_fully_agnostic_of_hashmap_ordering")

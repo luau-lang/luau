@@ -55,6 +55,7 @@ LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauAssertRefinementInAndExpr)
 
 namespace Luau
 {
@@ -3041,7 +3042,12 @@ InferencePack ConstraintGenerator::checkExprCall(
     }
 
     if (matchAssert(*call) && !argumentRefinements.empty())
+    {
         applyRefinements(scope, call->args.data[0]->location, argumentRefinements[0]);
+
+        if (FFlag::LuauAssertRefinementInAndExpr)
+            returnRefinements.push_back(argumentRefinements[0]);
+    }
 
     // TODO: How do expectedTypes play into this?  Do they?
     TypePackId rets = arena->addTypePack(BlockedTypePack{});
