@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(LuauSubtypingMissingPackElementsAsNil)
 
 using namespace Luau;
 
@@ -662,6 +663,24 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(number) -> (string, string) <!: (number) -> 
 TEST_CASE_FIXTURE(SubtypeFixture, "(number) -> string <!: (number) -> (string, string)")
 {
     CHECK_IS_NOT_SUBTYPE(numberToStringType, numberToTwoStringsType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(number, string?) -> string <: (number) -> string")
+{
+    ScopedFastFlag sff{FFlag::LuauSubtypingMissingPackElementsAsNil, true};
+    CHECK_IS_SUBTYPE(fn({getBuiltins()->numberType, getBuiltins()->optionalStringType}, {getBuiltins()->stringType}), numberToStringType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(number, string) -> string <!: (number) -> string")
+{
+    ScopedFastFlag sff{FFlag::LuauSubtypingMissingPackElementsAsNil, true};
+    CHECK_IS_NOT_SUBTYPE(numberAndStringToStringType, numberToStringType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(number) -> string <: (number) -> (string, nil)")
+{
+    ScopedFastFlag sff{FFlag::LuauSubtypingMissingPackElementsAsNil, true};
+    CHECK_IS_SUBTYPE(numberToStringType, fn({getBuiltins()->numberType}, {getBuiltins()->stringType, getBuiltins()->nilType}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "(number, ...string) -> string <: (number) -> string")

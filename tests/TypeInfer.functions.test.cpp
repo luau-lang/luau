@@ -20,6 +20,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
@@ -30,6 +31,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauSubtypingMissingPackElementsAsNil)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -1446,6 +1448,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument
     // error because you canont compare `unknown`s.
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(get<GenericError>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_with_optional_trailing_parameter_is_subtype_of_function_without_it")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauSolverV2, true},
+        {FFlag::LuauSubtypingMissingPackElementsAsNil, true},
+    };
+
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    CheckResult result = check(R"(
+--!strict
+
+local function check<T>(f: (string) -> T?, s: string): T
+        return f(s) or error(`Invalid: "{s}"`)
+end
+
+print(check(tonumber, "5"))
+print(check(buffer.fromstring, "5"))
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_any_is_compatible_with_a_generic_TypePack")

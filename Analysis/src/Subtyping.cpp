@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPackElementsAsNil)
 
 
 namespace Luau
@@ -1036,6 +1037,17 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
         {
             auto earlyExit = isSubTailCovariantWith(env, *result, subTp, *subTail, superTp, headSize, superHead, superTail, scope);
             if (earlyExit == EarlyExit::Yes)
+                return *result;
+        }
+        else if (FFlag::LuauSubtypingMissingPackElementsAsNil)
+        {
+            // A pack that is shorter than the one it is compared against is implicitly padded with `nil`, eg.
+            //     (string) <: (string, number?)
+            for (size_t i = headSize; i < superHead.size(); ++i)
+                result->andAlso(isCovariantWith(env, builtinTypes->nilType, superHead[i], scope)
+                                    .withSuperComponent(TypePath::Index{i, TypePath::Index::Variant::Pack}));
+
+            if (!result->isSubtype)
                 return *result;
         }
         else
