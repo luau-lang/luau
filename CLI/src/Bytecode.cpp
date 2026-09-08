@@ -282,7 +282,7 @@ int main(int argc, char** argv)
     size_t fileCount = files.size();
 
     std::vector<std::vector<FunctionBytecodeSummary>> scriptSummaries;
-    scriptSummaries.reserve(fileCount);
+    scriptSummaries.resize(fileCount);
 
     for (size_t i = 0; i < fileCount; ++i)
     {
