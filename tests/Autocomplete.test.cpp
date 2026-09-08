@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAG(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAG(LuauFixOverloadedFunctionExpectedArgTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
@@ -5931,6 +5932,64 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_binding_offers_member_completion")
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("foo"));
     CHECK(ac.entryMap.count("bar"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_table_keys_in_overloaded_function_argument")
+{
+    ScopedFastFlag sff{FFlag::LuauFixOverloadedFunctionExpectedArgTypes, true};
+
+    loadDefinition(R"(
+        export type FunctionFilterOptions = { Name: string?, IgnoreExecutor: boolean? }
+        export type TableFilterOptions = { Keys: { [any]: any }?, Values: { [any]: any }? }
+
+        declare filtergc: ((filter_type: "function", filter_options: FunctionFilterOptions, return_one: boolean?) -> any) &
+            ((filter_type: "table", filter_options: TableFilterOptions, return_one: boolean?) -> any)
+    )");
+
+    check(R"(
+        filtergc("function", { @1 })
+        filtergc("table", { @2 })
+        filtergc("function", { Na@3 })
+        filtergc("function", { Name = "x", @4 })
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("Name"));
+    CHECK(ac.entryMap.count("IgnoreExecutor"));
+    CHECK(!ac.entryMap.count("Keys"));
+    CHECK_EQ(ac.context, AutocompleteContext::Property);
+
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.count("Keys"));
+    CHECK(ac.entryMap.count("Values"));
+    CHECK(!ac.entryMap.count("Name"));
+
+    ac = autocomplete('3');
+    CHECK(ac.entryMap.count("Name"));
+    CHECK(ac.entryMap.count("IgnoreExecutor"));
+
+    ac = autocomplete('4');
+    CHECK(ac.entryMap.count("IgnoreExecutor"));
+    CHECK(!ac.entryMap.count("Name"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_table_keys_in_overloaded_function_argument_ambiguous")
+{
+    ScopedFastFlag sff{FFlag::LuauFixOverloadedFunctionExpectedArgTypes, true};
+
+    loadDefinition(R"(
+        declare pick: ((opts: { A: number?, Shared: number? }) -> any) &
+            ((opts: { B: number?, Shared: number? }) -> any)
+    )");
+
+    check(R"(
+        pick({ @1 })
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("Shared"));
+    CHECK(!ac.entryMap.count("A"));
+    CHECK(!ac.entryMap.count("B"));
 }
 
 TEST_SUITE_END();

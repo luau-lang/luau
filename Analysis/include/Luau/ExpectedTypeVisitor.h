@@ -74,6 +74,7 @@ private:
     NotNull<Scope> rootScope;
 
     void applyExpectedType(const TypeId expectedType, const AstExpr* expr);
+    const FunctionType* selectOverloadByArguments(const IntersectionType* overloads, AstExprCall* expr) const;
 };
 
 

@@ -2,6 +2,7 @@
 #include "Luau/ExpectedTypeVisitor.h"
 
 #include "Luau/Scope.h"
+#include "Luau/Simplify.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeIds.h"
 #include "Luau/TypePack.h"
@@ -9,6 +10,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAGVARIABLE(LuauFixOverloadedFunctionExpectedArgTypes)
 
 namespace Luau
 {
@@ -169,6 +171,45 @@ bool ExpectedTypeVisitor::visit(AstExprIndexExpr* expr)
 }
 
 
+const FunctionType* ExpectedTypeVisitor::selectOverloadByArguments(const IntersectionType* overloads, AstExprCall* expr) const
+{
+    const FunctionType* selected = nullptr;
+    for (TypeId part : overloads)
+    {
+        const FunctionType* candidate = get<FunctionType>(follow(part));
+        if (!candidate)
+            continue;
+
+        auto it = begin(candidate->argTypes);
+        if (expr->self && it != end(candidate->argTypes))
+            ++it;
+
+        bool compatible = true;
+        for (size_t idx = 0; idx < expr->args.size && it != end(candidate->argTypes); ++idx, ++it)
+        {
+            AstExpr* arg = expr->args.data[idx];
+            TypeId argTy = nullptr;
+            if (auto str = arg->as<AstExprConstantString>())
+                argTy = arena->addType(SingletonType{StringSingleton{std::string{str->value.data, str->value.size}}});
+            else if (auto found = astTypes->find(arg))
+                argTy = *found;
+            if (!argTy)
+                continue;
+            if (relate(*it, argTy) == Relation::Disjoint)
+            {
+                compatible = false;
+                break;
+            }
+        }
+        if (!compatible)
+            continue;
+        if (selected)
+            return nullptr;
+        selected = candidate;
+    }
+    return selected;
+}
+
 bool ExpectedTypeVisitor::visit(AstExprCall* expr)
 {
     TypeId* ty = astOverloadResolvedTypes->find(expr);
@@ -180,8 +221,14 @@ bool ExpectedTypeVisitor::visit(AstExprCall* expr)
     const FunctionType* ftv = get<FunctionType>(follow(*ty));
 
     // FIXME: Bidirectional type checking of overloaded functions is not yet
-    // supported, which means we *also* do not provide autocomplete for
-    // the arguments of overloaded functions.
+    // supported. We handle overloaded calls by selecting an overload from the
+    // already-typed arguments, but still give up when that is ambiguous.
+    if (!ftv && FFlag::LuauFixOverloadedFunctionExpectedArgTypes)
+    {
+        if (const IntersectionType* itv = get<IntersectionType>(follow(*ty)))
+            ftv = selectOverloadByArguments(itv, expr);
+    }
+
     if (!ftv)
         return true;
 
