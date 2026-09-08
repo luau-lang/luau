@@ -17,6 +17,7 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixUnpackBlockedTail)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -1634,6 +1635,55 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_inside_lambdas
     REQUIRE(err);
     CHECK_EQ("number", toString(err->wantedType));
     CHECK_EQ("string", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "multiple_assignment_from_calls_in_loop_does_not_make_last_target_optional")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUnpackBlockedTail, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        type Rect = { x0: number, x1: number }
+
+        local function bounds(rects: { Rect }): { x0: number, x1: number }
+            local minx, maxx = math.huge, -math.huge
+            for _, r in rects do
+                minx, maxx = math.min(minx, r.x0), math.max(maxx, r.x1)
+            end
+            return { x0 = minx, x1 = maxx }
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "multiple_assignment_from_short_call_in_loop_is_still_optional")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixUnpackBlockedTail, true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local function g(x: number): number
+            return x
+        end
+
+        local function f(rects: { { x1: number } })
+            local a, b, c = 0, 0, 0
+            for _, r in rects do
+                a, b, c = 1, g(r.x1)
+            end
+            return c
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("({{ x1: number }}) -> number?", toString(requireType("f")));
 }
 
 TEST_SUITE_END();

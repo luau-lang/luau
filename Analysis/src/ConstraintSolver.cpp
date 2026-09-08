@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauFixUnpackBlockedTail)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -2733,6 +2734,11 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
         return block(sourcePack, constraint);
 
     TypePack srcPack = extendTypePack(*arena, builtinTypes, sourcePack, c.resultPack.size());
+
+    // If the source pack is too short and ends in a blocked tail, we cannot
+    // yet know whether the remaining values are nil or not.
+    if (FFlag::LuauFixUnpackBlockedTail && srcPack.head.size() < c.resultPack.size() && srcPack.tail && isBlocked(*srcPack.tail))
+        return block(*srcPack.tail, constraint);
 
     auto resultIter = begin(c.resultPack);
     auto resultEnd = end(c.resultPack);
