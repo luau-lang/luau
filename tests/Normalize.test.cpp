@@ -17,6 +17,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauIncludeExternTypeExtensionsWithTopExternType)
+LUAU_FASTFLAG(LuauNormalizeTypeFunctionTyvarIndex)
 
 using namespace Luau;
 
@@ -1049,6 +1050,21 @@ TEST_CASE_FIXTURE(NormalizeFixture, "non_final_types_can_be_normalized_but_are_n
     std::shared_ptr<const NormalizedType> na2 = normalize(a);
 
     CHECK(na1 != na2);
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_distinct_type_function_instances_is_inhabited")
+{
+    ScopedFastFlag sff{FFlag::LuauNormalizeTypeFunctionTyvarIndex, true};
+
+    TypeId g = arena.addType(GenericType{"V", Polarity::Mixed});
+    TypeId le1 = arena.addType(TypeFunctionInstanceType{getBuiltins()->typeFunctions->leFunc, {g, g}});
+    TypeId le2 = arena.addType(TypeFunctionInstanceType{getBuiltins()->typeFunctions->leFunc, {g, g}});
+    TypeId left = arena.addType(IntersectionType{{g, le1}});
+    TypeId right = arena.addType(IntersectionType{{g, le2}});
+
+    Frontend& frontend = getFrontend();
+    Normalizer testNormalizer{&arena, getBuiltins(), NotNull{&unifierState}, frontend.getLuauSolverMode()};
+    CHECK(NormalizationResult::True == testNormalizer.isIntersectionInhabited(left, right));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersect_with_not_unknown")

@@ -21,6 +21,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAG(LuauNormalizeTypeFunctionTyvarIndex)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -1783,6 +1784,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "negating_a_non_literal_integer_is_an_error")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "compare_two_distinct_but_equal_generic_intersections_with_type_functions")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauNormalizeTypeFunctionTyvarIndex, true};
+
+    CheckResult result = check(R"(
+        type HasLessThan<V> = V & le<V, V>
+
+        local function default_comparator<V>(found_a: HasLessThan<V>, target_a: V & le<V, V>): boolean
+            return found_a < target_a
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

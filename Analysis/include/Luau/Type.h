@@ -680,6 +680,7 @@ struct TypeFunctionInstanceType
     UserDefinedFunctionData userFuncData;
 
     TypeFunctionInstanceState state = TypeFunctionInstanceState::Unsolved;
+    int index;
 
     TypeFunctionInstanceType(
         NotNull<const TypeFunction> function,
@@ -693,6 +694,7 @@ struct TypeFunctionInstanceType
         , packArguments(std::move(packArguments))
         , userFuncName(userFuncName)
         , userFuncData(std::move(userFuncData))
+        , index(Unifiable::freshIndex())
     {
     }
 
@@ -700,6 +702,7 @@ struct TypeFunctionInstanceType
         : function{&function}
         , typeArguments(std::move(typeArguments))
         , packArguments{}
+        , index(Unifiable::freshIndex())
     {
     }
 
@@ -707,6 +710,7 @@ struct TypeFunctionInstanceType
         : function{&function}
         , typeArguments(std::move(typeArguments))
         , packArguments(std::move(packArguments))
+        , index(Unifiable::freshIndex())
     {
     }
 
@@ -714,6 +718,7 @@ struct TypeFunctionInstanceType
         : function{function}
         , typeArguments(std::move(typeArguments))
         , packArguments(std::move(packArguments))
+        , index(Unifiable::freshIndex())
     {
     }
 };

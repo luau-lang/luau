@@ -25,6 +25,7 @@ LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAGVARIABLE(LuauNormalizeTypeFunctionTyvarIndex)
 
 namespace Luau
 {
@@ -659,6 +660,8 @@ static int tyvarIndex(TypeId ty)
         return ftv->index;
     else if (const BlockedType* btv = get<BlockedType>(ty))
         return btv->index;
+    else if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(ty); tfit && FFlag::LuauNormalizeTypeFunctionTyvarIndex)
+        return tfit->index;
     else
         return 0;
 }
