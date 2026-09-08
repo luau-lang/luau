@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauFixTableExternRelationMissingProp)
 
 using namespace Luau;
 
@@ -1699,7 +1700,10 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "asserting_non_existent_propertie
     LUAU_REQUIRE_ERRORS(result);
     CHECK_EQ(toString(result.errors[0]), "Key 'Part8' not found in external type 'WeldConstraint'");
 
-    CHECK_EQ("WeldConstraint", toString(requireTypeAtPosition({3, 15})));
+    if (FFlag::LuauFixTableExternRelationMissingProp && !FFlag::DebugLuauForceOldSolver)
+        CHECK_EQ("WeldConstraint & { read Part8: ~(false?) }", toString(requireTypeAtPosition({3, 15})));
+    else
+        CHECK_EQ("WeldConstraint", toString(requireTypeAtPosition({3, 15})));
     CHECK_EQ("*error-type*", toString(requireTypeAtPosition({6, 29})));
 }
 

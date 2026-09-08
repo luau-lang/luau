@@ -17,6 +17,7 @@ using std::nullopt;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauAllowIntersectionOfOneTableWithExtern)
+LUAU_FASTFLAG(LuauFixTableExternRelationMissingProp)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -1288,6 +1289,38 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_2")
     )"));
 
     CHECK_EQ("(number) -> { PlayerData: { Settings: { Audio: Folder & {  } } } }", toString(requireType("Spread")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "write_to_table_property_of_nested_extern_type_intersections")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixTableExternRelationMissingProp, true},
+    };
+
+    loadDefinition(R"(
+        declare extern type Model with
+            name: string
+        end
+    )");
+
+    CheckResult result = check(R"(
+        type componentA = Model & { foo: number }
+        type componentB = Model & { fah: number }
+
+        type objectA = { component: componentA }
+        type objectB = { component: componentB }
+
+        local component: componentA & componentB
+        component.foo = 1
+        component.fah = 2
+
+        local object: objectB & objectA
+        object.component.foo = 0
+        object.component.fah = 0
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

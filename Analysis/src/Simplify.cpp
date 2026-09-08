@@ -20,6 +20,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauSimplificationComplexityLimit, 8)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeSimplificationIterationLimit, 128)
 LUAU_FASTFLAGVARIABLE(LuauCheckReadTyWhenRelatingExtern)
 LUAU_FASTFLAGVARIABLE(LuauRelateIndexersTypo)
+LUAU_FASTFLAGVARIABLE(LuauFixTableExternRelationMissingProp)
 
 namespace Luau
 {
@@ -225,6 +226,13 @@ Relation relateTableToExternType(const TableType* table, const ExternType* cls, 
                 // We can _probably_ consider `Foobar` the subset here.
                 break;
             }
+        }
+        else if (FFlag::LuauFixTableExternRelationMissingProp)
+        {
+            // Consider `{ foo: number }` and `Foobar`: the extern type has no
+            // `foo`, so it cannot be a subset of the table. The intersection is
+            // still meaningful (an extension of `Foobar` with `foo`).
+            return Relation::Intersects;
         }
     }
 
