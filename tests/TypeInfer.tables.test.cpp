@@ -34,6 +34,7 @@ LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAG(LuauRelateIndexersTypo)
+LUAU_FASTFLAG(LuauFixTablePropsAgainstSuperIndexer)
 
 
 TEST_SUITE_BEGIN("TableTests");
@@ -7590,6 +7591,79 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_props_are_checked_against_super_indexer_in_call_argument")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixTablePropsAgainstSuperIndexer, true},
+    };
+
+    CheckResult result = check(R"(
+        type T = { X: boolean }
+
+        local function f(data: {[keyof<T>]: boolean})
+        end
+
+        f({ X = 99 })
+
+        local function g(data: {[string]: boolean})
+        end
+
+        g({ X = 99 })
+        g({ X = true, Y = false })
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(Location{{6, 16}, {6, 18}}, result.errors[0].location);
+    CHECK_EQ("Expected this to be 'boolean', but got 'number'", toString(result.errors[0]));
+    CHECK_EQ(Location{{11, 16}, {11, 18}}, result.errors[1].location);
+    CHECK_EQ("Expected this to be 'boolean', but got 'number'", toString(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_props_are_checked_against_super_indexer_in_assignment")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixTablePropsAgainstSuperIndexer, true},
+    };
+
+    CheckResult result = check(R"(
+        local t = { X = 99 }
+        local u: {[string]: boolean} = t
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(Location{{2, 39}, {2, 40}}, result.errors[0].location);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_props_compatible_with_super_indexer_are_accepted")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixTablePropsAgainstSuperIndexer, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(data: {[string]: number?})
+        end
+
+        f({ X = 1 })
+
+        local function g(data: {[number]: boolean})
+        end
+
+        g({ X = 1 })
+
+        local function h(data: {[string]: number})
+        end
+
+        local t = { X = 1, Y = 2 }
+        h(t)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

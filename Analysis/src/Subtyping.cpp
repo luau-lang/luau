@@ -31,10 +31,32 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixTablePropsAgainstSuperIndexer)
 
 
 namespace Luau
 {
+
+namespace
+{
+
+bool indexTypeMentionsGeneric(TypeId ty)
+{
+    ty = follow(ty);
+    if (is<GenericType>(ty))
+        return true;
+    if (auto ut = get<UnionType>(ty))
+    {
+        for (TypeId option : ut->options)
+        {
+            if (is<GenericType>(follow(option)))
+                return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
 
 bool SubtypingReasoning::operator==(const SubtypingReasoning& other) const
 {
@@ -2157,6 +2179,48 @@ SubtypingResult Subtyping::isCovariantWith(
 
     if (superTable->indexer)
     {
+        if (FFlag::LuauFixTablePropsAgainstSuperIndexer)
+        {
+            // Properties of the subtype that are not present in the supertype
+            // are reachable through the supertype's indexer, e.g.
+            //
+            //  { X: number } </: { [string]: boolean }
+            //
+            // so reading such a property must produce a value compatible with
+            // the indexer's result type. This is deliberately covariant: the
+            // solver permits table literals and unsealed tables to carry
+            // properties that are narrower than a read-write indexer.
+            const TableIndexer& superIndexer = *superTable->indexer;
+            for (const auto& [name, subProp] : subTable->props)
+            {
+                if (superTable->props.count(name))
+                    continue;
+
+                // Testing the key against a generic index type would bind the
+                // generic as a side effect, so we conservatively skip it.
+                if (indexTypeMentionsGeneric(superIndexer.indexType))
+                    break;
+
+                TypeId keyTy = arena->addType(SingletonType{StringSingleton{name}});
+                if (!isCovariantWith(env, keyTy, superIndexer.indexType, scope).isSubtype)
+                    continue;
+
+                if (!subProp.readTy)
+                    continue;
+
+                // Nested table literals do not always receive an expected type
+                // through an indexer, so checking them here would report
+                // spurious mismatches. Leave those to bidirectional inference.
+                TypeId readTy = follow(*subProp.readTy);
+                if (is<TableType, MetatableType, UnionType, IntersectionType>(readTy))
+                    continue;
+
+                record(isCovariantWith(env, readTy, superIndexer.indexResultType, scope)
+                           .withSubComponent(TypePath::Property::read(name))
+                           .withSuperComponent(TypePath::TypeField::IndexResult));
+            }
+        }
+
         if (subTable->indexer)
         {
             // We say covariant here, but the implementation of
