@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAG(LuauFixIterateTableWithoutIndexer)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -1090,6 +1091,10 @@ void TypeChecker2::visit(AstStatForIn* forInStatement)
             testIsSubtype(variableTypes[0], ttv->indexer->indexType, forInStatement->vars.data[0]->location);
             if (variableTypes.size() == 2)
                 testIsSubtype(variableTypes[1], ttv->indexer->indexResultType, forInStatement->vars.data[1]->location);
+        }
+        else if (FFlag::LuauFixIterateTableWithoutIndexer && !ttv->indexer)
+        {
+            // All tables are iterable at runtime; loop variables are unknown.
         }
         else
             reportError(GenericError{"Cannot iterate over a table without indexer"}, forInStatement->values.data[0]->location);

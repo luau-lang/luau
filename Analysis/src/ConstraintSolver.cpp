@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauFixIterateTableWithoutIndexer)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -3314,6 +3315,8 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
                 bind(constraint, c.variables[i], expectedVariables[i]);
             }
         }
+        else if (FFlag::LuauFixIterateTableWithoutIndexer)
+            unpack(builtinTypes->unknownType);
         else
             unpack(builtinTypes->errorType);
     }

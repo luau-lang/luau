@@ -17,6 +17,7 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauFixIterateTableWithoutIndexer)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -741,9 +742,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_typecheck_crash_on_empty_optional")
 {
-    // CLI-116498 Sometimes you can iterate over tables with no indexers.
-    if (!FFlag::DebugLuauForceOldSolver)
-        return;
+    ScopedFastFlag sff{FFlag::LuauFixIterateTableWithoutIndexer, true};
 
     CheckResult result = check(R"(
         local t = {}
@@ -825,8 +824,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")
 {
-    // CLI-116498 Sometimes you can iterate over tables with no indexers.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixIterateTableWithoutIndexer, true};
 
     CheckResult result = check(R"(
         local t = {}
@@ -835,6 +833,28 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_table_without_indexer_strict")
+{
+    ScopedFastFlag sff{FFlag::LuauFixIterateTableWithoutIndexer, true};
+    CheckResult result = check(R"(
+        --!strict
+        local t = {a = 2}
+        local key, value
+        for k, v in t do
+            key = k
+            value = v
+        end
+        for k, v in pairs(t) do
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+    if (!FFlag::DebugLuauForceOldSolver)
+    {
+        CHECK_EQ("~nil?", toString(requireType("key")));
+        CHECK_EQ("unknown", toString(requireType("value")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_nonstrict")
@@ -1134,8 +1154,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties")
 {
-    // CLI-116498 - Sometimes you can iterate over tables with no indexer.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixIterateTableWithoutIndexer, true};
 
     CheckResult result = check(R"(
         local function f()
@@ -1152,7 +1171,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("unknown", toString(requireType("k")));
+    CHECK_EQ("~nil", toString(requireType("k")));
     CHECK_EQ("unknown", toString(requireType("v")));
 }
 
