@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauFixRefinedStringComparison)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -2610,6 +2611,10 @@ TypeId TypeChecker2::visit(AstExprBinary* expr, AstNode* overrideKey)
         std::optional<TypeId> rightMt = getMetatable(rightType, builtinTypes);
         bool matches = leftMt == rightMt;
 
+        // Refined string types such as `string & ~"x"` are not recognized by
+        // getMetatable, but every subtype of string shares the string metatable.
+        if (FFlag::LuauFixRefinedStringComparison && isStringOperation)
+            matches = true;
 
         if (isEquality && !matches)
         {

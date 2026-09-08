@@ -21,6 +21,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
 LUAU_FASTFLAG(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAG(LuauFixRefinedStringComparison)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -1666,6 +1667,44 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compare_singleton_string_to_string")
 
     // There is a flag to gate turning this off, and this warning is not
     // implemented in the new solver, so assert there are no errors.
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "compare_refined_string_to_string_singleton")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixRefinedStringComparison, true},
+    };
+
+    CheckResult result = check(R"(
+        function f(a: {k: string})
+            if a.k == "x" then return end
+            if a.k ~= "x" then
+                print(a)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "compare_refined_string_to_string_singleton_relational")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixRefinedStringComparison, true},
+    };
+
+    CheckResult result = check(R"(
+        function f(a: string)
+            if a == "x" then return end
+            local b = a < "x"
+            local c = a == "x"
+            local d = a ~= "y"
+        end
+    )");
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
