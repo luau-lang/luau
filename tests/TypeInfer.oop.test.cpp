@@ -17,6 +17,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
+LUAU_FASTFLAG(LuauFixDuplicateClassMethodTypes)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -977,6 +978,58 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_duplicate_class_definition")
     auto err = get<SyntaxError>(result.errors[0]);
     REQUIRE(err);
     CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
+}
+
+TEST_CASE_FIXTURE(Fixture, "duplicate_class_definition_with_methods")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixDuplicateClassMethodTypes, true},
+    };
+
+    CheckResult result = check(R"(
+        export class MidnightFrost
+            public cool: boolean
+            function __tostring(self)
+                return `MidnightFrost is {if self.cool then "cool" else "eh"}`
+            end
+        end
+
+        export class MidnightFrost
+            public cool: boolean
+            function __tostring(self)
+                return `MidnightFrost is {if self.cool then "cool" else "eh"}`
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("A class named 'MidnightFrost' has already been declared in this module", err->message);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_redefining_type_alias_with_methods")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixDuplicateClassMethodTypes, true},
+    };
+
+    CheckResult result = check(R"(
+        type MidnightFrost = number
+        class MidnightFrost
+            public cool: boolean
+            function __tostring(self)
+                return `MidnightFrost is {if self.cool then "cool" else "eh"}`
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<DuplicateTypeDefinition>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "repeat_props")

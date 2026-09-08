@@ -50,6 +50,7 @@ LUAU_FASTFLAGVARIABLE(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAGVARIABLE(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauUdtfPopulateEnv)
+LUAU_FASTFLAGVARIABLE(LuauFixDuplicateClassMethodTypes)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
@@ -2558,7 +2559,19 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatClass* stat
     auto* classDeclRecordPtr = classDeclRecords.find(statClass->name);
     // TODO CLI-199124: This is unpopulated in fragment autocomplete.
     if (classDeclRecordPtr == nullptr)
+    {
+        // The class was not registered (e.g. its name is a duplicate), but the method
+        // bodies still need types recorded so that later passes can look them up.
+        if (FFlag::LuauFixDuplicateClassMethodTypes)
+        {
+            for (const auto& member : statClass->members)
+            {
+                if (const auto* method = member.get_if<AstClassMethod>())
+                    check(scope, method->function);
+            }
+        }
         return ControlFlow::None;
+    }
 
     auto classDeclRecord = classDeclRecordPtr->get();
 
