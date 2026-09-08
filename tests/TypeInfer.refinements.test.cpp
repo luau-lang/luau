@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauFixWeakOptionalNeverProps)
 
 using namespace Luau;
 
@@ -3393,6 +3394,65 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
 
     // `x` is annotated `number?`, but the then-branch still refines it by `truthy` down to `number`.
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2498_refining_call_result_with_never_property_matches_annotated_local")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixWeakOptionalNeverProps, true},
+    };
+
+    CheckResult result = check(R"(
+        type a = { prop: never, prop2: true } | nil
+        local function returns(): a
+            return nil
+        end
+
+        local var1: a = ...
+        if var1 then
+            local _ = var1
+        end
+
+        local var2 = returns()
+        if var2 then
+            local _ = var2
+        end
+
+        if var2 and var2.prop2 then
+        end
+
+        local var3 = returns()
+        if typeof(var3) == "table" then
+            local _ = var3
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("{ prop: never, prop2: true }", toString(requireTypeAtPosition({8, 22})));
+    CHECK_EQ("{ prop: never, prop2: true }", toString(requireTypeAtPosition({13, 22})));
+    CHECK_EQ("{ prop: never, prop2: true }", toString(requireTypeAtPosition({21, 22})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "subscripted_refinement_to_never_still_becomes_nil")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauFixWeakOptionalNeverProps, true},
+    };
+
+    CheckResult result = check(R"(
+        local t: { string } = { "hello" }
+        local v = t[2]
+        if typeof(v) == "number" then
+            local _ = v
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("nil", toString(requireTypeAtPosition({4, 22})));
 }
 
 TEST_SUITE_END();

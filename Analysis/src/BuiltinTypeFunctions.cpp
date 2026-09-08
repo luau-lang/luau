@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
+LUAU_FASTFLAGVARIABLE(LuauFixWeakOptionalNeverProps)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
 
 namespace Luau
@@ -2619,6 +2620,15 @@ TypeFunctionReductionResult<TypeId> weakoptionalTypeFunc(
 
     if (!targetNorm)
         return {std::nullopt, Reduction::MaybeOk, {}, {}};
+
+    if (FFlag::LuauFixWeakOptionalNeverProps)
+    {
+        // Shallow check: `{ p: never }` is still a table here, matching how refinements treat it.
+        if (is<NeverType>(follow(ctx->normalizer->typeFromNormal(*targetNorm))))
+            return {ctx->builtins->nilType, Reduction::MaybeOk, {}, {}};
+
+        return {targetTy, Reduction::MaybeOk, {}, {}};
+    }
 
     auto result = ctx->normalizer->isInhabited(targetNorm.get());
     if (result == NormalizationResult::False)
