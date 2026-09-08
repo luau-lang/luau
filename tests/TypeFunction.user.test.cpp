@@ -24,6 +24,7 @@ LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
 LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
+LUAU_FASTFLAG(LuauFixStuckTypeFunctionErrorSuppression)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -2953,6 +2954,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_cannot_try_to_mutate_type_ali
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
     ScopedFastFlag frozen{FFlag::LuauTypeFunctionSupportsFrozen, true};
+    ScopedFastFlag errorSuppression{FFlag::LuauFixStuckTypeFunctionErrorSuppression, true};
     CheckResult result = check(R"(
         type myType = {}
 
@@ -2963,15 +2965,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_cannot_try_to_mutate_type_ali
         local my_tbl: create_table_with_key<> = {key = "123"}
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(
         toString(result.errors[0]) ==
         R"('create_table_with_key' type function errored at runtime: [string "create_table_with_key"]:5: type.setproperty: cannot be called to mutate a frozen type, use `types.copy` to make a copy)"
     );
-    auto err = get<TypeMismatch>(result.errors[1]);
-    REQUIRE(err);
-    CHECK_EQ("{ key: string }", toString(err->givenType));
-    CHECK_EQ("create_table_with_key<>", toString(err->wantedType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_can_mutate_cloned_type_aliases")
@@ -3198,6 +3196,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_deep_copy_iteration_limit_null_deref")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_areequal_stack_overflow_on_deep_types")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag errorSuppression{FFlag::LuauFixStuckTypeFunctionErrorSuppression, true};
 
     CheckResult result = check(R"(
         type function deep_eq()
@@ -3222,13 +3221,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_areequal_stack_overflow_on_deep_types")
         local x: deep_eq<> = true
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK("'deep_eq' type function errored at runtime: Internal recursion counter limit exceeded in areEqual" == toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setmetatable_wrong_error_tag")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag errorSuppression{FFlag::LuauFixStuckTypeFunctionErrorSuppression, true};
 
     CheckResult result = check(R"(
         type function foo()
@@ -3240,7 +3240,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setmetatable_wrong_error_tag")
         local x: foo<> = nil
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(
         "'foo' type function errored at runtime: [string \"foo\"]:4: type.setmetatable: expected the argument to be a table, but got number "
         "instead" == toString(result.errors[0])
@@ -3321,6 +3321,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_integer_constructor_is_not_number")
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setgenerics_wrong_argcount_check")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag errorSuppression{FFlag::LuauFixStuckTypeFunctionErrorSuppression, true};
 
     CheckResult result = check(R"(
         type function extra_arg()
@@ -3333,7 +3334,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setgenerics_wrong_argcount_check")
         local x: extra_arg<> = nil
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK("Argument count mismatch. Function expects 1 to 2 arguments, but 3 are specified" == toString(result.errors[0]));
     CHECK(
         "'extra_arg' type function errored at runtime: [string \"extra_arg\"]:5: type.setgenerics: expected 2 arguments, but got 3" ==
@@ -3688,6 +3689,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
     ScopedFastFlag structuredErrors(FFlag::LuauTypeFunctionStructuredErrors, true);
     ScopedFastFlag fixTypeNameTypo{FFlag::LuauUdtfFixTypeNameTypo, true};
+    ScopedFastFlag errorSuppression{FFlag::LuauFixStuckTypeFunctionErrorSuppression, true};
 
     CheckResult result = check(R"(
         type function foo()
@@ -3697,8 +3699,25 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_string_error_value")
         local x: foo<> = 5
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), "'foo' type function errored at runtime: raised an error of type table");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "erroring_type_function_suppresses_further_errors")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixStuckTypeFunctionErrorSuppression, true};
+
+    CheckResult result = check(R"(
+        type function add()
+            error("hello")
+        end
+
+        local x: add<> = 5
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "'add' type function errored at runtime: [string \"add\"]:3: hello");
 }
 
 TEST_SUITE_END();

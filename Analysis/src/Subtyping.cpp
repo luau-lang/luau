@@ -2,6 +2,7 @@
 
 #include "Luau/Subtyping.h"
 
+#include "Luau/BuiltinTypeFunctions.h"
 #include "Luau/Common.h"
 #include "Luau/Error.h"
 #include "Luau/Normalize.h"
@@ -31,6 +32,7 @@ LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauFixStuckTypeFunctionErrorSuppression)
 
 
 namespace Luau
@@ -2918,9 +2920,20 @@ std::pair<TypeId, ErrorVec> Subtyping::handleTypeFunctionReductionResult(const T
 {
     TypeFunctionContext context{arena, builtinTypes, scope, normalizer, typeFunctionRuntime, iceReporter, NotNull{&limits}, NotNull{this}};
 
+    ErrorVec errors;
+    const bool isUserDefined = functionInstance->function == &builtinTypes->typeFunctions->userFunc;
+    if (FFlag::LuauFixStuckTypeFunctionErrorSuppression && isUserDefined && functionInstance->state == TypeFunctionInstanceState::Stuck)
+        return {builtinTypes->errorType, errors};
+
     TypeId function = arena->addType(*functionInstance);
     FunctionGraphReductionResult result = reduceTypeFunctions(function, {}, NotNull{&context}, true);
-    ErrorVec errors;
+
+    if (FFlag::LuauFixStuckTypeFunctionErrorSuppression && isUserDefined)
+    {
+        if (auto tfit = get<TypeFunctionInstanceType>(follow(function)); tfit && tfit->state == TypeFunctionInstanceState::Stuck)
+            return {builtinTypes->errorType, errors};
+    }
+
     if (result.blockedTypes.size() != 0 || result.blockedPacks.size() != 0)
     {
         errors.emplace_back(Location{}, UninhabitedTypeFunction{function});
