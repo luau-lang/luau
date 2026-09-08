@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDeprecatedAttributeOnAnonymousFunctions)
+LUAU_FASTFLAG(LuauFixLocalShadowGlobalAlias)
 
 using namespace Luau;
 
@@ -347,6 +348,26 @@ return bar()
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'global' shadows a global variable used at line 3");
+}
+
+TEST_CASE_FIXTURE(Fixture, "LocalShadowGlobalAlias")
+{
+    ScopedFastFlag sff{FFlag::LuauFixLocalShadowGlobalAlias, true};
+
+    LintResult result = lint(R"(
+local foo = foo
+local bar, baz = bar, baz
+print(qux)
+local qux = quux
+local function f()
+    local foo = foo
+    return foo, bar, baz, qux
+end
+return f()
+)");
+
+    REQUIRE(1 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Variable 'qux' shadows a global variable used at line 4");
 }
 
 TEST_CASE_FIXTURE(Fixture, "LocalShadowArgument")

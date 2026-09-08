@@ -14,6 +14,7 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAGVARIABLE(LuauFixLocalShadowGlobalAlias)
 
 namespace Luau
 {
@@ -771,6 +772,8 @@ private:
         {
             if (global->builtin)
                 ; // there are many builtins with common names like 'table'; some of them are deprecated as well
+            else if (FFlag::LuauFixLocalShadowGlobalAlias && isGlobalAlias(local, info))
+                ; // 'local foo = foo' intentionally caches the global in a local
             else if (global->firstRef)
             {
                 emitWarning(
@@ -787,6 +790,24 @@ private:
                 emitWarning(*context, LintWarning::Code_LocalShadow, local->location, "Variable '%s' shadows a global variable", local->name.value);
             }
         }
+    }
+
+    static bool isGlobalAlias(AstLocal* local, const Local& info)
+    {
+        AstStatLocal* stat = info.defined ? info.defined->as<AstStatLocal>() : nullptr;
+        if (!stat)
+            return false;
+
+        for (size_t i = 0; i < stat->vars.size && i < stat->values.size; ++i)
+        {
+            if (stat->vars.data[i] != local)
+                continue;
+
+            AstExprGlobal* value = stat->values.data[i]->as<AstExprGlobal>();
+            return value && value->name == local->name;
+        }
+
+        return false;
     }
 
     void reportUnusedLocal(AstLocal* local, const Local& info)
