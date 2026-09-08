@@ -53,6 +53,7 @@ LUAU_FASTFLAGVARIABLE(LuauUdtfPopulateEnv)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
+LUAU_FASTFLAGVARIABLE(LuauSetmetatableOnIntersection)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
 
@@ -2976,7 +2977,13 @@ InferencePack ConstraintGenerator::checkExprCall(
 
         TypeId resultTy = nullptr;
 
-        if (FFlag::LuauSetmetatableOverrides)
+        if (FFlag::LuauSetmetatableOnIntersection && get<IntersectionType>(target))
+        {
+            // An intersection of tables has to be normalized into a single table before a metatable can be attached to it,
+            // otherwise property lookups through the metatable's `__index` fail. Defer to the type function, which does this.
+            resultTy = createTypeFunctionInstance(builtinTypes->typeFunctions->setmetatableFunc, {target, mt}, {}, scope, call->location);
+        }
+        else if (FFlag::LuauSetmetatableOverrides)
         {
             if (isTableUnion(target))
             {
@@ -4575,7 +4582,10 @@ TypeId ConstraintGenerator::resolveReferenceType(
             result = freshType(scope, Polarity::Mixed);
     }
 
-    if (is<TypeFunctionInstanceType>(follow(result)))
+    // A bare reference to a type function is the type function's own binding. An alias like `type T = typeof(f())` may be
+    // bound to a not-yet-reduced type function instance too, but referencing such an alias is fine.
+    TypeId followedResult = follow(result);
+    if (is<TypeFunctionInstanceType>(followedResult) && (!FFlag::LuauSetmetatableOnIntersection || followedResult == result))
     {
         reportError(ty->location, UnappliedTypeFunction{});
         addConstraint(scope, ty->location, ReduceConstraint{result});

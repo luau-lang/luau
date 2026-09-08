@@ -17,6 +17,7 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
+LUAU_FASTFLAG(LuauSetmetatableOnIntersection)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -1457,6 +1458,80 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_m
     const MetatableType* mt2 = get<MetatableType>(foobar);
     REQUIRE(mt2);
     CHECK_EQ(toString(mt2->metatable, {true}), "{ @metatable { __index: {  } }, {  } }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_applies_to_intersection_of_tables")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauSetmetatableOnIntersection, true};
+
+    CheckResult result = check(R"(
+        type props1 = { Name: string }
+        type props2 = { Value: any }
+        type Identity = setmetatable<props1 & props2, { __index: {} }>
+        local x = setmetatable({} :: props1 & props2, { __index = {} })
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TypeId id = requireTypeAlias("Identity");
+    CHECK_EQ(toString(id, {true}), "{ @metatable { __index: {  } }, { Name: string, Value: any } }");
+    CHECK_EQ(toString(requireType("x"), {true}), "{ @metatable { __index: {  } }, { Name: string, Value: any } }");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_intersection_of_tables_exposes_index_metamethod")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauSetmetatableOnIntersection, true};
+
+    // https://github.com/luau-lang/luau/issues/983
+    CheckResult result = check(R"(
+        local Index = {}
+        local Metatable = {
+            __index = Index,
+        }
+
+        function Index.GetName(self: Foo): string
+            return self.Name
+        end
+
+        type props1 = {
+            Name: string,
+        }
+        type props2 = {
+            Value: any,
+        }
+        type fooProps = props1 & props2
+
+        type Foo = typeof(setmetatable({} :: fooProps, Metatable))
+
+        local testFoo: Foo = setmetatable({
+            Name = "Test",
+            Value = 1,
+        }, Metatable)
+
+        local name: string = testFoo:GetName()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_intersection_reports_error_for_non_table_parts")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag sff{FFlag::LuauSetmetatableOnIntersection, true};
+
+    CheckResult result = check(R"(
+        local x = setmetatable({} :: { Name: string } & string, { __index = {} })
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_metatable_with_metatable_metamethod")

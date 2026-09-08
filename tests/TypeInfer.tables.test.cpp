@@ -20,6 +20,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauSetmetatableOnIntersection)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
@@ -5326,7 +5327,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_with_a_metatable_table_path")
     CHECK(result.errors.at(2).location == Location{{3, 8}, {5, 11}});
     CHECK("Type function instance setmetatable<unknown, unknown> is uninhabited" == toString(result.errors.at(2)));
 
-    if (FFlag::LuauNewTypePathErrorMessages)
+    if (FFlag::LuauSetmetatableOnIntersection && FFlag::LuauNewTypePathErrorMessages)
+        CHECK(
+            "Expected this to be 'setmetatable<unknown, unknown>', but got '{ @metatable {  }, {  } }'; \n"
+            "the 1st type pack entry is `{ @metatable {  }, {  } }` and the reduced form of the 1st type pack entry is "
+            "`never`, and `{ @metatable {  }, {  } }` is not a subtype of `never`" == toString(result.errors.at(3))
+        );
+    else if (FFlag::LuauNewTypePathErrorMessages)
         CHECK(
             "Expected this to be 'setmetatable<unknown, unknown>', but got '{ @metatable {  }, {  } & {  } }'; \n"
             "the 1st type pack entry is `{ @metatable {  }, {  } & {  } }` and the reduced form of the 1st type pack entry is "
