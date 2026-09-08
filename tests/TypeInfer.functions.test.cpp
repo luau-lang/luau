@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(LuauDoNotLeakGenericsInIndexer)
 LUAU_FASTFLAG(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauFixGenericCallLiteralArgCheck)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -4538,6 +4539,55 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2670_generic_leaking_indexer_2")
     // TODO CLI-181248: This also seems not entirely correct.
     CHECK_EQ("number?", toString(requireType("k"), {true}));
     CHECK_EQ("string", toString(requireType("v"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2124_generic_function_table_literal_arg_with_optional_fields")
+{
+    ScopedFastFlag _{FFlag::LuauFixGenericCallLiteralArgCheck, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function baz<T>(v: {x: number?, y: number?})
+            print(v.x, v.y)
+        end
+
+        baz({})
+        baz({x = 4})
+        baz({x = 4, y = 4})
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2124_generic_function_table_literal_arg_still_reports_missing_props")
+{
+    ScopedFastFlag _{FFlag::LuauFixGenericCallLiteralArgCheck, true};
+
+    CheckResult result = check(R"(
+        local function baz<T>(v: {x: number, y: number}, t: T): T
+            return t
+        end
+
+        baz({}, 1)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<MissingProperties>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2124_generic_param_mentioning_generic_still_infers")
+{
+    ScopedFastFlag _{FFlag::LuauFixGenericCallLiteralArgCheck, true};
+
+    CheckResult result = check(R"(
+        local function first<T>(v: {x: T?, y: number?}, d: T): T
+            return v.x or d
+        end
+
+        local a = first({}, 5)
+        local b = first({x = "s"}, "d")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("a")));
+    CHECK_EQ("string", toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "bidirectional_inference_callback_in_array")
