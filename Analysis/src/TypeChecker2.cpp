@@ -45,6 +45,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
+LUAU_FASTFLAGVARIABLE(LuauFixAssignToNeverIndexee)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
@@ -1192,9 +1193,12 @@ void TypeChecker2::reportErrorsFromAssigningToNever(AstExpr* lhs, TypeId rhsType
     {
         TypeId indexedType = lookupType(indexName->expr);
 
-        // if it's already never, I don't think we have anything to do here.
         if (get<NeverType>(indexedType))
+        {
+            if (FFlag::LuauFixAssignToNeverIndexee)
+                reportError(CannotAssignToNever{rhsType, {}, CannotAssignToNever::Reason::PropertyNarrowed}, lhs->location);
             return;
+        }
 
         std::string prop = indexName->index.value;
 

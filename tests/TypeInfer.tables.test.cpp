@@ -28,6 +28,7 @@ LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
+LUAU_FASTFLAG(LuauFixAssignToNeverIndexee)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
@@ -4983,6 +4984,26 @@ TEST_CASE_FIXTURE(Fixture, "write_to_union_property_not_all_present")
     REQUIRE(tm->cause.size() == 2);
     CHECK("\"Cat\"" == toString(tm->cause[0]));
     CHECK("\"Dog\"" == toString(tm->cause[1]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "write_to_property_of_never")
+{
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauForceOldSolver, false}, {FFlag::LuauFixAssignToNeverIndexee, true}};
+
+    CheckResult result = check(R"(
+        local x: never
+        x.hello = true
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CannotAssignToNever* tm = get<CannotAssignToNever>(result.errors[0]);
+    REQUIRE(tm);
+
+    CHECK(getBuiltins()->booleanType == tm->rhsType);
+    CHECK(CannotAssignToNever::Reason::PropertyNarrowed == tm->reason);
+    CHECK(tm->cause.empty());
+    CHECK("Cannot assign a value of type boolean to a field of type never" == toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "mymovie_read_write_tables_bug")

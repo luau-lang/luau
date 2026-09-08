@@ -7,6 +7,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver);
+LUAU_FASTFLAG(LuauFixAssignToNeverIndexee);
 
 TEST_SUITE_BEGIN("TypeInferUnknownNever");
 
@@ -228,7 +229,15 @@ TEST_CASE_FIXTURE(Fixture, "assign_to_prop_which_is_never")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (!FFlag::DebugLuauForceOldSolver && FFlag::LuauFixAssignToNeverIndexee)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(get<CannotAssignToNever>(result.errors[0]));
+    }
+    else
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "assign_to_subscript_which_is_never")
