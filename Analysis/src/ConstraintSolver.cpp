@@ -52,6 +52,7 @@ LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
+LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceSubstituteGenerics)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -1969,6 +1970,13 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
         TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
         AstExpr* expr = unwrapGroup(c.callSite->args.data[i]);
 
+        if (FFlag::LuauBidirectionalInferenceSubstituteGenerics && expr->is<AstExprTable>() &&
+            containsGeneric(expectedArgTy, NotNull{&genericTypesAndPacks}))
+        {
+            if (auto resolved = resolveGenericsInExpectedArgType(constraint, ftv, c.callSite, typeOffset, argPackHead, expectedArgs, expectedArgTy))
+                expectedArgTy = *resolved;
+        }
+
         PushTypeResult result = pushTypeInto(
             c.astTypes, c.astExpectedTypes, NotNull{this}, constraint, NotNull{&genericTypesAndPacks}, NotNull{&u2}, subtyping, expectedArgTy, expr
         );
@@ -2028,6 +2036,80 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     }
 
     return true;
+}
+
+std::optional<TypeId> ConstraintSolver::resolveGenericsInExpectedArgType(
+    NotNull<const Constraint> constraint,
+    const FunctionType* ftv,
+    const AstExprCall* callSite,
+    size_t typeOffset,
+    const std::vector<TypeId>& argPackHead,
+    const std::vector<TypeId>& expectedArgs,
+    TypeId expectedArgTy
+)
+{
+    // Consider:
+    //
+    //  type Map = { a: { x: number? } }
+    //  local function f<T>(key: T & string, value: index<Map, T>) end
+    //  f("a", { x = 1 })
+    //
+    // The expected type for the table literal is `index<Map, T>`, which cannot
+    // reduce until `T` is known. We infer the bounds of `T` from the sibling
+    // arguments, substitute them into the expected type and reduce it, so that
+    // the resulting table type can be pushed into the literal. Table literals
+    // take no part in inferring the generics as they are what we are checking.
+    DenseHashSet<const void*> genericPacks;
+    for (TypePackId gp : ftv->genericPacks)
+        genericPacks.insert(follow(gp));
+    if (containsGeneric(expectedArgTy, NotNull{&genericPacks}))
+        return std::nullopt;
+
+    const size_t count = std::min(argPackHead.size(), expectedArgs.size());
+    std::vector<TypeId> siblingArgs;
+    siblingArgs.reserve(count);
+    for (size_t j = 0; j < count; ++j)
+    {
+        bool isTableLiteral =
+            j >= typeOffset && j - typeOffset < callSite->args.size && unwrapGroup(callSite->args.data[j - typeOffset])->is<AstExprTable>();
+        siblingArgs.push_back(isTableLiteral ? builtinTypes->neverType : argPackHead[j]);
+    }
+
+    TypePackId subPack = arena->addTypePack(std::move(siblingArgs));
+    TypePackId superPack = arena->addTypePack(std::vector<TypeId>(expectedArgs.begin(), expectedArgs.begin() + count));
+
+    // We use a fresh Subtyping instance here so that the generic bounds we
+    // tentatively infer do not pollute the shared result cache.
+    Subtyping localSubtyping{builtinTypes, arena, normalizer, typeFunctionRuntime, NotNull{&iceReporter}};
+    SubtypingEnvironment env;
+    SubtypingResult result = localSubtyping.isSubtype(env, subPack, superPack, constraint->scope, ftv->generics, ftv->genericPacks);
+    if (!result.isSubtype || result.normalizationTooComplex)
+        return std::nullopt;
+
+    // Every generic mentioned by the expected type must have been bound by a
+    // sibling argument; otherwise we would substitute `unknown` for it.
+    for (TypeId g : ftv->generics)
+    {
+        DenseHashSet<const void*> generic;
+        generic.insert(follow(g));
+        if (!containsGeneric(expectedArgTy, NotNull{&generic}))
+            continue;
+
+        const SubtypingEnvironment::GenericBounds& bounds = env.getMappedTypeBounds(follow(g), NotNull{&iceReporter});
+        if (bounds.lowerBound.empty() && bounds.upperBound.empty())
+            return std::nullopt;
+    }
+
+    std::optional<TypeId> substituted = env.applyMappedGenerics(builtinTypes, arena, expectedArgTy, NotNull{&iceReporter});
+    if (!substituted || *substituted == expectedArgTy)
+        return std::nullopt;
+
+    TypeFunctionContext context{NotNull{this}, constraint->scope, constraint, subtyping};
+    FunctionGraphReductionResult reduction = reduceTypeFunctions(*substituted, constraint->location, NotNull{&context}, true);
+    if (!reduction.blockedTypes.empty() || !reduction.blockedPacks.empty() || !reduction.irreducibleTypes.empty() || !reduction.errors.empty())
+        return std::nullopt;
+
+    return follow(*substituted);
 }
 
 bool ConstraintSolver::DEPRECATED_tryDispatch(const DEPRECATED_PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint)

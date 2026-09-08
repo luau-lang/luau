@@ -224,6 +224,15 @@ public:
     bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint, bool force);
+    std::optional<TypeId> resolveGenericsInExpectedArgType(
+        NotNull<const Constraint> constraint,
+        const FunctionType* ftv,
+        const AstExprCall* callSite,
+        size_t typeOffset,
+        const std::vector<TypeId>& argPackHead,
+        const std::vector<TypeId>& expectedArgs,
+        TypeId expectedArgTy
+    );
     // Clip with LuauRemovePrimitiveTypeConstraint
     bool DEPRECATED_tryDispatch(const DEPRECATED_PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);

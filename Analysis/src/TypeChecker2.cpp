@@ -41,6 +41,7 @@ LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSubstituteGenerics)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
@@ -1859,12 +1860,32 @@ void TypeChecker2::visitCall(AstExprCall* call)
     }
     else
     {
+        // For generic functions, bidirectional inference may have resolved the
+        // generics in the expected type of a table literal argument from its
+        // sibling arguments. Check the literal against that type instead.
+        DenseHashSet<const void*> genericsAndPacks;
+        const FunctionType* genericFty = FFlag::LuauBidirectionalInferenceSubstituteGenerics ? get<FunctionType>(fnTy) : nullptr;
+        if (genericFty)
+        {
+            for (TypeId g : genericFty->generics)
+                genericsAndPacks.insert(follow(g));
+            for (TypePackId g : genericFty->genericPacks)
+                genericsAndPacks.insert(follow(g));
+        }
+
         for (size_t i = 0; i < call->args.size; ++i)
         {
             AstExpr* arg = call->args.data[i];
             argExprs.push_back(arg);
             TypeId* argTy = module->astTypes.find(arg);
-            if (argTy)
+            TypeId* expectedTy = genericFty && arg->is<AstExprTable>() ? module->astExpectedTypes.find(arg) : nullptr;
+            if (expectedTy && argTy && !is<TypeFunctionInstanceType>(follow(*expectedTy)) &&
+                !containsGeneric(*expectedTy, NotNull{&genericsAndPacks}) && !isErrorSuppressing(arg->location, *argTy))
+            {
+                testLiteralOrAstTypeIsSubtype(arg, *expectedTy);
+                args.head.push_back(*expectedTy);
+            }
+            else if (argTy)
                 args.head.push_back(*argTy);
             else if (i == call->args.size - 1)
             {

@@ -16,6 +16,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSubstituteGenerics)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 
 struct TypeFunctionFixture : Fixture
@@ -2174,6 +2175,85 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     REQUIRE(get<NormalizationTooComplex>(result.errors[0]));
     REQUIRE(get<NormalizationTooComplex>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2608_table_literal_checked_against_index_of_sibling_bound_generic")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSubstituteGenerics, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type ScalarMap = { read a: number, read b: string }
+        type TableMap = { read a: { x: number? }, read b: { y: string? } }
+
+        local function scalar<T>(key: T & (string | ""), value: index<ScalarMap, T>?): () end
+        local function tbl<T>(key: T & (string | ""), value: index<TableMap, T>?): () end
+
+        scalar("a", 1)
+        scalar("b", "hi")
+
+        tbl("a", { x = 1 })
+        tbl("a" :: "a", { x = 1 })
+        tbl("b", { y = "hi" })
+        tbl("b", {})
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2608_invalid_table_literal_still_rejected_against_index_of_sibling_bound_generic")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSubstituteGenerics, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type ScalarMap = { read a: number, read b: string }
+        type TableMap = { read a: { x: number? }, read b: { y: string? } }
+
+        local function scalar<T>(key: T & (string | ""), value: index<ScalarMap, T>?): () end
+        local function tbl<T>(key: T & (string | ""), value: index<TableMap, T>?): () end
+
+        scalar("a", "wrong")
+        tbl("a", { x = "wrong" })
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(Location{{8, 20}, {8, 27}} == result.errors[0].location);
+    CHECK(get<TypeMismatch>(result.errors[1]));
+    CHECK(Location{{9, 23}, {9, 30}} == result.errors[1].location);
+    CHECK("Expected this to be 'number?', but got 'string'" == toString(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2608_user_defined_type_function_over_sibling_bound_generic")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSubstituteGenerics, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type function props(name)
+            if name == types.singleton("a") then
+                return types.newtable({ [types.singleton("x")] = types.unionof(types.number, types.singleton(nil)) })
+            end
+            return types.newtable({ [types.singleton("y")] = types.unionof(types.string, types.singleton(nil)) })
+        end
+
+        local function create<T>(name: T & (string | ""), value: props<T>?): () end
+
+        create("a", { x = 1 })
+        create("b", { y = "hi" })
+        create("a", { x = "wrong" })
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(Location{{13, 26}, {13, 33}} == result.errors[0].location);
 }
 
 TEST_SUITE_END();

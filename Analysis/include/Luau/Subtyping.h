@@ -255,6 +255,16 @@ struct Subtyping
         const std::vector<TypeId>& bindableGenerics,
         const std::vector<TypePackId>& bindableGenericPacks
     );
+    // Same as above, but the caller provides the environment so that the
+    // bounds inferred for `bindableGenerics` can be inspected afterwards.
+    SubtypingResult isSubtype(
+        SubtypingEnvironment& env,
+        TypePackId subTp,
+        TypePackId superTp,
+        NotNull<Scope> scope,
+        const std::vector<TypeId>& bindableGenerics,
+        const std::vector<TypePackId>& bindableGenericPacks
+    );
 
 private:
     DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> resultCache;

@@ -648,6 +648,18 @@ SubtypingResult Subtyping::isSubtype(
 )
 {
     SubtypingEnvironment env;
+    return isSubtype(env, subTp, superTp, scope, bindableGenerics, bindableGenericPacks);
+}
+
+SubtypingResult Subtyping::isSubtype(
+    SubtypingEnvironment& env,
+    TypePackId subTp,
+    TypePackId superTp,
+    NotNull<Scope> scope,
+    const std::vector<TypeId>& bindableGenerics,
+    const std::vector<TypePackId>& bindableGenericPacks
+)
+{
     for (TypeId g : bindableGenerics)
         env.mappedGenerics[follow(g)] = {SubtypingEnvironment::GenericBounds{}};
 
