@@ -20,6 +20,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixIndexerThroughMetatableIndex)
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
@@ -7590,6 +7591,65 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
     )"));
 
     CHECK_EQ("<T, U>({ read RootToDescendantCountMap: { [T]: U } }) -> ()", toString(requireType("setupRootMappingMove")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_through_metatable_index_chain_respects_indexer")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixIndexerThroughMetatableIndex, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local a = 'literal'::'literal'
+        local f = 'literal2'::'literal2'
+        local q = 'literal3'::'literal3'
+
+        local r = {[a]=true}
+        local c = setmetatable({[f]='ok'},{__index=r})
+        local z = setmetatable({[q]=true},{__index=c})
+
+        local test = z.literal2
+        local test2 = z.literal3
+        local test3 = z.literal
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("test")) == "string");
+    CHECK(toString(requireType("test2")) == "boolean");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_through_single_metatable_index_respects_indexer")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixIndexerThroughMetatableIndex, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local f = 'k'::'k'
+        local c = {[f]='ok'}
+        local z = setmetatable({}, {__index=c})
+        local t = z.k
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("t")) == "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_through_metatable_index_unknown_key_still_errors")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauFixIndexerThroughMetatableIndex, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local f = 'k'::'k'
+        local c = {[f]='ok'}
+        local z = setmetatable({}, {__index=c})
+        local t = z.other
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<UnknownProperty>(result.errors[0]));
 }
 
 TEST_SUITE_END();

@@ -36,6 +36,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAGVARIABLE(LuauFixIndexerThroughMetatableIndex)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
@@ -4179,6 +4180,30 @@ PropertyType TypeChecker2::hasIndexTypeFromType(
                 if (context == ValueContext::LValue && tt->indexer->isReadOnly)
                     return {NormalizationResult::False, {}};
                 return {NormalizationResult::True, {tt->indexer->indexResultType}};
+            }
+        }
+
+        if (FFlag::LuauFixIndexerThroughMetatableIndex && context == ValueContext::RValue)
+        {
+            TypeId givenType = module->internalTypes->addType(SingletonType{StringSingleton{prop}});
+            ErrorVec indexErrors;
+            std::optional<TypeId> mtIndex = findMetatableEntry(builtinTypes, indexErrors, ty, "__index", location);
+            for (int count = 0; mtIndex && count < 100; ++count)
+            {
+                TypeId index = follow(*mtIndex);
+                if (seen.contains(index))
+                    break;
+                seen.insert(index);
+                const TableType* itt = getTableType(index);
+                if (!itt)
+                    break;
+                if (itt->indexer)
+                {
+                    TypeId indexType = follow(itt->indexer->indexType);
+                    if (subtyping->isSubtype(givenType, indexType, NotNull{module->getModuleScope().get()}).isSubtype)
+                        return {NormalizationResult::True, {itt->indexer->indexResultType}};
+                }
+                mtIndex = findMetatableEntry(builtinTypes, indexErrors, index, "__index", location);
             }
         }
 
