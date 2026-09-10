@@ -496,7 +496,7 @@ private:
     /**
      * A set of incorrect class definitions which is used to avoid a second-pass analysis.
      */
-    DenseHashSet<const AstStatDeclareExternType*> incorrectExternTypeDefinitions{nullptr};
+    DenseHashSet<const AstStatDeclareExternType*> incorrectExternTypeDefinitions;
 
     std::vector<std::pair<TypeId, ScopePtr>> deferredQuantification;
 };

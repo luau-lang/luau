@@ -2778,3 +2778,31 @@ const luau_FastFunction luauF_table[256] = {
 
 #undef MISSING8
 };
+
+static int luauPF_pcall(lua_State* L, StkId ra, int nparams)
+{
+    if (nparams < 1 || !ttisfunction(ra + 1) || L->global->builtinPcall == nullptr)
+        return -1;
+
+    setclvalue(L, ra, L->global->builtinPcall);
+
+    return 0;
+}
+
+static int luauPF_xpcall(lua_State* L, StkId ra, int nparams)
+{
+    if (nparams < 2 || !ttisfunction(ra + 1) || !ttisfunction(ra + 2) || L->global->builtinXpcall == nullptr)
+        return -1;
+
+    setclvalue(L, ra, L->global->builtinXpcall);
+
+    // swap 'f' and 'errf' so that we get 'errf, f, arguments' prepared for calling 'f'
+    TValue tmp;
+    setobj(L, &tmp, ra + 1);
+    setobj2s(L, ra + 1, ra + 2);
+    setobj2s(L, ra + 2, &tmp);
+
+    return 1;
+}
+
+const luau_ProtectedFastFunction luauPF_table[2] = {luauPF_pcall, luauPF_xpcall};

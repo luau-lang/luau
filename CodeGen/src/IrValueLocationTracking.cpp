@@ -132,6 +132,10 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         // While ADJUST_STACK_TO_REG would semantically define the result range, we need to define it immediately
         invalidateRestoreVmRegs(vmRegOp(OP_B(inst)), function.intOp(OP_G(inst)));
         break;
+    case IrCmd::INVOKE_FASTPCALL:
+        // Even if result count is limited, all registers starting from function (ra) might be modified
+        invalidateRestoreVmRegs(vmRegOp(OP_A(inst)), -1);
+        break;
     case IrCmd::DO_ARITH:
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:

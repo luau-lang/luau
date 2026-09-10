@@ -7,8 +7,9 @@
 struct lua_Page;
 union GCObject;
 
-#define luaM_newgco(L, t, size, memcat) cast_to(t*, luaM_newgco_(L, size, memcat))
-#define luaM_newgcofixed(L, t, size, memcat) cast_to(t*, luaM_newgcofixed_(L, size, memcat))
+#define luaM_newgco(L, t, size, memcat, tt) cast_to(t*, luaM_newgco_(L, size, memcat, tt, 0))
+#define luaM_newgcoudata(L, t, size, memcat, tt, tag) cast_to(t*, luaM_newgco_(L, size, memcat, tt, tag))
+#define luaM_newgcofixed(L, t, size, memcat, tt) cast_to(t*, luaM_newgcofixed_(L, size, memcat, tt))
 #define luaM_freegco(L, p, size, memcat, page) luaM_freegco_(L, obj2gco(p), size, memcat, page)
 #define luaM_freegcofixed(L, p, size, memcat, page) luaM_freegcofixed_(L, obj2gco(p), size, memcat, page)
 
@@ -20,8 +21,8 @@ union GCObject;
     ((v) = cast_to(t*, luaM_realloc_(L, v, (oldn) * sizeof(t), luaM_arraysize_(L, n, sizeof(t)), memcat)))
 
 LUAI_FUNC void* luaM_new_(lua_State* L, size_t nsize, uint8_t memcat);
-LUAI_FUNC GCObject* luaM_newgco_(lua_State* L, size_t nsize, uint8_t memcat);
-LUAI_FUNC GCObject* luaM_newgcofixed_(lua_State* L, size_t nsize, uint8_t memcat);
+LUAI_FUNC GCObject* luaM_newgco_(lua_State* L, size_t nsize, uint8_t memcat, int tt, int tag);
+LUAI_FUNC GCObject* luaM_newgcofixed_(lua_State* L, size_t nsize, uint8_t memcat, int tt);
 LUAI_FUNC void luaM_free_(lua_State* L, void* block, size_t osize, uint8_t memcat);
 LUAI_FUNC void luaM_freegco_(lua_State* L, GCObject* block, size_t osize, uint8_t memcat, lua_Page* page);
 LUAI_FUNC void luaM_freegcofixed_(lua_State* L, GCObject* block, size_t osize, uint8_t memcat, lua_Page* page);

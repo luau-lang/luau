@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauCheckReadTyWhenRelatingExtern)
+LUAU_FASTFLAG(LuauDoNotIceForBindingGeneric)
 
 using namespace Luau;
 
@@ -1442,7 +1443,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_function_that_invokes_itself_with_
     if (!FFlag::DebugLuauForceOldSolver)
         CHECK("(unknown) -> ()" == toString(requireType("readValue")));
     else
-        CHECK("<a>(a) -> ()" == toString(requireType("readValue")));
+        CHECK("<T>(T) -> ()" == toString(requireType("readValue")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_function_that_invokes_itself_with_a_refinement_of_its_parameter_2")
@@ -3095,6 +3096,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_relate_extern_table_2")
             public n108:{ read: string | number, write _: string }
         end
         l0 = l0 { n108 = if _ then l0(_) else _() }
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_generic_binding_ice")
+{
+    ScopedFastFlag _{FFlag::LuauDoNotIceForBindingGeneric, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        local l0: any
+        l32 = l0.new {
+            n5 = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
+            n0 = if _ then _,
+            _ = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
+            rshift = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
+            _ = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
+            n0 = if _ then _,
+            _ = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
+            _ = if _ then _, 
+            n0 = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
+            n0 = if _ then _, 
+            _ = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),)
+        }
     )"));
 }
 

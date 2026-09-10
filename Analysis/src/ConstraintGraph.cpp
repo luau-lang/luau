@@ -400,9 +400,9 @@ void ConstraintGraph::repairTypeReferences(T ty)
 
     T root = follow(ty);
 
-    // This is a strong guard against a self bound cylic type, but we
+    // This is a strong guard against a self bound cyclic type, but we
     // hopefully threw an exception above if this were the case.
-    DenseHashSet<T> seen{nullptr};
+    DenseHashSet<T> seen;
     seen.insert(root);
 
     while (!seen.contains(ty))

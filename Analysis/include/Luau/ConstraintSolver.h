@@ -119,19 +119,19 @@ struct ConstraintSolver
     std::vector<NotNull<const Constraint>> unsolvedConstraints;
 
     // Memoized instantiations of type aliases.
-    DenseHashMap<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases{{}};
+    DenseHashMap<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases;
     // Breadcrumbs for where a free type's upper bound was expanded. We use
     // these to provide more helpful error messages when a free type is solved
     // as never unexpectedly.
-    DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors{nullptr};
+    DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors;
 
     // Irreducible/uninhabited type functions or type pack functions.
-    DenseHashSet<const void*> uninhabitedTypeFunctions{{}};
+    DenseHashSet<const void*> uninhabitedTypeFunctions;
 
-    DenseHashMap<SubtypeConstraintRecord, Constraint*, HashSubtypeConstraintRecord> seenConstraints{{}};
+    DenseHashMap<SubtypeConstraintRecord, Constraint*, HashSubtypeConstraintRecord> seenConstraints;
 
     // The set of types that will definitely be unchanged by generalization.
-    DenseHashSet<TypeId> generalizedTypes_{nullptr};
+    DenseHashSet<TypeId> generalizedTypes_;
     const NotNull<DenseHashSet<TypeId>> generalizedTypes{&generalizedTypes_};
 
     // Recorded errors that take place within the solver.
@@ -143,7 +143,8 @@ struct ConstraintSolver
     DcrLogger* logger;
     TypeCheckLimits limits;
 
-    DenseHashMap<TypeId, const Constraint*> typeFunctionsToFinalize{nullptr};
+    DenseHashMap<TypeId, const Constraint*> typeFunctionsToFinalize;
+    DenseHashMap<TypeId, const Constraint*> typeAliasesToExpand;
 
     explicit ConstraintSolver(
         NotNull<Normalizer> normalizer,
@@ -221,7 +222,7 @@ public:
     bool tryDispatch(const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const NameConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
-    bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint, bool force);
+    bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint, bool force);
     // Clip with LuauRemovePrimitiveTypeConstraint
     bool DEPRECATED_tryDispatch(const DEPRECATED_PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
@@ -398,7 +399,12 @@ public:
      * At the time of writing, this pertains only to type functions.
      * @param subst the substitution that was applied
      **/
-    void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst, const std::shared_ptr<ModuleName>& moduleName);
+    void reproduceConstraints(
+        NotNull<Scope> scope,
+        const Location& location,
+        const Substitution& subst,
+        const std::shared_ptr<ModuleName>& moduleName
+    );
 
     // Clip with LuauCyclicRequireTypeInference
     void DEPRECATED_reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);

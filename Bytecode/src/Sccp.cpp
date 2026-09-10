@@ -129,7 +129,6 @@ int BcVmConstImpl::cmp(const BcOp& lhsOp, const BcImm& rhs) const
             return (lhs.valueBoolean == rhs.valueBoolean) ? 0 : 1;
     }
 
-    LUAU_ASSERT(!"incompatible types for immCmpBcVmConst");
     return 0;
 }
 
@@ -431,10 +430,8 @@ ConditionState SccpInterpreter::evaluateXeqkCondition(BcRef<BcInst> inst)
         if (valConst.kind == Constness::VmConstant && impl->falsey(valConst.vmConst.value()) &&
             impl->kindEquals(valConst.vmConst.value(), impl->makeNil()))
             return ConditionState::AlwaysTrue;
-        else if (
-            valConst.kind == Constness::ImmConstant ||
-            (valConst.kind == Constness::VmConstant && !impl->kindEquals(valConst.vmConst.value(), impl->makeNil()))
-        )
+        else if (valConst.kind == Constness::ImmConstant ||
+                 (valConst.kind == Constness::VmConstant && !impl->kindEquals(valConst.vmConst.value(), impl->makeNil())))
             return ConditionState::AlwaysFalse;
         break;
     case LOP_JUMPXEQKB:
@@ -443,9 +440,9 @@ ConditionState SccpInterpreter::evaluateXeqkCondition(BcRef<BcInst> inst)
         LUAU_ASSERT(cmpImmOp.kind == BcOpKind::Imm);
         if (valConst.kind == Constness::ImmConstant && valConst.immConst.value().kind == BcImmKind::Boolean)
         {
-            std::optional<bool> eq = impl->eq(valConst.vmConst.value(), cmpImmOp);
-            if (eq)
-                return *eq ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
+            bool lhsBool = valConst.immConst.value().valueBoolean;
+            bool rhsBool = impl->asImm(cmpImmOp)->valueBoolean;
+            return (lhsBool == rhsBool) ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
         }
         else if (valConst.kind == Constness::VmConstant)
         {

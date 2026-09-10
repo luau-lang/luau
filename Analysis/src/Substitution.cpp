@@ -9,7 +9,6 @@
 #include <algorithm>
 
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
 
 namespace Luau
@@ -158,8 +157,8 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
 }
 
 Tarjan::Tarjan()
-    : typeToIndex(nullptr, FInt::LuauTarjanPreallocationSize)
-    , packToIndex(nullptr, FInt::LuauTarjanPreallocationSize)
+    : typeToIndex(FInt::LuauTarjanPreallocationSize)
+    , packToIndex(FInt::LuauTarjanPreallocationSize)
 {
     nodes.reserve(FInt::LuauTarjanPreallocationSize);
     stack.reserve(FInt::LuauTarjanPreallocationSize);

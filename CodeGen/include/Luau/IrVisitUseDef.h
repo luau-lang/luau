@@ -151,6 +151,17 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, IrInst& inst)
         // While ADJUST_STACK_TO_REG would semantically define the result range, we need to define it immediately
         visitor.defRange(vmRegOp(OP_B(inst)), function.intOp(OP_G(inst)));
         break;
+
+    case IrCmd::INVOKE_FASTPCALL:
+    {
+        // For a call, 'result start' register is also the register where the target function is
+        // For fast protected calls, function is setup by the instruction itself
+        visitor.useRange(vmRegOp(OP_A(inst)) + 1, function.intOp(OP_C(inst)));
+
+        visitor.defRange(vmRegOp(OP_A(inst)), function.intOp(OP_D(inst)));
+        break;
+    }
+
     case IrCmd::FORGLOOP:
         // First register is not used by instruction, we check that it's still 'nil' with CHECK_TAG
         visitor.use(OP_A(inst), 1);

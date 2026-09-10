@@ -10,6 +10,7 @@
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 
 using namespace Luau;
 
@@ -638,6 +639,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_pack_parentheses")
 
 TEST_CASE_FIXTURE(Fixture, "better_mismatch_error_messages")
 {
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
+
     CheckResult result = check(R"(
         function f<T>(...: T...)
             return ...
@@ -648,22 +651,9 @@ TEST_CASE_FIXTURE(Fixture, "better_mismatch_error_messages")
         end
     )");
 
-    SwappedGenericTypeParameter* fErr;
-    SwappedGenericTypeParameter* gErr;
-
-    if (!FFlag::DebugLuauForceOldSolver)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(3, result);
-        // The first error here is an unknown symbol that is redundant with the `fErr`.
-        fErr = get<SwappedGenericTypeParameter>(result.errors[1]);
-        gErr = get<SwappedGenericTypeParameter>(result.errors[2]);
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        fErr = get<SwappedGenericTypeParameter>(result.errors[0]);
-        gErr = get<SwappedGenericTypeParameter>(result.errors[1]);
-    }
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    SwappedGenericTypeParameter* fErr = get<SwappedGenericTypeParameter>(result.errors[0]);
+    SwappedGenericTypeParameter* gErr = get<SwappedGenericTypeParameter>(result.errors[1]);
 
     REQUIRE(fErr);
     CHECK_EQ(fErr->name, "T");
@@ -1164,7 +1154,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
+    CHECK_EQ("<T>(T) -> T", toString(requireType("id")));
     CHECK("number" == toString(requireType("a")));
     CHECK("nil" == toString(requireType("b")));
 }
@@ -1293,7 +1283,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments")
         function bar()
             local c: ((number)->number, number)->number = foo -- no error
             c = foo -- no error
-            local d: ((number)->number, string)->number = foo -- error from arg 2 (string) not being convertable to number from the call a(b)
+            local d: ((number)->number, string)->number = foo -- error from arg 2 (string) not being convertible to number from the call a(b)
         end
     )");
 
@@ -1307,7 +1297,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments")
     // are set, assert that we're getting back the original generic
     // function definition.
     if (FFlag::LuauInstantiateInSubtyping || !FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("<a, b...>((a) -> (b...), a) -> (b...)", toString(tm->givenType));
+        CHECK_EQ("<T, U...>((T) -> (U...), T) -> (U...)", toString(tm->givenType));
     else
         CHECK_EQ("((number) -> number, number) -> number", toString(tm->givenType));
 }
@@ -1334,7 +1324,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments2")
     // are set, assert that we're getting back the original generic
     // function definition.
     if (FFlag::LuauInstantiateInSubtyping || !FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("<a, b...>((a) -> (b...), a) -> (b...)", toString(tm->givenType));
+        CHECK_EQ("<T, U...>((T) -> (U...), T) -> (U...)", toString(tm->givenType));
     else
         CHECK_EQ("((string) -> number, string) -> number", toString(*tm->givenType));
 }
@@ -1649,7 +1639,7 @@ TEST_CASE_FIXTURE(Fixture, "quantify_functions_with_no_generics")
         end
     )");
 
-    CHECK("<a, b...>((a) -> (b...), a) -> (b...)" == toString(requireType("foo")));
+    CHECK("<T, U...>((T) -> (U...), T) -> (U...)" == toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_generic")
@@ -1660,7 +1650,7 @@ TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_gen
         end
     )");
 
-    CHECK("<X, a...>((X) -> (a...), X) -> (a...)" == toString(requireType("foo")));
+    CHECK("<X, T...>((X) -> (T...), X) -> (T...)" == toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_extra_quantification_for_generic_functions")
@@ -1788,7 +1778,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_implicit_explicit_name_clash")
         end
     )");
 
-    CHECK("<a, b...>((a) -> (b...), a) -> (b...)" == toString(requireType("apply")));
+    CHECK("<a, T...>((a) -> (T...), a) -> (T...)" == toString(requireType("apply")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_functions_work_in_subtyping")

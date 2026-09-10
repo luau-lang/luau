@@ -68,10 +68,7 @@ struct ConfigValue;
 
 struct ConfigTable : public DenseHashMap<ConfigTableKey, ConfigValue, VariantHashDefault<ConfigTableKey>>
 {
-    ConfigTable()
-        : DenseHashMap<ConfigTableKey, ConfigValue, VariantHashDefault<ConfigTableKey>>({})
-    {
-    }
+    ConfigTable() = default;
 };
 
 struct ConfigValue : public Variant<std::string, double, bool, ConfigTable>

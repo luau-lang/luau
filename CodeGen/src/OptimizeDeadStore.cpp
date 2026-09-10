@@ -211,7 +211,7 @@ struct RemoveDeadStoreState
 
     void killTValueStore(StoreRegInfo& regInfo)
     {
-        // TValue can only be killed if it is not overlayed by a partial tag/value write
+        // TValue can only be killed if it is not overlaid by a partial tag/value write
         if (regInfo.tvalueInstIdx != kInvalidInstIdx && regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx)
         {
             if (FFlag::LuauCodegenDseRestoreHints)
@@ -654,7 +654,7 @@ struct RemoveDeadStoreState
     // Have there been any object allocations which might remain unused
     bool hasAllocations = false;
 
-    DenseHashSet<uint32_t> nonPropagatingStore{kInvalidInstIdx};
+    DenseHashSet<uint32_t> nonPropagatingStore;
     std::vector<uint32_t> recordedVmExitSyncs;
 };
 
@@ -1188,6 +1188,9 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::CHECK_SAFE_ENV:
         state.checkLiveIns(OP_A(inst), index, true);
         break;
+    case IrCmd::CHECK_YIELDABLE:
+        state.checkLiveIns(OP_A(inst), index, true);
+        break;
     case IrCmd::CHECK_ARRAY_SIZE:
         state.checkLiveIns(OP_C(inst), index, true);
         break;
@@ -1258,6 +1261,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::INTERRUPT:
     case IrCmd::CHECK_GC:
     case IrCmd::CALL:
+    case IrCmd::INVOKE_FASTPCALL:
     case IrCmd::FORGLOOP_FALLBACK:
     case IrCmd::FALLBACK_GETGLOBAL:
     case IrCmd::FALLBACK_SETGLOBAL:
@@ -1311,6 +1315,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::FALLBACK_FORGPREP:
         // CALL directly executes a Luau function on the same native stack frame
     case IrCmd::CALL:
+    case IrCmd::INVOKE_FASTPCALL:
         // These instructions use lowering that is not aware of register allocator and demand no active values to exist
     case IrCmd::SETLIST:
     case IrCmd::FORGLOOP:
@@ -1487,12 +1492,12 @@ static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& 
     IrFunction& function = build.function;
 
     // Values that are only used inside exit sync blocks store instructions or sunk operations
-    DenseHashSet<uint32_t> exitSyncPrivateInst{~0u};
+    DenseHashSet<uint32_t> exitSyncPrivateInst;
 
     if (FFlag::LuauCodegenVmExitSyncMultiUse)
     {
         // Tracking the use count from exit blocks, if instruction exit use count equals overall use count, it's only used in the exit
-        DenseHashMap<uint32_t, uint32_t> exitInstUseCounts{~0u};
+        DenseHashMap<uint32_t, uint32_t> exitInstUseCounts;
         SmallVector<uint32_t, 8> worklist;
 
         auto recordExitUse = [&](IrOp op)
@@ -1551,7 +1556,7 @@ static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& 
         SmallVector<uint32_t, 8> argInstructions;
 
         // Set of inputs we already sunk inside
-        DenseHashSet<uint32_t> sunkInstructions{~0u};
+        DenseHashSet<uint32_t> sunkInstructions;
 
         std::vector<std::pair<IrOp, uint32_t>> inputs;
 
@@ -1633,7 +1638,7 @@ static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& 
         function.blockToVmExitMap[syncInfo.block.index] = vmExitSyncLocation;
         build.beginBlock(syncInfo.block);
 
-        DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
+        DenseHashMap<uint32_t, uint32_t> instRedir;
 
         auto redirect = [&instRedir, &inputs](IrOp& op)
         {

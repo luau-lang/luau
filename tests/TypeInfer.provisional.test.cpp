@@ -54,11 +54,11 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
     )";
 
     const std::string expected = R"(
-        function f(a:{fn:()->(a,b...)}): ()
+        function f(a:{fn:()->(T,U...)}): ()
             if type(a) == 'boolean' then
                 local a1:boolean=a
             elseif a.fn() then
-                local a2:{fn:()->(a,b...)}=a
+                local a2:{fn:()->(T,U...)}=a
             end
         end
     )";
@@ -394,8 +394,8 @@ TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type
     else
     {
         // f and g should have the type () -> ()
-        CHECK_EQ("() -> (a...)", toString(requireType("f")));
-        CHECK_EQ("<a...>() -> (a...)", toString(requireType("g")));
+        CHECK_EQ("() -> (T...)", toString(requireType("f")));
+        CHECK_EQ("<T...>() -> (T...)", toString(requireType("g")));
         CHECK_EQ("any", toString(requireType("x"))); // any is returned instead of ICE for now
     }
 }
@@ -1306,7 +1306,7 @@ TEST_CASE_FIXTURE(Fixture, "we_cannot_infer_functions_that_return_inconsistently
     {
         LUAU_CHECK_ERROR_COUNT(1, result);
 
-        CHECK("<T, b>({T}, b) -> number" == toString(requireType("find_first")));
+        CHECK("<T, U>({T}, U) -> number" == toString(requireType("find_first")));
     }
 #endif
 }

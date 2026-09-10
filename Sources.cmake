@@ -46,12 +46,14 @@ target_sources(Luau.Ast PRIVATE
 target_sources(Luau.Bytecode PRIVATE
     Bytecode/include/Luau/BytecodeBuilder.h
     Bytecode/include/Luau/BytecodeCallInliner.h
+    Bytecode/include/Luau/BytecodeDump.h
     Bytecode/include/Luau/BytecodeGraph.h
     Bytecode/include/Luau/BytecodeOps.h
     Bytecode/include/Luau/BytecodeValidation.h
     Bytecode/include/Luau/Sccp.h
 
     Bytecode/src/BytecodeBuilder.cpp
+    Bytecode/src/BytecodeDump.cpp
     Bytecode/src/BytecodeGraph.cpp
     Bytecode/src/BytecodeGraphParser.h
     Bytecode/src/BytecodeGraphSerializer.h

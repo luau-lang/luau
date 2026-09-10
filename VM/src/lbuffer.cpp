@@ -11,7 +11,7 @@ Buffer* luaB_newbuffer(lua_State* L, size_t s)
     if (s > MAX_BUFFER_SIZE)
         luaM_toobig(L);
 
-    Buffer* b = luaM_newgco(L, Buffer, sizebuffer(s), L->activememcat);
+    Buffer* b = luaM_newgco(L, Buffer, sizebuffer(s), L->activememcat, LUA_TBUFFER);
     luaC_init(L, b, LUA_TBUFFER);
     b->len = unsigned(s);
     memset(b->data, 0, b->len);

@@ -471,7 +471,7 @@ struct NormalizeFixture : Fixture
 
     TypeId typeFromNormal(const NormalizedType& norm)
     {
-        // Force the fontend
+        // Force the frontend
         getFrontend();
         return normalizer->typeFromNormal(norm);
     }

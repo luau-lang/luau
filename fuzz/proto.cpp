@@ -56,6 +56,7 @@ LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
+LUAU_FASTINT(DebugLuauTypeFunctionRuntimeHeapLimit)
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -273,6 +274,10 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     FInt::LuauTypeInferIterationLimit.value = 1000;
     FInt::LuauTarjanChildLimit.value = 1000;
     FInt::LuauTableTypeMaximumStringifierLength.value = 100;
+    // Limit the heap size for type functions to ~512 MB to avoid
+    // the fuzzing infrastructure claiming we OOM'd because you can
+    // make a 4GB table.
+    FInt::DebugLuauTypeFunctionRuntimeHeapLimit.value = 512 * 1024 * 1024;
 
     for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
     {

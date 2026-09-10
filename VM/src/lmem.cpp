@@ -509,13 +509,13 @@ void* luaM_new_(lua_State* L, size_t nsize, uint8_t memcat)
 
     if (LUAU_UNLIKELY(!!g->cb.onallocate))
     {
-        g->cb.onallocate(L, 0, nsize);
+        g->cb.onallocate(L, block, 0, nsize, memcat, LUA_T_ALL, 0);
     }
 
     return block;
 }
 
-GCObject* luaM_newgco_(lua_State* L, size_t nsize, uint8_t memcat)
+GCObject* luaM_newgco_(lua_State* L, size_t nsize, uint8_t memcat, int tt, int tag)
 {
     // we need to accommodate space for link for free blocks (freegcolink)
     LUAU_ASSERT(nsize >= kGCOLinkOffset + sizeof(void*));
@@ -549,13 +549,13 @@ GCObject* luaM_newgco_(lua_State* L, size_t nsize, uint8_t memcat)
 
     if (LUAU_UNLIKELY(!!g->cb.onallocate))
     {
-        g->cb.onallocate(L, 0, nsize);
+        g->cb.onallocate(L, block, 0, nsize, memcat, tt, tag);
     }
 
     return (GCObject*)block;
 }
 
-GCObject* luaM_newgcofixed_(lua_State* L, size_t nsize, uint8_t memcat)
+GCObject* luaM_newgcofixed_(lua_State* L, size_t nsize, uint8_t memcat, int tt)
 {
     // we need to accommodate space for link for free blocks (freegcolink)
     LUAU_ASSERT(nsize >= kGCOLinkOffset + sizeof(void*));
@@ -573,6 +573,11 @@ GCObject* luaM_newgcofixed_(lua_State* L, size_t nsize, uint8_t memcat)
     g->totalbytes += nsize;
     g->memcatbytes[memcat] += nsize;
 
+    if (LUAU_UNLIKELY(!!g->cb.onallocate))
+    {
+        g->cb.onallocate(L, block, 0, nsize, memcat, tt, 0);
+    }
+
     return (GCObject*)block;
 }
 
@@ -580,6 +585,11 @@ void luaM_free_(lua_State* L, void* block, size_t osize, uint8_t memcat)
 {
     global_State* g = L->global;
     LUAU_ASSERT((osize == 0) == (block == NULL));
+
+    if (LUAU_UNLIKELY(!!g->cb.onfree))
+    {
+        g->cb.onfree(L, block);
+    }
 
     int oclass = sizeclass(osize);
 
@@ -596,6 +606,11 @@ void luaM_freegco_(lua_State* L, GCObject* block, size_t osize, uint8_t memcat, 
 {
     global_State* g = L->global;
     LUAU_ASSERT((osize == 0) == (block == NULL));
+
+    if (LUAU_UNLIKELY(!!g->cb.onfree))
+    {
+        g->cb.onfree(L, block);
+    }
 
     int oclass = sizeclass(osize);
 
@@ -622,6 +637,11 @@ void luaM_freegcofixed_(lua_State* L, GCObject* block, size_t osize, uint8_t mem
 {
     global_State* g = L->global;
 
+    if (LUAU_UNLIKELY(!!g->cb.onfree))
+    {
+        g->cb.onfree(L, block);
+    }
+
     int oclass = sizeclass(osize);
     LUAU_ASSERT(oclass >= 0);
 
@@ -641,6 +661,11 @@ void* luaM_realloc_(lua_State* L, void* block, size_t osize, size_t nsize, uint8
     int nclass = sizeclass(nsize);
     int oclass = sizeclass(osize);
     void* result;
+
+    if (LUAU_UNLIKELY(!!g->cb.onfree) && block != NULL)
+    {
+        g->cb.onfree(L, block);
+    }
 
     // if either block needs to be allocated using a block allocator, we can't use realloc directly
     if (nclass >= 0 || oclass >= 0)
@@ -670,7 +695,7 @@ void* luaM_realloc_(lua_State* L, void* block, size_t osize, size_t nsize, uint8
 
     if (LUAU_UNLIKELY(!!g->cb.onallocate))
     {
-        g->cb.onallocate(L, osize, nsize);
+        g->cb.onallocate(L, result, osize, nsize, memcat, LUA_T_ALL, 0);
     }
 
     return result;

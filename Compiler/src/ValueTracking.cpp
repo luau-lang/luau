@@ -12,6 +12,7 @@ namespace Compile
 
 struct ValueVisitor : AstVisitor
 {
+
     DenseHashMap<AstName, Global>& globals;
     DenseHashMap<AstLocal*, Variable>& variables;
     DenseHashMap<AstName, AstLocal*>& classLocals;
@@ -20,7 +21,11 @@ struct ValueVisitor : AstVisitor
 
 
     // with LuauOptimizeExportTable, remove this constructor
-    ValueVisitor(DenseHashMap<AstName, Global>& globals, DenseHashMap<AstLocal*, Variable>& variables, DenseHashMap<AstName, AstLocal*>& classLocals)
+    ValueVisitor(
+        DenseHashMap<AstName, Global>& globals,
+        DenseHashMap<AstLocal*, Variable>& variables,
+        DenseHashMap<AstName, AstLocal*>& classLocals
+    )
         : globals(globals)
         , variables(variables)
         , classLocals(classLocals)
@@ -78,6 +83,14 @@ struct ValueVisitor : AstVisitor
                 }
             }
         }
+
+        return true;
+    }
+
+    bool visit(AstStatIf* node) override
+    {
+        if (node->conditionLocal)
+            variables[node->conditionLocal].init = node->condition;
 
         return true;
     }

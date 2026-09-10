@@ -15,8 +15,8 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
-LUAU_FASTFLAG(LuauDoNotExportBrokenTypeFunction)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
+LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 
 struct TypeFunctionFixture : Fixture
 {
@@ -319,7 +319,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_can_be_shadowed")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK(toString(requireType("hi")) == "(string) -> string");
-    CHECK(toString(requireType("plus")) == "<a, b>(a, b) -> add<a, b>");
+    CHECK(toString(requireType("plus")) == "<T, U>(T, U) -> add<T, U>");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_inhabited_with_normalization")
@@ -2115,6 +2115,65 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_t
         CHECK(toString(requireType("x")) == "*error-type<concat<string, unknown>>*");
     else
         CHECK(toString(requireType("x")) == "*error-type*");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_negation_of_nontestable_type_doesnt_crash_1")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauNormalizeGuardAgainstNonTestableNegations, true};
+
+    CheckResult result = check(R"(
+        type function tf()
+            local dn = types.negationof(types.unionof(types.newfunction(), types.number))
+            return types.intersectionof(types.number, types.negationof(types.unionof(dn, types.string)))
+        end
+        local x: tf<> = nil :: any
+        print(x)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<NormalizationTooComplex>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt_crash_2")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauNormalizeGuardAgainstNonTestableNegations, true};
+
+    CheckResult result = check(R"(
+        type function mknot()
+            return types.negationof(types.unionof(types.newfunction(), types.number))
+        end
+        local function f(a: mknot<>)
+            return (a == 5)
+        end
+        return f
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<NormalizationTooComplex>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt_crash_3")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauNormalizeGuardAgainstNonTestableNegations, true};
+
+    CheckResult result = check(R"(
+        type function tf()
+            local dn = types.negationof(types.unionof(types.newfunction(), types.number))
+            return types.negationof(types.unionof(dn, types.string))
+        end
+        local f: tf<> = nil :: any
+        f()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    REQUIRE(get<NormalizationTooComplex>(result.errors[0]));
+    REQUIRE(get<NormalizationTooComplex>(result.errors[1]));
 }
 
 TEST_SUITE_END();

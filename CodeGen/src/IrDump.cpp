@@ -349,6 +349,8 @@ const char* getCmdName(IrCmd cmd)
         return "INVOKE_FASTCALL";
     case IrCmd::CHECK_FASTCALL_RES:
         return "CHECK_FASTCALL_RES";
+    case IrCmd::INVOKE_FASTPCALL:
+        return "INVOKE_FASTPCALL";
     case IrCmd::DO_ARITH:
         return "DO_ARITH";
     case IrCmd::DO_LEN:
@@ -375,6 +377,8 @@ const char* getCmdName(IrCmd cmd)
         return "CHECK_NO_METATABLE";
     case IrCmd::CHECK_SAFE_ENV:
         return "CHECK_SAFE_ENV";
+    case IrCmd::CHECK_YIELDABLE:
+        return "CHECK_YIELDABLE";
     case IrCmd::CHECK_ARRAY_SIZE:
         return "CHECK_ARRAY_SIZE";
     case IrCmd::CHECK_SLOT_MATCH:

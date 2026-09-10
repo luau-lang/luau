@@ -69,8 +69,9 @@ struct Checkpoint
 
 struct ClassDeclRecord
 {
+    // The type of an instance of the class.
     TypeId ty = nullptr;
-    DenseHashMap<AstName, TypeId> memberTypes{AstName{""}};
+    DenseHashMap<AstName, TypeId> memberTypes;
 };
 
 struct ConstraintGenerator
@@ -103,7 +104,7 @@ struct ConstraintGenerator
     // might have.
     //
     // See the functions recordInferredBinding and fillInInferredBindings.
-    DenseHashMap<Symbol, InferredBinding> inferredBindings{{}};
+    DenseHashMap<Symbol, InferredBinding> inferredBindings;
 
     // Remove constraints, freeTypes, and scopeToFunction with LuauCyclicRequireTypeInference: these move to ConstraintGraph (cgraph).
     // Constraints that go straight to the solver.
@@ -113,10 +114,10 @@ struct ConstraintGenerator
     TypeIds freeTypes;
 
     // Map a function's signature scope back to its signature type.
-    DenseHashMap<Scope*, TypeId> scopeToFunction{nullptr};
+    DenseHashMap<Scope*, TypeId> scopeToFunction;
 
     // The private scope of type aliases for which the type parameters belong to.
-    DenseHashMap<const AstStatTypeAlias*, ScopePtr> astTypeAliasDefiningScopes{nullptr};
+    DenseHashMap<const AstStatTypeAlias*, ScopePtr> astTypeAliasDefiningScopes;
 
     NotNull<const DataFlowGraph> dfg;
     RefinementArena refinementArena;
@@ -131,7 +132,7 @@ struct ConstraintGenerator
 
     // Needed to register all available type functions for execution at later stages.
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
-    DenseHashMap<const AstStatTypeFunction*, ScopePtr> astTypeFunctionEnvironmentScopes{nullptr};
+    DenseHashMap<const AstStatTypeFunction*, ScopePtr> astTypeFunctionEnvironmentScopes;
 
     // Needed to resolve modules to make 'require' import types properly.
     NotNull<ModuleResolver> moduleResolver;
@@ -144,11 +145,11 @@ struct ConstraintGenerator
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope;
     std::vector<RequireCycle> requireCycles;
 
-    DenseHashMap<TypeId, TypeIds> localTypes{nullptr};
+    DenseHashMap<TypeId, TypeIds> localTypes;
 
-    DenseHashMap<AstExpr*, Inference> inferredExprCache{nullptr};
+    DenseHashMap<AstExpr*, Inference> inferredExprCache;
 
-    DenseHashMap<AstLocal*, std::unique_ptr<ClassDeclRecord>> classDeclRecords{nullptr};
+    DenseHashMap<AstLocal*, std::unique_ptr<ClassDeclRecord>> classDeclRecords;
 
     DcrLogger* logger;
 
@@ -200,11 +201,11 @@ private:
 
     std::vector<TypeId> unionsToSimplify;
 
-    Set<AstName> uninitializedGlobals{{}};
+    Set<AstName> uninitializedGlobals;
 
     Polarity polarity = Polarity::None;
 
-    DenseHashMap<std::pair<TypeId, std::string>, TypeId, PairHash<TypeId, std::string>> propIndexPairsSeen{{nullptr, ""}};
+    DenseHashMap<std::pair<TypeId, std::string>, TypeId, PairHash<TypeId, std::string>> propIndexPairsSeen;
 
     // Used to keep track of when we are inside a large table and should
     // opt *not* to do type inference for singletons.
@@ -316,7 +317,11 @@ private:
     ControlFlow visit(const ScopePtr& scope, AstStatClass* statClass);
     ControlFlow visit(const ScopePtr& scope, AstStatError* error);
 
-    InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes = {});
+
+    InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes, bool generalize);
+
+    InferencePack checkPack_DEPRECATED(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes = {});
+
     InferencePack checkPack(
         const ScopePtr& scope,
         AstExpr* expr,
@@ -372,7 +377,11 @@ private:
     Inference check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
     Inference check(const ScopePtr& scope, AstExprInterpString* interpString);
     Inference check(const ScopePtr& scope, AstExprInstantiate* explicitTypeInstantiation);
-    Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
+
+    Inference check_DEPRECATED(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
+
+    Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType, bool generalize);
+
     std::tuple<TypeId, TypeId, RefinementId> checkBinary(
         const ScopePtr& scope,
         AstExprBinary::Op op,

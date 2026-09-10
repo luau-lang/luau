@@ -123,7 +123,7 @@ struct IrRegAllocA64
     // which 8-byte slots are free
     uint64_t freeSpillSlots = 0;
 
-    DenseHashMap<uint32_t, ExitSyncArgsA64> exitSyncArgs{~0u};
+    DenseHashMap<uint32_t, ExitSyncArgsA64> exitSyncArgs;
 
     uint32_t allocActionCount = 0;
 

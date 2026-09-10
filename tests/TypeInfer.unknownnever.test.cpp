@@ -338,7 +338,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_i
     if (!FFlag::DebugLuauForceOldSolver)
         CHECK_EQ("(nil, nil & ~nil) -> boolean", toString(requireType("ord")));
     else
-        CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("ord")));
+        CHECK_EQ("<T>(nil, T) -> boolean", toString(requireType("ord")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")
@@ -356,12 +356,12 @@ TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")
 
         // CLI-114134 Egraph-based simplification.
         // CLI-116549 x ~= nil : false when x : nil
-        CHECK("<a>(nil, a) -> false | mul<nil & ~nil, a>" == toString(requireType("mul")));
+        CHECK("<T>(nil, T) -> false | mul<nil & ~nil, T>" == toString(requireType("mul")));
     }
     else
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("mul")));
+        CHECK_EQ("<T>(nil, T) -> boolean", toString(requireType("mul")));
     }
 }
 

@@ -16,10 +16,7 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
-LUAU_FASTFLAG(LuauYieldIter2)
 LUAU_FASTFLAG(LuauCIProto)
-LUAU_FASTFLAG(LuauCodegenSharedLog)
 
 namespace Luau
 {
@@ -36,7 +33,7 @@ IrLoweringX64::IrLoweringX64(LogBuilder* logger, AssemblyBuilderX64& build, Modu
     , stats(stats)
     , regs(logger, build, function, stats)
     , valueTracker(logger, function)
-    , exitHandlerMap(~0u)
+
 {
     valueTracker.setRestoreCallback(
         &regs,
@@ -2166,6 +2163,33 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.jcc(ConditionX64::Less, labelOp(OP_B(inst))); // jl jumps if SF != OF
         break;
     }
+    case IrCmd::INVOKE_FASTPCALL:
+    {
+        regs.assertAllFree();
+        regs.assertNoSpills();
+
+        IrCallWrapperX64 callWrap(regs, build, index);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(OP_A(inst))));
+        callWrap.addArgument(SizeX64::dword, uintOp(OP_B(inst)));
+        callWrap.addArgument(SizeX64::dword, intOp(OP_C(inst)));
+        callWrap.addArgument(SizeX64::dword, intOp(OP_D(inst)));
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, fastPcallSetup)]);
+
+        emitUpdateBase(build);
+
+        Label cont;
+
+        build.test(eax, eax);
+        build.jcc(ConditionX64::Less, cont);                        // Continue to next instruction on -1
+        build.jcc(ConditionX64::Greater, helpers.exitNoContinueVm); // Yield on 1
+
+        // Continue Luau call on 0
+        emitDispatchLuauCall(build, helpers);
+
+        build.setLabel(cont);
+        break;
+    }
     case IrCmd::DO_ARITH:
     {
         OperandX64 opb = OP_B(inst).kind == IrOpKind::VmReg ? luauRegAddress(vmRegOp(OP_B(inst))) : luauConstantAddress(vmConstOp(OP_B(inst)));
@@ -2349,6 +2373,17 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         checkSafeEnv(OP_A(inst), index, next);
         break;
     }
+    case IrCmd::CHECK_YIELDABLE:
+    {
+        ScopedRegX64 tmp1{regs, SizeX64::dword};
+        ScopedRegX64 tmp2{regs, SizeX64::dword};
+
+        build.movzx(tmp1.reg, word[rState + offsetof(lua_State, nCcalls)]);
+        build.movzx(tmp2.reg, word[rState + offsetof(lua_State, baseCcalls)]);
+        build.cmp(tmp1.reg, tmp2.reg);
+        jumpOrAbortOnUndef(ConditionX64::Above, OP_A(inst), index, next);
+        break;
+    }
     case IrCmd::CHECK_ARRAY_SIZE:
         if (OP_B(inst).kind == IrOpKind::Inst)
             build.cmp(dword[regOp(OP_A(inst)) + offsetof(LuaTable, sizearray)], regOp(OP_B(inst)));
@@ -2499,7 +2534,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         {
             int offset = intOp(OP_B(inst));
 
-            int endOffset = FFlag::LuauCodegenFixBufferLenCheck ? maxOffset : accessSize;
+            int endOffset = maxOffset;
 
             // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
             if (offset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
@@ -2693,26 +2728,13 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         callWrap.addArgument(SizeX64::qword, rState);
         callWrap.addArgument(SizeX64::dword, vmRegOp(OP_A(inst)));
         callWrap.addArgument(SizeX64::dword, intOp(OP_B(inst)));
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNonTableFallback)]);
 
-        if (FFlag::LuauYieldIter2)
-        {
-            callWrap.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNonTableFallback)]);
+        emitUpdateBase(build);
 
-            emitUpdateBase(build);
-
-            build.test(eax, eax);
-            build.jcc(ConditionX64::Less, helpers.exitNoContinueVm);
-            build.jcc(ConditionX64::Greater, labelOp(OP_C(inst)));
-        }
-        else
-        {
-            callWrap.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNonTableFallback_DEPRECATED)]);
-
-            emitUpdateBase(build);
-
-            build.test(al, al);
-            build.jcc(ConditionX64::NotZero, labelOp(OP_C(inst)));
-        }
+        build.test(eax, eax);
+        build.jcc(ConditionX64::Less, helpers.exitNoContinueVm);
+        build.jcc(ConditionX64::Greater, labelOp(OP_C(inst)));
 
         jumpOrFallthrough(blockOp(OP_D(inst)), next);
         break;
@@ -3737,10 +3759,8 @@ void IrLoweringX64::finishBlock(const IrBlock& curr, const IrBlock& next)
 
 void IrLoweringX64::finishFunction()
 {
-    if (FFlag::LuauCodegenSharedLog && logger && logger->options.includeAssembly)
+    if (logger && logger->options.includeAssembly)
         logger->formatAppend("; interrupt handlers\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; interrupt handlers\n");
 
     for (InterruptHandler& handler : interruptHandlers)
     {
@@ -3750,10 +3770,8 @@ void IrLoweringX64::finishFunction()
         build.jmp(helpers.interrupt);
     }
 
-    if (FFlag::LuauCodegenSharedLog && logger && logger->options.includeAssembly)
+    if (logger && logger->options.includeAssembly)
         logger->formatAppend("; exit handlers\n");
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; exit handlers\n");
 
     for (ExitHandler& handler : exitHandlers)
     {
@@ -3959,10 +3977,8 @@ void IrLoweringX64::allocAndIncrementCounterAt(CodeGenCounter kind, uint32_t pcp
     if (!function.recordCounters)
         return;
 
-    if (FFlag::LuauCodegenSharedLog && logger && logger->options.includeAssembly)
+    if (logger && logger->options.includeAssembly)
         logger->formatAppend("; counter kind %u at pcpos %d\n", unsigned(kind), pcpos);
-    else if (!FFlag::LuauCodegenSharedLog && build.logText)
-        build.logAppend("; counter kind %u at pcpos %d\n", unsigned(kind), pcpos);
 
     // {uint32_t, uint32_t, uint64_t}
     function.extraNativeData.push_back(unsigned(kind));

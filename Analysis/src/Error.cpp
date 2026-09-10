@@ -18,7 +18,8 @@
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTINTVARIABLE(LuauCyclicSccWarningDisplayLimit, 10)
-LUAU_FASTINT(LuauCyclicSccWarningThreshold)
+LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -463,49 +464,61 @@ struct ErrorConverter
 
     std::string operator()(const Luau::ModuleHasCyclicDependency& e) const
     {
-        if (e.cycle.empty())
-            return "Cyclic module dependency detected";
-
-        std::string s = "Cyclic module dependency: ";
-
-        bool first = true;
-        for (const ModuleName& name : e.cycle)
+        if (FFlag::LuauCyclicRequireTypeInference)
         {
-            if (first)
-                first = false;
-            else
-                s += " -> ";
+            if (e.cycle.empty())
+                return "Cyclic dependencies are only supported if all modules in the cycle use 'export' syntax";
 
-            if (fileResolver != nullptr)
-                s += fileResolver->getHumanReadableModuleName(name);
-            else
-                s += name;
+            std::string s =
+                "Cyclic dependencies are only supported if all modules in the cycle use 'export' syntax. The following modules do not use 'export': ";
+
+            bool first = true;
+            for (const ModuleName& name : e.cycle)
+            {
+                if (first)
+                    first = false;
+                else
+                    s += ", ";
+
+                if (fileResolver != nullptr)
+                    s += fileResolver->getHumanReadableModuleName(name);
+                else
+                    s += name;
+            }
+
+            return s;
         }
+        else
+        {
+            if (e.cycle.empty())
+                return "Cyclic module dependency detected";
 
-        return s;
+            std::string s = "Cyclic module dependency: ";
+
+            bool first = true;
+            for (const ModuleName& name : e.cycle)
+            {
+                if (first)
+                    first = false;
+                else
+                    s += " -> ";
+
+                if (fileResolver != nullptr)
+                    s += fileResolver->getHumanReadableModuleName(name);
+                else
+                    s += name;
+            }
+
+            return s;
+        }
     }
 
-    std::string operator()(const Luau::CyclicModuleGraphTooLarge& e) const
+    std::string operator()(const Luau::CyclicModuleTopLevelAccess& e) const
     {
-        std::string s = "This module is part of a cycle of " + std::to_string(e.moduleCount) + " modules that require each other. Consider reducing the number of cyclic dependencies: ";
-
-        size_t cyclicModuleDisplayLimit = std::min(e.moduleCount, static_cast<size_t>(FInt::LuauCyclicSccWarningDisplayLimit));
-
-        for (size_t i = 0; i < cyclicModuleDisplayLimit; i++)
-        {
-            if (i > 0)
-                s += ", ";
-
-            if (fileResolver != nullptr)
-                s += fileResolver->getHumanReadableModuleName(e.members[i]);
-            else
-                s += e.members[i];
-        }
-
-        if (cyclicModuleDisplayLimit < e.members.size())
-            s += ", ...";
-
-        return s;
+        std::string moduleName = fileResolver ? fileResolver->getHumanReadableModuleName(e.cyclicModuleName) : e.cyclicModuleName;
+        std::string access = e.propName.empty() ? e.localName : (e.localName + "." + e.propName);
+        return "Top-level access '" + access + "' from cyclically required module '" + moduleName +
+               "' may fail at runtime depending on module initialization order; try moving this access into a function body";
     }
 
     std::string operator()(const Luau::FunctionExitsWithoutReturning& e) const
@@ -1008,6 +1021,16 @@ struct ErrorConverter
     {
         return "Calling function " + toString(afc.function) + " with argument pack " + toString(afc.arguments) + " is ambiguous.";
     }
+
+    std::string operator()(const UninitializedFieldAccess& afc) const
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+        if (afc.fieldName)
+            return "Access to field '" + *afc.fieldName + "' of self before it has been initialized";
+        else
+            return "Access to 'self' before all of its fields have been initialized";
+    }
 };
 
 struct InvalidNameChecker
@@ -1265,9 +1288,9 @@ bool ModuleHasCyclicDependency::operator==(const ModuleHasCyclicDependency& rhs)
     return cycle.size() == rhs.cycle.size() && std::equal(cycle.begin(), cycle.end(), rhs.cycle.begin());
 }
 
-bool CyclicModuleGraphTooLarge::operator==(const CyclicModuleGraphTooLarge& rhs) const
+bool CyclicModuleTopLevelAccess::operator==(const CyclicModuleTopLevelAccess& rhs) const
 {
-    return moduleCount == rhs.moduleCount;
+    return cyclicModuleName == rhs.cyclicModuleName && localName == rhs.localName && propName == rhs.propName;
 }
 
 bool IllegalRequire::operator==(const IllegalRequire& rhs) const
@@ -1459,6 +1482,12 @@ bool AmbiguousFunctionCall::operator==(const AmbiguousFunctionCall& rhs) const
     return function == rhs.function && arguments == rhs.arguments;
 }
 
+bool UninitializedFieldAccess::operator==(const UninitializedFieldAccess& rhs) const
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    return fieldName == rhs.fieldName;
+}
+
 
 std::string toString(const TypeError& error)
 {
@@ -1581,7 +1610,7 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     else if constexpr (std::is_same_v<T, ModuleHasCyclicDependency>)
     {
     }
-    else if constexpr (std::is_same_v<T, CyclicModuleGraphTooLarge>)
+    else if constexpr (std::is_same_v<T, CyclicModuleTopLevelAccess>)
     {
     }
     else if constexpr (std::is_same_v<T, IllegalRequire>)
@@ -1718,6 +1747,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
         e.function = clone(e.function);
         e.arguments = clone(e.arguments);
+    }
+    else if constexpr (std::is_same_v<T, UninitializedFieldAccess>)
+    {
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

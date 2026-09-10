@@ -13,8 +13,6 @@
 
 #include <stddef.h>
 
-LUAU_FASTFLAG(LuauCodegenA64ExitUseCheck)
-
 namespace Luau
 {
 namespace CodeGen
@@ -164,26 +162,7 @@ static bool isInstUseForOp(IrFunction& function, uint32_t instIdx, uint32_t targ
 
     if (op.kind == IrOpKind::Block && function.blockOp(op).kind == IrBlockKind::ExitSync)
     {
-        if (FFlag::LuauCodegenA64ExitUseCheck)
-        {
-            return inVmExitSync = isUsedInVmExitSync(function, instIdx, targetInstIdx);
-        }
-        else
-        {
-            if (VmExitSyncInfo* syncInfo = function.vmExitInfo.find(instIdx))
-            {
-                for (auto argOp : syncInfo->argOps)
-                {
-                    CODEGEN_ASSERT(argOp.kind == IrOpKind::Inst);
-
-                    if (argOp.index == targetInstIdx)
-                    {
-                        inVmExitSync = true;
-                        return true;
-                    }
-                }
-            }
-        }
+        return inVmExitSync = isUsedInVmExitSync(function, instIdx, targetInstIdx);
     }
 
     return false;

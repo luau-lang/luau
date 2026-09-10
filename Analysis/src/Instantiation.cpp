@@ -11,8 +11,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauSolverV2)
-
 namespace Luau
 {
 
@@ -186,8 +184,8 @@ std::optional<TypeId> instantiate(
     if (ft->generics.empty() && ft->genericPacks.empty())
         return ty;
 
-    DenseHashMap<TypeId, TypeId> replacements{nullptr};
-    DenseHashMap<TypePackId, TypePackId> replacementPacks{nullptr};
+    DenseHashMap<TypeId, TypeId> replacements;
+    DenseHashMap<TypePackId, TypePackId> replacementPacks;
 
     for (TypeId g : ft->generics)
     {

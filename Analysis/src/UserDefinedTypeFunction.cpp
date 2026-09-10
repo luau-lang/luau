@@ -48,7 +48,7 @@ private:
 struct FindUserTypeFunctionBlockers : TypeOnceVisitor
 {
     NotNull<TypeFunctionContext> ctx;
-    DenseHashSet<TypeId> blockingTypeMap{nullptr};
+    DenseHashSet<TypeId> blockingTypeMap;
     std::vector<TypeId> blockingTypes;
 
     explicit FindUserTypeFunctionBlockers(NotNull<TypeFunctionContext> ctx)

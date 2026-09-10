@@ -200,12 +200,7 @@ std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, 
         return {minCount, minCount + optionalCount};
 }
 
-TypePack extendTypePack(
-    TypeArena& arena,
-    NotNull<BuiltinTypes> builtinTypes,
-    TypePackId pack,
-    size_t length
-)
+TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, TypePackId pack, size_t length)
 {
     TypePack result;
 
@@ -1029,7 +1024,7 @@ std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty, Den
 
 std::optional<TypePackId> getApproximateReturnTypeForFunctionCall(TypeId ty)
 {
-    DenseHashSet<TypeId> seen{nullptr};
+    DenseHashSet<TypeId> seen;
     return getApproximateReturnTypeForFunctionCall(ty, seen);
 }
 

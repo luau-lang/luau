@@ -961,10 +961,7 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireChainedAliasesFailureDependOnInne
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicPath")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCyclicRequireShortCircuit, true},
-        {FFlag::LuauExportValueSyntax, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauCyclicRequireShortCircuit, true}, {FFlag::LuauExportValueSyntax, true}};
     // Both modules use the export keyword. The compiler uses the runtime-provided
     // placeholder as the export table, so the cycle resolves automatically.
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_requirer";
@@ -974,10 +971,7 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicPath")
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnAccess")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCyclicRequireShortCircuit, true},
-        {FFlag::LuauExportValueSyntax, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauCyclicRequireShortCircuit, true}, {FFlag::LuauExportValueSyntax, true}};
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_access_a";
     runProtectedRequire(path);
     assertOutputContainsAll({"false", "Cannot access the exported field 'Tree'"});
@@ -985,10 +979,7 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnAccess")
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnMutation")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCyclicRequireShortCircuit, true},
-        {FFlag::LuauExportValueSyntax, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauCyclicRequireShortCircuit, true}, {FFlag::LuauExportValueSyntax, true}};
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_mutation_b";
     runProtectedRequire(path);
     assertOutputContainsAll({"false", "Cannot set the exported field 'foo'"});
@@ -996,10 +987,7 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnMutation")
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireCyclicDependencyErrorOnNonStringKey")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCyclicRequireShortCircuit, true},
-        {FFlag::LuauExportValueSyntax, true}
-    };
+    ScopedFastFlag sffs[] = {{FFlag::LuauCyclicRequireShortCircuit, true}, {FFlag::LuauExportValueSyntax, true}};
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/cyclic_access_nonstringkey_a";
     runProtectedRequire(path);
     assertOutputContainsAll({"false", "Cannot access the exported field 'unknown'"});
@@ -1370,7 +1358,6 @@ TEST_CASE("RequireExportClassMultiLevel")
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassOverrideInstanceMemberError")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::DebugLuauUserDefinedClassesRuntime, true},
         {FFlag::LuauCallFeedback, true},
@@ -1380,6 +1367,20 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassOverrideInstanceMemberError"
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/class_override_instance_member_error";
     runProtectedRequire(path);
     assertOutputContainsAll({"Cannot override instance member 'x' of parent class 'Parent' in child class 'Child'"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassExtendsNonOpenParent")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauUserDefinedClassesRuntime, true},
+        {FFlag::LuauCallFeedback, true},
+        {FFlag::LuauEmitCallFeedback, true},
+        {FFlag::LuauBytecodeCostModel, true}
+    };
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/class_extends_non_open_parent";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"Non-open class 'Parent' cannot be extended"});
 }
 
 TEST_SUITE_END();

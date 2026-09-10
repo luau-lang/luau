@@ -5,6 +5,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAGVARIABLE(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
 {
@@ -127,7 +128,10 @@ std::pair<TypeIds, TypePackIds> Constraint::getMaybeMutatedTypes() const
     {
         for (TypeId ty : itc->variables)
             rci.traverse(ty);
-        // `IterableConstraints` should not mutate `iterator`.
+        if (FFlag::LuauIterableConstraintMutatesIterator)
+        {
+            rci.traverse(itc->iterator);
+        }
     }
     else if (auto nc = get<NameConstraint>(*this))
     {

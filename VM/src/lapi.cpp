@@ -21,7 +21,7 @@
 
 LUAU_FASTFLAG(LuauDirectFieldGet)
 LUAU_FASTFLAG(LuauGcTraceUdata)
-LUAU_FASTFLAGVARIABLE(LuauManagedDebugNames)
+LUAU_FASTFLAGVARIABLE(LuauNewPointerEncode)
 
 /*
  * This file contains most implementations of core Lua APIs from lua.h.
@@ -77,7 +77,7 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2024 Roblox Corporation $\n"
         L->top = p; \
     }
 
-static LuaTable* getcurrenv(lua_State* L)
+LuaTable* getcurrenv(lua_State* L)
 {
     if (L->ci == L->base_ci) // no enclosing function?
         return L->gt;        // use global table as environment
@@ -788,11 +788,7 @@ void lua_pushcclosurek(lua_State* L, lua_CFunction fn, const char* debugname, in
     Closure* cl = luaF_newCclosure(L, nup, getcurrenv(L));
     cl->c.f = fn;
     cl->c.cont = cont;
-
-    if (FFlag::LuauManagedDebugNames)
-        cl->c.debugname = debugname ? luaS_new(L, debugname) : nullptr;
-    else
-        cl->c.debugname_DEPRECATED = debugname;
+    cl->c.debugname = debugname ? luaS_new(L, debugname) : nullptr;
 
     L->top -= nup;
     while (nup--)
@@ -1682,34 +1678,123 @@ int lua_incustomexecution(lua_State* L, int level)
     return luaG_isnative(L, level);
 }
 
+#define siprotate(v, s) v = (((v) << (s)) | ((v) >> (64 - (s))))
+
+#define siphashround(v0, v1, v2, v3) \
+    (v0) += (v1); \
+    siprotate(v1, 13); \
+    (v1) ^= (v0); \
+    siprotate(v0, 32); \
+    (v2) += (v3); \
+    siprotate(v3, 16); \
+    (v3) ^= (v2); \
+    (v2) += (v1); \
+    siprotate(v1, 17); \
+    (v1) ^= (v2); \
+    siprotate(v2, 32); \
+    (v0) += (v3); \
+    siprotate(v3, 21); \
+    (v3) ^= (v0);
+
+static uint64_t siphash24(uint64_t k0, uint64_t k1, uint32_t input)
+{
+    uint64_t v0 = k0 ^ 0x736f6d6570736575ull;
+    uint64_t v1 = k1 ^ 0x646f72616e646f6dull;
+    uint64_t v2 = k0 ^ 0x6c7967656e657261ull;
+    uint64_t v3 = k1 ^ 0x7465646279746573ull;
+
+    uint64_t m0 = (4ull << 56ull) | input; // Top byte is the sizeof(input)
+
+    v3 ^= m0;
+    siphashround(v0, v1, v2, v3);
+    siphashround(v0, v1, v2, v3);
+    v0 ^= m0;
+
+    v2 ^= 0xff;
+    siphashround(v0, v1, v2, v3);
+    siphashround(v0, v1, v2, v3);
+    siphashround(v0, v1, v2, v3);
+    siphashround(v0, v1, v2, v3);
+
+    return v0 ^ v1 ^ v2 ^ v3;
+}
+
 void lua_setpointerencodekey(lua_State* L, uint64_t a, uint64_t b, uint64_t c, uint64_t d)
 {
     global_State* g = L->global;
 
-    g->ptrenckey[0] = a & ~1ull;
-    g->ptrenckey[1] = b | 1ull;
-    g->ptrenckey[2] = c;
-    g->ptrenckey[3] = d;
+    if (FFlag::LuauNewPointerEncode)
+    {
+        // Two keys have historically made the encoding an identity
+        bool identity = (a == 1 && b == 0 && c == 0 && d == 0) || (a == 0 && b == 1 && c == 0 && d == 0);
+
+        g->ptrencactive = !identity;
+
+        // Derive a 512-bit key from the provided seed
+        for (int i = 0; i < 4; i++)
+        {
+            g->ptrenckeynew[2 * i + 0] = siphash24(a, b, i);
+            g->ptrenckeynew[2 * i + 1] = siphash24(c, d, i);
+        }
+    }
+    else
+    {
+        g->ptrenckey[0] = a & ~1ull;
+        g->ptrenckey[1] = b | 1ull;
+        g->ptrenckey[2] = c;
+        g->ptrenckey[3] = d;
+    }
 }
 
 uintptr_t lua_encodepointer(lua_State* L, uintptr_t p)
 {
     global_State* g = L->global;
-    return uintptr_t((g->ptrenckey[0] * p + g->ptrenckey[2]) ^ (g->ptrenckey[1] * p + g->ptrenckey[3]));
+
+    if (FFlag::LuauNewPointerEncode)
+    {
+        if (!g->ptrencactive)
+            return p;
+
+        // Feistel cipher transforms the scrambling SipHash into a permutation
+        // 64-bit platforms split into two 32-bit pieces, 32-bit platforms into two 16-bit pieces
+        int halfbits = int(sizeof(p) * 4);
+        uintptr_t mask = (uintptr_t(1) << halfbits) - 1;
+
+        // Split the block into two pieces
+        uintptr_t l0 = p & mask;
+        uintptr_t r0 = p >> halfbits;
+
+        // Perform the minimal required four rounds
+        for (int i = 0; i < 4; i++)
+        {
+            uintptr_t f = siphash24(g->ptrenckeynew[i * 2 + 0], g->ptrenckeynew[i * 2 + 1], uint32_t(r0)) & mask;
+
+            uintptr_t rnext = l0 ^ f;
+            l0 = r0;
+            r0 = rnext;
+        }
+
+        return (r0 << halfbits) | l0;
+    }
+    else
+    {
+        return uintptr_t((g->ptrenckey[0] * p + g->ptrenckey[2]) ^ (g->ptrenckey[1] * p + g->ptrenckey[3]));
+    }
 }
 
-static int registryref(lua_State* L, int idx, TValue* registry, int& registryfree)
+int lua_ref(lua_State* L, int idx)
 {
-    LUAU_ASSERT(FFlag::LuauGcTraceUdata);
+    api_check(L, idx != LUA_REGISTRYINDEX); // idx is a stack index for value
     int ref = LUA_REFNIL;
+    global_State* g = L->global;
     StkId p = index2addr(L, idx);
     if (!ttisnil(p))
     {
-        LuaTable* reg = hvalue(registry);
+        LuaTable* reg = hvalue(registry(L));
 
-        if (registryfree != 0)
+        if (g->registryfree != 0)
         { // reuse existing slot
-            ref = registryfree;
+            ref = g->registryfree;
         }
         else
         { // no free elements
@@ -1718,21 +1803,21 @@ static int registryref(lua_State* L, int idx, TValue* registry, int& registryfre
         }
 
         TValue* slot = luaH_setnum(L, reg, ref);
-        if (registryfree != 0)
-            registryfree = int(nvalue(slot));
+        if (g->registryfree != 0)
+            g->registryfree = int(nvalue(slot));
         setobj2t(L, slot, p);
         luaC_barriert(L, reg, p);
     }
     return ref;
 }
 
-static void registryunref(lua_State* L, int ref, TValue* registry, int& registryfree)
+int lua_unref(lua_State* L, int ref)
 {
-    LUAU_ASSERT(FFlag::LuauGcTraceUdata);
     if (ref <= LUA_REFNIL)
-        return;
+        return LUA_NOREF;
 
-    LuaTable* reg = hvalue(registry);
+    global_State* g = L->global;
+    LuaTable* reg = hvalue(registry(L));
 
     const TValue* slot = luaH_getnum(reg, ref);
     api_check(L, slot != luaO_nilobject);
@@ -1741,81 +1826,10 @@ static void registryunref(lua_State* L, int ref, TValue* registry, int& registry
     TValue* mutableSlot = (TValue*)slot;
 
     // NB: no barrier needed because value isn't collectable
-    setnvalue(mutableSlot, registryfree);
+    setnvalue(mutableSlot, g->registryfree);
 
-    registryfree = ref;
-}
-
-int lua_ref(lua_State* L, int idx)
-{
-    api_check(L, idx != LUA_REGISTRYINDEX); // idx is a stack index for value
-    if (FFlag::LuauGcTraceUdata)
-    {
-        global_State* g = L->global;
-        int registryfree = g->registryfree;
-        int ref = registryref(L, idx, registry(L), registryfree);
-        g->registryfree = registryfree;
-        return ref;
-    }
-    else
-    {
-        int ref = LUA_REFNIL;
-        global_State* g = L->global;
-        StkId p = index2addr(L, idx);
-        if (!ttisnil(p))
-        {
-            LuaTable* reg = hvalue(registry(L));
-
-            if (g->registryfree != 0)
-            { // reuse existing slot
-                ref = g->registryfree;
-            }
-            else
-            { // no free elements
-                ref = luaH_getn(reg);
-                ref++; // create new reference
-            }
-
-            TValue* slot = luaH_setnum(L, reg, ref);
-            if (g->registryfree != 0)
-                g->registryfree = int(nvalue(slot));
-            setobj2t(L, slot, p);
-            luaC_barriert(L, reg, p);
-        }
-        return ref;
-    }
-}
-
-int lua_unref(lua_State* L, int ref)
-{
-    if (FFlag::LuauGcTraceUdata)
-    {
-        global_State* g = L->global;
-        int registryfree = g->registryfree;
-        registryunref(L, ref, registry(L), registryfree);
-        g->registryfree = registryfree;
-        return LUA_NOREF;
-    }
-    else
-    {
-        if (ref <= LUA_REFNIL)
-            return LUA_NOREF;
-
-        global_State* g = L->global;
-        LuaTable* reg = hvalue(registry(L));
-
-        const TValue* slot = luaH_getnum(reg, ref);
-        api_check(L, slot != luaO_nilobject);
-
-        // similar to how 'luaH_setnum' makes non-nil slot value mutable
-        TValue* mutableSlot = (TValue*)slot;
-
-        // NB: no barrier needed because value isn't collectable
-        setnvalue(mutableSlot, g->registryfree);
-
-        g->registryfree = ref;
-        return LUA_NOREF;
-    }
+    g->registryfree = ref;
+    return LUA_NOREF;
 }
 
 void lua_setuserdatatag(lua_State* L, int idx, int tag)
@@ -1854,15 +1868,52 @@ void lua_setembeddergc(lua_State* L, lua_EmbedderGc fn)
 int lua_weakref(lua_State* L, int idx)
 {
     LUAU_ASSERT(FFlag::LuauGcTraceUdata);
+    api_check(L, idx != LUA_REGISTRYINDEX); // idx is a stack index for value
+    int ref = LUA_REFNIL;
     global_State* g = L->global;
-    return registryref(L, idx, &g->weakregistry, g->weakregistryfree);
+    StkId p = index2addr(L, idx);
+    if (!ttisnil(p))
+    {
+        LuaTable* weakregistry = hvalue(&g->weakregistry);
+        int& weakregistryfree = g->weakregistryfree;
+        TValue* slot = nullptr;
+
+        if (weakregistryfree != 0)
+        { // reuse existing slot
+            ref = weakregistryfree;
+            slot = luaH_setnum(L, weakregistry, ref);
+            weakregistryfree = int(nvalue(slot));
+        }
+        else
+        { // no free elements
+            // must use weakregistrytop here: garbage collection may have made
+            // "holes" that are unsafe to reuse until lua_weakunref is called
+            ref = ++g->weakregistrytop;
+            slot = luaH_setnum(L, weakregistry, ref);
+        }
+
+        setobj2t(L, slot, p);
+        luaC_barriert(L, weakregistry, p);
+    }
+    return ref;
 }
 
 int lua_weakunref(lua_State* L, int ref)
 {
     LUAU_ASSERT(FFlag::LuauGcTraceUdata);
+    if (ref <= LUA_REFNIL)
+        return LUA_NOREF;
+
     global_State* g = L->global;
-    registryunref(L, ref, &g->weakregistry, g->weakregistryfree);
+    api_check(L, ref <= g->weakregistrytop);
+    LuaTable* weakregistry = hvalue(&g->weakregistry);
+
+    TValue* slot = luaH_setnum(L, weakregistry, ref);
+
+    // NB: no barrier needed because value isn't collectable
+    setnvalue(slot, g->weakregistryfree);
+
+    g->weakregistryfree = ref;
     return LUA_NOREF;
 }
 

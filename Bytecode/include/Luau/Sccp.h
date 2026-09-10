@@ -6,7 +6,7 @@
 #include "Luau/BytecodeUtils.h"
 #include "Luau/BytecodeValidation.h"
 #include "Luau/VecDeque.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 
 #include <cstdint>
 #include <optional>
@@ -173,7 +173,7 @@ struct JumpTarget
     ConditionState condition = ConditionState::Unknown;
 };
 
-using OpConstness = DenseHashMap2<BcOp, ConstnessLattice, BcOpHash>;
+using OpConstness = DenseHashMap<BcOp, ConstnessLattice, BcOpHash>;
 
 struct SccpState
 {
@@ -232,10 +232,10 @@ struct Sccp
 
     // this maps a block (index) to its predecessors that it was reached from
     // if a block is not in this map, it is unreachable
-    DenseHashMap2<uint32_t, DenseHashSet2<BcOp, BcOpHash>> blockUses;
+    DenseHashMap<uint32_t, DenseHashSet<BcOp, BcOpHash>> blockUses;
 
     VecDeque<BcOp> flowWorklist;
-    DenseHashSet2<BcOp, BcOpHash> flowWorklistSet;
+    DenseHashSet<BcOp, BcOpHash> flowWorklistSet;
 
     // when a def's lattice value changes, its uses must be re-evaluated
     VecDeque<BcOp> ssaWorklist;
@@ -688,7 +688,7 @@ struct Sccp
     {
         // mark dead blocks by forward reachability from entry, not by blockUses
         // (which can miss blocks depending on worklist ordering)
-        DenseHashSet2<uint32_t> reachable;
+        DenseHashSet<uint32_t> reachable;
         std::vector<uint32_t> worklist;
 
         uint32_t entryIdx = func.getBlockIndex(*func.block(func.entryBlock));
@@ -829,24 +829,21 @@ struct Sccp
                 }
                 else if (isConstNumber(lhsLat) && rhsLat.kind == Constness::NotAConstant)
                 {
-                    if (inst->op == LOP_ADD || inst->op == LOP_MUL || inst->op == LOP_SUB || inst->op == LOP_DIV)
+                    if (inst->op != LOP_ADD && inst->op != LOP_MUL && inst->op != LOP_SUB && inst->op != LOP_DIV)
+                        continue;
+
+                    nonConstantOp = rhs;
+                    constantK = lhsLat;
+
+                    if (inst->op == LOP_SUB)
                     {
-                        // LOP_ADD and LOP_MUL are commutative
-                        // LOP_SUB and LOP_DIV can emit the RK variant
-
-                        nonConstantOp = rhs;
-                        constantK = lhsLat;
-
-                        if (inst->op == LOP_SUB)
-                        {
-                            kOpcode = LOP_SUBRK;
-                            rk = true;
-                        }
-                        else if (inst->op == LOP_DIV)
-                        {
-                            kOpcode = LOP_DIVRK;
-                            rk = true;
-                        }
+                        kOpcode = LOP_SUBRK;
+                        rk = true;
+                    }
+                    else if (inst->op == LOP_DIV)
+                    {
+                        kOpcode = LOP_DIVRK;
+                        rk = true;
                     }
                 }
                 else
@@ -856,12 +853,14 @@ struct Sccp
 
                 BcOp prevConstOperand = (nonConstantOp == lhs) ? rhs : lhs;
 
+                const bool constantIsRhs = (nonConstantOp == lhs);
+
                 // we can do some potential folding here now that we know one operand is constant
                 // for instance, adds of zero, muls of zero or 1, pows of zero or 1, etc
                 double valueNumber = impl->asNumber(constantK.vmConst.value());
                 if (valueNumber == 0)
                 {
-                    if (inst->op == LOP_ADD || inst->op == LOP_SUB)
+                    if (inst->op == LOP_ADD || (inst->op == LOP_SUB && constantIsRhs))
                     {
                         inst->op = LOP_MOVE;
                         func.setOps(op, inst, {nonConstantOp});
@@ -873,8 +872,9 @@ struct Sccp
                         imm.valueInt = 0;
                         func.setOps(op, inst, {func.addImm(imm)});
                     }
-                    else if (inst->op == LOP_POW)
+                    else if (inst->op == LOP_POW && constantIsRhs)
                     {
+                        // x ^ 0 == 1 (0 ^ x is not folded: it is 0 for x != 0)
                         inst->op = LOP_LOADN;
                         BcImm imm{BcImmKind::Int};
                         imm.valueInt = 1;
@@ -883,7 +883,7 @@ struct Sccp
                 }
                 else if (valueNumber == 1)
                 {
-                    if (inst->op == LOP_MUL || inst->op == LOP_POW || inst->op == LOP_DIV)
+                    if (inst->op == LOP_MUL || (inst->op == LOP_POW && constantIsRhs) || (inst->op == LOP_DIV && constantIsRhs))
                     {
                         inst->op = LOP_MOVE;
                         func.setOps(op, inst, {nonConstantOp});

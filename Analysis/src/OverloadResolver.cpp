@@ -13,6 +13,9 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 
 namespace Luau
 {
@@ -128,7 +131,7 @@ static bool reasoningIsReturnTypes(const Path& path)
 
 static void ignoreReasoningForReturnType(SubtypingResult& sr)
 {
-    SubtypingReasonings result{kEmptyReasoning};
+    SubtypingReasonings result;
 
     for (const SubtypingReasoning& reasoning : sr.reasoning)
     {
@@ -288,6 +291,25 @@ static std::optional<size_t> getArgumentIndex(const Path& path, TypeId fnTy)
     return std::nullopt;
 }
 
+// When subtyping fails against a union or intersection argument, it decomposes
+// that type and produces a path that descends into the specific member that
+// failed (e.g. it reports the `nil` of `number?`). For an argument-level error
+// we want to report the type the caller actually passed, so we drop everything
+// from the first union/intersection decomposition onward.
+static Path truncatePathAtUnionOrIntersection(const Path& path)
+{
+    Path result;
+    for (const auto& component : path.components)
+    {
+        if (const auto index = get_if<TypePath::Index>(&component);
+            index && (index->variant == TypePath::Index::Variant::Union || index->variant == TypePath::Index::Variant::Intersection))
+            break;
+
+        result.components.push_back(component);
+    }
+    return result;
+}
+
 void OverloadResolver::reportErrors(
     ErrorVec& errors,
     TypeId fnTy,
@@ -299,6 +321,14 @@ void OverloadResolver::reportErrors(
 ) const
 {
     std::optional<size_t> argumentIndex = getArgumentIndex(reason.subPath, fnTy);
+
+    // A variadic parameter has no index of its own, so the subPath stops at the tail. The
+    // argument that failed against it is the one the superPath names.
+    if (FFlag::LuauFixCallMetamethodErrorReporting && !argumentIndex)
+    {
+        const TypeId given = arena->addType(FunctionType{argPack, builtinTypes->anyTypePack});
+        argumentIndex = getArgumentIndex(reason.superPath, given);
+    }
 
     Location argLocation;
     // If the Nth argument directly corresponds to a term in the AST, use its location.
@@ -410,8 +440,19 @@ void OverloadResolver::reportErrors(
         Path superPathTail = reason.superPath;
         superPathTail.components.erase(superPathTail.components.begin());
 
-        std::optional<TypeOrPack> failedSub = traverse(argPack, superPathTail, builtinTypes, arena);
-        std::optional<TypeOrPack> failedSuper = traverse(fnTy, reason.subPath, builtinTypes, arena);
+        TypePathRenderMetadata subMetadata;
+        TypePathRenderMetadata superMetadata;
+
+        Path truncatedSuperPathTail =
+            FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks ? truncatePathAtUnionOrIntersection(superPathTail) : superPathTail;
+        Path truncatedSubPathTail =
+            FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks ? truncatePathAtUnionOrIntersection(reason.subPath) : reason.subPath;
+        std::optional<TypeOrPack> failedSub = (FFlag::LuauNewTypePathErrorMessages)
+                                                  ? traverse(argPack, truncatedSuperPathTail, builtinTypes, arena, &subMetadata)
+                                                  : traverse_DEPRECATED(argPack, truncatedSuperPathTail, builtinTypes, arena);
+        std::optional<TypeOrPack> failedSuper = (FFlag::LuauNewTypePathErrorMessages)
+                                                    ? traverse(fnTy, truncatedSubPathTail, builtinTypes, arena, &superMetadata)
+                                                    : traverse_DEPRECATED(fnTy, truncatedSubPathTail, builtinTypes, arena);
 
         maybeEmplaceError(&errors, argLocation, moduleName, &reason, failedSuper, failedSub);
         return;

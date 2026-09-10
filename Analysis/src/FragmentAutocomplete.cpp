@@ -379,7 +379,7 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
     std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(stale, cursorPos);
     LUAU_ASSERT(ancestry.size() >= 1);
     // We should only pick up locals that are before the region
-    DenseHashMap<AstName, AstLocal*> localMap{AstName()};
+    DenseHashMap<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
 
     for (AstNode* node : ancestry)
@@ -656,9 +656,9 @@ struct UsageFinder : public AstVisitor
     }
 
     NotNull<DataFlowGraph> dfg;
-    DenseHashSet<Name> declaredAliases{""};
+    DenseHashSet<Name> declaredAliases;
     std::vector<std::pair<const Def*, AstLocal*>> localBindingsReferenced;
-    DenseHashSet<const Def*> mentionedDefs{nullptr};
+    DenseHashSet<const Def*> mentionedDefs;
     std::vector<Name> referencedBindings{""};
     std::vector<std::pair<Name, Name>> referencedImportedBindings{{"", ""}};
     std::vector<std::pair<AstName, const Def*>> globalDefsToPrePopulate;
@@ -813,7 +813,7 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse_DEPRECATED(AstSt
     std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(root, cursorPos);
     // Should always contain the root AstStat
     LUAU_ASSERT(ancestry.size() >= 1);
-    DenseHashMap<AstName, AstLocal*> localMap{AstName()};
+    DenseHashMap<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
     AstStat* nearestStatement = nullptr;
     for (AstNode* node : ancestry)
@@ -1187,7 +1187,7 @@ FragmentTypeCheckResult typecheckFragment_(
 
     std::unique_ptr<ConstraintGraph> cgraph = std::make_unique<ConstraintGraph>(frontend.builtinTypes);
 
-    /// Contraint Generator
+    /// Constraint Generator
     ConstraintGenerator cg{
         incrementalModule,
         NotNull{&normalizer},

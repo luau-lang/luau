@@ -919,6 +919,28 @@ TEST_CASE_FIXTURE(Fixture, "attach_types")
     CHECK_EQ(expected, decorateWithTypes(code));
 }
 
+TEST_CASE_FIXTURE(Fixture, "attach_type_negate")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    const std::string code = R"(
+        local function foo(x: unknown)
+            assert(x)
+            local b = x
+            return b
+        end
+    )";
+    const std::string expected = R"(
+        local function foo(x: unknown): negate<false?>
+            assert(x)
+            local b:negate<false?>=x
+            return b
+        end
+    )";
+
+    CHECK_EQ(expected, decorateWithTypes(code));
+}
+
 TEST_CASE("a_table_key_can_be_the_empty_string")
 {
     std::string code = "local T = {[''] = true}";
@@ -2120,8 +2142,9 @@ class Point
     function length(self)
         return 100
     end
-    function new()
-        return Point { x = 0, y = 0 }
+    function __init(self)
+        self.x = 0
+        self.y = 0
     end
 end
     )";
@@ -2138,8 +2161,9 @@ class Point
         return 100
     end
     public x
-    function new(): Point
-        return Point { x = 0, y = 0 }
+    function __init(self)
+        self.x = 0
+        self.y = 0
     end
     public y
 end
@@ -2157,8 +2181,9 @@ class Point
         return 100
     end
     public x
-    public function new(): Point
-        return Point { x = 0, y = 0 }
+    public function __init(self)
+        self.x = 0
+        self.y = 0
     end
     public y
 end

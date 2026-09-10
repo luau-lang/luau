@@ -45,14 +45,14 @@ struct Config
         std::string originalCase; // The alias in its original case.
     };
 
-    DenseHashMap<std::string, AliasInfo> aliases{""};
+    DenseHashMap<std::string, AliasInfo> aliases;
 
     void setAlias(std::string alias, std::string value, const std::string& configLocation);
     void setAlias(std::string alias, std::string value);
 
 private:
     // Prevents making unnecessary copies of the same config location string.
-    DenseHashMap<std::string, std::unique_ptr<std::string>> configLocationCache{""};
+    DenseHashMap<std::string, std::unique_ptr<std::string>> configLocationCache;
 };
 
 std::optional<std::string> parseModeString(Mode& mode, const std::string& modeString, bool compat = false);

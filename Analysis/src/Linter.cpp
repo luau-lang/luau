@@ -13,6 +13,7 @@
 #include <climits>
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 namespace Luau
 {
@@ -37,7 +38,6 @@ struct LintContext
 
     LintContext()
         : root(nullptr)
-        , builtinGlobals(AstName())
         , module(nullptr)
     {
     }
@@ -257,10 +257,7 @@ private:
     std::vector<FunctionInfo> functionStack;
 
 
-    LintGlobalLocal()
-        : globals(AstName())
-    {
-    }
+    LintGlobalLocal() = default;
 
     void report()
     {
@@ -733,12 +730,7 @@ private:
     DenseHashMap<AstName, AstLocal*> imports;
     DenseHashMap<AstName, Global> globals;
 
-    LintLocalHygiene()
-        : locals(NULL)
-        , imports(AstName())
-        , globals(AstName())
-    {
-    }
+    LintLocalHygiene() = default;
 
     void report()
     {
@@ -966,10 +958,7 @@ private:
 
     DenseHashMap<AstName, Global> globals;
 
-    LintUnusedFunction()
-        : globals(AstName())
-    {
-    }
+    LintUnusedFunction() = default;
 
     void report()
     {
@@ -1913,8 +1902,8 @@ private:
             if (item.kind == AstExprTable::Item::Kind::List)
                 count++;
 
-        DenseHashMap<AstArray<char>*, int, AstArrayPredicate, AstArrayPredicate> names(nullptr);
-        DenseHashMap<int, int> indices(-1);
+        DenseHashMap<AstArray<char>*, int, AstArrayPredicate, AstArrayPredicate> names;
+        DenseHashMap<int, int> indices;
 
         for (const AstExprTable::Item& item : node->items)
         {
@@ -1990,7 +1979,7 @@ private:
 
         if (context->module->checkedInNewSolver)
         {
-            DenseHashMap<AstName, Rec> names(AstName{});
+            DenseHashMap<AstName, Rec> names;
 
             for (const AstTableProp& item : node->props)
             {
@@ -2049,7 +2038,7 @@ private:
             return true;
         }
 
-        DenseHashMap<AstName, int> names(AstName{});
+        DenseHashMap<AstName, int> names;
 
         for (const AstTableProp& item : node->props)
         {
@@ -2110,10 +2099,7 @@ private:
     LintContext* context;
     DenseHashMap<AstLocal*, Local> locals;
 
-    LintUninitializedLocal()
-        : locals(NULL)
-    {
-    }
+    LintUninitializedLocal() = default;
 
     void report()
     {
@@ -2211,7 +2197,6 @@ private:
 
     LintDuplicateFunction(LintContext* context)
         : context(context)
-        , defns("")
     {
     }
 
@@ -2842,7 +2827,8 @@ private:
             head->condition->visit(this);
             head->thenbody->visit(this);
 
-            conditions.push_back(head->condition);
+            if (!FFlag::DebugLuauIfLocalAnalysis || !head->conditionLocal)
+                conditions.push_back(head->condition);
 
             if (head->elsebody && head->elsebody->is<AstStatIf>())
             {
@@ -3000,10 +2986,7 @@ private:
 
     DenseHashMap<AstLocal*, AstNode*> locals;
 
-    LintDuplicateLocal()
-        : locals(nullptr)
-    {
-    }
+    LintDuplicateLocal() = default;
 
     bool visit(AstStatLocal* node) override
     {

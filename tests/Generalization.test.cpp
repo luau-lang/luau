@@ -16,6 +16,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
+LUAU_FASTFLAG(LuauBetterInferredGenericNames)
+LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 
 TEST_SUITE_BEGIN("Generalization");
 
@@ -27,7 +29,9 @@ struct GeneralizationFixture
     ScopePtr scope = std::make_shared<Scope>(globalScope);
     ToStringOptions opts;
 
-    DenseHashSet<TypeId> generalizedTypes_{nullptr};
+    ScopedFastFlag sff_LuauBetterInferredGenericNames{FFlag::LuauBetterInferredGenericNames, true};
+
+    DenseHashSet<TypeId> generalizedTypes_;
     NotNull<DenseHashSet<TypeId>> generalizedTypes{&generalizedTypes_};
 
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
@@ -222,11 +226,13 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "('a) -> 'a")
 
     generalize(fnTy);
 
-    CHECK("<a>(a) -> a" == toString(fnTy));
+    CHECK("<T>(T) -> T" == toString(fnTy));
 }
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a <: (t1 <: 'b) & {number} & {number})")
 {
+    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
+
     TableType tt;
     tt.indexer = TableIndexer{builtinTypes.numberType, builtinTypes.numberType};
     TypeId numberArray = arena.addType(TableType{tt});
@@ -241,7 +247,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(t1, (t1 <: 'b)) -> () where t1 = ('a 
 
     generalize(functionTy);
 
-    CHECK("(unknown & {number}, unknown) -> ()" == toString(functionTy));
+    CHECK("({number}, unknown) -> ()" == toString(functionTy));
 }
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: number | string)) -> string?")
@@ -273,7 +279,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('a <: {'b})) -> ()")
 
     // The free type 'b is not replace with unknown because it appears in an
     // invariant context.
-    CHECK("<a>({a}) -> ()" == toString(functionTy));
+    CHECK("<T>({T}) -> ()" == toString(functionTy));
 }
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "(('b <: {t1}), ('a <: t1)) -> t1 where t1 = (('a <: t1) <: 'c)")
@@ -294,7 +300,7 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "(('b <: {t1}), ('a <: t1)) -> t1 where
 
     generalize(functionTy);
 
-    CHECK("<a>({a}, a) -> a" == toString(functionTy));
+    CHECK("<T>({T}, T) -> T" == toString(functionTy));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_traversal_should_re_traverse_unions_if_they_change_type")
@@ -545,5 +551,23 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "no_spurious_cycle_through_intersection
     // t1 and t2 should remain distinct (not collapsed into one)
     CHECK(toString(follow(t1)) != toString(follow(t2)));
 }
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "searching_for_free_types_does_not_use_the_native_stack")
+{
+    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
+    ScopedFastInt limit{FInt::LuauVisitRecursionLimit, 10};
+
+    std::vector<TypeId> types;
+    types.reserve(1000);
+    for (size_t i = 0; i < 1000; ++i)
+        types.emplace_back(freshType().first);
+
+    for (size_t i = 1; i < types.size(); ++i)
+        getMutable<FreeType>(types[i - 1])->upperBound = types[i];
+
+    REQUIRE(generalize(types.front()));
+    CHECK(follow(types.front()) == builtinTypes.unknownType);
+}
+
 
 TEST_SUITE_END();

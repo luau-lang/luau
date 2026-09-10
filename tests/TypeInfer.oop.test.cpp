@@ -16,6 +16,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauSetmetatableOverrides)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -395,7 +396,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "augmenting_an_unsealed_table_with_a_metatabl
     if (!FFlag::DebugLuauForceOldSolver)
         CHECK("{ @metatable { number: number }, { method: (unknown) -> string } }" == toString(requireType("B"), {true}));
     else
-        CHECK("{ @metatable {| number: number |}, {| method: <a>(a) -> string |} }" == toString(requireType("B"), {true}));
+        CHECK("{ @metatable {| number: number |}, {| method: <T>(T) -> string |} }" == toString(requireType("B"), {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")
@@ -880,7 +881,7 @@ TEST_CASE_FIXTURE(Fixture, "class_decl")
             public y: number
         end
 
-        local p = Point { x = 2, y = 3 }
+        local p = Point.new { x = 2, y = 3 }
 
         local x = p.x
         local y = p.y
@@ -915,15 +916,14 @@ TEST_CASE_FIXTURE(Fixture, "point_class")
                 return 100
             end
 
-            function new()
-                return Point { x = 0, y = 0 }
+            function __init(self, x: number, y: number)
+                self.x = x
+                self.y = y
             end
         end
 
-        local p = Point { x = 2, y = 3 }
+        local p = Point.new(2, 3)
         local len = p:length()
-
-        local p2 = Point.new()
     )");
 
     LUAU_CHECK_NO_ERRORS(result);
@@ -933,7 +933,6 @@ TEST_CASE_FIXTURE(Fixture, "point_class")
     REQUIRE(et);
 
     CHECK("Point" == toString(requireType("p")));
-    CHECK("Point" == toString(requireType("p2")));
     CHECK("number" == toString(requireType("len")));
 }
 
@@ -951,7 +950,7 @@ TEST_CASE_FIXTURE(Fixture, "self_argument_has_self_type")
             end
         end
 
-        local i = I{}
+        local i = I.new{}
         local i2 = i:m()
     )");
 
@@ -1088,11 +1087,12 @@ _ = l0 {  }
 )"
     );
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
     auto err = get<SyntaxError>(result.errors[0]);
     REQUIRE(err);
     CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
     REQUIRE(get<UnknownSymbol>(result.errors[1]));
+    REQUIRE(get<CannotCallNonFunction>(result.errors[2]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "prop_with_typeof_reassigned_class")
@@ -1206,7 +1206,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "read_unknown_property_from_class_object_or_i
             public y: number
 
             function zero()
-                return Point {x=0, y=0}
+                return Point.new {x=0, y=0}
             end
         end
 
@@ -1239,7 +1239,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_class_object_properties_are_forbid
             public y: number
 
             function zero()
-                return Point {x=0, y=0}
+                return Point.new {x=0, y=0}
             end
 
             function magnitude(self): number
@@ -1248,14 +1248,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_class_object_properties_are_forbid
         end
 
         Point.magnitude = function(p: Point) return 3 end
-        Point.zero = function() return Point { x = 1, y = 1 } end
-        Point.one = function() return Point { x = 1, y = 1 } end
-
-        Point.__index = {}
-        getmetatable(Point).__call = function() end
+        Point.zero = function() return Point.new { x = 1, y = 1 } end
+        Point.one = function() return Point.new { x = 1, y = 1 } end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(5, result);
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
 
     auto* pav0 = get<PropertyAccessViolation>(result.errors[0]);
     REQUIRE(pav0);
@@ -1271,16 +1268,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_class_object_properties_are_forbid
     REQUIRE(pav2);
     CHECK(pav2->key == "one");
     CHECK(pav2->context == PropertyAccessViolation::CannotWrite);
-
-    auto* pav3 = get<PropertyAccessViolation>(result.errors[3]);
-    REQUIRE(pav3);
-    CHECK(pav3->key == "__index");
-    CHECK(pav3->context == PropertyAccessViolation::CannotWrite);
-
-    auto* pav4 = get<PropertyAccessViolation>(result.errors[4]);
-    REQUIRE(pav4);
-    CHECK(pav4->key == "__call");
-    CHECK(pav4->context == PropertyAccessViolation::CannotWrite);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_unknown_class_instance_properties_are_forbidden")
@@ -1296,7 +1283,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_unknown_class_instance_properties_
             public y: number
 
             function zero()
-                return Point {x=0, y=0}
+                return Point.new {x=0, y=0}
             end
 
             function magnitude(self): number
@@ -1307,8 +1294,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_unknown_class_instance_properties_
         local p = Point.zero()
 
         p.magnitude = function(p: Point) return 3 end
-        p.zero = function() return Point { x = 1, y = 1 } end
-        p.one = function() return Point { x = 1, y = 1 } end
+        p.zero = function() return Point.new { x = 1, y = 1 } end
+        p.one = function() return Point.new { x = 1, y = 1 } end
 
         p.__index = {}
     )");
@@ -1334,6 +1321,119 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_unknown_class_instance_properties_
     REQUIRE(pav3);
     CHECK(pav3->key == "__index");
     CHECK(pav3->context == PropertyAccessViolation::CannotWrite);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "subclass_property_access")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Instance = { Name: string }
+
+        const Base = {}
+        Base.__index = {}
+
+        export type Class = setmetatable<{ read instance: Instance }, typeof(Base)>
+
+        function Base.new(instance: Instance): Class
+            return setmetatable({ instance = instance, }, Base)
+        end
+
+        function Base.ChangeName(self: Class, name: string): ()
+            error("Override required.")
+        end
+
+        const Derived = setmetatable({}, Base)
+        Derived.__index = Derived
+
+        export type Subclass = setmetatable<Class & { --[[ new members here ]] }, typeof(Derived)>
+
+        function Derived.new(instance: Instance): Subclass
+            return table.freeze(setmetatable(Base.new(instance), Derived))
+        end
+
+        function Derived.ChangeName(self: Subclass, name: string): ()
+            self.instance.Name = name -- TypeError: Type 'Class' does not have key 'instance'
+        end
+
+        return Derived
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_1")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
+
+    CheckResult result = check(R"(
+        local root = {}
+        local mt1 = { __index = { propA = 42 } }
+        local mt2 = { __index = { propB = "hmm" } }
+
+        setmetatable(root, mt1)
+
+        local getpropA = root.propA
+
+        setmetatable(root, mt2)
+
+        local getpropB = root.propB
+        local ohno = root.propA
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("number", toString(requireType("getpropA"), {/* exhaustive */ true}));
+    CHECK_EQ("string", toString(requireType("getpropB"), {/* exhaustive */ true}));
+
+    // TODO CLI-221097: This is incorrect, we should be claiming that `uhoh`
+    // has type `any`, but we report an error, so it's not awful.
+    CHECK_EQ("number", toString(requireType("ohno"), {/* exhaustive */ true}));
+
+    auto err = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("propA", err->key);
+    CHECK_EQ("{ @metatable mt2, root }", toString(err->table));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_2")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
+
+    CheckResult result = check(R"(
+        type MT1 = { __index: { propA: number } }
+        type MT2 = { __index: { propB: string } }
+
+        local root: setmetatable<setmetatable<{ Name: string }, MT1>, MT2>
+
+        local getpropB = root.propB
+        local ohno = root.propA
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("string", toString(requireType("getpropB"), {/* exhaustive */ true}));
+    CHECK_EQ("any", toString(requireType("ohno"), {/* exhaustive */ true}));
+
+    auto err = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("propA", err->key);
+    CHECK_EQ("{ @metatable MT2, { Name: string } }", toString(err->table));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_setmetatable_invalid_types")
+{
+    // Prior, we raised assertions here as we constructed `MetatableType`s that
+    // had non-tables as their `MetatableType::table` member.
+    LUAU_REQUIRE_ERRORS(check(R"(
+        return setmetatable(_ < _,setmetatable(setmetatable(_,_),{"",},math.abs))
+    )"));
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        return setmetatable(if _ then setmetatable(_,_) else {""}, {""}, _)
+    )"));
 }
 
 TEST_SUITE_END();

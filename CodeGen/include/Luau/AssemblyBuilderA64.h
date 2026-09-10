@@ -20,13 +20,15 @@ namespace A64
 enum FeaturesA64
 {
     Feature_JSCVT = 1 << 0,
-    Feature_AdvSIMD = 1 << 1
+    Feature_AdvSIMD = 1 << 1,
+    Feature_PtrAuthRet = 1 << 2,  // Sign/authenticate return addresses (pacibsp/retab)
+    Feature_PtrAuthCall = 1 << 3, // Sign/authenticate C function pointers (blraaz)
 };
 
 class AssemblyBuilderA64
 {
 public:
-    explicit AssemblyBuilderA64(LogBuilder* logger, bool logText_DEPRECATED, unsigned int features);
+    explicit AssemblyBuilderA64(LogBuilder* logger, unsigned int features);
     ~AssemblyBuilderA64();
 
     // Moves
@@ -38,7 +40,7 @@ public:
     void movn(RegisterA64 dst, uint16_t src, int shift = 0);
     void movk(RegisterA64 dst, uint16_t src, int shift = 0);
 
-    // Arithmetics
+    // Arithmetic
     void add(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift = 0);
     void add(RegisterA64 dst, RegisterA64 src1, uint16_t src2);
     void sub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift = 0);
@@ -133,6 +135,10 @@ public:
     void blr(RegisterA64 src);
     void ret();
 
+    // Pointer Authentication (PAC)
+    void pacibsp();
+    void retab();
+
     // Conditional control flow
     void b(ConditionA64 cond, Label& label);
     void cbz(RegisterA64 src, Label& label);
@@ -222,9 +228,6 @@ public:
         return label.location * 4;
     }
 
-    // Make private with FFlagLuauCodegenSharedLog removal
-    void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
-
     // Code size is measured in 'code' array units - uint8_t on x64 and uint32_t on arm64
     uint32_t getCodeSize() const;
 
@@ -234,12 +237,6 @@ public:
     // The *end* of 'data' has to be aligned to 16 bytes, this will also align 'code'
     std::vector<uint8_t> data;
     std::vector<uint32_t> code;
-
-    // Remove with FFlagLuauCodegenSharedLog
-    std::string text;
-
-    // Make private with FFlagLuauCodegenSharedLog removal
-    const bool logText = false;
 
     const unsigned int features = 0;
 
@@ -266,7 +263,7 @@ private:
     void placeB(const char* name, Label& label, uint8_t op);
     void placeBC(const char* name, Label& label, uint8_t op, uint8_t cond);
     void placeBCR(const char* name, const char* nameInv, Label& label, uint8_t op, RegisterA64 cond);
-    void placeBR(const char* name, RegisterA64 src, uint32_t op);
+    void placeBR(const char* name, RegisterA64 src, uint32_t op, uint32_t op4 = 0);
     void placeBTR(const char* name, const char* nameInv, Label& label, uint8_t op, RegisterA64 cond, uint8_t bit);
     void placeADR(const char* name, RegisterA64 dst, uint8_t op);
     void placeADR(const char* name, RegisterA64 dst, uint8_t op, Label& label);
@@ -324,7 +321,10 @@ private:
     LUAU_NOINLINE void log(RegisterA64 reg);
     LUAU_NOINLINE void log(AddressA64 addr);
 
+    void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
+
     LogBuilder* logger = nullptr;
+    const bool logText = false;
 
     uint32_t nextLabel = 1;
     std::vector<Patch> pendingLabels;

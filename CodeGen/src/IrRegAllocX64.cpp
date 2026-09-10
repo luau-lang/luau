@@ -462,7 +462,7 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
         {
             RegisterX64 reg = intoOriginalLocation ? takeReg(spills[i].originalLoc, instIdx) : allocReg(spills[i].originalLoc.size, instIdx);
 
-            // When restoring the value, we allow cross-block restore because we have commited to the target location at spill time
+            // When restoring the value, we allow cross-block restore because we have committed to the target location at spill time
             ValueRestoreLocation restoreLocation = function.findRestoreLocation(inst, /*limitToCurrentBlock*/ false);
 
             OperandX64 restoreAddr = noreg;
