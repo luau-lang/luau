@@ -40,6 +40,8 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_type_alias")
         local g: F = f
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("t1 where t1 = () -> t1?", toString(requireType("g")));
 }
@@ -386,6 +388,8 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_types_generic")
     CHECK_EQ(expected, decorateWithTypes(code));
     CheckResult result = check(code);
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -669,6 +673,8 @@ end
 export type f = typeof(get())
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -681,6 +687,8 @@ end
 
 export type f = typeof(get())
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -748,6 +756,8 @@ TEST_CASE_FIXTURE(Fixture, "free_variables_from_typeof_in_aliases")
         type ContainsContainsFree = { that: ContainsFree<number> }
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -796,6 +806,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_quantify_unresolved_aliases")
         export type Key = typeof(newkey(newKeyPool(), 1))
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -833,6 +845,8 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
         type FutureType = { foo: typeof(x()) }
         local d: FutureType = { smth = true } -- missing error, 'd' is resolved to 'any'
     )");
+
+    ignoreMissingAnnotations(result);
 
     CHECK_EQ("{ foo: number }", toString(requireType("d"), {true}));
 

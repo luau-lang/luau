@@ -1649,7 +1649,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_removes_unreachable_closeupvals_
 bb_0 (entry):
 ; predecessors: bb_3 [loop]
 ; successors: bb_3 [fallthrough]
-  %0 = LOADNIL                                               ; uses: %3
+  %0 = LOADNIL
   %1 = DUPCLOSURE K0 (0)                                     ; uses: %2
   %2 = CALLFB 0, 0, 0, %1
 

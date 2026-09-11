@@ -329,13 +329,14 @@ private:
         bool generalize = true
     );
 
-    InferencePack checkPack(const ScopePtr& scope, AstExprCall* call);
+    InferencePack checkPack(const ScopePtr& scope, AstExprCall* call, std::optional<TypeId> expectedType = std::nullopt);
     InferencePack checkExprCall(
         const ScopePtr& scope,
         AstExprCall* call,
         TypeId fnType,
         Checkpoint funcBeginCheckpoint,
-        Checkpoint funcEndCheckpoint
+        Checkpoint funcEndCheckpoint,
+        std::optional<TypeId> expectedType
     );
 
     /**

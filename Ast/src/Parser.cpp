@@ -28,7 +28,6 @@ LUAU_FLAGVERSION(LuauExportValueSyntax, 4)
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauAllowGlobalDeclarationToBeCalledClass)
-LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalSyntax)
@@ -618,6 +617,9 @@ LUAU_NOINLINE AstStat* Parser::parseIfLocalCondition(const Location& start)
     if (lexer.current().type == ',')
         report(lexer.current().location, "Expected '=' after variable name in 'if local', got ','; only a single binding is allowed");
 
+    std::optional<Location> equalsPosition;
+    if (lexer.current().type == '=')
+        equalsPosition = lexer.current().location;
     expectAndConsume('=', "if local declaration");
 
     AstExpr* cond = parseExpr();
@@ -639,9 +641,12 @@ LUAU_NOINLINE AstStat* Parser::parseIfLocalCondition(const Location& start)
     std::optional<Location> elseLocation;
     AstStat* elsebody = parseElseBody(start, matchThen, thenbody, end, elseLocation);
 
-    return allocator.alloc<AstStatIf>(
-        Location(start, end), cond, thenbody, elsebody, thenLocation, elseLocation, condLocal, condIsConst, condKeywordLocation
+    AstStatIf* node = allocator.alloc<AstStatIf>(
+        Location(start, end), cond, thenbody, elsebody, thenLocation, elseLocation, condLocal, condIsConst, condKeywordLocation, equalsPosition
     );
+    if (options.storeCstData)
+        cstNodeMap[node] = allocator.alloc<CstStatIf>(binding.annotation ? binding.colonPosition : Position::missing());
+    return node;
 }
 
 AstStat* Parser::parseElseBody(const Location& start, const Lexeme& matchThen, AstStatBlock* thenbody, Location& end, std::optional<Location>& elseLocation)
@@ -3352,11 +3357,8 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
             prefix = name.name;
             prefixLocation = name.location;
 
-            if (FFlag::LuauTrackPrefixLocal)
-            {
-                AstLocal* const* prefixLocalValue = localMap.find(name.name);
-                prefixLocal = (prefixLocalValue && *prefixLocalValue) ? *prefixLocalValue : nullptr;
-            }
+            AstLocal* const* prefixLocalValue = localMap.find(name.name);
+            prefixLocal = (prefixLocalValue && *prefixLocalValue) ? *prefixLocalValue : nullptr;
 
             name = parseIndexName("field name", prefixPointPosition);
         }

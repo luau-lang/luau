@@ -21,6 +21,7 @@
 
 #include "doctest.h"
 #include "ScopedFlags.h"
+#include "BufferCage.h"
 #include "ConformanceIrHooks.h"
 
 #include <cstdlib>
@@ -63,7 +64,6 @@ LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauCodegenBufferInteger)
-LUAU_FASTFLAG(LuauXpcallFixMessageYieldPath)
 LUAU_FASTFLAG(LuauCodegenDseRestoreHintUpdate)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
@@ -71,13 +71,16 @@ LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_FASTFLAG(LuauEnumMoreEdges)
 LUAU_DYNAMIC_FASTFLAG(LuauTableMoveTimeoutFix)
 LUAU_FASTFLAG(LuauFastpcallInterrupt)
-LUAU_FASTFLAG(LuauMathRoundNegZero)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauBytecodeCostModel)
 LUAU_FASTFLAG(LuauVirtualBcBuilder)
 LUAU_FASTFLAG(LuauNewPointerEncode)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauBufferCage)
+LUAU_FASTFLAG(LuauCompileUndoEmitAdjust)
+LUAU_FASTFLAG(DebugLuauCoroutineFinally)
+LUAU_FASTFLAG(DebugLuauCoroutineFinallyAnalysis)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -1278,10 +1281,32 @@ TEST_CASE("Buffers")
     );
 }
 
+#ifdef LUAU_BUFFER_CAGE_SUPPORTED
+static BufferCage* bufferCage;
+
+static void setupBufferCage(lua_State* L)
+{
+    setupNativeHelpers(L);
+    lua_setbuffercage(L, &bufferCage->frealloc, bufferCage);
+}
+
+TEST_CASE("BuffersWithCage")
+{
+    ScopedFastFlag luauBufferCage{FFlag::LuauBufferCage, true};
+
+    BufferCage cage;
+    bufferCage = &cage;
+    StateRef state = runConformance("buffers.luau", setupBufferCage);
+
+    CHECK(cage.lastAllocationType == LUA_TBUFFER);
+
+    state.reset();
+    bufferCage = nullptr;
+}
+#endif
+
 TEST_CASE("Math")
 {
-    ScopedFastFlag luauMathRoundNegZero{FFlag::LuauMathRoundNegZero, true};
-
     runConformance("math.luau");
 }
 
@@ -1392,8 +1417,6 @@ TEST_CASE("Literals")
 
 TEST_CASE("Errors")
 {
-    ScopedFastFlag luauXpcallFixMessageYieldPath{FFlag::LuauXpcallFixMessageYieldPath, true};
-
     runConformance("errors.luau");
 }
 
@@ -1517,7 +1540,53 @@ TEST_CASE("UTF8")
 
 TEST_CASE("Coroutine")
 {
+    ScopedFastFlag debugLuauCoroutineFinally{FFlag::DebugLuauCoroutineFinally, true};
+
     runConformance("coroutine.luau");
+}
+
+TEST_CASE("CoroutineHost")
+{
+    ScopedFastFlag debugLuauCoroutineFinally{FFlag::DebugLuauCoroutineFinally, true};
+
+    runConformance(
+        "coroutinehost.luau",
+        [](lua_State* L)
+        {
+            lua_pushcclosurek(
+                L,
+                [](lua_State* L) -> int
+                {
+                    luaL_checktype(L, 1, LUA_TTHREAD);
+                    lua_State* co = lua_tothread(L, 1);
+
+                    int status = lua_resume(co, nullptr, 0);
+
+                    if (status == LUA_YIELD || status == LUA_BREAK)
+                        return 0;
+
+                    if (lua_hasfinalizers(co))
+                    {
+                        lua_State* NL = lua_newthread(L);
+                        lua_pushfinalizerfunction(NL);
+                        lua_xpush(L, NL, 1);
+                        status = lua_resume(NL, nullptr, 1);
+                        int results = status == LUA_OK ? lua_gettop(NL) : 1;
+                        lua_pushboolean(L, status == LUA_OK);
+                        lua_xmove(NL, L, results);
+                        return results + 1;
+                    }
+
+                    // no need to handle 'co' results here, test cases here all use finalizers
+                    return 0;
+                },
+                "hostresume",
+                0,
+                nullptr
+            );
+            lua_setglobal(L, "hostresume");
+        }
+    );
 }
 
 static int cxxthrow(lua_State* L)
@@ -2015,6 +2084,7 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 TEST_CASE("Types")
 {
     ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
+    ScopedFastFlag DebugLuauCoroutineFinallyAnalysis{FFlag::DebugLuauCoroutineFinallyAnalysis, FFlag::DebugLuauCoroutineFinally};
 
     runConformance(
         "types.luau",
@@ -2052,6 +2122,8 @@ TEST_CASE("Debug")
 
 TEST_CASE("Debugger")
 {
+    ScopedFastFlag debugLuauCoroutineFinally{FFlag::DebugLuauCoroutineFinally, true};
+
     static int breakhits = 0;
     static lua_State* interruptedthread = nullptr;
     static bool singlestep = false;
@@ -2221,6 +2293,23 @@ TEST_CASE("Debugger")
                 const char* a1 = lua_getlocal(L, 2, 2);
                 REQUIRE(!a1);
             }
+            else if (breakhits == 17 || breakhits == 19 || breakhits == 23 || breakhits == 25)
+            {
+                REQUIRE(interruptedthread);
+                const char* x = lua_getlocal(interruptedthread, 0, 1);
+                REQUIRE(x);
+                CHECK(strcmp(x, "arg") == 0);
+                CHECK(lua_tointeger(interruptedthread, -1) == 21);
+                lua_pop(interruptedthread, 1);
+            }
+            else if (breakhits == 21)
+            {
+                const char* x = lua_getlocal(L, 0, 2);
+                REQUIRE(x);
+                CHECK(strcmp(x, "value") == 0);
+                CHECK(lua_tointeger(L, -1) == 42);
+                lua_pop(L, 1);
+            }
 
             if (interruptedthread)
             {
@@ -2235,7 +2324,7 @@ TEST_CASE("Debugger")
         /* skipCodegen */ true
     ); // Native code doesn't support debugging yet
 
-    CHECK(breakhits == 16); // 2 hits per breakpoint
+    CHECK(breakhits == 26); // 2 hits per breakpoint
 
     if (singlestep)
         CHECK(stephits > 100); // note; this will depend on number of instructions which can vary, so we just make sure the callback gets hit often
@@ -3241,7 +3330,7 @@ TEST_CASE("IfElseExpression")
 
 TEST_CASE("IfLocal")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::LuauCompileUndoEmitAdjust, true}};
     runConformance("iflocal.luau");
 }
 
@@ -5299,11 +5388,11 @@ TEST_CASE("BytecodeDumpLinked")
 {
     Luau::Bytecode::CompTimeBcFunction cbc{};
 
-    CHECK_EQ(toString(cbc, true), "; function() line 0 maxstacksize: 0 upvalues: 0 flags: 0\n");
+    CHECK_EQ(toString(cbc, true), "; function() maxstacksize: 0 upvalues: 0 flags: 0\n");
 
     Luau::Bytecode::BcFunction<TValue*> rbc{};
 
-    CHECK_EQ(toString(rbc, true), "; function() line 0 maxstacksize: 0 upvalues: 0 flags: 0\n");
+    CHECK_EQ(toString(rbc, true), "; function() maxstacksize: 0 upvalues: 0 flags: 0\n");
 }
 
 TEST_SUITE_END();

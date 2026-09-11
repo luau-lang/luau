@@ -115,6 +115,45 @@ LuauClass* luaR_newclass(
     return classobject;
 }
 
+/**
+ * Allocates and returns a new class object with the same members as `classobject`.
+ * @param classobject The class object to clone.
+ */
+LUAI_FUNC LuauClass* luaR_cloneclass(lua_State* L, LuauClass* classobject)
+{
+    LuauClass* newclass = luaR_newblankclass(L, classobject->name, classobject->isopen);
+
+    // newclass was just allocated, so it is white and none of the writes below need a write barrier.
+    LUAU_ASSERT(iswhite(obj2gco(newclass)));
+
+    newclass->super = classobject->super;
+    newclass->hasuserinitinchain = classobject->hasuserinitinchain;
+
+    const uint32_t numallmembers = classobject->numberofallmembers;
+    const uint32_t numstaticmembers = numallmembers - classobject->numberofinstancemembers;
+
+    // The name->offset mapping is fixed when the class shape is built and is never mutated afterwards (shapes in a Proto's constant table are
+    // additionally marked readonly), so the clone shares it rather than paying for a table copy on every class definition that executes.
+    newclass->memberstooffset = classobject->memberstooffset;
+
+    newclass->offsettomember = luaM_newarray(L, numallmembers, TString*, newclass->memcat);
+    memcpy(newclass->offsettomember, classobject->offsettomember, numallmembers * sizeof(TString*));
+
+    newclass->numberofallmembers = numallmembers;
+
+    newclass->staticmembers = luaM_newarray(L, numstaticmembers, TValue, newclass->memcat);
+    memcpy(newclass->staticmembers, classobject->staticmembers, numstaticmembers * sizeof(TValue));
+
+    newclass->numberofinstancemembers = classobject->numberofinstancemembers;
+
+    if (classobject->instancemetatable)
+        newclass->instancemetatable = luaH_clone(L, classobject->instancemetatable);
+
+    luaR_setupconstructor(L, newclass, getcurrenv(L));
+
+    return newclass;
+}
+
 // Registers val as a static member of classObject with name memberName at static offset staticMemberOffset and overall offset offset.
 void luaR_registerstaticmember(
     lua_State* L,
@@ -136,24 +175,24 @@ void luaR_registerstaticmember(
 }
 
 /**
-Creates and returns a new LuauClass object with child's members and methods, and relevant fields inherited from parent.
-This is done in the following steps:
+ * Updates child with parent's instance members and non-overridden static members in the following steps:
 - Check that parent is open.
-- Check for illegal instance member overrides.
-- Allocate a new LuauClass object.
-- Point the new class's super to parent.
-- Count how many static members we'll need to copy from parent, so we know how much space to allocate for the new class.
-- Copy the parent's instance members.
-- Copy the child's instance members.
-- Copy the parent's non-overridden static members.
-- Copy the child's static members.
-- Add the class metatable to the new class.
-- Copy the parent's instance metatable if it exists.
-Rather than mutating child, we create a new LuauClass object because the LuauClass objects created at load time are stored in the relevant Proto's
-constants table. If a Closure returned by luau_load contains an inheriting class and is called repeatedly, this would result in the LuauClass object
-stored in the Proto's constants table being mutated repeatedly.
+- Check for illegal instance member overrides in child.
+- Point child's super to parent.
+- Set staticmembers and offsettomember to NULL so GC doesn't try to free them in a weird state.
+- Bump member offsets in child->memberstooffset by parent->numberofinstancemembers since instances of child will have parent's instance members
+come first in their memory layouts.
+- Add entries for each of parent's instance members to child->memberstooffset.
+- Count how many static members we need to copy over from parent to child (ie non-overridden ones).
+- Resize childOffsettomember appropriately. The child class's instance and static members are moved up by parent->numberofinstancemembers, the
+parent's instance members copied over at the beginning.
+- Resize childStaticMembers.
+- Copy each non-overridden static member from parent->staticmembers to child->staticmembers, add an entry for it to child->memberstooffset, and add
+it to child->offsettomember.
+- Copy parent's instance metatable if it exists. We don't need to worry about overwriting the child's instance metatable because it's only created
+by NEWCLASSMEMBER instructions, which are only ever emitted after NEWCLASS. (TODO: This isn't true if we inherit lazily)
  */
-LuauClass* luaR_inheritclass(lua_State* L, const LuauClass* child, LuauClass* parent)
+void luaR_inheritclass(lua_State* L, LuauClass* child, LuauClass* parent)
 {
     // First check if parent is open
     if (!parent->isopen)
@@ -177,9 +216,38 @@ LuauClass* luaR_inheritclass(lua_State* L, const LuauClass* child, LuauClass* pa
         }
     }
 
-    LuauClass* newClass = luaR_newblankclass(L, child->name, child->isopen);
+    child->super = parent;
+    luaC_objbarrier(L, child, parent);
 
-    newClass->super = parent;
+    // TODO: might need updating for lazy inheritance
+    child->hasuserinitinchain = parent->hasuserinitinchain;
+
+    uint32_t childDeclaredStaticMembers = child->numberofallmembers - child->numberofinstancemembers;
+    TValue* childStaticMembers = child->staticmembers;
+    TString** childOffsetToMember = child->offsettomember;
+
+    child->staticmembers = NULL;
+    child->offsettomember = NULL;
+
+    if (parent->numberofinstancemembers > 0)
+    {
+        // Bump every member offset in child->memberstooffset up by parent->numberofinstancemembers (even static members are shifted up), and then add
+        // the parent's instance members to child->memberstooffset.
+        for (uint32_t idx = 0; idx < child->numberofallmembers; idx++)
+        {
+            TString* memberName = childOffsetToMember[idx];
+            TValue* offsetInChild = luaH_setstr(L, child->memberstooffset, memberName);
+            setnvalue(offsetInChild, nvalue(offsetInChild) + parent->numberofinstancemembers);
+        }
+
+        for (uint32_t idx = 0; idx < parent->numberofinstancemembers; idx++)
+        {
+            TString* memberName = parent->offsettomember[idx];
+            TValue* offsetInChild = luaH_setstr(L, child->memberstooffset, memberName);
+            setnvalue(offsetInChild, idx);
+            luaC_barrier(L, child->memberstooffset, offsetInChild);
+        }
+    }
 
     // Count how many static members we'll actually need to copy from parent, ie non-overridden ones
     uint32_t numStaticMembersToCopy = 0;
@@ -194,49 +262,42 @@ LuauClass* luaR_inheritclass(lua_State* L, const LuauClass* child, LuauClass* pa
         // TODO: Throw an error if we overwrite a static member with an instance member?
     }
 
-    uint32_t numMembers = child->numberofallmembers + parent->numberofinstancemembers + numStaticMembersToCopy;
+    uint32_t originalChildAllMembers = child->numberofallmembers;
+    uint32_t newNumberOfAllMembers = originalChildAllMembers + parent->numberofinstancemembers + numStaticMembersToCopy;
 
-    newClass->offsettomember = luaM_newarray(L, numMembers, TString*, newClass->memcat);
-    newClass->numberofallmembers = numMembers;
-
-    newClass->memberstooffset = luaH_new(L, 0, numMembers);
-    luaC_objbarrier(L, newClass, newClass->memberstooffset);
-
-    newClass->hasuserinitinchain = parent->hasuserinitinchain;
-
-    uint32_t offset = 0;
-
-    if (parent->numberofinstancemembers > 0)
+    // Resize childOffsetToMember appropriately
+    if (newNumberOfAllMembers > originalChildAllMembers)
     {
-        for (; offset < parent->numberofinstancemembers; offset++)
+        if (originalChildAllMembers == 0)
+            childOffsetToMember = luaM_newarray(L, newNumberOfAllMembers, TString*, child->memcat);
+        else
+            luaM_reallocarray(L, childOffsetToMember, originalChildAllMembers, newNumberOfAllMembers, TString*, child->memcat);
+    }
+
+    // Make room for parent instance members
+    memmove(childOffsetToMember + parent->numberofinstancemembers, childOffsetToMember, sizeof(TString*) * originalChildAllMembers);
+
+    // Copy parent instance members to the beginning of childOffsetToMember
+    memcpy(childOffsetToMember, parent->offsettomember, sizeof(TString*) * parent->numberofinstancemembers);
+
+    child->offsettomember = childOffsetToMember;
+    child->numberofallmembers = newNumberOfAllMembers;
+
+    // Resize child->staticmembers appropriately
+    if (numStaticMembersToCopy > 0)
+    {
+        if (childDeclaredStaticMembers == 0)
+            childStaticMembers = luaM_newarray(L, numStaticMembersToCopy, TValue, child->memcat);
+        else
         {
-            TString* memberName = parent->offsettomember[offset];
-
-            newClass->offsettomember[offset] = memberName;
-
-            TValue* val = luaH_setstr(L, newClass->memberstooffset, memberName);
-            setnvalue(val, offset);
-            luaC_barrier(L, newClass->memberstooffset, val);
+            luaM_reallocarray(
+                L, childStaticMembers, childDeclaredStaticMembers, childDeclaredStaticMembers + numStaticMembersToCopy, TValue, child->memcat
+            );
         }
     }
 
-    if (child->numberofinstancemembers > 0)
-    {
-        for (uint32_t idx = 0; idx < child->numberofinstancemembers; idx++, offset++)
-        {
-            TString* memberName = child->offsettomember[idx];
-
-            newClass->offsettomember[offset] = memberName;
-
-            TValue* val = luaH_setstr(L, newClass->memberstooffset, memberName);
-            setnvalue(val, offset);
-            luaC_barrier(L, newClass->memberstooffset, val);
-        }
-    }
-
-    // We've just copied all instance members, so offset is the total number of instance members in the final class
-    newClass->staticmembers = luaM_newarray(L, numMembers - offset, TValue, newClass->memcat);
-    newClass->numberofinstancemembers = offset;
+    child->staticmembers = childStaticMembers;
+    child->numberofinstancemembers += parent->numberofinstancemembers;
 
     // Copy static members from parent that aren't overridden in child.
     uint32_t numStaticMembersCopied = 0;
@@ -249,44 +310,35 @@ LuauClass* luaR_inheritclass(lua_State* L, const LuauClass* child, LuauClass* pa
         if (ttisnil(existing))
         {
             // This static member isn't declared in the child, so we need to copy it over from the parent
+            uint32_t staticMemberOffsetInChild = childDeclaredStaticMembers + numStaticMembersCopied;
+
             const TValue* parentVal = &parent->staticmembers[idx - parent->numberofinstancemembers];
 
-            luaR_registerstaticmember(L, newClass, memberName, parentVal, offset, numStaticMembersCopied);
+            setobj2class(L, &child->staticmembers[staticMemberOffsetInChild], parentVal);
+            luaC_barrier(L, child, &child->staticmembers[staticMemberOffsetInChild]);
 
-            offset++;
+            // We also need to add an entry to the memberstooffset table for this member
+            uint32_t offsetInChildInt = child->numberofinstancemembers + staticMemberOffsetInChild;
+            TValue* offsetInChild = luaH_setstr(L, child->memberstooffset, memberName);
+            setnvalue(offsetInChild, static_cast<int>(offsetInChildInt));
+            luaC_barrier(L, child->memberstooffset, offsetInChild);
+
+            // And add it to offsettomember
+            child->offsettomember[offsetInChildInt] = memberName;
+
             numStaticMembersCopied++;
         }
     }
 
-    // Copy child's static members over to newClass
-    for (uint32_t idx = child->numberofinstancemembers; idx < child->numberofallmembers; idx++)
-    {
-        TString* memberName = child->offsettomember[idx];
-
-        const TValue* childVal = &child->staticmembers[idx - child->numberofinstancemembers];
-
-        luaR_registerstaticmember(L, newClass, memberName, childVal, offset, numStaticMembersCopied);
-
-        offset++;
-        numStaticMembersCopied++;
-    }
-
-    LUAU_ASSERT(numStaticMembersCopied == numStaticMembersToCopy + (child->numberofallmembers - child->numberofinstancemembers));
+    LUAU_ASSERT(numStaticMembersToCopy == numStaticMembersCopied);
 
     // Copy instance metatable
-    // Ignoring the child's instance metatable is sound because it is only ever created during NEWCLASSMEMBER instructions, which are only
-    // emitted after NEWCLASS.
     if (parent->instancemetatable)
     {
-        newClass->instancemetatable = luaH_clone(L, parent->instancemetatable);
-        luaC_objbarrier(L, newClass, newClass->instancemetatable);
+        LUAU_ASSERT(!child->instancemetatable);
+        child->instancemetatable = luaH_clone(L, parent->instancemetatable);
+        luaC_objbarrier(L, child, child->instancemetatable);
     }
-    else
-        newClass->instancemetatable = NULL;
-
-    luaR_setupconstructor(L, newClass, getcurrenv(L));
-
-    return newClass;
 }
 
 void luaR_addclassmember(lua_State* L, LuauClass* classobject, TString* name, TValue* value)

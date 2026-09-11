@@ -32,6 +32,7 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 LUAU_FLAGVERSION(LuauCheckTypeForDeprecated, 2)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
@@ -2249,6 +2250,11 @@ AutocompleteResult autocomplete_(
               !statWhile->condition->location.containsClosed(position)))
     {
         return autocompleteWhileLoopKeywords(ancestry);
+    }
+    else if (AstStatIf* statIf = node->as<AstStatIf>(); FFlag::DebugLuauIfLocalSyntax && statIf && statIf->conditionLocal &&
+                                                        statIf->conditionEqualsLocation && position >= statIf->conditionEqualsLocation->end)
+    {
+        return autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position);
     }
     else if (AstStatIf* statIf = node->as<AstStatIf>(); statIf && !statIf->elseLocation.has_value())
     {

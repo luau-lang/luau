@@ -209,6 +209,8 @@ TEST_CASE_FIXTURE(Fixture, "add_function_at_work")
         local c = add("foo", 1)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(toString(requireType("a")) == "number");
     CHECK(toString(requireType("b")) == "add<number, string>");
@@ -290,6 +292,8 @@ TEST_CASE_FIXTURE(Fixture, "internal_functions_raise_errors")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(
         toString(result.errors[0]) ==
@@ -315,6 +319,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_can_be_shadowed")
             return a + b
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -896,6 +902,8 @@ local function Use(Mode)
 end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1057,6 +1065,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_metatable_should_not_crash_index")
 
         type IndexFromT = index<typeof(t), "p">
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ("Type 't' does not have key 'p'", toString(result.errors[0]));
@@ -2046,7 +2056,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2144_type_instantiation_on_type_function
         {FFlag::DebugLuauForceOldSolver, false},
     };
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         --!strict
 
         type ST = {
@@ -2060,7 +2070,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2144_type_instantiation_on_type_function
 
         local t: any = {}
         local _b = access<<"Member1">>(t, "Member1")
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireType("_b")));
 }
@@ -2103,12 +2115,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exporting_erroneous_type_function_is_error_t
     )";
 
     CheckResult aResult = getFrontend().check("game/A");
+    ignoreMissingAnnotations(aResult);
     LUAU_REQUIRE_ERROR_COUNT(3, aResult);
 
     CheckResult bResult = check(R"(
         local Test = require(game.A);
         local x = Test.get("hello", "world")
     )");
+    ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     if (FFlag::LuauCloneTypeFunctionFromForeignArena)
@@ -2146,7 +2160,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2634_negation_of_nontestable_type_doesnt
         type function mknot()
             return types.negationof(types.unionof(types.newfunction(), types.number))
         end
-        local function f(a: mknot<>)
+        local f = function(a: mknot<>)
             return (a == 5)
         end
         return f

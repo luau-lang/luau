@@ -28,6 +28,7 @@ LUAU_FASTINT(LuauGenericCounterMaxSteps)
 LUAU_FASTINT(LuauSubtypingIterationLimit)
 LUAU_FASTINT(LuauStackGuardThreshold)
 LUAU_FASTINT(LuauNormalizerInitialFuel)
+LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 
 struct LimitFixture : BuiltinsFixture
 {
@@ -487,15 +488,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_should_cache_pairs_in_seen_set" * 
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "test_generic_pruning_recursion_limit")
 {
-    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        // Clip this test with LuauIterativeTypeSearcher
+        {FFlag::LuauIterativeTypeSearcher, false},
+    };
 
     ScopedFastInt sfi{FInt::LuauGenericCounterMaxSteps, 1};
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function get(scale)
             print(scale.Do.Re.Mi)
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("<T>({ read Do: { read Re: { read Mi: T } } }) -> ()", toString(requireType("get")));
 }
 

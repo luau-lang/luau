@@ -16,12 +16,13 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauDirectFieldGet)
+#include <cstddef>
+
 LUAU_FASTFLAGVARIABLE(LuauGcTraceUdata)
 LUAU_FLAGVERSION(LuauGcTraceUdata, 3)
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauGcMarkUdataAccess, false)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAG(LuauFastpcall)
+LUAU_FASTFLAG(DebugLuauCoroutineFinally)
 
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
@@ -445,10 +446,16 @@ static void traverseclosure(global_State* g, Closure* cl)
 static void traversestack(global_State* g, lua_State* l)
 {
     markobject(g, l->gt);
+
     if (l->namecall)
         stringmark(l->namecall);
+
+    if (FFlag::DebugLuauCoroutineFinally && l->finalizers)
+        markobject(g, l->finalizers);
+
     for (StkId o = l->stack; o < l->top; o++)
         markvalue(g, o);
+
     for (UpVal* uv = l->openupval; uv; uv = uv->u.open.threadnext)
     {
         LUAU_ASSERT(upisopen(uv));
@@ -840,7 +847,6 @@ void luaC_freeall(lua_State* L)
 
 static void markudatadirectaccess(global_State* g)
 {
-    LUAU_ASSERT(DFFlag::LuauGcMarkUdataAccess);
     for (int i = 0; i < UTAG_INTERNAL_LIMIT; i++)
     {
         lua_UdataDirectAccessData& udatadirect = g->udatadirect[i];
@@ -853,7 +859,6 @@ static void markudatadirectaccess(global_State* g)
 
 static void markudatadirectfields(global_State* g)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
     for (int i = 0; i < UTAG_INTERNAL_LIMIT; i++)
         if (g->udatadirectfields[i])
             markobject(g, g->udatadirectfields[i]);
@@ -903,24 +908,9 @@ static void markroot(lua_State* L)
             g->embeddergc(g->mainthread, nullptr);
     }
 
-    if (DFFlag::LuauGcMarkUdataAccess)
-    {
-        markudatadirectaccess(g);
-    }
-    else
-    {
-        for (int i = 0; i < UTAG_INTERNAL_LIMIT; i++)
-        {
-            lua_UdataDirectAccessData& udatadirect = L->global->udatadirect[i];
+    markudatadirectaccess(g);
 
-            markvalue(g, &udatadirect.indextm);
-            markvalue(g, &udatadirect.newindextm);
-            markvalue(g, &udatadirect.namecalltm);
-        }
-    }
-
-    if (FFlag::LuauDirectFieldGet)
-        markudatadirectfields(g);
+    markudatadirectfields(g);
 
     if (FFlag::LuauFastpcall)
         markfastpcalls(g);
@@ -1015,11 +1005,9 @@ static size_t atomic(lua_State* L)
 
     marktaggetmt(g); // mark tagged userdata metatables (again)
 
-    if (DFFlag::LuauGcMarkUdataAccess)
-        markudatadirectaccess(g); // mark tagged userdata direct access functions (again)
+    markudatadirectaccess(g); // mark tagged userdata direct access functions (again)
 
-    if (FFlag::LuauDirectFieldGet)
-        markudatadirectfields(g); // mark direct field dispatch tables (again)
+    markudatadirectfields(g); // mark direct field dispatch tables (again)
 
     if (FFlag::LuauFastpcall)
         markfastpcalls(g);
@@ -1073,6 +1061,7 @@ static size_t atomic(lua_State* L)
     // flip current white
     g->currentwhite = cast_byte(otherwhite(g));
     g->sweepgcopage = g->allgcopages;
+    g->sweepgcopage_cage = g->allgcopages_cage;
     g->gcstate = GCSsweep;
 
     return work;
@@ -1200,11 +1189,21 @@ static size_t gcstep(lua_State* L, size_t limit)
             int steps = sweepgcopage(L, g->sweepgcopage);
 
             g->sweepgcopage = next;
-            cost += steps * GC_SWEEPPAGESTEPCOST;
+            cost += static_cast<size_t>(steps * GC_SWEEPPAGESTEPCOST);
+        }
+
+        while (g->sweepgcopage_cage && cost < limit)
+        {
+            lua_Page* next = luaM_getnextpage(g->sweepgcopage_cage); // page sweep might destroy the page
+
+            int steps = sweepgcopage(L, g->sweepgcopage_cage);
+
+            g->sweepgcopage_cage = next;
+            cost += static_cast<size_t>(steps * GC_SWEEPPAGESTEPCOST);
         }
 
         // nothing more to sweep?
-        if (g->sweepgcopage == NULL)
+        if (g->sweepgcopage == NULL && g->sweepgcopage_cage == NULL)
         {
             // don't forget to visit main thread, it's the only object not allocated in GCO pages
             LUAU_ASSERT(!isdead(g, obj2gco(g->mainthread)));
@@ -1360,6 +1359,7 @@ void luaC_fullgc(lua_State* L)
     {
         // reset sweep marks to sweep all elements (returning them to white)
         g->sweepgcopage = g->allgcopages;
+        g->sweepgcopage_cage = g->allgcopages_cage;
         // reset other collector lists
         g->gray = NULL;
         g->grayagain = NULL;

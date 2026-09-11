@@ -15,6 +15,7 @@ LUAU_FASTFLAG(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(DebugLuauCFG)
+LUAU_FASTFLAG(LuauIterativeTypeSearcher)
 
 using namespace Luau;
 
@@ -366,6 +367,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_assert_position")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -483,6 +486,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_to_undefined_method_is_not_a_refinement
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     auto unknownProp = get<UnknownProperty>(result.errors[0]);
@@ -513,6 +518,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "call_an_incompatible_function_after_using_ty
             end
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -694,6 +701,8 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -779,6 +788,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_narrow_to_vector")
             end
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -934,6 +945,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_narrowed_into_nothingness")
             return t.x + 1
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -1093,6 +1106,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "merge_should_be_fully_agnostic_of_hashmap_or
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string", toString(requireTypeAtPosition({6, 28})));
@@ -1124,6 +1139,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "is_truthy_constraint_ifelse_expression")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string", toString(requireTypeAtPosition({2, 29})));
@@ -1137,6 +1154,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invert_is_truthy_constraint_ifelse_expressio
             return if not v then tostring(v) else v
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -1159,6 +1178,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_comparison_ifelse_expression")
             return if typeof(v) == "number" then v else returnOne(v)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -1368,6 +1389,8 @@ TEST_CASE_FIXTURE(Fixture, "and_or_peephole_refinement")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1418,6 +1441,8 @@ TEST_CASE_FIXTURE(Fixture, "refine_a_property_not_to_be_nil_through_an_intersect
             end
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1638,6 +1663,8 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "refine_param_of_type_folder_or_p
 
 TEST_CASE_FIXTURE(RefinementExternTypeFixture, "isa_type_refinement_must_be_known_ahead_of_time")
 {
+    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
+
     CheckResult result = check(R"(
         local function f(x): Instance
             if x:IsA("Folder") then
@@ -1650,12 +1677,14 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "isa_type_refinement_must_be_know
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK_EQ("t1 where t1 = Instance & { read IsA: (t1, string) -> (unknown, ...unknown) }", toString(requireTypeAtPosition({3, 28})));
-        CHECK_EQ("t1 where t1 = Instance & { read IsA: (t1, string) -> (unknown, ...unknown) }", toString(requireTypeAtPosition({5, 28})));
+        CHECK_EQ("t1 where t1 = Instance & { read IsA: (t1, string) -> (T, U...) }", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("t1 where t1 = Instance & { read IsA: (t1, string) -> (T, U...) }", toString(requireTypeAtPosition({5, 28})));
     }
     else
     {
@@ -1734,6 +1763,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_doesnt_leak_to_elseif")
             end
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1843,6 +1874,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "what_nonsensical_condition")
             end
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -2102,6 +2135,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_annotations_arent_relevant_when_doing_d
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     // Function calls are treated as (potentially) `nil`, the same as table
@@ -2190,6 +2225,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(unknown) -> (~nil, unknown)", toString(requireType("f")));
@@ -2242,6 +2279,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction"
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -2256,6 +2295,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "check_refinement_to_primitive_and_compare")
             return type(word) == "string" and word > "luau"
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(unknown) -> boolean", toString(requireType("comesAfterLuau")));
@@ -2273,6 +2314,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_
                 and math.floor(k) == k -- no float keys
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -2302,6 +2345,8 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "mutate_prop_of_some_refined_symb
             end
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -2838,6 +2883,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_by_no_refine_should_always_reduce")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -2905,6 +2952,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_from_and_should_not_refine_to_ne
         end
     )");
 
+    ignoreMissingAnnotations(results);
+
     LUAU_REQUIRE_NO_ERRORS(results);
 
     CHECK_EQ("(Config & { read KeyboardEnabled: false? }) | (Config & { read MouseEnabled: false? })", toString(requireTypeAtPosition({6, 24})));
@@ -2913,6 +2962,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_from_and_should_not_refine_to_ne
 TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+
+    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
 
     CheckResult results = check(R"(
         local function track(instance): boolean
@@ -2925,12 +2976,16 @@ TEST_CASE_FIXTURE(Fixture, "force_simplify_constraint_doesnt_drop_blocked_type")
         end
     )");
 
+    ignoreMissingAnnotations(results);
+
     // NOTE: This should have *no* errors but due to a constraint cycle
     // between the `and` type function and the subtype constraint of the
     // return type, we end up sometimes being unable to reduce this properly.
 
-    LUAU_REQUIRE_ERROR_COUNT(1, results);
-    CHECK(get<TypeMismatch>(results.errors[0]));
+    // This flip-flops as the constraint forcing _sometimes_ means we correctly
+    // claim a lack of errors.
+
+    LUAU_REQUIRE_NO_ERRORS(results);
 }
 
 TEST_CASE_FIXTURE(Fixture, "len_operator_in_if_is_just_a_proposition")
@@ -3077,6 +3132,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_call_should_not_refine_despite_typeof
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'table' does not have key 'bar'", toString(result.errors[0]));
 }
@@ -3105,7 +3162,7 @@ TEST_CASE_FIXTURE(Fixture, "type_function_reduction_with_union_type_application"
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
     };
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local lastTick = 0
         local jumpAnimTime = 0
         local toolAnimTime = 0
@@ -3125,12 +3182,14 @@ TEST_CASE_FIXTURE(Fixture, "type_function_reduction_with_union_type_application"
             if time > toolAnimTime then
             end
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refine_any_and_unknown_should_still_be_any")
 {
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local REACT_FRAGMENT_TYPE = (nil :: any)
         local function typeOf(object: any)
             local __type = object.type
@@ -3143,7 +3202,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_any_and_unknown_should_still_be_any")
                     and __type["$$typeof"]
             end
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_181100_fast_track_refinement_against_unknown")
@@ -3278,7 +3339,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_with_refinements_doesnt_impact_f
         {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
     };
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local keys: { unknown } = {}
 
         local function sorter(a, b): boolean
@@ -3290,7 +3351,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_with_refinements_doesnt_impact_f
         end
 
         table.sort(keys, sorter)
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(unknown, unknown) -> boolean", toString(requireType("sorter")));
 }
@@ -3298,7 +3361,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_with_refinements_doesnt_impact_f
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_narrows_to_truthy")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauIfLocalSyntax, true},
         {FFlag::DebugLuauIfLocalAnalysis, true},
     };
@@ -3317,7 +3379,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_narrows_to_truthy")
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_basic_typecheck")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauIfLocalSyntax, true},
         {FFlag::DebugLuauIfLocalAnalysis, true},
     };
@@ -3336,7 +3397,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_basic_typecheck")
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_binding_not_visible_after_block")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauIfLocalSyntax, true},
         {FFlag::DebugLuauIfLocalAnalysis, true},
     };
@@ -3355,7 +3415,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_binding_not_visible_after_block")
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_unannotated_to_truthy")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauIfLocalSyntax, true},
         {FFlag::DebugLuauIfLocalAnalysis, true},
     };
@@ -3376,7 +3435,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_unannotated_to_truthy")
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauIfLocalSyntax, true},
         {FFlag::DebugLuauIfLocalAnalysis, true},
     };
@@ -3393,6 +3451,226 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_refines_annotated_type")
 
     // `x` is annotated `number?`, but the then-branch still refines it by `truthy` down to `number`.
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_const_narrows_to_truthy")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number?)
+            if const x = v then
+                local s = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_binding_not_visible_in_else")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        if local x = math.random() then
+            print(x)
+        else
+            print(x)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Unknown global 'x'; consider assigning to it first", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_binding_not_visible_in_elseif_condition")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        if local x = math.random() then
+            print(x)
+        elseif x then
+            print("no x here")
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Unknown global 'x'; consider assigning to it first", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_elseif_independent_bindings_are_narrowed")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(a: number?, b: string?)
+            if local x = a then
+                local s = x
+            elseif local y = b then
+                local t = y
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 26})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_narrows_nested_table_field")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(user: { name: string? })
+            if local n = user.name then
+                local s: string = n
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireTypeAtPosition({3, 34})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_uses_annotated_type")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number?)
+            if local x: string = v then
+                print(x)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR(result, TypeMismatch);
+    auto tm = get<TypeMismatch>(result.errors[0]);
+    CHECK_EQ("string", toString(tm->wantedType));
+    CHECK_EQ("number?", toString(tm->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_table_annotation_mismatch")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: { x: number })
+            if local y: { x: string } = v then
+                print(y)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR(result, TypeMismatch);
+    auto tm = get<TypeMismatch>(result.errors[0]);
+    CHECK_EQ("{ x: string }", toString(tm->wantedType));
+    CHECK_EQ("{ x: number }", toString(tm->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_visits_malformed_annotation")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(v: number?)
+            if local y: IDoNotExist = v then
+                print(y)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR(result, UnknownSymbol);
+    auto us = get<UnknownSymbol>(result.errors[0]);
+    CHECK_EQ("IDoNotExist", us->name);
+    CHECK(us->context == UnknownSymbol::Context::Type);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_visits_malformed_annotation_qualified")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    fileResolver.source["game/Foo"] = R"(
+        export type Baz = number
+        return {}
+    )";
+
+    fileResolver.source["game/Main"] = R"(
+        local Foo = require(game.Foo)
+        local function f(v: number?)
+            if local y: Foo.Bar = v then
+                print(y)
+            end
+        end
+    )";
+
+    CheckResult result = getFrontend().check("game/Main");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<UnknownSymbol>(result.errors[0]) != nullptr);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_bidirectional_table_annotation")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        if local y: { x: number? } = { x = 42 } then
+            print(y)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_bidirectional_table_annotation_mismatch")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauIfLocalSyntax, true},
+        {FFlag::DebugLuauIfLocalAnalysis, true},
+    };
+
+    CheckResult result = check(R"(
+        if local y: { x: number? } = { x = true } then
+            print(y)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR(result, TypeMismatch);
 }
 
 TEST_SUITE_END();

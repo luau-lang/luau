@@ -29,6 +29,7 @@ LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
 LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
+LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 
 namespace Luau
 {
@@ -2655,7 +2656,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , setmetatableFunc{"setmetatable", setmetatableTypeFunction}
     , getmetatableFunc{"getmetatable", getmetatableTypeFunction}
     , objectofFunc{"objectof", objectofTypeFunction}
-    , weakoptionalFunc{"weakoptional", weakoptionalTypeFunc}
+    , weakoptionalFunc{"weakoptional", weakoptionalTypeFunc, /* canReduceGenerics */ FFlag::LuauTraverseScopeToFunction}
 {
 }
 

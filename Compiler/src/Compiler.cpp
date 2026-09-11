@@ -36,6 +36,7 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileMoveElision)
 LUAU_FASTFLAGVARIABLE(LuauCompileCleanBlockDeadClose)
 LUAU_FASTFLAGVARIABLE(LuauCompileContinueEagerClose)
+LUAU_FASTFLAGVARIABLE(LuauCompileLoopUnrollZero)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(DebugLuauNoInline)
@@ -4149,6 +4150,12 @@ struct Compiler
         {
             bytecode.addDebugRemark("loop unroll failed: invalid iteration count");
             return false;
+        }
+
+        if (FFlag::LuauCompileLoopUnrollZero && tripCount == 0)
+        {
+            bytecode.addDebugRemark("loop unroll succeeded: empty loop");
+            return true;
         }
 
         if (tripCount > thresholdBase)

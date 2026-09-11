@@ -19,9 +19,9 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauDirectFieldGet)
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_FASTFLAGVARIABLE(LuauNewPointerEncode)
+LUAU_FASTFLAGVARIABLE(DebugLuauCoroutineFinally)
 
 /*
  * This file contains most implementations of core Lua APIs from lua.h.
@@ -1303,6 +1303,75 @@ int lua_costatus(lua_State* L, lua_State* co)
     return LUA_COSUS; // initial state
 }
 
+int lua_hasfinalizers(lua_State* L)
+{
+    LUAU_ASSERT(FFlag::DebugLuauCoroutineFinally);
+
+    return L->finalizers ? 1 : 0;
+}
+
+static int runfinalizery(lua_State* L)
+{
+    lua_State* co = lua_tothread(L, 1);
+    api_check(L, co != nullptr && co != L);
+    api_check(L, L->global == co->global);
+    api_check(L, co->status != LUA_YIELD && co->status != LUA_BREAK);
+    api_check(L, co->finalizers != nullptr);
+
+    luaD_preparefinalize(L, co);
+    return luaD_runfinalizers(L, /* toclose */ false, /* returnstatus */ false);
+}
+
+static int runfinalizercont(lua_State* L, int status)
+{
+    if (status != LUA_OK)
+        luaD_throw(L, status);
+
+    return luaD_runfinalizers(L, /* toclose */ false, /* returnstatus */ false);
+}
+
+void lua_pushfinalizerfunction(lua_State* L)
+{
+    LUAU_ASSERT(FFlag::DebugLuauCoroutineFinally);
+
+    luaC_threadbarrier(L);
+    api_check(L, L->status == LUA_OK);
+
+    lua_pushcclosurek(L, runfinalizery, "finalize", 0, runfinalizercont);
+}
+
+void lua_addfinalizer(lua_State* L, lua_State* co, int idx)
+{
+    LUAU_ASSERT(FFlag::DebugLuauCoroutineFinally);
+
+    api_check(L, co != nullptr);
+    api_check(L, !lua_isnoneornil(L, idx));
+
+    if (co == lua_mainthread(L))
+        luaG_runerror(L, "cannot register a finalizer on the main thread");
+
+    int status = lua_costatus(L, co);
+    if (status == LUA_COFIN || status == LUA_COERR)
+        luaG_runerror(L, "cannot register a finalizer on dead coroutine");
+
+    if (LUAU_UNLIKELY(!!L->global->cb.userfinalizer))
+        L->global->cb.userfinalizer(L, co);
+
+    StkId cb = index2addr(L, idx);
+
+    // create a callback table if it's not ready
+    if (co->finalizers == nullptr)
+    {
+        co->finalizers = luaH_new(L, 1, 0);
+        luaC_objbarrier(L, co, co->finalizers);
+    }
+
+    // add a new item
+    TValue* slot = luaH_setnum(L, co->finalizers, luaH_getn(co->finalizers) + 1);
+    setobj2t(L, slot, cb);
+    luaC_barriert(L, co->finalizers, cb);
+}
+
 void* lua_getthreaddata(lua_State* L)
 {
     return L->userdata;
@@ -2110,9 +2179,6 @@ lua_Alloc lua_getallocf(lua_State* L, void** ud)
 
 void lua_registeruserdatadirectfieldget(lua_State* L, int tag, const char* field, lua_UserdataDirectFieldGet fn)
 {
-    if (!FFlag::LuauDirectFieldGet)
-        return;
-
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
     api_check(L, field != nullptr);
     api_check(L, fn != nullptr);
@@ -2131,7 +2197,6 @@ void lua_registeruserdatadirectfieldget(lua_State* L, int tag, const char* field
 
 void lua_userdatadirectfield_setnumber(void* result, double n)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
     TValue* slot = LUA_VECTOR_DOUBLE ? static_cast<DirectFieldResult*>(result)->slot : static_cast<TValue*>(result);
     setnvalue(slot, n);
 }
@@ -2139,8 +2204,6 @@ void lua_userdatadirectfield_setnumber(void* result, double n)
 #if LUA_VECTOR_SIZE == 4
 void lua_userdatadirectfield_setvector(void* result, LUA_VECTOR_TYPE x, LUA_VECTOR_TYPE y, LUA_VECTOR_TYPE z, LUA_VECTOR_TYPE w)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
-
     if (LUA_VECTOR_DOUBLE == 1)
     {
         DirectFieldResult* dfr = static_cast<DirectFieldResult*>(result);
@@ -2154,8 +2217,6 @@ void lua_userdatadirectfield_setvector(void* result, LUA_VECTOR_TYPE x, LUA_VECT
 #else
 void lua_userdatadirectfield_setvector(void* result, LUA_VECTOR_TYPE x, LUA_VECTOR_TYPE y, LUA_VECTOR_TYPE z)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
-
     if (LUA_VECTOR_DOUBLE == 1)
     {
         DirectFieldResult* dfr = static_cast<DirectFieldResult*>(result);
@@ -2170,21 +2231,18 @@ void lua_userdatadirectfield_setvector(void* result, LUA_VECTOR_TYPE x, LUA_VECT
 
 void lua_userdatadirectfield_setboolean(void* result, int b)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
     TValue* slot = LUA_VECTOR_DOUBLE ? static_cast<DirectFieldResult*>(result)->slot : static_cast<TValue*>(result);
     setbvalue(slot, b);
 }
 
 void lua_userdatadirectfield_setinteger64(void* result, int64_t n)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
     TValue* slot = LUA_VECTOR_DOUBLE ? static_cast<DirectFieldResult*>(result)->slot : static_cast<TValue*>(result);
     setlvalue(slot, n);
 }
 
 void lua_userdatadirectfield_setnil(void* result)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
     TValue* slot = LUA_VECTOR_DOUBLE ? static_cast<DirectFieldResult*>(result)->slot : static_cast<TValue*>(result);
     setnilvalue(slot);
 }
