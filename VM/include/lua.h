@@ -53,6 +53,8 @@ typedef int (*lua_Continuation)(lua_State* L, int status);
 */
 
 typedef void* (*lua_Alloc)(void* ud, void* ptr, size_t osize, size_t nsize);
+// `type` identifies the caged heap allocation, which is an opaque embedder-defined identifier
+typedef void* (*lua_CageAlloc)(void* ud, void* ptr, size_t osize, size_t nsize, int type);
 
 // non-return type
 #define l_noret void LUA_NORETURN
@@ -270,6 +272,11 @@ LUA_API int lua_isyieldable(lua_State* L);
 LUA_API void* lua_getthreaddata(lua_State* L);
 LUA_API void lua_setthreaddata(lua_State* L, void* data);
 LUA_API int lua_costatus(lua_State* L, lua_State* co);
+
+// NOTE: experimental API, requires a Debug flag and is subject to breaking changes
+LUA_API int lua_hasfinalizers(lua_State* L);
+LUA_API void lua_pushfinalizerfunction(lua_State* L);
+LUA_API void lua_addfinalizer(lua_State* L, lua_State* co, int idx);
 
 /*
 ** garbage-collection function and options
@@ -611,6 +618,9 @@ struct lua_Callbacks
     void (*userthread)(lua_State* LP, lua_State* L); // gets called when L is created (LP == parent) or destroyed (LP == NULL)
     int16_t (*useratom)(lua_State* L, const char* s, size_t l); // gets called when a string is created to assign an atom id
 
+    // NOTE: experimental API, requires a Debug flag to be called and is subject to breaking changes
+    void (*userfinalizer)(lua_State* L, lua_State* co); // gets called before a finalizer is attached to 'co' by current thread
+
     void (*debugbreak)(lua_State* L, lua_Debug* ar);     // gets called when BREAK instruction is encountered
     void (*debugstep)(lua_State* L, lua_Debug* ar);      // gets called after each instruction in single step mode
     void (*debuginterrupt)(lua_State* L, lua_Debug* ar); // gets called when thread execution is interrupted by break in another thread
@@ -628,6 +638,11 @@ struct lua_Callbacks
 typedef struct lua_Callbacks lua_Callbacks;
 
 LUA_API lua_Callbacks* lua_callbacks(lua_State* L);
+
+// Must be called after lua_newstate and before the state creates any buffers
+// The VM makes no assumptions about the layout or structure of the caged heap
+// The VM does assume that the embedder will free any memory allocated if the lua_State the cage is associated with is closed
+LUA_API void lua_setbuffercage(lua_State* L, lua_CageAlloc alloc, void* ud);
 
 /******************************************************************************
  * Copyright (c) 2019-2023 Roblox Corporation

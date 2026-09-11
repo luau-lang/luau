@@ -1549,20 +1549,21 @@ struct Printer
     {
         if (FFlag::DebugLuauIfLocalSyntax && elseif.conditionLocal)
         {
+            const auto cstNode = lookupCstNode<CstStatIf>(&elseif);
+
+            if (elseif.conditionKeywordLocation)
+                advance(elseif.conditionKeywordLocation->begin);
             writer.keyword(elseif.conditionIsConst ? "const" : "local");
-            writer.write(elseif.conditionLocal->name.value);
-            if (elseif.conditionLocal->annotation)
-            {
-                writer.symbol(":");
-                visualizeTypeAnnotation(*elseif.conditionLocal->annotation);
-            }
+
+            visualize(*elseif.conditionLocal, cstNode ? cstNode->annotationColonPosition : Position::missing());
+
+            if (elseif.conditionEqualsLocation)
+                advance(elseif.conditionEqualsLocation->begin);
             writer.symbol("=");
-            visualize(*elseif.condition);
         }
-        else
-        {
-            visualize(*elseif.condition);
-        }
+
+        visualize(*elseif.condition);
+
         if (elseif.thenLocation)
             advance(elseif.thenLocation->begin);
         writer.keyword("then");

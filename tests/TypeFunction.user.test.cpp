@@ -20,9 +20,9 @@ LUAU_FASTFLAG(LuauUdtfPopulateEnv)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
-LUAU_FASTFLAG(LuauUdtfCreateSingletonFixErrorMessage)
-LUAU_FASTFLAG(LuauUdtfTypeToStringMetamethod)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus)
+LUAU_FASTFLAG(LuauTypeFunctionsReturnAfterAllSerialized)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -1637,6 +1637,8 @@ local function test()
 end
 local a = test()
     )");
+
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK(toString(requireType("a")) == R"("hi")");
@@ -1697,6 +1699,91 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "explicit_export_zero_arg")
 
     LUAU_REQUIRE_NO_ERRORS(bResult);
     CHECK(toString(requireType("x")) == "number");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_function_property_access_across_modules")
+{
+    ScopedFastFlag solverV2{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag retainSolvedStatus{FFlag::LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus, true};
+    ScopedFastFlag cloneForeignArena{FFlag::LuauCloneTypeFunctionFromForeignArena, true};
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        export type SerdesNode<T> = {
+            _T: T,
+        }
+
+        type function GetTypeFromTypeNode(Node: type)
+            return Node:readproperty(types.singleton("_T"))
+        end
+
+        export type Lib = {
+            read Serialize: <T>(Node: T, Data: GetTypeFromTypeNode<T>) -> buffer,
+            read Deserialize: <T>(Node: SerdesNode<T>, Buffer: buffer) -> T,
+
+            read Test: SerdesNode<boolean>
+        }
+
+        const Lib: Lib = nil :: any
+
+        const Type = Lib.Test
+
+        const Result = Lib.Serialize(Type, true)
+        const Data = Lib.Deserialize(Type, Result)
+
+        return Lib
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = check(R"(
+        --!strict
+        const Lib = require(game.A)
+
+        const Type = Lib.Test
+
+        const Result = Lib.Serialize(Type, true)
+        const Data = Lib.Deserialize(Type, Result)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_function_property_access_across_modules_2")
+{
+    ScopedFastFlag solverV2{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag retainSolvedStatus{FFlag::LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus, true};
+    ScopedFastFlag cloneForeignArena{FFlag::LuauCloneTypeFunctionFromForeignArena, true};
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+
+        const Example = {}
+
+        type function notUnion(ty: type)
+            assert(not ty:is("union"))
+            return ty
+        end
+
+        function Example.Set<T>(self: Example, something: notUnion<T>)
+        end
+
+        type Example = typeof(Example)
+
+
+        return Example
+    )";
+
+    CheckResult aResult = getFrontend().check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = check(R"(
+        --!strict
+        const module = require(game.A)
+
+        module:Set<<number>>(4)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "print_to_error")
@@ -1807,6 +1894,7 @@ type test = typeof(m)
 local function ok(idx: pass<test>): test return idx end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1999,6 +2087,7 @@ type test = typeof(m)
 local function ok(idx: pass<test>): <T, U>(T) -> (U) return idx end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -3263,6 +3352,60 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_cloner_missing_integer_crashes_copy")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_integer_methods_work")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
+
+    CheckResult result = check(R"(
+        type function getinteger()
+            local ty = types.integer
+            if ty:is("integer") then
+                return ty
+            end
+            -- this should never be returned
+            return types.string
+        end
+        local function ok(idx: getinteger<>): integer return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_integer_is_distinct_from_number")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
+
+    CheckResult result = check(R"(
+        type function pick(arg)
+            if arg:is("integer") then
+                return types.integer
+            end
+            return types.number
+        end
+        local function ok(idx: pick<integer>): integer return idx end
+        local function ok2(idx: pick<number>): number return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_integer_constructor_is_not_number")
+{
+    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
+
+    CheckResult result = check(R"(
+        type function getinteger()
+            return types.integer
+        end
+        local function bad(idx: getinteger<>): number return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_setgenerics_wrong_argcount_check")
 {
     ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
@@ -3537,7 +3680,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "issubtypeof_table_indexer")
 TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag fixErrorMessage{FFlag::LuauUdtfCreateSingletonFixErrorMessage, true};
 
     CheckResult results = check(R"(
         type alias = {}
@@ -3558,7 +3700,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "types_singleton_error_message")
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_tostring")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-    ScopedFastFlag tostringMetamethod{FFlag::LuauUdtfTypeToStringMetamethod, true};
 
     CheckResult results = check(R"(
         type function foo(ty)
@@ -3626,6 +3767,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_type_function_type_check")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]).find("Expected this to be 'number', but got") == 0);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_when_serializing_environment_but_not_arguements")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauTypeFunctionsReturnAfterAllSerialized, true};
+
+    CheckResult result = check(R"(
+        local a: any
+        type Foobar = typeof(assert(a))
+
+        type function oopsie()
+            local _ = Foobar
+            return types.unionof(types.number, types.string)
+        end
+
+        type Hmm = oopsie<>
+    )");
+
+    // TODO: This probably *should* error, as we cannot include `Foobar` as
+    // part of the environment as an unserializable type (error).
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

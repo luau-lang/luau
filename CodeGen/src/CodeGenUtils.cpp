@@ -19,7 +19,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauDirectFieldGet)
 LUAU_FASTFLAG(LuauCIProto)
 LUAU_FASTFLAG(LuauPromoteProto)
 
@@ -511,7 +510,7 @@ const Instruction* executeGETTABLEKS(lua_State* L, const Instruction* pc, StkId 
     else
     {
         // fast-path: registered direct field handler
-        if (FFlag::LuauDirectFieldGet && ttisuserdata(rb))
+        if (ttisuserdata(rb))
         {
             LuaTable* dispatch = L->global->udatadirectfields[uvalue(rb)->tag];
             if (dispatch)

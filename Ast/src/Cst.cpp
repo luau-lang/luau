@@ -167,6 +167,12 @@ CstStatForIn::CstStatForIn(
 {
 }
 
+CstStatIf::CstStatIf(Position annotationColonPosition)
+    : CstNode(CstClassIndex())
+    , annotationColonPosition(annotationColonPosition)
+{
+}
+
 CstStatAssign::CstStatAssign(AstArray<Position> varsCommaPositions, Position equalsPosition, AstArray<Position> valuesCommaPositions)
     : CstNode(CstClassIndex())
     , varsCommaPositions(varsCommaPositions)

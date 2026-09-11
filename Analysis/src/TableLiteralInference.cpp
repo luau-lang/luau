@@ -3,6 +3,7 @@
 #include "Luau/TableLiteralInference.h"
 
 #include "Luau/Ast.h"
+#include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/HashUtil.h"
@@ -17,6 +18,7 @@
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRelaxConstraintOrderingForFunctionCheck)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSetMetatable)
 
 namespace Luau
 {
@@ -111,6 +113,12 @@ struct FindFunctionTypeIn : IterativeTypeVisitor
  */
 bool isCheckableExpr(const AstExpr* expr)
 {
+    if (FFlag::LuauBidirectionalInferenceSetMetatable)
+    {
+        if (const AstExprCall* call = expr->as<AstExprCall>(); call && matchSetMetatable(*call))
+            return true;
+    }
+
     return isLiteral(expr) || expr->is<AstExprGroup>() || expr->is<AstExprIfElse>();
 }
 
@@ -211,6 +219,20 @@ struct BidirectionalTypePusher
             pushType(expectedType, ternary->trueExpr);
             pushType(expectedType, ternary->falseExpr);
             return exprType;
+        }
+
+        if (FFlag::LuauBidirectionalInferenceSetMetatable)
+        {
+            if (const AstExprCall* call = expr->as<AstExprCall>(); call && matchSetMetatable(*call))
+            {
+                if (const MetatableType* expectedMetatable = get<MetatableType>(expectedType))
+                {
+                    pushType(expectedMetatable->table, call->args.data[0]);
+                    pushType(expectedMetatable->metatable, call->args.data[1]);
+                }
+
+                return exprType;
+            }
         }
 
         if (!FFlag::LuauRelaxConstraintOrderingForFunctionCheck)

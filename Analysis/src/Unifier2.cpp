@@ -26,6 +26,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauUnifierRecursionLimit, 100)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauDoNotLeakGenericsInIndexer)
+LUAU_FASTFLAGVARIABLE(LuauInferReadOnlyIndexers)
 
 namespace Luau
 {
@@ -577,9 +578,12 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
         result &= unify_(subTable->indexer->indexType, superTable->indexer->indexType);
         result &= unify_(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
 
-        // FIXME: We can probably do something more efficient here.
-        result &= unify_(superTable->indexer->indexType, subTable->indexer->indexType);
-        result &= unify_(superTable->indexer->indexResultType, subTable->indexer->indexResultType);
+        if (!FFlag::LuauInferReadOnlyIndexers || (!superTable->indexer->isReadOnly && !subTable->indexer->isReadOnly))
+        {
+            // FIXME: We can probably do something more efficient here.
+            result &= unify_(superTable->indexer->indexType, subTable->indexer->indexType);
+            result &= unify_(superTable->indexer->indexResultType, subTable->indexer->indexResultType);
+        }
     }
 
     if (!subTable->indexer && subTable->state == TableState::Unsealed && superTable->indexer)
@@ -614,6 +618,9 @@ UnifyResult Unifier2::unify_(TableType* subTable, const TableType* superTable)
 
             subTable->indexer = TableIndexer{indexType, indexResultType};
         }
+
+        if (FFlag::LuauInferReadOnlyIndexers)
+            subTable->indexer->isReadOnly = superTable->indexer->isReadOnly;
     }
 
     return result;

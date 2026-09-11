@@ -106,6 +106,9 @@ static void validatestack(global_State* g, lua_State* l)
     if (l->namecall)
         validateobjref(g, obj2gco(l), obj2gco(l->namecall));
 
+    if (l->finalizers)
+        validateobjref(g, obj2gco(l), obj2gco(l->finalizers));
+
     for (UpVal* uv = l->openupval; uv; uv = uv->u.open.threadnext)
     {
         LUAU_ASSERT(uv->tt == LUA_TUPVAL);
@@ -463,6 +466,12 @@ static void dumpthread(FILE* f, lua_State* th)
 
     fprintf(f, ",\"env\":");
     dumpref(f, obj2gco(th->gt));
+
+    if (th->finalizers)
+    {
+        fprintf(f, ",\"finalizers\":");
+        dumpref(f, obj2gco(th->finalizers));
+    }
 
     Closure* tcl = 0;
     Proto* cip = nullptr;
@@ -930,6 +939,9 @@ static void enumthread(EnumContext* ctx, lua_State* th)
     }
 
     enumedge(ctx, obj2gco(th), obj2gco(th->gt), "globals");
+
+    if (th->finalizers)
+        enumedge(ctx, obj2gco(th), obj2gco(th->finalizers), "finalizers");
 
     if (th->top > th->stack)
         enumedges(ctx, obj2gco(th), th->stack, th->top - th->stack, "stack");

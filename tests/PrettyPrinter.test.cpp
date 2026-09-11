@@ -12,6 +12,7 @@ LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauPrettyPrintVisualizeIndexerAccess)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 
 using namespace Luau;
 
@@ -86,6 +87,86 @@ TEST_CASE("if_stmt_spaces_around_tokens")
 
     const std::string nine = R"( if This then Once() elseif true    then Other() end)";
     CHECK_EQ(nine, prettyPrint(nine).code);
+}
+
+TEST_CASE("if_local")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    const std::string local = R"(if local result = getValue() then use(result) end)";
+    CHECK_EQ(local, prettyPrint(local).code);
+
+    const std::string konst = R"(if const item = map[key] then process(item) end)";
+    CHECK_EQ(konst, prettyPrint(konst).code);
+
+    const std::string chain = R"(if ready then start() elseif local hit = raycast() then use(hit) end)";
+    CHECK_EQ(chain, prettyPrint(chain).code);
+}
+
+TEST_CASE("if_local_preserves_interior_spacing")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    const std::string spaced = R"(if     local   result   =   getValue() then use(result) end)";
+    CHECK_EQ(spaced, prettyPrint(spaced).code);
+}
+
+TEST_CASE("if_local_type_annotation")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    const std::string typed = R"(if local res : string = foo() then print(res) end)";
+    CHECK_EQ(typed, prettyPrint(typed, {}, /* withTypes */ true).code);
+
+    const std::string stripped = prettyPrint(typed).code;
+    CHECK(stripped.find("string") == std::string::npos);
+    CHECK(stripped.find("foo()") != std::string::npos);
+}
+
+TEST_CASE("elseif_local_type_annotation")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    const std::string typed = R"(if cond then use() elseif local res : string = foo() then print(res) end)";
+    CHECK_EQ(typed, prettyPrint(typed, {}, /* withTypes */ true).code);
+}
+
+TEST_CASE("if_local_type_annotation_preserves_interior_spacing")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    const std::string spaced = R"(if local res   :   string = foo() then print(res) end)";
+    CHECK_EQ(spaced, prettyPrint(spaced, {}, /* withTypes */ true).code);
+}
+
+TEST_CASE("if_local_without_annotation_with_types")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    const std::string local = R"(if local result = getValue() then use(result) end)";
+    CHECK_EQ(local, prettyPrint(local, {}, /* withTypes */ true).code);
+
+    const std::string konst = R"(if const item = map[key] then process(item) end)";
+    CHECK_EQ(konst, prettyPrint(konst, {}, /* withTypes */ true).code);
+}
+
+TEST_CASE("if_const_type_annotation")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    const std::string typed = R"(if const item : number = map[key] then process(item) end)";
+    CHECK_EQ(typed, prettyPrint(typed, {}, /* withTypes */ true).code);
+}
+
+TEST_CASE("if_local_complex_type_annotation")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    const std::string table = R"(if local xs : {number} = getList() then use(xs) end)";
+    CHECK_EQ(table, prettyPrint(table, {}, /* withTypes */ true).code);
+
+    const std::string optional = R"(if local hit : Instance? = raycast() then use(hit) end)";
+    CHECK_EQ(optional, prettyPrint(optional, {}, /* withTypes */ true).code);
 }
 
 TEST_CASE("elseif_chains_indent_sensibly")
