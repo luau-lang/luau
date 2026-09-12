@@ -21,8 +21,8 @@
 
 #include "doctest.h"
 #include "ScopedFlags.h"
-#include "BufferCage.h"
 #include "ConformanceIrHooks.h"
+#include "BufferCage.h"
 
 #include <cstdlib>
 #include <fstream>
