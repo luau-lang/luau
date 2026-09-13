@@ -90,9 +90,11 @@ void initFunctions(NativeContext& context)
     context.callProlog = callProlog;
     context.callEpilogC = callEpilogC;
     context.newUserdata = newUserdata;
+    context.newVector = newVector;
     context.getImport = getImport;
 
     context.callFallback = callFallback;
+    context.fastPcallSetup = fastPcallSetup;
 
     context.executeGETGLOBAL = executeGETGLOBAL;
     context.executeSETGLOBAL = executeSETGLOBAL;

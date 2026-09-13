@@ -35,12 +35,12 @@ struct TypeFunctionInferenceResult
 struct TypeFunctionReductionGuesser
 {
     // Tracks our hypothesis about what a type function reduces to
-    DenseHashMap<TypeId, TypeId> functionReducesTo{nullptr};
+    DenseHashMap<TypeId, TypeId> functionReducesTo;
     // Tracks our constraints on type function operands
-    DenseHashMap<TypeId, TypeId> substitutable{nullptr};
+    DenseHashMap<TypeId, TypeId> substitutable;
     // List of instances to try progress
     VecDeque<TypeId> toInfer;
-    DenseHashSet<TypeId> cyclicInstances{nullptr};
+    DenseHashSet<TypeId> cyclicInstances;
 
     // Utilities
     NotNull<TypeArena> arena;

@@ -13,6 +13,9 @@
 #include "ltm.h"
 
 LUAU_FASTFLAG(LuauCodegenInteger3)
+LUAU_FASTFLAGVARIABLE(LuauCodegenIntegerCompare)
+LUAU_FASTFLAG(LuauBackedgeHeapCheck)
+LUAU_FASTFLAG(LuauFastpcallInterrupt)
 
 namespace Luau
 {
@@ -151,6 +154,10 @@ void translateInstJump(IrBuilder& build, const Instruction* pc, int pcpos)
 void translateInstJumpBack(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
+
+    if (FFlag::LuauBackedgeHeapCheck)
+        build.inst(IrCmd::CHECK_GC);
+
     build.inst(IrCmd::JUMP, build.blockAtInst(pcpos + 1 + LUAU_INSN_D(*pc)));
 }
 
@@ -197,6 +204,25 @@ void translateInstJumpIfEq(IrBuilder& build, const Instruction* pc, int pcpos, b
         IrOp vb = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rb));
 
         build.inst(IrCmd::JUMP_CMP_NUM, va, vb, build.cond(IrCondition::NotEqual), not_ ? target : next, not_ ? next : target);
+
+        build.beginBlock(fallback);
+    }
+    // fast-path: integer (when both operands are expected to be an integer or are unknown)
+    else if (FFlag::LuauCodegenInteger3 && FFlag::LuauCodegenIntegerCompare && isExpectedOrUnknownBytecodeType(bcTypes.a, LBC_TYPE_INTEGER) &&
+             isExpectedOrUnknownBytecodeType(bcTypes.b, LBC_TYPE_INTEGER))
+    {
+        IrOp fallback = build.fallbackBlock(pcpos);
+
+        IrOp ta = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
+        build.inst(IrCmd::CHECK_TAG, ta, build.constTag(LUA_TINTEGER), fallback);
+
+        IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
+        build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TINTEGER), fallback);
+
+        IrOp va = build.inst(IrCmd::LOAD_INT64, build.vmReg(ra));
+        IrOp vb = build.inst(IrCmd::LOAD_INT64, build.vmReg(rb));
+
+        build.inst(IrCmd::JUMP_CMP_INT64, va, vb, build.cond(IrCondition::NotEqual), not_ ? target : next, not_ ? next : target);
 
         build.beginBlock(fallback);
     }
@@ -381,6 +407,10 @@ void translateInstJumpIfCond(IrBuilder& build, const Instruction* pc, int pcpos,
 void translateInstJumpX(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
+
+    if (FFlag::LuauBackedgeHeapCheck)
+        build.inst(IrCmd::CHECK_GC);
+
     build.inst(IrCmd::JUMP, build.blockAtInst(pcpos + 1 + LUAU_INSN_E(*pc)));
 }
 
@@ -612,34 +642,87 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
         build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
         build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
 
-        IrOp vb = build.inst(IrCmd::LOAD_TVALUE, opb);
-        IrOp vc = build.inst(IrCmd::LOAD_TVALUE, opc);
-        IrOp result;
-
-        switch (tm)
+        if constexpr (LUA_VECTOR_DOUBLE == 1)
         {
-        case TM_ADD:
-            result = build.inst(IrCmd::ADD_VEC, vb, vc);
-            break;
-        case TM_SUB:
-            result = build.inst(IrCmd::SUB_VEC, vb, vc);
-            break;
-        case TM_MUL:
-            result = build.inst(IrCmd::MUL_VEC, vb, vc);
-            break;
-        case TM_DIV:
-            result = build.inst(IrCmd::DIV_VEC, vb, vc);
-            break;
-        case TM_IDIV:
-            result = build.inst(IrCmd::IDIV_VEC, vb, vc);
-            break;
-        default:
-            CODEGEN_ASSERT(!"Unknown TM op");
+            IrOp ptrb = build.inst(IrCmd::LOAD_POINTER, opb);
+            IrOp ptrc = build.inst(IrCmd::LOAD_POINTER, opc);
+
+            IrOp bx = build.inst(IrCmd::BUFFER_READF64, ptrb, build.constInt(0), build.constTag(LUA_TVECTOR));
+            IrOp by = build.inst(IrCmd::BUFFER_READF64, ptrb, build.constInt(8), build.constTag(LUA_TVECTOR));
+            IrOp bz = build.inst(IrCmd::BUFFER_READF64, ptrb, build.constInt(16), build.constTag(LUA_TVECTOR));
+
+            IrOp cx = build.inst(IrCmd::BUFFER_READF64, ptrc, build.constInt(0), build.constTag(LUA_TVECTOR));
+            IrOp cy = build.inst(IrCmd::BUFFER_READF64, ptrc, build.constInt(8), build.constTag(LUA_TVECTOR));
+            IrOp cz = build.inst(IrCmd::BUFFER_READF64, ptrc, build.constInt(16), build.constTag(LUA_TVECTOR));
+
+            IrCmd cmd = IrCmd::ADD_NUM;
+
+            switch (tm)
+            {
+            case TM_ADD:
+                cmd = IrCmd::ADD_NUM;
+                break;
+            case TM_SUB:
+                cmd = IrCmd::SUB_NUM;
+                break;
+            case TM_MUL:
+                cmd = IrCmd::MUL_NUM;
+                break;
+            case TM_DIV:
+                cmd = IrCmd::DIV_NUM;
+                break;
+            case TM_IDIV:
+                cmd = IrCmd::DIV_NUM;
+                break;
+            default:
+                CODEGEN_ASSERT(!"Unknown TM op");
+            }
+
+            IrOp rx = build.inst(cmd, bx, cx);
+            IrOp ry = build.inst(cmd, by, cy);
+            IrOp rz = build.inst(cmd, bz, cz);
+
+            if (tm == TM_IDIV)
+            {
+                rx = build.inst(IrCmd::FLOOR_NUM, rx);
+                ry = build.inst(IrCmd::FLOOR_NUM, ry);
+                rz = build.inst(IrCmd::FLOOR_NUM, rz);
+            }
+
+            build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, rx, ry, rz));
+            build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
         }
+        else
+        {
+            IrOp vb = build.inst(IrCmd::LOAD_TVALUE, opb);
+            IrOp vc = build.inst(IrCmd::LOAD_TVALUE, opc);
+            IrOp result;
 
-        result = build.inst(IrCmd::TAG_VECTOR, result);
+            switch (tm)
+            {
+            case TM_ADD:
+                result = build.inst(IrCmd::ADD_VEC, vb, vc);
+                break;
+            case TM_SUB:
+                result = build.inst(IrCmd::SUB_VEC, vb, vc);
+                break;
+            case TM_MUL:
+                result = build.inst(IrCmd::MUL_VEC, vb, vc);
+                break;
+            case TM_DIV:
+                result = build.inst(IrCmd::DIV_VEC, vb, vc);
+                break;
+            case TM_IDIV:
+                result = build.inst(IrCmd::IDIV_VEC, vb, vc);
+                break;
+            default:
+                CODEGEN_ASSERT(!"Unknown TM op");
+            }
 
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
+            result = build.inst(IrCmd::TAG_VECTOR, result);
+
+            build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
+        }
         return;
     }
     else if (!isUserdataBytecodeType(bcTypes.a) && bcTypes.b == LBC_TYPE_VECTOR && (tm == TM_MUL || tm == TM_DIV || tm == TM_IDIV))
@@ -656,28 +739,56 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
 
         build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
 
-        IrOp vb = build.inst(IrCmd::FLOAT_TO_VEC, build.inst(IrCmd::NUM_TO_FLOAT, loadDoubleOrConstant(build, opb)));
-        IrOp vc = build.inst(IrCmd::LOAD_TVALUE, opc);
-        IrOp result;
-
-        switch (tm)
+        if constexpr (LUA_VECTOR_DOUBLE == 1)
         {
-        case TM_MUL:
-            result = build.inst(IrCmd::MUL_VEC, vb, vc);
-            break;
-        case TM_DIV:
-            result = build.inst(IrCmd::DIV_VEC, vb, vc);
-            break;
-        case TM_IDIV:
-            result = build.inst(IrCmd::IDIV_VEC, vb, vc);
-            break;
-        default:
-            CODEGEN_ASSERT(!"Unknown TM op");
+            IrOp vb = loadDoubleOrConstant(build, opb);
+            IrOp vc = build.inst(IrCmd::LOAD_POINTER, opc);
+
+            IrOp cx = build.inst(IrCmd::BUFFER_READF64, vc, build.constInt(0), build.constTag(LUA_TVECTOR));
+            IrOp cy = build.inst(IrCmd::BUFFER_READF64, vc, build.constInt(8), build.constTag(LUA_TVECTOR));
+            IrOp cz = build.inst(IrCmd::BUFFER_READF64, vc, build.constInt(16), build.constTag(LUA_TVECTOR));
+
+            IrCmd cmd = tm == TM_MUL ? IrCmd::MUL_NUM : IrCmd::DIV_NUM;
+
+            IrOp rx = build.inst(cmd, vb, cx);
+            IrOp ry = build.inst(cmd, vb, cy);
+            IrOp rz = build.inst(cmd, vb, cz);
+
+            if (tm == TM_IDIV)
+            {
+                rx = build.inst(IrCmd::FLOOR_NUM, rx);
+                ry = build.inst(IrCmd::FLOOR_NUM, ry);
+                rz = build.inst(IrCmd::FLOOR_NUM, rz);
+            }
+
+            build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, rx, ry, rz));
+            build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
         }
+        else
+        {
+            IrOp vb = build.inst(IrCmd::FLOAT_TO_VEC, build.inst(IrCmd::NUM_TO_FLOAT, loadDoubleOrConstant(build, opb)));
+            IrOp vc = build.inst(IrCmd::LOAD_TVALUE, opc);
+            IrOp result;
 
-        result = build.inst(IrCmd::TAG_VECTOR, result);
+            switch (tm)
+            {
+            case TM_MUL:
+                result = build.inst(IrCmd::MUL_VEC, vb, vc);
+                break;
+            case TM_DIV:
+                result = build.inst(IrCmd::DIV_VEC, vb, vc);
+                break;
+            case TM_IDIV:
+                result = build.inst(IrCmd::IDIV_VEC, vb, vc);
+                break;
+            default:
+                CODEGEN_ASSERT(!"Unknown TM op");
+            }
 
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
+            result = build.inst(IrCmd::TAG_VECTOR, result);
+
+            build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
+        }
 
         translateBinaryNumericFallbackIfRequired(build, fallback, ra, opb, opc, tm, pcpos);
         return;
@@ -696,28 +807,56 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
             );
         }
 
-        IrOp vb = build.inst(IrCmd::LOAD_TVALUE, opb);
-        IrOp vc = build.inst(IrCmd::FLOAT_TO_VEC, build.inst(IrCmd::NUM_TO_FLOAT, loadDoubleOrConstant(build, opc)));
-        IrOp result;
-
-        switch (tm)
+        if constexpr (LUA_VECTOR_DOUBLE == 1)
         {
-        case TM_MUL:
-            result = build.inst(IrCmd::MUL_VEC, vb, vc);
-            break;
-        case TM_DIV:
-            result = build.inst(IrCmd::DIV_VEC, vb, vc);
-            break;
-        case TM_IDIV:
-            result = build.inst(IrCmd::IDIV_VEC, vb, vc);
-            break;
-        default:
-            CODEGEN_ASSERT(!"Unknown TM op");
+            IrOp vb = build.inst(IrCmd::LOAD_POINTER, opb);
+            IrOp vc = loadDoubleOrConstant(build, opc);
+
+            IrOp bx = build.inst(IrCmd::BUFFER_READF64, vb, build.constInt(0), build.constTag(LUA_TVECTOR));
+            IrOp by = build.inst(IrCmd::BUFFER_READF64, vb, build.constInt(8), build.constTag(LUA_TVECTOR));
+            IrOp bz = build.inst(IrCmd::BUFFER_READF64, vb, build.constInt(16), build.constTag(LUA_TVECTOR));
+
+            IrCmd cmd = tm == TM_MUL ? IrCmd::MUL_NUM : IrCmd::DIV_NUM;
+
+            IrOp rx = build.inst(cmd, bx, vc);
+            IrOp ry = build.inst(cmd, by, vc);
+            IrOp rz = build.inst(cmd, bz, vc);
+
+            if (tm == TM_IDIV)
+            {
+                rx = build.inst(IrCmd::FLOOR_NUM, rx);
+                ry = build.inst(IrCmd::FLOOR_NUM, ry);
+                rz = build.inst(IrCmd::FLOOR_NUM, rz);
+            }
+
+            build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, rx, ry, rz));
+            build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
         }
+        else
+        {
+            IrOp vb = build.inst(IrCmd::LOAD_TVALUE, opb);
+            IrOp vc = build.inst(IrCmd::FLOAT_TO_VEC, build.inst(IrCmd::NUM_TO_FLOAT, loadDoubleOrConstant(build, opc)));
+            IrOp result;
 
-        result = build.inst(IrCmd::TAG_VECTOR, result);
+            switch (tm)
+            {
+            case TM_MUL:
+                result = build.inst(IrCmd::MUL_VEC, vb, vc);
+                break;
+            case TM_DIV:
+                result = build.inst(IrCmd::DIV_VEC, vb, vc);
+                break;
+            case TM_IDIV:
+                result = build.inst(IrCmd::IDIV_VEC, vb, vc);
+                break;
+            default:
+                CODEGEN_ASSERT(!"Unknown TM op");
+            }
 
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
+            result = build.inst(IrCmd::TAG_VECTOR, result);
+
+            build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
+        }
 
         translateBinaryNumericFallbackIfRequired(build, fallback, ra, opb, opc, tm, pcpos);
         return;
@@ -869,10 +1008,28 @@ void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos)
     {
         build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rb)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
 
-        IrOp vb = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(rb));
-        IrOp va = build.inst(IrCmd::UNM_VEC, vb);
-        va = build.inst(IrCmd::TAG_VECTOR, va);
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), va);
+        if constexpr (LUA_VECTOR_DOUBLE == 1)
+        {
+            IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
+
+            IrOp bx = build.inst(IrCmd::BUFFER_READF64, vb, build.constInt(0), build.constTag(LUA_TVECTOR));
+            IrOp by = build.inst(IrCmd::BUFFER_READF64, vb, build.constInt(8), build.constTag(LUA_TVECTOR));
+            IrOp bz = build.inst(IrCmd::BUFFER_READF64, vb, build.constInt(16), build.constTag(LUA_TVECTOR));
+
+            IrOp rx = build.inst(IrCmd::UNM_NUM, bx);
+            IrOp ry = build.inst(IrCmd::UNM_NUM, by);
+            IrOp rz = build.inst(IrCmd::UNM_NUM, bz);
+
+            build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), build.inst(IrCmd::NEW_VECTOR, rx, ry, rz));
+            build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
+        }
+        else
+        {
+            IrOp vb = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(rb));
+            IrOp va = build.inst(IrCmd::UNM_VEC, vb);
+            va = build.inst(IrCmd::TAG_VECTOR, va);
+            build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), va);
+        }
         return;
     }
 
@@ -1059,7 +1216,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
         if (nresults == LUA_MULTRET)
             build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(ra), build.constInt(br.actualResultCount));
         else
-            build.inst(IrCmd::MARK_DEAD, build.vmReg(ra + 1), build.constInt(-1));
+            build.inst(IrCmd::MARK_DEAD, build.vmReg(ra + br.actualResultCount), build.constInt(-1));
 
         if (br.type != BuiltinImplType::UsesFallback)
         {
@@ -1093,6 +1250,69 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
         else if (nparams == LUA_MULTRET)
             build.inst(IrCmd::ADJUST_STACK_TO_TOP);
     }
+
+    return fallback;
+}
+
+std::optional<IrOp> translateFastPcall(IrBuilder& build, const Instruction* pc, int pcpos)
+{
+    LuauOpcode opcode = LuauOpcode(LUAU_INSN_OP(*pc));
+
+    int explicitArgs = LUAU_INSN_B(*pc);
+    int skip = LUAU_INSN_C(*pc);
+    Instruction call = pc[skip + 1];
+    CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+
+    int ra = LUAU_INSN_A(call);
+    int nparams = LUAU_INSN_B(call) - 1;
+    int nresults = LUAU_INSN_C(call) - 1;
+    int pfid = LUAU_INSN_A(*pc);
+    int knownArgs = (nparams == LUA_MULTRET) ? explicitArgs : nparams;
+
+    CODEGEN_ASSERT(pfid == 0 || pfid == 1);
+
+    if (pfid == 0) // pcall pre-requisites
+    {
+        if (knownArgs < 1 || !build.function.envInfo.hasPcall)
+            return std::nullopt;
+    }
+    else if (pfid == 1) // xpcall pre-requisites
+    {
+        if (knownArgs < 2 || !build.function.envInfo.hasXpcall)
+            return std::nullopt;
+    }
+
+    IrOp fallback = build.fallbackBlock(pcpos);
+
+    if (FFlag::LuauFastpcallInterrupt)
+        build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
+
+    // In unsafe environment, instead of retrying fastcall at 'pcpos' we side-exit directly to fallback sequence
+    build.checkSafeEnv(pcpos + getOpLength(opcode));
+
+    build.inst(IrCmd::CHECK_YIELDABLE, fallback);
+
+    if (pfid == 0)
+    {
+        build.loadAndCheckTag(build.vmReg(ra + 1), LUA_TFUNCTION, fallback);
+    }
+    else if (pfid == 1)
+    {
+        build.loadAndCheckTag(build.vmReg(ra + 1), LUA_TFUNCTION, fallback);
+        build.loadAndCheckTag(build.vmReg(ra + 2), LUA_TFUNCTION, fallback);
+
+        // swap 'f' and 'errf' so that we get 'errf, f, arguments' prepared for calling 'f'
+        IrOp f = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra + 1));
+        IrOp errf = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra + 2));
+
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra + 1), errf);
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra + 2), f);
+    }
+
+    // unlike other fastcalls, we are saving the location where the callee will return to, which is after the fallback
+    build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + skip + 2));
+
+    build.inst(IrCmd::INVOKE_FASTPCALL, build.vmReg(ra), build.constUint(pfid), build.constInt(nparams), build.constInt(nresults));
 
     return fallback;
 }
@@ -1202,6 +1422,9 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
     if (repeatJumpTarget != loopInfo.startpc)
         build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
 
+    if (FFlag::LuauBackedgeHeapCheck)
+        build.inst(IrCmd::CHECK_GC);
+
     IrOp stepK = loopInfo.step;
 
     IrOp limit = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 0));
@@ -1308,6 +1531,9 @@ void translateInstForGLoopIpairs(IrBuilder& build, const Instruction* pc, int pc
     IrOp hasElem = build.block(IrBlockKind::Internal);
 
     build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
+
+    if (FFlag::LuauBackedgeHeapCheck)
+        build.inst(IrCmd::CHECK_GC);
 
     // fast-path: builtin table iteration
     IrOp tagA = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra));
@@ -1556,29 +1782,52 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
         TString* str = gco2ts(build.function.proto->k[aux].value.gc);
         const char* field = getstr(str);
 
+        IrOp value;
+
         if (str->len == 1 && (*field == 'X' || *field == 'x'))
         {
-            IrOp value = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(rb), build.constInt(0));
-
-            value = build.inst(IrCmd::FLOAT_TO_NUM, value);
+            if constexpr (LUA_VECTOR_DOUBLE == 1)
+            {
+                IrOp ptr = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
+                value = build.inst(IrCmd::BUFFER_READF64, ptr, build.constInt(0), build.constTag(LUA_TVECTOR));
+            }
+            else
+            {
+                value = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(rb), build.constInt(0));
+                value = build.inst(IrCmd::FLOAT_TO_NUM, value);
+            }
 
             build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), value);
             build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
         }
         else if (str->len == 1 && (*field == 'Y' || *field == 'y'))
         {
-            IrOp value = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(rb), build.constInt(4));
-
-            value = build.inst(IrCmd::FLOAT_TO_NUM, value);
+            if constexpr (LUA_VECTOR_DOUBLE == 1)
+            {
+                IrOp ptr = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
+                value = build.inst(IrCmd::BUFFER_READF64, ptr, build.constInt(8), build.constTag(LUA_TVECTOR));
+            }
+            else
+            {
+                value = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(rb), build.constInt(4));
+                value = build.inst(IrCmd::FLOAT_TO_NUM, value);
+            }
 
             build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), value);
             build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
         }
         else if (str->len == 1 && (*field == 'Z' || *field == 'z'))
         {
-            IrOp value = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(rb), build.constInt(8));
-
-            value = build.inst(IrCmd::FLOAT_TO_NUM, value);
+            if constexpr (LUA_VECTOR_DOUBLE == 1)
+            {
+                IrOp ptr = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
+                value = build.inst(IrCmd::BUFFER_READF64, ptr, build.constInt(16), build.constTag(LUA_TVECTOR));
+            }
+            else
+            {
+                value = build.inst(IrCmd::LOAD_FLOAT, build.vmReg(rb), build.constInt(8));
+                value = build.inst(IrCmd::FLOAT_TO_NUM, value);
+            }
 
             build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), value);
             build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));

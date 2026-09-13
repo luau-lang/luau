@@ -158,11 +158,11 @@ struct FunctionGraphReductionResult
 {
     ErrorVec errors;
     ErrorVec messages;
-    DenseHashSet<TypeId> blockedTypes{nullptr};
-    DenseHashSet<TypePackId> blockedPacks{nullptr};
-    DenseHashSet<TypeId> reducedTypes{nullptr};
-    DenseHashSet<TypePackId> reducedPacks{nullptr};
-    DenseHashSet<TypeId> irreducibleTypes{nullptr};
+    DenseHashSet<TypeId> blockedTypes;
+    DenseHashSet<TypePackId> blockedPacks;
+    DenseHashSet<TypeId> reducedTypes;
+    DenseHashSet<TypePackId> reducedPacks;
+    DenseHashSet<TypeId> irreducibleTypes;
 };
 
 /**

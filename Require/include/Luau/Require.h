@@ -149,8 +149,8 @@ typedef struct luarequire_Configuration
     // thread to yield. In this case, this thread should be resumed with the
     // module result pushed onto its stack.
     //
-    // When this callback is invoked, the module's require table is at stack index 6.
-    // Pass it as the first argument (...) to the module chunk to support cyclic requires.
+    // For modules that use export, call luarequire_createplaceholder(L) after
+    // compile to enable cyclic require support.
     int (*load)(lua_State* L, void* ctx, const char* path, const char* chunkname, const char* loadname);
 } luarequire_Configuration;
 
@@ -181,3 +181,15 @@ LUALIB_API int luarequire_clearcacheentry(lua_State* L);
 
 // Clears all entries from the require cache.
 LUALIB_API int luarequire_clearcache(lua_State* L);
+
+// Locks a placeholder table with error-throwing __index/__newindex metatables
+// to prevent access during cyclic module loading.
+LUALIB_API void luarequire_lockplaceholder(lua_State* L, int idx);
+
+// Copies all fields, metatable, and readonly state from the result table into
+// the placeholder table, replacing the lock metatable.
+LUALIB_API void luarequire_populateplaceholder(lua_State* L, int placeholderIdx, int resultIdx);
+
+// Creates a locked placeholder and caches it for the current module.
+// Call from the load callback for modules that use export.
+LUALIB_API void luarequire_createplaceholder(lua_State* L);

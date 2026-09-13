@@ -33,6 +33,10 @@
 
 #include <string.h>
 
+// Set this to 1 to change the hash function to something different (and possibly trivial). Useful
+// for checking if a Lua program's behavior depends on the hash function.
+#define ALT_HASH_FUNCTION (0)
+
 // max size of both array and hash part is 2^MAXBITS
 #define MAXBITS 26
 #define MAXSIZE (1 << MAXBITS)
@@ -55,8 +59,8 @@ const LuaNode luaH_dummynode = {
 // hash is always reduced mod 2^k
 #define hashpow2(t, n) (gnode(t, lmod((n), sizenode(t))))
 
-#define hashstr(t, str) hashpow2(t, (str)->hash)
-#define hashboolean(t, p) hashpow2(t, p)
+#define hashstr(t, str) hashpow2(t, (ALT_HASH_FUNCTION ? 0x87654321 : 0) ^ (str)->hash)
+#define hashboolean(t, p) hashpow2(t, (ALT_HASH_FUNCTION ? 0x87654321 : 0) ^ p)
 
 static LuaNode* hashpointer(const LuaTable* t, const void* p)
 {
@@ -64,11 +68,14 @@ static LuaNode* hashpointer(const LuaTable* t, const void* p)
     unsigned int h = unsigned(uintptr_t(p));
 
     // MurmurHash3 32-bit finalizer
-    h ^= h >> 16;
-    h *= 0x85ebca6bu;
-    h ^= h >> 13;
-    h *= 0xc2b2ae35u;
-    h ^= h >> 16;
+    if (!ALT_HASH_FUNCTION)
+    {
+        h ^= h >> 16;
+        h *= 0x85ebca6bu;
+        h ^= h >> 13;
+        h *= 0xc2b2ae35u;
+        h ^= h >> 16;
+    }
 
     return hashpow2(t, h);
 }
@@ -86,14 +93,17 @@ static LuaNode* hashnum(const LuaTable* t, double n)
     // finalizer from MurmurHash64B
     const uint32_t m = 0x5bd1e995;
 
-    h1 ^= h2 >> 18;
-    h1 *= m;
-    h2 ^= h1 >> 22;
-    h2 *= m;
-    h1 ^= h2 >> 17;
-    h1 *= m;
-    h2 ^= h1 >> 19;
-    h2 *= m;
+    if (!ALT_HASH_FUNCTION)
+    {
+        h1 ^= h2 >> 18;
+        h1 *= m;
+        h2 ^= h1 >> 22;
+        h2 *= m;
+        h1 ^= h2 >> 17;
+        h1 *= m;
+        h2 ^= h1 >> 19;
+        h2 *= m;
+    }
 
     // ... truncated to 32-bit output (normally hash is equal to (uint64_t(h1) << 32) | h2, but we only really need the lower 32-bit half)
     return hashpow2(t, h2);
@@ -111,20 +121,23 @@ static LuaNode* hashint(const LuaTable* t, int64_t n)
     // finalizer from MurmurHash64B
     const uint32_t m = 0x5bd1e995;
 
-    h1 ^= h2 >> 18;
-    h1 *= m;
-    h2 ^= h1 >> 22;
-    h2 *= m;
-    h1 ^= h2 >> 17;
-    h1 *= m;
-    h2 ^= h1 >> 19;
-    h2 *= m;
+    if (!ALT_HASH_FUNCTION)
+    {
+        h1 ^= h2 >> 18;
+        h1 *= m;
+        h2 ^= h1 >> 22;
+        h2 *= m;
+        h1 ^= h2 >> 17;
+        h1 *= m;
+        h2 ^= h1 >> 19;
+        h2 *= m;
+    }
 
     // ... truncated to 32-bit output (normally hash is equal to (uint64_t(h1) << 32) | h2, but we only really need the lower 32-bit half)
     return hashpow2(t, h2);
 }
 
-static LuaNode* hashvec(const LuaTable* t, const float* v)
+LUAU_MAYBE_UNUSED static LuaNode* hashvec(const LuaTable* t, const float* v)
 {
     unsigned int i[LUA_VECTOR_SIZE];
     memcpy(i, v, sizeof(i));
@@ -135,9 +148,12 @@ static LuaNode* hashvec(const LuaTable* t, const float* v)
     i[2] = (i[2] == 0x80000000) ? 0 : i[2];
 
     // scramble bits to make sure that integer coordinates have entropy in lower bits
-    i[0] ^= i[0] >> 17;
-    i[1] ^= i[1] >> 17;
-    i[2] ^= i[2] >> 17;
+    if (!ALT_HASH_FUNCTION)
+    {
+        i[0] ^= i[0] >> 17;
+        i[1] ^= i[1] >> 17;
+        i[2] ^= i[2] >> 17;
+    }
 
     // Optimized Spatial Hashing for Collision Detection of Deformable Objects
     unsigned int h = (i[0] * 73856093) ^ (i[1] * 19349663) ^ (i[2] * 83492791);
@@ -146,6 +162,36 @@ static LuaNode* hashvec(const LuaTable* t, const float* v)
     i[3] = (i[3] == 0x80000000) ? 0 : i[3];
     i[3] ^= i[3] >> 17;
     h ^= i[3] * 39916801;
+#endif
+
+    return hashpow2(t, h);
+}
+
+static LUAU_MAYBE_UNUSED LuaNode* hashvec(const LuaTable* t, const double* v)
+{
+    uint64_t i[LUA_VECTOR_SIZE];
+    memcpy(i, v, sizeof(i));
+
+    // convert -0 to 0 to make sure they hash to the same value
+    i[0] = (i[0] == 0x8000000000000000ull) ? 0 : i[0];
+    i[1] = (i[1] == 0x8000000000000000ull) ? 0 : i[1];
+    i[2] = (i[2] == 0x8000000000000000ull) ? 0 : i[2];
+
+    // scramble bits to make sure that integer coordinates have entropy in lower bits
+    if (!ALT_HASH_FUNCTION)
+    {
+        i[0] ^= i[0] >> 32;
+        i[1] ^= i[1] >> 32;
+        i[2] ^= i[2] >> 32;
+    }
+
+    // Optimized Spatial Hashing for Collision Detection of Deformable Objects
+    unsigned int h = uint32_t(i[0] * 73856093) ^ uint32_t(i[1] * 19349663) ^ uint32_t(i[2] * 83492791);
+
+#if LUA_VECTOR_SIZE == 4
+    i[3] = (i[3] == 0x8000000000000000ull) ? 0 : i[3];
+    i[3] ^= i[3] >> 32;
+    h ^= uint32_t(i[3] * 39916801);
 #endif
 
     return hashpow2(t, h);
@@ -520,7 +566,7 @@ static void rehash(lua_State* L, LuaTable* t, const TValue* ek)
 
 LuaTable* luaH_new(lua_State* L, int narray, int nhash)
 {
-    LuaTable* t = luaM_newgco(L, LuaTable, sizeof(LuaTable), L->activememcat);
+    LuaTable* t = luaM_newgco(L, LuaTable, sizeof(LuaTable), L->activememcat, LUA_TTABLE);
     luaC_init(L, t, LUA_TTABLE);
     t->metatable = NULL;
     t->tmcache = cast_byte(~0);
@@ -853,7 +899,7 @@ int luaH_getn(LuaTable* t)
 
 LuaTable* luaH_clone(lua_State* L, LuaTable* tt)
 {
-    LuaTable* t = luaM_newgco(L, LuaTable, sizeof(LuaTable), L->activememcat);
+    LuaTable* t = luaM_newgco(L, LuaTable, sizeof(LuaTable), L->activememcat, LUA_TTABLE);
     luaC_init(L, t, LUA_TTABLE);
     t->metatable = tt->metatable;
     t->tmcache = tt->tmcache;

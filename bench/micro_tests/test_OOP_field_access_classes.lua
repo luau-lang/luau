@@ -1,4 +1,4 @@
--- --bench-args: --fflags=DebugLuauUserDefinedClasses,DebugLuauUserDefinedClassesRuntime
+-- --bench-args: --fflags=DebugLuauUserDefinedClasses,DebugLuauUserDefinedClassesRuntime,LuauCallFeedback,LuauEmitCallFeedback
 local function prequire(name) local success, result = pcall(require, name); return success and result end
 local bench = script and require(script.Parent.bench_support) or prequire("bench_support") or require("../bench_support")
 
@@ -11,7 +11,7 @@ end
 
 function test()
 
-    local n = Number { value = 42 }
+    local n = Number.new({ value = 42 })
 
     local ts0 = os.clock()
     for i=1,10_000_000 do

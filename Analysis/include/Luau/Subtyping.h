@@ -40,8 +40,8 @@ struct SubtypingReasoning
     // The path, relative to the _root supertype_, where subtyping failed.
     Path superPath;
     SubtypingVariance variance = SubtypingVariance::Covariant;
-    // Set when the failure is due to a property modifier mismatch (e.g. the
-    // sub property is read-only or write-only but the super property requires
+    // Set when the failure is due to a property or indexer modifier mismatch
+    // (e.g. the subtype member is read-only but the supertype member requires
     // read-write). In this case the leaf types at the path ends are the same,
     // so a plain "X is not a subtype of X" message would be misleading.
     bool isPropertyModifierViolation = false;
@@ -73,7 +73,7 @@ struct MappedGenericEnvironment
     {
         DenseHashMap<TypePackId, std::optional<TypePackId>> mappings;
         std::optional<size_t> parentScopeIndex; // nullopt if this is the root frame
-        DenseHashSet<size_t> children{0};
+        DenseHashSet<size_t> children;
 
         MappedGenericFrame(DenseHashMap<TypePackId, std::optional<TypePackId>> mappings, std::optional<size_t> parentScopeIndex);
     };
@@ -107,12 +107,6 @@ struct MappedGenericEnvironment
     bool bindGeneric(TypePackId genericTp, TypePackId bindeeTp);
 };
 
-enum class SubtypingSuppressionPolicy
-{
-    Any,
-    All
-};
-
 struct SubtypingResult
 {
     bool isSubtype = false;
@@ -122,7 +116,7 @@ struct SubtypingResult
     ErrorVec errors;
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
-    SubtypingReasonings reasoning{kEmptyReasoning};
+    SubtypingReasonings reasoning;
 
     // If this subtype result required testing free types, we might be making
     // assumptions about what the free type eventually resolves to.  If so,
@@ -132,7 +126,7 @@ struct SubtypingResult
     /// If any generic bounds were invalid, report them here
     std::vector<GenericBoundsMismatch> genericBoundsMismatches;
 
-    SubtypingResult& andAlso(SubtypingResult other, SubtypingSuppressionPolicy policy = SubtypingSuppressionPolicy::Any);
+    SubtypingResult& andAlso(SubtypingResult other);
     SubtypingResult& orElse(SubtypingResult other);
     SubtypingResult& withBothComponent(TypePath::Component component);
     SubtypingResult& withSuperComponent(TypePath::Component component);
@@ -185,7 +179,7 @@ struct SubtypingEnvironment
      * vector of bounds, since generics may be shadowed by nested types. The back
      * of each vector represents the current scope.
      */
-    DenseHashMap<TypeId, std::vector<GenericBounds>> mappedGenerics{nullptr};
+    DenseHashMap<TypeId, std::vector<GenericBounds>> mappedGenerics;
 
     MappedGenericEnvironment mappedGenericPacks;
 
@@ -195,13 +189,13 @@ struct SubtypingEnvironment
      *
      * An empty value is equivalent to a nonexistent key.
      */
-    DenseHashMap<TypeId, TypeId> substitutions{nullptr};
+    DenseHashMap<TypeId, TypeId> substitutions;
 
     // We use this cache to track pairs of subtypes that we tried to subtype, and found them to be in the seen set at the time.
     // In those situations, we return True, but mark the result as not cacheable, because we don't want to cache broader results which
     // led to the seen pair. However, those results were previously being cache in the ephemeralCache, and we still want to cache them somewhere
     // for performance reasons.
-    DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> seenSetCache{{}};
+    DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> seenSetCache;
 
     int iterationCount = 0;
 };
@@ -225,8 +219,8 @@ struct Subtyping
     using SeenSet = Set<std::pair<TypeId, TypeId>, TypePairHash>;
     using SeenTypePackSet = Set<std::pair<TypePackId, TypePackId>, TypePairHash>;
 
-    SeenSet seenTypes{{}};
-    SeenTypePackSet seenPacks{{}};
+    SeenSet seenTypes;
+    SeenTypePackSet seenPacks;
 
     Subtyping(
         NotNull<BuiltinTypes> builtinTypes,
@@ -263,7 +257,7 @@ struct Subtyping
     );
 
 private:
-    DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> resultCache{{}};
+    DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> resultCache;
 
     SubtypingResult cache(SubtypingEnvironment& env, SubtypingResult res, TypeId subTy, TypeId superTy);
 

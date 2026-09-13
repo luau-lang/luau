@@ -8,7 +8,7 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauTrackPrefixLocal)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 namespace Luau
 {
@@ -133,21 +133,40 @@ struct AstJsonEncoder : public AstVisitor
 
     void writeString(std::string_view sv)
     {
-        // TODO escape more accurately?
         writeRaw("\"");
 
         for (char c : sv)
         {
-            if (c == '"')
+            switch (c)
+            {
+            case '"':
                 writeRaw("\\\"");
-            else if (c == '\\')
+                break;
+            case '\\':
                 writeRaw("\\\\");
-            else if (c < ' ')
-                writeRaw(format("\\u%04x", c));
-            else if (c == '\n')
+                break;
+            case '\b':
+                writeRaw("\\b");
+                break;
+            case '\f':
+                writeRaw("\\f");
+                break;
+            case '\n':
                 writeRaw("\\n");
-            else
-                writeRaw(c);
+                break;
+            case '\r':
+                writeRaw("\\r");
+                break;
+            case '\t':
+                writeRaw("\\t");
+                break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20)
+                    writeRaw(format("\\u%04x", static_cast<unsigned char>(c)));
+                else
+                    writeRaw(c);
+                break;
+            }
         }
 
         writeRaw("\"");
@@ -722,6 +741,11 @@ struct AstJsonEncoder : public AstVisitor
                 if (node->elsebody)
                     PROP(elsebody);
                 write("hasThen", node->thenLocation.has_value());
+                if (FFlag::DebugLuauIfLocalAnalysis && node->conditionLocal)
+                {
+                    write("conditionLocal", node->conditionLocal->name);
+                    write("conditionIsConst", node->conditionIsConst);
+                }
             }
         );
     }
@@ -999,7 +1023,7 @@ struct AstJsonEncoder : public AstVisitor
                     PROP(prefix);
                 if (node->prefixLocation)
                     write("prefixLocation", *node->prefixLocation);
-                if (FFlag::LuauTrackPrefixLocal && node->prefixLocal)
+                if (node->prefixLocal)
                     write("prefixLocal", node->prefixLocal);
                 PROP(name);
                 PROP(nameLocation);

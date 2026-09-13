@@ -20,7 +20,7 @@ struct HostIrHooks;
 
 struct IrBuilder
 {
-    IrBuilder(const HostIrHooks& hostHooks);
+    IrBuilder(const HostIrHooks& hostHooks, const VmEnvironmentInfo& envInfo);
 
     void buildFunctionIr(Proto* proto);
 

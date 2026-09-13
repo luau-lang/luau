@@ -331,7 +331,6 @@ do
   st, msg = coroutine.close(co)
   assert(st and msg == nil)
 
-
   -- cannot close the running coroutine
   coroutine.wrap(function()
     local st, msg = pcall(coroutine.close, coroutine.running())
@@ -409,6 +408,421 @@ do
   local status, result = pcall(co)
   assert(status == false)
   assert(result == "cannot resume dead coroutine")
+end
+
+-- coroutine.close errors with no error object
+do
+    local co = coroutine.create(function()
+        error()
+    end)
+
+    local status, err = coroutine.resume(co)
+    assert(not status)
+    assert(err == nil)
+
+    status, err = coroutine.close(co)
+    assert(not status)
+    assert(err == nil)
+end
+
+-- coroutine.finally (using coroutne.resume with multiple callbacks, checking LIFO order)
+do
+    local co = coroutine.create(function()
+        coroutine.yield(1);
+        return 2
+    end)
+
+    local fres1, fres2
+    coroutine.finally(co, function(status, value)
+        assert(status == "finished")
+        fres1 = value
+        assert(fres2 == 2)
+    end)
+    coroutine.finally(co, function(status, value)
+        assert(status == "finished")
+        fres2 = value
+        assert(fres1 == nil)
+    end)
+
+    local s, r = coroutine.resume(co)
+    assert(s)
+    assert(r == 1)
+
+    s, r = coroutine.resume(co)
+    assert(s)
+    assert(r == 2)
+
+    assert(fres1 == 2)
+    assert(fres2 == 2)
+end
+
+-- coroutine.finally (error from coroutine in a callback)
+do
+    local co = coroutine.create(function() error("error") end)
+
+    local fres
+    coroutine.finally(co, function(status, result)
+        assert(status == "error")
+        fres = result
+    end)
+
+    local s, r = coroutine.resume(co)
+    assert(not s)
+    assert(string.find(r, "error"))
+    assert(string.find(fres, "error"))
+end
+
+-- coroutine.finally (multiple return values)
+do
+    local co = coroutine.create(function() return 1, "two", true end)
+
+    local sa, sb, sc
+    coroutine.finally(co, function(status, a, b, c)
+        assert(status == "finished")
+        sa, sb, sc = a, b, c
+    end)
+
+    local s, a, b, c = coroutine.resume(co)
+    assert(s)
+    assert(a == 1 and b == "two" and c == true)
+    assert(sa == 1 and sb == "two" and sc == true)
+end
+
+-- coroutine.finally (callback chain is aborted by an error in first callback)
+do
+    local co = coroutine.create(function() return 123 end)
+
+    local ran_first, ran_second = false, false
+    coroutine.finally(co, function()
+        ran_second = true
+    end)
+    coroutine.finally(co, function()
+        ran_first = true
+        error("callback error")
+    end)
+
+    local s, r = coroutine.resume(co)
+    assert(not s)
+    assert(string.find(r, "callback error"))
+    assert(ran_first)
+    assert(not ran_second)
+end
+
+-- coroutine.finally (callback error takes precedence over coroutine error)
+do
+    local co = coroutine.create(function() error("original error") end)
+
+    coroutine.finally(co, function(status)
+        assert(status == "error")
+        error("callback error")
+    end)
+
+    local s, r = coroutine.resume(co)
+    assert(not s)
+    assert(string.find(r, "callback error"))
+end
+
+-- coroutine.finally (cannot register on completed coroutine)
+do
+    local co_finished = coroutine.create(function() end)
+    coroutine.resume(co_finished)
+    assert(coroutine.status(co_finished) == "dead")
+
+    local co_errored = coroutine.create(function() error("x") end)
+    coroutine.resume(co_errored)
+    assert(coroutine.status(co_errored) == "dead")
+
+    local s, r = pcall(coroutine.finally, co_finished, function() end)
+    assert(not s)
+    assert(r == "cannot register a finalizer on dead coroutine")
+
+    s, r = pcall(coroutine.finally, co_errored, function() end)
+    assert(not s)
+    assert(r == "cannot register a finalizer on dead coroutine")
+end
+
+-- coroutine.finally (nil callback is an error)
+do
+    local co = coroutine.create(function() end)
+
+    local s, r = pcall(coroutine.finally, co, nil)
+    assert(not s)
+    assert(r == "missing argument #2")
+end
+
+-- coroutine.finally (wrapped coroutine cannot run finalizers)
+do
+    local co
+    local wrapped = coroutine.wrap(function()
+        co = coroutine.running()
+        coroutine.yield()
+        return 42
+    end)
+
+    wrapped()
+
+    coroutine.finally(co, function() assert(false) end)
+
+    local s, r = pcall(wrapped)
+    assert(not s)
+    assert(r == "cannot run finalizers from a wrapped coroutine")
+end
+
+-- coroutine.finally (cannot register on completed coroutine during dispatch)
+do
+    local co = coroutine.create(function() end)
+
+    coroutine.finally(co, function()
+        local s, r = pcall(coroutine.finally, co, function() end)
+        assert(not s)
+        assert(r == "cannot register a finalizer on dead coroutine")
+    end)
+
+    coroutine.resume(co)
+end
+
+-- coroutine.finally (callback is allowed to yield, from both resume and close)
+do
+    -- outer coroutine because callback yield would have yielded the test
+    local outer = coroutine.create(function()
+        local co = coroutine.create(function() return 123 end)
+
+        coroutine.finally(co, function(status, value)
+            assert(status == "finished" and value == 123)
+            coroutine.yield("callback yield result")
+        end)
+
+        s, r = coroutine.resume(co)
+        assert(s)
+        assert(r == 123)
+
+        local co2 = coroutine.create(function() end)
+        coroutine.finally(co2, function(status)
+            assert(status == "cancelled")
+            coroutine.yield("cancelled yield result")
+        end)
+        s, r = coroutine.close(co2)
+        assert(s)
+        assert(r == nil)
+    end)
+
+    local s, r = coroutine.resume(outer)
+    assert(s)
+    assert(r == "callback yield result")
+
+    s, r = coroutine.resume(outer)
+    assert(s)
+    assert(r == "cancelled yield result")
+
+    coroutine.resume(outer)
+    assert(coroutine.status(outer) == "dead")
+end
+
+-- coroutine.finally (close fires callbacks with a special value)
+do
+    local co = coroutine.create(function() return 123 end)
+
+    local fres1, fres2
+    coroutine.finally(co, function(status, ...)
+        assert(status == "cancelled")
+        fres1 = select("#", ...)
+        assert(fres2 == 0)
+    end)
+    coroutine.finally(co, function(status, ...)
+        assert(status == "cancelled")
+        fres2 = select("#", ...)
+        assert(fres1 == nil)
+    end)
+
+    s, r = coroutine.close(co)
+    assert(s)
+    assert(r == nil)
+    assert(fres1 == 0)
+    assert(fres2 == 0)
+end
+
+-- coroutine.finally (close, but callback errors)
+do
+    local co = coroutine.create(function() coroutine.yield(123) end)
+    local s, r = coroutine.resume(co)
+    assert(s)
+    assert(r == 123)
+
+    coroutine.finally(co, function(status)
+        error("callback error")
+    end)
+
+    s, r = coroutine.close(co)
+    assert(not s)
+    assert(string.find(r, "callback error"))
+end
+
+-- coroutine.finally (close does not cause callback re-run)
+do
+    local called = 0
+
+    local co_ok = coroutine.create(function() return 123 end)
+    coroutine.finally(co_ok, function(status) assert(status == "finished") called += 1 end)
+    coroutine.resume(co_ok)
+    assert(called == 1)
+
+    local s, r = coroutine.close(co_ok)
+    assert(s)
+    assert(not r)
+    assert(called == 1)
+
+    local co_err = coroutine.create(function() error("error") end)
+    coroutine.finally(co_err, function(status) assert(status == "error") called += 1 end)
+    coroutine.resume(co_err)
+    assert(called == 2)
+
+    s, r = coroutine.close(co_err)
+    assert(not s)
+    assert(string.find(r, "error"))
+    assert(called == 2)
+end
+
+-- coroutine.finally (no hard limit on list size)
+do
+    local co = coroutine.create(function()
+        return 2
+    end)
+
+    local count = 0
+    for i = 1,30000 do
+        coroutine.finally(co, function(status, value)
+            assert(status == "finished")
+            count += 1
+        end)
+    end
+
+    local s, r = coroutine.resume(co)
+    assert(s)
+    assert(r == 2)
+    assert(count == 30000)
+end
+
+-- coroutine.finally (finally can be called on the running coroutine)
+do
+    local closed = false
+    local parent = coroutine.create(function()
+        local child = coroutine.create(function()
+            coroutine.yield(1)
+            error("unreachable")
+        end)
+
+        coroutine.finally(coroutine.running(), function()
+            closed = true
+            coroutine.close(child)
+        end)
+
+        local s, r = coroutine.resume(child)
+        assert(s)
+        assert(r == 1)
+        coroutine.yield(2)
+    end)
+
+    local s, r = coroutine.resume(parent)
+    assert(s)
+    assert(r == 2)
+    coroutine.close(parent)
+
+    assert(closed)
+end
+
+-- coroutine.finally (Promise-like abstraction built using it)
+do
+    local Promise = {}
+
+    function Promise.new(work)
+        local self = {handlers = {}, co = coroutine.create(work)}
+
+        coroutine.finally(self.co, function(status, ...)
+            self.status, self.result = status, {...}
+            for _, cb in ipairs(self.handlers) do
+                cb(status, ...)
+            end
+        end)
+
+        function self:andThen(cb)
+            if self.status then
+                cb(self.status, table.unpack(self.result))
+            else
+                table.insert(self.handlers, cb)
+            end
+            return self
+        end
+
+        return self
+    end
+
+    function Promise.all(promises)
+        return Promise.new(function()
+            local results = {}
+            local remaining = #promises
+            local caller = coroutine.running()
+
+            for i, p in ipairs(promises) do
+                p:andThen(function(status, ...)
+                    results[i] = {status, ...}
+                    remaining -= 1
+                    if remaining == 0 and coroutine.status(caller) == "suspended" then
+                        coroutine.resume(caller, results)
+                    end
+                end)
+            end
+
+            if remaining == 0 then
+                return results
+            end
+
+            return coroutine.yield()
+        end)
+    end
+
+    local outcomes = {}
+    local function record(k)
+        return function(s, ...)
+            outcomes[k] = {s, ...}
+        end
+    end
+
+    -- success: eager and late handlers both see 'finished' with return values
+    local ok = Promise.new(function() return 123 end):andThen(record("ok"))
+    coroutine.resume(ok.co)
+    ok:andThen(record("ok_late"))
+    assert(outcomes.ok[1] == "finished" and outcomes.ok[2] == 123)
+    assert(outcomes.ok_late[1] == "finished" and outcomes.ok_late[2] == 123)
+
+    -- error: handler sees 'error' with the raised message
+    local err = Promise.new(function() error("failed") end):andThen(record("err"))
+    coroutine.resume(err.co)
+    assert(outcomes.err[1] == "error" and string.find(outcomes.err[2], "failed"))
+
+    -- cancellation: close on a yielded coroutine surfaces 'cancelled'
+    local canc = Promise.new(function() coroutine.yield() end):andThen(record("canc"))
+    coroutine.resume(canc.co)
+    coroutine.close(canc.co)
+    assert(outcomes.canc[1] == "cancelled")
+
+    -- Promise.all: aggregate a batch of promises across every completion mode
+    local p1 = Promise.new(function() return "one" end)
+    local p2 = Promise.new(function() error("two") end)
+    local p3 = Promise.new(function() coroutine.yield() end)
+
+    local batch = Promise.all({p1, p2, p3}):andThen(record("batch"))
+    coroutine.resume(batch.co)
+
+    coroutine.resume(p1.co)
+    coroutine.resume(p2.co)
+    coroutine.resume(p3.co)
+    coroutine.close(p3.co)
+
+    assert(outcomes.batch[1] == "finished")
+    local all = outcomes.batch[2]
+    assert(all[1][1] == "finished" and all[1][2] == "one")
+    assert(all[2][1] == "error" and string.find(all[2][2], "two"))
+    assert(all[3][1] == "cancelled")
 end
 
 return 'OK'

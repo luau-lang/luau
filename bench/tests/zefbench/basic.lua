@@ -18,6 +18,9 @@ if type(_bit32) == "table" then
 elseif type(_bit) == "table" then
     band, bor, bxor, lshift, rshift =
         _bit.band, _bit.bor, _bit.bxor, _bit.lshift, _bit.rshift
+elseif bit32 ~= nil and type(bit32) == "table" then
+    band, bor, bxor, lshift, rshift =
+        bit32.band, bit32.bor, bit32.bxor, bit32.lshift, bit32.rshift
 else
     -- Lua 5.3+ native bitwise operators, loaded dynamically so this file still
     -- parses in older Luas.

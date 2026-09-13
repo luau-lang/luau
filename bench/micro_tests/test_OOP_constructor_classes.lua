@@ -1,11 +1,11 @@
--- --bench-args: --fflags=DebugLuauUserDefinedClasses,DebugLuauUserDefinedClassesRuntime
+-- --bench-args: --fflags=DebugLuauUserDefinedClasses,DebugLuauUserDefinedClassesRuntime,LuauCallFeedback,LuauEmitCallFeedback
 local function prequire(name) local success, result = pcall(require, name); return success and result end
 local bench = script and require(script.Parent.bench_support) or prequire("bench_support") or require("../bench_support")
 
 class Number
     public x
-    function new(x)
-        return Number { x = x }
+    function __init(self, x)
+        self.x = x
     end
     function Get(self)
         return self.x

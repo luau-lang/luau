@@ -137,6 +137,22 @@ void updateLastUseLocationsInBlock(IrFunction& function, uint32_t blockIdx)
     }
 }
 
+bool isUsedInVmExitSync(IrFunction& function, uint32_t instIdx, uint32_t targetInstIdx)
+{
+    if (VmExitSyncInfo* syncInfo = function.vmExitInfo.find(instIdx))
+    {
+        for (auto argOp : syncInfo->argOps)
+        {
+            CODEGEN_ASSERT(argOp.kind == IrOpKind::Inst);
+
+            if (argOp.index == targetInstIdx)
+                return true;
+        }
+    }
+
+    return false;
+}
+
 static bool isInstUseForOp(IrFunction& function, uint32_t instIdx, uint32_t targetInstIdx, IrOp op, bool& inVmExitSync)
 {
     if (op.kind == IrOpKind::Inst)
@@ -146,19 +162,7 @@ static bool isInstUseForOp(IrFunction& function, uint32_t instIdx, uint32_t targ
 
     if (op.kind == IrOpKind::Block && function.blockOp(op).kind == IrBlockKind::ExitSync)
     {
-        if (VmExitSyncInfo* syncInfo = function.vmExitInfo.find(instIdx))
-        {
-            for (auto argOp : syncInfo->argOps)
-            {
-                CODEGEN_ASSERT(argOp.kind == IrOpKind::Inst);
-
-                if (argOp.index == targetInstIdx)
-                {
-                    inVmExitSync = true;
-                    return true;
-                }
-            }
-        }
+        return inVmExitSync = isUsedInVmExitSync(function, instIdx, targetInstIdx);
     }
 
     return false;

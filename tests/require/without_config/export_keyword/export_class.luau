@@ -27,6 +27,6 @@ export class FactoryFactory
     function make()
         -- if exported classes are improperly handled, we try to grab the export table upvalue here
         -- however, these functions are at top level, so there is no upvalue to grab
-        return FactoryFactory {}
+        return FactoryFactory.new({})
     end
 end

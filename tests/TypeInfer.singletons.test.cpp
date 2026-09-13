@@ -8,8 +8,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauConstraintGraph)
-LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
@@ -151,6 +149,8 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons")
         g(false, 37)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -164,6 +164,8 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_resolution_singleton_parameters"
             return f("A"), f("B")
         end
     )");
+
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId t = requireType("foo");
     const FunctionType* fooType = get<FunctionType>(requireType("foo"));
@@ -207,8 +209,6 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
 {
-    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
-
     CheckResult result = check(R"(
         type MyEnum = "foo" | "bar" | "baz"
         local a : MyEnum = "bang"
@@ -501,7 +501,7 @@ TEST_CASE_FIXTURE(Fixture, "widen_the_supertype_if_it_is_free_and_subtype_has_si
 
     CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 18})));
     // should be <a...>((string) -> a..., string) -> () but needs lower bounds calculation
-    CHECK_EQ("<a, b...>((string) -> (b...), a) -> ()", toString(requireType("foo")));
+    CHECK_EQ("<T, U...>((string) -> (U...), T) -> ()", toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "return_type_of_f_is_not_widened")
@@ -519,7 +519,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_f_is_not_widened")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 23})));
-    CHECK_EQ(R"(<a, b, c...>((string) -> (a, c...), b) -> "hello"?)", toString(requireType("foo")));
+    CHECK_EQ(R"(<T, U, V...>((string) -> (T, V...), U) -> "hello"?)", toString(requireType("foo")));
     // CHECK_EQ(R"(<a, b...>((string) -> ("hello"?, b...), a) -> "hello"?)", toString(requireType("foo")));
 }
 
@@ -852,26 +852,28 @@ TEST_CASE_FIXTURE(Fixture, "pass_singleton_through_to_identity")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauConstraintGraph, true};
-
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function id(x) return x end
 
         local function foobar(): "hello"
             return id("hello")
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "singleton_when_type_is_blocked")
 {
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function id(x: typeof("hello")) return x end
 
         local function foobar()
             return id("hello")
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 

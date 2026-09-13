@@ -4,8 +4,6 @@
 #include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 
-LUAU_FASTFLAG(LuauSolverV2)
-
 namespace Luau
 {
 
@@ -26,17 +24,7 @@ public:
     class const_iterator;
     using iterator = const_iterator;
 
-    template<typename Key = T, std::enable_if_t<std::is_pointer_v<Key>, int> = 0>
-    explicit Set(const T& empty_key = nullptr)
-        : mapping{empty_key}
-    {
-    }
-
-    template<typename Key = T, std::enable_if_t<!std::is_pointer_v<Key>, int> = 0>
-    explicit Set(const T& empty_key)
-        : mapping{empty_key}
-    {
-    }
+    Set() = default;
 
     bool insert(const T& element)
     {
