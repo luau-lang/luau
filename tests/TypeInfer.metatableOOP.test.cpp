@@ -1037,7 +1037,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_1")
     auto err = get<UnknownProperty>(result.errors[0]);
     REQUIRE(err);
     CHECK_EQ("propA", err->key);
-    CHECK_EQ("{ @metatable mt2, root }", toString(err->table));
+    CHECK_EQ("setmetatable<root, mt2>", toString(err->table));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_2")
@@ -1063,7 +1063,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_2")
     auto err = get<UnknownProperty>(result.errors[0]);
     REQUIRE(err);
     CHECK_EQ("propA", err->key);
-    CHECK_EQ("{ @metatable MT2, { Name: string } }", toString(err->table));
+    CHECK_EQ("setmetatable<{ Name: string }, MT2>", toString(err->table));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_setmetatable_invalid_types")

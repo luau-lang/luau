@@ -7652,7 +7652,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2597_constraint_forcing_bad_refinement")
         end
     )"));
 
-    CHECK_EQ("({ @metatable MyClass, { _t: T } }) -> ()", toString(requireTypeAtPosition({16, 28})));
+    CHECK_EQ("(setmetatable<{ _t: T }, MyClass>) -> ()", toString(requireTypeAtPosition({16, 28})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_1")
