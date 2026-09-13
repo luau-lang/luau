@@ -3774,7 +3774,7 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
     ScopedFastFlag sffs[] {
         {FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks, true},
         {FFlag::LuauBetterMissingPropertiesTypeError, true}
-    }
+    };
     CheckResult result = check(R"(
         local function f(s)
             return s:absolutely_no_scalar_has_this_method()
