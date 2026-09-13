@@ -25,6 +25,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
 LUAU_FASTFLAG(LuauHigherOrderGenericInference)
+LUAU_FASTFLAG(LuauToStringTruthyFalsy)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauWarnOnUnannotatedTopLevelFunctions)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
@@ -3116,6 +3117,7 @@ TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
 {
     ScopedFastFlag sffs[] = {
         {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+        {FFlag::LuauToStringTruthyFalsy, true},
         {FFlag::LuauIterativeTypeSearcher, true},
     };
 

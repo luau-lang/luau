@@ -20,12 +20,15 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauSolverAgnosticStringification)
+LUAU_FASTFLAG(LuauToStringTruthyFalsy)
 LUAU_FASTFLAG(LuauCompoundAssignSeedsAstTypes)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
 TEST_CASE_FIXTURE(Fixture, "or_joins_types")
 {
+    ScopedFastFlag sff{FFlag::LuauToStringTruthyFalsy, true};
+
     CheckResult result = check(R"(
         local s = "a" or 10
         local x:string|number = s
@@ -35,7 +38,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         // FIXME: Regression
-        CHECK("(string & ~(false?)) | number" == toString(*requireType("s")));
+        CHECK("(string & truthy) | number" == toString(*requireType("s")));
         CHECK("number | string" == toString(*requireType("x")));
     }
     else
@@ -47,6 +50,8 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types")
 
 TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_extras")
 {
+    ScopedFastFlag sff{FFlag::LuauToStringTruthyFalsy, true};
+
     CheckResult result = check(R"(
         local s = "a" or 10
         local x:number|string = s
@@ -57,7 +62,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_extras")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         // FIXME: Regression.
-        CHECK("(string & ~(false?)) | number" == toString(*requireType("s")));
+        CHECK("(string & truthy) | number" == toString(*requireType("s")));
         CHECK("number | string" == toString(*requireType("y")));
     }
     else
@@ -69,6 +74,8 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_extras")
 
 TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_superfluous_union")
 {
+    ScopedFastFlag sff{FFlag::LuauToStringTruthyFalsy, true};
+
     CheckResult result = check(R"(
         local s = "a" or "b"
         local x:string = s
@@ -78,7 +85,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_superfluous_union")
     if (!FFlag::DebugLuauForceOldSolver)
     {
         // FIXME: Regression
-        CHECK("(string & ~(false?)) | string" == toString(requireType("s")));
+        CHECK("(string & truthy) | string" == toString(requireType("s")));
     }
     else
         CHECK("string" == toString(requireType("s")));

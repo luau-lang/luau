@@ -14,6 +14,7 @@ using namespace Luau;
 
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauToStringTruthyFalsy)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauWarnOnUnannotatedTopLevelFunctions)
@@ -1087,6 +1088,71 @@ TEST_CASE_FIXTURE(Fixture, "record_type_compositions_generic")
     CHECK_EQ(startPosObject, 4);
     CHECK_EQ(endPosObject, 10);
     CHECK_EQ(recordedTyObject, requireTypeAlias("Object"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauToStringTruthyFalsy, true},
+    };
+
+    CheckResult result = check(R"(
+        type function negate(t: type)
+            return types.negationof(t)
+        end
+        type meow = false?
+        type mrrp = negate<false?>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireTypeAlias("meow")), "falsy");
+    CHECK_EQ(toString(requireTypeAlias("mrrp")), "truthy");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy_expanded")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauToStringTruthyFalsy, true},
+    };
+
+    CheckResult result = check(R"(
+        type function negate(t: type)
+            return types.negationof(t)
+        end
+        type kya = (false | nil) | false
+        type purr = negate<(false | nil) | false>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireTypeAlias("kya")), "falsy");
+    CHECK_EQ(toString(requireTypeAlias("purr")), "truthy");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy_no_parenthesis")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauToStringTruthyFalsy, true},
+    };
+
+    ToStringOptions opts;
+
+    CheckResult result = check(R"(
+		type function negate(t: type)
+		    return types.negationof(t)
+		end
+		type hiss = unknown & (false?)
+		type scratch = unknown & negate<false?>
+	)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireTypeAlias("hiss")), "falsy & unknown");
+    CHECK_EQ(toString(requireTypeAlias("scratch")), "truthy & unknown");
 }
 
 TEST_CASE_FIXTURE(Fixture, "suggest_syntactically_legal_annotation")

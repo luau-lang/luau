@@ -29,6 +29,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauToStringTruthyFalsy)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
@@ -5419,8 +5420,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_with_a_metatable_table_path")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
 {
-
-    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauToStringTruthyFalsy, true},
+    };
 
     // This will have one (legitimate) error but previously would crash.
     auto result = check(R"(
@@ -5439,7 +5442,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
     ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(
-        "Cannot add indexer to table '{ @metatable t1, (nil & ~(false?)) | {  } } where t1 = { new: <T>(T) -> { @metatable t1, (T & ~(false?)) | {  "
+        "Cannot add indexer to table '{ @metatable t1, (nil & truthy) | {  } } where t1 = { new: <T>(T) -> { @metatable t1, (T & truthy) | {  "
         "} } }'",
         toString(result.errors[0])
     );

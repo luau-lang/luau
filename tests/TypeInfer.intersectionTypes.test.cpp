@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauToStringTruthyFalsy)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1668,7 +1669,10 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "narrow_intersection_nevers")
 {
-    ScopedFastFlag sffs{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauToStringTruthyFalsy, true},
+    };
 
     loadDefinition(R"(
         declare extern type Player with
@@ -1683,7 +1687,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "narrow_intersection_nevers")
         end
     )"));
 
-    CHECK_EQ("Player & { read Character: ~(false?) }", toString(requireTypeAtPosition({3, 23})));
+    CHECK_EQ("Player & { read Character: truthy }", toString(requireTypeAtPosition({3, 23})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_intersection_bounds")
