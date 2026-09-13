@@ -255,9 +255,9 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 
     TypeId root = &ttvTweenResult;
 
-    ModulePtr currentModule = std::make_shared<Module>();
+    ModulePtr currentModule = std::make_shared<Module>(std::make_shared<TypeArena>());
     Anyification anyification(
-        &currentModule->internalTypes,
+        currentModule->internalTypes.get(),
         getFrontend().globals.globalScope,
         getBuiltins(),
         &getFrontend().iceHandler,
@@ -432,7 +432,7 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
 
 TEST_CASE("content_reassignment")
 {
-    Type myAny{AnyType{}, /*presistent*/ true};
+    Type myAny{AnyType{}, /*persistent*/ true};
     myAny.documentationSymbol = "@global/any";
 
     TypeArena arena;

@@ -25,7 +25,7 @@ struct ModuleResolver
      * @returns std::nullopt if we are unable to determine whether or not the expression is a valid path.  Type inference will
      * silently assume that it could succeed in this case.
      *
-     * FIXME: This is clearly not the right behaviour longterm.  We'll want to adust this interface to be able to signal
+     * FIXME: This is clearly not the right behaviour longterm.  We'll want to adjust this interface to be able to signal
      *  a) success,
      *  b) Definitive failure (this expression will absolutely cause require() to fail at runtime), and
      *  c) uncertainty

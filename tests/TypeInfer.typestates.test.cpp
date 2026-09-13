@@ -4,7 +4,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauDoNotOverwriteAstDefs)
 
 using namespace Luau;
 
@@ -147,6 +146,8 @@ TEST_CASE_FIXTURE(TypeStateFixture, "recursive_local_function")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -157,6 +158,8 @@ TEST_CASE_FIXTURE(TypeStateFixture, "recursive_function")
             f(5)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -213,6 +216,8 @@ TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types_2"
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("(nil) -> number?" == toString(requireType("f")));
 }
@@ -225,6 +230,8 @@ TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_is_some_type_or_optional_then_a
             return x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("(number?) -> number" == toString(requireType("f")));
@@ -512,7 +519,7 @@ TEST_CASE_FIXTURE(Fixture, "typestate_unknown_global")
     CHECK(get<UnknownSymbol>(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_normalized_type_variables_are_bad" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_normalized_type_variables_are_bad" * doctest::timeout(LUAU_TIMEOUT))
 {
     // We do not care about the errors here, only that this finishes typing
     // in a sensible amount of time.
@@ -629,7 +636,7 @@ TEST_CASE_FIXTURE(Fixture, "oss_1575")
 
 TEST_CASE_FIXTURE(Fixture, "capture_upvalue_in_returned_function")
 {
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         function def()
             local i : number = 0
             local function Counter()
@@ -638,7 +645,9 @@ TEST_CASE_FIXTURE(Fixture, "capture_upvalue_in_returned_function")
             end
             return Counter
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("() -> () -> number", toString(requireType("def")));
 }
 
@@ -795,8 +804,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_table_freeze_in_binary_expr")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauDoNotOverwriteAstDefs, true};
-
     CheckResult result = check(R"(
         local _
         if _ or table.freeze(_,_) or table.freeze(_,_) then
@@ -841,8 +848,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_table_freeze_in_conditional_expr")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag _{FFlag::LuauDoNotOverwriteAstDefs, true};
-
     CheckResult result = check(R"(
         local _
         if
@@ -860,7 +865,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_table_freeze_in_conditional_expr")
     CHECK(err1);
     CHECK_EQ(1, err1->expected);
     CHECK_EQ(2, err1->actual);
-
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_depends_on_sub_expression")

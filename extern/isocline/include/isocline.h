@@ -322,7 +322,7 @@ char* ic_readline_ex(const char* prompt_text, ic_completer_fun_t* completer, voi
 /// Set a prompt marker and a potential marker for extra lines with multiline input. 
 /// Pass \a NULL for the `prompt_marker` for the default marker (`"> "`).
 /// Pass \a NULL for continuation prompt marker to make it equal to the `prompt_marker`.
-void ic_set_prompt_marker( const char* prompt_marker, const char* cprompt_marker );
+void ic_set_prompt_marker( const char* prompt_marker, const char* continuation_prompt_marker );
 
 /// Get the current prompt marker.
 const char* ic_get_prompt_marker(void);

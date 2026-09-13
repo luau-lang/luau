@@ -195,10 +195,13 @@ void write(JsonEmitter& emitter, const GeneralizeStepSnapshot& eg)
 
 void write(JsonEmitter& emitter, const StepSnapshot& snap)
 {
-    visit([&](const auto& s)
-    {
-        write(emitter, s);
-    }, snap);
+    visit(
+        [&](const auto& s)
+        {
+            write(emitter, s);
+        },
+        snap
+    );
 }
 
 void write(JsonEmitter& emitter, const TypeSolveLog& log)
@@ -429,7 +432,7 @@ ConstraintStepSnapshot DcrLogger::prepareStepSnapshot(
 )
 {
     ScopeSnapshot scopeSnapshot = snapshotScope(rootScope, opts);
-    DenseHashMap<const Constraint*, ConstraintSnapshot> constraints{nullptr};
+    DenseHashMap<const Constraint*, ConstraintSnapshot> constraints;
 
     for (NotNull<const Constraint> c : unsolvedConstraints)
     {
@@ -440,7 +443,7 @@ ConstraintStepSnapshot DcrLogger::prepareStepSnapshot(
         };
     }
 
-    DenseHashMap<const void*, std::string> typeStrings{nullptr};
+    DenseHashMap<const void*, std::string> typeStrings;
     snapshotTypeStrings(generationLog.exprTypeLocations, generationLog.annotationTypeLocations, typeStrings, opts);
 
     return ConstraintStepSnapshot{
@@ -459,7 +462,7 @@ GeneralizeStepSnapshot DcrLogger::prepareGeneralizationSnapshot(
 )
 {
     ScopeSnapshot scopeSnapshot = snapshotScope(rootScope, opts);
-    DenseHashMap<const Constraint*, ConstraintSnapshot> constraints{nullptr};
+    DenseHashMap<const Constraint*, ConstraintSnapshot> constraints;
 
     for (NotNull<const Constraint> c : unsolvedConstraints)
     {
@@ -470,7 +473,7 @@ GeneralizeStepSnapshot DcrLogger::prepareGeneralizationSnapshot(
         };
     }
 
-    DenseHashMap<const void*, std::string> typeStrings{nullptr};
+    DenseHashMap<const void*, std::string> typeStrings;
     snapshotTypeStrings(generationLog.exprTypeLocations, generationLog.annotationTypeLocations, typeStrings, opts);
 
     return GeneralizeStepSnapshot{

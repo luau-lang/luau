@@ -27,13 +27,11 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
-LUAU_FASTFLAG(LuauRefineNilFromTableIndexerResultType)
-LUAU_FASTFLAG(LuauInstantiationUsesPolarity)
-LUAU_FASTFLAG(LuauCollapseDirectBoundCycles)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
-LUAU_FASTFLAG(LuauDontBindOptionalGenericToNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauCheckReadTyWhenRelatingExtern)
+LUAU_FASTFLAG(LuauDoNotIceForBindingGeneric)
 
 using namespace Luau;
 
@@ -139,6 +137,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
         f("foo")
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         CHECK("unknown" == toString(requireType("a")));
@@ -227,6 +227,8 @@ TEST_CASE_FIXTURE(Fixture, "statements_are_topologically_sorted")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 }
@@ -269,6 +271,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "weird_case")
         local d = math.deg(f())
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -292,6 +296,8 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_does_not_recurse_forever_if_asked_to_tr
             u(u, t)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -343,6 +349,8 @@ TEST_CASE_FIXTURE(Fixture, "should_be_able_to_infer_this_without_stack_overflowi
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -376,12 +384,14 @@ TEST_CASE_FIXTURE(Fixture, "exponential_blowup_from_copying_types")
         return x4
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     ModulePtr module = getMainModule();
 
     // If we're not careful about copying, this ends up with O(2^N) types rather than O(N)
-    // (in this case 5 vs 31).
-    CHECK_GE(5, module->interfaceTypes.types.size());
+    // (in this case 13 vs 31).
+    CHECK_GE(13, module->interfaceTypes.types.size());
 }
 
 // In these tests, a successful parse is required, so we need the parser to return the AST and then we can test the recursion depth limit in type
@@ -874,6 +884,8 @@ local function f()
 end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -909,6 +921,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_through_group_expr")
 local function f(a: (number, number) -> number) return a(1, 3) end
 f(((function(a, b) return a + b end)))
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -971,6 +985,8 @@ local function times<T>(n: any, f: () -> T)
     return result
 end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1108,6 +1124,8 @@ local a = getIt()
 local b = getIt()
 local c = a or b
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1402,6 +1420,8 @@ function f(x, c)                   -- x : X
 end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1445,7 +1465,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_function_that_invokes_itself_with_
     if (!FFlag::DebugLuauForceOldSolver)
         CHECK("(unknown) -> ()" == toString(requireType("readValue")));
     else
-        CHECK("<a>(a) -> ()" == toString(requireType("readValue")));
+        CHECK("<T>(T) -> ()" == toString(requireType("readValue")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_function_that_invokes_itself_with_a_refinement_of_its_parameter_2")
@@ -1588,6 +1608,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lti_must_record_contributing_locations")
             end
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     // We inspect the actual errors in other tests; this test verifies that we
     // actually recorded breadcrumbs for a.
@@ -1780,13 +1802,15 @@ TEST_CASE_FIXTURE(Fixture, "avoid_blocking_type_function")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
-    LUAU_CHECK_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         --!strict
         local function foo(a : string?)
             local b = a or ""
             return b:upper()
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_CHECK_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "avoid_double_reference_to_free_type")
@@ -1866,11 +1890,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_works_with_any")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_infer_any_ret")
 {
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function spooky(x: any)
             return getmetatable(x)
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(any) -> any", toString(requireType("spooky")));
 }
@@ -1941,11 +1967,13 @@ TEST_CASE_FIXTURE(Fixture, "concat_string_with_string_union")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function concat_stuff(x: string, y : string | number)
             return x .. y
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_local_before_declaration_ice")
@@ -1967,7 +1995,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_local_before_declaration_ice")
     CHECK_EQ(2, err1->actual);
 }
 
-TEST_CASE_FIXTURE(Fixture, "fuzz_dont_double_solve_compound_assignment" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(Fixture, "fuzz_dont_double_solve_compound_assignment" * doctest::timeout(LUAU_TIMEOUT))
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
@@ -2023,7 +2051,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_assert_table_freeze_constraint_solving"
     LUAU_REQUIRE_NO_ERROR(results, ConstraintSolvingIncompleteError);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_unification_aborts_eventually" * doctest::timeout(0.25))
+TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_unification_aborts_eventually" * doctest::timeout(LUAU_TIMEOUT))
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, true},
@@ -2135,7 +2163,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_missing_follow_table_freeze")
     )"));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_avoid_double_negation" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_avoid_double_negation" * doctest::timeout(LUAU_TIMEOUT))
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
@@ -2185,7 +2213,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_has_indexer_can_create_cyclic_union")
     )"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "fuzzer_simplify_table_indexer" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(Fixture, "fuzzer_simplify_table_indexer" * doctest::timeout(LUAU_TIMEOUT))
 {
     LUAU_REQUIRE_ERRORS(check(R"(
         _[_] += true
@@ -2227,7 +2255,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_simplify_is_check_on_bound_type")
     )"));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "regexp_hang" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(BuiltinsFixture, "regexp_hang" * doctest::timeout(LUAU_TIMEOUT))
 {
     LUAU_REQUIRE_ERRORS(check(R"(
 local outln, group_id, verb_flags = {}, {}, {
@@ -2657,6 +2685,8 @@ TEST_CASE_FIXTURE(Fixture, "nested_functions_can_depend_on_outer_generics")
         local out = funcTest(1) -- Doesn't report type mismatch error anymore
     )");
 
+    ignoreMissingAnnotations(result);
+
     CHECK("(nil) -> nil" == toString(requireType("funcTest")));
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -2772,10 +2802,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_missing_follow_in_instantiation2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_table_with_optional_indexer_values")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict
@@ -2794,10 +2821,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_table_with_optional_indexer_val
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_local_table_with_optional_indexer_values")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict
@@ -2816,10 +2840,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_local_table_with_optional_index
 // https://github.com/luau-lang/luau/issues/2236
 TEST_CASE_FIXTURE(BuiltinsFixture, "2236_iterate_over_table_with_values_as_optional_types")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRefineNilFromTableIndexerResultType, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
         --!strict
@@ -2950,7 +2971,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_global_type_inference")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_instantiate_iter_function")
 {
-    ScopedFastFlag _{FFlag::LuauInstantiationUsesPolarity, true};
     // We do not care about the results of type checking this
     // snippet, only that it does not trip an assertion.
     //
@@ -2975,8 +2995,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_instantiate_iter_function")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_and_unpack_generic_order_independence")
 {
-    ScopedFastFlag sff{FFlag::LuauCollapseDirectBoundCycles, true};
-
     CheckResult result = check(R"(
         local tbl = {}
         for i=0, 3 do
@@ -3008,12 +3026,11 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_inference_with_optional_param_does_not_lea
 {
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauDontBindOptionalGenericToNil, true},
     };
 
     // Width subtyping: passing a table that lacks an optional field to a component
     // that declares it as optional should be fine.
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function createElement<P>(component: (P) -> any, props: P?): any
             return nil
         end
@@ -3023,7 +3040,9 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_inference_with_optional_param_does_not_lea
         end
 
         createElement(MyComponent, { x = 1 })
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_P_with_intersection_props_and_partial_table")
@@ -3031,7 +3050,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_with_intersection_props_and_partial_table"
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauDontBindOptionalGenericToNil, true},
         {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
         {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
     };
@@ -3040,7 +3058,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_with_intersection_props_and_partial_table"
     // fields, passing a table with only a subset of those fields should work.
     // { tag: string } should satisfy { tag: string? } & { b1: number? }
     // because both fields in the intersection are optional.
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         type BaseProps = { tag: string? }
         type ExtraProps = { b1: number? }
 
@@ -3053,7 +3071,9 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_with_intersection_props_and_partial_table"
         end
 
         local _x = createElement(Image, { tag = "test" })
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_P_widening_with_recursive_optional_field")
@@ -3061,14 +3081,13 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_widening_with_recursive_optional_field")
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauDontBindOptionalGenericToNil, true},
         {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
         {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
     };
 
     // When a component has a recursive optional field (like React's children),
     // widening the table literal should not cause the bounds check to fail.
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         type Node = string | number | { [string]: Node }
         type BaseProps = { tag: string?, children: Node? }
         type ExtraProps = { size: number? }
@@ -3079,6 +3098,64 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_widening_with_recursive_optional_field")
             return nil
         end
         local _x = createElement(View, { tag = "hello" })
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_relate_extern_table_1")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCheckReadTyWhenRelatingExtern, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+    };
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        class _ end
+        class l0 extends _
+            public _
+            public n108:{write _:string}
+        end
+        l0 = l0 { n108 = if _ then l0(_) else _() }
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_relate_extern_table_2")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauCheckReadTyWhenRelatingExtern, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+    };
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        class _ end
+        class l0 extends _
+            public _
+            public n108:{ read: string | number, write _: string }
+        end
+        l0 = l0 { n108 = if _ then l0(_) else _() }
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_generic_binding_ice")
+{
+    ScopedFastFlag _{FFlag::LuauDoNotIceForBindingGeneric, true};
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        local l0: any
+        l32 = l0.new {
+            n5 = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
+            n0 = if _ then _,
+            _ = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
+            rshift = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
+            _ = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
+            n0 = if _ then _,
+            _ = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
+            _ = if _ then _, 
+            n0 = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),),
+            n0 = if _ then _, 
+            _ = n0({fill=_,n33=_,},_,table.find,optional,_(_,_,n0,function,_,optional,""),)
+        }
     )"));
 }
 

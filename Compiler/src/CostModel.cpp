@@ -107,7 +107,6 @@ struct CostVisitor : AstVisitor
     CostVisitor(const DenseHashMap<AstExprCall*, int>& builtins, const DenseHashMap<AstExpr*, Constant>& constants)
         : builtins(builtins)
         , constants(constants)
-        , vars(nullptr)
     {
     }
 
@@ -300,6 +299,14 @@ struct CostVisitor : AstVisitor
 
     bool visit(AstStatIf* node) override
     {
+        if (node->conditionLocal)
+        {
+            Cost arg = model(node->condition);
+
+            if (arg.constant != 0)
+                vars[node->conditionLocal] = arg.constant;
+        }
+
         if (isConstantFalse(constants, node->condition))
         {
             if (node->elsebody)
@@ -428,8 +435,8 @@ uint64_t modelCost(
 
 uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount)
 {
-    DenseHashMap<AstExprCall*, int> builtins{nullptr};
-    DenseHashMap<AstExpr*, Constant> constants{nullptr};
+    DenseHashMap<AstExprCall*, int> builtins;
+    DenseHashMap<AstExpr*, Constant> constants;
 
     return modelCost(root, vars, varCount, builtins, constants);
 }

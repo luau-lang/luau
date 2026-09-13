@@ -44,12 +44,12 @@ private:
     void handleInstruction(InstrId id);
     TypeId getDiscriminantOf(const Refine& refine);
 
-    DenseHashMap<Definition*, TypeId> defTypes{nullptr};
+    DenseHashMap<Definition*, TypeId> defTypes;
 
     // Mapping from types to the constraints they require to be solved
     // Join instructions will require simplification constraints
     // Refine instructions will require refinement constraints
-    DenseHashMap<TypeId, ConstraintV> typesRequiringConstraint{nullptr};
+    DenseHashMap<TypeId, ConstraintV> typesRequiringConstraint;
 
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtinTypes;

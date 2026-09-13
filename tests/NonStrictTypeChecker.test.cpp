@@ -20,7 +20,6 @@ LUAU_DYNAMIC_FASTINT(LuauConstraintGeneratorRecursionLimit)
 LUAU_FASTINT(LuauNonStrictTypeCheckerRecursionLimit)
 LUAU_FASTINT(LuauCheckRecursionLimit)
 LUAU_FASTFLAG(LuauAddRecursionCounterToNonStrictTypeChecker)
-LUAU_FASTFLAG(LuauTidyTypePrototyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 
 using namespace Luau;
@@ -788,6 +787,8 @@ function passThrough(module)
 end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(0, result);
     // We should still warn about dynamic requires in strict mode
     result = check(Mode::Strict, R"(
@@ -795,6 +796,8 @@ function passThrough(module)
     require(module)
 end
 )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     const UnknownRequire* req = get<UnknownRequire>(result.errors[0]);
@@ -899,7 +902,6 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "typecheck_class_method_bodies")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauTidyTypePrototyping, true},
     };
 
     CheckResult result = checkNonStrict(R"(

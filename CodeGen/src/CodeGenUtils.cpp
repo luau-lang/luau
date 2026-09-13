@@ -15,10 +15,10 @@
 #include "lstring.h"
 #include "ltable.h"
 #include "ludata.h"
+#include "lvector.h"
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauDirectFieldGet)
 LUAU_FASTFLAG(LuauCIProto)
 LUAU_FASTFLAG(LuauPromoteProto)
 
@@ -274,6 +274,11 @@ Udata* newUserdata(lua_State* L, size_t s, int tag)
     return u;
 }
 
+LuauVector* newVector(lua_State* L, double x, double y, double z)
+{
+    return luaVec_newvector(L, x, y, z, 0.0);
+}
+
 void getImport(lua_State* L, StkId res, unsigned id, unsigned pc)
 {
     if (FFlag::LuauCIProto)
@@ -378,6 +383,40 @@ Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
     }
 }
 
+int fastPcallSetup(lua_State* L, StkId ra, int pfid, int nparams, int nresults)
+{
+    LUAU_ASSERT(pfid == 0 || pfid == 1);
+
+    if (nparams == LUA_MULTRET)
+        nparams = int(L->top - (ra + 1));
+
+    setclvalue(L, ra, pfid == 0 ? L->global->builtinPcall : L->global->builtinXpcall);
+
+    int errfunc = pfid; // for current supported functions this happens to match
+
+    L->top = ra + 1 + nparams;
+
+    luau_pushhandlerci(L, ra, errfunc, nresults);
+
+    StkId callerfunc = L->ci->base + errfunc;
+    int calleeresults = (nresults > 0) ? nresults - 1 : nresults;
+    int pr = luau_precall(L, callerfunc, calleeresults);
+
+    if (pr == PCRLUA)
+    {
+        L->ci->flags |= LUA_CALLINFO_RETURN;
+        return 0;
+    }
+    else if (pr == PCRC)
+    {
+        luau_pospcallsuccess(L);
+        return -1;
+    }
+
+    LUAU_ASSERT(pr == PCRYIELD);
+    return 1;
+}
+
 const Instruction* executeGETGLOBAL(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
     [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
@@ -471,7 +510,7 @@ const Instruction* executeGETTABLEKS(lua_State* L, const Instruction* pc, StkId 
     else
     {
         // fast-path: registered direct field handler
-        if (FFlag::LuauDirectFieldGet && ttisuserdata(rb))
+        if (ttisuserdata(rb))
         {
             LuaTable* dispatch = L->global->udatadirectfields[uvalue(rb)->tag];
             if (dispatch)
@@ -479,10 +518,17 @@ const Instruction* executeGETTABLEKS(lua_State* L, const Instruction* pc, StkId 
                 int slot = LUAU_INSN_C(insn) & dispatch->nodemask8;
                 LuaNode* n = &dispatch->node[slot];
 
+#if LUA_VECTOR_DOUBLE == 1
+                DirectFieldResult dfr{L, ra};
+                void* resultarg = &dfr;
+#else
+                void* resultarg = ra;
+#endif
+
                 if (LUAU_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n))))
                 {
                     lua_UserdataDirectFieldGet fn = reinterpret_cast<lua_UserdataDirectFieldGet>(pvalue(gval(n)));
-                    fn(uvalue(rb)->data, ra);
+                    fn(uvalue(rb)->data, resultarg);
                     return pc;
                 }
 
@@ -492,7 +538,7 @@ const Instruction* executeGETTABLEKS(lua_State* L, const Instruction* pc, StkId 
                     // cache slot for future lookups
                     VM_PATCH_C(pc - 2, gval2slot(dispatch, fptr));
                     lua_UserdataDirectFieldGet fn = reinterpret_cast<lua_UserdataDirectFieldGet>(pvalue(fptr));
-                    fn(uvalue(rb)->data, ra);
+                    fn(uvalue(rb)->data, resultarg);
                     return pc;
                 }
             }
@@ -532,7 +578,7 @@ const Instruction* executeGETTABLEKS(lua_State* L, const Instruction* pc, StkId 
 
             if (unsigned(ic) < LUA_VECTOR_SIZE && name[1] == '\0')
             {
-                const float* v = vvalue(rb); // silences ubsan when indexing v[]
+                const LUA_VECTOR_TYPE* v = vvalue(rb); // silences ubsan when indexing v[]
                 setnvalue(ra, v[ic]);
                 return pc;
             }

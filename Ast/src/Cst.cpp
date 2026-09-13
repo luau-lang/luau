@@ -3,8 +3,6 @@
 #include "Luau/Cst.h"
 #include "Luau/Common.h"
 
-LUAU_FASTFLAG(LuauCstAttr)
-
 namespace Luau
 {
 
@@ -14,7 +12,6 @@ CstAttr::CstAttr(bool hasAt)
     : CstNode(CstClassIndex())
     , hasAt(hasAt)
 {
-    LUAU_ASSERT(FFlag::LuauCstAttr);
 }
 
 CstParametrizedAttr::CstParametrizedAttr(Position openParenPosition, Position closeParenPosition, AstArray<Position> argsCommaPositions)
@@ -23,7 +20,6 @@ CstParametrizedAttr::CstParametrizedAttr(Position openParenPosition, Position cl
     , closeParenPosition(closeParenPosition)
     , argsCommaPositions(argsCommaPositions)
 {
-    LUAU_ASSERT(FFlag::LuauCstAttr);
 }
 
 CstAttrList::CstAttrList(Position atBracketPosition, Position closeBracketPosition, AstArray<Position> commaPositions)
@@ -31,7 +27,6 @@ CstAttrList::CstAttrList(Position atBracketPosition, Position closeBracketPositi
     , closeBracketPosition(closeBracketPosition)
     , commaPositions(commaPositions)
 {
-    LUAU_ASSERT(FFlag::LuauCstAttr);
 }
 
 CstExprGroup::CstExprGroup(Position closePosition)
@@ -172,6 +167,12 @@ CstStatForIn::CstStatForIn(
 {
 }
 
+CstStatIf::CstStatIf(Position annotationColonPosition)
+    : CstNode(CstClassIndex())
+    , annotationColonPosition(annotationColonPosition)
+{
+}
+
 CstStatAssign::CstStatAssign(AstArray<Position> varsCommaPositions, Position equalsPosition, AstArray<Position> valuesCommaPositions)
     : CstNode(CstClassIndex())
     , varsCommaPositions(varsCommaPositions)
@@ -198,7 +199,6 @@ CstStatFunction::CstStatFunction(AstArray<CstAttrList*> attrLists, Position func
     , attrLists(attrLists)
     , functionKeywordPosition(functionKeywordPosition)
 {
-    LUAU_ASSERT(FFlag::LuauCstAttr);
 }
 
 CstStatLocalFunction::CstStatLocalFunction(Position localKeywordPosition, Position functionKeywordPosition)
@@ -215,7 +215,6 @@ CstStatLocalFunction::CstStatLocalFunction(AstArray<CstAttrList*> attrLists, Pos
     , localKeywordPosition(localKeywordPosition)
     , functionKeywordPosition(functionKeywordPosition)
 {
-    LUAU_ASSERT(FFlag::LuauCstAttr);
 }
 
 CstGenericType::CstGenericType(Position defaultEqualsPosition)

@@ -25,6 +25,7 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
 // Update lastUse for all Inst operands consumed by instructions in a single block
 void updateLastUseLocationsInBlock(IrFunction& function, uint32_t blockIdx);
 
+bool isUsedInVmExitSync(IrFunction& function, uint32_t instIdx, uint32_t targetInstIdx);
 uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t startInstIdx, bool& inVmExitSync);
 
 // Returns how many values are coming into the block (live in) and how many are coming out of the block (live out)
