@@ -14,6 +14,7 @@
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAG(LuauFixNormalizeFunctionIntersections)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauIncludeExternTypeExtensionsWithTopExternType)
@@ -697,6 +698,47 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersect_function_and_top_function_reverse
     CHECK("() -> ()" == toString(normal(R"(
         (() -> ()) & fun
     )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "intersect_functions")
+{
+    ScopedFastFlag sff{FFlag::LuauFixNormalizeFunctionIntersections, true};
+
+    getFrontend();
+
+    TypePackId numberNumberPack = arena.addTypePack({builtinTypes->numberType, builtinTypes->numberType});
+    TypePackId numberPack = arena.addTypePack({builtinTypes->numberType});
+    TypePackId stringPack = arena.addTypePack({builtinTypes->stringType});
+
+    SUBCASE("identical_argument_packs")
+    {
+        TypeId numberNumberToNumber = arena.addType(FunctionType{numberNumberPack, numberPack});
+        TypeId numberNumberToString = arena.addType(FunctionType{numberNumberPack, stringPack});
+
+        TypeId isect = arena.addType(IntersectionType{{numberNumberToNumber, numberNumberToString}});
+
+        const auto norm = normalize(isect);
+        REQUIRE(nullptr != norm);
+
+        TypeId res = typeFromNormal(*norm);
+
+        CHECK("(number, number) -> number & string" == toString(res));
+    }
+
+    SUBCASE("identical_return_packs")
+    {
+        TypeId numberToNumberNumber = arena.addType(FunctionType{numberPack, numberNumberPack});
+        TypeId stringToNumberNumber = arena.addType(FunctionType{stringPack, numberNumberPack});
+
+        TypeId isect = arena.addType(IntersectionType{{numberToNumberNumber, stringToNumberNumber}});
+
+        const auto norm = normalize(isect);
+        REQUIRE(nullptr != norm);
+
+        TypeId res = typeFromNormal(*norm);
+
+        CHECK("(number | string) -> (number, number)" == toString(res));
+    }
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "union_function_and_top_function")

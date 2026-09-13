@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixNormalizeFunctionIntersections)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -1222,6 +1223,8 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_overlapping_results_and_
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_1")
 {
+    ScopedFastFlag sff{FFlag::LuauFixNormalizeFunctionIntersections, true};
+
     CheckResult result = check(R"(
         function f<a...,b...>()
             function g(x : (() -> a...) & (() -> b...))
@@ -1233,7 +1236,12 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_1")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        LUAU_REQUIRE_NO_ERRORS(result);
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        const TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+        REQUIRE(tm);
+
+        CHECK("() -> ()" == toString(tm->wantedType));
+        CHECK("(() -> (a...)) & (() -> (b...))" == toString(tm->givenType));
     }
     else
     {
