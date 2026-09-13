@@ -5442,7 +5442,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
     ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(
-        "Cannot add indexer to table '{ @metatable t1, (nil & truthy) | {  } } where t1 = { new: <T>(T) -> { @metatable t1, (a & truthy) | {  "
+        "Cannot add indexer to table '{ @metatable t1, (nil & truthy) | {  } } where t1 = { new: <T>(T) -> { @metatable t1, (T & truthy) | {  "
         "} } }'",
         toString(result.errors[0])
     );
