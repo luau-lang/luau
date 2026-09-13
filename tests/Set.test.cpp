@@ -11,14 +11,14 @@ TEST_SUITE_BEGIN("SetTests");
 
 TEST_CASE("empty_set_size_0")
 {
-    Luau::Set<int> s1{0};
+    Luau::Set<int> s1;
     CHECK(s1.size() == 0);
     CHECK(s1.empty());
 }
 
 TEST_CASE("insertion_works_and_increases_size")
 {
-    Luau::Set<int> s1{0};
+    Luau::Set<int> s1;
     CHECK(s1.size() == 0);
     CHECK(s1.empty());
 
@@ -33,7 +33,7 @@ TEST_CASE("insertion_works_and_increases_size")
 
 TEST_CASE("clear_resets_size")
 {
-    Luau::Set<int> s1{0};
+    Luau::Set<int> s1;
     s1.insert(1);
     s1.insert(2);
     REQUIRE(s1.size() == 2);
@@ -45,7 +45,7 @@ TEST_CASE("clear_resets_size")
 
 TEST_CASE("erase_works_and_decreases_size")
 {
-    Luau::Set<int> s1{0};
+    Luau::Set<int> s1;
     s1.insert(1);
     s1.insert(2);
     CHECK(s1.size() == 2);
@@ -66,7 +66,7 @@ TEST_CASE("erase_works_and_decreases_size")
 
 TEST_CASE("iterate_over_set")
 {
-    Luau::Set<int> s1{0};
+    Luau::Set<int> s1;
     s1.insert(1);
     s1.insert(2);
     s1.insert(3);
@@ -82,7 +82,7 @@ TEST_CASE("iterate_over_set")
 
 TEST_CASE("iterate_over_set_skips_erased_elements")
 {
-    Luau::Set<int> s1{0};
+    Luau::Set<int> s1;
     s1.insert(1);
     s1.insert(2);
     s1.insert(3);
@@ -112,7 +112,7 @@ TEST_CASE("iterate_over_set_skips_first_element_if_it_is_erased")
      * underlying iterator happens to start at a deleted element, we need to
      * advance until we find the first live element (or the end of the set).
      */
-    Luau::Set<std::string> s1{{}};
+    Luau::Set<std::string> s1;
     s1.insert("x");
     s1.insert("y");
     s1.erase("y");
@@ -131,7 +131,7 @@ TEST_CASE("iterate_over_set_skips_first_element_if_it_is_erased")
 
 TEST_CASE("erase_using_const_ref_argument")
 {
-    Luau::Set<std::string> s1{{}};
+    Luau::Set<std::string> s1;
 
     s1.insert("x");
     s1.insert("y");

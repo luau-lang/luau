@@ -122,6 +122,12 @@ private:
     // if exp then block {elseif exp then block} [else block] end
     AstStat* parseIf();
 
+    // (`if' | `elseif') (`local' | `const') binding `=' exp then block ... end -- parses an entire `if local`/`if const`
+    AstStat* parseIfLocalCondition(const Location& start);
+
+    // Parse the trailing `{elseif exp then block} [else block] end` shared by `parseIf` and `parseIfLocalCondition`
+    AstStat* parseElseBody(const Location& start, const Lexeme& matchThen, AstStatBlock* thenbody, Location& end, std::optional<Location>& elseLocation);
+
     // while exp do block end
     AstStat* parseWhile();
 
@@ -191,7 +197,7 @@ private:
     // type Name `=' Type
     AstStat* parseTypeAlias(const Location& start, bool exported, Position typeKeywordPosition);
 
-    AstStat* parseClassStat(const Location& start, bool exported);
+    AstStat* parseClassStat(const Location& start, bool exported, bool open);
 
     // type function Name ... end
     AstStat* parseTypeFunction(const Location& start, bool exported, Position typeKeywordPosition);
@@ -545,7 +551,7 @@ private:
 
     DenseHashMap<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
-    DenseHashMap<AstName, AstStatClass*> classesWithinModule{{}};
+    DenseHashMap<AstName, AstStatClass*> classesWithinModule;
 
     std::vector<ParseError> parseErrors;
 

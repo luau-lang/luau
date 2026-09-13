@@ -23,18 +23,15 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
-LUAU_FASTFLAGVARIABLE(LuauCodegenLinearNoCall)
-LUAU_FLAGVERSION(LuauCodegenLinearNoCall, 2)
-LUAU_FASTFLAGVARIABLE(LuauCodegenSubstituteReplacements)
 LUAU_FASTFLAGVARIABLE(LuauCodegenConstVectorBufferRead)
-LUAU_FASTFLAGVARIABLE(LuauCodegenOriginVerifyMatch)
+LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateFallbackTags)
+LUAU_FLAGVERSION(LuauCodegenPropagateFallbackTags, 2)
+LUAU_FASTFLAGVARIABLE(LuauCodegenNoLinearFastpcall)
 
 namespace Luau
 {
 namespace CodeGen
 {
-
-constexpr uint8_t kUpvalueEmptyKey = 0xff;
 
 // Data we know about the register value
 struct RegisterInfo
@@ -607,28 +604,14 @@ struct ConstPropState
             if (tvalueLoad.cmd != IrCmd::LOAD_TVALUE || OP_A(tvalueLoad).kind != IrOpKind::VmReg)
                 return false;
 
-            if (FFlag::LuauCodegenOriginVerifyMatch)
+            uint8_t prevLoadReg = vmRegOp(OP_A(tvalueLoad));
+
+            if (prevLoadReg == vmRegOp(OP_A(loadInst)))
+                return false;
+
+            // Previous load is still linked to the same register
+            if (RegisterLink* link = tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}); link && link->reg == prevLoadReg)
             {
-                uint8_t prevLoadReg = vmRegOp(OP_A(tvalueLoad));
-
-                if (prevLoadReg == vmRegOp(OP_A(loadInst)))
-                    return false;
-
-                // Previous load is still linked to the same register
-                if (RegisterLink* link = tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}); link && link->reg == prevLoadReg)
-                {
-                    replace(function, OP_A(loadInst), OP_A(tvalueLoad));
-                    return true;
-                }
-            }
-            else
-            {
-                if (vmRegOp(OP_A(tvalueLoad)) == vmRegOp(OP_A(loadInst)))
-                    return false;
-
-                if (tryGetRegLink(IrOp{IrOpKind::Inst, *prevIdx}) == nullptr)
-                    return false;
-
                 replace(function, OP_A(loadInst), OP_A(tvalueLoad));
                 return true;
             }
@@ -1399,19 +1382,19 @@ struct ConstPropState
     bool checkedGc = false;
 
     // Stores which register does the instruction value correspond to (and at which version of the register)
-    DenseHashMap<uint32_t, RegisterLink> instLink{kInvalidInstIdx};
+    DenseHashMap<uint32_t, RegisterLink> instLink;
 
     // Stored the tag of a TValue stored in an instruction and will never change
-    DenseHashMap<uint32_t, uint8_t> instTag{kInvalidInstIdx};
-    DenseHashMap<uint32_t, IrOp> instValue{kInvalidInstIdx};
+    DenseHashMap<uint32_t, uint8_t> instTag;
+    DenseHashMap<uint32_t, IrOp> instValue;
 
     DenseHashMap<IrInst, uint32_t, IrInstHash, IrInstEq> valueMap;
 
     // For upvalue load-store optimizations, we just keep track of the last known value of the upvalue
-    DenseHashMap<uint8_t, uint32_t> upvalueMap{kUpvalueEmptyKey};
+    DenseHashMap<uint8_t, uint32_t> upvalueMap;
 
     // For load-store optimizations of table elements, separate maps for hash and array parts as writes to one do not affect the other
-    DenseHashMap<uint32_t, uint32_t> hashValueCache{kInvalidInstIdx};
+    DenseHashMap<uint32_t, uint32_t> hashValueCache;
     std::vector<ArrayValueEntry> arrayValueCache;
 
     // Some instruction re-uses can't be stored in valueMap because of extra requirements
@@ -1434,9 +1417,9 @@ struct ConstPropState
     uint32_t loadEnvIdx = kInvalidInstIdx;
 
     // Properties associated with a table contained in an SSA register pointer
-    DenseHashSet<uint32_t> instNotReadonly{kInvalidInstIdx};
-    DenseHashSet<uint32_t> instNoMetatable{kInvalidInstIdx};
-    DenseHashMap<uint32_t, int> instArraySize{kInvalidInstIdx};
+    DenseHashSet<uint32_t> instNotReadonly;
+    DenseHashSet<uint32_t> instNoMetatable;
+    DenseHashMap<uint32_t, int> instArraySize;
 
     std::vector<uint32_t> rangeEndTemp;
 };
@@ -2361,6 +2344,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.inSafeEnv = true;
         }
         break;
+    case IrCmd::CHECK_YIELDABLE:
+        break;
     case IrCmd::CHECK_BUFFER_LEN:
     {
         std::optional<int> bufferOffset = function.asIntOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst)));
@@ -2580,6 +2565,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         handleBuiltinEffects(state, LuauBuiltinFunction(function.uintOp(OP_A(inst))), vmRegOp(OP_B(inst)), function.intOp(OP_G(inst)));
         break;
 
+    case IrCmd::INVOKE_FASTPCALL:
+        state.invalidateRegistersFrom(vmRegOp(OP_A(inst)));
+        state.invalidateUserCall();
+        break;
+
         // These instructions don't have an effect on register/memory state we are tracking
     case IrCmd::NOP:
         break;
@@ -2664,76 +2654,38 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.substituteOrRecord(inst, index);
         break;
     case IrCmd::MUL_NUM:
-        if (FFlag::LuauCodegenSubstituteReplacements)
+        if (std::optional<double> k = function.asDoubleOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst))))
         {
-            if (std::optional<double> k = function.asDoubleOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst))))
+            if (*k == 1.0) // a * 1.0 = a
             {
-                if (*k == 1.0) // a * 1.0 = a
-                {
-                    substitute(function, inst, OP_A(inst));
-                    break;
-                }
-
-                if (*k == 2.0) // a * 2.0 = a + a
-                    replace(function, block, index, {IrCmd::ADD_NUM, {OP_A(inst), OP_A(inst)}});
-                else if (*k == -1.0) // a * -1.0 = -a
-                    replace(function, block, index, {IrCmd::UNM_NUM, {OP_A(inst)}});
+                substitute(function, inst, OP_A(inst));
+                break;
             }
 
-            state.substituteOrRecord(inst, index);
+            if (*k == 2.0) // a * 2.0 = a + a
+                replace(function, block, index, {IrCmd::ADD_NUM, {OP_A(inst), OP_A(inst)}});
+            else if (*k == -1.0) // a * -1.0 = -a
+                replace(function, block, index, {IrCmd::UNM_NUM, {OP_A(inst)}});
         }
-        else
-        {
-            if (std::optional<double> k = function.asDoubleOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst))))
-            {
-                if (*k == 1.0) // a * 1.0 = a
-                    substitute(function, inst, OP_A(inst));
-                else if (*k == 2.0) // a * 2.0 = a + a
-                    replace(function, block, index, {IrCmd::ADD_NUM, {OP_A(inst), OP_A(inst)}});
-                else if (*k == -1.0) // a * -1.0 = -a
-                    replace(function, block, index, {IrCmd::UNM_NUM, {OP_A(inst)}});
-                else
-                    state.substituteOrRecord(inst, index);
-            }
-            else
-                state.substituteOrRecord(inst, index);
-        }
+
+        state.substituteOrRecord(inst, index);
         break;
     case IrCmd::DIV_NUM:
-        if (FFlag::LuauCodegenSubstituteReplacements)
+        if (std::optional<double> k = function.asDoubleOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst))))
         {
-            if (std::optional<double> k = function.asDoubleOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst))))
+            if (*k == 1.0) // a / 1.0 = a
             {
-                if (*k == 1.0) // a / 1.0 = a
-                {
-                    substitute(function, inst, OP_A(inst));
-                    break;
-                }
-
-                if (*k == -1.0) // a / -1.0 = -a
-                    replace(function, block, index, {IrCmd::UNM_NUM, {OP_A(inst)}});
-                else if (int exp = 0; frexp(*k, &exp) == 0.5 && exp >= -1000 && exp <= 1000) // a / 2^k = a * 2^-k
-                    replace(function, block, index, {IrCmd::MUL_NUM, {OP_A(inst), build.constDouble(1.0 / *k)}});
+                substitute(function, inst, OP_A(inst));
+                break;
             }
 
-            state.substituteOrRecord(inst, index);
+            if (*k == -1.0) // a / -1.0 = -a
+                replace(function, block, index, {IrCmd::UNM_NUM, {OP_A(inst)}});
+            else if (int exp = 0; frexp(*k, &exp) == 0.5 && exp >= -1000 && exp <= 1000) // a / 2^k = a * 2^-k
+                replace(function, block, index, {IrCmd::MUL_NUM, {OP_A(inst), build.constDouble(1.0 / *k)}});
         }
-        else
-        {
-            if (std::optional<double> k = function.asDoubleOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst))))
-            {
-                if (*k == 1.0) // a / 1.0 = a
-                    substitute(function, inst, OP_A(inst));
-                else if (*k == -1.0) // a / -1.0 = -a
-                    replace(function, block, index, {IrCmd::UNM_NUM, {OP_A(inst)}});
-                else if (int exp = 0; frexp(*k, &exp) == 0.5 && exp >= -1000 && exp <= 1000) // a / 2^k = a * 2^-k
-                    replace(function, block, index, {IrCmd::MUL_NUM, {OP_A(inst), build.constDouble(1.0 / *k)}});
-                else
-                    state.substituteOrRecord(inst, index);
-            }
-            else
-                state.substituteOrRecord(inst, index);
-        }
+
+        state.substituteOrRecord(inst, index);
         break;
     case IrCmd::IDIV_NUM:
     case IrCmd::MULADD_NUM:
@@ -2770,76 +2722,38 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.substituteOrRecord(inst, index);
         break;
     case IrCmd::MUL_FLOAT:
-        if (FFlag::LuauCodegenSubstituteReplacements)
+        if (std::optional<double> k = function.asDoubleOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst))))
         {
-            if (std::optional<double> k = function.asDoubleOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst))))
+            if (float(*k) == 1.0f) // a * 1.0 = a
             {
-                if (float(*k) == 1.0f) // a * 1.0 = a
-                {
-                    substitute(function, inst, OP_A(inst));
-                    break;
-                }
-
-                if (float(*k) == 2.0f) // a * 2.0 = a + a
-                    replace(function, block, index, {IrCmd::ADD_FLOAT, {OP_A(inst), OP_A(inst)}});
-                else if (float(*k) == -1.0f) // a * -1.0 = -a
-                    replace(function, block, index, {IrCmd::UNM_FLOAT, {OP_A(inst)}});
+                substitute(function, inst, OP_A(inst));
+                break;
             }
 
-            state.substituteOrRecord(inst, index);
+            if (float(*k) == 2.0f) // a * 2.0 = a + a
+                replace(function, block, index, {IrCmd::ADD_FLOAT, {OP_A(inst), OP_A(inst)}});
+            else if (float(*k) == -1.0f) // a * -1.0 = -a
+                replace(function, block, index, {IrCmd::UNM_FLOAT, {OP_A(inst)}});
         }
-        else
-        {
-            if (std::optional<double> k = function.asDoubleOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst))))
-            {
-                if (float(*k) == 1.0f) // a * 1.0 = a
-                    substitute(function, inst, OP_A(inst));
-                else if (float(*k) == 2.0f) // a * 2.0 = a + a
-                    replace(function, block, index, {IrCmd::ADD_FLOAT, {OP_A(inst), OP_A(inst)}});
-                else if (float(*k) == -1.0f) // a * -1.0 = -a
-                    replace(function, block, index, {IrCmd::UNM_FLOAT, {OP_A(inst)}});
-                else
-                    state.substituteOrRecord(inst, index);
-            }
-            else
-                state.substituteOrRecord(inst, index);
-        }
+
+        state.substituteOrRecord(inst, index);
         break;
     case IrCmd::DIV_FLOAT:
-        if (FFlag::LuauCodegenSubstituteReplacements)
+        if (std::optional<double> k = function.asDoubleOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst))))
         {
-            if (std::optional<double> k = function.asDoubleOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst))))
+            if (float(*k) == 1.0) // a / 1.0 = a
             {
-                if (float(*k) == 1.0) // a / 1.0 = a
-                {
-                    substitute(function, inst, OP_A(inst));
-                    break;
-                }
-
-                if (float(*k) == -1.0) // a / -1.0 = -a
-                    replace(function, block, index, {IrCmd::UNM_FLOAT, {OP_A(inst)}});
-                else if (int exp = 0; frexpf(float(*k), &exp) == 0.5f && exp >= -1000 && exp <= 1000) // a / 2^k = a * 2^-k
-                    replace(function, block, index, {IrCmd::MUL_FLOAT, {OP_A(inst), build.constDouble(1.0f / float(*k))}});
+                substitute(function, inst, OP_A(inst));
+                break;
             }
 
-            state.substituteOrRecord(inst, index);
+            if (float(*k) == -1.0) // a / -1.0 = -a
+                replace(function, block, index, {IrCmd::UNM_FLOAT, {OP_A(inst)}});
+            else if (int exp = 0; frexpf(float(*k), &exp) == 0.5f && exp >= -1000 && exp <= 1000) // a / 2^k = a * 2^-k
+                replace(function, block, index, {IrCmd::MUL_FLOAT, {OP_A(inst), build.constDouble(1.0f / float(*k))}});
         }
-        else
-        {
-            if (std::optional<double> k = function.asDoubleOp(OP_B(inst).kind == IrOpKind::Constant ? OP_B(inst) : state.tryGetValue(OP_B(inst))))
-            {
-                if (float(*k) == 1.0) // a / 1.0 = a
-                    substitute(function, inst, OP_A(inst));
-                else if (float(*k) == -1.0) // a / -1.0 = -a
-                    replace(function, block, index, {IrCmd::UNM_FLOAT, {OP_A(inst)}});
-                else if (int exp = 0; frexpf(float(*k), &exp) == 0.5f && exp >= -1000 && exp <= 1000) // a / 2^k = a * 2^-k
-                    replace(function, block, index, {IrCmd::MUL_FLOAT, {OP_A(inst), build.constDouble(1.0f / float(*k))}});
-                else
-                    state.substituteOrRecord(inst, index);
-            }
-            else
-                state.substituteOrRecord(inst, index);
-        }
+
+        state.substituteOrRecord(inst, index);
         break;
     case IrCmd::MIN_FLOAT:
     case IrCmd::MAX_FLOAT:
@@ -3020,24 +2934,13 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         // INT and UINT are stored in the same way and can be reinterpreted (constants are not and are handled in foldConstants)
         if (src && src->cmd == IrCmd::UINT_TO_NUM && OP_A(src).kind != IrOpKind::Constant)
         {
-            if (FFlag::LuauCodegenSubstituteReplacements)
+            if (IrInst* srcOfSrc = function.asInstOp(OP_A(src)); srcOfSrc && producesDirtyHighRegisterBits(srcOfSrc->cmd))
             {
-                if (IrInst* srcOfSrc = function.asInstOp(OP_A(src)); srcOfSrc && producesDirtyHighRegisterBits(srcOfSrc->cmd))
-                {
-                    replace(function, block, index, IrInst{IrCmd::TRUNCATE_UINT, {OP_A(src)}});
-                }
-                else
-                {
-                    substitute(function, inst, OP_A(src));
-                    break;
-                }
+                replace(function, block, index, IrInst{IrCmd::TRUNCATE_UINT, {OP_A(src)}});
             }
             else
             {
-                if (IrInst* srcOfSrc = function.asInstOp(OP_A(src)); srcOfSrc && producesDirtyHighRegisterBits(srcOfSrc->cmd))
-                    replace(function, block, index, IrInst{IrCmd::TRUNCATE_UINT, {OP_A(src)}});
-                else
-                    substitute(function, inst, OP_A(src));
+                substitute(function, inst, OP_A(src));
                 break;
             }
         }
@@ -3084,9 +2987,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (IrInst* srcOfSrc = function.asInstOp(OP_A(src)); srcOfSrc && producesDirtyHighRegisterBits(srcOfSrc->cmd))
             {
                 replace(function, block, index, IrInst{IrCmd::TRUNCATE_UINT, {OP_A(src)}});
-
-                if (FFlag::LuauCodegenSubstituteReplacements)
-                    state.substituteOrRecord(inst, index);
+                state.substituteOrRecord(inst, index);
             }
             else
             {
@@ -3114,25 +3015,16 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             {
                 // If we are converting an addition of two sources that were initially and UINT, we can instead add our value as UINT
                 replace(function, block, index, {IrCmd::ADD_INT, {OP_A(addSrc1), OP_A(addSrc2)}});
-
-                if (!FFlag::LuauCodegenSubstituteReplacements)
-                    break;
             }
             else if (addNum1 && safeIntegerConstant(*addNum1) && addSrc2 && addSrc2->cmd == IrCmd::UINT_TO_NUM)
             {
                 // If we are converting an addition of two sources that were initially and UINT, we can instead add our value as UINT
                 replace(function, block, index, {IrCmd::ADD_INT, {build.constInt(unsigned((long long)*addNum1)), OP_A(addSrc2)}});
-
-                if (!FFlag::LuauCodegenSubstituteReplacements)
-                    break;
             }
             else if (addSrc1 && addSrc1->cmd == IrCmd::UINT_TO_NUM && addNum2 && safeIntegerConstant(*addNum2))
             {
                 // If we are converting an addition of two sources that were initially and UINT, we can instead add our value as UINT
                 replace(function, block, index, {IrCmd::ADD_INT, {OP_A(addSrc1), build.constInt(unsigned((long long)*addNum2))}});
-
-                if (!FFlag::LuauCodegenSubstituteReplacements)
-                    break;
             }
         }
         else if (src && src->cmd == IrCmd::SUB_NUM)
@@ -3146,25 +3038,16 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             {
                 // If we are converting an addition of two sources that were initially and UINT, we can instead add our value as UINT
                 replace(function, block, index, {IrCmd::SUB_INT, {OP_A(addSrc1), OP_A(addSrc2)}});
-
-                if (!FFlag::LuauCodegenSubstituteReplacements)
-                    break;
             }
             else if (addNum1 && safeIntegerConstant(*addNum1) && addSrc2 && addSrc2->cmd == IrCmd::UINT_TO_NUM)
             {
                 // If we are converting an addition of two sources that were initially and UINT, we can instead add our value as UINT
                 replace(function, block, index, {IrCmd::SUB_INT, {build.constInt(unsigned((long long)*addNum1)), OP_A(addSrc2)}});
-
-                if (!FFlag::LuauCodegenSubstituteReplacements)
-                    break;
             }
             else if (addSrc1 && addSrc1->cmd == IrCmd::UINT_TO_NUM && addNum2 && safeIntegerConstant(*addNum2))
             {
                 // If we are converting an addition of two sources that were initially and UINT, we can instead add our value as UINT
                 replace(function, block, index, {IrCmd::SUB_INT, {OP_A(addSrc1), build.constInt(unsigned((long long)*addNum2))}});
-
-                if (!FFlag::LuauCodegenSubstituteReplacements)
-                    break;
             }
         }
 
@@ -3183,38 +3066,19 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.substituteOrRecord(inst, index);
         break;
     case IrCmd::NUM_TO_FLOAT:
-        if (FFlag::LuauCodegenSubstituteReplacements)
+        if (IrInst* src = function.asInstOp(OP_A(inst)))
         {
-            if (IrInst* src = function.asInstOp(OP_A(inst)))
+            if (src->cmd == IrCmd::FLOAT_TO_NUM)
             {
-                if (src->cmd == IrCmd::FLOAT_TO_NUM)
-                {
-                    substitute(function, inst, OP_A(src)); // Skip float->double->float conversion: NUM_TO_FLOAT(FLOAT_TO_NUM(value)) => value
-                    break;
-                }
-
-                if (src->cmd == IrCmd::UINT_TO_NUM)
-                    replace(function, block, index, IrInst{IrCmd::UINT_TO_FLOAT, {OP_A(src)}});
+                substitute(function, inst, OP_A(src)); // Skip float->double->float conversion: NUM_TO_FLOAT(FLOAT_TO_NUM(value)) => value
+                break;
             }
 
-            state.substituteOrRecord(inst, index);
+            if (src->cmd == IrCmd::UINT_TO_NUM)
+                replace(function, block, index, IrInst{IrCmd::UINT_TO_FLOAT, {OP_A(src)}});
         }
-        else
-        {
-            if (IrInst* src = function.asInstOp(OP_A(inst)))
-            {
-                if (src->cmd == IrCmd::FLOAT_TO_NUM)
-                    substitute(function, inst, OP_A(src)); // Skip float->double->float conversion: NUM_TO_FLOAT(FLOAT_TO_NUM(value)) => value
-                else if (src->cmd == IrCmd::UINT_TO_NUM)
-                    replace(function, block, index, IrInst{IrCmd::UINT_TO_FLOAT, {OP_A(src)}});
-                else
-                    state.substituteOrRecord(inst, index);
-            }
-            else
-            {
-                state.substituteOrRecord(inst, index);
-            }
-        }
+
+        state.substituteOrRecord(inst, index);
         break;
     case IrCmd::CHECK_ARRAY_SIZE:
     {
@@ -3547,6 +3411,47 @@ static void saveBlockExitState(IrFunction& function, const IrBlock& block, Const
     function.blockExitTags[blockIdx] = std::move(tags);
 }
 
+static void snapshotFallbackEntryTags(IrFunction& function, IrInst& inst, ConstPropState& state)
+{
+    visitArguments(
+        inst,
+        [&](IrOp op)
+        {
+            if (op.kind != IrOpKind::Block)
+                return;
+
+            const IrBlock& block = function.blockOp(op);
+
+            if (block.kind != IrBlockKind::Fallback)
+                return;
+
+            uint32_t blockIdx = function.getBlockIndex(block);
+            std::vector<uint8_t>& tags = function.fallbackEntryTags[blockIdx];
+
+            if (tags.empty())
+            {
+                tags.reserve(state.maxReg + 1);
+
+                for (int i = 0; i <= state.maxReg; i++)
+                    tags.emplace_back(state.regs[i].tag);
+            }
+            else
+            {
+                // Disagreeing tags result make them unknown
+                for (int i = 0; i <= state.maxReg && i < int(tags.size()); i++)
+                {
+                    if (tags[i] != state.regs[i].tag)
+                        tags[i] = kUnknownTag;
+                }
+
+                // Tags we don't know about are unknown
+                for (int i = state.maxReg + 1; i < int(tags.size()); i++)
+                    tags[i] = kUnknownTag;
+            }
+        }
+    );
+}
+
 static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& state)
 {
     IrFunction& function = build.function;
@@ -3563,6 +3468,9 @@ static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& s
         applySubstitutions(function, inst);
 
         foldConstants(build, function, block, index);
+
+        if (FFlag::LuauCodegenPropagateFallbackTags && !isPseudo(inst.cmd))
+            snapshotFallbackEntryTags(function, inst, state);
 
         constPropInInst(state, build, function, block, inst, index);
 
@@ -3633,16 +3541,57 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
     }
 }
 
+static void constPropInFallback(IrBuilder& build, std::vector<uint8_t>& visited, IrBlock& block, ConstPropState& state)
+{
+    IrFunction& function = build.function;
+    const uint32_t blockIdx = function.getBlockIndex(block);
+
+    if (blockIdx >= function.cfg.predecessorsOffsets.size())
+        return;
+
+    // All predecessors must be visited for fallbackEntryTags info to be correct
+    for (uint32_t predIdx : predecessors(function.cfg, blockIdx))
+    {
+        if (visited[predIdx] == 0)
+            return;
+    }
+
+    CODEGEN_ASSERT(!visited[blockIdx]);
+    visited[blockIdx] = 1;
+
+    state.clear();
+
+    const std::vector<uint8_t>& tags = function.fallbackEntryTags[blockIdx];
+    const RegisterSet& in = function.cfg.in[blockIdx];
+
+    // Setup entry state for the fallback block
+    for (size_t i = 0; i < tags.size(); i++)
+    {
+        if (tags[i] != kUnknownTag)
+        {
+            // Only live in registers can have entry tags recorded
+            if (in.regs.test(i) || (in.varargSeq && i >= in.varargStart))
+                state.updateTag(build.vmReg(uint8_t(i)), tags[i]);
+        }
+    }
+
+    constPropInBlock(build, block, state);
+
+    saveBlockExitState(function, block, state);
+}
+
 static bool includeBlockInLinearPath(IrFunction& function, const IrBlock& block)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenLinearNoCall);
-
     for (uint32_t index = block.start; index <= block.finish; index++)
     {
         const IrInst& inst = function.instructions[index];
 
         // Call cannot return to the linear block upon completion, so it cannot be included in a linear path clone
         if (inst.cmd == IrCmd::CALL)
+            return false;
+
+        // Same rule applies to fast pcall path as it acts as a call
+        if (FFlag::LuauCodegenNoLinearFastpcall && inst.cmd == IrCmd::INVOKE_FASTPCALL)
             return false;
     }
 
@@ -3687,11 +3636,7 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
 
                     visited[targetIdx] = true;
 
-                    if (FFlag::LuauCodegenLinearNoCall)
-                        chain.push_back(targetIdx);
-                    else
-                        path.push_back(targetIdx);
-
+                    chain.push_back(targetIdx);
                     nextBlock = &target;
 
                     for (;;)
@@ -3702,11 +3647,7 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
 
                             visited[nextInChainIdx] = true;
 
-                            if (FFlag::LuauCodegenLinearNoCall)
-                                chain.push_back(nextInChainIdx);
-                            else
-                                path.push_back(nextInChainIdx);
-
+                            chain.push_back(nextInChainIdx);
                             nextBlock = nextInChain;
                         }
                         else
@@ -3716,22 +3657,19 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
                     }
 
                     // Check that the block chain is valid to include in the linear path
-                    if (FFlag::LuauCodegenLinearNoCall)
-                    {
-                        bool allValidForInclusion = std::all_of(
-                            chain.begin(),
-                            chain.end(),
-                            [&](uint32_t blockIdx)
-                            {
-                                return includeBlockInLinearPath(function, function.blocks[blockIdx]);
-                            }
-                        );
+                    bool allValidForInclusion = std::all_of(
+                        chain.begin(),
+                        chain.end(),
+                        [&](uint32_t blockIdx)
+                        {
+                            return includeBlockInLinearPath(function, function.blocks[blockIdx]);
+                        }
+                    );
 
-                        if (!allValidForInclusion)
-                            break;
+                    if (!allValidForInclusion)
+                        break;
 
-                        path.insert(path.end(), chain.begin(), chain.end());
-                    }
+                    path.insert(path.end(), chain.begin(), chain.end());
                 }
             }
         }
@@ -3871,15 +3809,28 @@ void constPropInBlockChains(IrBuilder& build)
 
     function.blockExitTags.resize(function.blocks.size());
 
+    if (FFlag::LuauCodegenPropagateFallbackTags)
+        function.fallbackEntryTags.resize(function.blocks.size());
+
     for (IrBlock& block : function.blocks)
     {
-        if (block.kind == IrBlockKind::Fallback || block.kind == IrBlockKind::Dead)
+        if ((!FFlag::LuauCodegenPropagateFallbackTags && block.kind == IrBlockKind::Fallback) || block.kind == IrBlockKind::Dead)
             continue;
 
         if (visited[function.getBlockIndex(block)])
             continue;
 
-        constPropInBlockChain(build, visited, &block, state);
+        if (FFlag::LuauCodegenPropagateFallbackTags)
+        {
+            if (block.kind == IrBlockKind::Fallback)
+                constPropInFallback(build, visited, block, state);
+            else
+                constPropInBlockChain(build, visited, &block, state);
+        }
+        else
+        {
+            constPropInBlockChain(build, visited, &block, state);
+        }
     }
 }
 

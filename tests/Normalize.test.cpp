@@ -471,7 +471,7 @@ struct NormalizeFixture : Fixture
 
     TypeId typeFromNormal(const NormalizedType& norm)
     {
-        // Force the fontend
+        // Force the frontend
         getFrontend();
         return normalizer->typeFromNormal(norm);
     }
@@ -793,6 +793,8 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
             return Cyclic
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 

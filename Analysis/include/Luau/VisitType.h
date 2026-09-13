@@ -529,7 +529,7 @@ struct TypeVisitor : GenericTypeVisitor<std::unordered_set<void*>>
 struct TypeOnceVisitor : GenericTypeVisitor<DenseHashSet<void*>>
 {
     explicit TypeOnceVisitor(const std::string visitorName, bool skipBoundTypes)
-        : GenericTypeVisitor{visitorName, DenseHashSet<void*>{nullptr}, skipBoundTypes}
+        : GenericTypeVisitor{visitorName, DenseHashSet<void*>{}, skipBoundTypes}
     {
     }
 };

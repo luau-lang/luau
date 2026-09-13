@@ -13,7 +13,6 @@
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64)
 LUAU_FASTFLAGVARIABLE(DebugCodegenLimitRegs)
-LUAU_FASTFLAGVARIABLE(LuauCodegenA64ExitUseCheck)
 
 namespace Luau
 {
@@ -551,7 +550,7 @@ void IrRegAllocA64::restore(const IrRegAllocA64::Spill& s, RegisterA64 reg)
     {
         CODEGEN_ASSERT(!inst.spilled && inst.needsReload);
 
-        // When restoring the value, we allow cross-block restore because we have commited to the target location at spill time
+        // When restoring the value, we allow cross-block restore because we have committed to the target location at spill time
         ValueRestoreLocation restoreLocation = function.findRestoreLocation(inst, /*limitToCurrentBlock*/ false);
 
         AddressA64 addr = getReloadAddress(restoreLocation);
@@ -606,7 +605,7 @@ void IrRegAllocA64::spill(Set& set, uint32_t index, uint32_t targetInstIdx)
     CODEGEN_ASSERT(!def.spilled);
     CODEGEN_ASSERT(!def.needsReload);
 
-    if (def.lastUse == index && (!FFlag::LuauCodegenA64ExitUseCheck || !isUsedInVmExitSync(function, index, targetInstIdx)))
+    if (def.lastUse == index && !isUsedInVmExitSync(function, index, targetInstIdx))
     {
         // instead of spilling the register to never reload it, we assume the register is not needed anymore
     }

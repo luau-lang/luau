@@ -3,8 +3,6 @@
 
 #include "Luau/Common.h"
 
-LUAU_FASTFLAG(LuauSolverV2)
-
 namespace Luau
 {
 

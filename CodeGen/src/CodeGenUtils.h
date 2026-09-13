@@ -26,6 +26,7 @@ void getImport(lua_State* L, StkId res, unsigned id, unsigned pc);
 #define CALL_FALLBACK_YIELD 1
 
 Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults);
+int fastPcallSetup(lua_State* L, StkId ra, int pfid, int nparams, int nresults);
 
 const Instruction* executeGETGLOBAL(lua_State* L, const Instruction* pc, StkId base, TValue* k);
 const Instruction* executeSETGLOBAL(lua_State* L, const Instruction* pc, StkId base, TValue* k);

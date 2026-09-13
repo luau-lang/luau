@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeBuilder.h"
+#include "Luau/BytecodeDump.h"
 #include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeWire.h"
 #include "Luau/BytecodeValidation.h"
@@ -32,9 +33,13 @@ struct BytecodeRes
 struct BytecodeInlinerFixture
 {
 
-    std::optional<std::pair<Bytecode::CompTimeBcFunction, Bytecode::CompTimeBcFunction>> compileAndInline(std::string_view src, uint32_t callIdx = 0)
+    std::optional<std::pair<Bytecode::CompTimeBcFunction, Bytecode::CompTimeBcFunction>> compileAndInline(
+        std::string_view src,
+        uint32_t callIdx = 0,
+        int optimizationLevel = 0
+    )
     {
-        auto res = buildBytecode(src);
+        auto res = buildBytecode(src, optimizationLevel);
 
         REQUIRE(res);
 
@@ -53,9 +58,9 @@ struct BytecodeInlinerFixture
         return res;
     }
 
-    std::string inlineAndPrint(std::string_view src, uint32_t callIdx = 0, bool foldConstants = false)
+    std::string inlineAndPrint(std::string_view src, uint32_t callIdx = 0, bool foldConstants = false, int optimizationLevel = 0)
     {
-        auto res = compileAndInline(src, callIdx);
+        auto res = compileAndInline(src, callIdx, optimizationLevel);
 
         REQUIRE(res);
         REQUIRE_EQ(verifyUseConsistency(res->second), true);
@@ -150,7 +155,9 @@ struct BytecodeInlinerFixture
             CompileOptions opts;
             opts.optimizationLevel = optimizationLevel;
             compileOrThrow(bcb, result, names, opts);
-            return {{bcb.getFunctionData(0), bcb.getFunctionData(1), extractStringTable(bcb)}};
+            uint32_t funcCount = bcb.getFunctionCount();
+            LUAU_ASSERT(funcCount >= 3);
+            return {{bcb.getFunctionData(funcCount - 3), bcb.getFunctionData(funcCount - 2), extractStringTable(bcb)}};
         }
         catch (CompileError& e)
         {
@@ -728,7 +735,7 @@ LOADK R6 K4 [2]
 MOVE R7 R1
 MOVE R8 R2
 MOVE R9 R3
-SETLIST R4 R5 6 [1]
+SETLIST R4 R5 5 [1]
 LOADK R6 K5 [3]
 GETTABLE R5 R4 R6
 MOVE R0 R5
@@ -786,7 +793,7 @@ LOADK R6 K3 [1]
 MOVE R7 R1
 MOVE R8 R2
 MOVE R9 R3
-SETLIST R5 R6 5 [1]
+SETLIST R5 R6 4 [1]
 LOADK R7 K4 [3]
 GETTABLE R6 R5 R7
 MOVE R0 R6
@@ -1463,6 +1470,312 @@ JUMP L1
 L0: CALLFB R2 0 1 [-1]
 L1: SETLIST R0 R1 2 [1]
 RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_varargs_sequence_in_setlist")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(...)
+            return {...}
+        end
+
+        local function caller()
+            inlinee()
+        end
+    )"),
+        R"(
+GETUPVAL R0 0
+CMPPROTO R0 #0 L0
+NEWTABLE R1 0 0
+MOVE R0 R1
+RETURN R0 0
+L0: CALLFB R0 0 0 [-1]
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_varargs_sequence_in_for_loop")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(a, ...)
+            for _ in ... do
+                pcall += _
+            end
+        end
+
+        local function caller()
+            inlinee()
+        end
+    )"),
+        R"(
+GETUPVAL R0 0
+CMPPROTO R0 #0 L2
+LOADNIL R1
+LOADNIL R3
+LOADNIL R4
+LOADNIL R5
+FORGPREP R3 L1
+L0: GETGLOBAL R8 K0 ['pcall']
+ADD R8 R8 R6
+SETGLOBAL R8 K0 ['pcall']
+L1: FORGLOOP R3 L0 1
+RETURN R0 0
+L2: CALLFB R0 0 0 [-1]
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_in_loops_phi")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+            local function inlinee(...)
+                repeat
+                    local a = ...
+                    while a do break end
+                until false
+            end
+
+            local function caller()
+                inlinee()
+            end
+    )"),
+        R"(
+GETUPVAL R0 0
+CMPPROTO R0 #0 L3
+L0: LOADNIL R1
+L1: JUMPIFNOT R1 L2
+JUMP L2
+JUMPBACK L1
+L2: LOADB R2 0
+JUMPIF R2 L4
+JUMPBACK L0
+RETURN R0 0
+L3: CALLFB R0 0 0 [-1]
+L4: RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_removes_unreachable_closeupvals_block")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
+        local function caller()
+            local f = function() end
+            while true do
+                local cap = function() f = f end
+                f()
+            end
+        end
+        caller()
+    )");
+
+    CompTimeBcFunction* caller = nullptr;
+    for (CompTimeBcFunction& fn : graphs)
+        if (fn.debugname == "caller")
+            caller = &fn;
+    REQUIRE(caller);
+
+    BcVmConstImpl impl(*caller);
+    Bytecode::foldConstants(*caller, impl);
+
+    CHECK_EQ(
+        "\n" + toString(*caller, true),
+        R"(
+; function caller() line 2 maxstacksize: 3 upvalues: 0 flags: 8
+bb_0 (entry):
+; successors: bb_2 [fallthrough], bb_2 [loop]
+  %0 = DUPCLOSURE K0 (0)                                     ; uses: phi.0, phi.0, %2, %3
+
+bb_2:
+; predecessors: bb_0 [fallthrough], bb_0 [loop]
+  %1 = NEWCLOSURE P1
+  %2 = CAPTURE 1, %0, 0
+  %3 = MOVE %0                                               ; uses: %4
+  %4 = CALLFB 0, 0, 0, %3
+  %5 = JUMPBACK bb_2
+
+bb_1 (exit):
+; predecessors: bb_3 [fallthrough]
+)"
+);
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_removes_unreachable_closeupvals_scc")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    std::vector<CompTimeBcFunction> graphs = buildGraphs(R"(
+        local function caller(x)
+            repeat
+                x = nil
+                (function(...) end)()
+            until x
+
+            repeat
+                local y = {}
+            until function() y = nil end
+        end
+        caller()
+    )");
+
+    CompTimeBcFunction* caller = nullptr;
+    for (CompTimeBcFunction& fn : graphs)
+        if (fn.debugname == "caller")
+            caller = &fn;
+    REQUIRE(caller);
+
+    BcVmConstImpl impl(*caller);
+    Bytecode::foldConstants(*caller, impl);
+
+    CHECK_EQ(
+        "\n" + toString(*caller, true),
+        R"(
+; function caller($arg0) line 2 maxstacksize: 3 upvalues: 0 flags: 8
+bb_0 (entry):
+; predecessors: bb_3 [loop]
+; successors: bb_3 [fallthrough]
+  %0 = LOADNIL
+  %1 = DUPCLOSURE K0 (0)                                     ; uses: %2
+  %2 = CALLFB 0, 0, 0, %1
+
+bb_3:
+; predecessors: bb_0 [fallthrough]
+; successors: bb_0 [loop]
+  %4 = JUMPBACK bb_0
+
+bb_1 (exit):
+; predecessors: bb_4 [fallthrough]
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_projection_in_return_phi")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(a, ...)
+            return a and ...
+        end
+
+        local function caller(x)
+            local r = inlinee(x)
+            return r
+        end
+    )"),
+        R"(
+GETUPVAL R1 0
+MOVE R2 R0
+CMPPROTO R1 #0 L1
+MOVE R4 R2
+JUMPIFNOT R4 L0
+LOADNIL R4
+L0: MOVE R1 R4
+RETURN R1 1
+L1: CALLFB R1 1 1 [-1]
+RETURN R1 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_sub_constant_lhs_is_negation_not_move")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(a, x)
+            return a - x
+        end
+        local function caller(x)
+            local r = inlinee(0, x)
+            return r + x
+        end
+    )", 0, true),
+        R"(
+GETUPVAL R1 0
+LOADK R2 K0 [0]
+MOVE R3 R0
+CMPPROTO R1 #0 L0
+SUB R4 R2 R3
+MOVE R1 R4
+JUMP L1
+L0: CALLFB R1 2 1 [-1]
+L1: ADD R2 R1 R0
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_div_constant_lhs_one_is_reciprocal_not_move")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(a, x)
+            return a / x
+        end
+        local function caller(x)
+            local r = inlinee(1, x)
+            return r + x
+        end
+    )", 0, true),
+        R"(
+GETUPVAL R1 0
+LOADK R2 K0 [1]
+MOVE R3 R0
+CMPPROTO R1 #0 L0
+DIV R4 R2 R3
+MOVE R1 R4
+JUMP L1
+L0: CALLFB R1 2 1 [-1]
+L1: ADD R2 R1 R0
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_jumpxeqkb_bool_immediate_value")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    REQUIRE_EQ(
+        "\n" + inlineAndPrint(R"(
+        local function inlinee(flag)
+            if flag == true then return 1 else return 2 end
+        end
+        local function caller(x)
+            local r = inlinee(true)
+            return r + x
+        end
+    )", 0, true, 1),
+        R"(
+GETUPVAL R1 0
+LOADB R2 1
+CMPPROTO R1 #0 L0
+LOADN R3 1
+LOADN R1 1
+JUMP L1
+L0: CALLFB R1 1 1 [-1]
+L1: ADD R2 R1 R0
+RETURN R2 1
 )"
     );
 }

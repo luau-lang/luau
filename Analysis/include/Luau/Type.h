@@ -643,8 +643,8 @@ struct UserDefinedFunctionData
     // References to AST elements are owned by the Module allocator which also stores this type
     AstStatTypeFunction* definition = nullptr;
 
-    DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environmentFunction{""};
-    DenseHashMap<Name, std::pair<TypeFun*, size_t>> environmentAlias{""};
+    DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environmentFunction;
+    DenseHashMap<Name, std::pair<TypeFun*, size_t>> environmentAlias;
 };
 
 enum struct TypeFunctionInstanceState
@@ -1209,7 +1209,7 @@ private:
     using SavedIterInfo = std::pair<const T*, size_t>;
 
     VecDeque<SavedIterInfo> stack;
-    DenseHashSet<const T*> seen{nullptr}; // Only needed to protect the iterator from hanging the thread.
+    DenseHashSet<const T*> seen; // Only needed to protect the iterator from hanging the thread.
 
     void advance()
     {

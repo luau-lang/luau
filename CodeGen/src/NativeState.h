@@ -98,6 +98,7 @@ struct NativeContext
     void (*getImport)(lua_State* L, StkId res, unsigned id, unsigned pc) = nullptr;
 
     Closure* (*callFallback)(lua_State* L, StkId ra, StkId argtop, int nresults) = nullptr;
+    int (*fastPcallSetup)(lua_State* L, StkId ra, int pfid, int nparams, int nresults) = nullptr;
 
     // Opcode fallbacks, implemented in C
     const Instruction* (*executeGETGLOBAL)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;

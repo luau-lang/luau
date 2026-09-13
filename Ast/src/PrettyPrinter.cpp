@@ -13,6 +13,7 @@
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauPrettyPrintVisualizeIndexerAccess)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 
 namespace
 {
@@ -1546,7 +1547,23 @@ struct Printer
 
     void visualizeElseIf(AstStatIf& elseif)
     {
+        if (FFlag::DebugLuauIfLocalSyntax && elseif.conditionLocal)
+        {
+            const auto cstNode = lookupCstNode<CstStatIf>(&elseif);
+
+            if (elseif.conditionKeywordLocation)
+                advance(elseif.conditionKeywordLocation->begin);
+            writer.keyword(elseif.conditionIsConst ? "const" : "local");
+
+            visualize(*elseif.conditionLocal, cstNode ? cstNode->annotationColonPosition : Position::missing());
+
+            if (elseif.conditionEqualsLocation)
+                advance(elseif.conditionEqualsLocation->begin);
+            writer.symbol("=");
+        }
+
         visualize(*elseif.condition);
+
         if (elseif.thenLocation)
             advance(elseif.thenLocation->begin);
         writer.keyword("then");
@@ -1886,14 +1903,15 @@ struct Printer
             {
                 if (a->props.size == 0 && indexType && indexType->name == "number")
                 {
-                    if (AstTableAccess access = a->indexer->access;
-                        FFlag::LuauPrettyPrintVisualizeIndexerAccess && access != AstTableAccess::ReadWrite
-                    )
+                    if (FFlag::LuauPrettyPrintVisualizeIndexerAccess)
                     {
-                        if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
-                            advance(accessLocation->begin);
+                        if (a->indexer->access != AstTableAccess::ReadWrite)
+                        {
+                            if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
+                                advance(accessLocation->begin);
 
-                        writer.keyword(access == AstTableAccess::Read ? "read" : "write");
+                            writer.keyword(a->indexer->access == AstTableAccess::Read ? "read" : "write");
+                        }
                     }
 
                     visualizeTypeAnnotation(*a->indexer->resultType);
@@ -1919,12 +1937,12 @@ struct Printer
 
                         if (FFlag::LuauPrettyPrintVisualizeIndexerAccess)
                         {
-                            if (AstTableAccess access = a->indexer->access; access != AstTableAccess::ReadWrite)
+                            if (a->indexer->access != AstTableAccess::ReadWrite)
                             {
                                 if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
                                     advance(accessLocation->begin);
 
-                                writer.keyword(access == AstTableAccess::Read ? "read" : "write");
+                                writer.keyword(a->indexer->access == AstTableAccess::Read ? "read" : "write");
                             }
 
                             advance(a->indexer->location.begin);
@@ -2144,7 +2162,7 @@ std::string toString(AstNode* node)
     StringWriter writer;
     writer.pos = node->location.begin;
 
-    Printer printer(writer, CstNodeMap{nullptr});
+    Printer printer(writer, CstNodeMap{});
     printer.writeTypes = true;
 
     if (auto statNode = node->asStat())
@@ -2171,7 +2189,7 @@ std::string prettyPrint(AstStatBlock& block, const CstNodeMap& cstNodeMap)
 
 std::string prettyPrint(AstStatBlock& block)
 {
-    return prettyPrint(block, CstNodeMap{nullptr});
+    return prettyPrint(block, CstNodeMap{});
 }
 
 std::string prettyPrintWithTypes(AstStatBlock& block, const CstNodeMap& cstNodeMap)
@@ -2185,7 +2203,7 @@ std::string prettyPrintWithTypes(AstStatBlock& block, const CstNodeMap& cstNodeM
 
 std::string prettyPrintWithTypes(AstStatBlock& block)
 {
-    return prettyPrintWithTypes(block, CstNodeMap{nullptr});
+    return prettyPrintWithTypes(block, CstNodeMap{});
 }
 
 PrettyPrintResult prettyPrint(std::string_view source, ParseOptions options, bool withTypes, bool ignoreParseErrors)

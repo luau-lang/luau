@@ -61,7 +61,7 @@ namespace Luau
 namespace CodeGen
 {
 
-#if defined(__APPLE__) && defined(CODEGEN_TARGET_A64)
+#if defined(__APPLE__) && defined(CODEGEN_TARGET_A64) && !defined(CODEGEN_TARGET_A64_PTRAUTH_RETURNS)
 static int findDynamicUnwindSections(uintptr_t addr, unw_dynamic_unwind_sections_t* info)
 {
     // Define a minimal mach header for JIT'd code.
@@ -139,9 +139,12 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
     visitFdeEntries(unwindData, __register_frame);
 #endif
 
-#if defined(__APPLE__) && defined(CODEGEN_TARGET_A64)
-    // Starting from macOS 14, we need to register unwind section callback to state that our ABI doesn't require pointer authentication
-    // This might conflict with other JITs that do the same; unfortunately this is the best we can do for now.
+#if defined(__APPLE__) && defined(CODEGEN_TARGET_A64) && !defined(CODEGEN_TARGET_A64_PTRAUTH_RETURNS)
+    // On Apple arm64 targets, the default behavior of the system libunwind is
+    // to assume that JITted frames have PAC-signed return addresses.  If we are
+    // not signing our return addresses, provide the unwinder an arm64 mach header
+    // (not arm64e) for the JITted code so that it knows the JITted frames do not
+    // have signed return addresses.
     static unw_add_find_dynamic_unwind_sections_t unw_add_find_dynamic_unwind_sections =
         unw_add_find_dynamic_unwind_sections_t(dlsym(RTLD_DEFAULT, "__unw_add_find_dynamic_unwind_sections"));
     static int regonce = unw_add_find_dynamic_unwind_sections ? unw_add_find_dynamic_unwind_sections(findDynamicUnwindSections) : 0;

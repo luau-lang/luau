@@ -17,7 +17,7 @@ namespace Luau
 class TypeIds
 {
 private:
-    DenseHashMap<TypeId, bool> types{nullptr};
+    DenseHashMap<TypeId, bool> types;
     std::vector<TypeId> order;
     std::size_t hash = 0;
 

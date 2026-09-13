@@ -15,7 +15,7 @@ using namespace Luau;
 using std::nullopt;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauAllowIntersectionOfOneTableWithExtern)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
@@ -147,6 +147,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_us
         makeClone(oopsies)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors.at(0));
     REQUIRE(tm != nullptr);
@@ -174,6 +176,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_us
 
         makeClone(oopsies)
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors.at(0));
@@ -321,6 +325,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "higher_order_function_return_values_are_co
         end)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -335,6 +341,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "higher_order_function_return_type_is_not_c
             return ChildClass.New()
         end)
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -398,6 +406,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "table_class_unification_reports_sane_error
         foo(a)
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -453,14 +463,19 @@ local b = foo
 b(a)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        const std::string expected = "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
-                                     "accessing `Y` results in `number` in the latter type and `string` in the former type, "
-                                     "and `number` is not a subtype of `string`";
+        const std::string expected = FFlag::LuauNewTypePathErrorMessages
+                                         ? "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
+                                           "Expected property `Y` to be `string`, but got `number`"
+                                         : "Expected this to be '{ read X: unknown, read Y: string }', but got 'Vector2'; \n"
+                                           "accessing `Y` results in `number` in the latter type and `string` in the former type, "
+                                           "and `number` is not a subtype of `string`";
         CHECK_EQ(expected, toString(result.errors.at(0)));
     }
     else
@@ -550,11 +565,17 @@ local b: B = a
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK(
-            "Expected this to be 'B', but got 'A'; \n"
-            "accessing `x` results in `ChildClass` in the latter type and `BaseClass` in the former type, and `ChildClass` is not "
-            "exactly `BaseClass`" == toString(result.errors.at(0))
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK(
+                "Expected this to be 'B', but got 'A'; \n"
+                "Expected property `x` to be exactly `BaseClass`, but got `ChildClass`" == toString(result.errors.at(0))
+            );
+        else
+            CHECK(
+                "Expected this to be 'B', but got 'A'; \n"
+                "accessing `x` results in `ChildClass` in the latter type and `BaseClass` in the former type, and `ChildClass` is not "
+                "exactly `BaseClass`" == toString(result.errors.at(0))
+            );
     }
     else
     {
@@ -605,7 +626,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "callable_extern_types")
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 {
-    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
     // Test reading from an index
     {
         CheckResult result = check(R"(
@@ -905,6 +925,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "cyclic_tables_are_assumed_to_be_compatible
         c.Touched:Connect(onTouch)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1018,6 +1040,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_never")
         end
     )");
 
+    ignoreMissingAnnotations(results);
+
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Bing | Foobar) -> Bing", toString(requireType("update")));
 }
@@ -1038,6 +1062,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_intersection")
             return foo
         end
     )");
+
+    ignoreMissingAnnotations(results);
 
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Foobar) -> Foobar & { read IsEnabled: string }", toString(requireType("update")));
@@ -1060,6 +1086,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_superset")
         end
     )");
 
+    ignoreMissingAnnotations(results);
+
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Foobar) -> Foobar", toString(requireType("update")));
 }
@@ -1080,6 +1108,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_idempotent")
             return foo
         end
     )");
+
+    ignoreMissingAnnotations(results);
 
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Foobar) -> Foobar", toString(requireType("update")));
@@ -1110,12 +1140,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function update(obj: Foobar)
             assert(typeof(obj.Baz) == "number")
             return obj
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(Foobar) -> Foobar & { read Baz: number }", toString(requireType("update")));
 }
@@ -1269,7 +1301,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_2")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local World : { [number]: { PlayerData: { Settings: { Audio: {} & Folder } } } }
 
         local function Spread(Id: number)
@@ -1277,7 +1309,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_2")
             assert(Ownership)
             return Ownership
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(number) -> { PlayerData: { Settings: { Audio: Folder & {  } } } }", toString(requireType("Spread")));
 }

@@ -48,7 +48,7 @@ struct DataFlowGraphFixture
 
     void checkOperands(const Phi* phi, std::vector<DefId> operands)
     {
-        Set<const Def*> operandSet{nullptr};
+        Set<const Def*> operandSet;
         for (auto o : operands)
             operandSet.insert(o.get());
         CHECK(phi->operands.size() == operandSet.size());

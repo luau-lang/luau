@@ -432,7 +432,7 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
 
 TEST_CASE("content_reassignment")
 {
-    Type myAny{AnyType{}, /*presistent*/ true};
+    Type myAny{AnyType{}, /*persistent*/ true};
     myAny.documentationSymbol = "@global/any";
 
     TypeArena arena;

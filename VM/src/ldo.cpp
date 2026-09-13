@@ -6,6 +6,7 @@
 #include "lfunc.h"
 #include "lgc.h"
 #include "lmem.h"
+#include "ltable.h"
 #include "lvm.h"
 
 #if LUA_USE_LONGJMP
@@ -17,8 +18,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauYieldIter2)
-LUAU_FASTFLAGVARIABLE(LuauXpcallFixMessageYieldPath)
+LUAU_FASTFLAG(LuauFastpcall)
 
 // keep max stack allocation request under 1GB
 #define MAX_STACK_SIZE (int(1024 / sizeof(TValue)) * 1024 * 1024)
@@ -252,6 +252,8 @@ void luaD_checkCstack(lua_State* L)
         luaD_throw(L, LUA_ERRERR); // error while handling stack error
 }
 
+static void resume_continue(lua_State* L, ptrdiff_t basecioffset);
+
 static void performcall(lua_State* L, StkId func, int nresults, bool preparereentry)
 {
     if (luau_precall(L, func, nresults) == PCRLUA)
@@ -263,9 +265,21 @@ static void performcall(lua_State* L, StkId func, int nresults, bool preparereen
         luaC_threadbarrier(L);
 
         if (preparereentry)
+        {
             L->status = SCHEDULED_REENTRY;
+        }
         else
+        {
+            ptrdiff_t basecioffset = FFlag::LuauFastpcall ? saveci(L, L->ci - 1) : 0;
+
             luau_execute(L);
+
+            // process continuations up to the caller frame
+            // this is needed because even when 'preparereentry' is false, current thread might be yieldable
+            // in that case, luau_execute might exit with unfinished C continuation frames (e.g. pcall)
+            if (FFlag::LuauFastpcall)
+                resume_continue(L, basecioffset);
+        }
 
         if (!oldactive)
             L->isactive = false;
@@ -280,16 +294,30 @@ bool luaD_performcally(lua_State* L, StkId func, int nresults)
 
     L->baseCcalls++; // Allow yielding across this C call
 
-    ptrdiff_t cioffset = saveci(L, L->ci);
-
-    performcall(L, func, nresults, /* preparereentry */ false);
-
-    if (L->status != LUA_OK)
+    if (FFlag::LuauFastpcall)
     {
-        CallInfo* caller = restoreci(L, cioffset);
+        L->ci->flags |= LUA_CALLINFO_OPYIELD;
 
-        caller->flags |= LUA_CALLINFO_OPYIELD;
-        return true;
+        performcall(L, func, nresults, /* preparereentry */ false);
+
+        if (L->status != LUA_OK)
+            return true;
+
+        L->ci->flags &= ~LUA_CALLINFO_OPYIELD;
+    }
+    else
+    {
+        ptrdiff_t cioffset = saveci(L, L->ci);
+
+        performcall(L, func, nresults, /* preparereentry */ false);
+
+        if (L->status != LUA_OK)
+        {
+            CallInfo* caller = restoreci(L, cioffset);
+
+            caller->flags |= LUA_CALLINFO_OPYIELD;
+            return true;
+        }
     }
 
     L->baseCcalls--;
@@ -401,10 +429,77 @@ void luaD_seterrorobj(lua_State* L, int errcode, StkId oldtop)
     L->top = oldtop + 1;
 }
 
-static void resume_continue(lua_State* L)
+void luaD_preparefinalizestate(lua_State* L, lua_State* co, bool resulttrue)
+{
+    LUAU_ASSERT(co->finalizers);
+
+    sethvalue(L, L->top, co->finalizers);
+    L->top++;
+    setnvalue(L->top, double(luaH_getn(co->finalizers)));
+    L->top++;
+    setbvalue(L->top, resulttrue ? 1 : 0);
+    L->top++;
+
+    co->finalizers = nullptr; // we have taken the list for processing
+}
+
+void luaD_preparefinalize(lua_State* L, lua_State* co)
+{
+    bool resulttrue = co->status == LUA_OK;
+    int nres = resulttrue ? cast_int(co->top - co->base) : 1;
+
+    if (!lua_checkstack(L, nres + 3))
+        luaG_runerror(L, "too many results to invoke finalizer");
+
+    luaD_preparefinalizestate(L, co, resulttrue);
+    lua_xmove(co, L, nres);
+}
+
+int luaD_runfinalizers(lua_State* L, bool toclose, bool returnstatus)
+{
+    int results = lua_gettop(L) - 4;
+    int position = lua_tointeger(L, 3);
+    int status = lua_toboolean(L, 4);
+
+    if (position != 0)
+    {
+        if (!lua_checkstack(L, results + 2))
+        {
+            lua_pushstring(L, "too many results to invoke finalizer");
+            lua_error(L);
+        }
+
+        // decrement the position
+        lua_pushinteger(L, position - 1);
+        lua_replace(L, 3);
+
+        // take the finalizer from the end of the table
+        lua_rawgeti(L, 2, position);
+
+        // push status string
+        lua_pushstring(L, toclose ? "cancelled" : (status == 1 ? "finished" : "error"));
+
+        // copy results over
+        for (int i = 0; i < results; i++)
+            lua_pushvalue(L, 5 + i);
+
+        // pcall with no errfunc makes ourselves the handler for any errors
+        return lua_pcallyieldable(L, results + 1, 0, 0);
+    }
+
+    if (returnstatus)
+        return results + 1;
+
+    if (status == 0)
+        lua_error(L);
+
+    return results;
+}
+
+static void resume_continue(lua_State* L, ptrdiff_t basecioffset)
 {
     // unroll Luau/C combined stack, processing continuations
-    while ((L->status == LUA_OK || L->status == SCHEDULED_REENTRY) && L->ci > L->base_ci)
+    while ((L->status == LUA_OK || L->status == SCHEDULED_REENTRY) && L->ci > (FFlag::LuauFastpcall ? restoreci(L, basecioffset) : L->base_ci))
     {
         LUAU_ASSERT(L->baseCcalls == L->nCcalls);
 
@@ -415,6 +510,13 @@ static void resume_continue(lua_State* L)
         if (cl->isC)
         {
             LUAU_ASSERT(cl->c.cont);
+
+            // fast continuation path for the synthetic pcall/xpcall frame
+            if (FFlag::LuauFastpcall && (L->ci->flags & LUA_CALLINFO_PCALL) != 0)
+            {
+                luau_pospcallsuccess(L);
+                continue;
+            }
 
             // continuation can use non-protected calls again
             L->ci->flags &= ~LUA_CALLINFO_HANDLE;
@@ -433,7 +535,7 @@ static void resume_continue(lua_State* L)
         }
         else
         {
-            if (FFlag::LuauYieldIter2 && L->ci->flags & LUA_CALLINFO_OPYIELD)
+            if (L->ci->flags & LUA_CALLINFO_OPYIELD)
                 luau_finishop(L);
 
             // Luau continuation; it terminates at the end of the stack or at another C continuation
@@ -503,7 +605,7 @@ static void resume(lua_State* L, void* ud)
     }
 
     // run continuations from the stack; typically resumes Luau code and pcalls
-    resume_continue(L);
+    resume_continue(L, /* basecioffset */ 0);
 }
 
 static CallInfo* resume_findhandler(lua_State* L)
@@ -577,12 +679,6 @@ static void resume_handle(lua_State* L, void* ud)
         // if errfunc fails, we fail with "error in error handling" or "not enough memory"
         int err = luaD_rawrunprotected(L, callerrfunc, ci->base + (ci->errfunc - 1));
 
-        if (!FFlag::LuauXpcallFixMessageYieldPath)
-        {
-            // restore nCcalls to base if errfunc itself errored
-            L->nCcalls = L->baseCcalls;
-        }
-
         // in general we preserve the status, except for cases when the error handler fails
         // out of memory is treated specially because it's common for it to be cascading, in which case we preserve the code
         if (err == 0)
@@ -598,11 +694,8 @@ static void resume_handle(lua_State* L, void* ud)
         ci->errfunc = 0;
     }
 
-    if (FFlag::LuauXpcallFixMessageYieldPath)
-    {
-        // restore nCcalls to base for the continuation
-        L->nCcalls = L->baseCcalls;
-    }
+    // restore nCcalls to base for the continuation
+    L->nCcalls = L->baseCcalls;
 
     // restore the stack frame to the frame with continuation
     L->ci = ci;
@@ -625,7 +718,7 @@ static void resume_handle(lua_State* L, void* ud)
     luau_poscall(L, L->top - n);
 
     // run remaining continuations from the stack; typically resumes pcalls
-    resume_continue(L);
+    resume_continue(L, /* basecioffset */ 0);
 }
 
 static int resume_error(lua_State* L, const char* msg, int narg)
@@ -673,17 +766,8 @@ static int resume_finish(lua_State* L, int status, int oldnCcalls)
             }
         }
 
-        if (FFlag::LuauXpcallFixMessageYieldPath)
-        {
-            // restore the baseline we established in resume_start
-            L->baseCcalls = oldnCcalls;
-        }
-        else
-        {
-            // restore the baseline we established in resume_start
-            L->nCcalls = oldnCcalls;
-            L->baseCcalls = L->nCcalls;
-        }
+        // restore the baseline we established in resume_start
+        L->baseCcalls = oldnCcalls;
 
         L->status = cast_byte(status);
         status = luaD_rawrunprotected(L, resume_handle, ch);
@@ -711,22 +795,38 @@ static int resume_finish(lua_State* L, int status, int oldnCcalls)
     return L->status;
 }
 
+// Some profilers can use preresume/postresume to push one Luau execution frame
+// covering the entire resume and pop it on exit. lua_resume never longjmps past its own
+// frame: the resume body runs under luaD_rawrunprotected (which catches and returns a
+// status) and resume_finish only runs continuations under luaD_rawrunprotected, so the
+// pop always executes.
 int lua_resume(lua_State* L, lua_State* from, int nargs)
 {
     if (int starterror = resume_start(L, from, nargs))
         return starterror;
 
+    if (LUAU_UNLIKELY(!!L->global->cb.preresume))
+        L->global->cb.preresume(L);
+
     int oldnCcalls = L->nCcalls;
 
     int status = luaD_rawrunprotected(L, resume, L->top - nargs);
 
-    return resume_finish(L, status, oldnCcalls);
+    int result = resume_finish(L, status, oldnCcalls);
+
+    if (LUAU_UNLIKELY(!!L->global->cb.postresume))
+        L->global->cb.postresume(L);
+
+    return result;
 }
 
 int lua_resumeerror(lua_State* L, lua_State* from)
 {
     if (int starterror = resume_start(L, from, 1))
         return starterror;
+
+    if (LUAU_UNLIKELY(!!L->global->cb.preresume))
+        L->global->cb.preresume(L);
 
     int oldnCcalls = L->nCcalls;
 
@@ -738,7 +838,12 @@ int lua_resumeerror(lua_State* L, lua_State* from)
         status = luaD_rawrunprotected(L, resume_handle, ci);
     }
 
-    return resume_finish(L, status, oldnCcalls);
+    int result = resume_finish(L, status, oldnCcalls);
+
+    if (LUAU_UNLIKELY(!!L->global->cb.postresume))
+        L->global->cb.postresume(L);
+
+    return result;
 }
 
 int lua_yield(lua_State* L, int nresults)

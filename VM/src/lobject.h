@@ -474,7 +474,6 @@ typedef struct Closure
         {
             lua_CFunction f;
             lua_Continuation cont;
-            const char* debugname_DEPRECATED;
             TString* debugname;
             TValue upvals[1];
         } c;
@@ -563,6 +562,9 @@ typedef struct LuauClass
 
     TString* name;
 
+    // The superclass of this class. NULL if this class doesn't inherit.
+    LuauClass* super;
+
     // Mapping from offset to static members (only methods for now).
     TValue* staticmembers;
 
@@ -572,10 +574,6 @@ typedef struct LuauClass
 
     // Mapping from offset to member name. Instance member offsets are stored before static member offsets.
     TString** offsettomember;
-
-    // Metatable for this *class object*. At time of writing this only contains
-    // __call, but we may add more metamethods to class objects in the future.
-    LuaTable* metatable;
 
     // Metatable for instances of this class. NULL until the first metamethod
     // is added via luaR_addclassmember.
@@ -595,6 +593,14 @@ typedef struct LuauClass
     // instance or static members, creating class instances).
     uint32_t numberofallmembers;
 
+    // Can this class be extended?
+    bool isopen;
+
+    // True if this class or any of its ancestors defines an __init method.
+    // If a class's ancestors define an __init method, it must itself also define an __init method.
+    // We cannot determine this statically, so we track it here to error at runtime if the invariant is violated.
+    // The default constructor errors if this is true, which works because the default constructor is overridden if a class defines an __init method.
+    bool hasuserinitinchain;
 } LuauClass;
 
 typedef struct LuauObject

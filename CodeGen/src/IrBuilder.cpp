@@ -14,6 +14,8 @@
 
 LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
+LUAU_FASTFLAGVARIABLE(LuauCodeGenFastpcall)
+LUAU_FLAGVERSION(LuauCodeGenFastpcall, 2)
 
 namespace Luau
 {
@@ -22,10 +24,10 @@ namespace CodeGen
 
 constexpr unsigned kNoAssociatedBlockIndex = ~0u;
 
-IrBuilder::IrBuilder(const HostIrHooks& hostHooks)
+IrBuilder::IrBuilder(const HostIrHooks& hostHooks, const VmEnvironmentInfo& envInfo)
     : hostHooks(hostHooks)
-    , constantMap({IrConstKind::Tag, ~0ull})
 {
+    function.envInfo = envInfo;
 }
 
 static bool hasTypedParameters(const BytecodeTypeInfo& typeInfo)
@@ -683,6 +685,28 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstCmpProto(*this, pc, i);
         break;
 
+    case LOP_FASTPCALL:
+        // When flag is disabled, by skipping the translation we execute the fallback path
+        if (!FFlag::LuauCodeGenFastpcall)
+        {
+            IrOp next = blockAtInst(i + getOpLength(op));
+            inst(IrCmd::JUMP, next);
+            beginBlock(next);
+            break;
+        }
+
+        if (std::optional<IrOp> block = translateFastPcall(*this, pc, i))
+        {
+            handleFastcallFallback(*block, pc, i);
+        }
+        else
+        {
+            IrOp next = blockAtInst(i + getOpLength(op));
+            inst(IrCmd::JUMP, next);
+            beginBlock(next);
+        }
+        break;
+
     default:
         CODEGEN_ASSERT(!"Unknown instruction");
     }
@@ -749,7 +773,7 @@ void IrBuilder::checkSafeEnv(int pcpos)
 
 void IrBuilder::clone(std::vector<uint32_t> sourceIdxs, bool removeCurrentTerminator)
 {
-    DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
+    DenseHashMap<uint32_t, uint32_t> instRedir;
 
     auto redirect = [&instRedir](IrOp& op)
     {

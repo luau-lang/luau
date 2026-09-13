@@ -320,6 +320,8 @@ message StatIf
         StatBlock else = 3;
         StatIf elseif = 4;
     }
+    optional Local condition_local = 5;
+    optional bool condition_is_const = 6 [ default = false ];
 }
 
 message StatWhile
@@ -464,6 +466,7 @@ message StatClass
     required Local local = 5;
     optional bool is_exported = 6 [ default = false ];
     optional int32 extends = 7;
+    required bool is_open = 8;
 }
 
 message StatRequireIntoLocalHelper

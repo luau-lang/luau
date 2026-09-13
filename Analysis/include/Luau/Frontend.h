@@ -3,7 +3,7 @@
 
 #include "Luau/Config.h"
 #include "Luau/ConfigResolver.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/GlobalTypes.h"
 #include "Luau/Module.h"
 #include "Luau/ModuleResolver.h"
@@ -80,9 +80,10 @@ struct SourceNode
     ModuleName name;
     std::string humanReadableName;
     std::weak_ptr<ModuleSCC> scc;
-    DenseHashSet<ModuleName> requireSet{{}};
+    DenseHashSet<ModuleName> requireSet;
+
     std::vector<std::pair<ModuleName, Location>> requireLocations;
-    Set<ModuleName> dependents{{}};
+    Set<ModuleName> dependents;
 
     bool dirtySourceModule = true;
     bool dirtyModule = true;
@@ -325,7 +326,7 @@ public:
     std::unordered_map<ModuleName, std::shared_ptr<SourceNode>> sourceNodes;
     std::unordered_map<ModuleName, std::shared_ptr<SourceModule>> sourceModules;
     std::unordered_map<ModuleName, RequireTraceResult> requireTrace;
-    DenseHashMap2<ModuleName, ModuleSCCPtr> sccs;
+    DenseHashMap<ModuleName, ModuleSCCPtr> sccs;
 
     Stats stats = {};
 

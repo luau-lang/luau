@@ -24,6 +24,7 @@
 #include <mutex>
 #include <queue>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 #include <fstream>
 
@@ -433,6 +434,14 @@ int main(int argc, char** argv)
             basePath = std::string{argv[i] + 10};
         else if (strcmp(argv[i], "--solver=old") == 0)
             solverMode = Luau::SolverMode::Old;
+        else if (strcmp(argv[i], "--solver=new") == 0)
+            solverMode = Luau::SolverMode::New;
+        else
+        {
+            fprintf(stderr, "Error: Unrecognized option '%s'.\n\n", argv[i]);
+            displayHelp(argv[0]);
+            return 1;
+        }
     }
 
 #if !defined(LUAU_ENABLE_TIME_TRACE)
@@ -526,6 +535,17 @@ int main(int argc, char** argv)
 
     for (const Luau::ModuleName& name : checkedModules)
         failed += !reportModuleResult(frontend, name, format, annotate);
+
+    std::unordered_set<Luau::ModuleName> checkedNames(checkedModules.begin(), checkedModules.end());
+
+    for (const std::string& path : files)
+    {
+        if (checkedNames.count(path) == 0)
+        {
+            fprintf(stderr, "Error opening %s\n", path.c_str());
+            failed++;
+        }
+    }
 
     if (!configResolver.configErrors.empty())
     {
