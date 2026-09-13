@@ -12,8 +12,12 @@
 
 using namespace Luau;
 
+LUAU_FASTINT(LuauTypeMaximumStringifierLength)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauToStringTruthyFalsy)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(DebugLuauWarnOnUnannotatedTopLevelFunctions)
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -363,6 +367,9 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
         function f2(f) return f or f1 end
         function f3(f) return f or f2 end
     )");
+
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -371,9 +378,9 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
         o.exhaustive = false;
         o.maxTypeLength = 20;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) ... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ())... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ())... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f1"), o), "<T>(T) -> (() -> ()) ... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f2"), o), "<U>(U) -> (<T>(T) -> (() -> ())... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "<V>(V) -> (<U>(U) -> (<T>(T) -> (() -> ())... *TRUNCATED*");
     }
     else
     {
@@ -398,6 +405,8 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
         function f3(f) return f or f2 end
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -406,9 +415,9 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
         o.exhaustive = true;
         o.maxTypeLength = 20;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) ... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ())... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ())... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f1"), o), "<T>(T) -> (() -> ()) ... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f2"), o), "<U>(U) -> (<T>(T) -> (() -> ())... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "<V>(V) -> (<U>(U) -> (<T>(T) -> (() -> ())... *TRUNCATED*");
     }
     else
     {
@@ -521,6 +530,9 @@ type Table = typeof(tbl)
 type Foo = typeof(tbl.foo)
 local u: Foo
 )");
+
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     ToStringOptions opts;
@@ -539,14 +551,16 @@ TEST_CASE_FIXTURE(Fixture, "generate_friendly_names_for_inferred_generics")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
+    CHECK_EQ("<T>(T) -> T", toString(requireType("id")));
 
     CHECK_EQ(
-        "<a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z, a1, b1, c1, d1>(a, b, c, d, e, f, g, h, i, j, k, l, "
-        "m, n, o, p, q, r, s, t, u, v, w, x, y, z, a1, b1, c1, d1) -> (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, "
-        "x, y, z, a1, b1, c1, d1)",
+        "<T, U, V, W, X, Y, Z, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T1, U1, V1, W1>(T, U, V, W, X, Y, Z, A, B, C, D, E, F, "
+        "G, H, I, J, K, L, M, N, O, P, Q, R, S, T1, U1, V1, W1) -> (T, U, V, W, X, Y, Z, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, "
+        "R, S, T1, U1, V1, W1)",
         toString(requireType("id2"))
     );
 }
@@ -559,6 +573,8 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     ToStringOptions opts;
@@ -568,7 +584,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 
     REQUIRE(3 == opts.nameMap.types.size());
 
-    REQUIRE_EQ("<a, b, c>(a, b, c) -> (a, b, c)", nameData.name);
+    REQUIRE_EQ("<T, U, V>(T, U, V) -> (T, U, V)", nameData.name);
 
     const FunctionType* ftv = get<FunctionType>(follow(id3Type));
     REQUIRE(ftv != nullptr);
@@ -576,9 +592,9 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
     auto params = flatten(ftv->argTypes).first;
     REQUIRE(3 == params.size());
 
-    CHECK("a" == toString(params[0], opts));
-    CHECK("b" == toString(params[1], opts));
-    CHECK("c" == toString(params[2], opts));
+    CHECK("T" == toString(params[0], opts));
+    CHECK("U" == toString(params[1], opts));
+    CHECK("V" == toString(params[2], opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringErrorPack")
@@ -597,8 +613,10 @@ TEST_CASE_FIXTURE(Fixture, "toStringGenericPack")
 function foo(a, b) return a(b) end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("foo")), "<a, b...>((a) -> (b...), a) -> (b...)");
+    CHECK_EQ(toString(requireType("foo")), "<T, U...>((T) -> (U...), T) -> (U...)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_TypePack")
@@ -645,6 +663,8 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_union"
         local g: F = f
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("t1 where t1 = ((() -> number)?) -> t1?", toString(requireType("g")));
@@ -656,6 +676,8 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_inters
         function f() return f end
         local a: ((number) -> ()) & typeof(f)
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -681,7 +703,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_id")
     TypeId ty = requireType("id");
     const FunctionType* ftv = get<FunctionType>(follow(ty));
 
-    CHECK_EQ("id<a>(x: a): a", toStringNamedFunction("id", *ftv));
+    CHECK_EQ("id<T>(x: T): T", toStringNamedFunction("id", *ftv));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
@@ -700,9 +722,9 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
     const FunctionType* ftv = get<FunctionType>(follow(ty));
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> (b, ...unknown)): {b}", toStringNamedFunction("map", *ftv));
+        CHECK_EQ("map<T, U>(arr: {T}, fn: (T) -> (U, ...unknown)): {U}", toStringNamedFunction("map", *ftv));
     else
-        CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> b): {b}", toStringNamedFunction("map", *ftv));
+        CHECK_EQ("map<T, U>(arr: {T}, fn: (T) -> U): {U}", toStringNamedFunction("map", *ftv));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_generic_pack")
@@ -808,7 +830,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_overrides_param_names")
 
     ToStringOptions opts;
     opts.namedFunctionOverrideArgNames = {"first", "second", "third"};
-    CHECK_EQ("test<a>(first: a, second: string, ...: number): a", toStringNamedFunction("test", *ftv, opts));
+    CHECK_EQ("test<T>(first: T, second: string, ...: number): T", toStringNamedFunction("test", *ftv, opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_generics")
@@ -822,7 +844,7 @@ TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_
         CHECK("<a>(a, unknown) -> ()" == toString(requireType("foo")));
     }
     else
-        CHECK("<a, b>(a, b) -> ()" == toString(requireType("foo")));
+        CHECK("<a, U>(a, U) -> ()" == toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tostring_unsee_ttv_if_array")
@@ -850,12 +872,17 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
 
     std::string expected;
     if (!FFlag::DebugLuauForceOldSolver)
-        expected = "Expected this to be\n\t"
-                   "'{ a: number, b: string, c: { d: number } }'\n"
-                   "but got\n\t"
-                   "'{ a: number, b: string, c: { d: string } }'; \n"
-                   "accessing `c.d` results in `string` in the latter type and `number` in the former "
-                   "type, and `string` is not exactly `number`";
+        expected = FFlag::LuauNewTypePathErrorMessages ? "Expected this to be\n\t"
+                                                         "'{ a: number, b: string, c: { d: number } }'\n"
+                                                         "but got\n\t"
+                                                         "'{ a: number, b: string, c: { d: string } }'; \n"
+                                                         "Expected property `c.d` to be exactly `number`, but got `string`"
+                                                       : "Expected this to be\n\t"
+                                                         "'{ a: number, b: string, c: { d: number } }'\n"
+                                                         "but got\n\t"
+                                                         "'{ a: number, b: string, c: { d: string } }'; \n"
+                                                         "accessing `c.d` results in `string` in the latter type and `number` in the former "
+                                                         "type, and `string` is not exactly `number`";
     else
         expected = "Expected this to be exactly\n\t"
                    "'{ a: number, b: string, c: { d: number } }'\n"
@@ -1126,6 +1153,71 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy_no_parenthesis")
 
     CHECK_EQ(toString(requireTypeAlias("hiss")), "falsy & unknown");
     CHECK_EQ(toString(requireTypeAlias("scratch")), "truthy & unknown");
+TEST_CASE_FIXTURE(Fixture, "suggest_syntactically_legal_annotation")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions, true},
+    };
+
+    CheckResult result = check(R"(
+        export function foo(t)
+            t.x = 10
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto e = findError<TypeAnnotationRequired>(result);
+    REQUIRE(e.has_value());
+    CHECK("Type annotation required here.  Consider (t: { x: number }) -> ()" == toString(*e));
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_suggest_syntactically_illegal_annotation")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions, true},
+        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
+    };
+
+    CheckResult result = check(R"(
+        export function foo(t)
+            t.x = is_not_defined
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR(result, UnknownSymbol);
+    auto e = findError<TypeAnnotationRequired>(result);
+    REQUIRE(e.has_value());
+    CHECK("Type annotation required here.  Unable to infer the type of this function." == toString(*e));
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_suggest_type_that_is_too_long")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag sff[] = {
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions, true},
+    };
+
+    ScopedFastInt sfi{FInt::LuauTypeMaximumStringifierLength, 3};
+
+    CheckResult result = check(R"(
+        export function foo(t)
+            t.x.x.x.x.x.x = true
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto e = findError<TypeAnnotationRequired>(result);
+    REQUIRE(e.has_value());
+    CHECK("Type annotation required here.  Unable to infer the type of this function." == toString(*e));
 }
 
 TEST_SUITE_END();

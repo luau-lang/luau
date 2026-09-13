@@ -122,6 +122,12 @@ private:
     // if exp then block {elseif exp then block} [else block] end
     AstStat* parseIf();
 
+    // (`if' | `elseif') (`local' | `const') binding `=' exp then block ... end -- parses an entire `if local`/`if const`
+    AstStat* parseIfLocalCondition(const Location& start);
+
+    // Parse the trailing `{elseif exp then block} [else block] end` shared by `parseIf` and `parseIfLocalCondition`
+    AstStat* parseElseBody(const Location& start, const Lexeme& matchThen, AstStatBlock* thenbody, Location& end, std::optional<Location>& elseLocation);
+
     // while exp do block end
     AstStat* parseWhile();
 
@@ -164,7 +170,6 @@ private:
     void parseAttrList(TempVector<AstAttr*>& attributes, TempVector<CstAttrList*>* cstAttrLists);
 
     // attribute ::= '@' NAME | attrlist
-    void parseAttribute_DEPRECATED(TempVector<AstAttr*>& attribute); // TODO: Clip with LuauCstAttr
     void parseAttribute(TempVector<AstAttr*>& attribute);
 
     // attributes ::= {attribute}
@@ -192,7 +197,7 @@ private:
     // type Name `=' Type
     AstStat* parseTypeAlias(const Location& start, bool exported, Position typeKeywordPosition);
 
-    AstStat* parseClassStat(const Location& start, bool exported);
+    AstStat* parseClassStat(const Location& start, bool exported, bool open);
 
     // type function Name ... end
     AstStat* parseTypeFunction(const Location& start, bool exported, Position typeKeywordPosition);
@@ -364,6 +369,8 @@ private:
 
     AstExpr* parseExplicitTypeInstantiationExpr(Position start, AstExpr& basedOnExpr);
 
+    AstExpr* parseClassRefExpr();
+
     // Name
     std::optional<Name> parseNameOpt(const char* context = nullptr);
     Name parseName(const char* context = nullptr);
@@ -448,6 +455,8 @@ private:
         ...
     ) LUAU_PRINTF_ATTR(5, 6);
     AstExprError* reportExprError(const Location& location, const AstArray<AstExpr*>& expressions, const char* format, ...) LUAU_PRINTF_ATTR(4, 5);
+    AstStatClass* getMatchingClass(AstExpr* expr);
+    bool isExprLValue(AstExpr* expr);
     AstExprError* reportLValueError(AstExpr* expr);
     AstTypeError* reportTypeError(const Location& location, const AstArray<AstType*>& types, const char* format, ...) LUAU_PRINTF_ATTR(4, 5);
     // `parseErrorLocation` is associated with the parser error
@@ -542,7 +551,7 @@ private:
 
     DenseHashMap<AstName, AstLocal*> localMap;
     std::vector<AstLocal*> localStack;
-    DenseHashSet<AstName> classesWithinModule{{}};
+    DenseHashMap<AstName, AstStatClass*> classesWithinModule;
 
     std::vector<ParseError> parseErrors;
 

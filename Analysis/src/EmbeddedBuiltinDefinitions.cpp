@@ -5,7 +5,7 @@ LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauUdtfTypeIsSubtypeOf)
+LUAU_FASTFLAGVARIABLE(DebugLuauCoroutineFinallyAnalysis)
 
 namespace Luau
 {
@@ -178,7 +178,7 @@ declare os: {
 
 )BUILTIN_SRC";
 
-static constexpr const char* kBuiltinDefinitionCoroutineSrc = R"BUILTIN_SRC(
+static constexpr const char* kBuiltinDefinitionCoroutineSrc_DEPRECATED = R"BUILTIN_SRC(
 
 declare coroutine: {
     create: <A..., R...>(f: (A...) -> R...) -> thread,
@@ -189,6 +189,22 @@ declare coroutine: {
     yield: <A..., R...>(A...) -> R...,
     isyieldable: () -> boolean,
     close: @checked (co: thread) -> (boolean, any)
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionCoroutineSrc = R"BUILTIN_SRC(
+
+declare coroutine: {
+    create: <A..., R...>(f: (A...) -> R...) -> thread,
+    resume: <A..., R...>(co: thread, A...) -> (boolean, R...),
+    running: () -> thread,
+    status: @checked (co: thread) -> "dead" | "running" | "normal" | "suspended",
+    wrap: <A..., R...>(f: (A...) -> R...) -> ((A...) -> R...),
+    yield: <A..., R...>(A...) -> R...,
+    isyieldable: () -> boolean,
+    close: @checked (co: thread) -> (boolean, any),
+    finally: (co: thread, callback: (status: "finished" | "error" | "cancelled", ...any) -> ()) -> ()
 }
 
 )BUILTIN_SRC";
@@ -402,7 +418,12 @@ std::string getBuiltinDefinitionSource()
     result += kBuiltinDefinitionBit32Src;
     result += kBuiltinDefinitionMathSrc;
     result += kBuiltinDefinitionOsSrc;
-    result += kBuiltinDefinitionCoroutineSrc;
+
+    if (FFlag::DebugLuauCoroutineFinallyAnalysis)
+        result += kBuiltinDefinitionCoroutineSrc;
+    else
+        result += kBuiltinDefinitionCoroutineSrc_DEPRECATED;
+
     result += kBuiltinDefinitionTableSrc;
     result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
@@ -435,59 +456,6 @@ export type type = {
 
     is: (self: type, arg: string) -> boolean,
     issubtypeof: (self: type, arg: type) -> boolean,
-
-    -- for singleton type
-    value: (self: type) -> (string | boolean | nil),
-
-    -- for negation type
-    inner: (self: type) -> type,
-
-    -- for union and intersection types
-    components: (self: type) -> {type},
-
-    -- for table type
-    setproperty: (self: type, key: type, value: type?) -> (),
-    setreadproperty: (self: type, key: type, value: type?) -> (),
-    setwriteproperty: (self: type, key: type, value: type?) -> (),
-    readproperty: (self: type, key: type) -> type?,
-    writeproperty: (self: type, key: type) -> type?,
-    properties: (self: type) -> { [type]: { read: type?, write: type? } },
-    setindexer: (self: type, index: type, result: type) -> (),
-    setreadindexer: (self: type, index: type, result: type) -> (),
-    setwriteindexer: (self: type, index: type, result: type) -> (),
-    indexer: (self: type) -> { index: type, readresult: type, writeresult: type }?,
-    readindexer: (self: type) -> { index: type, result: type }?,
-    writeindexer: (self: type) -> { index: type, result: type }?,
-    setmetatable: (self: type, arg: type) -> (),
-    metatable: (self: type) -> type?,
-
-    -- for function type
-    setparameters: (self: type, head: {type}?, tail: type?) -> (),
-    parameters: (self: type) -> { head: {type}?, tail: type? },
-    setreturns: (self: type, head: {type}?, tail: type? ) -> (),
-    returns: (self: type) -> { head: {type}?, tail: type? },
-    setgenerics: (self: type, {type}?) -> (),
-    generics: (self: type) -> {type},
-
-    -- for class type
-    -- 'properties', 'metatable', 'indexer', 'readindexer' and 'writeindexer' are shared with table type
-    readparent: (self: type) -> type?,
-    writeparent: (self: type) -> type?,
-
-    -- for generic type
-    name: (self: type) -> string?,
-    ispack: (self: type) -> boolean,
-}
-
-)BUILTIN_SRC";
-
-static constexpr const char* kBuiltinDefinitionTypeMethodSrc_NOISSUBTYPEOF = R"BUILTIN_SRC(
-
-export type type = {
-    tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "integer" | "string" | "buffer" | "thread" |
-         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "extern" | "generic",
-
-    is: (self: type, arg: string) -> boolean,
 
     -- for singleton type
     value: (self: type) -> (string | boolean | nil),
@@ -588,59 +556,6 @@ export type type = {
 
 )BUILTIN_SRC";
 
-static constexpr const char* kBuiltinDefinitionTypeMethodSrc_DEPRECATED = R"BUILTIN_SRC(
-
-export type type = {
-    tag: "nil" | "unknown" | "never" | "any" | "boolean" | "number" | "string" | "buffer" | "thread" |
-         "singleton" | "negation" | "union" | "intersection" | "table" | "function" | "extern" | "generic",
-
-    is: (self: type, arg: string) -> boolean,
-
-    -- for singleton type
-    value: (self: type) -> (string | boolean | nil),
-
-    -- for negation type
-    inner: (self: type) -> type,
-
-    -- for union and intersection types
-    components: (self: type) -> {type},
-
-    -- for table type
-    setproperty: (self: type, key: type, value: type?) -> (),
-    setreadproperty: (self: type, key: type, value: type?) -> (),
-    setwriteproperty: (self: type, key: type, value: type?) -> (),
-    readproperty: (self: type, key: type) -> type?,
-    writeproperty: (self: type, key: type) -> type?,
-    properties: (self: type) -> { [type]: { read: type?, write: type? } },
-    setindexer: (self: type, index: type, result: type) -> (),
-    setreadindexer: (self: type, index: type, result: type) -> (),
-    setwriteindexer: (self: type, index: type, result: type) -> (),
-    indexer: (self: type) -> { index: type, readresult: type, writeresult: type }?,
-    readindexer: (self: type) -> { index: type, result: type }?,
-    writeindexer: (self: type) -> { index: type, result: type }?,
-    setmetatable: (self: type, arg: type) -> (),
-    metatable: (self: type) -> type?,
-
-    -- for function type
-    setparameters: (self: type, head: {type}?, tail: type?) -> (),
-    parameters: (self: type) -> { head: {type}?, tail: type? },
-    setreturns: (self: type, head: {type}?, tail: type? ) -> (),
-    returns: (self: type) -> { head: {type}?, tail: type? },
-    setgenerics: (self: type, {type}?) -> (),
-    generics: (self: type) -> {type},
-
-    -- for class type
-    -- 'properties', 'metatable', 'indexer', 'readindexer' and 'writeindexer' are shared with table type
-    readparent: (self: type) -> type?,
-    writeparent: (self: type) -> type?,
-
-    -- for generic type
-    name: (self: type) -> string?,
-    ispack: (self: type) -> boolean,
-}
-
-)BUILTIN_SRC";
-
 static constexpr const char* kBuiltinDefinitionTypesLibSrc = R"BUILTIN_SRC(
 
 declare types: {
@@ -694,14 +609,10 @@ std::string getTypeFunctionDefinitionSource()
 {
     std::string result;
 
-    if (FFlag::LuauUdtfTypeIsSubtypeOf && FFlag::LuauIntegerType2)
+    if (FFlag::LuauIntegerType2)
         result += kBuiltinDefinitionTypeMethodSrc;
-    else if (FFlag::LuauUdtfTypeIsSubtypeOf)
-        result += kBuiltinDefinitionTypeMethodSrc_NOINTEGER;
-    else if (FFlag::LuauIntegerType2)
-        result += kBuiltinDefinitionTypeMethodSrc_NOISSUBTYPEOF;
     else
-        result += kBuiltinDefinitionTypeMethodSrc_DEPRECATED;
+        result += kBuiltinDefinitionTypeMethodSrc_NOINTEGER;
 
     if (FFlag::LuauIntegerType2)
         result += kBuiltinDefinitionTypesLibSrc;

@@ -54,7 +54,7 @@ struct Reducer
     ParseOptions parseOptions;
 
     ParseResult parseResult;
-    CstNodeMap cstNodeMap{nullptr};
+    CstNodeMap cstNodeMap;
     AstStatBlock* root;
 
     std::string scriptName;
@@ -241,7 +241,7 @@ struct Reducer
     // Semiopen interval
     using Span = std::pair<size_t, size_t>;
 
-    // Generates 'chunks' semiopen spans of equal-ish size to span the indeces running from 0 to 'size'
+    // Generates 'chunks' semiopen spans of equal-ish size to span the indices running from 0 to 'size'
     // Also inverses.
     std::vector<std::pair<Span, Span>> generateSpans(size_t size, size_t chunks)
     {

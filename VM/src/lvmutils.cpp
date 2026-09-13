@@ -7,6 +7,7 @@
 #include "lstate.h"
 #include "lstring.h"
 #include "ltable.h"
+#include "lvector.h"
 #include "lgc.h"
 #include "ldo.h"
 #include "lnumutils.h"
@@ -47,7 +48,7 @@ int luaV_tostring(lua_State* L, StkId obj)
     }
 }
 
-const float* luaV_tovector(const TValue* obj)
+const LUA_VECTOR_TYPE* luaV_tovector(const TValue* obj)
 {
     if (ttisvector(obj))
         return vvalue(obj);
@@ -130,8 +131,7 @@ void luaV_gettable(lua_State* L, const TValue* t, TValue* key, StkId val)
             if (ttisnil(offsettval))
                 luaG_missingmembererror(L, t, key);
 
-            LUAU_ASSERT(ttisnumber(offsettval));
-            int offset = int(nvalue(offsettval));
+            const uint32_t offset = uint32_t(nvalue(offsettval));
             setobj2s(L, val, luaR_lookupmemberatoffset(inst, offset));
             return;
         }
@@ -145,9 +145,8 @@ void luaV_gettable(lua_State* L, const TValue* t, TValue* key, StkId val)
             if (ttisnil(res))
                 luaG_missingmembererror(L, t, key);
 
-            LUAU_ASSERT(ttisnumber(res));
-            int offset = int(nvalue(res));
-            LUAU_ASSERT(offset >= 0 && offset < lco->numberofallmembers);
+            const uint32_t offset = uint32_t(nvalue(res));
+            LUAU_ASSERT(offset < lco->numberofallmembers);
 
             // This is the case where we try to access an instance member on a
             // class object, for example:
@@ -214,8 +213,8 @@ void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
             const TValue* offset = luaH_get(inst->lclass->memberstooffset, key);
             if (ttisnil(offset))
                 luaG_missingmembererror(L, t, key);
-            const int offsetnum = int(nvalue(offset));
-            LUAU_ASSERT(offsetnum >= 0 && offsetnum < inst->lclass->numberofallmembers);
+            const uint32_t offsetnum = uint32_t(nvalue(offset));
+            LUAU_ASSERT(offsetnum < inst->lclass->numberofallmembers);
             if (offsetnum >= inst->lclass->numberofinstancemembers)
                 luaG_indexerror(L, t, key);
             setobj2class(L, &inst->members[offsetnum], val);
@@ -365,19 +364,10 @@ int luaV_equalval(lua_State* L, const TValue* t1, const TValue* t2)
         return classvalue(t1) == classvalue(t2);
     case LUA_TOBJECT:
     {
-        // We follow roughly the same rules as metatables, except we require
-        // that the two instances have *exactly* the same class object. This
-        // is not a strict requirement for comparison metamethods.
-        LuauObject* t1inst = objectvalue(t1);
-        LuauObject* t2inst = objectvalue(t2);
-        // Class instances with differing class objects are always inequal.
-        if (t1inst->lclass != t2inst->lclass)
-            return false;
-        // Otherwise, check if `__eq` exists and use that
-        tm = luaT_gettmbyobj(L, t1, TM_EQ);
-        if (ttisnil(tm))
-            // If it doesn't, then check physical equality
-            return t1inst == t2inst;
+        // We follow the same rules as metatables.
+        tm = get_compTM(L, objectvalue(t1)->lclass->instancemetatable, objectvalue(t2)->lclass->instancemetatable, TM_EQ);
+        if (!tm)
+            return objectvalue(t1) == objectvalue(t2);
         break; // will try TM
     }
     case LUA_TTABLE:
@@ -468,36 +458,37 @@ void luaV_doarithimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc
     // v*v  s*v  v*s   (mul)
     // v/v  s/v  v/s   (div)
     // v//v s//v v//s  (floor div)
-    const float* vb = ttisvector(rb) ? vvalue(rb) : nullptr;
-    const float* vc = ttisvector(rc) ? vvalue(rc) : nullptr;
+    const LUA_VECTOR_TYPE* vb = ttisvector(rb) ? vvalue(rb) : nullptr;
+    const LUA_VECTOR_TYPE* vc = ttisvector(rc) ? vvalue(rc) : nullptr;
 
     if (vb && vc)
     {
         switch (op)
         {
         case TM_ADD:
-            setvvalue(ra, vb[0] + vc[0], vb[1] + vc[1], vb[2] + vc[2], vb[3] + vc[3]);
+            setvvalue(L, ra, vb[0] + vc[0], vb[1] + vc[1], vb[2] + vc[2], vb[3] + vc[3]);
             return;
         case TM_SUB:
-            setvvalue(ra, vb[0] - vc[0], vb[1] - vc[1], vb[2] - vc[2], vb[3] - vc[3]);
+            setvvalue(L, ra, vb[0] - vc[0], vb[1] - vc[1], vb[2] - vc[2], vb[3] - vc[3]);
             return;
         case TM_MUL:
-            setvvalue(ra, vb[0] * vc[0], vb[1] * vc[1], vb[2] * vc[2], vb[3] * vc[3]);
+            setvvalue(L, ra, vb[0] * vc[0], vb[1] * vc[1], vb[2] * vc[2], vb[3] * vc[3]);
             return;
         case TM_DIV:
-            setvvalue(ra, vb[0] / vc[0], vb[1] / vc[1], vb[2] / vc[2], vb[3] / vc[3]);
+            setvvalue(L, ra, vb[0] / vc[0], vb[1] / vc[1], vb[2] / vc[2], vb[3] / vc[3]);
             return;
         case TM_IDIV:
             setvvalue(
+                L,
                 ra,
-                float(luai_numidiv(vb[0], vc[0])),
-                float(luai_numidiv(vb[1], vc[1])),
-                float(luai_numidiv(vb[2], vc[2])),
-                float(luai_numidiv(vb[3], vc[3]))
+                LUA_VECTOR_TYPE(luai_numidiv(vb[0], vc[0])),
+                LUA_VECTOR_TYPE(luai_numidiv(vb[1], vc[1])),
+                LUA_VECTOR_TYPE(luai_numidiv(vb[2], vc[2])),
+                LUA_VECTOR_TYPE(luai_numidiv(vb[3], vc[3]))
             );
             return;
         case TM_UNM:
-            setvvalue(ra, -vb[0], -vb[1], -vb[2], -vb[3]);
+            setvvalue(L, ra, -vb[0], -vb[1], -vb[2], -vb[3]);
             return;
         default:
             break;
@@ -509,19 +500,24 @@ void luaV_doarithimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc
 
         if (c)
         {
-            float nc = cast_to(float, nvalue(c));
+            LUA_VECTOR_TYPE nc = cast_to(LUA_VECTOR_TYPE, nvalue(c));
 
             switch (op)
             {
             case TM_MUL:
-                setvvalue(ra, vb[0] * nc, vb[1] * nc, vb[2] * nc, vb[3] * nc);
+                setvvalue(L, ra, vb[0] * nc, vb[1] * nc, vb[2] * nc, vb[3] * nc);
                 return;
             case TM_DIV:
-                setvvalue(ra, vb[0] / nc, vb[1] / nc, vb[2] / nc, vb[3] / nc);
+                setvvalue(L, ra, vb[0] / nc, vb[1] / nc, vb[2] / nc, vb[3] / nc);
                 return;
             case TM_IDIV:
                 setvvalue(
-                    ra, float(luai_numidiv(vb[0], nc)), float(luai_numidiv(vb[1], nc)), float(luai_numidiv(vb[2], nc)), float(luai_numidiv(vb[3], nc))
+                    L,
+                    ra,
+                    LUA_VECTOR_TYPE(luai_numidiv(vb[0], nc)),
+                    LUA_VECTOR_TYPE(luai_numidiv(vb[1], nc)),
+                    LUA_VECTOR_TYPE(luai_numidiv(vb[2], nc)),
+                    LUA_VECTOR_TYPE(luai_numidiv(vb[3], nc))
                 );
                 return;
             default:
@@ -535,19 +531,24 @@ void luaV_doarithimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc
 
         if (b)
         {
-            float nb = cast_to(float, nvalue(b));
+            LUA_VECTOR_TYPE nb = cast_to(LUA_VECTOR_TYPE, nvalue(b));
 
             switch (op)
             {
             case TM_MUL:
-                setvvalue(ra, nb * vc[0], nb * vc[1], nb * vc[2], nb * vc[3]);
+                setvvalue(L, ra, nb * vc[0], nb * vc[1], nb * vc[2], nb * vc[3]);
                 return;
             case TM_DIV:
-                setvvalue(ra, nb / vc[0], nb / vc[1], nb / vc[2], nb / vc[3]);
+                setvvalue(L, ra, nb / vc[0], nb / vc[1], nb / vc[2], nb / vc[3]);
                 return;
             case TM_IDIV:
                 setvvalue(
-                    ra, float(luai_numidiv(nb, vc[0])), float(luai_numidiv(nb, vc[1])), float(luai_numidiv(nb, vc[2])), float(luai_numidiv(nb, vc[3]))
+                    L,
+                    ra,
+                    LUA_VECTOR_TYPE(luai_numidiv(nb, vc[0])),
+                    LUA_VECTOR_TYPE(luai_numidiv(nb, vc[1])),
+                    LUA_VECTOR_TYPE(luai_numidiv(nb, vc[2])),
+                    LUA_VECTOR_TYPE(luai_numidiv(nb, vc[3]))
                 );
                 return;
             default:

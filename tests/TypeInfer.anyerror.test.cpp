@@ -14,7 +14,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauIndexingIntoErrorGivesError)
 
 TEST_SUITE_BEGIN("TypeInferAnyError");
 
@@ -149,6 +148,8 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error2")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         // CLI-97375(awe): `bar()` is returning `nil` here, which isn't wrong necessarily,
@@ -267,8 +268,6 @@ TEST_CASE_FIXTURE(Fixture, "quantify_any_does_not_bind_to_itself")
 
 TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")
 {
-    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
-
     CheckResult result = check(R"(
         local a = unknown.Parent.Reward.GetChildren()
     )");
@@ -284,8 +283,6 @@ TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")
 
 TEST_CASE_FIXTURE(Fixture, "chain_calling_error_type_yields_error")
 {
-    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
-
     CheckResult result = check(R"(
         local a = Utility.Create "Foo" {}
     )");
@@ -358,6 +355,8 @@ function T:construct(index)
 end
 )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -415,8 +414,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_of_any_calls")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_any_can_have_props")
 {
-    ScopedFastFlag _{FFlag::LuauIndexingIntoErrorGivesError, true};
-
     // *blocked-130* ~ hasProp any & ~(false?), "_status"
     CheckResult result = check(R"(
 function foo(x: any, y)
@@ -439,7 +436,6 @@ end
     {
         CHECK("(any, any) -> any" == toString(requireType("foo")));
     }
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "cast_to_table_of_any")

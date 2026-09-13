@@ -53,6 +53,11 @@ void luau_set_compile_constant_vector(lua_CompileConstant* constant, float x, fl
     Luau::setCompileConstantVector(constant, x, y, z, w);
 }
 
+void luau_set_compile_constant_vectord(lua_CompileConstant* constant, double x, double y, double z, double w)
+{
+    Luau::setCompileConstantVectord(constant, x, y, z, w);
+}
+
 void luau_set_compile_constant_string(lua_CompileConstant* constant, const char* s, size_t l)
 {
     Luau::setCompileConstantString(constant, s, l);

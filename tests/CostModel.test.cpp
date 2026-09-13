@@ -5,6 +5,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+
 using namespace Luau;
 
 namespace Luau
@@ -228,6 +230,25 @@ end
 
     CHECK_EQ(8, Luau::Compile::computeCost(model, args1, 1));
     CHECK_EQ(7, Luau::Compile::computeCost(model, args2, 1));
+}
+
+TEST_CASE("IfLocal")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    uint64_t model = modelFunction(R"(
+function test(a)
+    if local b = a * a * a then
+        return b * b
+    end
+    return 0
+end
+)");
+    const bool args1[] = {false};
+    const bool args2[] = {true};
+
+    CHECK_EQ(4, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(1, Luau::Compile::computeCost(model, args2, 1));
 }
 
 TEST_SUITE_END();

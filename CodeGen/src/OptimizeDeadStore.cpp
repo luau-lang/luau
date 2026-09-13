@@ -10,10 +10,6 @@
 
 #include "lobject.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenDsePtrStoreTagCheck)
-LUAU_FASTFLAGVARIABLE(LuauCodegenDseRestoreHints)
-LUAU_FLAGVERSION(LuauCodegenDseRestoreHints, 2)
-
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
 namespace Luau
@@ -198,8 +194,7 @@ struct RemoveDeadStoreState
 
             if (regInfo.valueInstIdx != ~0u)
             {
-                if (FFlag::LuauCodegenDseRestoreHints)
-                    recordHintBeforeKill(regInfo.valueInstIdx);
+                recordHintBeforeKill(regInfo.valueInstIdx);
 
                 kill(function, function.instructions[regInfo.valueInstIdx]);
                 regInfo.valueInstIdx = ~0u;
@@ -211,11 +206,10 @@ struct RemoveDeadStoreState
 
     void killTValueStore(StoreRegInfo& regInfo)
     {
-        // TValue can only be killed if it is not overlayed by a partial tag/value write
+        // TValue can only be killed if it is not overlaid by a partial tag/value write
         if (regInfo.tvalueInstIdx != kInvalidInstIdx && regInfo.tagInstIdx == kInvalidInstIdx && regInfo.valueInstIdx == kInvalidInstIdx)
         {
-            if (FFlag::LuauCodegenDseRestoreHints)
-                recordHintBeforeKill(regInfo.tvalueInstIdx);
+            recordHintBeforeKill(regInfo.tvalueInstIdx);
 
             kill(function, function.instructions[regInfo.tvalueInstIdx]);
 
@@ -654,7 +648,7 @@ struct RemoveDeadStoreState
     // Have there been any object allocations which might remain unused
     bool hasAllocations = false;
 
-    DenseHashSet<uint32_t> nonPropagatingStore{kInvalidInstIdx};
+    DenseHashSet<uint32_t> nonPropagatingStore;
     std::vector<uint32_t> recordedVmExitSyncs;
 };
 
@@ -696,15 +690,7 @@ static bool tryReplaceTagWithFullStore(
             }
         }
 
-        if (FFlag::LuauCodegenDseRestoreHints)
-        {
-            state.killTagAndValueStorePair(regInfo);
-        }
-        else
-        {
-            state.killTagStore(regInfo);
-            state.killValueStore(regInfo);
-        }
+        state.killTagAndValueStorePair(regInfo);
 
         regInfo.tvalueInstIdx = instIndex;
         regInfo.maybeGco = isGCO(tag);
@@ -783,15 +769,7 @@ static bool tryReplaceValueWithFullStore(
         CODEGEN_ASSERT(regInfo.knownTag == prevTag);
         replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, {targetOp, prevTagOp, valueOp}});
 
-        if (FFlag::LuauCodegenDseRestoreHints)
-        {
-            state.killTagAndValueStorePair(regInfo);
-        }
-        else
-        {
-            state.killTagStore(regInfo);
-            state.killValueStore(regInfo);
-        }
+        state.killTagAndValueStorePair(regInfo);
 
         regInfo.tvalueInstIdx = instIndex;
         return true;
@@ -873,15 +851,7 @@ static bool tryReplaceVectorValueWithFullStore(
 
         replace(function, OP_E(storeInst), prevTagOp);
 
-        if (FFlag::LuauCodegenDseRestoreHints)
-        {
-            state.killTagAndValueStorePair(regInfo);
-        }
-        else
-        {
-            state.killTagStore(regInfo);
-            state.killValueStore(regInfo);
-        }
+        state.killTagAndValueStorePair(regInfo);
 
         regInfo.tvalueInstIdx = instIndex;
         return true;
@@ -1021,28 +991,14 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
             regInfo.ignoreAtExit = false;
 
-            bool maybeGco;
+            // If we have a known tag and it is not a pointer, we cannot generate a full store in invalid form
+            bool maybeGco = regInfo.knownTag == kUnknownTag || isGCO(regInfo.knownTag);
 
-            if (FFlag::LuauCodegenDsePtrStoreTagCheck)
+            if (maybeGco && tryReplaceValueWithFullStore(state, build, function, block, index, OP_A(inst), OP_B(inst), regInfo))
             {
-                // If we have a known tag and it is not a pointer, we cannot generate a full store in invalid form
-                maybeGco = regInfo.knownTag == kUnknownTag || isGCO(regInfo.knownTag);
-
-                if (maybeGco && tryReplaceValueWithFullStore(state, build, function, block, index, OP_A(inst), OP_B(inst), regInfo))
-                {
-                    regInfo.maybeGco = true;
-                    state.hasGcoToClear = true;
-                    break;
-                }
-            }
-            else
-            {
-                if (tryReplaceValueWithFullStore(state, build, function, block, index, OP_A(inst), OP_B(inst), regInfo))
-                {
-                    regInfo.maybeGco = true;
-                    state.hasGcoToClear |= true;
-                    break;
-                }
+                regInfo.maybeGco = true;
+                state.hasGcoToClear = true;
+                break;
             }
 
             // Partial value store can be removed by a new one if the tag is known
@@ -1054,17 +1010,9 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
             if (state.tagValuePairEstablished(regInfo))
                 regInfo.tvalueInstIdx = kInvalidInstIdx;
 
-            if (FFlag::LuauCodegenDsePtrStoreTagCheck)
-            {
-                // While pointer was stored, TValue can still be under a non-GCO tag
-                regInfo.maybeGco = maybeGco;
-                state.hasGcoToClear |= maybeGco;
-            }
-            else
-            {
-                regInfo.maybeGco = true;
-                state.hasGcoToClear = true;
-            }
+            // While pointer was stored, TValue can still be under a non-GCO tag
+            regInfo.maybeGco = maybeGco;
+            state.hasGcoToClear |= maybeGco;
         }
         break;
     case IrCmd::STORE_DOUBLE:
@@ -1210,6 +1158,9 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::CHECK_SAFE_ENV:
         state.checkLiveIns(OP_A(inst), index, true);
         break;
+    case IrCmd::CHECK_YIELDABLE:
+        state.checkLiveIns(OP_A(inst), index, true);
+        break;
     case IrCmd::CHECK_ARRAY_SIZE:
         state.checkLiveIns(OP_C(inst), index, true);
         break;
@@ -1242,6 +1193,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::JUMP_IF_FALSY:
     case IrCmd::JUMP_EQ_TAG:
     case IrCmd::JUMP_CMP_INT:
+    case IrCmd::JUMP_CMP_INT64:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::JUMP_CMP_FLOAT:
@@ -1279,6 +1231,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::INTERRUPT:
     case IrCmd::CHECK_GC:
     case IrCmd::CALL:
+    case IrCmd::INVOKE_FASTPCALL:
     case IrCmd::FORGLOOP_FALLBACK:
     case IrCmd::FALLBACK_GETGLOBAL:
     case IrCmd::FALLBACK_SETGLOBAL:
@@ -1294,6 +1247,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         break;
 
     case IrCmd::NEW_USERDATA:
+    case IrCmd::NEW_VECTOR:
         state.hasAllocations = true;
         break;
 
@@ -1331,6 +1285,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
     case IrCmd::FALLBACK_FORGPREP:
         // CALL directly executes a Luau function on the same native stack frame
     case IrCmd::CALL:
+    case IrCmd::INVOKE_FASTPCALL:
         // These instructions use lowering that is not aware of register allocator and demand no active values to exist
     case IrCmd::SETLIST:
     case IrCmd::FORGLOOP:
@@ -1489,7 +1444,7 @@ static void markDeadStoresInBlockChain(
                         {
                             IrInst& pointer = function.instOp(OP_A(inst));
 
-                            if (pointer.cmd == IrCmd::NEW_USERDATA)
+                            if (pointer.cmd == IrCmd::NEW_USERDATA || pointer.cmd == IrCmd::NEW_VECTOR)
                                 kill(function, inst);
                         }
                         break;
@@ -1506,6 +1461,56 @@ static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& 
 {
     IrFunction& function = build.function;
 
+    // Values that are only used inside exit sync blocks store instructions or sunk operations
+    DenseHashSet<uint32_t> exitSyncPrivateInst;
+
+    // Tracking the use count from exit blocks, if instruction exit use count equals overall use count, it's only used in the exit
+    DenseHashMap<uint32_t, uint32_t> exitInstUseCounts;
+    SmallVector<uint32_t, 8> worklist;
+
+    auto recordExitUse = [&](IrOp op)
+    {
+        if (op.kind == IrOpKind::Inst)
+        {
+            exitInstUseCounts[op.index]++;
+
+            // Put the value into a worklist (duplicates are possible, but that's safe)
+            worklist.push_back(op.index);
+        }
+    };
+
+    // Recording use counts of the original inputs (exit store instruction arguments)
+    for (uint32_t vmExitSyncLocation : recordedVmExitSyncs)
+    {
+        VmExitSyncInfo& syncInfo = function.vmExitInfo[vmExitSyncLocation];
+
+        for (auto& regStore : syncInfo.regStores)
+        {
+            for (auto& record : regStore.stores)
+                visitArguments(record.backup, recordExitUse);
+        }
+    }
+
+    // Looping though recorded inputs
+    // If the use count of the instruction all come from sync exits, the instruction can be marked private to exits and its inputs are checked
+    while (!worklist.empty())
+    {
+        uint32_t instIdx = worklist.back();
+        worklist.pop_back();
+
+        if (exitSyncPrivateInst.find(instIdx))
+            continue;
+
+        IrInst& inst = function.instructions[instIdx];
+        uint32_t* exitInstUseCount = exitInstUseCounts.find(instIdx);
+
+        if (exitInstUseCount && inst.useCount == *exitInstUseCount && !hasSideEffects(inst.cmd) && !isUnsafeToSink(inst.cmd))
+        {
+            exitSyncPrivateInst.insert(instIdx);
+            visitArguments(inst, recordExitUse);
+        }
+    }
+
     for (uint32_t vmExitSyncLocation : recordedVmExitSyncs)
     {
         VmExitSyncInfo& syncInfo = function.vmExitInfo[vmExitSyncLocation];
@@ -1516,6 +1521,9 @@ static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& 
         // We will be collecting instructions we want to move into the VM exit in reverse order
         SmallVector<IrInst, 8> storeInstructions;
         SmallVector<uint32_t, 8> argInstructions;
+
+        // Set of inputs we already sunk inside
+        DenseHashSet<uint32_t> sunkInstructions;
 
         std::vector<std::pair<IrOp, uint32_t>> inputs;
 
@@ -1548,15 +1556,32 @@ static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& 
             }
         }
 
-        // For each input we got, see if we are the only user of it and if we are (and it has no side effects), schedule a move inside
+        // For each input we got, see if we can move it inside the exit block
+        // This is possible when one or more exit syncs are the only users of the value
         for (size_t i = 0; i < inputs.size();)
         {
             IrInst& inst = function.instOp(inputs[i].first);
 
-            if (inst.useCount == inputs[i].second && !hasSideEffects(inst.cmd) && !isUnsafeToSink(inst.cmd))
+            bool canSink = exitSyncPrivateInst.contains(inputs[i].first.index);
+
+            if (canSink)
             {
                 uint32_t instIdx = function.getInstIndex(inst);
-                argInstructions.push_back(instIdx);
+
+                // Check if some other sunk instruction has already placed this input to the list before
+                if (sunkInstructions.contains(instIdx))
+                {
+                    // Move the input to the back of the list so that it is cloned first
+                    auto it = std::remove(argInstructions.begin(), argInstructions.end(), instIdx);
+                    CODEGEN_ASSERT(it != argInstructions.end());
+
+                    argInstructions.back() = instIdx;
+                }
+                else
+                {
+                    argInstructions.push_back(instIdx);
+                    sunkInstructions.insert(instIdx);
+                }
 
                 inputs.erase(inputs.begin() + i); // Delete this input
 
@@ -1576,7 +1601,7 @@ static void generateVmExitBlocks(IrBuilder& build, const std::vector<uint32_t>& 
         function.blockToVmExitMap[syncInfo.block.index] = vmExitSyncLocation;
         build.beginBlock(syncInfo.block);
 
-        DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
+        DenseHashMap<uint32_t, uint32_t> instRedir;
 
         auto redirect = [&instRedir, &inputs](IrOp& op)
         {

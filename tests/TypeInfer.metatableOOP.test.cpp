@@ -1,0 +1,1082 @@
+// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+
+#include "Luau/AstQuery.h"
+#include "Luau/BuiltinDefinitions.h"
+#include "Luau/Common.h"
+#include "Luau/Error.h"
+#include "Luau/Frontend.h"
+#include "Luau/Type.h"
+
+#include "Fixture.h"
+
+#include "ScopedFlags.h"
+#include "doctest.h"
+
+using namespace Luau;
+
+LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauSetmetatableOverrides)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSetMetatable)
+
+TEST_SUITE_BEGIN("TypeInferOOP");
+
+TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defined_with_colon")
+{
+    CheckResult result = check(R"(
+        local someTable = {}
+
+        local function abs(x: number)
+            if x < 0 then
+                return -x
+            else
+                return x
+            end
+        end
+
+        someTable.Function1 = function(Arg1)
+            abs(Arg1)
+        end
+
+        someTable.Function1() -- Argument count mismatch
+    )");
+
+    ignoreMissingAnnotations(result);
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<CountMismatch>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_it_wont_help_2")
+{
+    CheckResult result = check(R"(
+        local someTable = {}
+
+        local function abs(x: number)
+            if x < 0 then
+                return -x
+            else
+                return x
+            end
+        end
+
+        someTable.Function2 = function(Arg1, Arg2)
+            abs(Arg1)
+            abs(Arg2)
+        end
+
+        someTable.Function2() -- Argument count mismatch
+    )");
+
+    ignoreMissingAnnotations(result);
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<CountMismatch>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_another_overload_works")
+{
+    CheckResult result = check(R"(
+        type T = {method: ((T, number) -> number) & ((number) -> number)}
+        local T: T
+
+        T.method(4)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "method_depends_on_table")
+{
+    CheckResult result = check(R"(
+        -- This catches a bug where x:m didn't count as a use of x
+        -- so toposort would happily reorder a definition of
+        -- function x:m before the definition of x.
+        function g() f() end
+        local x = {}
+        function x:m() end
+        function f() x:m() end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "methods_are_topologically_sorted")
+{
+    CheckResult result = check(R"(
+        local T = {}
+
+        function T:foo()
+            return T:bar(999), T:bar("hi")
+        end
+
+        function T:bar(i)
+            return i
+        end
+
+        local a, b = T:foo()
+    )");
+
+    ignoreMissingAnnotations(result);
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    dumpErrors(result);
+
+    CHECK_EQ(PrimitiveType::Number, getPrimitiveType(requireType("a")));
+    CHECK_EQ(PrimitiveType::String, getPrimitiveType(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "quantify_methods_defined_using_dot_syntax_and_explicit_self_parameter")
+{
+    check(R"(
+        local T = {}
+
+        function T.method(self)
+            self:method()
+        end
+
+        function T.method2(self)
+            self:method()
+        end
+
+        T:method2()
+    )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "inferring_hundreds_of_self_calls_should_not_suffocate_memory")
+{
+    CheckResult result = check(R"(
+        ("foo")
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+            :lower()
+    )");
+
+    ModulePtr module = getMainModule();
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK_GE(80, module->internalTypes->types.size());
+    else
+        CHECK_GE(50, module->internalTypes->types.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "pass_too_many_arguments")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        type T = {
+            method: (T, number) -> number
+        }
+
+        function makeT(): T
+            return {
+                method=function(self, number)
+                    return number * 2
+                end
+            }
+        end
+
+        local a = makeT()
+        a:method(5, 7)
+    )");
+
+    LUAU_CHECK_ERROR_COUNT(1, result);
+
+    const CountMismatch* countMismatch = get<CountMismatch>(result.errors.at(0));
+    REQUIRE_MESSAGE(countMismatch, "Expected CountMismatch but got " << result.errors.at(0));
+
+    CHECK(countMismatch->expected == 2);
+    CHECK(countMismatch->actual == 3);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "object_constructor_can_refer_to_method_of_self")
+{
+    // CLI-30902
+    CheckResult result = check(R"(
+        --!strict
+
+        type Foo = {
+            fooConn: () -> () | nil
+        }
+
+        local Foo = {}
+        Foo.__index = Foo
+
+        function Foo.new()
+            local self: Foo = {
+                fooConn = nil,
+            }
+            setmetatable(self, Foo)
+
+            self.fooConn = function()
+                self:method() -- Key 'method' not found in table self
+            end
+
+            return self
+        end
+
+        function Foo:method()
+            print("foo")
+        end
+
+        local foo = Foo.new()
+
+        -- TODO This is the best our current refinement support can offer :(
+        local bar = foo.fooConn
+        if bar then bar() end
+
+        -- foo.fooConn()
+    )");
+
+    ignoreMissingAnnotations(result);
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfSealed")
+{
+    CheckResult result = check(R"(
+local x: {prop: number} = {prop=9999}
+function x:y(z: number)
+    local s: string = z
+end
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "nonstrict_self_mismatch_tail")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        local f = {}
+        function f:foo(a: number, b: number) end
+
+        function bar(...)
+            f.foo(f, 1, ...)
+        end
+
+        bar(2)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "inferred_methods_of_free_tables_have_the_same_level_as_the_enclosing_table")
+{
+    check(R"(
+        function Base64FileReader(data)
+            local reader = {}
+            local index: number = 0
+
+            function reader:PeekByte()
+                return data:byte(index)
+            end
+
+            function reader:Byte()
+                return data:byte(index - 1)
+            end
+
+            return reader
+        end
+
+        Base64FileReader()
+
+        function ReadMidiEvents(data)
+
+            local reader = Base64FileReader(data)
+
+            while reader:HasMore() do
+                (reader:Byte() % 128)
+            end
+        end
+    )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_oop")
+{
+    CheckResult result = check(R"(
+   --!strict
+local Class = {}
+Class.__index = Class
+
+type Class = typeof(setmetatable({} :: { x: number }, Class))
+
+function Class.new(x: number): Class
+    return setmetatable({x = x}, Class)
+end
+
+function Class.getx(self: Class)
+    return self.x
+end
+
+function test()
+    local c = Class.new(42)
+    local n = c:getx()
+    local nn = c.x
+
+    print(string.format("%d %d", n, nn))
+end
+)");
+
+    ignoreMissingAnnotations(result);
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "set_prop_of_intersection_containing_metatable")
+{
+    CheckResult result = check(R"(
+        export type Set<T> = typeof(setmetatable(
+            {} :: {
+                add: (self: Set<T>, T) -> Set<T>,
+            },
+            {}
+        ))
+
+        local Set = {} :: Set<any> & {}
+
+        function Set:add(t)
+            return self
+        end
+    )");
+}
+
+// DCR once had a bug in the following code where it would erroneously bind the 'self' table to itself.
+TEST_CASE_FIXTURE(Fixture, "dont_bind_free_tables_to_themselves")
+{
+    CheckResult result = check(R"(
+        local T = {}
+        local b: any
+
+        function T:m()
+            local a = b[i]
+            if a then
+                self:n()
+                if self:p(a) then
+                    self:n()
+                end
+            end
+        end
+    )");
+}
+
+// We should probably flag an error on this.  See CLI-68672
+TEST_CASE_FIXTURE(BuiltinsFixture, "flag_when_index_metamethod_returns_0_values")
+{
+    CheckResult result = check(R"(
+        local T = {}
+        function T.__index()
+        end
+
+        local a = setmetatable({}, T)
+        local p = a.prop
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("nil" == toString(requireType("p")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "augmenting_an_unsealed_table_with_a_metatable")
+{
+    CheckResult result = check(R"(
+        local A = {number = 8}
+
+        local B = setmetatable({}, A)
+
+        function B:method()
+            return "hello!!"
+        end
+    )");
+
+    if (!FFlag::DebugLuauForceOldSolver)
+        CHECK("{ @metatable { number: number }, { method: (unknown) -> string } }" == toString(requireType("B"), {true}));
+    else
+        CHECK("{ @metatable {| number: number |}, {| method: <T>(T) -> string |} }" == toString(requireType("B"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")
+{
+    CheckResult result = check(R"(
+        local Prototype = {}
+
+        local ClassMetatable = {
+            __index = Prototype
+        }
+
+        local BaseClass = (setmetatable({}, ClassMetatable))
+
+        function BaseClass:extend(name)
+            local class = {
+                name=name
+            }
+
+            class.__index = class
+
+            function class.ctor(props)
+                return setmetatable({props=props}, class)
+            end
+
+            return setmetatable(class, getmetatable(self))
+        end
+
+        local C = BaseClass:extend('C')
+        local i = C.ctor({hello='world'})
+
+        local iName = i.name
+        local cName = C.name
+        local hello = i.props.hello
+    )");
+
+    ignoreMissingAnnotations(result);
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("string" == toString(requireType("iName")));
+    CHECK("string" == toString(requireType("cName")));
+    CHECK("string" == toString(requireType("hello")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cycle_between_object_constructor_and_alias")
+{
+    CheckResult result = check(R"(
+        local T = {}
+        T.__index = T
+
+        function T.new(): T
+            return setmetatable({}, T)
+        end
+
+        export type T = typeof(T.new())
+
+        return T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto module = getMainModule();
+
+    REQUIRE(module->exportedTypeBindings.count("T"));
+
+    TypeId aliasType = module->exportedTypeBindings["T"].type;
+    CHECK_MESSAGE(get<MetatableType>(follow(aliasType)), "Expected metatable type but got: " << toString(aliasType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::timeout(LUAU_TIMEOUT))
+{
+    getFrontend().options.retainFullTypeGraphs = false;
+
+    // Used `luau-reduce` tool to extract a minimal reproduction.
+    // Credit: https://github.com/evaera/roblox-lua-promise/blob/v4.0.0/lib/init.lua
+    CheckResult result = check(R"(
+        --!strict
+
+        local Promise = {}
+        Promise.prototype = {}
+        Promise.__index = Promise.prototype
+
+        function Promise._new(traceback, callback, parent)
+            if parent ~= nil and not Promise.is(parent)then
+            end
+
+            local self = {
+                _parent = parent,
+            }
+
+            parent._consumers[self] = true
+            setmetatable(self, Promise)
+            self:_reject()
+
+            return self
+        end
+
+        function Promise.resolve(...)
+            return Promise._new(debug.traceback(nil, 2), function(resolve)
+            end)
+        end
+
+        function Promise.reject(...)
+            return Promise._new(debug.traceback(nil, 2), function(_, reject)
+            end)
+        end
+
+        function Promise._try(traceback, callback, ...)
+            return Promise._new(traceback, function(resolve)
+            end)
+        end
+
+        function Promise.try(callback, ...)
+            return Promise._try(debug.traceback(nil, 2), callback, ...)
+        end
+
+        function Promise._all(traceback, promises, amount)
+            if #promises == 0 or amount == 0 then
+                return Promise.resolve({})
+            end
+            return Promise._new(traceback, function(resolve, reject, onCancel)
+            end)
+        end
+
+        function Promise.all(promises)
+            return Promise._all(debug.traceback(nil, 2), promises)
+        end
+
+        function Promise.allSettled(promises)
+            return Promise.resolve({})
+        end
+
+        function Promise.race(promises)
+            return Promise._new(debug.traceback(nil, 2), function(resolve, reject, onCancel)
+            end)
+        end
+
+        function Promise.each(list, predicate)
+            return Promise._new(debug.traceback(nil, 2), function(resolve, reject, onCancel)
+                local predicatePromise = Promise.resolve(predicate(value, index))
+                local success, result = predicatePromise:await()
+            end)
+        end
+
+        function Promise.is(object)
+        end
+
+        function Promise.prototype:_reject(...)
+            self:_finalize()
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "method_should_not_create_cyclic_type")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult result = check(R"(
+        local Component = {}
+
+        function Component:__resolveUpdate(incomingState)
+            local oldState = self.state
+            incomingState = oldState
+            self.state = incomingState
+        end
+    )");
+
+    ignoreMissingAnnotations(result);
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_metatable")
+{
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        local cls = {}
+        cls.__index = cls
+        function cls:abc() return 4 end
+        return cls
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        local cls = require(game.A)
+        local tbl = {}
+        setmetatable(tbl, cls)
+    )";
+
+    CheckResult result = getFrontend().check("game/B");
+
+    ignoreMissingAnnotations(result);
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
+    REQUIRE(b);
+
+    std::optional<Binding> clsBinding = b->getModuleScope()->linearSearchForBinding("tbl");
+    REQUIRE(clsBinding);
+
+    TypeId clsType = clsBinding->typeId;
+
+    CHECK("{ @metatable cls, tbl }" == toString(clsType));
+}
+
+// https://luau.org/typecheck#adding-types-for-faux-object-oriented-programs
+TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    CheckResult result = check(R"(
+        local Account = {}
+        Account.__index = Account
+
+        type AccountData = {
+            name: string,
+            balance: number,
+        }
+
+        export type Account = setmetatable<AccountData, typeof(Account)>
+
+        function Account.new(name, balance): Account
+            local self = {}
+            self.name = name
+            self.balance = balance
+
+            return setmetatable(self, Account)
+        end
+    )");
+
+    ignoreMissingAnnotations(result);
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    CheckResult result = check(R"(
+        local Account = {}
+        Account.__index = Account
+
+        type AccountData = {
+            name: string,
+            balance: number,
+        }
+
+        export type Account = setmetatable<AccountData, typeof(Account)>
+
+        function Account.new(name, balance): Account
+            local self = {}
+            self.name = name
+            self.balance = balance
+
+            return setmetatable(self, Account)
+        end
+
+        function Account.deposit(self: Account, credit: number)
+            self.balance += credit
+        end
+
+        function Account.withdraw(self: Account, debit: number)
+            self.balance -= debit
+        end
+
+        function Account.hasBalance(self: Account, amount: number): boolean
+            return self.balance >= amount
+        end
+
+        local account = Account.new("Hina", 500)
+
+        if account:hasBalance(123) then -- TypeError: Value of type 'unknown' could be nil
+        end
+    )");
+
+    ignoreMissingAnnotations(result);
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_type")
+{
+    CheckResult result = check(R"(
+        local ItemContainer = {}
+        ItemContainer.__index = ItemContainer
+
+        function ItemContainer.new()
+            local self = {}
+            setmetatable(self, ItemContainer)
+            return self
+        end
+
+        function ItemContainer:removeItem(itemId, itemType)
+            self:getItem(itemId, itemType)
+        end
+
+        function ItemContainer:getItem(itemId, itemType): ()
+        end
+
+        local container = ItemContainer.new()
+
+        container:removeItem(0, "magic")
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_and_property")
+{
+    CheckResult result = check(R"(
+        local ItemContainer = {}
+        ItemContainer.__index = ItemContainer
+
+        function ItemContainer.new(name)
+            local self = {name = name}
+            setmetatable(self, ItemContainer)
+            return self
+        end
+
+        function ItemContainer:removeItem(itemId, itemType)
+            print(self.name)
+            self:getItem(itemId, itemType)
+        end
+
+        function ItemContainer:getItem(itemId, itemType): ()
+        end
+
+        local container = ItemContainer.new("library")
+
+        container:removeItem(0, "magic")
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+    };
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local Foobar = {}
+        Foobar.__index = Foobar
+        Foobar.const = 42
+
+        local foobar = setmetatable({}, Foobar)
+
+        local _: { read const: number } = foobar
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult results = check(R"(
+        local Foobar = {}
+        Foobar.__index = Foobar
+        Foobar.const = 42
+
+        local foobar = setmetatable({}, Foobar)
+
+        local _: { const: number } = foobar
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypeMismatch>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("{ const: number }", toString(err->wantedType));
+    CHECK_EQ("{ @metatable t1, {  } } where t1 = { __index: t1, const: number }", toString(err->givenType, {/* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
+{
+    ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+
+    CheckResult results = check(R"(
+        local function foobar1(_: { read foo: number }) end
+        local function foobar2(_: { read bar: boolean }) end
+        local function foobar3(_: { read foo: string }) end
+
+        local t = { foo = 4 }
+        setmetatable(t, { __index = { foo = "heh", bar = true }})
+        foobar1(t)
+        foobar2(t)
+        foobar3(t)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, results);
+    auto err = get<TypeMismatch>(results.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("{ read foo: string }", toString(err->wantedType, {/* exhaustive */ true}));
+    CHECK_EQ("{ @metatable { __index: { bar: boolean, foo: string } }, { foo: number } }", toString(err->givenType, {/* exhaustive */ true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assign_to_prop_of_intersection_of_metatables")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local Base = {}
+        Base.__index = Base
+
+        type BaseStructure = { BaseString: string }
+
+        export type Base = setmetatable<BaseStructure, typeof(Base)>
+
+        function Base.new() : Base
+            return nil :: any
+        end
+
+        local Sub = {}
+        Sub.__index = Sub
+
+        type SubStructure = { SubString: string }
+
+        type Sub = setmetatable<SubStructure, typeof(Sub)> & Base
+
+        function Sub.new() : Sub
+            local self: Sub = setmetatable(Base.new(), Sub) :: any
+
+            self.SubString = 5 -- Line 24
+            self.BaseString = 5 -- Line 25
+
+            return self
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK_MESSAGE(nullptr != get<TypeMismatch>(result.errors[0]), "Expected TypeMismatch but got " << result.errors[0]);
+    CHECK(24 == result.errors[0].location.begin.line);
+
+    CHECK_MESSAGE(nullptr != get<TypeMismatch>(result.errors[1]), "Expected TypeMismatch but got " << result.errors[1]);
+    CHECK(25 == result.errors[1].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "subclass_property_access")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type Instance = { Name: string }
+
+        const Base = {}
+        Base.__index = {}
+
+        export type Class = setmetatable<{ read instance: Instance }, typeof(Base)>
+
+        function Base.new(instance: Instance): Class
+            return setmetatable({ instance = instance, }, Base)
+        end
+
+        function Base.ChangeName(self: Class, name: string): ()
+            error("Override required.")
+        end
+
+        const Derived = setmetatable({}, Base)
+        Derived.__index = Derived
+
+        export type Subclass = setmetatable<Class & { --[[ new members here ]] }, typeof(Derived)>
+
+        function Derived.new(instance: Instance): Subclass
+            return table.freeze(setmetatable(Base.new(instance), Derived))
+        end
+
+        function Derived.ChangeName(self: Subclass, name: string): ()
+            self.instance.Name = name -- TypeError: Type 'Class' does not have key 'instance'
+        end
+
+        return Derived
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_uses_expected_type_for_fresh_table_arguments")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type DateTime = { date: number }
+        type A = setmetatable<{ value: DateTime? }, { test: DateTime? }>
+
+        local x: A = setmetatable({ value = nil }, { test = nil })
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_uses_expected_type_in_call_and_return_contexts")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type DateTime = { date: number }
+        type A = setmetatable<{}, { test: DateTime? }>
+
+        local function consume(_: A) end
+        consume(setmetatable({}, { test = nil }))
+
+        local assigned: A
+        assigned = setmetatable({}, { test = nil })
+
+        local function make(): A
+            return setmetatable({}, { test = nil })
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_does_not_widen_aliased_tables")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
+
+    CheckResult result = check(R"(
+        type DateTime = { date: number }
+        type A = setmetatable<{}, { test: DateTime? }>
+
+        local mt = { test = nil }
+        local x: A = setmetatable({}, mt)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<TypeMismatch>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_rejects_invalid_fresh_table_values")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
+
+    CheckResult result = check(R"(
+        type DateTime = { date: number }
+        type A = setmetatable<{}, { test: DateTime? }>
+
+        local x: A = setmetatable({}, { test = 42 })
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<TypeMismatch>(result.errors[0]));
+    CHECK_EQ(Location{{4, 47}, {4, 49}}, result.errors[0].location);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_is_pushed_into_nested_lambdas")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type DateTime = { date: number }
+        type A = setmetatable<{}, { callback: (DateTime) -> () }>
+
+        local x: A = setmetatable({}, {
+            callback = function(value)
+                print(value.date)
+            end,
+        })
+    )"));
+
+    std::optional<TypeId> expectedCallback = findExpectedTypeAtPosition({5, 23});
+    REQUIRE(expectedCallback);
+    CHECK_EQ("(DateTime) -> ()", toString(*expectedCallback));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_is_unchanged_when_flag_is_disabled")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, false};
+
+    CheckResult result = check(R"(
+        type DateTime = { date: number }
+        type A = setmetatable<{}, { test: DateTime? }>
+
+        local x: A = setmetatable({}, { test = nil })
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<TypeMismatch>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_1")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
+
+    CheckResult result = check(R"(
+        local root = {}
+        local mt1 = { __index = { propA = 42 } }
+        local mt2 = { __index = { propB = "hmm" } }
+
+        setmetatable(root, mt1)
+
+        local getpropA = root.propA
+
+        setmetatable(root, mt2)
+
+        local getpropB = root.propB
+        local ohno = root.propA
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("number", toString(requireType("getpropA"), {/* exhaustive */ true}));
+    CHECK_EQ("string", toString(requireType("getpropB"), {/* exhaustive */ true}));
+
+    // TODO CLI-221097: This is incorrect, we should be claiming that `uhoh`
+    // has type `any`, but we report an error, so it's not awful.
+    CHECK_EQ("number", toString(requireType("ohno"), {/* exhaustive */ true}));
+
+    auto err = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("propA", err->key);
+    CHECK_EQ("{ @metatable mt2, root }", toString(err->table));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_2")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
+
+    CheckResult result = check(R"(
+        type MT1 = { __index: { propA: number } }
+        type MT2 = { __index: { propB: string } }
+
+        local root: setmetatable<setmetatable<{ Name: string }, MT1>, MT2>
+
+        local getpropB = root.propB
+        local ohno = root.propA
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("string", toString(requireType("getpropB"), {/* exhaustive */ true}));
+    CHECK_EQ("any", toString(requireType("ohno"), {/* exhaustive */ true}));
+
+    auto err = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("propA", err->key);
+    CHECK_EQ("{ @metatable MT2, { Name: string } }", toString(err->table));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_setmetatable_invalid_types")
+{
+    // Prior, we raised assertions here as we constructed `MetatableType`s that
+    // had non-tables as their `MetatableType::table` member.
+    LUAU_REQUIRE_ERRORS(check(R"(
+        return setmetatable(_ < _,setmetatable(setmetatable(_,_),{"",},math.abs))
+    )"));
+
+    LUAU_REQUIRE_ERRORS(check(R"(
+        return setmetatable(if _ then setmetatable(_,_) else {""}, {""}, _)
+    )"));
+}
+
+TEST_SUITE_END();

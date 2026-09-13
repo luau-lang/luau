@@ -50,12 +50,12 @@ bool IterativeTypeVisitor::WorkItem::operator==(TypePackId tp) const
 }
 
 IterativeTypeVisitor::IterativeTypeVisitor(std::string visitorName, bool skipBoundTypes)
-    : IterativeTypeVisitor(std::move(visitorName), SeenSet{nullptr}, /*visitOnce*/ true, skipBoundTypes)
+    : IterativeTypeVisitor(std::move(visitorName), SeenSet{}, /*visitOnce*/ true, skipBoundTypes)
 {
 }
 
 IterativeTypeVisitor::IterativeTypeVisitor(std::string visitorName, bool visitOnce, bool skipBoundTypes)
-    : IterativeTypeVisitor(std::move(visitorName), SeenSet{nullptr}, visitOnce, skipBoundTypes)
+    : IterativeTypeVisitor(std::move(visitorName), SeenSet{}, visitOnce, skipBoundTypes)
 {
 }
 

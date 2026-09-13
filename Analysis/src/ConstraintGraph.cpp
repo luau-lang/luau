@@ -8,6 +8,7 @@
 
 LUAU_FASTFLAG(DebugLuauLogSolver)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 
 namespace Luau
 {
@@ -183,7 +184,7 @@ bool ConstraintGraph::addDependencyOf(Constraint* dependency, Constraint* target
 
 /**
  * Let's say we have nodes A, B, C, and D (where => means "depends on")
- * 
+ *
  *  A, B, C => D
  *
  * As part of dispatching D, we need to mint E. This function sets us up such that:
@@ -246,7 +247,7 @@ ConstraintGraph::UnblockedTypes ConstraintGraph::unblockConstraint(NotNull<const
             auto deps = findDependencyList(*depCons);
             deps->remove(c.get());
             if (FFlag::DebugLuauLogSolver)
-                printf("Unblocking count=%d\t%s\n", int(deps->size()), toString(**depCons, { /* exhaustive */ true}).c_str());
+                printf("Unblocking count=%d\t%s\n", int(deps->size()), toString(**depCons, {/* exhaustive */ true}).c_str());
         }
         else
         {
@@ -267,9 +268,9 @@ ConstraintGraph::UnblockedTypes ConstraintGraph::unblockConstraint(NotNull<const
      * [bind] call.
      *
      * This means that any [emplaceType] outside this file is subject to drift,
-     * but it is safe as long as it occurs while the type being mutated is in 
+     * but it is safe as long as it occurs while the type being mutated is in
      * the reverse dependency set of the constraint being dispatched.
-     * 
+     *
      * We do this in two steps to ensure that [c] does not exist as a
      * dependency of *any* type while repairing references. An alternative
      * implementation would be to pass [c] to [repairTypeReferences] and know
@@ -277,7 +278,31 @@ ConstraintGraph::UnblockedTypes ConstraintGraph::unblockConstraint(NotNull<const
      */
 
     for (TypeId type : result.types)
+    {
         repairTypeReferences(type);
+        if (FFlag::LuauTraverseScopeToFunction)
+        {
+            // Consider the following code:
+            //
+            //  -- Annotated with a free type for reading ease.
+            //  local function f(g: 'func)
+            //      local _ = g(42)
+            //      local n: number? = g(67)
+            //  end
+            //
+            // When resolving the first function call to `g`, we'll infer that
+            // `'func <: (number) -> ('ret...)`: we know `g` takes a number but
+            // we don't know what `g` returns. However, we end up introducing
+            // a layer of indirection between `'ret...` and the *second* call
+            // to `g`, which may also mutate `'ret...`.
+            type = follow(type);
+            if (auto ft = get<FreeType>(type))
+            {
+                copyDependenciesOf(type, follow(ft->upperBound));
+                copyDependenciesOf(type, follow(ft->lowerBound));
+            }
+        }
+    }
 
     for (TypePackId typePack : result.packs)
         repairTypeReferences(typePack);
@@ -400,9 +425,9 @@ void ConstraintGraph::repairTypeReferences(T ty)
 
     T root = follow(ty);
 
-    // This is a strong guard against a self bound cylic type, but we
+    // This is a strong guard against a self bound cyclic type, but we
     // hopefully threw an exception above if this were the case.
-    DenseHashSet<T> seen{nullptr};
+    DenseHashSet<T> seen;
     seen.insert(root);
 
     while (!seen.contains(ty))
@@ -612,4 +637,4 @@ void ConstraintGraph::dumpWith(const std::vector<NotNull<const Constraint>>& uns
         }
     }
 }
-}
+} // namespace Luau

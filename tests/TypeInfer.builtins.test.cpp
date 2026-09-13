@@ -11,6 +11,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -133,6 +134,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
         local function p(a: number, b: number) return a < b end
         table.sort(t, p)
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -541,6 +544,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
         local answer = coroutine.resume(co, 3)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -589,6 +594,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_arg_types_inference")
             return string.format("%f %d %s", a, b, c)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(number, number, string) -> string", toString(requireType("f")));
@@ -646,6 +653,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_tostring_specifier_type_constr
             return x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(string) -> string", toString(requireType("f")));
@@ -1028,11 +1037,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type")
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
-        CHECK_EQ(
-            "Expected this to be 'number', but got 'number?'; \n"
-            "the 2nd component of the union is `nil`, which is not a subtype of `number`",
-            toString(result.errors[0])
-        );
+        if (FFlag::LuauNewTypePathErrorMessages)
+            CHECK_EQ(
+                "Expected this to be 'number', but got 'number?'; \n"
+                "`nil` is not a subtype of `number`",
+                toString(result.errors[0])
+            );
+        else
+            CHECK_EQ(
+                "Expected this to be 'number', but got 'number?'; \n"
+                "the 2nd component of the union is `nil`, which is not a subtype of `number`",
+                toString(result.errors[0])
+            );
     }
     else
     {
@@ -1085,6 +1101,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -1113,6 +1131,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types3")
             return x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (!FFlag::DebugLuauForceOldSolver)
@@ -1413,6 +1433,8 @@ local function f(x: string)
 end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1664,14 +1686,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_find_should_not_crash")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function StringSplit(input, separator)
             string.find(input, separator)
             if not separator then
                 separator = "%s+"
             end
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_clone_type_states")
@@ -1714,6 +1738,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_not_break")
         return Immutable
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1728,6 +1754,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_not_break_2")
             return new
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }

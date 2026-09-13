@@ -127,7 +127,7 @@ BlockId ControlFlowGraph::newBlock(BlockKind kind, std::string debugName)
 void ControlFlowGraph::computeRPO()
 {
     std::vector<Block*> stack;
-    DenseHashSet<Block*> visited{nullptr};
+    DenseHashSet<Block*> visited;
 
     stack.push_back(blocks[0]);
     while (!stack.empty())
