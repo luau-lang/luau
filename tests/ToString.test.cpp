@@ -1153,6 +1153,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tostring_truthy_falsy_no_parenthesis")
 
     CHECK_EQ(toString(requireTypeAlias("hiss")), "falsy & unknown");
     CHECK_EQ(toString(requireTypeAlias("scratch")), "truthy & unknown");
+}
+
 TEST_CASE_FIXTURE(Fixture, "suggest_syntactically_legal_annotation")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
