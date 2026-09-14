@@ -597,19 +597,8 @@ PendingExpansionType::PendingExpansionType(
     std::vector<TypeId> typeArguments,
     std::vector<TypePackId> packArguments
 )
-    : target{NamedType{prefix, name}}
-    , typeArguments(std::move(typeArguments))
-    , packArguments(std::move(packArguments))
-    , index(++nextIndex)
-{
-}
-
-PendingExpansionType::PendingExpansionType(
-    TypeFun tyfun,
-    std::vector<TypeId> typeArguments,
-    std::vector<TypePackId> packArguments
-)
-    : target{tyfun}
+    : prefix(prefix)
+    , name(name)
     , typeArguments(std::move(typeArguments))
     , packArguments(std::move(packArguments))
     , index(++nextIndex)

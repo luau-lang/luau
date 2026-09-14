@@ -38,7 +38,6 @@ LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
-LUAU_FASTFLAG(LuauNegationsFixSubtypePath)
 LUAU_FASTFLAG(LuauTypeNegationSupport)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -3035,6 +3034,7 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
             continue;
 
         std::optional<TypeOrPack> optSubLeaf = traverse(subTy, reasoning.subPath, builtinTypes, subtyping->arena);
+
         std::optional<TypeOrPack> optSuperLeaf = traverse(superTy, reasoning.superPath, builtinTypes, subtyping->arena);
 
         if (!optSubLeaf || !optSuperLeaf)
@@ -3070,25 +3070,6 @@ Reasonings TypeChecker2::explainReasonings_(TID subTy, TID superTy, Location loc
             subLeafAsString = "()";
 
         std::string superLeafAsString = toString(superLeaf);
-        if (FFlag::LuauNegationsFixSubtypePath && !reasoning.superPath.components.empty())
-        {
-            // If we don't do this, we get "`number` is not a subtype of `number`" etc in our error messages
-            if (const TypePath::TypeField* tf = get_if<TypePath::TypeField>(&reasoning.superPath.components.back()); tf && *tf == TypePath::TypeField::Negated)
-            {
-                Path clippedPath = reasoning.superPath.pop();
-                std::optional<TypeOrPack> optNegationLeaf = traverse(superTy, clippedPath, builtinTypes, subtyping->arena);
-
-                if (optNegationLeaf)
-                {
-                    const TypeOrPack& negationLeaf = *optNegationLeaf;
-                    auto negationLeafTy = get<TypeId>(negationLeaf);
-
-                    if (negationLeafTy)
-                        superLeafAsString = toString(negationLeaf);
-                }
-            }
-        }
-
         // if the string is empty, it must be an empty type pack
         if (superLeafAsString.empty())
             superLeafAsString = "()";

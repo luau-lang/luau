@@ -7,7 +7,6 @@
 #include "Luau/Common.h"
 #include "ScopedFlags.h"
 
-LUAU_FASTFLAG(LuauNegationsFixSubtypePath)
 LUAU_FASTFLAG(LuauTypeNegationSyntax)
 LUAU_FASTFLAG(LuauTypeNegationSupport)
 
@@ -145,7 +144,6 @@ TEST_CASE_FIXTURE(NegationFixture, "truthy_type")
     ScopedFastFlag _[] = {
         {FFlag::LuauTypeNegationSyntax, true},
         {FFlag::LuauTypeNegationSupport, true},
-        {FFlag::LuauNegationsFixSubtypePath, true},
     };
 
     CheckResult result = check(R"(

@@ -9,9 +9,7 @@
 #include <algorithm>
 
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
-LUAU_FASTFLAG(LuauTypeNegationSupport)
 
 namespace Luau
 {
@@ -43,30 +41,8 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
         }
         else if constexpr (std::is_same_v<T, PendingExpansionType>)
         {
-            if (FFlag::LuauTypeNegationSupport)
-            {
-                if (const PendingExpansionType::NamedType* nt = get_if<PendingExpansionType::NamedType>(&a.target))
-                {
-                    PendingExpansionType clone = PendingExpansionType{nt->prefix, nt->name, a.typeArguments, a.packArguments};
-                    return dest.addType(std::move(clone));
-                }
-                else
-                {
-                    const TypeFun* targetTf = get_if<TypeFun>(&a.target);
-                    LUAU_ASSERT(targetTf);
-
-                    PendingExpansionType clone = PendingExpansionType{*targetTf, a.typeArguments, a.packArguments};
-                    return dest.addType(std::move(clone));
-                }
-            }
-            else
-            {
-                const PendingExpansionType::NamedType* nt = get_if<PendingExpansionType::NamedType>(&a.target);
-                LUAU_ASSERT(nt);
-
-                PendingExpansionType clone = PendingExpansionType{nt->prefix, nt->name, a.typeArguments, a.packArguments};
-                return dest.addType(std::move(clone));
-            }
+            PendingExpansionType clone = PendingExpansionType{a.prefix, a.name, a.typeArguments, a.packArguments};
+            return dest.addType(std::move(clone));
         }
         else if constexpr (std::is_same_v<T, AnyType>)
         {
@@ -181,8 +157,8 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
 }
 
 Tarjan::Tarjan()
-    : typeToIndex(nullptr, FInt::LuauTarjanPreallocationSize)
-    , packToIndex(nullptr, FInt::LuauTarjanPreallocationSize)
+    : typeToIndex(FInt::LuauTarjanPreallocationSize)
+    , packToIndex(FInt::LuauTarjanPreallocationSize)
 {
     nodes.reserve(FInt::LuauTarjanPreallocationSize);
     stack.reserve(FInt::LuauTarjanPreallocationSize);
