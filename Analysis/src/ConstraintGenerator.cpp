@@ -4644,10 +4644,36 @@ TypeId ConstraintGenerator::resolveReferenceType(
             result = freshType(scope, Polarity::Mixed);
     }
 
-    if (is<TypeFunctionInstanceType>(follow(result)))
+    if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(result)))
     {
-        reportError(ty->location, UnappliedTypeFunction{});
-        addConstraint(scope, ty->location, ReduceConstraint{result});
+        if (FFlag::LuauTypeNegationSyntaxSupport)
+        {
+            bool instantiated = false;
+
+            for (const ConstraintPtr& c : FFlag::LuauCyclicRequireTypeInference ? cgraph->constraints : constraints)
+            {
+                if (const ReduceConstraint* rc = get<ReduceConstraint>(*c))
+                {
+                    if (const TypeFunctionInstanceType* ctf = get<TypeFunctionInstanceType>(rc->ty))
+                    {
+                        // If this type function instance has a `ReduceConstraint`, we know we tried to instantiate it.
+                        if (ctf == tfit)
+                            instantiated = true;
+                    }
+                }
+            }
+
+            if (!instantiated)
+            {
+                reportError(ty->location, UnappliedTypeFunction{});
+                addConstraint(scope, ty->location, ReduceConstraint{result});
+            }
+        }
+        else
+        {
+            reportError(ty->location, UnappliedTypeFunction{});
+            addConstraint(scope, ty->location, ReduceConstraint{result});
+        }
     }
 
     if (auto genericType = getMutable<GenericType>(follow(result)))
@@ -4806,6 +4832,7 @@ TypeId ConstraintGenerator::resolveFunctionType(
         ftv.deprecatedInfo = std::make_shared<AstAttr::DeprecatedInfo>(deprecatedAttr->deprecatedInfo());
     }
 
+
     // This replicates the behavior of the appropriate FunctionType
     // constructors.
     ftv.generics = std::move(genericTypes);
@@ -4866,7 +4893,7 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
     }
     else if (AstTypeNegation* nty = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSyntaxSupport && nty)
     {
-        TypeId inner = resolveType_(scope, nty->inner, inTypeArguments);
+        TypeId inner = resolveType(scope, nty->inner, inTypeArguments);
         result = createTypeFunctionInstance(
             builtinTypes->typeFunctions->negateFunc,
             {inner},

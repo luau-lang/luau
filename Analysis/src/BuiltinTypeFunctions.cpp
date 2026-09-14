@@ -2637,7 +2637,9 @@ static bool isTestable(TypeId ty)
     else if (auto it = get<IntersectionType>(ty))
         return std::all_of(begin(it), end(it), isTestable);
 
-    return is<PrimitiveType, SingletonType, GenericType, ExternType, AnyType, UnknownType, NeverType>(ty);
+    // We take `GenericType`s as testable here as their upper bound - `unknown` - is testable.
+    // This will need to be revisited when generic constraints are implemented.
+    return is<PrimitiveType, SingletonType, GenericType, ExternType, AnyType, UnknownType, NeverType, NegationType>(ty);
 }
 
 TypeFunctionReductionResult<TypeId> negateTypeFunction(
@@ -2657,17 +2659,17 @@ TypeFunctionReductionResult<TypeId> negateTypeFunction(
 
     // Russell's paradox: `type T = ~T`.
     if (inner == instance)
-        return {ctx->builtins->errorType, Reduction::Erroneous};
+        return {std::nullopt, Reduction::Erroneous};
 
     if (isPending(inner, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {inner}, {}};
 
-    // Types that are not testable are turned into errors.
-    if (!isTestable(inner))
-        return {ctx->builtins->errorType, Reduction::Erroneous};
-
     if (is<ErrorType>(inner))
         return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
+
+    // `negate<T>` on a `T` that is not testable is uninhabited.
+    if (!isTestable(inner))
+        return {std::nullopt, Reduction::Erroneous};
 
     TypeId negated = ctx->arena->addType(NegationType{inner});
     return {negated, Reduction::MaybeOk, {}, {}};

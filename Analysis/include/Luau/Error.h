@@ -633,14 +633,6 @@ struct ConstructorsShouldNotReturnAnything
         return true;
     }
 };
-  
-// Error for attempting to negate a non-testable type
-struct InvalidNegation
-{
-    TypeId inner; // type being negated
-
-    bool operator==(const InvalidNegation& rhs) const;
-};
 
 using TypeErrorData = Variant<
     TypeMismatch,
@@ -709,8 +701,7 @@ using TypeErrorData = Variant<
     AmbiguousFunctionCall,
     UninitializedFieldAccess,
     TypeAnnotationRequired,
-    ConstructorsShouldNotReturnAnything,
-    InvalidNegation>;
+    ConstructorsShouldNotReturnAnything>;
 
 struct TypeErrorSummary
 {

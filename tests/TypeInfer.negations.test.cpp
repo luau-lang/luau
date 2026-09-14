@@ -139,6 +139,45 @@ TEST_CASE_FIXTURE(NegationFixture, "compare_cofinite_strings_syntax")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(NegationFixture, "subtyping_path_is_valid_for_union")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag newErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
+    ScopedFastFlag fixTypePaths{FFlag::LuauFixSuperNegationTypePaths, true};
+
+    CheckResult result = check(R"(
+        local a: Not<false?> = false
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const std::string error = toString(result.errors[0]);
+    CHECK_EQ(error == "Expected this to be '~(false?)', but got 'false'; \n`false` cannot be `~(false?)`"
+        || error == "Expected this to be '~(false?)', but got 'boolean'; \n`boolean` cannot be `~(false?)`", true);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "subtype_path_is_valid_for_intersections")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag newErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
+    ScopedFastFlag fixTypePaths{FFlag::LuauFixSuperNegationTypePaths, true};
+
+    CheckResult result = check(R"(
+        type T = Not<unknown & boolean>
+        local x: T = false
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(
+        "Expected this to be '~(boolean & unknown)', but got 'boolean'; \n"
+            "`boolean` cannot be `~(boolean & unknown)`",
+        toString(result.errors[0])
+    );
+}
+
 TEST_CASE_FIXTURE(NegationFixture, "truthy_type")
 {
     if (FFlag::DebugLuauForceOldSolver)
@@ -270,29 +309,8 @@ TEST_CASE_FIXTURE(NegationFixture, "no_structural_negation")
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(result.errors[0].location.begin.line, 1);
     CHECK_EQ(result.errors[1].location.begin.line, 2);
-    CHECK(get<InvalidNegation>(result.errors[0]));
-    CHECK(get<InvalidNegation>(result.errors[1]));
-}
-
-TEST_CASE_FIXTURE(NegationFixture, "no_generic_negation")
-{
-    if (FFlag::DebugLuauForceOldSolver)
-        return;
-
-    ScopedFastFlag _[] = {
-        {FFlag::LuauTypeNegationSyntaxParsing, true},
-        {FFlag::LuauTypeNegationSyntaxSupport, true},
-    };
-
-    CheckResult result = check(R"(
-        type T = <U>(U) -> ~U
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(result.errors[0].location.begin.column, 27);
-    CHECK(get<InvalidNegation>(result.errors[0]));
-    CHECK_EQ(result.errors[1].location.begin.column, 28);
-    CHECK(get<UnknownSymbol>(result.errors[1]));
+    CHECK(get<UninhabitedTypeFunction>(result.errors[0]));
+    CHECK(get<UninhabitedTypeFunction>(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(NegationFixture, "no_errortype_ice")
@@ -334,45 +352,6 @@ TEST_CASE_FIXTURE(NegationFixture, "negate_inner_expansion_constraint")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(0, result);
-}
-
-TEST_CASE_FIXTURE(NegationFixture, "subtyping_path_is_valid_for_union")
-{
-    if (FFlag::DebugLuauForceOldSolver)
-        return;
-
-    ScopedFastFlag newErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
-    ScopedFastFlag fixTypePaths{FFlag::LuauFixSuperNegationTypePaths, true};
-
-    CheckResult result = check(R"(
-        local a: Not<false?> = false
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string error = toString(result.errors[0]);
-    CHECK_EQ(error == "Expected this to be '~(false?)', but got 'false'; \n`false` cannot be `~(false?)`"
-        || error == "Expected this to be '~(false?)', but got 'boolean'; \n`boolean` cannot be `~(false?)`", true);
-}
-
-TEST_CASE_FIXTURE(NegationFixture, "subtype_path_is_valid_for_intersections")
-{
-    if (FFlag::DebugLuauForceOldSolver)
-        return;
-
-    ScopedFastFlag newErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
-    ScopedFastFlag fixTypePaths{FFlag::LuauFixSuperNegationTypePaths, true};
-
-    CheckResult result = check(R"(
-        type T = Not<unknown & boolean>
-        local x: T = false
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(
-        "Expected this to be '~(boolean & unknown)', but got 'boolean'; \n"
-            "`boolean` cannot be `~(boolean & unknown)`",
-        toString(result.errors[0])
-    );
 }
 
 TEST_SUITE_END();

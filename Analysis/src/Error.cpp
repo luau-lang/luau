@@ -748,6 +748,14 @@ struct ErrorConverter
                        "'";
         }
 
+        if ("negate" == tfit->function->name)
+        {
+            if (tfit->typeArguments.size() != 1)
+                return "Internal error: An instance of the internal 'negate' type function was ill-formed, and thus invalid";
+
+            return "`" + Luau::toString(tfit->typeArguments[0]) + "` is not possible to negate";
+        }
+
         if (kUnreachableTypeFunctions.count(tfit->function->name))
         {
             return "Type function instance " + Luau::toString(e.ty) + " is uninhabited\n" +
@@ -1047,21 +1055,6 @@ struct ErrorConverter
     std::string operator()(const ConstructorsShouldNotReturnAnything&) const
     {
         return "Class constructors should not return anything.";
-    }
-
-    std::string operator()(const InvalidNegation& bn) const
-    {
-        std::string message = "It is not possible to negate the type `" + toString(bn.inner) + "` as it";
-
-        if (get<TableType>(bn.inner) || get<MetatableType>(bn.inner))
-            message += ", being a table type,";
-        else if (get<FunctionType>(bn.inner))
-            message += ", being a function type,";
-        else if (get<GenericType>(bn.inner))
-            message += ", being a generic type,";
-
-        message += " is non-testable.";
-        return message;
     }
 };
 
@@ -1525,11 +1518,6 @@ bool UninitializedFieldAccess::operator==(const UninitializedFieldAccess& rhs) c
     return fieldName == rhs.fieldName;
 }
 
-bool InvalidNegation::operator==(const InvalidNegation& rhs) const
-{
-    return inner == rhs.inner;
-}
-
 std::string toString(const TypeError& error)
 {
     return toString(error, TypeErrorToStringOptions{});
@@ -1798,10 +1786,6 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     }
     else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
     {
-    }
-    else if constexpr (std::is_same_v<T, InvalidNegation>)
-    {
-        e.inner = clone(e.inner);
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

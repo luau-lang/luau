@@ -312,8 +312,6 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "TypeAnnotationRequired { " << toString(err.inferredTy) << " }";
     else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
         stream << "ConstructorsShouldNotReturnAnything {}";
-    else if constexpr (std::is_same_v<T, InvalidNegation>)
-        stream << "InvalidNegation { " << toString(err.inner) << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }
