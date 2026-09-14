@@ -14,7 +14,7 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauAvoidTrivialPhis)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
-LUAU_FASTFLAG(LuauTypeNegationSyntax)
+LUAU_FASTFLAG(LuauTypeNegationSyntaxParsing)
 
 namespace Luau
 {

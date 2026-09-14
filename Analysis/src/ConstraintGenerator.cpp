@@ -56,7 +56,7 @@ LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceSetMetatable)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
-LUAU_FASTFLAGVARIABLE(LuauTypeNegationSupport)
+LUAU_FASTFLAGVARIABLE(LuauTypeNegationSyntaxSupport)
 
 namespace Luau
 {
@@ -4864,7 +4864,7 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
     {
         result = builtinTypes->nilType;
     }
-    else if (AstTypeNegation* nty = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && nty)
+    else if (AstTypeNegation* nty = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSyntaxSupport && nty)
     {
         TypeId inner = resolveType_(scope, nty->inner, inTypeArguments);
         result = createTypeFunctionInstance(

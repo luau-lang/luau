@@ -26,7 +26,7 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
-LUAU_FASTFLAG(LuauTypeNegationSyntax)
+LUAU_FASTFLAG(LuauTypeNegationSyntaxParsing)
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
 
@@ -6559,7 +6559,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_const_error_multiple_bindings")
 
 TEST_CASE_FIXTURE(Fixture, "type_negation_syntax")
 {
-    ScopedFastFlag sff{FFlag::LuauTypeNegationSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauTypeNegationSyntaxParsing, true};
 
     AstStatBlock* block = parse(R"(
         type T = ~number

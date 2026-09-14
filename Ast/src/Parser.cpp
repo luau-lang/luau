@@ -31,7 +31,7 @@ LUAU_FASTFLAGVARIABLE(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalSyntax)
-LUAU_FASTFLAGVARIABLE(LuauTypeNegationSyntax)
+LUAU_FASTFLAGVARIABLE(LuauTypeNegationSyntaxParsing)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -3423,7 +3423,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
     {
         return parseFunctionType(allowPack, AstArray<AstAttr*>({nullptr, 0}));
     }
-    else if (FFlag::LuauTypeNegationSyntax && lexer.current().type == '~')
+    else if (FFlag::LuauTypeNegationSyntaxParsing && lexer.current().type == '~')
     {
         Location loc = lexer.current().location;
         nextLexeme();

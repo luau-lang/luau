@@ -47,7 +47,7 @@ LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
-LUAU_FASTFLAG(LuauTypeNegationSupport)
+LUAU_FASTFLAG(LuauTypeNegationSyntaxSupport)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
@@ -3164,7 +3164,7 @@ void TypeChecker2::visit(AstType* ty)
         return visit(t);
     else if (auto t = ty->as<AstTypeGroup>())
         return visit(t->type);
-    else if (auto t = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && t)
+    else if (auto t = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSyntaxSupport && t)
         visit(t->inner);
 }
 
