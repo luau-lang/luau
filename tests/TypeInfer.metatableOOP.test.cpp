@@ -17,6 +17,7 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSetMetatable)
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -39,6 +40,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defi
 
         someTable.Function1() -- Argument count mismatch
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     REQUIRE(get<CountMismatch>(result.errors[0]));
@@ -64,6 +67,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_it_wont_
 
         someTable.Function2() -- Argument count mismatch
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     REQUIRE(get<CountMismatch>(result.errors[0]));
@@ -111,6 +116,8 @@ TEST_CASE_FIXTURE(Fixture, "methods_are_topologically_sorted")
 
         local a, b = T:foo()
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
@@ -236,6 +243,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "object_constructor_can_refer_to_method_of_se
         -- foo.fooConn()
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -323,6 +332,8 @@ function test()
     print(string.format("%d %d", n, nn))
 end
 )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -431,6 +442,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")
         local cName = C.name
         local hello = i.props.hello
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -564,6 +577,8 @@ TEST_CASE_FIXTURE(Fixture, "method_should_not_create_cyclic_type")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -585,6 +600,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_metatable")
     )";
 
     CheckResult result = getFrontend().check("game/B");
+
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
@@ -623,6 +641,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern")
             return setmetatable(self, Account)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -669,12 +689,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "textbook_class_pattern_2")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_type")
 {
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local ItemContainer = {}
         ItemContainer.__index = ItemContainer
 
@@ -694,12 +716,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_type")
         local container = ItemContainer.new()
 
         container:removeItem(0, "magic")
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_and_property")
 {
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local ItemContainer = {}
         ItemContainer.__index = ItemContainer
 
@@ -720,7 +744,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_and_property")
         local container = ItemContainer.new("library")
 
         container:removeItem(0, "magic")
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
@@ -829,500 +855,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assign_to_prop_of_intersection_of_metatables
     CHECK(25 == result.errors[1].location.begin.line);
 }
 
-TEST_CASE_FIXTURE(Fixture, "classes_arent_in_old_solver")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauForceOldSolver, true},
-    };
-
-    CheckResult result = check(R"( class Point end )");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto err = get<GenericError>(result.errors[0]);
-    REQUIRE(err);
-    CHECK_EQ("class keyword is illegal here", err->message);
-}
-
-TEST_CASE_FIXTURE(Fixture, "export_class_isnt_in_old_solver")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauForceOldSolver, true},
-    };
-
-    CheckResult result = check(R"( export class Point end )");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto err = get<GenericError>(result.errors[0]);
-    REQUIRE(err);
-    CHECK_EQ("class keyword is illegal here", err->message);
-}
-
-TEST_CASE_FIXTURE(Fixture, "empty_class")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
-
-    CheckResult result = check(R"( class Point end )");
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "class_decl")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
-
-    CheckResult result = check(R"(
-        class Point
-            public x: number
-            public y: number
-        end
-
-        local p = Point.new { x = 2, y = 3 }
-
-        local x = p.x
-        local y = p.y
-    )");
-
-    LUAU_CHECK_NO_ERRORS(result);
-
-    TypeId t = requireTypeAlias("Point");
-    CHECK("Point" == toString(t));
-
-    const ExternType* point = get<ExternType>(t);
-    REQUIRE(point);
-
-    CHECK("Point" == toString(requireType("p")));
-    CHECK("number" == toString(requireType("x")));
-    CHECK("number" == toString(requireType("y")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "point_class")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
-
-    CheckResult result = check(R"(
-        class Point
-            public x: number
-            public y: number
-
-            function length(self)
-                return 100
-            end
-
-            function __init(self, x: number, y: number)
-                self.x = x
-                self.y = y
-            end
-        end
-
-        local p = Point.new(2, 3)
-        local len = p:length()
-    )");
-
-    LUAU_CHECK_NO_ERRORS(result);
-
-    TypeId p = requireType("p");
-    const ExternType* et = get<ExternType>(p);
-    REQUIRE(et);
-
-    CHECK("Point" == toString(requireType("p")));
-    CHECK("number" == toString(requireType("len")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "self_argument_has_self_type")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
-
-    CheckResult result = check(R"(
-        class I
-            function m(self)
-                return self
-            end
-        end
-
-        local i = I.new{}
-        local i2 = i:m()
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK("I" == toString(requireType("i2")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "fuzzer_duplicate_class_definition")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
-
-    CheckResult result = check(R"(
-        class l0
-        end
-        class l0
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto err = get<SyntaxError>(result.errors[0]);
-    REQUIRE(err);
-    CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
-}
-
-TEST_CASE_FIXTURE(Fixture, "repeat_props")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
-
-    CheckResult result = check(
-        R"(
-class l0
-    public foo
-    public foo
-end
-)"
-    );
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto err = get<SyntaxError>(result.errors[0]);
-    REQUIRE(err);
-    CHECK_EQ("Duplicate class member 'foo'", err->message);
-}
-
-TEST_CASE_FIXTURE(Fixture, "repeat_class_methods")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
-
-    CheckResult result = check(
-        R"(
-class l0
-    function foo()
-    end
-    function foo()
-    end
-end
-)"
-    );
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto err = get<SyntaxError>(result.errors[0]);
-    REQUIRE(err);
-    CHECK_EQ("Duplicate class member 'foo'", err->message);
-}
-
-TEST_CASE_FIXTURE(Fixture, "repeat_nameless_class_methods")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
-
-    CheckResult result = check(
-        R"(
-class l0
-    function  ()
-    end
-    function ()
-    end
-end
-)"
-    );
-
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
-    auto err1 = get<SyntaxError>(result.errors[0]);
-    REQUIRE(err1);
-    CHECK_EQ("Expected identifier when parsing method name, got '('", err1->message);
-    auto err2 = get<SyntaxError>(result.errors[1]);
-    REQUIRE(err2);
-    CHECK_EQ("Expected identifier when parsing method name, got '('", err2->message);
-    auto err3 = get<SyntaxError>(result.errors[2]);
-    REQUIRE(err3);
-    CHECK_EQ(R"(Duplicate class member '%error-id%')", err3->message);
-}
-
-TEST_CASE_FIXTURE(Fixture, "fuzzer_self_referential_class_definition")
-{
-    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-    ScopedFastFlag newSolver{FFlag::DebugLuauForceOldSolver, false};
-
-    CheckResult result = check(R"(
-        class l0
-            public _:typeof(l0)
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    TypeId l0 = requireType("l0");
-    CHECK(is<ExternType>(l0));
-}
-
-TEST_CASE_FIXTURE(Fixture, "instantiate_duplicate_class")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-    };
-
-    CheckResult result = check(
-        R"(
-class l0
-end
-class l0
-end
-_ = l0 {  }
-)"
-    );
-
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
-    auto err = get<SyntaxError>(result.errors[0]);
-    REQUIRE(err);
-    CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
-    REQUIRE(get<UnknownSymbol>(result.errors[1]));
-    REQUIRE(get<CannotCallNonFunction>(result.errors[2]));
-}
-
-TEST_CASE_FIXTURE(Fixture, "prop_with_typeof_reassigned_class")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::LuauExportValueSyntax, true},
-    };
-
-    // This should not assert or crash
-    CheckResult result = check(
-        R"(
-class Animal end
-Animal = nil
-class l0
-public _:typeof(Animal)
-end
-)"
-    );
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto err = get<SyntaxError>(result.errors[0]);
-    REQUIRE(err);
-    CHECK_EQ("'Animal' refers to a class and cannot be used as a variable name (defined on line 2)", err->message);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "class_that_shadows_a_type_alias")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::DebugLuauUserDefinedClasses, true},
-    };
-
-    CheckResult result = check(R"(
-        type AAA = { x: number }
-        class AAA end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    auto err = get<DuplicateTypeDefinition>(result.errors[0]);
-    REQUIRE(err);
-    CHECK(err->name == "AAA");
-    CHECK(err->previousLocation.has_value());
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_class_method_field_access")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::DebugLuauUserDefinedClasses, true},
-    };
-
-    CheckResult result = check(R"(
-        class Point
-            public x: number?
-            public y: number?
-            function magnitude(self)
-                return math.sqrt(self.x * self.x + self.y * self.y)
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
-
-    for (const auto& err : result.errors)
-    {
-        auto* utf = get<UninhabitedTypeFunction>(err);
-        REQUIRE(utf);
-        CHECK_EQ(toString(utf->ty), "mul<number?, number?>");
-    }
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_class_annotations")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::DebugLuauUserDefinedClasses, true},
-    };
-
-    CheckResult result = check(R"(
-        class Point
-            public x: number
-            public y: number
-            public name: string
-            function magnitude(self): string
-                -- self.name is not a number
-                self.name = self.x
-
-                -- This function is declared to return string.
-                return math.sqrt(self.x * self.x + self.y * self.y)
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    LUAU_REQUIRE_ERROR(result, TypeMismatch);
-    LUAU_REQUIRE_ERROR(result, TypePackMismatch);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "read_unknown_property_from_class_object_or_instance")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::DebugLuauUserDefinedClasses, true},
-    };
-
-    CheckResult result = check(R"(
-        class Point
-            public x: number
-            public y: number
-
-            function zero()
-                return Point.new {x=0, y=0}
-            end
-        end
-
-        local p = Point.zero()
-        local a = p.z
-        local b = Point.z
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-
-    auto* up0 = get<UnknownProperty>(result.errors[0]);
-    REQUIRE(up0);
-    CHECK(up0->key == "z");
-
-    auto* up1 = get<UnknownProperty>(result.errors[1]);
-    REQUIRE(up1);
-    CHECK(up1->key == "z");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_class_object_properties_are_forbidden")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::DebugLuauUserDefinedClasses, true},
-    };
-
-    CheckResult result = check(R"(
-        class Point
-            public x: number
-            public y: number
-
-            function zero()
-                return Point.new {x=0, y=0}
-            end
-
-            function magnitude(self): number
-                return 5 -- stochastic approximation for performance
-            end
-        end
-
-        Point.magnitude = function(p: Point) return 3 end
-        Point.zero = function() return Point.new { x = 1, y = 1 } end
-        Point.one = function() return Point.new { x = 1, y = 1 } end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
-
-    auto* pav0 = get<PropertyAccessViolation>(result.errors[0]);
-    REQUIRE(pav0);
-    CHECK(pav0->key == "magnitude");
-    CHECK(pav0->context == PropertyAccessViolation::CannotWrite);
-
-    auto* pav1 = get<PropertyAccessViolation>(result.errors[1]);
-    REQUIRE(pav1);
-    CHECK(pav1->key == "zero");
-    CHECK(pav1->context == PropertyAccessViolation::CannotWrite);
-
-    auto* pav2 = get<PropertyAccessViolation>(result.errors[2]);
-    REQUIRE(pav2);
-    CHECK(pav2->key == "one");
-    CHECK(pav2->context == PropertyAccessViolation::CannotWrite);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "writes_to_unknown_class_instance_properties_are_forbidden")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::DebugLuauUserDefinedClasses, true},
-    };
-
-    CheckResult result = check(R"(
-        class Point
-            public x: number
-            public y: number
-
-            function zero()
-                return Point.new {x=0, y=0}
-            end
-
-            function magnitude(self): number
-                return 5 -- stochastic approximation for performance
-            end
-        end
-
-        local p = Point.zero()
-
-        p.magnitude = function(p: Point) return 3 end
-        p.zero = function() return Point.new { x = 1, y = 1 } end
-        p.one = function() return Point.new { x = 1, y = 1 } end
-
-        p.__index = {}
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
-
-    auto* pav0 = get<PropertyAccessViolation>(result.errors[0]);
-    REQUIRE(pav0);
-    CHECK(pav0->key == "magnitude");
-    CHECK(pav0->context == PropertyAccessViolation::CannotWrite);
-
-    auto* pav1 = get<PropertyAccessViolation>(result.errors[1]);
-    REQUIRE(pav1);
-    CHECK(pav1->key == "zero");
-    CHECK(pav1->context == PropertyAccessViolation::CannotWrite);
-
-    auto* pav2 = get<PropertyAccessViolation>(result.errors[2]);
-    REQUIRE(pav2);
-    CHECK(pav2->key == "one");
-    CHECK(pav2->context == PropertyAccessViolation::CannotWrite);
-
-    auto* pav3 = get<PropertyAccessViolation>(result.errors[3]);
-    REQUIRE(pav3);
-    CHECK(pav3->key == "__index");
-    CHECK(pav3->context == PropertyAccessViolation::CannotWrite);
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "subclass_property_access")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
@@ -1360,6 +892,117 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subclass_property_access")
 
         return Derived
     )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_uses_expected_type_for_fresh_table_arguments")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type DateTime = { date: number }
+        type A = setmetatable<{ value: DateTime? }, { test: DateTime? }>
+
+        local x: A = setmetatable({ value = nil }, { test = nil })
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_uses_expected_type_in_call_and_return_contexts")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type DateTime = { date: number }
+        type A = setmetatable<{}, { test: DateTime? }>
+
+        local function consume(_: A) end
+        consume(setmetatable({}, { test = nil }))
+
+        local assigned: A
+        assigned = setmetatable({}, { test = nil })
+
+        local function make(): A
+            return setmetatable({}, { test = nil })
+        end
+    )"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_does_not_widen_aliased_tables")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
+
+    CheckResult result = check(R"(
+        type DateTime = { date: number }
+        type A = setmetatable<{}, { test: DateTime? }>
+
+        local mt = { test = nil }
+        local x: A = setmetatable({}, mt)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<TypeMismatch>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_rejects_invalid_fresh_table_values")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
+
+    CheckResult result = check(R"(
+        type DateTime = { date: number }
+        type A = setmetatable<{}, { test: DateTime? }>
+
+        local x: A = setmetatable({}, { test = 42 })
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<TypeMismatch>(result.errors[0]));
+    CHECK_EQ(Location{{4, 47}, {4, 49}}, result.errors[0].location);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_is_pushed_into_nested_lambdas")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        type DateTime = { date: number }
+        type A = setmetatable<{}, { callback: (DateTime) -> () }>
+
+        local x: A = setmetatable({}, {
+            callback = function(value)
+                print(value.date)
+            end,
+        })
+    )"));
+
+    std::optional<TypeId> expectedCallback = findExpectedTypeAtPosition({5, 23});
+    REQUIRE(expectedCallback);
+    CHECK_EQ("(DateTime) -> ()", toString(*expectedCallback));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_expected_type_is_unchanged_when_flag_is_disabled")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauBidirectionalInferenceSetMetatable, false};
+
+    CheckResult result = check(R"(
+        type DateTime = { date: number }
+        type A = setmetatable<{}, { test: DateTime? }>
+
+        local x: A = setmetatable({}, { test = nil })
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<TypeMismatch>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_1")

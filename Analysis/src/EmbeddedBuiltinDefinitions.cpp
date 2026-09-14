@@ -6,6 +6,7 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauNewSolverNewDefinitions)
+LUAU_FASTFLAGVARIABLE(DebugLuauCoroutineFinallyAnalysis)
 
 namespace Luau
 {
@@ -178,7 +179,7 @@ declare os: {
 
 )BUILTIN_SRC";
 
-static constexpr const char* kBuiltinDefinitionCoroutineSrc = R"BUILTIN_SRC(
+static constexpr const char* kBuiltinDefinitionCoroutineSrc_DEPRECATED = R"BUILTIN_SRC(
 
 declare coroutine: {
     create: <A..., R...>(f: (A...) -> R...) -> thread,
@@ -189,6 +190,22 @@ declare coroutine: {
     yield: <A..., R...>(A...) -> R...,
     isyieldable: () -> boolean,
     close: @checked (co: thread) -> (boolean, any)
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionCoroutineSrc = R"BUILTIN_SRC(
+
+declare coroutine: {
+    create: <A..., R...>(f: (A...) -> R...) -> thread,
+    resume: <A..., R...>(co: thread, A...) -> (boolean, R...),
+    running: () -> thread,
+    status: @checked (co: thread) -> "dead" | "running" | "normal" | "suspended",
+    wrap: <A..., R...>(f: (A...) -> R...) -> ((A...) -> R...),
+    yield: <A..., R...>(A...) -> R...,
+    isyieldable: () -> boolean,
+    close: @checked (co: thread) -> (boolean, any),
+    finally: (co: thread, callback: (status: "finished" | "error" | "cancelled", ...any) -> ()) -> ()
 }
 
 )BUILTIN_SRC";
@@ -431,8 +448,14 @@ std::string getBuiltinDefinitionSource(SolverMode solver)
     result += kBuiltinDefinitionBit32Src;
     result += kBuiltinDefinitionMathSrc;
     result += kBuiltinDefinitionOsSrc;
-    result += kBuiltinDefinitionCoroutineSrc;
+
+    if (FFlag::DebugLuauCoroutineFinallyAnalysis)
+        result += kBuiltinDefinitionCoroutineSrc;
+    else
+        result += kBuiltinDefinitionCoroutineSrc_DEPRECATED;
+
     result += solver == SolverMode::New && FFlag::LuauNewSolverNewDefinitions ? kBuiltinDefinitionTableSrc : kBuiltinDefinitionTableSrc_OldSolver;
+
     result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
     if (FFlag::LuauIntegerType2 && FFlag::LuauIntegerLibrary)

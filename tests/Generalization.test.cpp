@@ -129,6 +129,9 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "dont_traverse_into_class_types_when_ge
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "cache_fully_generalized_types")
 {
+    // Clip this test with LuauIterativeTypeSearcher
+    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, false};
+
     CHECK(generalizedTypes->empty());
 
     TypeId tinyTable = arena.addType(
@@ -144,6 +147,9 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "cache_fully_generalized_types")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "dont_cache_types_that_arent_done_yet")
 {
+    // Clip this test with LuauIterativeTypeSearcher
+    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, false};
+
     TypeId freeTy = arena.addType(FreeType{NotNull{globalScope.get()}, builtinTypes.neverType, builtinTypes.stringType});
 
     TypeId fnTy = arena.addType(FunctionType{builtinTypes.emptyTypePack, arena.addTypePack(TypePack{{builtinTypes.numberType}})});
@@ -164,6 +170,9 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "dont_cache_types_that_arent_done_yet")
 
 TEST_CASE_FIXTURE(GeneralizationFixture, "functions_containing_cyclic_tables_can_be_cached")
 {
+    // Clip this test with LuauIterativeTypeSearcher
+    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, false};
+
     TypeId selfTy = arena.addType(BlockedType{});
 
     TypeId methodTy = arena.addType(
@@ -418,12 +427,14 @@ TEST_CASE_FIXTURE(Fixture, "generic_argument_with_singleton_oss_1808")
 {
     // All we care about here is that this has no errors, and we correctly
     // infer that the `false` literal should be typed as `false`.
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function test<T>(value: false | (T) -> T)
             return value
         end
         test(false)
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional_inference")
@@ -450,6 +461,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "avoid_cross_module_mutation_in_bidirectional
     )";
 
     CheckResult result = getFrontend().check("Module/ListFns");
+
+    ignoreMissingAnnotations(result);
     auto modListFns = getFrontend().moduleResolver.getModule("Module/ListFns");
     freeze(modListFns->interfaceTypes);
     freeze(*modListFns->internalTypes);
@@ -567,6 +580,43 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "searching_for_free_types_does_not_use_
 
     REQUIRE(generalize(types.front()));
     CHECK(follow(types.front()) == builtinTypes.unknownType);
+}
+
+TEST_CASE_FIXTURE(Fixture, "mixed_polarity_is_recovered")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
+
+    CheckResult result = check(R"(
+        local function identity<T>(x: T)
+            return x
+        end
+    )");
+
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto ty = requireType("identity");
+    auto ftv = get<FunctionType>(ty);
+    REQUIRE(ftv);
+    REQUIRE(ftv->generics.size() == 1);
+    auto generic = get<GenericType>(follow(*ftv->generics.begin()));
+    REQUIRE(generic);
+    CHECK(generic->polarity == Polarity::Mixed);
+}
+
+TEST_CASE_FIXTURE(Fixture, "respect_useless_user_authored_generics")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(
+        local function getitem<T>(tbl: { read item: T })
+            local _ = tbl.item
+        end
+    )"));
+
+    CHECK_EQ("<T>({ read item: T }) -> ()", toString(requireType("getitem")));
 }
 
 

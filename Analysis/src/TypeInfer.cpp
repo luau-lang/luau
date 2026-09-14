@@ -3,6 +3,7 @@
 
 #include "Luau/ApplyTypeFunction.h"
 #include "Luau/Common.h"
+#include "Luau/Error.h"
 #include "Luau/Instantiation.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Normalize.h"
@@ -33,6 +34,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 namespace Luau
 {
@@ -703,11 +705,51 @@ static std::optional<Predicate> tryGetTypeGuardPredicate(const AstExprBinary& ex
     return predicate;
 }
 
+WithPredicate<TypeId> TypeChecker::checkLocalBinding(
+    const ScopePtr& scope,
+    const ScopePtr& bindingScope,
+    AstLocal* local,
+    const WithPredicate<TypeId>& result,
+    std::optional<TypeId> expectedType
+)
+{
+    LUAU_ASSERT(FFlag::DebugLuauIfLocalAnalysis);
+    LUAU_ASSERT(local);
+
+    TypeId lhs = nullptr;
+    if (expectedType)
+    {
+        lhs = *expectedType;
+        if (get<ErrorType>(follow(lhs)))
+            lhs = nullptr;
+    }
+
+    lhs = lhs ? lhs : isNonstrictMode() ? anyType : freshType(scope);
+    LUAU_ASSERT(lhs);
+
+    Unifier state = mkUnifier(scope, local->location);
+    state.ctx = CountMismatch::ExprListResult;
+    state.tryUnify(result.type, lhs);
+    reportErrors(state.errors);
+    state.log.commit();
+    bindingScope->bindings[local] = Binding{lhs, local->location};
+    return {lhs, {TruthyPredicate{Symbol{local}, local->location}}};
+}
+
 ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatIf& statement)
 {
-    WithPredicate<TypeId> result = checkExpr(scope, *statement.condition);
-
+    std::optional<TypeId> expectedType = std::nullopt;
+    if (FFlag::DebugLuauIfLocalAnalysis && statement.conditionLocal && statement.conditionLocal->annotation)
+        expectedType.emplace(resolveType(scope, *statement.conditionLocal->annotation));
+    WithPredicate<TypeId> result = checkExpr(scope, *statement.condition, expectedType);
     ScopePtr thenScope = childScope(scope, statement.thenbody->location);
+
+    if (FFlag::DebugLuauIfLocalAnalysis && statement.conditionLocal != nullptr)
+    {
+        WithPredicate<TypeId> bindingPred = checkLocalBinding(scope, thenScope, statement.conditionLocal, result, expectedType);
+        resolve(bindingPred.predicates, thenScope, true);
+    }
+
     resolve(result.predicates, thenScope, true);
 
     ScopePtr elseScope = childScope(scope, statement.elsebody ? statement.elsebody->location : statement.location);

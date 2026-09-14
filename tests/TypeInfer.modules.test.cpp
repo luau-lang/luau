@@ -303,6 +303,8 @@ end
 return m
 )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -662,9 +664,11 @@ end
 return ReactShallowRenderer
     )";
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
 local ReactShallowRenderer = require(game.A);
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "untitled_segfault_number_13")
@@ -693,9 +697,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "untitled_segfault_number_13")
         return Response
     )";
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local _ = require(game.A);
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "spooky_blocked_type_laundered_by_bound_type")
@@ -754,6 +760,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "spooky_blocked_type_laundered_by_bound_type"
         local _ = require(game.A);
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -783,6 +791,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "leaky_generics")
 
         return Cache
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -850,6 +860,8 @@ return wrapper(test2, 1, "")
     )";
 
     CheckResult result = getFrontend().check("game/B");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1146,9 +1158,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_mutual_recursive_functions")
     )";
 
     CheckResult aResult = getFrontend().check("game/A");
+
+    ignoreMissingAnnotations(aResult);
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = getFrontend().check("game/B");
+
+    ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
@@ -1281,9 +1297,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_multret")
     )";
 
     CheckResult aResult = getFrontend().check("game/A");
+
+    ignoreMissingAnnotations(aResult);
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = getFrontend().check("game/B");
+
+    ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
@@ -1298,7 +1318,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_partial_multret")
 
     fileResolver.source["game/A"] = R"(
         --!strict
-        local function huh()
+        local function huh(): (string, boolean)
             return "huh", false
         end
 
@@ -1315,9 +1335,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_partial_multret")
     )";
 
     CheckResult aResult = getFrontend().check("game/A");
+
+    ignoreMissingAnnotations(aResult);
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = getFrontend().check("game/B");
+
+    ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
@@ -1340,7 +1364,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "export_class")
             public x: number
             public y: number
 
-            function __tostring(self)
+            function __tostring(self): string
                 return `Point x={self.x} y={self.y}`
             end
         end
@@ -1371,7 +1395,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_exported_class")
             public x: number
             public y: number
 
-            function __tostring(self)
+            function __tostring(self): string
                 return `Point x={self.x} y={self.y}`
             end
         end

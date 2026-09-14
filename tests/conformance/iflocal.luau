@@ -244,4 +244,130 @@ do
     assert(not entered)
 end
 
+-- if const: falsy path takes else branch
+do
+    local result = "none"
+    if const x = nil then
+        result = "then"
+    else
+        result = "else"
+    end
+    assert(result == "else")
+end
+
+-- if const: variable scoped to then-block only
+do
+    local x = "outer"
+    if const x = "inner" then
+        assert(x == "inner")
+    end
+    assert(x == "outer")
+end
+
+-- elseif const with independent binding
+do
+    local result = ""
+    if local x = nil then
+        result = "first"
+    elseif const y = "hey" then
+        assert(y == "hey")
+        result = "second"
+    end
+    assert(result == "second")
+end
+
+-- initializer is evaluated exactly once
+do
+    local calls = 0
+    local function sideEffect()
+        calls += 1
+        return calls
+    end
+    if local x = sideEffect() then
+        assert(x == 1)
+    end
+    assert(calls == 1)
+end
+
+-- initializer evaluated once even when falsy (else branch taken)
+do
+    local calls = 0
+    local function sideEffectNil()
+        calls += 1
+        return nil
+    end
+    local entered = false
+    if local x = sideEffectNil() then
+        entered = true
+    end
+    assert(not entered)
+    assert(calls == 1)
+end
+
+-- break out of a loop from an if-local then-block
+do
+    local seen = {}
+    for i = 1, 5 do
+        if local x = i then
+            table.insert(seen, x)
+            if x == 3 then
+                break
+            end
+        end
+    end
+    assert(#seen == 3)
+    assert(seen[3] == 3)
+end
+
+-- continue in a loop from an if-local then-block
+do
+    local sum = 0
+    for i = 1, 5 do
+        if local even = (i % 2 == 0) then
+            continue
+        end
+        sum += i
+    end
+    assert(sum == 1 + 3 + 5)
+end
+
+-- nested if-local, inner binding shadows nothing and is independent
+do
+    local function getUser()
+        return { token = { id = 42 } }
+    end
+    local found
+    if local user = getUser() then
+        if local token = user.token then
+            found = token.id
+        end
+    end
+    assert(found == 42)
+end
+
+-- each loop iteration gets a fresh binding captured independently
+do
+    local closures = {}
+    for i = 1, 3 do
+        if local x = i then
+            closures[i] = function() return x end
+        end
+    end
+    assert(closures[1]() == 1)
+    assert(closures[2]() == 2)
+    assert(closures[3]() == 3)
+end
+
+-- return from within the then-block
+do
+    local function f(v)
+        if local x = v then
+            return x
+        end
+        return "fallthrough"
+    end
+    assert(f(7) == 7)
+    assert(f(nil) == "fallthrough")
+end
+
 return "OK"

@@ -8,6 +8,7 @@
 
 LUAU_FASTFLAG(DebugLuauLogSolver)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 
 namespace Luau
 {
@@ -277,7 +278,31 @@ ConstraintGraph::UnblockedTypes ConstraintGraph::unblockConstraint(NotNull<const
      */
 
     for (TypeId type : result.types)
+    {
         repairTypeReferences(type);
+        if (FFlag::LuauTraverseScopeToFunction)
+        {
+            // Consider the following code:
+            //
+            //  -- Annotated with a free type for reading ease.
+            //  local function f(g: 'func)
+            //      local _ = g(42)
+            //      local n: number? = g(67)
+            //  end
+            //
+            // When resolving the first function call to `g`, we'll infer that
+            // `'func <: (number) -> ('ret...)`: we know `g` takes a number but
+            // we don't know what `g` returns. However, we end up introducing
+            // a layer of indirection between `'ret...` and the *second* call
+            // to `g`, which may also mutate `'ret...`.
+            type = follow(type);
+            if (auto ft = get<FreeType>(type))
+            {
+                copyDependenciesOf(type, follow(ft->upperBound));
+                copyDependenciesOf(type, follow(ft->lowerBound));
+            }
+        }
+    }
 
     for (TypePackId typePack : result.packs)
         repairTypeReferences(typePack);

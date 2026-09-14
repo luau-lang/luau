@@ -251,6 +251,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -283,6 +284,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_ch
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
@@ -301,6 +303,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     TypeId p = requireType("p");
@@ -415,6 +418,8 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_incompatible_args_to_iterator")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     // TODO, CLI-177651: The rough bidirectional rule with for-in loops ought to be:
     //
     //  for a, b in c, d, e
@@ -446,6 +451,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_custom_iterator")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
@@ -523,6 +529,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "varlist_declared_by_for_in_loop_should_be_fr
             end
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -670,6 +678,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             unreachablecodepath(4)
         )");
 
+        ignoreMissingAnnotations(result);
         LUAU_REQUIRE_ERROR_COUNT(0, result);
     }
 
@@ -686,6 +695,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             reachablecodepath(4)
         )");
 
+        ignoreMissingAnnotations(result);
         LUAU_REQUIRE_ERRORS(result);
         CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
     }
@@ -702,6 +712,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             unreachablecodepath(4)
         )");
 
+        ignoreMissingAnnotations(result);
         LUAU_REQUIRE_ERROR_COUNT(0, result);
     }
 
@@ -719,6 +730,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             reachablecodepath(4)
         )");
 
+        ignoreMissingAnnotations(result);
         LUAU_REQUIRE_ERRORS(result);
         CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
     }
@@ -735,6 +747,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             unreachablecodepath(4)
         )");
 
+        ignoreMissingAnnotations(result);
         LUAU_REQUIRE_ERROR_COUNT(0, result);
     }
 }
@@ -993,6 +1006,7 @@ TEST_CASE_FIXTURE(Fixture, "iterate_over_free_table")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1023,6 +1037,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_minimized_fragmented_keys_1")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1036,6 +1051,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_minimized_fragmented_keys_2")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1049,6 +1065,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_minimized_fragmented_keys_3")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1087,6 +1104,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_fragmented_keys")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1405,7 +1423,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "while_loop_error_in_body")
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function foo()
             local x = ""
             while math.random () > 0.5 do
@@ -1414,7 +1432,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "while_loop_error_in_body")
             end
             return x
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("() -> string", toString(requireType("foo")));
 }
@@ -1423,7 +1443,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "while_loop_assign_different_type")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function takesString(_: string) end
         local function takesNil(_: nil) end
         local function foo()
@@ -1435,7 +1455,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "while_loop_assign_different_type")
             end
             return x
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("() -> string?", toString(requireType("foo")));
 }

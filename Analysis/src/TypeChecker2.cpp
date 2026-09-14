@@ -38,15 +38,18 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
+LUAU_FASTFLAGVARIABLE(DebugLuauWarnOnUnannotatedTopLevelFunctions)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSetMetatable)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 namespace Luau
 {
@@ -699,6 +702,13 @@ void TypeChecker2::visit(AstStatIf* ifStatement)
         visit(ifStatement->condition, ValueContext::RValue);
     }
 
+    if (FFlag::DebugLuauIfLocalAnalysis && ifStatement->conditionLocal && ifStatement->conditionLocal->annotation)
+    {
+        TypeId annotationType = lookupAnnotation(ifStatement->conditionLocal->annotation);
+        testPotentialLiteralIsSubtype(ifStatement->condition, annotationType);
+        visit(ifStatement->conditionLocal->annotation);
+    }
+
     visit(ifStatement->thenbody);
     if (ifStatement->elsebody)
         visit(ifStatement->elsebody);
@@ -762,15 +772,45 @@ void TypeChecker2::visit(AstStatReturn* ret)
     // at least an argument underflow, then we grab the last type out of
     // the type pack head and use that to check the subtype of
     auto lastExpr = ret->list.data[ret->list.size - 1];
-    if (head.size() < ret->list.size || lastExpr->is<AstExprCall>() || lastExpr->is<AstExprVarargs>())
+
+    if (FFlag::LuauBidirectionalInferenceSetMetatable)
     {
-        actualTail = lookupPack(lastExpr);
+        if (head.size() < ret->list.size || lastExpr->is<AstExprVarargs>())
+        {
+            actualTail = lookupPack(lastExpr);
+        }
+        else if (lastExpr->is<AstExprCall>())
+        {
+            TypeId lastType = head[ret->list.size - 1];
+            if (std::optional<bool> setMetatableSubtype = testSetMetatableCallIsSubtype(lastExpr, lastType))
+            {
+                isSubtype &= *setMetatableSubtype;
+                actualHead.push_back(lastType);
+            }
+            else
+            {
+                actualTail = lookupPack(lastExpr);
+            }
+        }
+        else
+        {
+            TypeId lastType = head[ret->list.size - 1];
+            isSubtype &= testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
+            actualHead.push_back(lastType);
+        }
     }
     else
     {
-        auto lastType = head[ret->list.size - 1];
-        isSubtype &= testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
-        actualHead.push_back(lastType);
+        if (head.size() < ret->list.size || lastExpr->is<AstExprCall>() || lastExpr->is<AstExprVarargs>())
+        {
+            actualTail = lookupPack(lastExpr);
+        }
+        else
+        {
+            TypeId lastType = head[ret->list.size - 1];
+            isSubtype &= testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
+            actualHead.push_back(lastType);
+        }
     }
 
     // After all that, we still fire a pack subtype test to determine
@@ -837,7 +877,15 @@ void TypeChecker2::visit(AstStatLocal* local)
                 if (var->annotation)
                 {
                     TypeId varType = lookupAnnotation(var->annotation);
-                    testIsSubtype(valueTypes.head[j - i], varType, value->location);
+                    if (FFlag::LuauBidirectionalInferenceSetMetatable)
+                    {
+                        if (!testSetMetatableCallIsSubtype(value, varType))
+                            testIsSubtype(valueTypes.head[j - i], varType, value->location);
+                    }
+                    else
+                    {
+                        testIsSubtype(valueTypes.head[j - i], varType, value->location);
+                    }
 
                     visit(var->annotation);
                 }
@@ -1280,6 +1328,56 @@ void TypeChecker2::visit(AstStatCompoundAssign* stat)
     testIsSubtype(*resultTy, varTy, stat->location);
 }
 
+void TypeChecker2::checkFunctionAnnotations(AstExprFunction* func, AnnotationCheckMode mode, Location nameLocation)
+{
+    TypeId ty = lookupType(func);
+    const FunctionType* ft = get<FunctionType>(ty);
+
+    bool missing = false;
+
+    if (ft)
+    {
+        TypePack args = extendTypePack(*module->internalTypes, builtinTypes, ft->argTypes, func->args.size);
+
+        for (size_t i = 0; i < func->args.size; ++i)
+        {
+            const AstLocal* arg = func->args.data[i];
+            if (i == 0 && arg->name == "self" && mode != AnnotationCheckMode::Function)
+            {
+                // Annotating the self parameter is already a syntax error.  We
+                // don't need to report anything here.
+            }
+            else if (!arg->annotation && i < args.head.size())
+                missing = true;
+        }
+
+        if (func->vararg && !func->varargAnnotation && args.tail.has_value())
+            missing = true;
+
+        if (mode == AnnotationCheckMode::Constructor && func->returnAnnotation)
+        {
+            reportError(ConstructorsShouldNotReturnAnything{}, func->returnAnnotation->location);
+        }
+        else if (!func->returnAnnotation)
+        {
+            auto [head, tail] = flatten(ft->retTypes);
+
+            if (!head.empty() || tail.has_value())
+                missing = true;
+        }
+    }
+
+    if (missing)
+    {
+        Location location = nameLocation;
+        if (func->argLocation)
+            location.extend(*func->argLocation);
+        if (func->returnAnnotation)
+            location.extend(func->returnAnnotation->location);
+        reportError(TypeAnnotationRequired{ty}, location);
+    }
+}
+
 void TypeChecker2::visit(AstStatFunction* stat)
 {
     visit(stat->name, ValueContext::LValue);
@@ -1302,11 +1400,17 @@ void TypeChecker2::visit(AstStatFunction* stat)
         auto rhsType = lookupType(stat->func);
         testIsSubtype(rhsType, lhsType, stat->func->location);
     }
+
+    if (FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions && stack.size() == 1)
+        checkFunctionAnnotations(stat->func, AnnotationCheckMode::Function, stat->name->location);
 }
 
 void TypeChecker2::visit(AstStatLocalFunction* stat)
 {
     visit(stat->func);
+
+    if (FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions && stack.size() == 1)
+        checkFunctionAnnotations(stat->func, AnnotationCheckMode::Function, stat->name->location);
 }
 
 void TypeChecker2::visit(const AstTypeList* typeList)
@@ -1384,8 +1488,14 @@ void TypeChecker2::visit(AstStatClass* stat)
         else if (const auto* method = member.get_if<AstClassMethod>())
         {
             visit(method->function);
+
             if (method->functionName == "__init")
+            {
+                checkFunctionAnnotations(method->function, AnnotationCheckMode::Constructor, method->nameLocation);
                 visitConstructor(stat, method);
+            }
+            else
+                checkFunctionAnnotations(method->function, AnnotationCheckMode::Method, method->nameLocation);
         }
         else
             LUAU_ASSERT(!"Unknown class member!");
@@ -1833,6 +1943,19 @@ void TypeChecker2::visitCall(AstExprCall* call)
             AstExpr* argExpr = call->args.data[idx];
             if (FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks)
                 argExprs.push_back(argExpr);
+
+            if (FFlag::LuauBidirectionalInferenceSetMetatable)
+            {
+                if (idx + selfOffset < paramsHead.size())
+                {
+                    if (testSetMetatableCallIsSubtype(argExpr, paramsHead[idx + selfOffset]))
+                    {
+                        args.head.push_back(paramsHead[idx + selfOffset]);
+                        continue;
+                    }
+                }
+            }
+
             // The last argument might be an ordinary value, but it can also be an entire pack.
             if (idx == call->args.size - 1)
             {
@@ -3612,10 +3735,31 @@ bool TypeChecker2::testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedT
     return testPotentialLiteralIsSubtype(expr, expectedType);
 }
 
+std::optional<bool> TypeChecker2::testSetMetatableCallIsSubtype(AstExpr* expr, TypeId expectedType)
+{
+    AstExprCall* call = expr->as<AstExprCall>();
+    if (!call || !matchSetMetatable(*call))
+        return std::nullopt;
+
+    const MetatableType* expectedMetatable = get<MetatableType>(follow(expectedType));
+    if (!expectedMetatable)
+        return std::nullopt;
+
+    bool passes = testLiteralOrAstTypeIsSubtype(call->args.data[0], expectedMetatable->table);
+    passes &= testLiteralOrAstTypeIsSubtype(call->args.data[1], expectedMetatable->metatable);
+    return passes;
+}
+
 bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedType)
 {
     auto exprType = follow(lookupType(expr));
     expectedType = follow(expectedType);
+
+    if (FFlag::LuauBidirectionalInferenceSetMetatable)
+    {
+        if (std::optional<bool> result = testSetMetatableCallIsSubtype(expr, expectedType))
+            return *result;
+    }
 
     if (auto group = expr->as<AstExprGroup>())
     {

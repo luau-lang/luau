@@ -336,6 +336,17 @@ public:
     AstArray<Position> valuesCommaPositions;
 };
 
+class CstStatIf : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstStatIf)
+
+    explicit CstStatIf(Position annotationColonPosition);
+
+    // Colon before the `if local`/`if const` binding's type annotation
+    Position annotationColonPosition;
+};
+
 class CstStatAssign : public CstNode
 {
 public:

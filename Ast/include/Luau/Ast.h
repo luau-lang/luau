@@ -751,7 +751,8 @@ public:
         const std::optional<Location>& elseLocation,
         AstLocal* conditionLocal,
         bool conditionIsConst,
-        const std::optional<Location>& conditionKeywordLocation
+        const std::optional<Location>& conditionKeywordLocation,
+        const std::optional<Location>& conditionEqualsLocation
     );
 
     void visit(AstVisitor* visitor) override;
@@ -769,6 +770,9 @@ public:
     AstLocal* conditionLocal = nullptr;
     bool conditionIsConst = false;
     std::optional<Location> conditionKeywordLocation;
+
+    // Location of the `=` in an `if local`/`if const` binding
+    std::optional<Location> conditionEqualsLocation;
 };
 
 class AstStatWhile : public AstStat

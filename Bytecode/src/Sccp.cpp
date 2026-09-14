@@ -9,13 +9,6 @@ namespace Luau
 namespace Bytecode
 {
 
-// standard three way comparison: -1 if a < b, 0 if a == b, 1 if a > b
-template<typename T>
-static int threeWay(const T& a, const T& b)
-{
-    return static_cast<int>(a > b) - static_cast<int>(a < b);
-}
-
 static BcOp findOrAddConst(BcFunction<BcVmConst>& func, const BcVmConst& value)
 {
     for (size_t i = 0; i < func.constants.size(); i++)
@@ -28,108 +21,54 @@ static BcOp findOrAddConst(BcFunction<BcVmConst>& func, const BcVmConst& value)
 
 std::optional<BcOp> BcVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& rhsOp, LuauOpcode op) const
 {
-    BcVmConst& lhs = func.constOp(lhsOp);
-    BcVmConst& rhs = func.constOp(rhsOp);
-
-    // arithmetic folding is only defined for two numbers
-    if (lhs.kind != rhs.kind || lhs.kind != BcVmConstKind::Number)
-        return std::nullopt;
-
-    const double a = lhs.valueNumber;
-    const double b = rhs.valueNumber;
-    double r;
-
-    switch (op)
+    if (isNumber(lhsOp) && isNumber(rhsOp))
     {
-    case LuauOpcode::LOP_ADD:
-        r = a + b;
-        break;
-    case LuauOpcode::LOP_SUB:
-        r = a - b;
-        break;
-    case LuauOpcode::LOP_MUL:
-        r = a * b;
-        break;
-    case LuauOpcode::LOP_DIV:
-        r = a / b;
-        break;
-    case LuauOpcode::LOP_MOD:
-        if (b == 0.0)
-            return std::nullopt;
-        r = a - floor(a / b) * b;
-        break;
-    case LuauOpcode::LOP_POW:
-        r = pow(a, b);
-        break;
-    case LuauOpcode::LOP_IDIV:
-        r = floor(a / b);
-        break;
-    default:
+        if (std::optional<double> resultOpt = evaluateNumberBinaryOp(asNumber(lhsOp), asNumber(rhsOp), op))
+        {
+            BcVmConst result;
+            result.kind = BcVmConstKind::Number;
+            result.valueNumber = *resultOpt;
+            return findOrAddConst(func, result);
+        }
+
         return std::nullopt;
     }
 
-    BcVmConst result;
-    result.kind = BcVmConstKind::Number;
-    result.valueNumber = r;
-    return findOrAddConst(func, result);
+    // TODO: vector support
+    return std::nullopt;
 }
 
 bool BcVmConstImpl::falsey(const BcOp& falseyOp) const
 {
-    if (falseyOp.kind == BcOpKind::VmConst)
-    {
-        BcVmConst& vmConst = func.constOp(falseyOp);
+    if (isNil(falseyOp))
+        return true;
 
-        return vmConst.kind == BcVmConstKind::Nil || (vmConst.kind == BcVmConstKind::Boolean && vmConst.valueBoolean == false);
-    }
-    else if (falseyOp.kind == BcOpKind::Imm)
-    {
-        BcImm& imm = func.immOp(falseyOp);
-        return imm.kind == BcImmKind::Boolean && imm.valueBoolean == false;
-    }
+    if (isBoolean(falseyOp))
+        return asBoolean(falseyOp) == false;
 
     return false;
 }
 
-int BcVmConstImpl::cmp(const BcOp& lhsOp, const BcOp& rhsOp) const
+bool BcVmConstImpl::compare(const BcOp& lhsOp, const BcOp& rhsOp, BcCondition condition) const
 {
+    LUAU_ASSERT(isOrderable(lhsOp));
+    LUAU_ASSERT(isOrderable(rhsOp));
+
+    if (isNumber(lhsOp) && isNumber(rhsOp))
+        return bcCompare(asNumber(lhsOp), asNumber(rhsOp), condition);
+
     BcVmConst& lhs = func.constOp(lhsOp);
     BcVmConst& rhs = func.constOp(rhsOp);
     LUAU_ASSERT(lhs.kind == rhs.kind);
 
     switch (lhs.kind)
     {
-    case BcVmConstKind::Number:
-        return threeWay(lhs.valueNumber, rhs.valueNumber);
-    case BcVmConstKind::Integer:
-        return threeWay(lhs.valueInteger, rhs.valueInteger);
-    case BcVmConstKind::Boolean:
-        return (lhs.valueBoolean == rhs.valueBoolean) ? 0 : 1;
     case BcVmConstKind::String:
-        return threeWay(lhs.valueString.compare(rhs.valueString), 0);
+        return bcCompare(lhs.valueString, rhs.valueString, condition);
     default:
-        return 0;
+        LUAU_ASSERT(!"unsupported comparison");
+        return false;
     }
-};
-
-int BcVmConstImpl::cmp(const BcOp& lhsOp, const BcImm& rhs) const
-{
-    BcVmConst& lhs = func.constOp(lhsOp);
-
-    if (rhs.kind == BcImmKind::Int)
-    {
-        if (lhs.kind == BcVmConstKind::Number)
-            return threeWay(lhs.valueNumber, static_cast<double>(rhs.valueInt));
-        else if (lhs.kind == BcVmConstKind::Integer)
-            return threeWay(lhs.valueInteger, static_cast<int64_t>(rhs.valueInt));
-    }
-    else if (rhs.kind == BcImmKind::Boolean)
-    {
-        if (lhs.kind == BcVmConstKind::Boolean)
-            return (lhs.valueBoolean == rhs.valueBoolean) ? 0 : 1;
-    }
-
-    return 0;
 }
 
 BcOp BcVmConstImpl::makeNil() const
@@ -139,20 +78,9 @@ BcOp BcVmConstImpl::makeNil() const
     return findOrAddConst(func, result);
 }
 
-BcImm BcVmConstImpl::makeImm(bool value) const
+BcOp BcVmConstImpl::makeImmBool(bool value) const
 {
-    BcImm result{};
-    result.kind = BcImmKind::Boolean;
-    result.valueBoolean = value;
-    return result;
-}
-
-BcImm BcVmConstImpl::makeImm(int32_t value) const
-{
-    BcImm result{};
-    result.kind = BcImmKind::Int;
-    result.valueInt = value;
-    return result;
+    return func.addImmBool(value);
 }
 
 BcRef<BcImm> BcVmConstImpl::asImm(BcOp op) const
@@ -160,92 +88,155 @@ BcRef<BcImm> BcVmConstImpl::asImm(BcOp op) const
     return func.imm(op);
 }
 
-bool BcVmConstImpl::isOrderable(const BcOp& vmConstOp) const
+bool BcVmConstImpl::isOrderable(const BcOp& op) const
 {
-    BcVmConst& vmConst = func.constOp(vmConstOp);
-    return vmConst.kind == BcVmConstKind::Number || vmConst.kind == BcVmConstKind::Integer || vmConst.kind == BcVmConstKind::String;
+    if (op.kind == BcOpKind::Imm)
+    {
+        BcImm& imm = func.immOp(op);
+        return imm.kind == BcImmKind::Int;
+    }
+
+    if (op.kind == BcOpKind::VmConst)
+    {
+        BcVmConst& vmConst = func.constOp(op);
+        return vmConst.kind == BcVmConstKind::Number || vmConst.kind == BcVmConstKind::String;
+    }
+
+    return false;
 }
+
 bool BcVmConstImpl::kindEquals(const BcOp& lhsOp, const BcOp& rhsOp) const
 {
+    if (isBoolean(lhsOp) && isBoolean(rhsOp))
+        return true;
+
+    if (isNumber(lhsOp) && isNumber(rhsOp))
+        return true;
+
+    if (lhsOp.kind != BcOpKind::VmConst || rhsOp.kind != BcOpKind::VmConst)
+        return false;
+
     BcVmConst& lhs = func.constOp(lhsOp);
     BcVmConst& rhs = func.constOp(rhsOp);
 
     return lhs.kind == rhs.kind;
 }
 
+bool BcVmConstImpl::fullyequal(const BcOp& lhsOp, const BcOp& rhsOp) const
+{
+    if (lhsOp.kind != rhsOp.kind)
+        return false;
+
+    if (lhsOp.kind == BcOpKind::Imm)
+        return func.immOp(lhsOp) == func.immOp(rhsOp);
+
+    if (lhsOp.kind == BcOpKind::VmConst)
+        return lhsOp.index == rhsOp.index; // This relies on findOrAddConst for de-duplication
+
+    LUAU_ASSERT(!"unsupported kind");
+    return false;
+}
+
 std::optional<bool> BcVmConstImpl::eq(const BcOp& lhsOp, const BcOp& rhsOp) const
 {
+    if (isNil(lhsOp) && isNil(rhsOp))
+        return true;
+
+    if (isBoolean(lhsOp) && isBoolean(rhsOp))
+        return asBoolean(lhsOp) == asBoolean(rhsOp);
+
+    if (isNumber(lhsOp) && isNumber(rhsOp))
+        return asNumber(lhsOp) == asNumber(rhsOp);
+
+    // Handle other VM constant types
     if (lhsOp.kind == BcOpKind::VmConst && rhsOp.kind == BcOpKind::VmConst)
     {
-
         BcVmConst& lhs = func.constOp(lhsOp);
         BcVmConst& rhs = func.constOp(rhsOp);
 
-        if (lhs.kind == BcVmConstKind::Number && rhs.kind == BcVmConstKind::Number)
-            return lhs.valueNumber == rhs.valueNumber;
+        if (lhs.kind != rhs.kind)
+            return false;
+
         if (lhs.kind == BcVmConstKind::Integer && rhs.kind == BcVmConstKind::Integer)
             return lhs.valueInteger == rhs.valueInteger;
-        if (lhs.kind == BcVmConstKind::Number && rhs.kind == BcVmConstKind::Integer)
-            return lhs.valueNumber == static_cast<double>(rhs.valueInteger);
-        if (lhs.kind == BcVmConstKind::Integer && rhs.kind == BcVmConstKind::Number)
-            return static_cast<double>(lhs.valueInteger) == rhs.valueNumber;
+
         if (lhs.kind == BcVmConstKind::String && rhs.kind == BcVmConstKind::String)
             return lhs.valueString == rhs.valueString;
     }
-    else if (lhsOp.kind == BcOpKind::VmConst && rhsOp.kind == BcOpKind::Imm)
+
+    return std::nullopt;
+}
+
+bool BcVmConstImpl::isNil(const BcOp& op) const
+{
+    if (op.kind == BcOpKind::VmConst)
+        return func.constOp(op).kind == BcVmConstKind::Nil;
+
+    return false;
+}
+
+bool BcVmConstImpl::isBoolean(const BcOp& op) const
+{
+    if (op.kind == BcOpKind::Imm)
+        return func.immOp(op).kind == BcImmKind::Boolean;
+
+    if (op.kind == BcOpKind::VmConst)
+        return func.constOp(op).kind == BcVmConstKind::Boolean;
+
+    return false;
+}
+
+bool BcVmConstImpl::isNumber(const BcOp& op) const
+{
+    if (op.kind == BcOpKind::Imm)
+        return func.immOp(op).kind == BcImmKind::Int;
+
+    if (op.kind == BcOpKind::VmConst)
+        return func.constOp(op).kind == BcVmConstKind::Number;
+
+    return false;
+}
+
+bool BcVmConstImpl::asBoolean(const BcOp& op) const
+{
+    if (op.kind == BcOpKind::Imm)
     {
-
-        BcVmConst& lhs = func.constOp(lhsOp);
-        BcImm& rhs = func.immOp(rhsOp);
-        if (lhs.kind == BcVmConstKind::Boolean && rhs.kind == BcImmKind::Boolean)
-            return lhs.valueBoolean == rhs.valueBoolean;
+        BcImm& imm = func.immOp(op);
+        LUAU_ASSERT(imm.kind == BcImmKind::Boolean && "use isBoolean first");
+        return imm.valueBoolean;
     }
-    else if (lhsOp.kind == BcOpKind::Imm && rhsOp.kind == BcOpKind::Imm)
+
+    if (op.kind == BcOpKind::VmConst)
     {
-        BcImm& lhs = func.immOp(lhsOp);
-        BcImm& rhs = func.immOp(rhsOp);
-        if (lhs.kind == BcImmKind::Boolean && rhs.kind == BcImmKind::Boolean)
-            return lhs.valueBoolean == rhs.valueBoolean;
-        else if (lhs.kind == BcImmKind::Int && rhs.kind == BcImmKind::Int)
-            return lhs.valueInt == rhs.valueInt;
+        BcVmConst& vmConst = func.constOp(op);
+        LUAU_ASSERT(vmConst.kind == BcVmConstKind::Boolean && "use isBoolean first");
+        return vmConst.valueBoolean;
     }
-    return std::nullopt;
+
+    LUAU_ASSERT(!"unsupported type, use isBoolean first");
+    return false;
 }
 
-std::optional<bool> BcVmConstImpl::eq(const BcOp& lhsOp, bool rhs) const
+double BcVmConstImpl::asNumber(const BcOp& op) const
 {
-    BcVmConst& lhs = func.constOp(lhsOp);
+    if (op.kind == BcOpKind::Imm)
+    {
+        BcImm& imm = func.immOp(op);
+        LUAU_ASSERT(imm.kind == BcImmKind::Int && "use isNumber first");
+        return double(imm.valueInt);
+    }
 
-    if (lhs.kind == BcVmConstKind::Boolean)
-        return lhs.valueBoolean == rhs;
-    return std::nullopt;
+    if (op.kind == BcOpKind::VmConst)
+    {
+        BcVmConst& vmConst = func.constOp(op);
+        LUAU_ASSERT(vmConst.kind == BcVmConstKind::Number && "use isNumber first");
+        return vmConst.valueNumber;
+    }
+
+    LUAU_ASSERT(!"unsupported type, use isNumber first");
+    return 0.0;
 }
 
-std::optional<bool> BcVmConstImpl::eq(const BcOp& lhsOp, int32_t rhs) const
-{
-    BcVmConst& lhs = func.constOp(lhsOp);
-
-    if (lhs.kind == BcVmConstKind::Number)
-        return static_cast<double>(rhs) == lhs.valueNumber;
-    if (lhs.kind == BcVmConstKind::Integer)
-        return static_cast<int64_t>(rhs) == lhs.valueInteger;
-    return std::nullopt;
-}
-
-bool BcVmConstImpl::isArithmeticConstant(const BcOp& vmConstOp) const
-{
-    BcVmConst& vmConst = func.constOp(vmConstOp);
-    return vmConst.kind == BcVmConstKind::Number;
-}
-
-double BcVmConstImpl::asNumber(const BcOp& vmConstOp) const
-{
-    BcVmConst& vmConst = func.constOp(vmConstOp);
-    LUAU_ASSERT(vmConst.kind == BcVmConstKind::Number);
-    return vmConst.valueNumber;
-}
-
-// TODO: support imm + vmconst
 ConstnessLattice SccpInterpreter::evaluateArith(LuauOpcode opcode, BcRef<BcInst> instRepr)
 {
     auto lhs = instRepr->ops[0];
@@ -254,71 +245,11 @@ ConstnessLattice SccpInterpreter::evaluateArith(LuauOpcode opcode, BcRef<BcInst>
     ConstnessLattice lhsConstness = this->state->operandLattice(lhs);
     ConstnessLattice rhsConstness = this->state->operandLattice(rhs);
 
-    if (lhsConstness.kind == Constness::ImmConstant && rhsConstness.kind == Constness::ImmConstant)
+    if (lhsConstness.kind == Constness::Constant && rhsConstness.kind == Constness::Constant)
     {
-        const BcImm& lhsImm = lhsConstness.immConst.value();
-        const BcImm& rhsImm = rhsConstness.immConst.value();
-
-        if (lhsImm.kind == BcImmKind::Int && rhsImm.kind == BcImmKind::Int)
-        {
-            int lv = lhsImm.valueInt;
-            int rv = rhsImm.valueInt;
-
-            // Division/modulo by zero cannot be folded
-            if (rv == 0 && (opcode == LOP_DIV || opcode == LOP_MOD || opcode == LOP_IDIV))
-                return ConstnessLattice(Constness::NotAConstant);
-
-            // LOP_DIV and LOP_POW are always floating-point, but BcImm cannot represent floats
-            if (opcode == LOP_DIV || opcode == LOP_POW)
-                return ConstnessLattice(Constness::NotAConstant);
-
-            int64_t result;
-            switch (opcode)
-            {
-            case LOP_ADD:
-                result = int64_t(lv) + rv;
-                break;
-            case LOP_SUB:
-                result = int64_t(lv) - rv;
-                break;
-            case LOP_MUL:
-                result = int64_t(lv) * rv;
-                break;
-            case LOP_MOD:
-            {
-                // Lua modulo: result has the sign of the divisor
-                int64_t remainder = int64_t(lv) % rv;
-                if ((remainder != 0) && ((lv < 0) != (rv < 0)))
-                    remainder += rv;
-                result = remainder;
-                break;
-            }
-            case LOP_IDIV:
-            {
-                // Lua floor division: round toward negative infinity
-                result = int64_t(lv) / rv;
-                if ((result < 0) && ((int64_t(lv) % rv) != 0))
-                    result -= 1;
-                break;
-            }
-            default:
-                LUAU_ASSERT(!"Unhandled opcode");
-                return ConstnessLattice(Constness::NotAConstant);
-            }
-
-            // LOADN is max 16-bit signed, and we use LOADN in replaceUses
-            // we could investigate adding a new VmConst for > 16 bit representable numbers
-            if (result < INT16_MIN || result > INT16_MAX)
-                return ConstnessLattice(Constness::NotAConstant);
-
-            return ConstnessLattice(Constness::ImmConstant, impl->makeImm(static_cast<int32_t>(result)));
-        }
-    }
-    else if (lhsConstness.kind == Constness::VmConstant && rhsConstness.kind == Constness::VmConstant)
-    {
-        std::optional<BcOp> vmConst = impl->evaluate(lhsConstness.vmConst.value(), rhsConstness.vmConst.value(), opcode);
+        std::optional<BcOp> vmConst = impl->evaluate(lhsConstness.constant.value(), rhsConstness.constant.value(), opcode);
         if (vmConst)
-            return ConstnessLattice(Constness::VmConstant, vmConst.value());
+            return ConstnessLattice(Constness::Constant, vmConst.value());
         else
             return ConstnessLattice(Constness::NotAConstant);
     }
@@ -339,82 +270,29 @@ ConditionState SccpInterpreter::evaluateComparisonCondition(LuauOpcode op, const
 
     auto isOrderableLattice = [&](const ConstnessLattice& c) -> bool
     {
-        if (c.kind == Constness::VmConstant)
-            return impl->isOrderable(c.vmConst.value());
-        if (c.kind == Constness::ImmConstant)
-            return c.immConst.value().kind == BcImmKind::Int;
+        if (c.kind == Constness::Constant)
+            return impl->isOrderable(c.constant.value());
         return false;
     };
 
     if (isOrderingOp && (!isOrderableLattice(lhsConst) || !isOrderableLattice(rhsConst)))
         return ConditionState::Unknown;
 
-    // Mismatched VM constant kinds have no defined ordering/equality
-    // we may be able to compare imm bools and vm bools, imm numbers and vm numbers, but we are not currently
-    if (lhsConst.kind == Constness::VmConstant && rhsConst.kind == Constness::VmConstant &&
-        !impl->kindEquals(lhsConst.vmConst.value(), rhsConst.vmConst.value()))
-        return ConditionState::Unknown;
-
-    auto applyOp = [](int cmp, LuauOpcode op) -> bool
+    if (lhsConst.kind == Constness::Constant && rhsConst.kind == Constness::Constant)
     {
-        switch (op)
+        if (isOrderingOp)
         {
-        case LOP_JUMPIFEQ:
-        case LOP_JUMPIFNOTEQ:
-            return cmp == 0;
-        case LOP_JUMPIFLT:
-        case LOP_JUMPIFNOTLT:
-            return cmp < 0;
-        case LOP_JUMPIFLE:
-        case LOP_JUMPIFNOTLE:
-            return cmp <= 0;
-        default:
-            LUAU_ASSERT(!"Unhandled comparison opcode");
-            return false;
-        }
-    };
+            if (!impl->kindEquals(lhsConst.constant.value(), rhsConst.constant.value()))
+                return ConditionState::Unknown;
 
-    if (lhsConst.kind == Constness::VmConstant && rhsConst.kind == Constness::VmConstant)
-    {
-        int cmp = impl->cmp(lhsConst.vmConst.value(), rhsConst.vmConst.value());
-        bool condTrue = applyOp(cmp, op);
-        return condTrue ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
-    }
-    else if (lhsConst.kind == Constness::ImmConstant && rhsConst.kind == Constness::ImmConstant)
-    {
-        const BcImm& lhsImm = lhsConst.immConst.value();
-        const BcImm& rhsImm = rhsConst.immConst.value();
-
-        if (lhsImm.kind == BcImmKind::Int && rhsImm.kind == BcImmKind::Int)
-        {
-            int lv = lhsImm.valueInt;
-            int rv = rhsImm.valueInt;
-
-            int cmp = static_cast<int>(lv > rv) - static_cast<int>(lv < rv);
-            bool condTrue = applyOp(cmp, op);
+            bool condTrue = impl->compare(lhsConst.constant.value(), rhsConst.constant.value(), opcodeToCondition(op));
             return condTrue ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
         }
-        else if (lhsImm.kind == BcImmKind::Boolean && rhsImm.kind == BcImmKind::Boolean)
+        else if (std::optional<bool> condTrueOpt = impl->eq(lhsConst.constant.value(), rhsConst.constant.value()))
         {
-            bool lv = lhsImm.valueBoolean;
-            bool rv = rhsImm.valueBoolean;
-
-            int cmp = (lv == rv) ? 0 : 1;
-            bool condTrue = applyOp(cmp, op);
+            bool condTrue = op == LOP_JUMPIFEQ ? *condTrueOpt : !*condTrueOpt;
             return condTrue ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
         }
-    }
-    else if (lhsConst.kind == Constness::VmConstant && rhsConst.kind == Constness::ImmConstant)
-    {
-        int cmp = impl->cmp(lhsConst.vmConst.value(), rhsConst.immConst.value());
-        bool condTrue = applyOp(cmp, op);
-        return condTrue ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
-    }
-    else if (lhsConst.kind == Constness::ImmConstant && rhsConst.kind == Constness::VmConstant)
-    {
-        int cmp = -impl->cmp(rhsConst.vmConst.value(), lhsConst.immConst.value());
-        bool condTrue = applyOp(cmp, op);
-        return condTrue ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
     }
 
     return ConditionState::Unknown;
@@ -427,57 +305,16 @@ ConditionState SccpInterpreter::evaluateXeqkCondition(BcRef<BcInst> inst)
     switch (inst->op)
     {
     case LOP_JUMPXEQKNIL:
-        if (valConst.kind == Constness::VmConstant && impl->falsey(valConst.vmConst.value()) &&
-            impl->kindEquals(valConst.vmConst.value(), impl->makeNil()))
-            return ConditionState::AlwaysTrue;
-        else if (valConst.kind == Constness::ImmConstant ||
-                 (valConst.kind == Constness::VmConstant && !impl->kindEquals(valConst.vmConst.value(), impl->makeNil())))
-            return ConditionState::AlwaysFalse;
+        if (valConst.kind == Constness::Constant)
+            return impl->isNil(*valConst.constant) ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
         break;
     case LOP_JUMPXEQKB:
-    {
-        const BcOp& cmpImmOp = inst->ops[3];
-        LUAU_ASSERT(cmpImmOp.kind == BcOpKind::Imm);
-        if (valConst.kind == Constness::ImmConstant && valConst.immConst.value().kind == BcImmKind::Boolean)
-        {
-            bool lhsBool = valConst.immConst.value().valueBoolean;
-            bool rhsBool = impl->asImm(cmpImmOp)->valueBoolean;
-            return (lhsBool == rhsBool) ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
-        }
-        else if (valConst.kind == Constness::VmConstant)
-        {
-            std::optional<bool> eq = impl->eq(valConst.vmConst.value(), cmpImmOp);
-            if (eq)
-                return *eq ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
-        }
-        break;
-    }
     case LOP_JUMPXEQKN:
-    {
-        const BcOp& cmpConstOp = inst->ops[3];
-        LUAU_ASSERT(cmpConstOp.kind == BcOpKind::VmConst);
-        if (valConst.kind == Constness::VmConstant)
-        {
-            std::optional<bool> eq = impl->eq(valConst.vmConst.value(), cmpConstOp);
-            if (eq)
-                return *eq ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
-        }
-        else if (valConst.kind == Constness::ImmConstant && valConst.immConst.value().kind == BcImmKind::Int)
-        {
-            std::optional<bool> eq = impl->eq(cmpConstOp, valConst.immConst.value().valueInt);
-            if (eq)
-                return *eq ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
-        }
-        break;
-    }
     case LOP_JUMPXEQKS:
     {
-        const BcOp& cmpConstOp = inst->ops[3];
-        LUAU_ASSERT(cmpConstOp.kind == BcOpKind::VmConst);
-        if (valConst.kind == Constness::VmConstant)
+        if (valConst.kind == Constness::Constant)
         {
-            std::optional<bool> eq = impl->eq(valConst.vmConst.value(), cmpConstOp);
-            if (eq)
+            if (std::optional<bool> eq = impl->eq(valConst.constant.value(), inst->ops[3]))
                 return *eq ? ConditionState::AlwaysTrue : ConditionState::AlwaysFalse;
         }
         break;
@@ -492,14 +329,8 @@ ConditionState SccpInterpreter::evaluateXeqkCondition(BcRef<BcInst> inst)
 ConditionState SccpInterpreter::evaluateCondition(const BcOp& op)
 {
     ConstnessLattice lhs = this->state->operandLattice(op);
-    if (lhs.kind == Constness::VmConstant)
-        return impl->falsey(lhs.vmConst.value()) ? ConditionState::AlwaysFalse : ConditionState::AlwaysTrue;
-    else if (lhs.kind == Constness::ImmConstant)
-    {
-        const BcImm& imm = lhs.immConst.value();
-        if (imm.kind == BcImmKind::Boolean)
-            return imm.valueBoolean == false ? ConditionState::AlwaysFalse : ConditionState::AlwaysTrue;
-    }
+    if (lhs.kind == Constness::Constant)
+        return impl->falsey(lhs.constant.value()) ? ConditionState::AlwaysFalse : ConditionState::AlwaysTrue;
     return ConditionState::Unknown;
 }
 
@@ -512,19 +343,26 @@ ConstnessLattice SccpInterpreter::evaluate(LuauOpcode op, BcRef<BcInst> instRepr
     {
         const BcOp& op = instRepr->ops[0];
         LUAU_ASSERT(op.kind == BcOpKind::VmConst);
-        return ConstnessLattice(Constness::VmConstant, op);
+        return ConstnessLattice(Constness::Constant, op);
     }
     case LOP_LOADB:
+    {
+        const BcOp& op = instRepr->ops[0];
+        LUAU_ASSERT(op.kind == BcOpKind::Imm);
+        LUAU_ASSERT(impl->asImm(op)->kind == BcImmKind::Boolean);
+        return ConstnessLattice(Constness::Constant, op);
+    }
     case LOP_LOADN:
     {
         const BcOp& op = instRepr->ops[0];
         LUAU_ASSERT(op.kind == BcOpKind::Imm);
-        return ConstnessLattice(Constness::ImmConstant, *impl->asImm(op));
+        LUAU_ASSERT(impl->asImm(op)->kind == BcImmKind::Int);
+        return ConstnessLattice(Constness::Constant, op);
     }
     case LOP_LOADNIL:
     {
         BcOp nilConst = impl->makeNil();
-        return ConstnessLattice(Constness::VmConstant, nilConst);
+        return ConstnessLattice(Constness::Constant, nilConst);
     }
 
     case LOP_ADD:
@@ -551,7 +389,7 @@ ConstnessLattice SccpInterpreter::evaluate(LuauOpcode op, BcRef<BcInst> instRepr
 
         bool jumpsOnTrue = (instRepr->op == LOP_JUMPIF);
         bool takesJump = (cond == ConditionState::AlwaysTrue) == jumpsOnTrue;
-        return ConstnessLattice(Constness::ImmConstant, impl->makeImm(takesJump));
+        return ConstnessLattice(Constness::Constant, impl->makeImmBool(takesJump));
     }
 
     case LOP_JUMPIFEQ:
@@ -565,9 +403,7 @@ ConstnessLattice SccpInterpreter::evaluate(LuauOpcode op, BcRef<BcInst> instRepr
         if (cond == ConditionState::Unknown)
             return ConstnessLattice(this->state->unknownConditionConstness({instRepr->ops[0], instRepr->ops[1]}));
 
-        bool negated = (instRepr->op == LOP_JUMPIFNOTEQ || instRepr->op == LOP_JUMPIFNOTLE || instRepr->op == LOP_JUMPIFNOTLT);
-        bool takesJump = (cond == ConditionState::AlwaysTrue) != negated;
-        return ConstnessLattice(Constness::ImmConstant, impl->makeImm(takesJump));
+        return ConstnessLattice(Constness::Constant, impl->makeImmBool(cond == ConditionState::AlwaysTrue));
     }
 
     case LOP_JUMPXEQKNIL:
@@ -583,7 +419,7 @@ ConstnessLattice SccpInterpreter::evaluate(LuauOpcode op, BcRef<BcInst> instRepr
         bool negated = !impl->falsey(negImmOp);
         bool takesJump = (cond == ConditionState::AlwaysTrue) != negated;
 
-        return ConstnessLattice(Constness::ImmConstant, impl->makeImm(takesJump));
+        return ConstnessLattice(Constness::Constant, impl->makeImmBool(takesJump));
     }
 
     case LOP_JUMP:

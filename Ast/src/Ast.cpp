@@ -621,7 +621,8 @@ AstStatIf::AstStatIf(
     const std::optional<Location>& elseLocation,
     AstLocal* conditionLocal,
     bool conditionIsConst,
-    const std::optional<Location>& conditionKeywordLocation
+    const std::optional<Location>& conditionKeywordLocation,
+    const std::optional<Location>& conditionEqualsLocation
 )
     : AstStat(ClassIndex(), location)
     , condition(condition)
@@ -632,6 +633,7 @@ AstStatIf::AstStatIf(
     , conditionLocal(conditionLocal)
     , conditionIsConst(conditionIsConst)
     , conditionKeywordLocation(conditionKeywordLocation)
+    , conditionEqualsLocation(conditionEqualsLocation)
 {
 }
 

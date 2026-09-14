@@ -13,6 +13,8 @@
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauCompileExpandLimit)
+LUAU_FASTFLAGVARIABLE(LuauCompileExpandShortLimit)
+LUAU_FASTFLAGVARIABLE(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauVirtualBcBuilder)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
@@ -552,6 +554,43 @@ void BytecodeBuilder::undoEmit(LuauOpcode op)
     LUAU_ASSERT(!insns.empty());
     LUAU_ASSERT((insns.back() & 0xff) == op);
 
+    // Adjust local ranges referencing this instruction
+    if (FFlag::LuauCompileUndoEmitAdjust)
+    {
+        for (size_t i = 0; i < debugLocals.size();)
+        {
+            DebugLocal& l = debugLocals[i];
+
+            // If live range start has been removed, the local never existed
+            if (l.startpc == insns.size())
+            {
+                debugLocals.erase(debugLocals.begin() + i);
+                continue;
+            }
+
+            if (l.endpc == insns.size())
+                l.endpc--;
+            i++;
+        }
+
+        for (size_t i = 0; i < typedLocals.size();)
+        {
+            TypedLocal& l = typedLocals[i];
+
+            // If live range start has been removed, the local never existed
+            if (l.startpc == insns.size())
+            {
+                typedLocals.erase(typedLocals.begin() + i);
+                continue;
+            }
+
+            if (l.endpc == insns.size())
+                l.endpc--;
+            i++;
+        }
+    }
+
+    // Remove the instruction
     insns.pop_back();
     lines.pop_back();
 }
@@ -1365,7 +1404,7 @@ std::vector<uint32_t> BytecodeBuilder::expandJumps(bool& hasLongJumpError)
         {
             int offset = int(jumps[currentJump].target) - int(jumps[currentJump].source) - 1;
 
-            if (abs(offset) > kMaxJumpDistanceConservative)
+            if (FFlag::LuauCompileExpandShortLimit ? abs(offset) >= kMaxJumpDistanceConservative : abs(offset) > kMaxJumpDistanceConservative)
             {
                 // insert jump trampoline as described above; we keep JUMPX offset uninitialized in this pass
                 newinsns.push_back(LOP_JUMP | (1 << 16));
@@ -1409,7 +1448,7 @@ std::vector<uint32_t> BytecodeBuilder::expandJumps(bool& hasLongJumpError)
             hasLongJumpError = true;
             return {};
         }
-        else if (abs(offset) > kMaxJumpDistanceConservative)
+        else if (FFlag::LuauCompileExpandShortLimit ? abs(offset) >= kMaxJumpDistanceConservative : abs(offset) > kMaxJumpDistanceConservative)
         {
             // fix up jump trampoline
             uint32_t& insnt = newinsns[remap[jump.source] - 1];
@@ -3064,12 +3103,18 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
         {
             const DebugLocal& l = debugLocals[i];
 
+            if ((dumpFlags & Dump_Code) != 0)
+                formatAppend(result, "local %d (%.*s): ", int(i), int(debugStrings[l.name - 1].length), debugStrings[l.name - 1].data);
+            else
+                formatAppend(result, "local %d: ", int(i));
+
+            formatAppend(result, "reg %d, start pc %d line %d, ", l.reg, l.startpc, lines[l.startpc]);
+
             if (l.startpc == l.endpc)
             {
                 LUAU_ASSERT(l.startpc < lines.size());
 
-                // it would be nice to emit name as well but it requires reverse lookup through stringtable
-                formatAppend(result, "local %d: reg %d, start pc %d line %d, no live range\n", int(i), l.reg, l.startpc, lines[l.startpc]);
+                formatAppend(result, "no live range\n");
             }
             else
             {
@@ -3077,17 +3122,7 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
                 LUAU_ASSERT(l.startpc < lines.size());
                 LUAU_ASSERT(l.endpc <= lines.size()); // endpc is exclusive in the debug info, but it's more intuitive to print inclusive data
 
-                // it would be nice to emit name as well but it requires reverse lookup through stringtable
-                formatAppend(
-                    result,
-                    "local %d: reg %d, start pc %d line %d, end pc %d line %d\n",
-                    int(i),
-                    l.reg,
-                    l.startpc,
-                    lines[l.startpc],
-                    l.endpc - 1,
-                    lines[l.endpc - 1]
-                );
+                formatAppend(result, "end pc %d line %d\n", l.endpc - 1, lines[l.endpc - 1]);
             }
         }
     }

@@ -53,6 +53,7 @@ LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
+LUAU_FASTFLAGVARIABLE(LuauTraverseScopeToFunction)
 
 namespace Luau
 {
@@ -843,7 +844,18 @@ void ConstraintSolver::generalizeOneType(TypeId ty)
         }
     }
 
-    TypeId* functionType = scopeToFunction->find(freeTy->scope);
+    TypeId* functionType = nullptr;
+
+    if (FFlag::LuauTraverseScopeToFunction)
+    {
+        for (auto scope = freeTy->scope; !functionType && scope; scope = scope->parent.get())
+            functionType = scopeToFunction->find(scope);
+    }
+    else
+    {
+        functionType = scopeToFunction->find(freeTy->scope);
+    }
+
     if (!functionType)
         return;
 

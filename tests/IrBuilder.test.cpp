@@ -14,11 +14,9 @@
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(LuauCodegenInteger3)
-LUAU_FASTFLAG(LuauCodegenVmExitSyncMultiUse)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauCodegenSkipDeadPredecessorTags)
 LUAU_FASTFLAG(LuauIntegerLibrary)
-LUAU_FASTFLAG(LuauCodegenSubstituteReplacements)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAG(LuauCodegenNoLinearFastpcall)
 
@@ -3476,8 +3474,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NumericSimplifications")
 {
-    ScopedFastFlag luauCodegenSubstituteReplacements{FFlag::LuauCodegenSubstituteReplacements, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -3526,8 +3522,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "FloatSimplifications")
 {
-    ScopedFastFlag luauCodegenSubstituteReplacements{FFlag::LuauCodegenSubstituteReplacements, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -3582,8 +3576,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DoubleContractionDeduplication")
 {
-    ScopedFastFlag luauCodegenSubstituteReplacements{FFlag::LuauCodegenSubstituteReplacements, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -3624,8 +3616,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "FloatContractionDeduplication")
 {
-    ScopedFastFlag luauCodegenSubstituteReplacements{FFlag::LuauCodegenSubstituteReplacements, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -3669,8 +3659,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "IntegerConversionDeduplication")
 {
-    ScopedFastFlag luauCodegenSubstituteReplacements{FFlag::LuauCodegenSubstituteReplacements, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -4914,6 +4902,135 @@ bb_7:
 
 bb_8:
    RETURN R0, 0i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "EntryBlockBackEdgeTagPropagation")
+{
+    ScopedFastFlag luauCodegenPropagateFallbackTags{FFlag::LuauCodegenPropagateFallbackTags, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+    IrOp target = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.fallbackBlock(0u);
+    IrOp cont1 = build.block(IrBlockKind::Internal);
+    IrOp cont2 = build.block(IrBlockKind::Internal);
+    IrOp cont3 = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+    build.inst(IrCmd::JUMP, target);
+
+    build.beginBlock(target);
+    IrOp tag0 = build.inst(IrCmd::LOAD_TAG, build.vmReg(0));
+    build.inst(IrCmd::CHECK_TAG, tag0, build.constTag(ttable), build.vmExit(0));
+    IrOp tag1 = build.inst(IrCmd::LOAD_TAG, build.vmReg(1));
+    build.inst(IrCmd::CHECK_TAG, tag1, build.constTag(tnumber), fallback); // Fallback edge to trigger linear block creation
+    build.inst(IrCmd::STORE_POINTER, build.vmReg(3), build.inst(IrCmd::LOAD_POINTER, build.vmReg(0)));
+    build.inst(IrCmd::JUMP, cont1);
+
+    // Blocks to satisfy the minimal linear block path length
+    build.beginBlock(cont1);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(4), build.constDouble(1.0));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(4), build.constTag(tnumber));
+    build.inst(IrCmd::JUMP, cont2);
+
+    build.beginBlock(cont2);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(5), build.constDouble(2.0));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(5), build.constTag(tnumber));
+    build.inst(IrCmd::JUMP, cont3);
+
+    build.beginBlock(cont3);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(6), build.constDouble(3.0));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(6), build.constTag(tnumber));
+    build.inst(IrCmd::JUMP, entry); // Jump to entry
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::JUMP, target);
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build);
+    createLinearBlocks(build);
+
+    // Entry block has an implicit function entry predecessor with no tags established
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; predecessors: bb_5
+; successors: bb_1
+; in regs: R0, R1
+; out regs: R0, R1
+   STORE_TAG R2, tnumber
+   JUMP bb_linear_6
+; glued to: bb_linear_6
+
+bb_1:
+; predecessors: bb_0, bb_fallback_2
+; successors: bb_fallback_2, bb_3
+; in regs: R0, R1
+; out regs: R0, R1
+   %2 = LOAD_TAG R0
+   CHECK_TAG %2, ttable, exit(0)
+   %4 = LOAD_TAG R1
+   CHECK_TAG %4, tnumber, bb_fallback_2
+   %6 = LOAD_POINTER R0
+   STORE_POINTER R3, %6
+   JUMP bb_3
+; glued to: bb_3
+
+bb_fallback_2:
+; predecessors: bb_1
+; successors: bb_1
+; in regs: R0, R1
+; out regs: R0, R1
+   JUMP bb_1
+
+bb_3:
+; predecessors: bb_1
+; successors: bb_4
+; in regs: R0, R1
+; out regs: R0, R1
+   STORE_DOUBLE R4, 1
+   STORE_TAG R4, tnumber
+   JUMP bb_4
+; glued to: bb_4
+
+bb_4:
+; predecessors: bb_3
+; successors: bb_5
+; in regs: R0, R1
+; out regs: R0, R1
+   STORE_DOUBLE R5, 2
+   STORE_TAG R5, tnumber
+   JUMP bb_5
+; glued to: bb_5
+
+bb_5:
+; predecessors: bb_4
+; successors: bb_0
+; in regs: R0, R1
+; out regs: R0, R1
+   STORE_DOUBLE R6, 3
+   STORE_TAG R6, tnumber
+   JUMP bb_0
+
+bb_linear_6:
+; predecessors: bb_0
+; in regs: R0, R1
+; out regs: R0, R1
+   %19 = LOAD_TAG R0
+   CHECK_TAG %19, ttable, exit(0)
+   %21 = LOAD_TAG R1
+   CHECK_TAG %21, tnumber, bb_fallback_2
+   %23 = LOAD_POINTER R0
+   STORE_POINTER R3, %23
+   STORE_DOUBLE R4, 1
+   STORE_TAG R4, tnumber
+   STORE_DOUBLE R5, 2
+   STORE_TAG R5, tnumber
+   STORE_DOUBLE R6, 3
+   STORE_TAG R6, tnumber
+   JUMP bb_0
 
 )");
 }
@@ -8569,8 +8686,6 @@ bb_exit_1:
 }
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncMultiUseSink")
 {
-    ScopedFastFlag luauCodegenVmExitSyncMultiUse{FFlag::LuauCodegenVmExitSyncMultiUse, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -8621,8 +8736,6 @@ bb_exit_2:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncMultiUseChainedDependency1")
 {
-    ScopedFastFlag luauCodegenVmExitSyncMultiUse{FFlag::LuauCodegenVmExitSyncMultiUse, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -8670,8 +8783,6 @@ bb_exit_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DseVmExitSyncMultiUseChainedDependency2")
 {
-    ScopedFastFlag luauCodegenVmExitSyncMultiUse{FFlag::LuauCodegenVmExitSyncMultiUse, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
