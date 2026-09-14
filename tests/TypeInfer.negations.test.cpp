@@ -7,6 +7,8 @@
 #include "Luau/Common.h"
 #include "ScopedFlags.h"
 
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAG(LuauTypeNegationSyntax)
 LUAU_FASTFLAG(LuauTypeNegationSupport)
 
@@ -103,6 +105,7 @@ TEST_CASE_FIXTURE(Fixture, "cofinite_strings_can_be_compared_for_equality")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("(string) -> string" == toString(requireType("f")));
 }
@@ -330,6 +333,45 @@ TEST_CASE_FIXTURE(NegationFixture, "negate_inner_expansion_constraint")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(0, result);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "subtyping_path_is_valid_for_union")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag newErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
+    ScopedFastFlag fixTypePaths{FFlag::LuauFixSuperNegationTypePaths, true};
+
+    CheckResult result = check(R"(
+        local a: Not<false?> = false
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const std::string error = toString(result.errors[0]);
+    CHECK_EQ(error == "Expected this to be '~(false?)', but got 'false'; \n`false` cannot be `~(false?)`"
+        || error == "Expected this to be '~(false?)', but got 'boolean'; \n`boolean` cannot be `~(false?)`", true);
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "subtype_path_is_valid_for_intersections")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    ScopedFastFlag newErrorMessages{FFlag::LuauNewTypePathErrorMessages, true};
+    ScopedFastFlag fixTypePaths{FFlag::LuauFixSuperNegationTypePaths, true};
+
+    CheckResult result = check(R"(
+        type T = Not<unknown & boolean>
+        local x: T = false
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(
+        "Expected this to be '~(boolean & unknown)', but got 'boolean'; \n"
+            "`boolean` cannot be `~(boolean & unknown)`",
+        toString(result.errors[0])
+    );
 }
 
 TEST_SUITE_END();

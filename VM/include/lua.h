@@ -53,6 +53,8 @@ typedef int (*lua_Continuation)(lua_State* L, int status);
 */
 
 typedef void* (*lua_Alloc)(void* ud, void* ptr, size_t osize, size_t nsize);
+// `type` identifies the caged heap allocation, which is an opaque embedder-defined identifier
+typedef void* (*lua_CageAlloc)(void* ud, void* ptr, size_t osize, size_t nsize, int type);
 
 // non-return type
 #define l_noret void LUA_NORETURN
@@ -106,8 +108,11 @@ enum lua_Type
     LUA_TPROTO,
     LUA_TUPVAL,
 
+    // the count of all Luau types (including those that are never TValue type tags)
+    LUA_T_ALL,
+
     // the count of TValue type tags
-    LUA_T_COUNT = LUA_TDEADKEY
+    LUA_T_COUNT = LUA_TDEADKEY,
 };
 // clang-format on
 
@@ -123,7 +128,7 @@ typedef unsigned lua_Unsigned;
 /*
 ** state manipulation
 */
-LUA_API lua_State* lua_newstate(lua_Alloc f, void* ud);
+LUA_API lua_State* lua_newstate(lua_Alloc allocator, void* ud);
 LUA_API void lua_close(lua_State* L);
 LUA_API lua_State* lua_newthread(lua_State* L);
 LUA_API lua_State* lua_mainthread(lua_State* L);
@@ -206,10 +211,12 @@ LUA_API void lua_pushcclosurek(lua_State* L, lua_CFunction fn, const char* debug
 LUA_API void lua_pushboolean(lua_State* L, int b);
 LUA_API int lua_pushthread(lua_State* L);
 
+typedef void (*lua_Destructor)(lua_State* L, void* userdata);
+
 LUA_API void lua_pushlightuserdatatagged(lua_State* L, void* p, int tag);
 LUA_API void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag);
 LUA_API void* lua_newuserdatataggedwithmetatable(lua_State* L, size_t sz, int tag); // metatable fetched with lua_getuserdatametatable
-LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*));
+LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, lua_Destructor dtor);
 
 LUA_API void* lua_newbuffer(lua_State* L, size_t sz);
 
@@ -251,6 +258,10 @@ LUA_API void lua_call(lua_State* L, int nargs, int nresults);
 LUA_API int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc);
 LUA_API int lua_cpcall(lua_State* L, lua_CFunction func, void* ud);
 
+// wrapper for making calls from yieldable C functions
+LUA_API int lua_callyieldable(lua_State* L, int nargs, int nresults);
+LUA_API int lua_pcallyieldable(lua_State* L, int nargs, int nresults, int errfunc);
+
 /*
 ** coroutine functions
 */
@@ -263,6 +274,11 @@ LUA_API int lua_isyieldable(lua_State* L);
 LUA_API void* lua_getthreaddata(lua_State* L);
 LUA_API void lua_setthreaddata(lua_State* L, void* data);
 LUA_API int lua_costatus(lua_State* L, lua_State* co);
+
+// NOTE: experimental API, requires a Debug flag and is subject to breaking changes
+LUA_API int lua_hasfinalizers(lua_State* L);
+LUA_API void lua_pushfinalizerfunction(lua_State* L);
+LUA_API void lua_addfinalizer(lua_State* L, lua_State* co, int idx);
 
 /*
 ** garbage-collection function and options
@@ -356,8 +372,6 @@ LUA_API double lua_clock();
 
 LUA_API void lua_setuserdatatag(lua_State* L, int idx, int tag);
 
-typedef void (*lua_Destructor)(lua_State* L, void* userdata);
-
 LUA_API void lua_setuserdatadtor(lua_State* L, int tag, lua_Destructor dtor);
 LUA_API lua_Destructor lua_getuserdatadtor(lua_State* L, int tag);
 
@@ -408,7 +422,7 @@ LUA_API int lua_weakref(lua_State* L, int idx);
 LUA_API int lua_weakunref(lua_State* L, int ref);
 LUA_API int lua_getweakref(lua_State* L, int ref); // returns the type of the value pushed onto the stack
 
-// alternative access for metatables already registered with luaL_newmetatable (remove this restriction with FFlagLuauUdataMetatablePinned)
+// alternative access for userdata metatables
 // used by lua_newuserdatataggedwithmetatable to create tagged userdata with the associated metatable assigned
 LUA_API void lua_setuserdatametatable(lua_State* L, int tag);
 LUA_API void lua_getuserdatametatable(lua_State* L, int tag);
@@ -459,6 +473,7 @@ LUA_API void lua_setlightuserdataname(lua_State* L, int tag, const char* name);
 LUA_API const char* lua_getlightuserdataname(lua_State* L, int tag);
 
 LUA_API void lua_clonefunction(lua_State* L, int idx);
+LUA_API int lua_usesexport(lua_State* L, int idx);
 
 LUA_API void lua_cleartable(lua_State* L, int idx);
 LUA_API void lua_clonetable(lua_State* L, int idx);
@@ -564,6 +579,8 @@ struct lua_Debug
     const char* short_src; // (s)
     int linedefined;       // (s)
     int currentline;       // (l)
+    int protoid;           // (p) globally unique (within VM) proto id; 0 for C functions
+    int bytecodeid;        // (p) proto index within its bytecode module; -1 for C functions
     unsigned char nupvals; // (u) number of upvalues
     unsigned char nparams; // (a) number of parameters
     char isvararg;         // (a)
@@ -601,16 +618,31 @@ struct lua_Callbacks
     void (*userthread)(lua_State* LP, lua_State* L); // gets called when L is created (LP == parent) or destroyed (LP == NULL)
     int16_t (*useratom)(lua_State* L, const char* s, size_t l); // gets called when a string is created to assign an atom id
 
+    // NOTE: experimental API, requires a Debug flag to be called and is subject to breaking changes
+    void (*userfinalizer)(lua_State* L, lua_State* co); // gets called before a finalizer is attached to 'co' by current thread
+
     void (*debugbreak)(lua_State* L, lua_Debug* ar);     // gets called when BREAK instruction is encountered
     void (*debugstep)(lua_State* L, lua_Debug* ar);      // gets called after each instruction in single step mode
     void (*debuginterrupt)(lua_State* L, lua_Debug* ar); // gets called when thread execution is interrupted by break in another thread
     void (*debugprotectederror)(lua_State* L);           // gets called when protected call results in an error
 
-    void (*onallocate)(lua_State* L, size_t osize, size_t nsize); // gets called when memory is allocated
+    // gets called after a heap object (or array) is allocated
+    void (*onallocate)(lua_State* L, void* block, size_t osize, size_t nsize, uint8_t memcat, int tt, int tag);
+
+    void (*preresume)(lua_State* L);  // gets called before lua_resume runs a (co)routine
+    void (*postresume)(lua_State* L); // gets called after lua_resume returns (yield, return, or error)
+
+    // gets called before a heap object (or array) is freed
+    void (*onfree)(lua_State* L, void* block);
 };
 typedef struct lua_Callbacks lua_Callbacks;
 
 LUA_API lua_Callbacks* lua_callbacks(lua_State* L);
+
+// Must be called after lua_newstate and before the state creates any buffers
+// The VM makes no assumptions about the layout or structure of the caged heap
+// The VM does assume that the embedder will free any memory allocated if the lua_State the cage is associated with is closed
+LUA_API void lua_setbuffercage(lua_State* L, lua_CageAlloc alloc, void* ud);
 
 /******************************************************************************
  * Copyright (c) 2019-2023 Roblox Corporation

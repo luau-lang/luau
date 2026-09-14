@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Luau/Ast.h"
+#include "Luau/Common.h"
 #include "Luau/Instantiation2.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePath.h"
@@ -21,6 +22,8 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 
 using namespace Luau;
 
@@ -1279,6 +1282,13 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(string | number) & (\"a\" | true) <: { lower
     CHECK_IS_SUBTYPE(base, tableWithLower);
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "(string | number) & (\"a\" | true) <: string")
+{
+    ScopedFastFlag _{FFlag::LuauRefactorStringSemanticSubtyping, true};
+    auto base = meet(join(getBuiltins()->stringType, getBuiltins()->numberType), join(aType, trueSingleton));
+    CHECK_IS_SUBTYPE(base, getBuiltins()->stringType);
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "number <: ~~number")
 {
     CHECK_IS_SUBTYPE(getBuiltins()->numberType, negate(negate(getBuiltins()->numberType)));
@@ -1505,8 +1515,15 @@ TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type
         if (reasoning.subPath.empty() && reasoning.superPath.empty())
             continue;
 
-        std::optional<TypeOrPack> optSubLeaf = traverse(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena});
-        std::optional<TypeOrPack> optSuperLeaf = traverse(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena});
+        TypePathRenderMetadata subMetadata;
+        TypePathRenderMetadata superMetadata;
+
+        std::optional<TypeOrPack> optSubLeaf = (FFlag::LuauNewTypePathErrorMessages)
+                                                   ? traverse(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena}, &subMetadata)
+                                                   : traverse_DEPRECATED(subTy, reasoning.subPath, getBuiltins(), NotNull{&arena});
+        std::optional<TypeOrPack> optSuperLeaf = (FFlag::LuauNewTypePathErrorMessages)
+                                                     ? traverse(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena}, &superMetadata)
+                                                     : traverse_DEPRECATED(superTy, reasoning.superPath, getBuiltins(), NotNull{&arena});
 
         if (!optSubLeaf || !optSuperLeaf)
             CHECK(false);
@@ -1697,7 +1714,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "unique_table_missing_optional_prop_is_subtype
     // With uniqueTypes containing subTy: should be a subtype (covariant check
     // permits missing optional props on a unique/fresh table).
     {
-        DenseHashSet<TypeId> uniqueTypes{nullptr};
+        DenseHashSet<TypeId> uniqueTypes;
         uniqueTypes.insert(subTy);
 
         Subtyping st = mkSubtyping();
@@ -1985,8 +2002,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "weird_cyclic_instantiation")
                      /* retTypes */ arena.addTypePack({genericT})}
     );
 
-    DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
-    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};
+    DenseHashMap<TypeId, TypeId> genericSubstitutions;
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions;
 
     TypeId freeTy = arena.freshType(getBuiltins(), &scope);
     FreeType* ft = getMutable<FreeType>(freeTy);

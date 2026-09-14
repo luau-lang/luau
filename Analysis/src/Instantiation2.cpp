@@ -194,7 +194,7 @@ void resolveGenericSubstitutions(
     // Collect the set of original free type IDs from genericSubstitutions
     // before we overwrite the map values.  These are the types that may
     // appear inside type pack substitutions and need to be resolved.
-    DenseHashSet<TypeId> originalFreeTypes{nullptr};
+    DenseHashSet<TypeId> originalFreeTypes;
     for (auto& [_, v] : genericSubstitutions)
     {
         TypeId followed = follow(v);

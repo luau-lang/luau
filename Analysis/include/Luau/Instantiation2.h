@@ -87,9 +87,9 @@ private:
 struct Instantiation2_DEPRECATED final : Substitution
 {
     // Mapping from generic types to free types to be used in instantiation.
-    DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
+    DenseHashMap<TypeId, TypeId> genericSubstitutions;
     // Mapping from generic type packs to `TypePack`s of free types to be used in instantiation.
-    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions;
 
     // Make `NotNull` with LuauInstantiationUsesGenericPolarity
     Subtyping* subtyping = nullptr;

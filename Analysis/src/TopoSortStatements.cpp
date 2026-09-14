@@ -206,7 +206,7 @@ struct ArcCollector : public AstVisitor
 
     ArcCollector(NodeQueue& queue)
         : queue(queue)
-        , map(Identifier{std::string{}, 0})
+        , map{}
         , currentArc(nullptr)
     {
         for (const auto& node : queue)
@@ -413,7 +413,7 @@ void drain(NodeList& Q, std::vector<AstStat*>& result, Node* target)
         // Copy the connectivity information but filter out any provides or depends arcs that are not in Q
         Arcs& arcs = allArcs[node.get()];
 
-        DenseHashSet<Node*> elements{nullptr};
+        DenseHashSet<Node*> elements;
         for (const auto& q : Q)
             elements.insert(q.get());
 

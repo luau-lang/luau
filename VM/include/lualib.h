@@ -61,10 +61,6 @@ LUALIB_API const char* luaL_findtable(lua_State* L, int idx, const char* fname, 
 
 LUALIB_API const char* luaL_typename(lua_State* L, int idx);
 
-// wrapper for making calls from yieldable C functions
-LUALIB_API int luaL_callyieldable(lua_State* L, int nargs, int nresults);
-LUALIB_API int luaL_pcallyieldable(lua_State* L, int nargs, int nresults, int errfunc);
-
 LUALIB_API void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level);
 
 /*
@@ -82,6 +78,10 @@ LUALIB_API void luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int
 #define luaL_getmetatable(L, n) (lua_getfield(L, LUA_REGISTRYINDEX, (n)))
 
 #define luaL_opt(L, f, n, d) (lua_isnoneornil(L, (n)) ? (d) : f(L, (n)))
+
+// backwards compatibility
+#define luaL_callyieldable(L, nargs, nresults) lua_callyieldable(L, nargs, nresults)
+#define luaL_pcallyieldable(L, nargs, nresults, errfunc) lua_pcallyieldable(L, nargs, nresults, errfunc)
 
 // generic buffer manipulation
 

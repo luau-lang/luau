@@ -3,6 +3,7 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/BytecodeCallInliner.h"
+#include "Luau/BytecodeDump.h"
 #include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeUtils.h"
 #include "Luau/Common.h"
@@ -10,7 +11,6 @@
 
 #include "BytecodeGraphParser.h"
 #include "BytecodeGraphSerializer.h"
-#include "Luau/VecDeque.h"
 #include "RuntimeBytecodeBuilder.h"
 #include "TValueVmConstImpl.h"
 
@@ -48,6 +48,7 @@ std::optional<std::pair<RuntimeBcFunction, BcOp>> buildGraphFromProto(Proto* p, 
     fn.nups = p->nups;
     fn.is_vararg = static_cast<bool>(p->is_vararg);
     fn.flags = p->flags;
+    fn.linedefined = p->linedefined;
 
     uint8_t* typeinfo = p->typeinfo;
     fn.typeInfo = std::string_view(reinterpret_cast<char*>(typeinfo), p->sizetypeinfo);
@@ -77,6 +78,7 @@ std::optional<std::pair<RuntimeBcFunction, BcOp>> buildGraphFromProto(Proto* p, 
     {
         LUAU_ASSERT(*callPc < insnsPC.size());
         callOp = BcOp{BcOpKind::Inst, insnsPC[*callPc]};
+        LUAU_ASSERT(fn.inst(callOp)->op == LOP_CALLFB);
     }
 
     return {{fn, callOp}};
@@ -97,7 +99,12 @@ std::optional<CodeData> emitCode(lua_State* L, RuntimeBcFunction& graph, std::ve
 
     bcb.foldJumps();
 
-    std::vector<uint32_t> remap = bcb.expandJumps();
+    bool hasLongJumpError = false;
+    std::vector<uint32_t> remap = bcb.expandJumps(hasLongJumpError);
+
+    if (hasLongJumpError)
+        return {};
+
     if (remap.size() > 0)
     {
         LUAU_ASSERT(insnsPC.size() <= remap.size());
@@ -110,7 +117,7 @@ std::optional<CodeData> emitCode(lua_State* L, RuntimeBcFunction& graph, std::ve
     for (uint32_t i = 0; i < graph.instructions.size(); i++)
     {
         BcInst& insn = graph.instructions[i];
-        if (insn.op == LOP_CALLFB)
+        if (insn.op == LOP_CALLFB && (graph.blockOp(insn.block).flags & BcBlockFlag::Dead) == 0)
         {
             BcCallFB<TValue*> callFB = graph.template as<BcCallFB<TValue*>>(BcOp{BcOpKind::Inst, i});
             if (callFB.FbSlot() >= 0)
@@ -118,6 +125,7 @@ std::optional<CodeData> emitCode(lua_State* L, RuntimeBcFunction& graph, std::ve
                 uint32_t fbSlot = static_cast<uint32_t>(callFB.FbSlot());
                 if (fbSlot >= res.fbSlotPCs.size())
                     res.fbSlotPCs.resize(fbSlot + 1, kUnassignedPC);
+
                 res.fbSlotPCs[fbSlot] = insnsPC[i];
             }
         }
@@ -252,6 +260,49 @@ bool hasFoldableConstants(const RuntimeBcFunction& func)
     return false;
 }
 
+bool isEnvDependentOrUsesSelect(Proto* proto, bool crossEnv)
+{
+    Instruction* codeend = proto->code + proto->sizecode;
+    for (Instruction* pc = proto->code; pc < codeend;)
+    {
+        switch (LUAU_INSN_OP(*pc))
+        {
+            case LOP_GETIMPORT:
+            {
+                uint16_t importKIndex = LUAU_INSN_D(*pc);
+                LUAU_ASSERT(importKIndex < static_cast<uint16_t>(proto->sizek));
+                // if import is unresolved we cannot inline target, because globals can differ in the caller's env.
+                if (crossEnv && ttisnil(proto->k + importKIndex))
+                    return true;
+                break;
+            }
+            case LOP_GETGLOBAL:
+            case LOP_SETGLOBAL:
+            case LOP_NEWCLOSURE:
+            case LOP_DUPCLOSURE:
+            {
+                if (crossEnv)
+                    return true;
+                break;
+            }
+            case LOP_FASTCALL1:
+            case LOP_FASTCALL2:
+            case LOP_FASTCALL2K:
+            case LOP_FASTCALL3:
+            case LOP_FASTCALL:
+            {
+                if (LUAU_INSN_A(*pc) == LBF_SELECT_VARARG)
+                    return true;
+                break;
+            }
+            default:
+                break;
+        }
+        pc += Luau::getOpLength(static_cast<LuauOpcode>(LUAU_INSN_OP(*pc)));
+    }
+    return false;
+}
+
 Proto* onInlineFunction(lua_State* L, Closure* caller, Closure* target, uint32_t pc)
 {
     LUAU_ASSERT(!caller->isC && !target->isC);
@@ -270,6 +321,12 @@ Proto* onInlineFunction(lua_State* L, Closure* caller, Closure* target, uint32_t
 
     // recursive inlining is not supported yet.
     if (targetProto->funid == callerProto->funid)
+        return nullptr;
+
+    if (caller->env->safeenv == 0 || target->env->safeenv == 0)
+        return nullptr;
+    
+    if (isEnvDependentOrUsesSelect(targetProto, caller->env != target->env))
         return nullptr;
 
     // pick the latest optimized version for inlining
@@ -326,14 +383,14 @@ Proto* onInlineFunction(lua_State* L, Closure* caller, Closure* target, uint32_t
     memcpy(protos.data(), callerProto->p, callerProto->sizep * sizeof(Proto*));
     memcpy(protos.data() + callerProto->sizep, targetProto->p, targetProto->sizep * sizeof(Proto*));
 
-    std::optional<CodeData> codeData = emitCode(L, callerGraph->first, protos);
-    if (!codeData)
+    if (std::optional<CodeData> codeData = emitCode(L, callerGraph->first, protos))
     {
-        sealAllSlots(callerProto->code, callerProto->sizecode);
-        return nullptr;
+        createInlinedProto(L, callerProto, targetProto, callerGraph->first, *codeData);
     }
 
-    createInlinedProto(L, callerProto, targetProto, callerGraph->first, *codeData);
+    // To prevent triggering of optimizations in already optimized proto sealing all feedback slots.
+    // All hit info was copied to the optimized version and new optimizations will happen there.
+    sealAllSlots(callerProto->code, callerProto->sizecode);
 
     return nullptr;
 }

@@ -64,7 +64,7 @@ struct ConstraintList
     Iterator end();
 
 private:
-    DenseHashMap<ConstraintVertex, bool, HashBlockedConstraintId> present{(TypeId) nullptr};
+    DenseHashMap<ConstraintVertex, bool, HashBlockedConstraintId> present;
     std::vector<ConstraintVertex> order;
     size_t entries = 0;
 };
@@ -105,7 +105,7 @@ struct ConstraintGraph
     TypeIds freeTypes;
 
     // Map a function's signature scope back to its signature type.
-    DenseHashMap<Scope*, TypeId> scopeToFunction{nullptr};
+    DenseHashMap<Scope*, TypeId> scopeToFunction;
 
     /**
      * Add [dependency] as a blocker for [target]
@@ -145,7 +145,7 @@ struct ConstraintGraph
     /**
      * Unblock type [vertex].
      * 1. If [vertex] is now a bound type, walk the chain of bound types and
-     *    repair references to said type in the graph (see: `repairTypeReferneces`).
+     *    repair references to said type in the graph (see: `repairTypeReferences`).
      * 2. After references have been repaired, walk the reverse dependencies of
      *    [vertex] and remove [vertex] from each dependency list, and then clear
      *    the reverse dependency list of [vertex].
@@ -155,7 +155,7 @@ struct ConstraintGraph
     /**
      * Unblock type *pack* [vertex].
      * 1. If [vertex] is now a bound type, walk the chain of bound types and
-     *    repair references to said type in the graph (see: `repairTypeReferneces`).
+     *    repair references to said type in the graph (see: `repairTypeReferences`).
      * 2. After references have been repaired, walk the reverse dependencies of
      *    [vertex] and remove [vertex] from each dependency list, and then clear
      *    the reverse dependency list of [vertex].
@@ -246,7 +246,7 @@ private:
      * - Any free type pack with no dependencies can be generalized;
      * - Any constraint with no dependencies can be dispatched.
      */
-    ConstraintMap dependencies{(TypeId) nullptr};
+    ConstraintMap dependencies;
 
 
     NotNull<ConstraintList> findDependencyList(ConstraintVertex vertex);
@@ -255,7 +255,7 @@ private:
      * Inverse of the above mapping. Yes, the proper name for this is
      * "dependents," but naming it such will result in hellish typos.
      */
-    ConstraintMap reverseDependencies{(TypeId) nullptr};
+    ConstraintMap reverseDependencies;
     NotNull<ConstraintList> findReverseDependencyList(ConstraintVertex vertex);
 
     /**

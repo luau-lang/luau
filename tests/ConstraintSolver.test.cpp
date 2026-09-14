@@ -26,7 +26,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_function")
     )");
 
 
-    CHECK("<a>(a) -> a" == toString(requireType("id")));
+    CHECK("<T>(T) -> T" == toString(requireType("id")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "proper_let_generalization")

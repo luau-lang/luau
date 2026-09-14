@@ -40,11 +40,11 @@ using TypeOrTypePackIdSet = DenseHashSet<const void*>;
 
 struct InstanceCollector : TypeOnceVisitor
 {
-    DenseHashSet<TypeId> recordedTys{nullptr};
+    DenseHashSet<TypeId> recordedTys;
     VecDeque<TypeId> tys;
-    DenseHashSet<TypePackId> recordedTps{nullptr};
+    DenseHashSet<TypePackId> recordedTps;
     VecDeque<TypePackId> tps;
-    TypeOrTypePackIdSet shouldGuess{nullptr};
+    TypeOrTypePackIdSet shouldGuess;
     std::vector<const void*> typeFunctionInstanceStack;
     std::vector<TypeId> cyclicInstance;
 
@@ -204,7 +204,7 @@ struct TypeFunctionReducer
     VecDeque<TypePackId> queuedTps;
     TypeOrTypePackIdSet shouldGuess;
     std::vector<TypeId> cyclicTypeFunctions;
-    TypeOrTypePackIdSet irreducible{nullptr};
+    TypeOrTypePackIdSet irreducible;
     FunctionGraphReductionResult result;
     bool force = false;
 
@@ -258,7 +258,7 @@ struct TypeFunctionReducer
     SkipTestResult testForSkippability(TypeId ty)
     {
         VecDeque<TypeId> queue;
-        DenseHashSet<TypeId> seen{nullptr};
+        DenseHashSet<TypeId> seen;
 
         queue.push_back(follow(ty));
 

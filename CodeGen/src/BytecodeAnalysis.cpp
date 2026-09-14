@@ -1503,7 +1503,9 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
             case LOP_PREPVARARGS:
             case LOP_GETVARARGS:
             case LOP_FORGPREP:
+            case LOP_NEWCLASS:
             case LOP_NEWCLASSMEMBER:
+            case LOP_FASTPCALL:
                 break;
             default:
                 CODEGEN_ASSERT(!"Unknown instruction");

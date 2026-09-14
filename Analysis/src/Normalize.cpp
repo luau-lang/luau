@@ -18,11 +18,13 @@
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant)
 
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000)
-LUAU_FASTFLAG(LuauSolverV2)
 LUAU_FASTINTVARIABLE(LuauNormalizerInitialFuel, 3000)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauAllowIntersectionOfOneTableWithExtern)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
+LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
+LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauNormalizeGuardAgainstNonTestableNegations)
 
 namespace Luau
 {
@@ -117,18 +119,81 @@ const NormalizedStringType NormalizedStringType::never;
 
 bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& superStr)
 {
-    if (subStr.isUnion() && (superStr.isUnion() && !superStr.isNever()))
+    if (FFlag::LuauRefactorStringSemanticSubtyping)
     {
-        for (auto [name, ty] : subStr.singletons)
+        if (subStr.isIntersection() && superStr.isIntersection())
         {
-            if (!superStr.singletons.count(name))
-                return false;
+            // If we have two intersections, then we check that there's
+            // no exclusion in the superset that's also not excluded
+            // in the subset. For example, consider:
+            //
+            //  string & ~"a" & ~"b" & ~"d" </: string & ~"a" & ~"c"
+            //
+            // ... substr excludes "b" but superstr does not.
+            //
+            // NOTE: This case catches the trivial `string <: string`,
+            // as this is two intersections where the singleton part
+            // is empty (`unknown`).
+            for (const auto& [name, ty] : superStr.singletons)
+            {
+                if (subStr.singletons.count(name) == 0)
+                    return false;
+            }
+            return true;
         }
-    }
-    else if (subStr.isString() && superStr.isUnion())
-        return false;
 
-    return true;
+        if (subStr.isUnion() && superStr.isUnion())
+        {
+            // If we have two unions, then we check that every singleton in the
+            // substr is accounted for in the superstr, as in:
+            //
+            //  "a" | "b" <: "a" | "b" | "c"
+            //
+            for (const auto& [name, ty] : subStr.singletons)
+            {
+                if (superStr.singletons.count(name) == 0)
+                    return false;
+            }
+            return true;
+        }
+
+        if (subStr.isUnion() && superStr.isIntersection())
+        {
+            // If the substr is a union and the superstr is an intersection, then
+            // we have something of the form:
+            //
+            //  "a" | "b" | "c" <: string & ~"d" & ~"e" & ~"f"
+            //
+            // ... we just need to check that _none_ of the singletons in the
+            // substr are represented in the superstr.
+            for (const auto& [name, ty] : subStr.singletons)
+            {
+                if (superStr.singletons.count(name) != 0)
+                    return false;
+            }
+            return true;
+        }
+
+        // If the substr is an intersection and the superstr is a union,
+        // then we cannot possibly represent the union that would actually
+        // be a supertype (it would be an infinite set).
+        return false;
+    }
+    else
+    {
+        if (subStr.isUnion() && (superStr.isUnion() && !superStr.isNever()))
+        {
+            for (auto [name, ty] : subStr.singletons)
+            {
+                if (!superStr.singletons.count(name))
+                    return false;
+            }
+        }
+        else if (subStr.isString() && superStr.isUnion())
+            return false;
+
+        return true;
+    }
 }
 
 void NormalizedExternType::pushPair(TypeId ty, TypeIds negations)
@@ -400,7 +465,7 @@ static bool isShallowInhabited(const NormalizedType& norm)
 
 NormalizationResult Normalizer::isInhabited(const NormalizedType* norm)
 {
-    Set<TypeId> seen{nullptr};
+    Set<TypeId> seen;
     try
     {
         FuelInitializer fi{NotNull{this}};
@@ -460,7 +525,7 @@ NormalizationResult Normalizer::isInhabited(TypeId ty)
             return *result ? NormalizationResult::True : NormalizationResult::False;
     }
 
-    Set<TypeId> seen{nullptr};
+    Set<TypeId> seen;
     try
     {
         FuelInitializer fi{NotNull{this}};
@@ -539,8 +604,8 @@ NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
 
 NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId right)
 {
-    Set<TypeId> seen{nullptr};
-    SeenTablePropPairs seenTablePropPairs{{nullptr, nullptr}};
+    Set<TypeId> seen;
+    SeenTablePropPairs seenTablePropPairs;
     try
     {
         FuelInitializer fi{NotNull{this}};
@@ -922,7 +987,7 @@ static bool isCacheable(TypeId ty, Set<TypeId>& seen)
 
 static bool isCacheable(TypeId ty)
 {
-    Set<TypeId> seen{nullptr};
+    Set<TypeId> seen;
     return isCacheable(ty, seen);
 }
 
@@ -936,8 +1001,8 @@ std::shared_ptr<const NormalizedType> Normalizer::normalize(TypeId ty)
         return found->second;
 
     NormalizedType norm{builtinTypes};
-    Set<TypeId> seenSetTypes{nullptr};
-    SeenTablePropPairs seenTablePropPairs{{nullptr, nullptr}};
+    Set<TypeId> seenSetTypes;
+    SeenTablePropPairs seenTablePropPairs;
 
     try
     {
@@ -1779,6 +1844,10 @@ NormalizationResult Normalizer::intersectNormalWithNegationTy(TypeId toNegate, N
     std::optional<NormalizedType> negated;
 
     std::shared_ptr<const NormalizedType> normal = normalize(toNegate);
+
+    if (FFlag::LuauNormalizeGuardAgainstNonTestableNegations && !normal)
+        return NormalizationResult::False;
+
     negated = negateNormal(*normal);
 
     if (!negated)
@@ -2972,8 +3041,8 @@ void Normalizer::intersectTables(TypeIds& heres, const TypeIds& theres)
     {
         for (TypeId there : theres)
         {
-            Set<TypeId> seenSetTypes{nullptr};
-            SeenTablePropPairs seenTablePropPairs{{nullptr, nullptr}};
+            Set<TypeId> seenSetTypes;
+            SeenTablePropPairs seenTablePropPairs;
             if (std::optional<TypeId> inter = intersectionOfTables(here, there, seenTablePropPairs, seenSetTypes))
                 tmp.insert(*inter);
         }
@@ -3412,7 +3481,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
             NormalizedExternType nct = std::move(here.externTypes);
             TypeIds tables = std::move(here.tables);
             clearNormal(here);
-            // FIXME CLI-214308: The representation of NormalizedExternType 
+            // FIXME CLI-214308: The representation of NormalizedExternType
             // does not support an intersection like ...
             //
             //  ExternType & (Tbl1 | Tbl2 | Tbl3)
@@ -3612,7 +3681,7 @@ void makeTableShared(TypeId ty, DenseHashSet<TypeId>& seen)
 
 void makeTableShared(TypeId ty)
 {
-    DenseHashSet<TypeId> seen{nullptr};
+    DenseHashSet<TypeId> seen;
     makeTableShared(ty, seen);
 }
 
@@ -3630,7 +3699,19 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
 
     if (isTop(builtinTypes, norm.externTypes))
     {
-        result.push_back(builtinTypes->externType);
+        if (FFlag::LuauIncludeExternTypeExtensionsWithTopExternType && !norm.externTypes.shapeExtensions.empty())
+        {
+            std::vector<TypeId> intersection;
+            intersection.reserve(norm.externTypes.shapeExtensions.size() + 1);
+            intersection.emplace_back(builtinTypes->externType);
+            for (TypeId shape : norm.externTypes.shapeExtensions)
+                intersection.emplace_back(shape);
+            result.emplace_back(arena->addType(IntersectionType{std::move(intersection)}));
+        }
+        else
+        {
+            result.push_back(builtinTypes->externType);
+        }
     }
     else if (!norm.externTypes.isNever())
     {

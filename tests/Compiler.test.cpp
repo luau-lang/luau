@@ -25,12 +25,24 @@ LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerFastcalls)
+LUAU_FASTFLAG(LuauCompileExpandShortLimit)
 LUAU_FASTFLAG(LuauCompileIifeInline)
+LUAU_FASTFLAG(LuauCompileCleanBlockDeadClose)
+LUAU_FASTFLAG(LuauCompileContinueEagerClose)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
-LUAU_FASTFLAG(LuauCompileStringInterpTargetTop)
+LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
+LUAU_FASTFLAG(LuauCompileMoveElision)
+LUAU_FASTFLAG(LuauCompileConcatTargetTop)
 LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_FASTFLAG(LuauCompileLoopUnrollZero)
 LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
+LUAU_FASTFLAG(LuauOptimizeExportTable)
+LUAU_FASTFLAG(LuauCompileFastpcall)
+LUAU_FASTFLAG(LuauExportedTypesParticipateInScc)
+LUAU_FASTFLAG(LuauCompileRecursiveAliases)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauCompileUndoEmitAdjust)
 
 using namespace Luau;
 
@@ -101,14 +113,19 @@ static std::string compileFunction0(const char* source)
     return bcb.dumpFunction(0);
 }
 
-static std::string compileFunction0Constants(const char* source)
+static std::string compileFunctionConstants(const char* source, uint32_t id)
 {
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
 
     Luau::compileOrThrow(bcb, source);
 
-    return bcb.dumpFunction(0);
+    return bcb.dumpFunction(id);
+}
+
+static std::string compileFunction0Constants(const char* source)
+{
+    return compileFunctionConstants(source, 0);
 }
 
 static std::string compileFunction0Coverage(const char* source, int level)
@@ -471,6 +488,8 @@ RETURN R0 0
 
 TEST_CASE("ConcatChainOptimization")
 {
+    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
+
     CHECK_EQ("\n" + compileFunction0("local a, b = ...; return a .. b"), R"(
 GETVARARGS R0 2
 MOVE R3 R0
@@ -490,12 +509,55 @@ RETURN R3 1
 
     CHECK_EQ("\n" + compileFunction0("local a, b, c = ...; return (a .. b) .. c"), R"(
 GETVARARGS R0 3
-MOVE R6 R0
-MOVE R7 R1
-CONCAT R4 R6 R7
+MOVE R5 R0
+MOVE R6 R1
+CONCAT R4 R5 R6
 MOVE R5 R2
 CONCAT R3 R4 R5
 RETURN R3 1
+)");
+}
+
+TEST_CASE("ConcatTopRegisterUse")
+{
+    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
+
+    CHECK_EQ("\n" + compileFunction0("local a, b = ...; return '{a=' .. tostring(a) .. ' b=' .. tostring(b) .. '}'"), R"(
+GETVARARGS R0 2
+LOADK R3 K0 ['{a=']
+FASTCALL1 63 R0 L0
+MOVE R5 R0
+GETIMPORT R4 2 [tostring]
+CALL R4 1 1
+L0: LOADK R5 K3 [' b=']
+FASTCALL1 63 R1 L1
+MOVE R7 R1
+GETIMPORT R6 2 [tostring]
+CALL R6 1 1
+L1: LOADK R7 K4 ['}']
+CONCAT R2 R3 R7
+RETURN R2 1
+)");
+}
+
+TEST_CASE("ConcatTopRegisterUseShorthand")
+{
+    ScopedFastFlag luauCompileConcatTargetTop{FFlag::LuauCompileConcatTargetTop, true};
+
+    CHECK_EQ("\n" + compileFunction0("local a = \"hello \" local b, c = ...; a ..= tostring(a) .. tostring(b) return a"), R"(
+LOADK R0 K0 ['hello ']
+GETVARARGS R1 2
+MOVE R3 R0
+FASTCALL1 63 R0 L0
+MOVE R5 R0
+GETIMPORT R4 2 [tostring]
+CALL R4 1 1
+L0: FASTCALL1 63 R1 L1
+MOVE R6 R1
+GETIMPORT R5 2 [tostring]
+CALL R5 1 1
+L1: CONCAT R0 R3 R5
+RETURN R0 1
 )");
 }
 
@@ -895,6 +957,76 @@ DUPTABLE R0 6
 DUPTABLE R1 9
 DUPTABLE R2 16
 RETURN R0 3
+)"
+    );
+}
+
+TEST_CASE("DumpConstantClass")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunctionConstants(
+                   R"(
+open class Animal
+    public species: string
+
+    function live(self)
+        return "I am alive"
+    end
+end
+
+class Cat extends Animal
+    public breed: string
+
+    function describe(self)
+        return self.breed
+    end
+end
+
+print(Cat)
+    )",
+                   2
+               ),
+        R"(
+K0: 'Animal'
+K1: 'species'
+K2: function live
+K3: 'live'
+K4: 'new'
+K5: '__init'
+K6: class Animal (props: 1, methods: 3)
+  props:
+    K1 ['species']
+  methods:
+    K3 ['live']
+    K4 ['new']
+    K5 ['__init']
+K7: 'Cat'
+K8: 'breed'
+K9: function describe
+K10: 'describe'
+K11: class Cat (props: 1, methods: 3)
+  props:
+    K8 ['breed']
+  methods:
+    K10 ['describe']
+    K4 ['new']
+    K5 ['__init']
+K12: 'print'
+K13: print
+LOADNIL R0
+LOADNIL R1
+NEWCLASS R0 no_base K6 1 [class Animal (props: 1, methods: 3)]
+DUPCLOSURE R2 K2 ['live']
+NEWCLASSMEMBER R0 R2 ['live']
+NEWCLASS R1 R0 K11 0 [class Cat (props: 1, methods: 3)]
+DUPCLOSURE R2 K9 ['describe']
+NEWCLASSMEMBER R1 R2 ['describe']
+GETIMPORT R2 13 [print]
+MOVE R3 R1
+CALL R2 1 0
+RETURN R0 0
 )"
     );
 }
@@ -1559,8 +1691,6 @@ TEST_CASE("InterpStringWithNoExpressions")
 
 TEST_CASE("InterpStringZeroCost")
 {
-    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
-
     CHECK_EQ(
         "\n" + compileFunction0(R"(local _ = `hello, {42}!`)"),
         R"(
@@ -1601,15 +1731,12 @@ RETURN R0 0
 
 TEST_CASE("InterpStringRegisterLimit")
 {
-    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
-
     CHECK_THROWS_AS(compileFunction0(("local a = `" + rep("{1}", 254) + "`").c_str()), std::exception);
     CHECK_NOTHROW(compileFunction0(("local a = `" + rep("{1}", 253) + "`").c_str())); // This check can be removed once the fflag is removed
 }
 
 TEST_CASE("InterpStringConstFold")
 {
-    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(local empty = ""; return `{empty}`)"),
@@ -2600,6 +2727,58 @@ end
     }
 }
 
+// regression tests for validateCaptures which couldn't handle trailing dead instructions (cleaned up since)
+TEST_CASE("ValidateCapturesTrailingDeadCode")
+{
+    ScopedFastFlag luauCompileCleanBlockDeadClose{FFlag::LuauCompileCleanBlockDeadClose, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function outer(x)
+    if x then
+        return
+    else
+        local y
+        local _ = function() y = 1 end
+        return
+    end
+end
+)",
+                   1
+               ),
+        R"(
+JUMPIFNOT R0 L0
+RETURN R0 0
+L0: LOADNIL R1
+NEWCLOSURE R2 P0
+CAPTURE REF R1
+CLOSEUPVALS R1
+RETURN R0 0
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+do
+    local _
+    function _(...) _ += _ end
+    return
+end
+)",
+                   1
+               ),
+        R"(
+LOADNIL R0
+NEWCLOSURE R0 P0
+CAPTURE REF R0
+CLOSEUPVALS R0
+RETURN R0 0
+)"
+    );
+}
+
 TEST_CASE("LoopContinueUntilCapture")
 {
     // validate continue upvalue closing behavior: continue must close locals defined in the nested scopes
@@ -2685,6 +2864,54 @@ JUMPBACK L0
 L2: CLOSEUPVALS R1
 CLOSEUPVALS R0
 RETURN R0 0
+)"
+    );
+
+    ScopedFastFlag luauCompileContinueEagerClose{FFlag::LuauCompileContinueEagerClose, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+repeat
+    if x then
+    else
+        continue -- does not close anything
+    end
+
+    local b = y
+    function _(...)
+        function b()
+        end
+    end
+
+    if b then
+    else
+        continue -- has to close b
+    end
+until z()
+)",
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+L0: JUMPIFNOT R0 L4
+JUMP L1
+JUMP L4
+L1: MOVE R3 R1
+NEWCLOSURE R4 P0
+CAPTURE REF R3
+SETGLOBAL R4 K0 ['_']
+JUMPIFNOT R3 L2
+JUMP L3
+L2: CLOSEUPVALS R3
+JUMP L4
+L3: CLOSEUPVALS R3
+L4: MOVE R4 R2
+CALL R4 0 1
+JUMPIF R4 L5
+JUMPBACK L0
+L5: RETURN R0 0
 )"
     );
 }
@@ -3721,15 +3948,15 @@ end
     Luau::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
-local 0: reg 5, start pc 5 line 5, end pc 9 line 5
-local 1: reg 6, start pc 16 line 8, end pc 21 line 8
-local 2: reg 7, start pc 16 line 8, end pc 21 line 8
-local 3: reg 3, start pc 25 line 12, end pc 29 line 12
-local 4: reg 3, start pc 31 line 16, end pc 36 line 16
-local 5: reg 0, start pc 0 line 3, end pc 40 line 21
-local 6: reg 1, start pc 0 line 3, end pc 40 line 21
-local 7: reg 2, start pc 1 line 4, end pc 40 line 21
-local 8: reg 3, start pc 40 line 21, end pc 40 line 21
+local 0 (i): reg 5, start pc 5 line 5, end pc 9 line 5
+local 1 (k): reg 6, start pc 16 line 8, end pc 21 line 8
+local 2 (v): reg 7, start pc 16 line 8, end pc 21 line 8
+local 3 (b): reg 3, start pc 25 line 12, end pc 29 line 12
+local 4 (c): reg 3, start pc 31 line 16, end pc 36 line 16
+local 5 (e): reg 0, start pc 0 line 3, end pc 40 line 21
+local 6 (f): reg 1, start pc 0 line 3, end pc 40 line 21
+local 7 (a): reg 2, start pc 1 line 4, end pc 40 line 21
+local 8 (inner): reg 3, start pc 40 line 21, end pc 40 line 21
 3: LOADN R2 1
 4: LOADN R5 1
 4: LOADN R3 3
@@ -3782,9 +4009,9 @@ end
     Luau::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
-local 0: reg 1, start pc 2 line 6, no live range
-local 1: reg 2, start pc 2 line 6, no live range
-local 2: reg 0, start pc 0 line 4, end pc 2 line 6
+local 0 (a): reg 1, start pc 2 line 6, no live range
+local 1 (b): reg 2, start pc 2 line 6, no live range
+local 2 (x): reg 0, start pc 0 line 4, end pc 2 line 6
 4: LOADNIL R1
 4: LOADNIL R2
 6: RETURN R0 0
@@ -3813,17 +4040,103 @@ end
     Luau::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
-local 0: reg 3, start pc 5 line 8, no live range
-local 1: reg 4, start pc 5 line 8, no live range
-local 2: reg 1, start pc 2 line 5, end pc 4 line 6
-local 3: reg 2, start pc 2 line 5, end pc 4 line 6
-local 4: reg 0, start pc 0 line 4, end pc 5 line 8
+local 0 (c): reg 3, start pc 5 line 8, no live range
+local 1 (d): reg 4, start pc 5 line 8, no live range
+local 2 (a): reg 1, start pc 2 line 5, end pc 4 line 6
+local 3 (b): reg 2, start pc 2 line 5, end pc 4 line 6
+local 4 (x): reg 0, start pc 0 line 4, end pc 5 line 8
 4: LOADNIL R1
 4: LOADNIL R2
 5: RETURN R0 0
 6: LOADN R3 2
 6: LOADNIL R4
 8: RETURN R0 0
+)");
+}
+
+TEST_CASE("DebugLocalInlineUndoEmit")
+{
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+    ScopedFastFlag luauCompileUndoEmitAdjust{FFlag::LuauCompileUndoEmitAdjust, true};
+
+    const char* source = R"(
+local x = ...
+local function f()
+    do
+        local t = math.random()
+        return t
+    end
+end
+local y = f()
+return y ~= x
+)";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Types | Luau::BytecodeBuilder::Dump_Locals);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 2;
+    options.typeInfoLevel = 1;
+    options.debugLevel = 2;
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+local 0 (t): reg 2, start pc 6 line 10, no live range
+local 1 (x): reg 0, start pc 2 line 3, end pc 10 line 10
+local 2 (f): reg 1, start pc 3 line 5, end pc 10 line 10
+local 3 (y): reg 2, start pc 6 line 10, end pc 10 line 10
+R2: any from 6 to 6
+R0: any from 1 to 11
+R1: any from 2 to 11
+R2: any from 3 to 11
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['f']
+GETIMPORT R2 3 [math.random]
+CALL R2 0 1
+JUMPIFNOTEQ R2 R0 L0
+LOADB R3 0 +1
+L0: LOADB R3 1
+L1: RETURN R3 1
+)");
+}
+
+TEST_CASE("DebugLocalInlineUndoEmit2")
+{
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+    ScopedFastFlag luauCompileUndoEmitAdjust{FFlag::LuauCompileUndoEmitAdjust, true};
+
+    const char* source = R"(
+local function id(x) return x end
+local _
+_ = ...
+local z = nil, id(_)
+)";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(
+        Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Types | Luau::BytecodeBuilder::Dump_Locals | Luau::BytecodeBuilder::Dump_Lines
+    );
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 2;
+    options.typeInfoLevel = 1;
+    options.debugLevel = 2;
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+local 0 (id): reg 0, start pc 2 line 3, end pc 5 line 6
+local 1 (_): reg 1, start pc 3 line 4, end pc 5 line 6
+local 2 (z): reg 2, start pc 5 line 6, end pc 5 line 6
+R0: any from 1 to 6
+R1: any from 2 to 6
+R2: any from 4 to 6
+2: DUPCLOSURE R0 K0 ['id']
+3: LOADNIL R1
+4: GETVARARGS R1 1
+5: LOADNIL R2
+6: RETURN R0 0
 )");
 }
 
@@ -4134,6 +4447,31 @@ writeMany(b, 0, x, y, z, w, u, v)
 return b
 )"
     );
+    
+    ScopedFastFlag luauCompileLoopUnrollZero{FFlag::LuauCompileLoopUnrollZero, true};
+
+    CHECK_EQ(
+        compileWithRemarks(R"(
+local t = {}
+
+for i=1,0 do
+    t[i] = ...
+end
+
+return t
+)"),
+R"(
+-- remark: allocation: table hash 0
+local t = {}
+
+-- remark: loop unroll succeeded: empty loop
+for i=1,0 do
+    t[i] = ...
+end
+
+return t
+)"
+);
 }
 
 TEST_CASE("AssignmentConflict")
@@ -4918,6 +5256,8 @@ RETURN R0 0
 
 TEST_CASE("JumpTrampoline")
 {
+    ScopedFastFlag luauCompileExpandShortLimit{FFlag::LuauCompileExpandShortLimit, true};
+
     std::string source;
     source += "local sum: number = 0\n";
     source += "for i=1,3 do\n";
@@ -4950,26 +5290,26 @@ TEST_CASE("JumpTrampoline")
         head += insns[i] + "\n";
 
     CHECK_EQ("\n" + head, R"(
-local 0: reg 3, start pc 8 line 3, end pc 54545 line 20002
-local 1: reg 0, start pc 2 line 2, end pc 54549 line 20004
-R3: number from 2 to 54546
-R0: number from 1 to 54550
+local 0 (i): reg 3, start pc 8 line 3, end pc 54547 line 20002
+local 1 (sum): reg 0, start pc 2 line 2, end pc 54551 line 20004
+R3: number from 2 to 54548
+R0: number from 1 to 54552
 LOADN R0 0
 LOADN R3 1
 LOADN R1 3
 LOADN R2 1
 JUMP L1
-L0: JUMPX L14543
+L0: JUMPX L14545
 L1: FORNPREP R1 L0
 L2: ADD R0 R0 R3
 LOADK R4 K0 [150000]
 JUMP L4
-L3: JUMPX L14543
+L3: JUMPX L14545
 L4: JUMPIFLT R4 R0 L3
 ADD R0 R0 R3
 LOADK R4 K0 [150000]
 JUMP L6
-L5: JUMPX L14543
+L5: JUMPX L14545
 )");
 
     // FORNLOOP has to go through a trampoline since the jump is back to the beginning of the function
@@ -4979,16 +5319,18 @@ L5: JUMPX L14543
         tail += insns[i] + "\n";
 
     CHECK_EQ("\n" + tail, R"(
+LOADK R4 K0 [150000]
+JUMPIFLT R4 R0 L14545
 ADD R0 R0 R3
 LOADK R4 K0 [150000]
-JUMPIFLT R4 R0 L14543
+JUMPIFLT R4 R0 L14545
 ADD R0 R0 R3
 LOADK R4 K0 [150000]
-JUMPIFLT R4 R0 L14543
-JUMP L14542
-L14541: JUMPX L2
-L14542: FORNLOOP R1 L14541
-L14543: RETURN R0 1
+JUMPIFLT R4 R0 L14545
+JUMP L14544
+L14543: JUMPX L2
+L14544: FORNLOOP R1 L14543
+L14545: RETURN R0 1
 )");
 }
 
@@ -5857,7 +6199,7 @@ RETURN R0 0
 
 TEST_CASE("Arithmetics")
 {
-    // basic arithmetics codegen with non-constants
+    // basic arithmetic codegen with non-constants
     CHECK_EQ(
         "\n" + compileFunction0(R"(
 local a, b = ...
@@ -5875,7 +6217,7 @@ RETURN R2 6
 )"
     );
 
-    // basic arithmetics codegen with constants on the right side
+    // basic arithmetic codegen with constants on the right side
     // note that we don't simplify these expressions as we don't know the type of a
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -6669,6 +7011,37 @@ L3: RETURN R0 0
     );
 }
 
+TEST_CASE("LoopUnrollEmpty")
+{
+    ScopedFastFlag luauCompileLoopUnrollZero{FFlag::LuauCompileLoopUnrollZero, true};
+
+    // zero roundtrip loops are counted as zero-cost by the cost model and have to be zero-cost when compiled
+    CHECK_EQ(
+        "\n" + compileFunction(
+            R"(
+local t = {}
+
+for i=1,24 do
+    for j=1,0 do
+        j = ...
+        for k=1,8 do
+            t[k] = i * j * k
+        end
+    end
+end
+
+return t
+)",
+0,
+2
+),
+R"(
+NEWTABLE R0 0 8
+RETURN R0 1
+)"
+);
+}
+
 TEST_CASE("InlineBasic")
 {
     // inline function that returns a constant
@@ -6891,6 +7264,8 @@ RETURN R1 1
 
 TEST_CASE("InlineNestedLoops")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // functions with basic loops get inlined
     CHECK_EQ(
         "\n" + compileFunction(
@@ -6910,14 +7285,13 @@ return x
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-NEWTABLE R2 0 0
-LOADN R3 1
-SETTABLEN R3 R2 1
-LOADN R3 2
-SETTABLEN R3 R2 2
-LOADN R3 3
-SETTABLEN R3 R2 3
-MOVE R1 R2
+NEWTABLE R1 0 0
+LOADN R2 1
+SETTABLEN R2 R1 1
+LOADN R2 2
+SETTABLEN R2 R1 2
+LOADN R2 3
+SETTABLEN R2 R1 3
 RETURN R1 1
 )"
     );
@@ -6941,14 +7315,13 @@ return x
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-NEWTABLE R2 0 0
-LOADN R3 1
-SETTABLEN R3 R2 1
-LOADN R3 2
-SETTABLEN R3 R2 2
-LOADN R3 3
-SETTABLEN R3 R2 3
-MOVE R1 R2
+NEWTABLE R1 0 0
+LOADN R2 1
+SETTABLEN R2 R1 1
+LOADN R2 2
+SETTABLEN R2 R1 2
+LOADN R2 3
+SETTABLEN R2 R1 3
 RETURN R1 1
 )"
     );
@@ -6984,6 +7357,8 @@ RETURN R1 1
 
 TEST_CASE("InlineMutate")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // if the argument is mutated, it gets a register even if the value is constant
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7001,9 +7376,8 @@ return x
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-LOADN R2 42
-ORK R2 R2 K1 [5]
-MOVE R1 R2
+LOADN R1 42
+ORK R1 R1 K1 [5]
 RETURN R1 1
 )"
     );
@@ -7051,8 +7425,7 @@ return y
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
 LOADNIL R1
-MOVE R3 R1
-MOVE R2 R3
+MOVE R2 R1
 RETURN R2 1
 )"
     );
@@ -7085,6 +7458,8 @@ RETURN R1 1
 
 TEST_CASE("InlineUpval")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // if the argument is an upvalue, we naturally need to copy it to a local
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7104,8 +7479,7 @@ end
                    2
                ),
         R"(
-GETUPVAL R1 0
-MOVE R0 R1
+GETUPVAL R0 0
 RETURN R0 1
 )"
     );
@@ -7167,6 +7541,8 @@ RETURN R1 1
 
 TEST_CASE("InlineCapture")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // if the argument is captured by a nested closure, normally we can rely on capture by value
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7214,7 +7590,7 @@ RETURN R1 1
 )"
     );
 
-    // if the argument is an externally mutated variable, we copy it to an argument and capture it by value
+    // if the argument is an externally mutated variable, no copy is needed if it is captured by value
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -7233,9 +7609,8 @@ return y
 DUPCLOSURE R0 K0 ['foo']
 LOADNIL R1
 LOADN R1 42
-MOVE R3 R1
 NEWCLOSURE R2 P1
-CAPTURE VAL R3
+CAPTURE VAL R1
 RETURN R2 1
 )"
     );
@@ -7297,9 +7672,9 @@ RETURN R2 1
 )"
     );
 
+    ScopedFastFlag luauCompileCleanBlockDeadClose{FFlag::LuauCompileCleanBlockDeadClose, true};
+
     // note that mutation and capture might be inside internal control flow
-    // TODO: this has an oddly redundant CLOSEUPVALS after JUMP; it's not due to inlining, and is an artifact of how StatBlock/StatReturn interact
-    // fixing this would reduce the number of redundant CLOSEUPVALS a bit but it only affects bytecode size as these instructions aren't executed
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -7327,7 +7702,6 @@ NEWCLOSURE R2 P1
 CAPTURE REF R3
 CLOSEUPVALS R3
 JUMP L1
-CLOSEUPVALS R3
 L0: LOADNIL R2
 L1: MOVE R3 R2
 MOVE R4 R1
@@ -7405,6 +7779,8 @@ RETURN R1 -1
 
 TEST_CASE("InlineArgMismatch")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // when inlining a function, we must respect all the usual rules
 
     // caller might not have enough arguments
@@ -7515,9 +7891,8 @@ return x
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-LOADNIL R2
-LOADN R2 42
-MOVE R1 R2
+LOADNIL R1
+LOADN R1 42
 RETURN R1 1
 )"
     );
@@ -7975,6 +8350,8 @@ L3: RETURN R0 0
 
 TEST_CASE("InlineHiddenMutation")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // when the argument is assigned inside the function, we can't reuse the local
     CHECK_EQ(
         "\n" + compileFunction(
@@ -7994,9 +8371,8 @@ return y
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
-MOVE R3 R1
-LOADN R3 42
-MOVE R2 R3
+MOVE R2 R1
+LOADN R2 42
 RETURN R2 1
 )"
     );
@@ -8025,10 +8401,9 @@ GETVARARGS R1 1
 NEWCLOSURE R2 P1
 CAPTURE REF R1
 SETGLOBAL R2 K1 ['mutator']
-MOVE R3 R1
-GETGLOBAL R4 K1 ['mutator']
-CALL R4 0 0
-MOVE R2 R3
+MOVE R2 R1
+GETGLOBAL R3 K1 ['mutator']
+CALL R3 0 0
 CLOSEUPVALS R1
 RETURN R2 1
 )"
@@ -8483,6 +8858,8 @@ RETURN R1 1
 
 TEST_CASE("InlineConstConditionals")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     // the most expensive part does not participate in cost model if branches are const
     CHECK_EQ(
         "\n" + compileFunction(
@@ -8541,20 +8918,18 @@ return x, y
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
+LOADN R1 0
+ADDK R1 R1 K1 [1]
+ADDK R1 R1 K2 [2]
+ADDK R1 R1 K3 [3]
+ADDK R1 R1 K4 [4]
+ADDK R1 R1 K5 [5]
 LOADN R2 0
-ADDK R2 R2 K1 [1]
-ADDK R2 R2 K2 [2]
-ADDK R2 R2 K3 [3]
-ADDK R2 R2 K4 [4]
-ADDK R2 R2 K5 [5]
-MOVE R1 R2
-LOADN R3 0
-SUBK R3 R3 K1 [1]
-SUBK R3 R3 K2 [2]
-SUBK R3 R3 K3 [3]
-SUBK R3 R3 K4 [4]
-SUBK R3 R3 K5 [5]
-MOVE R2 R3
+SUBK R2 R2 K1 [1]
+SUBK R2 R2 K2 [2]
+SUBK R2 R2 K3 [3]
+SUBK R2 R2 K4 [4]
+SUBK R2 R2 K5 [5]
 RETURN R1 2
 )"
     );
@@ -8654,6 +9029,8 @@ RETURN R1 5
 
 TEST_CASE("InlineLoopIteration")
 {
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
     CHECK_EQ(
         "\n" + compileFunction(
                    R"(
@@ -8674,11 +9051,10 @@ return x, y
                ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-LOADN R2 0
-ADDK R2 R2 K1 [1]
-ADDK R2 R2 K2 [2]
-ADDK R2 R2 K3 [3]
-MOVE R1 R2
+LOADN R1 0
+ADDK R1 R1 K1 [1]
+ADDK R1 R1 K2 [2]
+ADDK R1 R1 K3 [3]
 MOVE R2 R0
 LOADN R3 100
 CALL R2 1 1
@@ -9051,6 +9427,712 @@ DUPCLOSURE R2 K1 ['f']
 SETTABLEKS R2 R1 K2 ['f']
 LOADN R2 101
 RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE("InlineElideTemporaries")
+{
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
+    // 'id' elides the move by pointing the argument at the target and 'accum' elides the move by pointing the local 's' to the target
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function id(x) return x end
+
+local function accum(n: number)
+  local s = 0
+  for i = 1,n do s += i end
+  return s
+end
+
+local b = id(accum(4))
+return b
+)",
+                   2,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['id']
+DUPCLOSURE R1 K1 ['accum']
+LOADN R2 0
+ADDK R2 R2 K2 [1]
+ADDK R2 R2 K3 [2]
+ADDK R2 R2 K4 [3]
+ADDK R2 R2 K5 [4]
+RETURN R2 1
+)"
+    );
+
+    // Elide moves to ADD temporaries by pointing the local 's' to the target
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function accum(n: number)
+local s = 0
+for i = 1,n do s += i end
+return s
+end
+
+local b = accum(3) + accum(5)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['accum']
+LOADN R2 0
+ADDK R2 R2 K1 [1]
+ADDK R2 R2 K2 [2]
+ADDK R2 R2 K3 [3]
+LOADN R3 0
+ADDK R3 R3 K1 [1]
+ADDK R3 R3 K2 [2]
+ADDK R3 R3 K3 [3]
+ADDK R3 R3 K4 [4]
+ADDK R3 R3 K5 [5]
+ADD R1 R2 R3
+RETURN R1 1
+)"
+    );
+
+    // 'id' elides the move by pointing the argument at the target local
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = ...
+local function id(x) return x end
+
+local b = id(a)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+MOVE R2 R0
+RETURN R2 1
+)"
+    );
+
+    // 'id' elides the move by pointing the argument at the return temporary
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = ...
+local function id(x) return x end
+return id(a)
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+RETURN R0 1
+)"
+    );
+
+    // Moves are elided even in deep chains of identity functions (identity functions are useful for type inference helper functions)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = ...
+
+local function id(x) return x end
+
+local b = id(id(id(id(a))))
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+MOVE R2 R0
+RETURN R2 1
+)"
+    );
+
+    // Non-captured local move arrives at the ADDK arguments directly
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = ...
+
+local function id(x) return x end
+
+local b = id(a) + 2
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+ADDK R2 R0 K1 [2]
+RETURN R2 1
+)"
+    );
+
+    // Non-captured local moves arrive at the ADD arguments directly
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(x) return x end
+
+local b = id(x) + id(y)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+ADD R4 R0 R1
+RETURN R4 1
+)"
+    );
+
+    // Computed argument flows directly into the target register
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(x) return x end
+
+local b = id(x + 1)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+ADDK R4 R0 K1 [1]
+RETURN R4 1
+)"
+    );
+
+    // Check that there are no issues with varargs
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function id(x) return x end
+
+local b = id(...)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['id']
+GETVARARGS R1 1
+RETURN R1 1
+)"
+    );
+
+    // Result is assigned to a target mutable local directly
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(x) return x end
+y = id(x)
+return y
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+MOVE R1 R0
+RETURN R1 1
+)"
+    );
+
+    // SETLIST protocol requires copies
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(x) return x end
+local t = {id(x), id(y)}
+return t
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+NEWTABLE R4 0 2
+MOVE R5 R0
+MOVE R6 R1
+SETLIST R4 R5 2 [1]
+RETURN R4 1
+)"
+    );
+
+    // Locals flow to fixed fastcall arguments directly (slow path performs the copies)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(x) return x end
+local b = math.max(id(x), id(y))
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+FASTCALL2 18 R0 R1 L0
+MOVE R5 R0
+MOVE R6 R1
+GETIMPORT R4 3 [math.max]
+CALL R4 2 1
+L0: RETURN R4 1
+)"
+    );
+
+    // Mutable argument can use the target non-captured local directly
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function inc(n)
+    n += 1
+    return n
+end
+local b = inc(x)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['inc']
+MOVE R4 R0
+ADDK R4 R4 K1 [1]
+RETURN R4 1
+)"
+    );
+
+    // Mutable local can use the target non-captured local directly
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function choose(cond)
+    local r = 0
+    if cond then r = 1; return r end
+    r = 2; return r
+end
+local b = choose(x)
+return b
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['choose']
+LOADN R4 0
+JUMPIFNOT R0 L0
+LOADN R4 1
+RETURN R4 1
+L0: LOADN R4 2
+RETURN R4 1
+)"
+    );
+
+    // Separate case to cover table access instructions
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(v) return v end
+return id(x).name
+)",
+                   1,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+GETTABLEKS R4 R0 K1 ['name']
+RETURN R4 1
+)"
+    );
+
+    // During inlining of an outer call, inner arguments can also be redirected to target argument registers
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x, y, z = ...
+local function id(v) return v end
+local function pick(a, b) return a + b end
+local r = pick(id(x), id(y))
+return r
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 3
+DUPCLOSURE R3 K0 ['id']
+DUPCLOSURE R4 K1 ['pick']
+ADD R5 R0 R1
+RETURN R5 1
+)"
+    );
+}
+
+TEST_CASE("InlineElideCaptured")
+{
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
+    // Locals captured by reference cannot elide the move
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = ...
+
+local function inc(x)
+    local capx = function() return x end
+    x = x + 1
+    return x
+end
+
+a = inc(a)
+return a
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['inc']
+MOVE R2 R0
+NEWCLOSURE R3 P1
+CAPTURE REF R2
+ADDK R2 R2 K1 [1]
+MOVE R0 R2
+CLOSEUPVALS R2
+RETURN R0 1
+)"
+    );
+
+    // When captured by value, we can skip the move and use the target register directly
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = ...
+
+local function id(x)
+    local snap = function() return x end
+    return x
+end
+
+a = id(a)
+return a
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+NEWCLOSURE R2 P1
+CAPTURE VAL R0
+RETURN R0 1
+)"
+    );
+
+    // Target local might also be captured
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a = 5
+local m = function() a = 42 end
+
+local function id(x)
+    m()
+    return x
+end
+
+a = id(a)
+return a
+)",
+                   2,
+                   2
+               ),
+        R"(
+LOADN R0 5
+NEWCLOSURE R1 P0
+CAPTURE REF R0
+NEWCLOSURE R2 P1
+CAPTURE REF R0
+MOVE R3 R0
+LOADN R0 42
+MOVE R0 R3
+CLOSEUPVALS R0
+RETURN R0 1
+)"
+    );
+
+    // Do not elide final result move when source register is captured (in expressions)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x = ...
+function evil() x = 42; return -100 end
+local function id(v) return v end
+return id(x) + evil()
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+NEWCLOSURE R1 P0
+CAPTURE REF R0
+SETGLOBAL R1 K0 ['evil']
+DUPCLOSURE R1 K1 ['id']
+MOVE R3 R0
+GETGLOBAL R4 K0 ['evil']
+CALL R4 0 1
+ADD R2 R3 R4
+CLOSEUPVALS R0
+RETURN R2 1
+)"
+    );
+
+    // Do not elide final result move when source register is captured (in fastcalls)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x = ...
+function evil() x = 42; return -100 end
+local function id(v) return v end
+return math.max(id(x), (evil()))
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+NEWCLOSURE R1 P0
+CAPTURE REF R0
+SETGLOBAL R1 K0 ['evil']
+DUPCLOSURE R1 K1 ['id']
+MOVE R3 R0
+GETGLOBAL R4 K0 ['evil']
+CALL R4 0 1
+FASTCALL2 18 R3 R4 L0
+GETIMPORT R2 4 [math.max]
+CALL R2 2 1
+L0: CLOSEUPVALS R0
+RETURN R2 1
+)"
+    );
+
+    // Can elide final result move when source register is not captured (in expressions)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local x = ...
+local function id(v) return v end
+function ext() return -100 end
+return id(x) + ext()
+)",
+                   2,
+                   2
+               ),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0 ['id']
+DUPCLOSURE R2 K1 ['ext']
+SETGLOBAL R2 K2 ['ext']
+GETGLOBAL R4 K2 ['ext']
+CALL R4 0 1
+ADD R2 R0 R4
+RETURN R2 1
+)"
+    );
+
+    // Redirecting an inlined argument must preserve the copy when a later argument mutates its captured source
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function outer(x)
+    local function evil()
+        x = 42
+        return -100
+    end
+
+    local function id(v) return v end
+    local function add(a, b) return a + b end
+
+    return add(id(x), evil())
+end
+)",
+                   3,
+                   2
+               ),
+        R"(
+NEWCLOSURE R1 P0
+CAPTURE REF R0
+DUPCLOSURE R2 K0 ['id']
+DUPCLOSURE R3 K1 ['add']
+MOVE R5 R0
+LOADN R0 42
+LOADN R6 -100
+ADD R4 R5 R6
+CLOSEUPVALS R0
+RETURN R4 1
+)"
+    );
+}
+
+TEST_CASE("InlineElideAliased")
+{
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
+    // Argument storage cannot alias the result target when result construction may overwrite it before the argument is read
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function copy(v)
+    return {v[1]}
+end
+
+local x = {42}
+x = copy(x)
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['copy']
+NEWTABLE R1 0 1
+LOADN R2 42
+SETLIST R1 R2 1 [1]
+MOVE R2 R1
+NEWTABLE R1 0 1
+GETTABLEN R3 R2 1
+SETLIST R1 R3 1 [1]
+RETURN R1 1
+)"
+    );
+
+    // Same issue can happen with a local copy (since non-mutable copies just assign target local storage to the source)
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function copy(v)
+    local alias = v
+    return {alias[1]}
+end
+
+local x = {42}
+x = copy(x)
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['copy']
+NEWTABLE R1 0 1
+LOADN R2 42
+SETLIST R1 R2 1 [1]
+MOVE R2 R1
+NEWTABLE R1 0 1
+GETTABLEN R3 R2 1
+SETLIST R1 R3 1 [1]
+RETURN R1 1
+)"
+    );
+
+    // Argument and return target storage can be aliased only when no other access can observe the aliasing
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function outer(a)
+    local seen = 0
+
+    local function first(x, y)
+        seen = y
+        return x
+    end
+
+    a = first(a + 1, a)
+    return a, seen
+end
+)",
+                   1,
+                   2
+               ),
+        R"(
+LOADN R1 0
+NEWCLOSURE R2 P0
+CAPTURE REF R1
+ADDK R3 R0 K0 [1]
+MOVE R4 R0
+MOVE R1 R4
+MOVE R0 R3
+CLOSEUPVALS R1
+RETURN R0 2
+)"
+    );
+}
+
+TEST_CASE("InlineNoElideWhenNoTarget")
+{
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
+    // there is no target register when return values are not used, so no move elision is needed
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function make()
+    local result = {}
+    result.V = {1, 2, 3}
+    return result
+end
+
+make()
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['make']
+NEWTABLE R1 1 0
+NEWTABLE R2 0 3
+LOADN R3 1
+LOADN R4 2
+LOADN R5 3
+SETLIST R2 R3 3 [1]
+SETTABLEKS R2 R1 K1 ['V']
+RETURN R0 0
 )"
     );
 }
@@ -9797,7 +10879,7 @@ RETURN R0 0
 )"
     );
 
-    // multiple assignments with multcall handling - foo() evalutes to temporary registers and they are copied out to target
+    // multiple assignments with multcall handling - foo() evaluates to temporary registers and they are copied out to target
     CHECK_EQ(
         "\n" + compileFunction0(R"(
         local a, b, c, d = ...
@@ -9884,7 +10966,7 @@ RETURN R0 0
 )"
     );
 
-    // when there are more expressions when values, we evalute them for side effects, but they also participate in conflict handling
+    // when there are more expressions when values, we evaluate them for side effects, but they also participate in conflict handling
     CHECK_EQ(
         "\n" + compileFunction0(R"(
         local a, b = ...
@@ -10362,6 +11444,19 @@ end
         R"(
 0: function(number, table, userdata, number, any)
 1: function(number, any)
+)"
+    );
+
+    ScopedFastFlag luauCompileRecursiveAliases{FFlag::LuauCompileRecursiveAliases, true};
+
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
+function foo(l0: t0, l1: number)
+end
+export type t0 = (t0) | (t0)
+)"),
+        R"(
+0: function(any, number)
 )"
     );
 }
@@ -10916,7 +12011,6 @@ L1: RETURN R0 0
 TEST_CASE("ConstStringFolding")
 {
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauCompileStringInterpTempReg{FFlag::LuauCompileStringInterpTargetTop, true};
 
     CHECK_EQ(
         "\n" + compileFunction(R"(return "" .. "")", 0, 2),
@@ -11103,8 +12197,8 @@ TEST_CASE("ClassDeclBasic")
     auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
     CHECK(R"(
 LOADNIL R0
-LOADKX R0 K3 [class Point (props: 2, methods: 0)]
-GETGLOBAL R1 K4 ['print']
+NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
+GETGLOBAL R1 K6 ['print']
 MOVE R2 R0
 CALL R1 1 0
 RETURN R0 0
@@ -11139,10 +12233,10 @@ RETURN R1 1
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(R"(
 LOADNIL R0
-LOADKX R0 K4 [class Point (props: 2, methods: 1)]
+NEWCLASS R0 no_base K6 0 [class Point (props: 2, methods: 3)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 ['magnitude']
-GETGLOBAL R1 K5 ['print']
+GETGLOBAL R1 K7 ['print']
 MOVE R2 R0
 CALL R1 1 0
 RETURN R0 0
@@ -11152,7 +12246,6 @@ RETURN R0 0
 TEST_CASE("ClassDeclWithAmbiguousGlobal")
 {
     ScopedFastFlag sffs[] = {
-        {FFlag::LuauCompileStringInterpTargetTop, true},
         {FFlag::DebugLuauUserDefinedClasses, true},
         {FFlag::LuauEmitCallFeedback, true},
     };
@@ -11179,16 +12272,53 @@ CALLFB R1 1 0 [0]
 RETURN R0 0
 )" == res0);
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
-    CHECK(R"(
+    CHECK(res1 == R"(
 LOADNIL R0
-LOADKX R0 K4 [class Point (props: 2, methods: 1)]
+NEWCLASS R0 no_base K6 0 [class Point (props: 2, methods: 3)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 ['print']
-DUPTABLE R1 5
+DUPTABLE R1 7
 LOADK R2 K0 ['Point']
 SETTABLE R0 R1 R2
 RETURN R1 1
-)" == res1);
+)");
+}
+
+TEST_CASE("ClassDeclWithExplicitCtor")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::LuauEmitCallFeedback, true},
+    };
+
+    std::string source = R"(
+        class Point
+            public x: number
+            public y: number
+            function __init(self, x, y)
+                self.x = x
+                self.y = y
+            end
+        end
+        return { Point = Point }
+    )";
+    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+SETTABLEKS R1 R0 K0 ['x']
+SETTABLEKS R2 R0 K1 ['y']
+RETURN R0 0
+)" == res0);
+    auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
+    CHECK(res1 == R"(
+LOADNIL R0
+NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
+NEWCLOSURE R1 P0
+NEWCLASSMEMBER R0 R1 ['__init']
+DUPTABLE R1 6
+LOADK R2 K0 ['Point']
+SETTABLE R0 R1 R2
+RETURN R1 1
+)");
 }
 
 TEST_CASE("ClassDeclHoistingForwardReference")
@@ -11206,7 +12336,7 @@ TEST_CASE("ClassDeclHoistingForwardReference")
     CHECK(R"(
 LOADNIL R0
 MOVE R1 R0
-LOADKX R0 K2 [class Point (props: 1, methods: 0)]
+NEWCLASS R0 no_base K4 0 [class Point (props: 1, methods: 2)]
 RETURN R0 0
 )" == res);
 }
@@ -11230,14 +12360,14 @@ GETUPVAL R0 0
 RETURN R0 1
 )" == inner);
     auto outer = "\n" + compileFunction(source.c_str(), 1, 0, 0);
-    CHECK(R"(
+    CHECK(outer == R"(
 LOADNIL R0
-LOADKX R0 K2 [class Point (props: 1, methods: 0)]
+NEWCLASS R0 no_base K4 0 [class Point (props: 1, methods: 2)]
 NEWCLOSURE R1 P0
 CAPTURE REF R0
 CLOSEUPVALS R0
 RETURN R0 0
-)" == outer);
+)");
 }
 
 TEST_CASE("ClassDeclHoistingForwardWriteProducesError")
@@ -11981,19 +13111,17 @@ L0: RETURN R0 0
 
 TEST_CASE("ExportLocalBytecode")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauOptimizeExportTable, true}};
 
     // basic exported local: value is stored into the export table, then table is frozen and returned
     CHECK_EQ(
         "\n" + compileFunction0("export local x = 5"),
         R"(
-LOADN R0 5
-NEWTABLE R1 0 0
-SETTABLEKS R0 R1 K0 ['x']
-GETIMPORT R2 3 [table.freeze]
-MOVE R3 R1
-CALL R2 1 1
-RETURN R2 1
+DUPTABLE R0 2
+GETIMPORT R1 5 [table.freeze]
+MOVE R2 R0
+CALL R1 1 1
+RETURN R1 1
 )"
     );
 
@@ -12001,15 +13129,11 @@ RETURN R2 1
     CHECK_EQ(
         "\n" + compileFunction0("export local x = 5\nexport local y = 10"),
         R"(
-LOADN R0 5
-NEWTABLE R1 0 0
-SETTABLEKS R0 R1 K0 ['x']
-LOADN R2 10
-SETTABLEKS R2 R1 K1 ['y']
-GETIMPORT R3 4 [table.freeze]
-MOVE R4 R1
-CALL R3 1 1
-RETURN R3 1
+DUPTABLE R0 4
+GETIMPORT R1 7 [table.freeze]
+MOVE R2 R0
+CALL R1 1 1
+RETURN R1 1
 )"
     );
 
@@ -12018,16 +13142,56 @@ RETURN R3 1
         "\n" + compileFunction0("export local x = 5\nx = 10"),
         R"(
 LOADN R0 5
-NEWTABLE R1 0 0
+DUPTABLE R1 1
 SETTABLEKS R0 R1 K0 ['x']
 LOADN R2 10
 SETTABLEKS R2 R1 K0 ['x']
-GETIMPORT R2 3 [table.freeze]
+GETIMPORT R2 4 [table.freeze]
 MOVE R3 R1
 CALL R2 1 1
 RETURN R2 1
 )"
     );
+
+    CHECK_EQ(
+        "\n" + compileFunction("export function t() end\n t()", 1),
+        R"(
+DUPCLOSURE R0 K2 ['t']
+MOVE R1 R0
+CALL R1 0 0
+DUPTABLE R1 1
+SETTABLEKS R0 R1 K0 ['t']
+GETIMPORT R2 5 [table.freeze]
+MOVE R3 R1
+CALL R2 1 1
+RETURN R2 1
+)"
+    );
+}
+
+TEST_CASE("ExportLocalBytecodeManyExports")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauOptimizeExportTable, true}};
+
+    // 33 exports exceeds TableShape::kMaxLength (32), so DUPTABLE cannot be used and we fall back to NEWTABLE
+    // All 33 constant-exported locals must still be written via SETTABLEKS
+    std::string source;
+    for (int i = 0; i < 33; i++)
+        source += "export local v" + std::to_string(i) + " = " + std::to_string(i) + "\n";
+
+    std::string result = compileFunction0(source.c_str());
+    CHECK(result.find("NEWTABLE") != std::string::npos);
+    CHECK(result.find("DUPTABLE") == std::string::npos);
+
+    // Every exported local must be present in the returned table
+    size_t settableksCount = 0;
+    size_t pos = 0;
+    while ((pos = result.find("SETTABLEKS", pos)) != std::string::npos)
+    {
+        ++settableksCount;
+        ++pos;
+    }
+    CHECK_EQ(settableksCount, 33u);
 }
 
 TEST_CASE("ExportSyntaxRegression")
@@ -12051,6 +13215,37 @@ TEST_CASE("ExportSyntaxRegression")
            end
         end
     )"));
+}
+
+TEST_CASE("ExportTypeOnlyNoReturnEmitsEmptyTable")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportedTypesParticipateInScc, true}};
+
+    // A type-only export module with no return implicitly returns a frozen empty table
+    CHECK_EQ(
+        "\n" + compileFunction0("export type Foo = { x: number }"),
+        R"(
+NEWTABLE R0 0 0
+GETIMPORT R1 2 [table.freeze]
+MOVE R2 R0
+CALL R1 1 1
+RETURN R1 1
+)"
+    );
+}
+
+TEST_CASE("ExportTypeOnlyWithReturnDoesNotEmitEmptyTable")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExportValueSyntax, true}, {FFlag::LuauExportedTypesParticipateInScc, true}};
+
+    // A type-only export module with an explicit return uses the return as-is
+    CHECK_EQ(
+        "\n" + compileFunction0("export type Foo = { x: number }\nreturn {}"),
+        R"(
+NEWTABLE R0 0 0
+RETURN R0 1
+)"
+    );
 }
 
 /**
@@ -12092,9 +13287,9 @@ end
         R"(
 LOADNIL R0
 NEWTABLE R1 0 0
-LOADKX R0 K3 [class Point (props: 2, methods: 0)]
+NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
 SETTABLEKS R0 R1 K0 ['Point']
-GETIMPORT R2 6 [table.freeze]
+GETIMPORT R2 8 [table.freeze]
 MOVE R3 R1
 CALL R2 1 1
 RETURN R2 1
@@ -12122,13 +13317,13 @@ end
         R"(
 LOADNIL R0
 NEWTABLE R1 0 0
-LOADKX R0 K7 [class Point (props: 2, methods: 2)]
+NEWCLASS R0 no_base K9 0 [class Point (props: 2, methods: 4)]
 DUPCLOSURE R2 K3 ['getX']
 NEWCLASSMEMBER R0 R2 ['getX']
 DUPCLOSURE R2 K5 ['getY']
 NEWCLASSMEMBER R0 R2 ['getY']
 SETTABLEKS R0 R1 K0 ['Point']
-GETIMPORT R2 10 [table.freeze]
+GETIMPORT R2 12 [table.freeze]
 MOVE R3 R1
 CALL R2 1 1
 RETURN R2 1
@@ -12143,7 +13338,7 @@ export class Point
     public y: number
 end
 
-local p = Point {x = 1, y = 2}
+local p = Point.new({x = 1, y = 2})
 )",
                    0,
                    2
@@ -12151,15 +13346,720 @@ local p = Point {x = 1, y = 2}
         R"(
 LOADNIL R0
 NEWTABLE R1 0 0
-LOADKX R0 K3 [class Point (props: 2, methods: 0)]
-MOVE R2 R0
-DUPTABLE R3 6
+NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
+GETTABLEKS R2 R0 K3 ['new']
+DUPTABLE R3 8
 CALL R2 1 1
 SETTABLEKS R0 R1 K0 ['Point']
-GETIMPORT R3 9 [table.freeze]
+GETIMPORT R3 11 [table.freeze]
 MOVE R4 R1
 CALL R3 1 1
 RETURN R3 1
+)"
+    );
+}
+
+TEST_CASE("VectorOptionsDefault")
+{
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
+
+    Luau::CompileOptions opts;
+    opts.optimizationLevel = 2;
+    Luau::compileOrThrow(bcb, "return vector.create(1, 1/2^32, 1/2^256)", opts);
+
+    CHECK_EQ(
+        "\n" + bcb.dumpFunction(0),
+        R"(
+K0: 1, 2.32830644e-10, 0
+LOADK R0 K0 [1, 2.32830644e-10, 0]
+RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE("VectorOptionsDoubleUnsupported")
+{
+    // Until flag is enabled, bytecode is the same for vectors of any precision
+    ScopedFastFlag luauCompileEmitVectorDouble{FFlag::LuauCompileEmitVectorDouble, false};
+
+    std::string bytecode1, bytecode2;
+
+    {
+        Luau::BytecodeBuilder bcb;
+        bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
+
+        Luau::CompileOptions opts;
+        opts.optimizationLevel = 2;
+        Luau::compileOrThrow(bcb, "return vector.create(1, 1/2^32, 1/2^256)", opts);
+
+        bytecode1 = bcb.getBytecode();
+
+        CHECK_EQ(
+            "\n" + bcb.dumpFunction(0),
+            R"(
+K0: 1, 2.32830644e-10, 0
+LOADK R0 K0 [1, 2.32830644e-10, 0]
+RETURN R0 1
+)"
+        );
+    }
+
+    {
+        Luau::BytecodeBuilder bcb;
+        bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
+
+        Luau::CompileOptions opts;
+        opts.optimizationLevel = 2;
+        opts.vectorPrecision = 1;
+        Luau::compileOrThrow(bcb, "return vector.create(1, 1/2^32, 1/2^256)", opts);
+
+        bytecode2 = bcb.getBytecode();
+
+        CHECK_EQ(
+            "\n" + bcb.dumpFunction(0),
+            R"(
+K0: 1, 2.32830644e-10, 0
+LOADK R0 K0 [1, 2.32830644e-10, 0]
+RETURN R0 1
+)"
+        );
+    }
+
+    CHECK(bytecode1 == bytecode2);
+}
+
+TEST_CASE("VectorOptionsDouble")
+{
+    ScopedFastFlag luauCompileEmitVectorDouble{FFlag::LuauCompileEmitVectorDouble, true};
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Constants);
+
+    Luau::CompileOptions opts;
+    opts.optimizationLevel = 2;
+    opts.vectorPrecision = 1;
+    Luau::compileOrThrow(bcb, "return vector.create(1, 1/2^32, 1/2^256)", opts);
+
+    CHECK_EQ(
+        "\n" + bcb.dumpFunction(0),
+        R"(
+K0: 1, 2.3283064365386963e-10, 8.6361685550944446e-78
+LOADK R0 K0 [1, 2.3283064365386963e-10, 8.6361685550944446e-78]
+RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE("ClassInheritanceBasic")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+open class Animal
+    public species: string
+end
+
+class Cat extends Animal
+    public breed: string
+end
+
+print(Cat)
+    )";
+
+    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+LOADNIL R0
+LOADNIL R1
+NEWCLASS R0 no_base K4 1 [class Animal (props: 1, methods: 2)]
+NEWCLASS R1 R0 K7 0 [class Cat (props: 1, methods: 2)]
+GETGLOBAL R2 K8 ['print']
+MOVE R3 R1
+CALL R2 1 0
+RETURN R0 0
+)" == res0);
+}
+
+TEST_CASE("ClassInheritanceWithMethods")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+open class Animal
+    public species: string
+
+    function live(self)
+        return "I am alive"
+    end
+end
+
+class Cat extends Animal
+    public breed: string
+
+    function describe(self)
+        return self.breed
+    end
+end
+
+print(Cat)
+    )";
+
+    // Function 0: Animal.live
+    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+LOADK R1 K0 ['I am alive']
+RETURN R1 1
+)" == res0);
+
+    // Function 1: Cat.describe
+    auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
+    CHECK(R"(
+GETTABLEKS R1 R0 K0 ['breed']
+RETURN R1 1
+)" == res1);
+
+    // Function 2: main chunk
+    auto res2 = "\n" + compileFunction(source.c_str(), 2, 0, 0);
+    CHECK(R"(
+LOADNIL R0
+LOADNIL R1
+NEWCLASS R0 no_base K5 1 [class Animal (props: 1, methods: 3)]
+NEWCLOSURE R2 P0
+NEWCLASSMEMBER R0 R2 ['live']
+NEWCLASS R1 R0 K9 0 [class Cat (props: 1, methods: 3)]
+NEWCLOSURE R2 P1
+NEWCLASSMEMBER R1 R2 ['describe']
+GETGLOBAL R2 K10 ['print']
+MOVE R3 R1
+CALL R2 1 0
+RETURN R0 0
+)" == res2);
+}
+
+TEST_CASE("ClassInheritanceMultiLevel")
+{
+    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
+
+    std::string source = R"(
+open class A
+    public x: number
+end
+
+open class B extends A
+    public y: number
+end
+
+class C extends B
+    public z: number
+end
+
+print(C)
+    )";
+
+    auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
+    CHECK(R"(
+LOADNIL R0
+LOADNIL R1
+LOADNIL R2
+NEWCLASS R0 no_base K4 1 [class A (props: 1, methods: 2)]
+NEWCLASS R1 R0 K7 1 [class B (props: 1, methods: 2)]
+NEWCLASS R2 R1 K10 0 [class C (props: 1, methods: 2)]
+GETGLOBAL R3 K11 ['print']
+MOVE R4 R2
+CALL R3 1 0
+RETURN R0 0
+)" == res0);
+}
+
+TEST_CASE("ExportClassInheritance")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::LuauExportValueSyntax, true},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+    };
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+open class Animal
+    public species: string
+end
+
+export class Cat extends Animal
+    public breed: string
+end
+)"),
+        R"(
+LOADNIL R0
+LOADNIL R1
+NEWCLASS R0 no_base K4 1 [class Animal (props: 1, methods: 2)]
+NEWTABLE R2 0 0
+NEWCLASS R1 R0 K7 0 [class Cat (props: 1, methods: 2)]
+SETTABLEKS R1 R2 K5 ['Cat']
+GETIMPORT R3 10 [table.freeze]
+MOVE R4 R2
+CALL R3 1 1
+RETURN R3 1
+)"
+    );
+}
+
+TEST_CASE("ExtendShadowedClass")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauUserDefinedClasses, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+class _ end
+local _
+class l0 extends _
+end
+)"),
+        R"(
+LOADNIL R0
+LOADNIL R1
+NEWCLASS R0 no_base K3 0 [class _ (props: 0, methods: 2)]
+LOADNIL R2
+NEWCLASS R1 R2 K5 0 [class l0 (props: 0, methods: 2)]
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("ProtectedCalls")
+{
+    ScopedFastFlag luauCompileFastpcall{FFlag::LuauCompileFastpcall, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+local a, b = ...
+local s, value = pcall(rawequal, a, b)
+return s, value
+)"),
+        R"(
+GETVARARGS R0 2
+GETIMPORT R3 1 [rawequal]
+MOVE R4 R0
+MOVE R5 R1
+FASTPCALL pcall L0
+GETIMPORT R2 3 [pcall]
+CALL R2 3 2
+L0: RETURN R2 2
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local a, b = ...
+local s, value = xpcall(rawequal, function(err) return err .. '!' end, a, b)
+return s, value
+)",
+                   1
+               ),
+        R"(
+GETVARARGS R0 2
+GETIMPORT R3 1 [rawequal]
+DUPCLOSURE R4 K2 []
+MOVE R5 R0
+MOVE R6 R1
+FASTPCALL xpcall L0
+GETIMPORT R2 4 [xpcall]
+CALL R2 4 2
+L0: RETURN R2 2
+)"
+    );
+}
+
+TEST_CASE("IfLocal")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            if local x = getValue() then
+                print(x)
+            end
+        )"),
+        R"(
+GETIMPORT R0 1 [getValue]
+CALL R0 0 1
+JUMPIFNOT R0 L0
+GETIMPORT R1 3 [print]
+MOVE R2 R0
+CALL R1 1 0
+L0: RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("IfLocalElse")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            if local x = getValue() then
+                print(x)
+            else
+                print("nil")
+            end
+        )"),
+        R"(
+GETIMPORT R0 1 [getValue]
+CALL R0 0 1
+JUMPIFNOT R0 L0
+GETIMPORT R1 3 [print]
+MOVE R2 R0
+CALL R1 1 0
+RETURN R0 0
+L0: GETIMPORT R0 3 [print]
+LOADK R1 K4 ['nil']
+CALL R0 1 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("IfLocalElseif")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            if local x = getValue() then
+                print(x)
+            elseif local x = getValue2() then
+                print(-x)
+            else
+                print("nil")
+            end
+        )"),
+        R"(
+GETIMPORT R0 1 [getValue]
+CALL R0 0 1
+JUMPIFNOT R0 L0
+GETIMPORT R1 3 [print]
+MOVE R2 R0
+CALL R1 1 0
+RETURN R0 0
+L0: GETIMPORT R0 5 [getValue2]
+CALL R0 0 1
+JUMPIFNOT R0 L1
+GETIMPORT R1 3 [print]
+MINUS R2 R0
+CALL R1 1 0
+RETURN R0 0
+L1: GETIMPORT R0 3 [print]
+LOADK R1 K6 ['nil']
+CALL R0 1 0
+RETURN R0 0
+)"
+    );
+}
+TEST_CASE("IfLocalNoElseTrailingCode")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            if local x = getValue() then
+                print(x)
+            end
+            print("after")
+        )"),
+        R"(
+GETIMPORT R0 1 [getValue]
+CALL R0 0 1
+JUMPIFNOT R0 L0
+GETIMPORT R1 3 [print]
+MOVE R2 R0
+CALL R1 1 0
+L0: GETIMPORT R0 3 [print]
+LOADK R1 K4 ['after']
+CALL R0 1 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("IfLocalElseTrailingCode")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            if local x = getValue() then
+                print(x)
+            else
+                print("nil")
+            end
+            print("after")
+        )"),
+        R"(
+GETIMPORT R0 1 [getValue]
+CALL R0 0 1
+JUMPIFNOT R0 L0
+GETIMPORT R1 3 [print]
+MOVE R2 R0
+CALL R1 1 0
+JUMP L1
+L0: GETIMPORT R0 3 [print]
+LOADK R1 K4 ['nil']
+CALL R0 1 0
+L1: GETIMPORT R0 3 [print]
+LOADK R1 K5 ['after']
+CALL R0 1 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("IfLocalThenReturns")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            if local x = getValue() then
+                return x
+            else
+                print("nil")
+            end
+        )"),
+        R"(
+GETIMPORT R0 1 [getValue]
+CALL R0 0 1
+JUMPIFNOT R0 L0
+RETURN R0 1
+L0: GETIMPORT R0 3 [print]
+LOADK R1 K4 ['nil']
+CALL R0 1 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("IfLocalNested")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            if local x = getValue() then
+                if local y = getOther() then
+                    print(x, y)
+                end
+                print(x)
+            end
+            print("after")
+        )"),
+        R"(
+GETIMPORT R0 1 [getValue]
+CALL R0 0 1
+JUMPIFNOT R0 L1
+GETIMPORT R1 3 [getOther]
+CALL R1 0 1
+JUMPIFNOT R1 L0
+GETIMPORT R2 5 [print]
+MOVE R3 R0
+MOVE R4 R1
+CALL R2 2 0
+L0: GETIMPORT R1 5 [print]
+MOVE R2 R0
+CALL R1 1 0
+L1: GETIMPORT R0 5 [print]
+LOADK R1 K6 ['after']
+CALL R0 1 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("IfLocalConstantPropagation")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            local y = 10
+
+            if local x = 123 then
+                print(x * y)
+            else
+                print(5)
+            end
+        )"),
+        R"(
+LOADN R0 123
+GETIMPORT R1 1 [print]
+LOADN R2 1230
+CALL R1 1 0
+RETURN R0 0
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            local y = 10
+
+            if local x = false then
+                print(if x then 12 else y)
+            else
+                print(5)
+            end
+        )"),
+        R"(
+GETIMPORT R0 1 [print]
+LOADN R1 5
+CALL R0 1 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("IfLocalTypePropagation")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+
+    const char* source = R"(
+function foo(a: number)
+    if local b = a then
+        return b + b
+    end
+    return 0
+end
+)";
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Types);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.typeInfoLevel = 1;
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+R0: number [argument]
+R1: number from 0 to 4
+MOVE R1 R0
+JUMPIFNOT R1 L0
+ADD R2 R1 R1
+RETURN R2 1
+L0: LOADN R1 0
+RETURN R1 1
+)");
+}
+
+TEST_CASE("IfLocalEarlyTerminateNoClose")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+            local f
+            for i = 1, 10 do
+                if local x = foo() then
+                    f = function() x *= 2 end
+                    break
+                end
+            end
+            f()
+        )",
+                   1
+               ),
+        R"(
+LOADNIL R0
+LOADN R3 1
+LOADN R1 10
+LOADN R2 1
+FORNPREP R1 L2
+L0: GETIMPORT R4 1 [foo]
+CALL R4 0 1
+JUMPIFNOT R4 L1
+NEWCLOSURE R0 P0
+CAPTURE REF R4
+CLOSEUPVALS R4
+JUMP L2
+L1: FORNLOOP R1 L0
+L2: MOVE R1 R0
+CALL R1 0 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("IfConst")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            if const x = getValue() then
+                print(x)
+            end
+        )"),
+        R"(
+GETIMPORT R0 1 [getValue]
+CALL R0 0 1
+JUMPIFNOT R0 L0
+GETIMPORT R1 3 [print]
+MOVE R2 R0
+CALL R1 1 0
+L0: RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("IfLocalUpvalueCapture")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+            local captured
+            if local x = getValue() then
+                captured = function() return x end
+            end
+            return captured
+        )",
+                   1
+               ),
+        R"(
+LOADNIL R0
+GETIMPORT R1 1 [getValue]
+CALL R1 0 1
+JUMPIFNOT R1 L0
+DUPCLOSURE R0 K2 []
+CAPTURE VAL R1
+L0: RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE("IfLocalMultipleReturnTruncated")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+            local function multi() return 1, 2, 3 end
+            if local x = multi() then
+                print(x)
+            end
+        )",
+                   1
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['multi']
+MOVE R1 R0
+CALL R1 0 1
+JUMPIFNOT R1 L0
+GETIMPORT R2 2 [print]
+MOVE R3 R1
+CALL R2 1 0
+L0: RETURN R0 0
 )"
     );
 }

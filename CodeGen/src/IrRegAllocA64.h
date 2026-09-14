@@ -102,9 +102,6 @@ struct IrRegAllocA64
 
     uint32_t findInstructionWithFurthestNextUse(Set& set) const;
 
-    bool isExtraSpillSlot_DEPRECATED(unsigned slot) const;
-    int getExtraSpillAddressOffset_DEPRECATED(unsigned slot) const;
-
     Set& getSet(KindA64 kind);
 
     uint32_t getAllocToken() const
@@ -126,7 +123,7 @@ struct IrRegAllocA64
     // which 8-byte slots are free
     uint64_t freeSpillSlots = 0;
 
-    DenseHashMap<uint32_t, ExitSyncArgsA64> exitSyncArgs{~0u};
+    DenseHashMap<uint32_t, ExitSyncArgsA64> exitSyncArgs;
 
     uint32_t allocActionCount = 0;
 

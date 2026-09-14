@@ -12,13 +12,14 @@
 using namespace Luau;
 
 
-LUAU_FASTFLAG(LuauDisallowExternClassInTypeDefinitions)
+LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 struct JsonEncoderFixture
 {
     Allocator allocator;
     AstNameTable names{allocator};
-    ScopedFastFlag sff{FFlag::LuauDisallowExternClassInTypeDefinitions, true};
 
     ParseResult parse(std::string_view src)
     {
@@ -70,11 +71,14 @@ TEST_CASE("encode_constants")
     AstExprConstantInteger intNeg{Location(), -1};
     AstExprConstantInteger intLarge{Location(), 0x7FFFFFFFFFFFFFFFLL};
 
-    AstArray<char> charString;
-    charString.data = const_cast<char*>("a\x1d\0\\\"b");
-    charString.size = 6;
+    char escapeRaw[] = "a\x1d\0\\\"b";
+    AstExprConstantString needsEscaping{Location(), {escapeRaw, sizeof(escapeRaw) - 1}, AstExprConstantString::QuoteStyle::QuotedSimple};
 
-    AstExprConstantString needsEscaping{Location(), charString, AstExprConstantString::QuoteStyle::QuotedSimple};
+    char shorthandRaw[] = "x\b\f\n\r\ty";
+    AstExprConstantString hasShorthands{Location(), {shorthandRaw, sizeof(shorthandRaw) - 1}, AstExprConstantString::QuoteStyle::QuotedSimple};
+
+    char utf8Raw[] = "e\xc3\xa9\xf0\x9f\x98\x80";
+    AstExprConstantString hasUtf8{Location(), {utf8Raw, sizeof(utf8Raw) - 1}, AstExprConstantString::QuoteStyle::QuotedSimple};
 
     CHECK_EQ(R"({"type":"AstExprConstantNil","location":"0,0 - 0,0"})", toJson(&nil));
     CHECK_EQ(R"({"type":"AstExprConstantBool","location":"0,0 - 0,0","value":true})", toJson(&b));
@@ -87,6 +91,8 @@ TEST_CASE("encode_constants")
     CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":-1})", toJson(&intNeg));
     CHECK_EQ(R"({"type":"AstExprConstantInteger","location":"0,0 - 0,0","value":9223372036854775807})", toJson(&intLarge));
     CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"a\\u001d\\u0000\\\\\\\"b\"}", toJson(&needsEscaping));
+    CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"x\\b\\f\\n\\r\\ty\"}", toJson(&hasShorthands));
+    CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"e\xc3\xa9\xf0\x9f\x98\x80\"}", toJson(&hasUtf8));
 }
 
 TEST_CASE("basic_escaping")
@@ -332,6 +338,30 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatIf")
     CHECK(toJson(statement) == expected);
 }
 
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatIf_if_local")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    AstStat* statement = expectParseStatement("if local x = y then end");
+
+    std::string_view expected =
+        R"({"type":"AstStatIf","location":"0,0 - 0,23","condition":{"type":"AstExprGlobal","location":"0,13 - 0,14","global":"y"},"thenbody":{"type":"AstStatBlock","location":"0,19 - 0,20","hasEnd":true,"body":[]},"hasThen":true,"conditionLocal":"x","conditionIsConst":false})";
+
+    CHECK(toJson(statement) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatIf_if_const")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    AstStat* statement = expectParseStatement("if const x = y then end");
+
+    std::string_view expected =
+        R"({"type":"AstStatIf","location":"0,0 - 0,23","condition":{"type":"AstExprGlobal","location":"0,13 - 0,14","global":"y"},"thenbody":{"type":"AstStatBlock","location":"0,19 - 0,20","hasEnd":true,"body":[]},"hasThen":true,"conditionLocal":"x","conditionIsConst":true})";
+
+    CHECK(toJson(statement) == expected);
+}
+
 TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile")
 {
     AstStat* statement = expectParseStatement("while true do end");
@@ -477,10 +507,12 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatDeclareClass")
 
 TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_annotation")
 {
+    ScopedFastFlag sff{FFlag::LuauSingleTypeOptionalPackReturnsAttributeParens, true};
+
     AstStat* statement = expectParseStatement("type T = ((number) -> (string | nil)) & ((string) -> ())");
 
     std::string_view expected =
-        R"({"type":"AstStatTypeAlias","location":"0,0 - 0,56","name":"T","generics":[],"genericPacks":[],"value":{"type":"AstTypeIntersection","location":"0,9 - 0,56","types":[{"type":"AstTypeGroup","location":"0,9 - 0,37","inner":{"type":"AstTypeFunction","location":"0,10 - 0,36","attributes":[],"generics":[],"genericPacks":[],"argTypes":{"type":"AstTypeList","types":[{"type":"AstTypeReference","location":"0,11 - 0,17","name":"number","nameLocation":"0,11 - 0,17","parameters":[]}]},"argNames":[],"returnTypes":{"type":"AstTypePackExplicit","location":"0,22 - 0,36","typeList":{"type":"AstTypeList","types":[{"type":"AstTypeGroup","location":"0,22 - 0,36","inner":{"type":"AstTypeUnion","location":"0,23 - 0,35","types":[{"type":"AstTypeReference","location":"0,23 - 0,29","name":"string","nameLocation":"0,23 - 0,29","parameters":[]},{"type":"AstTypeReference","location":"0,32 - 0,35","name":"nil","nameLocation":"0,32 - 0,35","parameters":[]}]}}]}}}},{"type":"AstTypeGroup","location":"0,40 - 0,56","inner":{"type":"AstTypeFunction","location":"0,41 - 0,55","attributes":[],"generics":[],"genericPacks":[],"argTypes":{"type":"AstTypeList","types":[{"type":"AstTypeReference","location":"0,42 - 0,48","name":"string","nameLocation":"0,42 - 0,48","parameters":[]}]},"argNames":[],"returnTypes":{"type":"AstTypePackExplicit","location":"0,53 - 0,55","typeList":{"type":"AstTypeList","types":[]}}}}]},"exported":false})";
+        R"({"type":"AstStatTypeAlias","location":"0,0 - 0,56","name":"T","generics":[],"genericPacks":[],"value":{"type":"AstTypeIntersection","location":"0,9 - 0,56","types":[{"type":"AstTypeGroup","location":"0,9 - 0,37","inner":{"type":"AstTypeFunction","location":"0,10 - 0,36","attributes":[],"generics":[],"genericPacks":[],"argTypes":{"type":"AstTypeList","types":[{"type":"AstTypeReference","location":"0,11 - 0,17","name":"number","nameLocation":"0,11 - 0,17","parameters":[]}]},"argNames":[],"returnTypes":{"type":"AstTypePackExplicit","location":"0,22 - 0,36","typeList":{"type":"AstTypeList","types":[{"type":"AstTypeUnion","location":"0,23 - 0,35","types":[{"type":"AstTypeReference","location":"0,23 - 0,29","name":"string","nameLocation":"0,23 - 0,29","parameters":[]},{"type":"AstTypeReference","location":"0,32 - 0,35","name":"nil","nameLocation":"0,32 - 0,35","parameters":[]}]}]}}}},{"type":"AstTypeGroup","location":"0,40 - 0,56","inner":{"type":"AstTypeFunction","location":"0,41 - 0,55","attributes":[],"generics":[],"genericPacks":[],"argTypes":{"type":"AstTypeList","types":[{"type":"AstTypeReference","location":"0,42 - 0,48","name":"string","nameLocation":"0,42 - 0,48","parameters":[]}]},"argNames":[],"returnTypes":{"type":"AstTypePackExplicit","location":"0,53 - 0,55","typeList":{"type":"AstTypeList","types":[]}}}}]},"exported":false})";
     CHECK(toJson(statement) == expected);
 }
 

@@ -12,8 +12,8 @@
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-
-LUAU_FASTFLAG(LuauCstAttr)
+LUAU_FASTFLAGVARIABLE(LuauPrettyPrintVisualizeIndexerAccess)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 
 namespace
 {
@@ -622,27 +622,16 @@ struct Printer
         }
         else if (const auto& a = expr.as<AstExprFunction>())
         {
-            if (FFlag::LuauCstAttr)
+            if (const CstExprFunction* cstNode = lookupCstNode<CstExprFunction>(a))
             {
-                if (const CstExprFunction* cstNode = lookupCstNode<CstExprFunction>(a))
-                {
-                    visualizeAttributes(a->attributes, &cstNode->attrLists);
-                    if (cstNode->functionKeywordPosition.hasValue())
-                        advance(cstNode->functionKeywordPosition);
-                }
-                else
-                {
-                    for (const auto& attribute : a->attributes)
-                        visualizeAttribute(*attribute);
-                }
+                visualizeAttributes(a->attributes, &cstNode->attrLists);
+                if (cstNode->functionKeywordPosition.hasValue())
+                    advance(cstNode->functionKeywordPosition);
             }
             else
             {
                 for (const auto& attribute : a->attributes)
                     visualizeAttribute(*attribute);
-
-                if (const auto cstNode = lookupCstNode<CstExprFunction>(a); cstNode && cstNode->functionKeywordPosition.hasValue())
-                    advance(cstNode->functionKeywordPosition);
             }
 
             writer.keyword("function");
@@ -1195,23 +1184,13 @@ struct Printer
         }
         else if (const auto& a = program.as<AstStatFunction>())
         {
-            if (FFlag::LuauCstAttr)
+            if (const CstStatFunction* cstNode = lookupCstNode<CstStatFunction>(a))
             {
-                if (const CstStatFunction* cstNode = lookupCstNode<CstStatFunction>(a))
-                {
-                    visualizeAttributes(a->func->attributes, &cstNode->attrLists);
-                    advance(cstNode->functionKeywordPosition);
-                }
-                else
-                    visualizeAttributes(a->func->attributes, nullptr);
+                visualizeAttributes(a->func->attributes, &cstNode->attrLists);
+                advance(cstNode->functionKeywordPosition);
             }
             else
-            {
-                for (const auto& attribute : a->func->attributes)
-                    visualizeAttribute(*attribute);
-                if (const auto cstNode = lookupCstNode<CstStatFunction>(a))
-                    advance(cstNode->functionKeywordPosition);
-            }
+                visualizeAttributes(a->func->attributes, nullptr);
             writer.keyword("function");
             visualize(*a->name);
             visualizeFunctionBody(*a->func);
@@ -1220,7 +1199,7 @@ struct Printer
         {
             const auto cstNode = lookupCstNode<CstStatLocalFunction>(a);
 
-            if (FFlag::LuauCstAttr && cstNode)
+            if (cstNode)
                 visualizeAttributes(a->func->attributes, &cstNode->attrLists);
             else
             {
@@ -1389,6 +1368,11 @@ struct Printer
             writer.keyword("class");
             writer.advance(c->name->location.begin);
             writer.identifier(c->name->name.value);
+            if (c->super)
+            {
+                writer.keyword("extends");
+                visualize(*c->super);
+            }
 
             for (const auto& member : c->members)
             {
@@ -1563,7 +1547,23 @@ struct Printer
 
     void visualizeElseIf(AstStatIf& elseif)
     {
+        if (FFlag::DebugLuauIfLocalSyntax && elseif.conditionLocal)
+        {
+            const auto cstNode = lookupCstNode<CstStatIf>(&elseif);
+
+            if (elseif.conditionKeywordLocation)
+                advance(elseif.conditionKeywordLocation->begin);
+            writer.keyword(elseif.conditionIsConst ? "const" : "local");
+
+            visualize(*elseif.conditionLocal, cstNode ? cstNode->annotationColonPosition : Position::missing());
+
+            if (elseif.conditionEqualsLocation)
+                advance(elseif.conditionEqualsLocation->begin);
+            writer.symbol("=");
+        }
+
         visualize(*elseif.condition);
+
         if (elseif.thenLocation)
             advance(elseif.thenLocation->begin);
         writer.keyword("then");
@@ -1625,36 +1625,28 @@ struct Printer
     void visualizeAttribute(AstAttr& attribute)
     {
         advance(attribute.location.begin);
-        if (FFlag::LuauCstAttr)
+        if (const CstAttr* cstNode = lookupCstNode<CstAttr>(&attribute))
         {
-            if (const CstAttr* cstNode = lookupCstNode<CstAttr>(&attribute))
-            {
-                if (cstNode->hasAt)
-                    writer.symbol("@");
-                writer.identifier(attribute.name.value);
-            }
-            else if (const CstParametrizedAttr* cstParamNode = lookupCstNode<CstParametrizedAttr>(&attribute))
-            {
-                writer.identifier(attribute.name.value);
-
-                maybeAdvanceAndWrite(cstParamNode->openParenPosition, "(");
-
-                const size_t commaPositionSize = cstParamNode->argsCommaPositions.size;
-
-                for (size_t i = 0; i < attribute.args.size; ++i)
-                {
-                    visualize(*attribute.args.data[i]);
-                    if (i < commaPositionSize)
-                        maybeAdvanceAndWrite(cstParamNode->argsCommaPositions.data[i], ",");
-                }
-
-                maybeAdvanceAndWrite(cstParamNode->closeParenPosition, ")");
-            }
-            else
-            {
+            if (cstNode->hasAt)
                 writer.symbol("@");
-                writer.identifier(attribute.name.value);
+            writer.identifier(attribute.name.value);
+        }
+        else if (const CstParametrizedAttr* cstParamNode = lookupCstNode<CstParametrizedAttr>(&attribute))
+        {
+            writer.identifier(attribute.name.value);
+
+            maybeAdvanceAndWrite(cstParamNode->openParenPosition, "(");
+
+            const size_t commaPositionSize = cstParamNode->argsCommaPositions.size;
+
+            for (size_t i = 0; i < attribute.args.size; ++i)
+            {
+                visualize(*attribute.args.data[i]);
+                if (i < commaPositionSize)
+                    maybeAdvanceAndWrite(cstParamNode->argsCommaPositions.data[i], ",");
             }
+
+            maybeAdvanceAndWrite(cstParamNode->closeParenPosition, ")");
         }
         else
         {
@@ -1665,8 +1657,6 @@ struct Printer
 
     void visualizeAttributes(const AstArray<AstAttr*>& attributes, const AstArray<CstAttrList*>* attrLists)
     {
-        LUAU_ASSERT(FFlag::LuauCstAttr);
-
         if (attrLists == nullptr)
         {
             for (const auto& attribute : attributes)
@@ -1913,6 +1903,17 @@ struct Printer
             {
                 if (a->props.size == 0 && indexType && indexType->name == "number")
                 {
+                    if (FFlag::LuauPrettyPrintVisualizeIndexerAccess)
+                    {
+                        if (a->indexer->access != AstTableAccess::ReadWrite)
+                        {
+                            if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
+                                advance(accessLocation->begin);
+
+                            writer.keyword(a->indexer->access == AstTableAccess::Read ? "read" : "write");
+                        }
+                    }
+
                     visualizeTypeAnnotation(*a->indexer->resultType);
                 }
                 else
@@ -1933,6 +1934,20 @@ struct Printer
                     if (a->indexer)
                     {
                         comma();
+
+                        if (FFlag::LuauPrettyPrintVisualizeIndexerAccess)
+                        {
+                            if (a->indexer->access != AstTableAccess::ReadWrite)
+                            {
+                                if (const std::optional<Location>& accessLocation = a->indexer->accessLocation)
+                                    advance(accessLocation->begin);
+
+                                writer.keyword(a->indexer->access == AstTableAccess::Read ? "read" : "write");
+                            }
+
+                            advance(a->indexer->location.begin);
+                        }
+
                         writer.symbol("[");
                         visualizeTypeAnnotation(*a->indexer->indexType);
                         writer.symbol("]");
@@ -2155,7 +2170,7 @@ std::string toString(AstNode* node)
     StringWriter writer;
     writer.pos = node->location.begin;
 
-    Printer printer(writer, CstNodeMap{nullptr});
+    Printer printer(writer, CstNodeMap{});
     printer.writeTypes = true;
 
     if (auto statNode = node->asStat())
@@ -2182,7 +2197,7 @@ std::string prettyPrint(AstStatBlock& block, const CstNodeMap& cstNodeMap)
 
 std::string prettyPrint(AstStatBlock& block)
 {
-    return prettyPrint(block, CstNodeMap{nullptr});
+    return prettyPrint(block, CstNodeMap{});
 }
 
 std::string prettyPrintWithTypes(AstStatBlock& block, const CstNodeMap& cstNodeMap)
@@ -2196,7 +2211,7 @@ std::string prettyPrintWithTypes(AstStatBlock& block, const CstNodeMap& cstNodeM
 
 std::string prettyPrintWithTypes(AstStatBlock& block)
 {
-    return prettyPrintWithTypes(block, CstNodeMap{nullptr});
+    return prettyPrintWithTypes(block, CstNodeMap{});
 }
 
 PrettyPrintResult prettyPrint(std::string_view source, ParseOptions options, bool withTypes, bool ignoreParseErrors)

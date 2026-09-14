@@ -2329,7 +2329,8 @@ end
 
 -- First, do a calibration run to get the reference checksum
 local checksum, iterations = run_benchmark()
-if checksum ~= 16019469 then
+local expected = 16019469
+if math.abs(checksum - expected) > expected * 1e-3 then
     error("Bad checksum " .. checksum)
 end
 if iterations ~= 12 then

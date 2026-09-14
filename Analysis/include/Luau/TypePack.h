@@ -202,6 +202,8 @@ bool finite(TypePackId tp, TxnLog* log = nullptr);
 size_t size(const TypePack& tp, TxnLog* log = nullptr);
 std::optional<TypeId> first(TypePackId tp, bool ignoreHiddenVariadics = true);
 
+TypePackId typePackFromIterator(NotNull<TypeArena> arena, TypePackIterator startIter, TypePackIterator endIter);
+
 TypePackVar* asMutable(TypePackId tp);
 TypePack* asMutable(const TypePack* tp);
 

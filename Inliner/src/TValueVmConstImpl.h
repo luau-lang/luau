@@ -25,9 +25,11 @@ struct TempTValueBacking
     std::vector<TValue*> chunks;
     size_t chunkSize = kDefaultBackingSize;
     size_t countInChunk = 0;
+    uint8_t memcat;
 
     explicit TempTValueBacking(lua_State* L)
         : L(L)
+        , memcat(L->activememcat)
     {
         allocateChunk();
     }
@@ -41,7 +43,7 @@ struct TempTValueBacking
     ~TempTValueBacking() noexcept
     {
         for (TValue* chunk : chunks)
-            luaM_freearray(L, chunk, chunkSize, TValue, 0);
+            luaM_freearray(L, chunk, chunkSize, TValue, memcat);
     }
 
     TValue* nextTValue()
@@ -55,7 +57,7 @@ struct TempTValueBacking
 private:
     void allocateChunk()
     {
-        TValue* chunk = luaM_newarray(L, chunkSize, TValue, L->activememcat);
+        TValue* chunk = luaM_newarray(L, chunkSize, TValue, memcat);
         chunks.push_back(chunk);
         countInChunk = 0;
     }
@@ -79,24 +81,26 @@ struct TValueVmConstImpl : public VmConstOps
     std::optional<BcOp> evaluate(const BcOp& lhsOp, const BcOp& rhsOp, LuauOpcode op) const override;
     bool falsey(const BcOp& falseyOp) const override;
 
-    int cmp(const BcOp& lhsOp, const BcOp& rhsOp) const override;
-    int cmp(const BcOp& lhsOp, const BcImm& rhs) const override;
+    bool compare(const BcOp& lhsOp, const BcOp& rhsOp, BcCondition cond) const override;
 
     BcOp makeNil() const override;
-    BcImm makeImm(bool value) const override;
-    BcImm makeImm(int32_t value) const override;
-    BcRef<BcImm> asImm(BcOp op) const override;
+    BcOp makeImmBool(bool value) const override;
 
     bool isOrderable(const BcOp& vmConstOp) const override;
     bool kindEquals(const BcOp& lhsOp, const BcOp& rhsOp) const override;
 
+    bool fullyequal(const BcOp& lhsOp, const BcOp& rhsOp) const override;
+
     std::optional<bool> eq(const BcOp& lhsOp, const BcOp& rhsOp) const override;
-    std::optional<bool> eq(const BcOp& lhsOp, bool rhs) const override;
-    std::optional<bool> eq(const BcOp& lhsOp, int32_t rhs) const override;
 
-    bool isArithmeticConstant(const BcOp& vmConstOp) const override;
+    bool isNil(const BcOp& op) const override;
+    bool isBoolean(const BcOp& op) const override;
+    bool isNumber(const BcOp& op) const override;
 
-    double asNumber(const BcOp& vmConstOp) const override;
+    bool asBoolean(const BcOp& op) const override;
+    double asNumber(const BcOp& op) const override;
+
+    BcRef<BcImm> asImm(BcOp op) const override;
 };
 
 } // namespace Bytecode

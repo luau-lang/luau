@@ -26,7 +26,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
-LUAU_FASTFLAG(LuauAutocompleteSkipErrorTypeInUnion)
+LUAU_FASTFLAG(LuauFragmentACEnableTypeFunctionEvaluation)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -5202,14 +5202,14 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "class_instance_dot_property_from
 class Bar
     public value: number
 end
-local bar = Bar { value = 1 }
+local bar = Bar.new { value = 1 }
 )";
 
     const std::string dest = R"(--!strict
 class Bar
     public value: number
 end
-local bar = Bar { value = 1 }
+local bar = Bar.new { value = 1 }
 bar.@1
 )";
 
@@ -5236,7 +5236,7 @@ class Bar
     function doThing(self)
     end
 end
-local bar = Bar { value = 1 }
+local bar = Bar.new { value = 1 }
 )";
 
     const std::string dest = R"(--!strict
@@ -5245,7 +5245,7 @@ class Bar
     function doThing(self)
     end
 end
-local bar = Bar { value = 1 }
+local bar = Bar.new { value = 1 }
 bar.@1
 )";
 
@@ -5272,7 +5272,7 @@ class Point
     public y: number
     public z: number
 end
-local p = Point { x = 0, y = 0, z = 0 }
+local p = Point.new { x = 0, y = 0, z = 0 }
 )";
 
     const std::string dest = R"(--!strict
@@ -5281,7 +5281,7 @@ class Point
     public y: number
     public z: number
 end
-local p = Point { x = 0, y = 0, z = 0 }
+local p = Point.new { x = 0, y = 0, z = 0 }
 p.@1
 )";
 
@@ -5490,8 +5490,6 @@ end
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_ac_on_nonexistent_table")
 {
-    ScopedFastFlag _{FFlag::LuauAutocompleteSkipErrorTypeInUnion, true};
-
     const std::string source = R"(
         local mygame = {}
 
@@ -5524,6 +5522,42 @@ TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "fragment_ac_on_nonexistent_table
             REQUIRE(frag.result);
             CHECK(frag.result->acResults.entryMap.count("Animator"));
         }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteBuiltinsFixture, "fragment_autocomplete_type_function_string_singleton_union")
+{
+    ScopedFastFlag sff{FFlag::LuauFragmentACEnableTypeFunctionEvaluation, true};
+
+    const std::string source = R"(--!strict
+type function test(ty: type)
+    return types.unionof(types.singleton("test"), types.singleton("test2"))
+end
+
+local a: test<number> = 
+)";
+
+    const std::string dest = R"(--!strict
+type function test(ty: type)
+    return types.unionof(types.singleton("test"), types.singleton("test2"))
+end
+
+local a: test<number> = "@1"
+)";
+
+    // Only checking in new solver as old solver doesn't handle type functions
+    autocompleteFragmentInNewSolver(
+        source,
+        dest,
+        '1',
+        [](FragmentAutocompleteStatusResult& frag)
+        {
+            REQUIRE(frag.result);
+            CHECK_EQ(frag.result->acResults.context, AutocompleteContext::String);
+            CHECK(frag.result->acResults.entryMap.count("test") == 1);
+            CHECK(frag.result->acResults.entryMap.count("test2") == 1);
+        },
+        Position{7, 19}
     );
 }
 

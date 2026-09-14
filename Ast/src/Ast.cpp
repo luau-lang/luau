@@ -612,6 +612,31 @@ AstStatIf::AstStatIf(
 {
 }
 
+AstStatIf::AstStatIf(
+    const Location& location,
+    AstExpr* condition,
+    AstStatBlock* thenbody,
+    AstStat* elsebody,
+    const std::optional<Location>& thenLocation,
+    const std::optional<Location>& elseLocation,
+    AstLocal* conditionLocal,
+    bool conditionIsConst,
+    const std::optional<Location>& conditionKeywordLocation,
+    const std::optional<Location>& conditionEqualsLocation
+)
+    : AstStat(ClassIndex(), location)
+    , condition(condition)
+    , thenbody(thenbody)
+    , elsebody(elsebody)
+    , thenLocation(thenLocation)
+    , elseLocation(elseLocation)
+    , conditionLocal(conditionLocal)
+    , conditionIsConst(conditionIsConst)
+    , conditionKeywordLocation(conditionKeywordLocation)
+    , conditionEqualsLocation(conditionEqualsLocation)
+{
+}
+
 void AstStatIf::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
@@ -979,11 +1004,13 @@ AstStatDeclareFunction::AstStatDeclareFunction(
 {
 }
 
-AstStatClass::AstStatClass(const Location& location, AstLocal* name, AstArray<AstClassMember> members, bool exported)
+AstStatClass::AstStatClass(const Location& location, AstLocal* name, AstExpr* super, AstArray<AstClassMember> members, bool exported, bool open)
     : AstStat(ClassIndex(), location)
     , name(name)
+    , super(super)
     , members(members)
     , exported(exported)
+    , open(open)
 {
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
 }
@@ -993,6 +1020,9 @@ void AstStatClass::visit(AstVisitor* visitor)
     LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
     if (visitor->visit(this))
     {
+        if (super)
+            super->visit(visitor);
+
         for (const auto& member : members)
         {
             Luau::visit(

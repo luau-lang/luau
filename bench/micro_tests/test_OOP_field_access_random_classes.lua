@@ -1,4 +1,4 @@
--- --bench-args: --fflags=DebugLuauUserDefinedClasses,DebugLuauUserDefinedClassesRuntime
+-- --bench-args: --fflags=DebugLuauUserDefinedClasses,DebugLuauUserDefinedClassesRuntime,LuauCallFeedback,LuauEmitCallFeedback
 local function prequire(name)
     local success, result = pcall(require, name)
     return success and result
@@ -23,7 +23,7 @@ bench.runCode(function()
     local numbers = {}
 
     for i = 1, 100 do
-        numbers[i] = Number { value = math.random() }
+        numbers[i] = Number.new({ value = math.random() })
     end
 
     for i = 1, 100_000 do

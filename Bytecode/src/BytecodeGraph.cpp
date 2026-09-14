@@ -1,13 +1,9 @@
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/BytecodeGraph.h"
-#include "Luau/BytecodeUtils.h"
 #include "Luau/BytecodeWire.h"
 
 #include "BytecodeGraphParser.h"
 #include "BytecodeGraphSerializer.h"
-
-#include <unordered_set>
-#include <algorithm>
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauCostModel)
@@ -169,6 +165,33 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
             fn.constants[i].valueInteger = isNegative ? (int64_t)(~magnitude + 1) : (int64_t)magnitude;
             break;
         }
+
+        case LBC_CONSTANT_CLASS_SHAPE:
+        {
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+            fn.constants[i].kind = BcVmConstKind::ClassShape;
+            fn.constants[i].valueClassShape = uint32_t(fn.classShapes.size());
+
+            BytecodeBuilder::ClassShape shape;
+            shape.className = readVarInt(data, offset);
+
+            uint32_t numProps = readVarInt(data, offset);
+            uint32_t numMethods = readVarInt(data, offset);
+
+            shape.propertyNames.reserve(numProps);
+            shape.methodNames.reserve(numMethods);
+
+            for (uint32_t i = 0; i < numProps; ++i)
+                shape.propertyNames.emplace_back(readVarInt(data, offset));
+
+            for (uint32_t i = 0; i < numMethods; ++i)
+                shape.methodNames.emplace_back(readVarInt(data, offset));
+
+            fn.classShapes.push_back(shape);
+            break;
+        }
+
         default:
             LUAU_ASSERT(!"Unknown constant type!");
         }
@@ -278,8 +301,8 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
 
 struct CompTimeBytecodeGraphSerializer : public BytecodeGraphSerializer<BcVmConst>
 {
-    std::vector<uint16_t>& consts;
-    CompTimeBytecodeGraphSerializer(BytecodeBuilder& bcb, CompTimeBcFunction& fn, std::vector<uint16_t>& consts)
+    std::vector<uint32_t>& consts;
+    CompTimeBytecodeGraphSerializer(BytecodeBuilder& bcb, CompTimeBcFunction& fn, std::vector<uint32_t>& consts)
         : BytecodeGraphSerializer<BcVmConst>(bcb, fn)
         , consts(consts)
     {
@@ -305,8 +328,9 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
     for (auto& upval : fn.upvalueNames)
         bcb.pushDebugUpval({upval.data(), upval.size()});
 
-    std::vector<uint16_t> consts;
+    std::vector<uint32_t> consts;
     consts.reserve(fn.constants.size());
+
     for (auto& c : fn.constants)
     {
         switch (c.kind)
@@ -353,6 +377,14 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
         case BcVmConstKind::Integer:
             consts.push_back(bcb.addConstantInteger(c.valueInteger));
             break;
+
+        case BcVmConstKind::ClassShape:
+        {
+            LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+            LUAU_ASSERT(c.valueClassShape < fn.classShapes.size());
+            consts.push_back(bcb.addClassShape(fn.classShapes[c.valueClassShape]));
+            break;
+        }
         }
     }
 
@@ -377,7 +409,11 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
 
     bcb.foldJumps();
 
-    bcb.expandJumps();
+    bool hasLongJumpError = false;
+    bcb.expandJumps(hasLongJumpError);
+
+    if (hasLongJumpError)
+        return "";
 
     bcb.endFunction(fn.maxstacksize, fn.nups, fn.flags);
 

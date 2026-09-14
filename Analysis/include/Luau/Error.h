@@ -236,6 +236,14 @@ struct ModuleHasCyclicDependency
     bool operator==(const ModuleHasCyclicDependency& rhs) const;
 };
 
+struct CyclicModuleTopLevelAccess
+{
+    ModuleName cyclicModuleName;
+    Name localName;
+    Name propName;
+    bool operator==(const CyclicModuleTopLevelAccess& rhs) const;
+};
+
 struct FunctionExitsWithoutReturning
 {
     TypePackId expectedReturnType;
@@ -602,6 +610,30 @@ struct AmbiguousFunctionCall
     bool operator==(const AmbiguousFunctionCall& rhs) const;
 };
 
+// Error when we access an uninitialized field within a class constructor.
+// If fieldName is absent, then `self` was used in an r-value context before all its non nilable fields were initialized.
+struct UninitializedFieldAccess
+{
+    std::optional<std::string> fieldName;
+
+    bool operator==(const UninitializedFieldAccess& rhs) const;
+};
+
+struct TypeAnnotationRequired
+{
+    TypeId inferredTy;
+
+    bool operator==(const TypeAnnotationRequired& rhs) const;
+};
+
+struct ConstructorsShouldNotReturnAnything
+{
+    bool operator==(const ConstructorsShouldNotReturnAnything&) const
+    {
+        return true;
+    }
+};
+  
 // Error for attempting to negate a non-testable type
 struct InvalidNegation
 {
@@ -636,6 +668,7 @@ using TypeErrorData = Variant<
     ExtraInformation,
     DeprecatedApiUsed,
     ModuleHasCyclicDependency,
+    CyclicModuleTopLevelAccess,
     IllegalRequire,
     FunctionExitsWithoutReturning,
     DuplicateGenericParameter,
@@ -674,6 +707,9 @@ using TypeErrorData = Variant<
     InstantiateGenericsOnNonFunction,
     TypeInstantiationCountMismatch,
     AmbiguousFunctionCall,
+    UninitializedFieldAccess,
+    TypeAnnotationRequired,
+    ConstructorsShouldNotReturnAnything
     InvalidNegation>;
 
 struct TypeErrorSummary

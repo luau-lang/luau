@@ -145,6 +145,9 @@ static void errorToString(std::ostream& stream, const T& err)
 
         stream << "}";
     }
+    else if constexpr (std::is_same_v<T, CyclicModuleTopLevelAccess>)
+        stream << "CyclicModuleTopLevelAccess { cyclicModuleName = " << err.cyclicModuleName << ", localName = " << err.localName
+               << ", propName = " << err.propName << " }";
     else if constexpr (std::is_same_v<T, IllegalRequire>)
         stream << "IllegalRequire { " << err.moduleName << ", reason = " << err.reason << " }";
     else if constexpr (std::is_same_v<T, FunctionExitsWithoutReturning>)
@@ -303,6 +306,12 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "UnappliedTypeFunction {}";
     else if constexpr (std::is_same_v<T, AmbiguousFunctionCall>)
         stream << "AmbiguousFunctionCall { " << toString(err.function) << ", " << toString(err.arguments) << " }";
+    else if constexpr (std::is_same_v<T, UninitializedFieldAccess>)
+        stream << "UninitializedFieldAccess { " << (err.fieldName ? *err.fieldName : "self") << " }";
+    else if constexpr (std::is_same_v<T, TypeAnnotationRequired>)
+        stream << "TypeAnnotationRequired { " << toString(err.inferredTy) << " }";
+    else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
+        stream << "ConstructorsShouldNotReturnAnything {}";
     else if constexpr (std::is_same_v<T, InvalidNegation>)
         stream << "InvalidNegation { " << toString(err.inner) << " }";
     else
