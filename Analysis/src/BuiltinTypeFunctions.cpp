@@ -2655,17 +2655,12 @@ TypeFunctionReductionResult<TypeId> negateTypeFunction(
 
     TypeId inner = follow(typeParams.at(0));
 
-    // Russell's paradox: `type T = ~T`.
-    if (inner == instance)
-        return {ctx->builtins->errorType, Reduction::Erroneous};
-
     if (isPending(inner, ctx->solver))
         return {std::nullopt, Reduction::MaybeOk, {inner}, {}};
 
     if (is<ErrorType>(inner))
         return {ctx->builtins->errorType, Reduction::MaybeOk, {}, {}};
 
-    // `negate<T>` on a `T` that is not testable is uninhabited.
     if (!isTestable(inner))
         return {std::nullopt, Reduction::Erroneous};
 

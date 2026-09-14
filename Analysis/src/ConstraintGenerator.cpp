@@ -4652,17 +4652,11 @@ TypeId ConstraintGenerator::resolveReferenceType(
 
             for (const ConstraintPtr& c : FFlag::LuauCyclicRequireTypeInference ? cgraph->constraints : constraints)
             {
-                if (const ReduceConstraint* rc = get<ReduceConstraint>(*c))
+                if (const ReduceConstraint* rc = get<ReduceConstraint>(*c); rc && get<TypeFunctionInstanceType>(rc->ty) == tfit)
                 {
-                    if (const TypeFunctionInstanceType* ctf = get<TypeFunctionInstanceType>(rc->ty))
-                    {
-                        // If this type function instance has a `ReduceConstraint`, we know we tried to instantiate it.
-                        if (ctf == tfit)
-                        {
-                            instantiated = true;
-                            break;
-                        }
-                    }
+                    // If this type function instance has a `ReduceConstraint`, we know we tried to instantiate it.
+                    instantiated = true;
+                    break;
                 }
             }
 
