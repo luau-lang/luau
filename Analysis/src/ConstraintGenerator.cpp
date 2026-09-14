@@ -4658,7 +4658,10 @@ TypeId ConstraintGenerator::resolveReferenceType(
                     {
                         // If this type function instance has a `ReduceConstraint`, we know we tried to instantiate it.
                         if (ctf == tfit)
+                        {
                             instantiated = true;
+                            break;
+                        }
                     }
                 }
             }
