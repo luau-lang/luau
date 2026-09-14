@@ -709,7 +709,7 @@ using TypeErrorData = Variant<
     AmbiguousFunctionCall,
     UninitializedFieldAccess,
     TypeAnnotationRequired,
-    ConstructorsShouldNotReturnAnything
+    ConstructorsShouldNotReturnAnything,
     InvalidNegation>;
 
 struct TypeErrorSummary

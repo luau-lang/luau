@@ -4867,26 +4867,13 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
     else if (AstTypeNegation* nty = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSupport && nty)
     {
         TypeId inner = resolveType_(scope, nty->inner, inTypeArguments);
-
-        if (get<TableType>(inner) || get<MetatableType>(inner) || get<FunctionType>(inner) || get<GenericType>(inner))
-        {
-            reportError(nty->location, InvalidNegation{inner});
-            result = builtinTypes->errorType;
-        }
-        else if (!get<ErrorType>(inner)) // avoid excessive cascading
-        {
-            TypeFunctionInstanceType tfit{builtinTypes->typeFunctions->negateFunc, {inner}};
-            TypeId tfty = arena->addType(tfit);
-
-            TypeFun tf{{}, tfty};
-
-            PendingExpansionType pet{tf, {inner}, {}};
-            result = arena->addType(pet);
-
-            addConstraint(scope, ty->location, TypeAliasExpansionConstraint{result});
-        }
-        else
-            result = builtinTypes->errorType;
+        result = createTypeFunctionInstance(
+            builtinTypes->typeFunctions->negateFunc,
+            {inner},
+            {},
+            scope,
+            nty->location
+        );
     }
     else if (auto unionAnnotation = ty->as<AstTypeUnion>())
     {
