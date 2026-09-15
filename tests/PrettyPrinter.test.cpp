@@ -13,6 +13,7 @@ LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauPrettyPrintVisualizeIndexerAccess)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauTypeNegationSyntaxParsing)
 
 using namespace Luau;
 
@@ -2751,6 +2752,14 @@ TEST_CASE("pretty_print_readonly_indexer")
     )";
 
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
+}
+
+TEST_CASE("type_negation")
+{
+    ScopedFastFlag sff{FFlag::LuauTypeNegationSyntaxParsing, true};
+
+    std::string code = "type T = (~ vector)";
+    CHECK_EQ(code, prettyPrint(code, {}, true).code);
 }
 
 TEST_SUITE_END();

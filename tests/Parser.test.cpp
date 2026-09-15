@@ -26,6 +26,7 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauTypeNegationSyntaxParsing)
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
 
@@ -6554,6 +6555,31 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_const_error_multiple_bindings")
     matchParseError(
         "if const x, y = getValue() then end", "Expected '=' after variable name in 'if local', got ','; only a single binding is allowed"
     );
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_negation_syntax")
+{
+    ScopedFastFlag sff{FFlag::LuauTypeNegationSyntaxParsing, true};
+
+    AstStatBlock* block = parse(R"(
+        type T = ~number
+    )");
+
+    REQUIRE_EQ(1, block->body.size);
+
+    const auto stat1 = block->body.data[0];
+    LUAU_ASSERT(stat1);
+    CHECK_EQ(Position{1, 18}, stat1->location.end);
+
+    AstStatTypeAlias* ta = stat1->as<AstStatTypeAlias>();
+    CHECK(ta != nullptr);
+
+    CHECK(ta->type->is<AstTypeNegation>());
+
+    AstTypeReference* tr = ta->type->as<AstTypeNegation>()->inner->as<AstTypeReference>();
+    CHECK(tr != nullptr);
+
+    CHECK_EQ(tr->name, "number");
 }
 
 // TODO unit tests for various parse errors.
