@@ -5409,8 +5409,9 @@ TypeId ConstraintGenerator::createTypeFunctionInstance(
 
     if (FFlag::LuauTypeNegationSyntaxSupport)
     {
-        LUAU_ASSERT(get<TypeFunctionInstanceType>(result));
-        get<TypeFunctionInstanceType>(result)->appliedByConstraintGenerator = true;
+        TypeFunctionInstanceType* tfit = getMutable<TypeFunctionInstanceType>(result);
+        LUAU_ASSERT(tfit);
+        tfit->appliedByConstraintGenerator = true;
     }
 
     return result;
