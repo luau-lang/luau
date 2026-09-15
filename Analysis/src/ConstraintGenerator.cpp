@@ -4646,27 +4646,7 @@ TypeId ConstraintGenerator::resolveReferenceType(
 
     if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(result)))
     {
-        if (FFlag::LuauTypeNegationSyntaxSupport)
-        {
-            bool instantiated = false;
-
-            for (const ConstraintPtr& c : FFlag::LuauCyclicRequireTypeInference ? cgraph->constraints : constraints)
-            {
-                if (const ReduceConstraint* rc = get<ReduceConstraint>(*c); rc && get<TypeFunctionInstanceType>(rc->ty) == tfit)
-                {
-                    // If this type function instance has a `ReduceConstraint`, we know we tried to instantiate it.
-                    instantiated = true;
-                    break;
-                }
-            }
-
-            if (!instantiated)
-            {
-                reportError(ty->location, UnappliedTypeFunction{});
-                addConstraint(scope, ty->location, ReduceConstraint{result});
-            }
-        }
-        else
+        if (!FFlag::LuauTypeNegationSyntaxSupport || !tfit->appliedByConstraintGenerator)
         {
             reportError(ty->location, UnappliedTypeFunction{});
             addConstraint(scope, ty->location, ReduceConstraint{result});
@@ -5426,6 +5406,13 @@ TypeId ConstraintGenerator::createTypeFunctionInstance(
 {
     TypeId result = arena->addTypeFunction(function, std::move(typeArguments), std::move(packArguments));
     addConstraint(scope, location, ReduceConstraint{result});
+
+    if (FFlag::LuauTypeNegationSyntaxSupport)
+    {
+        LUAU_ASSERT(get<TypeFunctionInstanceType>(result));
+        get<TypeFunctionInstanceType>(result)->appliedByConstraintGenerator = true;
+    }
+
     return result;
 }
 

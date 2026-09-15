@@ -6583,5 +6583,4 @@ TEST_CASE_FIXTURE(Fixture, "type_negation_syntax")
 }
 
 // TODO unit tests for various parse errors.
-
 TEST_SUITE_END();
