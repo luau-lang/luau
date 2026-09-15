@@ -392,7 +392,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_union_of_tables")
     if (!FFlag::DebugLuauForceOldSolver)
         CHECK("setmetatable<A, {  }> | setmetatable<B, {  }>" == toString(requireTypeAlias("X")));
     else
-        CHECK("setmetatable<A, {|  |}> | setmetatable<B, {  }>" == toString(requireTypeAlias("X")));
+        CHECK("setmetatable<A, {|  |}> | setmetatable<B, {|  |}>" == toString(requireTypeAlias("X")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_2_args_overload")
