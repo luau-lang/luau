@@ -454,7 +454,10 @@ std::string getBuiltinDefinitionSource(SolverMode solver)
     else
         result += kBuiltinDefinitionCoroutineSrc_DEPRECATED;
 
-    result += solver == SolverMode::New && FFlag::LuauNewSolverNewDefinitions ? kBuiltinDefinitionTableSrc : kBuiltinDefinitionTableSrc_OldSolver;
+    if (FFlag::LuauNewSolverNewDefinitions && solver == SolverMode::New)
+        result += kBuiltinDefinitionTableSrc;
+    else
+        result += kBuiltinDefinitionTableSrc_OldSolver;
 
     result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
