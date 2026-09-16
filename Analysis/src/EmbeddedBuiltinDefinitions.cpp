@@ -5,6 +5,7 @@ LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAGVARIABLE(LuauNewSolverNewDefinitions)
 LUAU_FASTFLAGVARIABLE(DebugLuauCoroutineFinallyAnalysis)
 
 namespace Luau
@@ -211,6 +212,35 @@ declare coroutine: {
 
 static constexpr const char* kBuiltinDefinitionTableSrc = R"BUILTIN_SRC(
 
+declare function getmetatable<T>(tab: T): getmetatable<T>
+declare function setmetatable<T, MT>(tab: T, meta: MT): setmetatable<T, MT>
+
+declare table: {
+    concat: <V>(t: {V}, sep: string?, i: number?, j: number?) -> string,
+    insert: (<V>(t: {V}, value: V) -> ()) & (<V>(t: {V}, pos: number, value: V) -> ()),
+    maxn: <V>(t: {V}) -> number,
+    remove: <V>(t: {V}, number?) -> V?,
+    sort: <V>(t: {V}, comp: ((V, V) -> boolean)?) -> (),
+    create: <V>(count: number, value: V?) -> {V},
+    find: <V>(haystack: {V}, needle: V, init: number?) -> number?,
+
+    unpack: <V>(list: {V}, i: number?, j: number?) -> ...V,
+    pack: <V>(...V) -> { n: number, [number]: V },
+
+    getn: <V>(t: {V}) -> number,
+    foreach: <K, V>(t: {[K]: V}, f: (K, V) -> ()) -> (),
+    foreachi: <V>({V}, (number, V) -> ()) -> (),
+
+    move: <V>(src: {V}, a: number, b: number, t: number, dst: {V}?) -> {V},
+
+    clear: (table: {}) -> (),
+    isfrozen: (t: {}) -> boolean,
+}
+
+)BUILTIN_SRC";
+
+static constexpr const char* kBuiltinDefinitionTableSrc_OldSolver = R"BUILTIN_SRC(
+
 declare table: {
     concat: <V>(t: {V}, sep: string?, i: number?, j: number?) -> string,
     insert: (<V>(t: {V}, value: V) -> ()) & (<V>(t: {V}, pos: number, value: V) -> ()),
@@ -411,7 +441,7 @@ declare class: {
 }
 )CLASS_SRC";
 
-std::string getBuiltinDefinitionSource()
+std::string getBuiltinDefinitionSource(SolverMode solver)
 {
     std::string result = kBuiltinDefinitionBaseSrc;
 
@@ -424,7 +454,11 @@ std::string getBuiltinDefinitionSource()
     else
         result += kBuiltinDefinitionCoroutineSrc_DEPRECATED;
 
-    result += kBuiltinDefinitionTableSrc;
+    if (FFlag::LuauNewSolverNewDefinitions && solver == SolverMode::New)
+        result += kBuiltinDefinitionTableSrc;
+    else
+        result += kBuiltinDefinitionTableSrc_OldSolver;
+
     result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
     if (FFlag::LuauIntegerType2 && FFlag::LuauIntegerLibrary)
