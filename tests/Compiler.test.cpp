@@ -1940,6 +1940,36 @@ RETURN R0 1
 )");
 }
 
+TEST_CASE("ConstantFoldVectorCompare")
+{
+    CHECK_EQ("\n" + compileFunction("local a, b = vector.create(1, 2, 3), vector.create(1, 2, 4); return a == a, a ~= b", 0, 2), R"(
+LOADB R0 1
+LOADB R1 1
+RETURN R0 2
+)");
+
+    CHECK_EQ("\n" + compileFunction("local a, b = vector.create(1, 2, 3, 4), vector.create(1, 2, 4, 8); return a == a, a ~= b", 0, 2), R"(
+LOADB R0 1
+LOADB R1 1
+RETURN R0 2
+)");
+
+    // Vectors that only differ in W cannot be compared as W is not visible with LUA_VECTOR_SIZE == 3
+    CHECK_EQ("\n" + compileFunction("local a, b = vector.create(1, 2, 3), vector.create(1, 2, 3, 9); return a == b, a ~= b", 0, 2), R"(
+LOADK R1 K0 [1, 2, 3]
+LOADK R2 K1 [1, 2, 3, 9]
+JUMPIFEQ R1 R2 L0
+LOADB R0 0 +1
+L0: LOADB R0 1
+L1: LOADK R2 K0 [1, 2, 3]
+LOADK R3 K1 [1, 2, 3, 9]
+JUMPIFNOTEQ R2 R3 L2
+LOADB R1 0 +1
+L2: LOADB R1 1
+L3: RETURN R0 2
+)");
+}
+
 TEST_CASE("ConstantFoldVectorComponents")
 {
     CHECK_EQ(
