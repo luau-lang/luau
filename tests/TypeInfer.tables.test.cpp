@@ -2749,7 +2749,7 @@ b()
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(toString(result.errors[0]), R"(Cannot call a value of type t1 where t1 = { @metatable {| __call: t1 |}, {|  |} })");
+    CHECK_EQ(toString(result.errors[0]), R"(Cannot call a value of type t1 where t1 = setmetatable<{|  |}, {| __call: t1 |}>)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_shouldn't_add_optional_properties_to_sealed_tables")
@@ -4021,7 +4021,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_has_a_side_effect")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK(toString(requireType("foo")) == "{ @metatable mt, foo }");
+    CHECK(toString(requireType("foo")) == "setmetatable<foo, mt>");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tables_should_be_fully_populated")
@@ -5405,15 +5405,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "subtyping_with_a_metatable_table_path")
 
     if (FFlag::LuauNewTypePathErrorMessages)
         CHECK(
-            "Expected this to be 'setmetatable<unknown, unknown>', but got '{ @metatable {  }, {  } & {  } }'; \n"
-            "the 1st type pack entry is `{ @metatable {  }, {  } & {  } }` and the reduced form of the 1st type pack entry is "
-            "`never`, and `{ @metatable {  }, {  } & {  } }` is not a subtype of `never`" == toString(result.errors.at(3))
+            "Expected this to be 'setmetatable<unknown, unknown>', but got 'setmetatable<{  } & {  }, {  }>'; \n"
+            "the 1st type pack entry is `setmetatable<{  } & {  }, {  }>` and the reduced form of the 1st type pack entry is "
+            "`never`, and `setmetatable<{  } & {  }, {  }>` is not a subtype of `never`" == toString(result.errors.at(3))
         );
     else
         CHECK(
-            "Expected this to be 'setmetatable<unknown, unknown>', but got '{ @metatable {  }, {  } & {  } }'; \n"
-            "the 1st entry in the type pack is `{ @metatable {  }, {  } & {  } }` and in the 1st entry in the type packreduces to "
-            "`never`, and `{ @metatable {  }, {  } & {  } }` is not a subtype of `never`" == toString(result.errors.at(3))
+            "Expected this to be 'setmetatable<unknown, unknown>', but got 'setmetatable<{  } & {  }, {  }>'; \n"
+            "the 1st entry in the type pack is `setmetatable<{  } & {  }, {  }>` and in the 1st entry in the type packreduces to "
+            "`never`, and `setmetatable<{  } & {  }, {  }>` is not a subtype of `never`" == toString(result.errors.at(3))
         );
 }
 
@@ -5439,8 +5439,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_union_type")
     ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(
-        "Cannot add indexer to table '{ @metatable t1, (nil & ~(false?)) | {  } } where t1 = { new: <T>(T) -> { @metatable t1, (T & ~(false?)) | {  "
-        "} } }'",
+        "Cannot add indexer to table 'setmetatable<(nil & ~(false?)) | {  }, t1> where t1 = { new: <T>(T) -> setmetatable<(T & ~(false?)) | {  }, "
+        "t1> }'",
         toString(result.errors[0])
     );
 }
@@ -7652,7 +7652,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oss_2597_constraint_forcing_bad_refinement")
         end
     )"));
 
-    CHECK_EQ("({ @metatable MyClass, { _t: T } }) -> ()", toString(requireTypeAtPosition({16, 28})));
+    CHECK_EQ("(setmetatable<{ _t: T }, MyClass>) -> ()", toString(requireTypeAtPosition({16, 28})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_1")
