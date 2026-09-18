@@ -29,6 +29,7 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
+LUAU_FASTFLAG(LuauBetterMissingPropertiesTypeError)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
@@ -2682,6 +2683,8 @@ a.p = { x = 9 }
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_error")
 {
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
+
     CheckResult result = check(R"(
 --!strict
 type Super = { x : number }
@@ -2716,7 +2719,7 @@ local y: number = tmp.p.y
         const std::string expected = R"(Expected this to be exactly 'HasSuper', but got 'tmp'
 caused by:
   Property 'p' is not compatible.
-Table type '{| x: number, y: number |}' not compatible with type 'Super' because the former has extra field 'y')";
+extra field 'y' found in type '{| x: number, y: number |}' from expected type 'Super')";
         CHECK_EQ(expected, toString(result.errors[0]));
     }
 }
@@ -3768,7 +3771,10 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
-    ScopedFastFlag sff{FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks, true};
+    ScopedFastFlag sffs[] {
+        {FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks, true},
+        {FFlag::LuauBetterMissingPropertiesTypeError, true}
+    };
     CheckResult result = check(R"(
         local function f(s)
             return s:absolutely_no_scalar_has_this_method()
@@ -3816,14 +3822,14 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
             R"(Expected this to be 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}', but got 'string'
 caused by:
   The given type's metatable does not satisfy the requirements.
-Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+required field 'absolutely_no_scalar_has_this_method' not found in type 'typeof(string)' from expected type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}')";
         CHECK_EQ(expected1, toString(result.errors[0]));
 
         const std::string expected2 =
             R"(Expected this to be 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}', but got '"bar"'
 caused by:
   The given type's metatable does not satisfy the requirements.
-Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+required field 'absolutely_no_scalar_has_this_method' not found in type 'typeof(string)' from expected type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}')";
         CHECK_EQ(expected2, toString(result.errors[1]));
 
         const std::string expected3 = R"(Expected this to be
@@ -3835,7 +3841,7 @@ caused by:
 Expected this to be 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}', but got '"bar"'
 caused by:
   The given type's metatable does not satisfy the requirements.
-Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+required field 'absolutely_no_scalar_has_this_method' not found in type 'typeof(string)' from expected type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}')";
         CHECK_EQ(expected3, toString(result.errors[2]));
     }
 }
@@ -3858,6 +3864,8 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compati
 
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_compatible")
 {
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
+
     CheckResult result = check(R"(
         local function f(s): string
             local foo = s:absolutely_no_scalar_has_this_method()
@@ -3887,7 +3895,7 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_
             R"(Expected this to be 'string', but got 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (T, U...) +}'
 caused by:
   The given type's metatable does not satisfy the requirements.
-Table type 'typeof(string)' not compatible with type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (T, U...) +}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+required field 'absolutely_no_scalar_has_this_method' not found in type 'typeof(string)' from expected type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (T, U...) +}')";
         CHECK_EQ(expected, toString(result.errors[0]));
 
         CHECK_EQ("<T, U...>(t1) -> string where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (T, U...) +}", toString(requireType("f")));
@@ -5841,6 +5849,7 @@ TEST_CASE_FIXTURE(Fixture, "deeply_nested_classish_inference")
 TEST_CASE_FIXTURE(Fixture, "bigger_nested_table_causes_big_type_error")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff{FFlag::LuauBetterMissingPropertiesTypeError, true};
 
     auto result = check(R"(
         type File = {
@@ -5873,8 +5882,7 @@ TEST_CASE_FIXTURE(Fixture, "bigger_nested_table_causes_big_type_error")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    std::string expected =
-        R"(Table type '{ path: string, type: "file" }' not compatible with type 'File' because the former is missing field 'name')";
+    std::string expected = R"(required field 'name' not found in type '{ path: string, type: "file" }' from expected type 'File')";
     CHECK_EQ(expected, toString(result.errors[0]));
     CHECK_EQ(result.errors[0].location, Location{{21, 20}, {24, 21}});
 }
