@@ -554,17 +554,6 @@ int main(int argc, char** argv)
         }
     }
 
-    std::unordered_set<Luau::ModuleName> checkedNames(checkedModules.begin(), checkedModules.end());
-
-    for (const std::string& path : files)
-    {
-        if (checkedNames.count(path) == 0)
-        {
-            fprintf(stderr, "Error opening %s\n", path.c_str());
-            failed++;
-        }
-    }
-
     if (!configResolver.configErrors.empty())
     {
         failed += int(configResolver.configErrors.size());
