@@ -2997,7 +2997,8 @@ private:
             head->condition->visit(this);
             head->trueExpr->visit(this);
 
-            conditions.push_back(head->condition);
+            if (!FFlag::DebugLuauIfLocalAnalysis || !head->conditionLocal)
+                conditions.push_back(head->condition);
 
             if (head->falseExpr->is<AstExprIfElse>())
             {

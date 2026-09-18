@@ -16,7 +16,6 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterLambdaHandling)
-LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSetMetatable)
 
@@ -337,16 +336,8 @@ struct BidirectionalTypePusher
             {
                 if (auto utv = get<UnionType>(expectedType))
                 {
-                    if (FFlag::LuauBidirectionalInferenceSimplifyTables)
-                    {
-                        if (auto tt = extractMatchingTableType(utv, exprType, solver->builtinTypes, solver->arena))
-                            (void)pushType(*tt, expr);
-                    }
-                    else
-                    {
-                        if (auto tt = extractMatchingTableType_DEPRECATED(utv, exprType, solver->builtinTypes))
-                            (void)pushType(*tt, expr);
-                    }
+                    if (auto tt = extractMatchingTableType(utv, exprType, solver->builtinTypes, solver->arena))
+                        (void)pushType(*tt, expr);
                 }
                 else if (auto itv = get<IntersectionType>(expectedType))
                 {

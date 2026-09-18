@@ -321,6 +321,28 @@ if(LUAU_BUILD_TESTS)
     add_subdirectory(fuzz)
 endif()
 
+if(LUAU_BUILD_CLI AND LUAU_BUILD_TESTS)
+    if(CMAKE_VERSION VERSION_LESS 3.12)
+        find_package(PythonInterp 3 REQUIRED)
+        set(LUAU_PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}")
+    else()
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        set(LUAU_PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
+    endif()
+    add_custom_target(Luau.GoldenTest
+        COMMAND ${LUAU_PYTHON_EXECUTABLE} -m tools.golden.selftest
+            --luau "$<TARGET_FILE:Luau.Repl.CLI>"
+            --luau-analyze "$<TARGET_FILE:Luau.Analyze.CLI>"
+        COMMAND ${LUAU_PYTHON_EXECUTABLE} -m tools.golden
+            --luau "$<TARGET_FILE:Luau.Repl.CLI>"
+            --luau-analyze "$<TARGET_FILE:Luau.Analyze.CLI>"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        USES_TERMINAL
+        VERBATIM
+    )
+    add_dependencies(Luau.GoldenTest Luau.Repl.CLI Luau.Analyze.CLI)
+endif()
+
 if(LUAU_BUILD_WEB)
     target_compile_options(Luau.Web PRIVATE ${LUAU_OPTIONS})
     target_link_libraries(Luau.Web PRIVATE Luau.Compiler Luau.VM Luau.Analysis)

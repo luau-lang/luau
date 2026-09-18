@@ -40,11 +40,12 @@ LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAGVARIABLE(DebugLuauWarnOnUnannotatedTopLevelFunctions)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAGVARIABLE(LuauSoundGenericMismatches)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
-LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSetMetatable)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAGVARIABLE(LuauCannotAddIndexerToTablePrimitive)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
 
@@ -2323,6 +2324,9 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
     {
         return indexExprMetatableHelper(indexExpr, mt, exprType, indexType);
     }
+    else if (const auto primitive = get<PrimitiveType>(exprType);
+             FFlag::LuauCannotAddIndexerToTablePrimitive && primitive && primitive->type == PrimitiveType::Table)
+        reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
     else if (auto cls = get<ExternType>(exprType))
     {
         if (cls->indexer)
@@ -3044,6 +3048,14 @@ void TypeChecker2::visit(AstExprIfElse* expr)
         InConditionalContext inContext(&typeContext, TypeContext::Condition);
         visit(expr->condition, ValueContext::RValue);
     }
+
+    if (FFlag::DebugLuauIfLocalAnalysis && expr->conditionLocal && expr->conditionLocal->annotation)
+    {
+        TypeId annotationType = lookupAnnotation(expr->conditionLocal->annotation);
+        testPotentialLiteralIsSubtype(expr->condition, annotationType);
+        visit(expr->conditionLocal->annotation);
+    }
+
     visit(expr->trueExpr, ValueContext::RValue);
     visit(expr->falseExpr, ValueContext::RValue);
 }
@@ -3700,34 +3712,58 @@ void TypeChecker2::explainError(TypePackId subTy, TypePackId superTy, Location l
 bool TypeChecker2::testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedType)
 {
     NotNull<Scope> scope{findInnermostScope(expr->location)};
-    auto exprTy = lookupType(expr);
+    TypeId exprTy = FFlag::LuauSoundGenericMismatches ? follow(lookupType(expr)) : lookupType(expr);
 
-    SubtypingResult r;
-
-    if (FFlag::LuauImproveUniqueTableWidthSubtyping && !FFlag::LuauBidirectionalInferenceSimplifyTables)
+    if (FFlag::LuauSoundGenericMismatches)
     {
-        DenseHashSet<TypeId> uniqueTypes;
-        findUniqueTypes(NotNull{&uniqueTypes}, std::vector{expr}, NotNull{&module->astTypes});
+        expectedType = follow(expectedType);
 
-        // We create a separate `Subtyping` instance here because, in this
-        // particular context, we have knowledge that any table literals are
-        // unique references to their types.  Because we know that no other
-        // references to those values can exist, we can safely test those table
-        // types covariantly.
+        // If a generic type comes from an enclosing scope, then we must type check its use more strictly because...
         //
-        // These same TypeIds must _not_ be considered to be unique references
-        // if they occur in any other context, and so we need to separate the
-        // caches.
+        // HACK(CLI-225132): this is a really limited scope solution to much larger problems that exist in `Subtyping`.
+        //
+        // `Subtyping` does not appropriately deal with generic types and their scopes, leading us to consistently more permissive
+        // behavior in generic function bodies than should ever be allowed. This hack makes the simplest cases of that unsoundness
+        // raise errors to the user, but does not do anything about compositional instances of the same pattern. Doing more of that
+        // here would amount to reimplementing subtyping altogether.
+        //
+        // In general, we need to revisit our implementation subtyping to solve this problem at its heart, but, as of the time of
+        // writing this, we have not been making good headway into those problems, and this hack feels like it at least will help people
+        // avoid the problem some of the time (and hopefully enough to be worth it).
+        if (auto generic = get<GenericType>(expectedType); generic && subsumes(generic->scope, scope))
+        {
+            // If our type is already the generic type, we can proceed normally without this check.
+            // If our type is free or `never`, then it is sound to treat it as the generic type.
+            if (exprTy != expectedType && !is<FreeType, NeverType>(exprTy))
+            {
+                // We need to look at intersections for the sake of refinements.
+                // If we have a refinement like `T & ~nil`, we don't want to claim it's not `T`.
+                bool isExpectedPartOfIntersection = false;
+                if (auto intersection = get<IntersectionType>(exprTy))
+                {
+                    for (TypeId part : intersection)
+                    {
+                        if (follow(part) == expectedType)
+                        {
+                            isExpectedPartOfIntersection = true;
+                            break;
+                        }
+                    }
+                }
 
-        Subtyping st{builtinTypes, NotNull{module->internalTypes.get()}, NotNull{&normalizer}, typeFunctionRuntime, ice};
-        st.uniqueTypes = &uniqueTypes;
+                if (!isExpectedPartOfIntersection)
+                {
+                    if (isErrorSuppressing(expr->location, exprTy, expr->location, expectedType))
+                        return true;
 
-        r = st.isSubtype(exprTy, expectedType, scope);
+                    maybeReportSubtypingError(exprTy, expectedType, expr->location);
+                    return false;
+                }
+            }
+        }
     }
-    else
-    {
-        r = subtyping->isSubtype(exprTy, expectedType, scope);
-    }
+
+    SubtypingResult r = subtyping->isSubtype(exprTy, expectedType, scope);
 
     if (r.isSubtype)
         return true;
@@ -3798,16 +3834,8 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     {
         if (auto utv = get<UnionType>(expectedType))
         {
-            if (FFlag::LuauBidirectionalInferenceSimplifyTables)
-            {
-                if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes, NotNull{module->internalTypes.get()}))
-                    return testLiteralOrAstTypeIsSubtype(expr, *tt);
-            }
-            else
-            {
-                if (auto tt = extractMatchingTableType_DEPRECATED(utv, exprType, builtinTypes))
-                    return testLiteralOrAstTypeIsSubtype(expr, *tt);
-            }
+            if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes, NotNull{module->internalTypes.get()}))
+                return testLiteralOrAstTypeIsSubtype(expr, *tt);
         }
 
         if (auto itv = get<IntersectionType>(expectedType))

@@ -23,6 +23,7 @@ LUAU_FLAGVERSION(LuauGcTraceUdata, 3)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
 LUAU_FASTFLAG(LuauFastpcall)
 LUAU_FASTFLAG(DebugLuauCoroutineFinally)
+LUAU_FASTFLAG(LuauFrozenMetaButterfly)
 
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
@@ -686,6 +687,22 @@ static void tableresizeprotected(lua_State* L, LuaTable* t, int nhsize)
     LUAU_ASSERT(status == LUA_OK || status == LUA_ERRMEM);
 }
 
+static void rebuildmetacache(lua_State* L, LuaTable* h)
+{
+    uint8_t tmcache = 0;
+
+    for (int event = 0; event < TM_N; ++event)
+    {
+        const TValue* value = luaH_getstr(h, L->global->tmname[event]);
+        setobj(L, getmetacache(h, event), value);
+
+        if (event <= TM_EQ && ttisnil(value))
+            tmcache |= cast_byte(1u << event);
+    }
+
+    h->tmcache = tmcache;
+}
+
 /*
 ** clear collected entries from weaktables
 */
@@ -727,14 +744,20 @@ static size_t cleartable(lua_State* L, GCObject* l)
             }
         }
 
-        if (const char* modev = gettablemode(L->global, h))
+        if (FFlag::LuauFrozenMetaButterfly && hasmetacache(h))
+            rebuildmetacache(L, h);
+
+        if (!FFlag::LuauFrozenMetaButterfly || !h->readonly) // frozen tables do not shrink
         {
-            // are we allowed to shrink this weak table?
-            if (strchr(modev, 's'))
+            if (const char* modev = gettablemode(L->global, h))
             {
-                // shrink at 37.5% occupancy
-                if (activevalues < sizenode(h) * 3 / 8)
-                    tableresizeprotected(L, h, activevalues);
+                // are we allowed to shrink this weak table?
+                if (strchr(modev, 's'))
+                {
+                    // shrink at 37.5% occupancy
+                    if (activevalues < sizenode(h) * 3 / 8)
+                        tableresizeprotected(L, h, activevalues);
+                }
             }
         }
 

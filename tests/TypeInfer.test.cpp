@@ -29,7 +29,6 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauForbidInternalTypes)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
-LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauCheckReadTyWhenRelatingExtern)
 LUAU_FASTFLAG(LuauDoNotIceForBindingGeneric)
 
@@ -3049,10 +3048,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_with_intersection_props_and_partial_table"
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
-        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSubtypingMissingPropertiesAsNil, true};
 
     // When a component's props are an intersection of table types with optional
     // fields, passing a table with only a subset of those fields should work.
@@ -3080,10 +3076,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_P_widening_with_recursive_optional_field")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
-        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSubtypingMissingPropertiesAsNil, true};
 
     // When a component has a recursive optional field (like React's children),
     // widening the table literal should not cause the bounds check to fail.

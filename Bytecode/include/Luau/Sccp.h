@@ -727,7 +727,8 @@ struct Sccp
                     else if (use.kind == BcOpKind::Phi)
                         replacePhiOperand(func.phi(use), op, unique);
 
-                    usesOf(func, unique).push_back(use);
+                    // `unique` can be VmReg(it can be param).
+                    func.recordUse(unique, use);
                 }
                 phi->uses.clear();
 

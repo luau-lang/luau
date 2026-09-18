@@ -370,4 +370,146 @@ do
     assert(f(nil) == "fallthrough")
 end
 
+-- if-local expression form
+
+-- basic truthy path: binds x and yields the then-expression
+do
+    local y = if local x = 42 then x else 0
+    assert(y == 42)
+end
+
+-- falsy path (nil): yields the else-expression
+do
+    local y = if local x = nil then x else "default"
+    assert(y == "default")
+end
+
+-- falsy path (false): yields the else-expression
+do
+    local y = if local x = false then x else "default"
+    assert(y == "default")
+end
+
+-- binding is usable in the then-expression
+do
+    local user = { name = "alice" }
+    local name = if local u = user then u.name else "anonymous"
+    assert(name == "alice")
+end
+
+-- elseif-local chain: each binding is scoped to its own then-expression
+do
+    local admins = { [1] = { title = "root" } }
+    local guests = { [2] = { name = "bob" } }
+
+    local label1 = if local a = admins[1] then a.title elseif local g = guests[2] then g.name else "unknown"
+    assert(label1 == "root")
+
+    local label2 = if local a = admins[99] then a.title elseif local g = guests[2] then g.name else "unknown"
+    assert(label2 == "bob")
+
+    local label3 = if local a = admins[99] then a.title elseif local g = guests[99] then g.name else "unknown"
+    assert(label3 == "unknown")
+end
+
+-- if const expression
+do
+    local y = if const x = 100 then x else 0
+    assert(y == 100)
+end
+
+-- initializer evaluated exactly once
+do
+    local calls = 0
+    local function sideEffect()
+        calls += 1
+        return calls
+    end
+    local y = if local x = sideEffect() then x else -1
+    assert(y == 1)
+    assert(calls == 1)
+end
+
+-- initializer evaluated once even when falsy (else-expression yielded)
+do
+    local calls = 0
+    local function sideEffectNil()
+        calls += 1
+        return nil
+    end
+    local y = if local x = sideEffectNil() then x else "else"
+    assert(y == "else")
+    assert(calls == 1)
+end
+
+-- nested if-local expression in the then-branch
+do
+    local outer = { inner = 7 }
+    local y = if local o = outer then (if local i = o.inner then i else -1) else -2
+    assert(y == 7)
+end
+
+-- multiple return values: only the first is bound and tested
+do
+    local function multi()
+        return 5, 6, 7
+    end
+    local y = if local a = multi() then a else -1
+    assert(y == 5)
+end
+
+-- multireturn whose first value is falsy: else-expression yielded
+do
+    local function multiFalsy()
+        return nil, "err"
+    end
+    local y = if local a = multiFalsy() then a else "else"
+    assert(y == "else")
+end
+
+-- multireturn truncation is observable: a trailing truthy value must not keep the then-branch alive
+do
+    local function falseThenTrue()
+        return false, true
+    end
+    local y = if local a = falseThenTrue() then "then" else "else"
+    assert(y == "else")
+end
+
+-- upvalue capture of the binding from within the then-expression
+do
+    local capture = if local x = "hello" then (function() return x end) else (function() return "none" end)
+    assert(capture() == "hello")
+end
+
+-- binding is not in scope in the else-expression (uses outer x)
+do
+    local x = "outer"
+    local y = if local x = nil then x else x
+    assert(y == "outer")
+end
+
+-- constant-true condition still binds and yields the then-expression
+do
+    local y = if local x = 123 then x * 2 else 0
+    assert(y == 246)
+end
+
+-- constant-false condition yields the else-expression
+do
+    local y = if local x = false then 1 else 2
+    assert(y == 2)
+end
+
+-- each iteration captures a fresh binding
+do
+    local closures = {}
+    for i = 1, 3 do
+        closures[i] = if local x = i then (function() return x end) else (function() return 0 end)
+    end
+    assert(closures[1]() == 1)
+    assert(closures[2]() == 2)
+    assert(closures[3]() == 3)
+end
+
 return "OK"

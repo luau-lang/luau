@@ -23,7 +23,6 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
@@ -2299,17 +2298,9 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
     TypeId targetTy = follow(typeParams.at(0));
     TypeId metatableTy = follow(typeParams.at(1));
 
-    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-    {
-        // Having the target type be a pending table does not block dispatch.
-        if (isPending(targetTy, ctx->solver) && !is<TableType>(targetTy))
-            return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
-    }
-    else
-    {
-        if (isPending(targetTy, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
-    }
+    // Having the target type be a pending table does not block dispatch.
+    if (isPending(targetTy, ctx->solver) && !is<TableType>(targetTy))
+        return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
 
 
     std::shared_ptr<const NormalizedType> targetNorm = ctx->normalizer->normalize(targetTy);
@@ -2328,17 +2319,9 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
         targetNorm->hasExternTypes())
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 
-    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-    {
-        // Having the metatable type be a pending table does not block dispatch.
-        if (isPending(metatableTy, ctx->solver) && !is<TableType>(metatableTy))
-            return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
-    }
-    else
-    {
-        if (isPending(metatableTy, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
-    }
+    // Having the metatable type be a pending table does not block dispatch.
+    if (isPending(metatableTy, ctx->solver) && !is<TableType>(metatableTy))
+        return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
 
     // if the supposed metatable is not a table, we will fail to reduce.
     if (!get<TableType>(metatableTy) && !get<MetatableType>(metatableTy))
