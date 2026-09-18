@@ -11,6 +11,7 @@
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAGVARIABLE(LuauCompileNoFoldVectorEqW)
 
 namespace Luau
 {
@@ -57,6 +58,20 @@ static bool constantsEqual(const Constant& la, const Constant& ra)
         LUAU_ASSERT(!"Unexpected constant type in comparison");
         return false;
     }
+}
+
+// vector component 'w' is not visible to VM runtime configured with LUA_VECTOR_SIZE == 3, so vectors that only differ in 'w' can't be compared
+static bool vectorsDifferOnlyInW(const Constant& la, const Constant& ra)
+{
+    if (la.type == Constant::Type_Vectorf && ra.type == Constant::Type_Vectorf)
+        return la.valueVectorf[0] == ra.valueVectorf[0] && la.valueVectorf[1] == ra.valueVectorf[1] && la.valueVectorf[2] == ra.valueVectorf[2] &&
+               la.valueVectorf[3] != ra.valueVectorf[3];
+
+    if (la.type == Constant::Type_Vectord && ra.type == Constant::Type_Vectord)
+        return la.valueVectord[0] == ra.valueVectord[0] && la.valueVectord[1] == ra.valueVectord[1] && la.valueVectord[2] == ra.valueVectord[2] &&
+               la.valueVectord[3] != ra.valueVectord[3];
+
+    return false;
 }
 
 static void foldUnary(Constant& result, AstExprUnary::Op op, const Constant& arg)
@@ -474,7 +489,8 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         break;
 
     case AstExprBinary::CompareNe:
-        if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown)
+        if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown &&
+            !(FFlag::LuauCompileNoFoldVectorEqW && vectorsDifferOnlyInW(la, ra)))
         {
             result.type = Constant::Type_Boolean;
             result.valueBoolean = !constantsEqual(la, ra);
@@ -482,7 +498,8 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         break;
 
     case AstExprBinary::CompareEq:
-        if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown)
+        if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown &&
+            !(FFlag::LuauCompileNoFoldVectorEqW && vectorsDifferOnlyInW(la, ra)))
         {
             result.type = Constant::Type_Boolean;
             result.valueBoolean = constantsEqual(la, ra);
