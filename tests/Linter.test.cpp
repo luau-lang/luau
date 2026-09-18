@@ -2566,6 +2566,46 @@ end
     CHECK_EQ(result.warnings[0].code, LintWarning::Code_DuplicateCondition);
 }
 
+TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsIfLocalExpressionExcluded")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    LintOptions options;
+    options.setDefaults();
+    options.enableWarning(LintWarning::Code_DuplicateCondition);
+
+    LintResult result = lint(
+        R"(
+local x = ...
+return if local a = x then a elseif local b = x then b elseif const c = x then c else nil
+)",
+        options
+    );
+
+    CHECK_EQ(0, result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsMixedWithIfLocalExpression")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    LintOptions options;
+    options.setDefaults();
+    options.enableWarning(LintWarning::Code_DuplicateCondition);
+
+    LintResult result = lint(
+        R"(
+local x = ...
+return if x then 1 elseif local b = x then b elseif x then 3 else 0
+)",
+        options
+    );
+
+    // The middle `elseif local b = x` binding is excluded, so only the two plain `x` conditions collide.
+    REQUIRE(1 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].code, LintWarning::Code_DuplicateCondition);
+}
+
 TEST_CASE_FIXTURE(Fixture, "WrongCommentOptimize")
 {
     LintResult result = lint(R"(

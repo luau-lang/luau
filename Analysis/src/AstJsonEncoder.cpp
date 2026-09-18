@@ -568,6 +568,11 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(trueExpr);
                 PROP(hasElse);
                 PROP(falseExpr);
+                if (FFlag::DebugLuauIfLocalAnalysis && node->conditionLocal)
+                {
+                    write("conditionLocal", node->conditionLocal->name);
+                    write("conditionIsConst", node->conditionIsConst);
+                }
             }
         );
     }

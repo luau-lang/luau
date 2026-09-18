@@ -1780,4 +1780,31 @@ RETURN R2 1
     );
 }
 
+TEST_CASE_FIXTURE(BytecodeInlinerFixture, "folds_inlined_function_with_dead_loop")
+{
+    ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
+
+    auto res = compileAndInline(R"(
+        local function inlinee(l0, ...)
+            (function(value: Vector3, ...)
+                vector.dot({}, "")
+            end)("")
+
+            while false do
+            end
+        end
+
+        local function caller()
+            inlinee()
+        end
+    )");
+
+    REQUIRE(res);
+
+    BcVmConstImpl impl(res->second);
+    Bytecode::foldConstants(res->second, impl);
+
+    CHECK(verifyUseConsistency(res->second));
+}
+
 TEST_SUITE_END();

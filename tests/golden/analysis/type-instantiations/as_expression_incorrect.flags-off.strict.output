@@ -1,0 +1,3 @@
+./analysis/type-instantiations/as_expression_incorrect.luau(5,1): TypeError: Operator '+' could not be applied to operands of types string and number; there is no corresponding overload for __add
+./analysis/type-instantiations/as_expression_incorrect.luau(6,12): TypeError: Operator '+' could not be applied to operands of types string and number; there is no corresponding overload for __add
+./analysis/type-instantiations/as_expression_incorrect.luau(5,1): TypeError: Consider annotating the return with number

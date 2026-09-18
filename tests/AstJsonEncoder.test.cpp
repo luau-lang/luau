@@ -362,6 +362,31 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatIf_if_const")
     CHECK(toJson(statement) == expected);
 }
 
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstExprIfElse_if_local")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    AstExpr* expr = expectParseExpr("if local x = y then x else z");
+    REQUIRE(expr->is<AstExprIfElse>());
+
+    std::string json = toJson(expr);
+    CHECK(json.find(R"("type":"AstExprIfElse")") != std::string::npos);
+    CHECK(json.find(R"("conditionLocal":"x")") != std::string::npos);
+    CHECK(json.find(R"("conditionIsConst":false)") != std::string::npos);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstExprIfElse_if_const")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    AstExpr* expr = expectParseExpr("if const x = y then x else z");
+    REQUIRE(expr->is<AstExprIfElse>());
+
+    std::string json = toJson(expr);
+    CHECK(json.find(R"("conditionLocal":"x")") != std::string::npos);
+    CHECK(json.find(R"("conditionIsConst":true)") != std::string::npos);
+}
+
 TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile")
 {
     AstStat* statement = expectParseStatement("while true do end");

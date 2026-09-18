@@ -10,6 +10,7 @@
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauAssertOnForcedConstraint)
+LUAU_FASTFLAG(LuauSoundGenericMismatches)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 
 using namespace Luau;
@@ -56,6 +57,84 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_local_function2")
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(getBuiltins()->stringType, requireType("x"));
     CHECK_EQ(getBuiltins()->numberType, requireType("y"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_rejects_incompatible_argument")
+{
+    ScopedFastFlag sff{FFlag::LuauSoundGenericMismatches, true};
+
+    CheckResult result = check(R"(
+        local function call<T>(fn: (T) -> T)
+            fn(nil)
+        end
+
+        call(function(x: number)
+            return x + 1
+        end)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const TypeMismatch* mismatch = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(mismatch);
+    CHECK_EQ("T", toString(mismatch->wantedType));
+    CHECK_EQ("nil", toString(mismatch->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_accepts_same_generic")
+{
+    ScopedFastFlag sff{FFlag::LuauSoundGenericMismatches, true};
+
+    CheckResult result = check(R"(
+        local function call<T>(fn: (T) -> T, value: T)
+            return fn(value)
+        end
+
+        local result = call(function(x: number)
+            return x + 1
+        end, 1)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("result")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_rejects_union_containing_generic")
+{
+    ScopedFastFlag sff{FFlag::LuauSoundGenericMismatches, true};
+
+    CheckResult result = check(R"(
+        local function call<T>(fn: (T) -> T, value: T | number)
+            return fn(value)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const TypeMismatch* mismatch = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(mismatch);
+    CHECK_EQ("T", toString(mismatch->wantedType));
+    CHECK_EQ("T | number", toString(mismatch->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_function_parameter_nested_in_table_accepts_incompatible_property")
+{
+    ScopedFastFlag sff{FFlag::LuauSoundGenericMismatches, true};
+
+    CheckResult result = check(R"(
+        local function call<T>(fn: ({ prop: T }) -> ())
+            fn({ prop = nil })
+        end
+
+        call(function(tbl: { prop: number })
+        end)
+    )");
+
+    if (FFlag::DebugLuauForceOldSolver)
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    else
+    {
+        // FIXME(CLI-225132): This is unsound. The checker should reject `nil` because prop has type `T`.
+        LUAU_REQUIRE_NO_ERRORS(result); 
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "unions_and_generics")
@@ -1549,8 +1628,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
 {
     CheckResult result;
 
-    ScopedFastFlag _{FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true};
-
     if (!FFlag::DebugLuauForceOldSolver)
     {
         result = check(R"(
@@ -1878,7 +1955,7 @@ function updateReducer<S, I, A>(reducer: (S, A) -> S, initialArg: I, init: ((I) 
 end
 
 function basicStateReducer<S>(state: S, action: BasicStateAction<S>): S
-    return action
+    return action :: S
 end
 
 function updateState<S>(initialState: (() -> S) | S): (S, Dispatch<BasicStateAction<S>>)

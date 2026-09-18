@@ -25,8 +25,10 @@ LUAU_FASTINT(LuauParseErrorLimit)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
-LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauFragmentACEnableTypeFunctionEvaluation)
+LUAU_FASTFLAG(LuauFragmentACLocalAutocompleteFix)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ExternType*> ptr, std::optional<std::string> contents)
 {
@@ -1607,8 +1609,6 @@ tbl.
 
 TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "autocomplete_props_through_metatable_typed_metatable")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteMetatableInheritance, true};
-
     const std::string source = R"(
 local Base = { baseProp = 5 }
 local Meta = setmetatable({ __index = Base }, {})
@@ -2548,6 +2548,49 @@ end
             CHECK_EQ(2, frag.result->acResults.entryMap.size());
             CHECK(frag.result->acResults.entryMap.count("x"));
             CHECK(frag.result->acResults.entryMap.count("y"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "local_inside_of_function_parameter")
+{
+    ScopedFastFlag sff{FFlag::LuauFragmentACLocalAutocompleteFix, true};
+    const std::string source = R"(--!strict
+type Foo = { x: number, y: string }
+
+function t(body: Foo)
+    local bim: Foo = body
+
+    if bim then
+        return
+    end
+end
+)";
+
+    const std::string updated = R"(--!strict
+type Foo = { x: number, y: string }
+
+function t(body: Foo)
+    local bim: Foo = body
+    bim.@1
+
+    if bim then
+        return
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK_EQ(2, fragment.result->acResults.entryMap.size());
+            CHECK(fragment.result->acResults.entryMap.count("x"));
+            CHECK(fragment.result->acResults.entryMap.count("y"));
+            CHECK_EQ(AutocompleteContext::Property, fragment.result->acResults.context);
         }
     );
 }
@@ -5558,6 +5601,315 @@ local a: test<number> = "@1"
             CHECK(frag.result->acResults.entryMap.count("test2") == 1);
         },
         Position{7, 19}
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_local_optional_binding_member_completion_in_then_body")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+        myTest.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("name"));
+            CHECK(fragment.result->acResults.entryMap.count("age"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_local_optional_binding_is_in_scope_in_then_body")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+        @1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("myTest"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_local_and_elseif_local_bindings_are_scoped_to_their_own_branch")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local thenBinding = getTester() then
+
+    elseif local elseifBinding = getTester() then
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local thenBinding = getTester() then
+        @1
+    elseif local elseifBinding = getTester() then
+        @2
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("thenBinding"));
+            LUAU_CHECK_HAS_NO_KEY(fragment.result->acResults.entryMap, "elseifBinding");
+        }
+    );
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '2',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("elseifBinding"));
+            LUAU_CHECK_HAS_NO_KEY(fragment.result->acResults.entryMap, "thenBinding");
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "elseif_local_binding_offers_member_completion")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if false then
+    elseif local myTest = getTester() then
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if false then
+    elseif local myTest = getTester() then
+        myTest.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("name"));
+            CHECK(fragment.result->acResults.entryMap.count("age"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "nested_if_local_bindings_are_both_in_scope")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local outer = getTester() then
+        if local inner = getTester() then
+
+        end
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local outer = getTester() then
+        if local inner = getTester() then
+            @1
+        end
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("outer"));
+            CHECK(fragment.result->acResults.entryMap.count("inner"));
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_local_binding_is_not_in_scope_in_else_branch")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+    else
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+    else
+        @1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            LUAU_CHECK_HAS_NO_KEY(fragment.result->acResults.entryMap, "myTest");
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_local_binding_is_not_in_scope_after_if_statement")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+    end
+
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if local myTest = getTester() then
+    end
+    @1
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            LUAU_CHECK_HAS_NO_KEY(fragment.result->acResults.entryMap, "myTest");
+        }
+    );
+}
+
+TEST_CASE_FIXTURE(FragmentAutocompleteFixture, "if_const_binding_offers_member_completion")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    const std::string source = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if const myTest = getTester() then
+
+    end
+end
+)";
+    const std::string updated = R"(
+type Test = {name: string, age: number}
+local function getTester(): Test? return nil end
+local function sample()
+    if const myTest = getTester() then
+        myTest.@1
+    end
+end
+)";
+
+    autocompleteFragmentInNewSolver(
+        source,
+        updated,
+        '1',
+        [](FragmentAutocompleteStatusResult& fragment)
+        {
+            REQUIRE(fragment.result);
+            CHECK(fragment.result->acResults.entryMap.count("name"));
+            CHECK(fragment.result->acResults.entryMap.count("age"));
+        }
     );
 }
 

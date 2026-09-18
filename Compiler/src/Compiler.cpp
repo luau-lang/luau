@@ -2489,8 +2489,58 @@ struct Compiler
         }
     }
 
+    void compileExprIfElseLocal(AstExprIfElse* expr, uint8_t target, bool targetTemp)
+    {
+        LUAU_ASSERT(expr->conditionLocal);
+
+        bool skipElse = isConstantTrue(expr->condition);
+        size_t oldLocals = localStack.size();
+        size_t elseJump = 0;
+
+        {
+            RegScope rs(this);
+
+            uint8_t reg = allocReg(expr, 1u);
+            uint32_t allocpc = bytecode.getDebugPC();
+
+            compileExprTemp(expr->condition, reg);
+            pushLocal(expr->conditionLocal, reg, allocpc);
+
+            if (!skipElse)
+            {
+                elseJump = bytecode.emitLabel();
+                bytecode.emitAD(LOP_JUMPIFNOT, reg, 0);
+            }
+
+            compileExpr(expr->trueExpr, target, targetTemp);
+
+            closeLocals(oldLocals);
+            popLocals(oldLocals);
+        }
+
+        if (skipElse)
+            return;
+
+        // Jump over else expression evaluation
+        size_t thenLabel = bytecode.emitLabel();
+        bytecode.emitAD(LOP_JUMP, 0, 0);
+
+        size_t elseLabel = bytecode.emitLabel();
+        compileExpr(expr->falseExpr, target, targetTemp);
+        size_t endLabel = bytecode.emitLabel();
+
+        patchJump(expr, elseJump, elseLabel);
+        patchJump(expr, thenLabel, endLabel);
+    }
+
     void compileExprIfElse(AstExprIfElse* expr, uint8_t target, bool targetTemp)
     {
+        if (FFlag::DebugLuauIfLocalSyntax && expr->conditionLocal)
+        {
+            compileExprIfElseLocal(expr, target, targetTemp);
+            return;
+        }
+
         if (isConstant(expr->condition))
         {
             if (isConstantTrue(expr->condition))
