@@ -94,11 +94,12 @@ CstExprTypeAssertion::CstExprTypeAssertion(Position opPosition)
 {
 }
 
-CstExprIfElse::CstExprIfElse(Position thenPosition, Position elsePosition, bool isElseIf)
+CstExprIfElse::CstExprIfElse(Position thenPosition, Position elsePosition, bool isElseIf, Position annotationColonPosition)
     : CstNode(CstClassIndex())
     , thenPosition(thenPosition)
     , elsePosition(elsePosition)
     , isElseIf(isElseIf)
+    , annotationColonPosition(annotationColonPosition)
 {
 }
 

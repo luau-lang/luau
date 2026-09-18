@@ -2,7 +2,6 @@
 #include "Luau/IterativeTypeVisitor.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
-LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 namespace Luau
 {
@@ -289,11 +288,8 @@ void IterativeTypeVisitor::process(TypeId ty)
             traverse(ftv->lowerBound);
             traverse(ftv->upperBound);
 
-            if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-            {
-                if (ftv->primitiveType)
-                    traverse(*ftv->primitiveType);
-            }
+            if (ftv->primitiveType)
+                traverse(*ftv->primitiveType);
         }
     }
     else if (auto gtv = get<GenericType>(ty))

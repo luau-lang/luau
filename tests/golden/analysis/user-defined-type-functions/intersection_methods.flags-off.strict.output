@@ -1,0 +1,5 @@
+./analysis/user-defined-type-functions/intersection_methods.luau(22,12): TypeError: Expected this to be unreachable, but got
+	'{ boolean: boolean, number: number } & { boolean: boolean, string: string }'; 
+this is because 
+	 * the 1st component of the intersection is `{ boolean: boolean, number: number }`, which is not a subtype of `never`
+	 * the 2nd component of the intersection is `{ boolean: boolean, string: string }`, which is not a subtype of `never`

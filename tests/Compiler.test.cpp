@@ -14064,4 +14064,89 @@ L0: RETURN R0 0
     );
 }
 
+TEST_CASE("IfLocalExpression")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            local r = if local x = getValue() then x else 0
+        )"),
+        R"(
+GETIMPORT R1 1 [getValue]
+CALL R1 0 1
+JUMPIFNOT R1 L0
+MOVE R0 R1
+RETURN R0 0
+L0: LOADN R0 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("IfConstExpression")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            local r = if const x = getValue() then x else 0
+        )"),
+        R"(
+GETIMPORT R1 1 [getValue]
+CALL R1 0 1
+JUMPIFNOT R1 L0
+MOVE R0 R1
+RETURN R0 0
+L0: LOADN R0 0
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("IfLocalExpressionReturn")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            return if local x = getValue() then x else 0
+        )"),
+        R"(
+GETIMPORT R1 1 [getValue]
+CALL R1 0 1
+JUMPIFNOT R1 L0
+MOVE R0 R1
+RETURN R0 1
+L0: LOADN R0 0
+RETURN R0 1
+)"
+    );
+}
+
+TEST_CASE("IfLocalExpressionUpvalueCapture")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+            local capture = if local x = getValue() then function() return x end else nil
+            return capture
+        )",
+                   1
+               ),
+        R"(
+GETIMPORT R1 1 [getValue]
+CALL R1 0 1
+JUMPIFNOT R1 L0
+DUPCLOSURE R0 K2 []
+CAPTURE VAL R1
+RETURN R0 1
+L0: LOADNIL R0
+RETURN R0 1
+)"
+    );
+}
+
 TEST_SUITE_END();

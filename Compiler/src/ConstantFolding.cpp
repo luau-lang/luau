@@ -1240,6 +1240,15 @@ struct ConstantVisitor : AstVisitor
 
         return true;
     }
+
+    bool visit(AstExprIfElse* node) override
+    {
+        if (node->conditionLocal)
+            recordLocal(node->conditionLocal, node->condition);
+
+        analyze(node);
+        return false;
+    }
 };
 
 void buildTableConstantMap(DenseHashMap<AstLocal*, TableConstantKind>& result, const DenseHashMap<AstLocal*, Variable>& variables, AstNode* root)

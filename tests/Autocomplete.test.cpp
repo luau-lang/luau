@@ -19,7 +19,6 @@ LUAU_DYNAMIC_FASTINT(LuauSubtypingRecursionLimit)
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
-LUAU_FASTFLAG(LuauAutocompleteMetatableInheritance)
 LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
@@ -5671,8 +5670,6 @@ x.@1
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_props_through_metatable_typed_metatable")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteMetatableInheritance, true};
-
     check(R"(
         local Base = { baseProp = 5 }
         local Meta = setmetatable({ __index = Base }, {})
@@ -5936,6 +5933,62 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_binding_offers_member_completion")
     CHECK(ac.entryMap.count("bar"));
 }
 
+TEST_CASE_FIXTURE(ACFixture, "if_local_optional_binding_is_in_scope_in_then_body")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    check(R"(
+        type Test = {name: string, age: number}
+        local function getTester(): Test? return nil end
+        local function sample()
+            if local myTest = getTester() then
+                @1
+            end
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("myTest"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "if_local_optional_binding_offers_member_completion")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    check(R"(
+        type Test = {name: string, age: number}
+        local function getTester(): Test? return nil end
+        local function sample()
+            if local myTest = getTester() then
+                myTest.@1
+            end
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("name"));
+    CHECK(ac.entryMap.count("age"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "if_local_optional_binding_member_completion_in_call_arg")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    check(R"(
+        type Test = {name: string, age: number}
+        local function getTester(): Test? return nil end
+        local function sample()
+            if local myTest = getTester() then
+                print(myTest.@1)
+            end
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("name"));
+    CHECK(ac.entryMap.count("age"));
+}
+
 TEST_CASE_FIXTURE(ACFixture, "if_local_value_offers_expression_completion")
 {
     ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
@@ -6044,6 +6097,59 @@ TEST_CASE_FIXTURE(ACFixture, "if_const_value_completes")
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("foo"));
     CHECK(ac.entryMap.count("bar"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "if_local_expression_binding_is_in_scope_in_true_expr")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    check(R"(
+        local t = {}
+        local r = if local x = t then tostring(@1) else nil
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("x"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "if_local_expression_binding_offers_member_completion")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    check(R"(
+        local t = {foo = 1, bar = 2}
+        local r = if local x = t then x.@1 else nil
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("foo"));
+    CHECK(ac.entryMap.count("bar"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "if_local_expression_value_offers_expression_completion")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    check(R"(
+        local thing = {}
+        local r = if local x = @1 then x else nil
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("thing"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "if_const_expression_binding_is_in_scope_in_true_expr")
+{
+    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+
+    check(R"(
+        local t = {}
+        local r = if const x = t then tostring(@1) else nil
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("x"));
 }
 
 TEST_SUITE_END();

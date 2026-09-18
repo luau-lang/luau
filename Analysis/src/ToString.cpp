@@ -2063,13 +2063,6 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             return "function_check " + tos(c.fn) + " " + tos(c.argsPack);
         }
-        else if constexpr (std::is_same_v<T, DEPRECATED_PrimitiveTypeConstraint>)
-        {
-            if (c.expectedType)
-                return "prim " + tos(c.freeType) + "[expected: " + tos(*c.expectedType) + "] as " + tos(c.primitiveType);
-            else
-                return "prim " + tos(c.freeType) + " as " + tos(c.primitiveType);
-        }
         else if constexpr (std::is_same_v<T, HasPropConstraint>)
         {
             std::string s = tos(c.resultType) + " ~ hasProp " + tos(c.subjectType) + ", \"" + c.prop + "\" ctx=" + std::to_string(int(c.context));

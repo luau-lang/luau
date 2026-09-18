@@ -28,7 +28,6 @@ LUAU_FASTINT(LuauPrimitiveInferenceInTableLimit)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauRemoveConstraintSolverEmplace)
-LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAG(LuauDontBlockRefinementUnconditionally)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
@@ -2414,7 +2413,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
-        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
     };
 
     CheckResult result = check(R"(
@@ -7699,10 +7697,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "test_inferring_generalized_iteration_2")
 
 TEST_CASE_FIXTURE(Fixture, "function_calls_preserve_potential_mutations_1")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
-        {FFlag::LuauTraverseScopeToFunction, true},
-    };
+    ScopedFastFlag _{FFlag::LuauTraverseScopeToFunction, true};
 
     CheckResult result = check(R"(
         local function f(s)
@@ -7717,10 +7712,7 @@ TEST_CASE_FIXTURE(Fixture, "function_calls_preserve_potential_mutations_1")
 
 TEST_CASE_FIXTURE(Fixture, "function_calls_preserve_potential_mutations_2")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
-        {FFlag::LuauTraverseScopeToFunction, true},
-    };
+    ScopedFastFlag _{FFlag::LuauTraverseScopeToFunction, true};
 
     CheckResult result = check(R"(
         local function f(s)
@@ -7735,10 +7727,7 @@ TEST_CASE_FIXTURE(Fixture, "function_calls_preserve_potential_mutations_2")
 
 TEST_CASE_FIXTURE(Fixture, "function_calls_preserve_potential_mutations_3")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
-        {FFlag::LuauTraverseScopeToFunction, true},
-    };
+    ScopedFastFlag _{FFlag::LuauTraverseScopeToFunction, true};
 
     CheckResult result = check(R"(
         local function f(g)

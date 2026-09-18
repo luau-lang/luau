@@ -1117,7 +1117,6 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_syntactically_illegal_annotation")
     ScopedFastFlag sff[] = {
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions, true},
-        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
     };
 
     CheckResult result = check(R"(

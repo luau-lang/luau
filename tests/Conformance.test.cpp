@@ -60,6 +60,7 @@ LUAU_FASTFLAG(LuauCodegenProtectData)
 LUAU_FASTFLAG(LuauBytecodeFold)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
+LUAU_FASTFLAG(LuauTableArrayAdjustCheck)
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
@@ -1381,6 +1382,7 @@ TEST_CASE("Sort")
 TEST_CASE("Move")
 {
     ScopedFastFlag luauTableMoveTimeoutFix{DFFlag::LuauTableMoveTimeoutFix, true};
+    ScopedFastFlag luauTableArrayAdjustCheck{FFlag::LuauTableArrayAdjustCheck, true};
 
     runConformance("move.luau");
 }
@@ -1470,7 +1472,7 @@ TEST_CASE("JitInliner")
             luaL_error(L, "timeout");
     };
 
-    for (int test = 1; test <= 2; ++test)
+    for (int test = 1; test <= 3; ++test)
     {
         lua_State* T = lua_newthread(L);
 

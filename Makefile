@@ -193,7 +193,7 @@ $(ANALYZE_CLI_TARGET): LDFLAGS+=-lpthread
 fuzz-proto fuzz-prototest: LDFLAGS+=$(LPROTOBUF)
 
 # pseudo targets
-.PHONY: all test clean coverage format luau-size aliases build-mutator-libs
+.PHONY: all test golden clean coverage format luau-size aliases build-mutator-libs
 
 # Explicitly make 'all' the default goal ensuring that even if targets are added before 'all', they won't
 # implicitly become the default target built by make.
@@ -203,8 +203,12 @@ all: $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET) $(TESTS_TARGET) aliases
 
 aliases: $(EXECUTABLE_ALIASES)
 
-test: $(TESTS_TARGET) $(TEST_LINK_VM_TARGET) $(TEST_LINK_CODEGEN_TARGET)
+test: $(TESTS_TARGET) $(TEST_LINK_VM_TARGET) $(TEST_LINK_CODEGEN_TARGET) golden
 	$(TESTS_TARGET) $(TESTS_ARGS)
+
+golden: luau luau-analyze
+	python3 -m tools.golden.selftest --luau $(abspath luau) --luau-analyze $(abspath luau-analyze)
+	python3 -m tools.golden --luau $(abspath luau) --luau-analyze $(abspath luau-analyze)
 
 conformance: $(TESTS_TARGET)
 	$(TESTS_TARGET) $(TESTS_ARGS) -ts=Conformance
@@ -219,15 +223,15 @@ coverage: $(TESTS_TARGET) $(COMPILE_CLI_TARGET)
 	mv default.profraw tests.profraw
 	$(TESTS_TARGET) --fflags=true
 	mv default.profraw tests-flags.profraw
-	$(TESTS_TARGET) --fflags=true,DebugLuauDeferredConstraintResolution=true
+	$(TESTS_TARGET) --fflags=true,DebugLuauForceOldSolver=true
 	mv default.profraw tests-dcr.profraw
 	$(TESTS_TARGET) -ts=Conformance --codegen
 	mv default.profraw codegen.profraw
 	$(TESTS_TARGET) -ts=Conformance --codegen --fflags=true
 	mv default.profraw codegen-flags.profraw
-	$(COMPILE_CLI_TARGET) --codegennull --target=a64 --fflags=DebugLuauUserDefinedClasses=true tests/conformance
+	$(COMPILE_CLI_TARGET) --codegennull --target=a64 --fflags=DebugLuauUserDefinedClasses=true,DebugLuauIfLocalSyntax=true tests/conformance
 	mv default.profraw codegen-a64.profraw
-	$(COMPILE_CLI_TARGET) --codegennull --target=x64 --fflags=DebugLuauUserDefinedClasses=true tests/conformance
+	$(COMPILE_CLI_TARGET) --codegennull --target=x64 --fflags=DebugLuauUserDefinedClasses=true,DebugLuauIfLocalSyntax=true tests/conformance
 	mv default.profraw codegen-x64.profraw
 	llvm-profdata merge *.profraw -o default.profdata
 	rm *.profraw
