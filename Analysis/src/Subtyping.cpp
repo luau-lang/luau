@@ -25,10 +25,8 @@ LUAU_FASTINTVARIABLE(LuauSubtypingReasoningLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTINTVARIABLE(LuauSubtypingIterationLimit, 20000)
 LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
-LUAU_FASTFLAGVARIABLE(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
-LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
@@ -50,7 +48,7 @@ size_t SubtypingReasoningHash::operator()(const SubtypingReasoning& r) const
 }
 
 MappedGenericEnvironment::MappedGenericFrame::MappedGenericFrame(
-    DenseHashMap2<TypePackId, std::optional<TypePackId>> mappings,
+    DenseHashMap<TypePackId, std::optional<TypePackId>> mappings,
     const std::optional<size_t> parentScopeIndex
 )
     : mappings(std::move(mappings))
@@ -107,7 +105,7 @@ MappedGenericEnvironment::LookupResult MappedGenericEnvironment::lookupGenericPa
 
 void MappedGenericEnvironment::pushFrame(const std::vector<TypePackId>& genericTps)
 {
-    DenseHashMap2<TypePackId, std::optional<TypePackId>> mappings;
+    DenseHashMap<TypePackId, std::optional<TypePackId>> mappings;
 
     for (TypePackId tp : genericTps)
         mappings[tp] = std::nullopt;
@@ -948,8 +946,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         result = isCovariantWith(env, p, scope);
     else if (auto p = get2<TableType, TableType>(subTy, superTy))
     {
-        const bool forceCovariantTest =
-            FFlag::LuauBidirectionalInferenceSimplifyTables ? false : uniqueTypes != nullptr && uniqueTypes->contains(subTy);
+        const bool forceCovariantTest = false;
         result = isCovariantWith(env, p.first, p.second, forceCovariantTest, scope);
         if (result.isSubtype && !p.first->indexer && p.second->indexer && p.first->state != TableState::Sealed)
         {
@@ -1652,11 +1649,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         ++index;
     }
 
-    if (FFlag::LuauDropUnionSubtypeReasoning)
-    {
-        LUAU_ASSERT(!result.isSubtype);
-        result.reasoning.clear();
-    }
+    LUAU_ASSERT(!result.isSubtype);
+    result.reasoning.clear();
 
     return result;
 }
@@ -2037,7 +2031,7 @@ SubtypingResult Subtyping::isCovariantWith(
     SubtypingResult result{true};
 
     // Either this flag is off or `forceCovariantTest` is false.
-    LUAU_ASSERT(!FFlag::LuauBidirectionalInferenceSimplifyTables || !forceCovariantTest);
+    LUAU_ASSERT(!forceCovariantTest);
 
     if (subTable->props.empty() && !subTable->indexer && subTable->state == TableState::Sealed && superTable->indexer)
     {

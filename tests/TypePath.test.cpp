@@ -28,14 +28,14 @@ struct TypePathFixture : Fixture
 {
     ScopedFastFlag sff1{FFlag::DebugLuauForceOldSolver, false};
     TypeArena arena;
-    const DenseHashMap2<TypePackId, TypePackId> emptyMap_DEPRECATED;
+    const DenseHashMap<TypePackId, TypePackId> emptyMap_DEPRECATED;
 };
 
 struct TypePathBuiltinsFixture : BuiltinsFixture
 {
     ScopedFastFlag sff1{FFlag::DebugLuauForceOldSolver, false};
     TypeArena arena;
-    const DenseHashMap2<TypePackId, TypePackId> emptyMap_DEPRECATED;
+    const DenseHashMap<TypePackId, TypePackId> emptyMap_DEPRECATED;
 };
 
 TEST_SUITE_BEGIN("TypePathManipulation");

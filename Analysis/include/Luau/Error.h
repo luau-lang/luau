@@ -236,13 +236,6 @@ struct ModuleHasCyclicDependency
     bool operator==(const ModuleHasCyclicDependency& rhs) const;
 };
 
-struct CyclicModuleGraphTooLarge
-{
-    size_t moduleCount;
-    std::vector<ModuleName> members;
-    bool operator==(const CyclicModuleGraphTooLarge& rhs) const;
-};
-
 struct CyclicModuleTopLevelAccess
 {
     ModuleName cyclicModuleName;
@@ -617,6 +610,30 @@ struct AmbiguousFunctionCall
     bool operator==(const AmbiguousFunctionCall& rhs) const;
 };
 
+// Error when we access an uninitialized field within a class constructor.
+// If fieldName is absent, then `self` was used in an r-value context before all its non nilable fields were initialized.
+struct UninitializedFieldAccess
+{
+    std::optional<std::string> fieldName;
+
+    bool operator==(const UninitializedFieldAccess& rhs) const;
+};
+
+struct TypeAnnotationRequired
+{
+    TypeId inferredTy;
+
+    bool operator==(const TypeAnnotationRequired& rhs) const;
+};
+
+struct ConstructorsShouldNotReturnAnything
+{
+    bool operator==(const ConstructorsShouldNotReturnAnything&) const
+    {
+        return true;
+    }
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -643,7 +660,6 @@ using TypeErrorData = Variant<
     ExtraInformation,
     DeprecatedApiUsed,
     ModuleHasCyclicDependency,
-    CyclicModuleGraphTooLarge,
     CyclicModuleTopLevelAccess,
     IllegalRequire,
     FunctionExitsWithoutReturning,
@@ -682,7 +698,10 @@ using TypeErrorData = Variant<
     UnappliedTypeFunction,
     InstantiateGenericsOnNonFunction,
     TypeInstantiationCountMismatch,
-    AmbiguousFunctionCall>;
+    AmbiguousFunctionCall,
+    UninitializedFieldAccess,
+    TypeAnnotationRequired,
+    ConstructorsShouldNotReturnAnything>;
 
 struct TypeErrorSummary
 {

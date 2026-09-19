@@ -2,13 +2,25 @@
 #pragma once
 
 #include "Luau/Bytecode.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/StringUtils.h"
 
 #include <string>
 
 namespace Luau
 {
+
+static const uint32_t kMaxRegisterCount = 255;
+static const uint32_t kMaxUpvalueCount = 200;
+static const uint32_t kMaxLocalCount = 200;
+static const uint32_t kMaxInstructionCount = 1'000'000'000;
+
+static const uint8_t kInvalidReg = 255;
+
+static const uint32_t kMaxConstantCount = 1 << 23;
+static const uint32_t kMaxClosureCount = 1 << 15;
+
+static const int kMaxJumpDistance = 1 << 23;
 
 class BytecodeEncoder
 {
@@ -95,7 +107,7 @@ public:
     void patchAux(size_t targetAux, int32_t newValue);
 
     void foldJumps();
-    std::vector<uint32_t> expandJumps();
+    std::vector<uint32_t> expandJumps(bool& hasLongJumpError);
 
     void setFunctionTypeInfo(std::string value);
     void pushLocalTypeInfo(LuauBytecodeType type, uint8_t reg, uint32_t startpc, uint32_t endpc);
@@ -328,9 +340,9 @@ protected:
 
     bool hasLongJumps = false;
 
-    DenseHashMap2<ConstantKey, int32_t, ConstantKeyHash> constantMap;
-    DenseHashMap2<TableShape, int32_t, TableShapeHash> tableShapeMap;
-    DenseHashMap2<uint32_t, int16_t> protoMap;
+    DenseHashMap<ConstantKey, int32_t, ConstantKeyHash> constantMap;
+    DenseHashMap<TableShape, int32_t, TableShapeHash> tableShapeMap;
+    DenseHashMap<uint32_t, int16_t> protoMap;
 
     int debugLine = 0;
 
@@ -342,7 +354,7 @@ protected:
 
     std::vector<UserdataType> userdataTypes;
 
-    DenseHashMap2<StringRef, unsigned int, StringRefHash> stringTable;
+    DenseHashMap<StringRef, unsigned int, StringRefHash> stringTable;
     std::vector<StringRef> debugStrings;
 
     std::vector<std::pair<uint32_t, uint32_t>> debugRemarks;
@@ -362,6 +374,7 @@ protected:
     void validate() const;
     void validateInstructions() const;
     void validateVariadic() const;
+    void validateCaptures() const;
     virtual void validateConst(int32_t cid) const;
     virtual void validateConst(int32_t cid, Constant::Type constType) const;
     virtual uint8_t validateProto(int32_t pid) const;

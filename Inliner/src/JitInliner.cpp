@@ -3,6 +3,7 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/BytecodeCallInliner.h"
+#include "Luau/BytecodeDump.h"
 #include "Luau/BytecodeGraph.h"
 #include "Luau/BytecodeUtils.h"
 #include "Luau/Common.h"
@@ -98,7 +99,12 @@ std::optional<CodeData> emitCode(lua_State* L, RuntimeBcFunction& graph, std::ve
 
     bcb.foldJumps();
 
-    std::vector<uint32_t> remap = bcb.expandJumps();
+    bool hasLongJumpError = false;
+    std::vector<uint32_t> remap = bcb.expandJumps(hasLongJumpError);
+
+    if (hasLongJumpError)
+        return {};
+
     if (remap.size() > 0)
     {
         LUAU_ASSERT(insnsPC.size() <= remap.size());

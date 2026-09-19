@@ -306,8 +306,8 @@ class Normalizer
     std::unordered_map<const TypeIds*, TypeId> cachedUnions;
     std::unordered_map<const TypeIds*, std::unique_ptr<TypeIds>> cachedTypeIds;
 
-    DenseHashMap2<TypeId, bool> cachedIsInhabited;
-    DenseHashMap2<std::pair<TypeId, TypeId>, bool, TypeIdPairHash> cachedIsInhabitedIntersection;
+    DenseHashMap<TypeId, bool> cachedIsInhabited;
+    DenseHashMap<std::pair<TypeId, TypeId>, bool, TypeIdPairHash> cachedIsInhabitedIntersection;
 
     std::optional<int> fuel{std::nullopt};
 

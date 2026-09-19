@@ -13,6 +13,10 @@
 #include <climits>
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
+LUAU_FASTINTVARIABLE(LuauLinterRecursionLimit, 128)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+
+LUAU_FASTFLAGVARIABLE(LuauImproveDeprecatedLint)
 
 namespace Luau
 {
@@ -31,7 +35,7 @@ struct LintContext
     AstStat* root;
 
     AstName placeholder;
-    DenseHashMap2<AstName, Global> builtinGlobals;
+    DenseHashMap<AstName, Global> builtinGlobals;
     ScopePtr scope;
     const Module* module;
 
@@ -231,7 +235,7 @@ private:
         }
 
         AstExprFunction* ast;
-        DenseHashSet2<AstName> dominatedGlobals;
+        DenseHashSet<AstName> dominatedGlobals;
         bool conditionalExecution;
     };
 
@@ -251,7 +255,7 @@ private:
 
     LintContext* context = nullptr;
 
-    DenseHashMap2<AstName, Global> globals;
+    DenseHashMap<AstName, Global> globals;
     std::vector<AstExprGlobal*> globalRefs;
     std::vector<FunctionInfo> functionStack;
 
@@ -725,9 +729,9 @@ private:
         AstExprGlobal* firstRef;
     };
 
-    DenseHashMap2<AstLocal*, Local> locals;
-    DenseHashMap2<AstName, AstLocal*> imports;
-    DenseHashMap2<AstName, Global> globals;
+    DenseHashMap<AstLocal*, Local> locals;
+    DenseHashMap<AstName, AstLocal*> imports;
+    DenseHashMap<AstName, Global> globals;
 
     LintLocalHygiene() = default;
 
@@ -955,7 +959,7 @@ private:
         bool used;
     };
 
-    DenseHashMap2<AstName, Global> globals;
+    DenseHashMap<AstName, Global> globals;
 
     LintUnusedFunction() = default;
 
@@ -1901,8 +1905,8 @@ private:
             if (item.kind == AstExprTable::Item::Kind::List)
                 count++;
 
-        DenseHashMap2<AstArray<char>*, int, AstArrayPredicate, AstArrayPredicate> names;
-        DenseHashMap2<int, int> indices;
+        DenseHashMap<AstArray<char>*, int, AstArrayPredicate, AstArrayPredicate> names;
+        DenseHashMap<int, int> indices;
 
         for (const AstExprTable::Item& item : node->items)
         {
@@ -1978,7 +1982,7 @@ private:
 
         if (context->module->checkedInNewSolver)
         {
-            DenseHashMap2<AstName, Rec> names;
+            DenseHashMap<AstName, Rec> names;
 
             for (const AstTableProp& item : node->props)
             {
@@ -2037,7 +2041,7 @@ private:
             return true;
         }
 
-        DenseHashMap2<AstName, int> names;
+        DenseHashMap<AstName, int> names;
 
         for (const AstTableProp& item : node->props)
         {
@@ -2096,7 +2100,7 @@ private:
     };
 
     LintContext* context;
-    DenseHashMap2<AstLocal*, Local> locals;
+    DenseHashMap<AstLocal*, Local> locals;
 
     LintUninitializedLocal() = default;
 
@@ -2192,7 +2196,7 @@ public:
 
 private:
     LintContext* context;
-    DenseHashMap2<std::string, Location> defns;
+    DenseHashMap<std::string, Location> defns;
 
     LintDuplicateFunction(LintContext* context)
         : context(context)
@@ -2368,39 +2372,115 @@ private:
 
     void check(AstExprIndexName* node, TypeId ty)
     {
-        if (const ExternType* cty = get<ExternType>(ty))
+        if (FFlag::LuauImproveDeprecatedLint)
         {
-            if (const Property* prop = lookupExternTypeProp(cty, node->index.value))
+            if (!checkProperty(node, ty, 0))
             {
-                if (prop->deprecated)
+                if (std::optional<TypeId> indexedType = context->getType(node))
+                    checkFunction(node, *indexedType);
+            }
+        }
+        else
+        {
+            if (const ExternType* cty = get<ExternType>(ty))
+            {
+                if (const Property* prop = lookupExternTypeProp(cty, node->index.value))
                 {
-                    report(node->location, *prop, cty->name.c_str(), node->index.value);
-                }
-                else if (std::optional<TypeId> ty = prop->readTy)
-                {
-                    const FunctionType* fty = get<FunctionType>(follow(ty));
-                    bool shouldReport = fty && fty->isDeprecatedFunction && !inScope(fty);
-
-                    if (shouldReport)
+                    if (prop->deprecated)
                     {
-                        const char* className = nullptr;
-                        if (AstExprGlobal* global = node->expr->as<AstExprGlobal>())
-                            className = global->name.value;
+                        report(node->location, *prop, cty->name.c_str(), node->index.value);
+                    }
+                    else if (std::optional<TypeId> ty = prop->readTy)
+                    {
+                        const FunctionType* fty = get<FunctionType>(follow(ty));
+                        bool shouldReport = fty && fty->isDeprecatedFunction && !inScope(fty);
 
-                        const char* functionName = node->index.value;
-                        if (fty->deprecatedInfo != nullptr)
+                        if (shouldReport)
                         {
-                            report(node->location, className, functionName, *fty->deprecatedInfo);
+                            const char* className = nullptr;
+                            if (AstExprGlobal* global = node->expr->as<AstExprGlobal>())
+                                className = global->name.value;
+
+                            const char* functionName = node->index.value;
+                            if (fty->deprecatedInfo != nullptr)
+                            {
+                                report(node->location, className, functionName, *fty->deprecatedInfo);
+                            }
+                            else
+                            {
+                                report(node->location, className, functionName);
+                            }
                         }
+                    }
+                }
+            }
+            else if (const TableType* tty = get<TableType>(ty))
+            {
+                auto prop = tty->props.find(node->index.value);
+
+                if (prop != tty->props.end())
+                {
+                    if (prop->second.deprecated)
+                    {
+                        // strip synthetic typeof() for builtin tables
+                        if (tty->name && tty->name->compare(0, 7, "typeof(") == 0 && tty->name->back() == ')')
+                            report(node->location, prop->second, tty->name->substr(7, tty->name->length() - 8).c_str(), node->index.value);
                         else
+                            report(node->location, prop->second, tty->name ? tty->name->c_str() : nullptr, node->index.value);
+                    }
+                    else
+                    {
+                        if (std::optional<TypeId> ty = prop->second.readTy)
                         {
-                            report(node->location, className, functionName);
+                            const FunctionType* fty = get<FunctionType>(follow(ty));
+                            bool shouldReport = fty && fty->isDeprecatedFunction && !inScope(fty);
+
+                            if (shouldReport)
+                            {
+                                const char* className = nullptr;
+                                if (AstExprGlobal* global = node->expr->as<AstExprGlobal>())
+                                    className = global->name.value;
+
+                                const char* functionName = node->index.value;
+
+                                if (fty->deprecatedInfo != nullptr)
+                                {
+                                    report(node->location, className, functionName, *fty->deprecatedInfo);
+                                }
+                                else
+                                {
+                                    report(node->location, className, functionName);
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-        else if (const TableType* tty = get<TableType>(ty))
+    }
+
+    bool checkProperty(AstExprIndexName* node, TypeId ty, int metatableDepth)
+    {
+        LUAU_ASSERT(FFlag::LuauImproveDeprecatedLint);
+
+        if (metatableDepth >= FInt::LuauLinterRecursionLimit)
+            return false;
+
+        ty = follow(ty);
+
+        if (auto ety = get<ExternType>(ty))
+        {
+            if (const Property* prop = lookupExternTypeProp(ety, node->index.value))
+            {
+                if (prop->deprecated)
+                    report(node->location, *prop, ety->name.c_str(), node->index.value);
+                else if (std::optional<TypeId> ty = prop->readTy)
+                    checkFunction(node, *ty);
+
+                return true;
+            }
+        }
+        else if (auto tty = get<TableType>(ty))
         {
             auto prop = tty->props.find(node->index.value);
 
@@ -2414,34 +2494,89 @@ private:
                     else
                         report(node->location, prop->second, tty->name ? tty->name->c_str() : nullptr, node->index.value);
                 }
-                else
-                {
-                    if (std::optional<TypeId> ty = prop->second.readTy)
-                    {
-                        const FunctionType* fty = get<FunctionType>(follow(ty));
-                        bool shouldReport = fty && fty->isDeprecatedFunction && !inScope(fty);
+                else if (std::optional<TypeId> ty = prop->second.readTy)
+                    checkFunction(node, *ty);
 
-                        if (shouldReport)
-                        {
-                            const char* className = nullptr;
-                            if (AstExprGlobal* global = node->expr->as<AstExprGlobal>())
-                                className = global->name.value;
-
-                            const char* functionName = node->index.value;
-
-                            if (fty->deprecatedInfo != nullptr)
-                            {
-                                report(node->location, className, functionName, *fty->deprecatedInfo);
-                            }
-                            else
-                            {
-                                report(node->location, className, functionName);
-                            }
-                        }
-                    }
-                }
+                return true;
             }
         }
+        else if (auto mtv = get<MetatableType>(ty))
+        {
+            return checkMetatableProperty(node, mtv->table, mtv->metatable, metatableDepth);
+        }
+
+        return false;
+    }
+
+    bool checkMetatableProperty(AstExprIndexName* node, TypeId tableTy, TypeId metatableTy, int metatableDepth)
+    {
+        LUAU_ASSERT(FFlag::LuauImproveDeprecatedLint);
+
+        if (checkProperty(node, tableTy, metatableDepth + 1))
+            return true;
+
+        if (const TableType* metatable = getTableType(metatableTy))
+        {
+            auto index = metatable->props.find("__index");
+            if (index != metatable->props.end() && index->second.readTy)
+                return checkProperty(node, *index->second.readTy, metatableDepth + 1);
+        }
+
+        return false;
+    }
+
+    void checkFunction(AstExprIndexName* node, TypeId ty)
+    {
+        LUAU_ASSERT(FFlag::LuauImproveDeprecatedLint);
+
+        if (auto fty = getDeprecatedFunctionType(ty, 0))
+        {
+            const char* className = nullptr;
+            if (auto global = node->expr->as<AstExprGlobal>())
+                className = global->name.value;
+
+            const char* functionName = node->index.value;
+
+            if (fty->deprecatedInfo != nullptr)
+                report(node->location, className, functionName, *fty->deprecatedInfo);
+            else
+                report(node->location, className, functionName);
+        }
+    }
+
+    const FunctionType* getDeprecatedFunctionType(TypeId ty, int depth)
+    {
+        LUAU_ASSERT(FFlag::LuauImproveDeprecatedLint);
+
+        if (depth >= FInt::LuauLinterRecursionLimit)
+            return nullptr;
+
+        ty = follow(ty);
+
+        if (const FunctionType* fty = get<FunctionType>(ty))
+            return fty->isDeprecatedFunction && !inScope(fty) ? fty : nullptr;
+
+        const std::vector<TypeId>* parts = nullptr;
+        if (const IntersectionType* itv = get<IntersectionType>(ty))
+            parts = &itv->parts;
+        else if (const UnionType* utv = get<UnionType>(ty))
+            parts = &utv->options;
+
+        if (!parts || parts->empty())
+            return nullptr;
+
+        const FunctionType* result = nullptr;
+        for (TypeId part : *parts)
+        {
+            const FunctionType* candidate = getDeprecatedFunctionType(part, depth + 1);
+            if (!candidate)
+                return nullptr;
+
+            if (!result)
+                result = candidate;
+        }
+
+        return result;
     }
 
     void check(const Location& location, AstName global, AstName index)
@@ -2826,7 +2961,8 @@ private:
             head->condition->visit(this);
             head->thenbody->visit(this);
 
-            conditions.push_back(head->condition);
+            if (!FFlag::DebugLuauIfLocalAnalysis || !head->conditionLocal)
+                conditions.push_back(head->condition);
 
             if (head->elsebody && head->elsebody->is<AstStatIf>())
             {
@@ -2861,7 +2997,8 @@ private:
             head->condition->visit(this);
             head->trueExpr->visit(this);
 
-            conditions.push_back(head->condition);
+            if (!FFlag::DebugLuauIfLocalAnalysis || !head->conditionLocal)
+                conditions.push_back(head->condition);
 
             if (head->falseExpr->is<AstExprIfElse>())
             {
@@ -2982,7 +3119,7 @@ public:
 private:
     LintContext* context;
 
-    DenseHashMap2<AstLocal*, AstNode*> locals;
+    DenseHashMap<AstLocal*, AstNode*> locals;
 
     LintDuplicateLocal() = default;
 

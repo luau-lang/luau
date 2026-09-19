@@ -11,7 +11,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
@@ -26,6 +25,8 @@ TEST_CASE_FIXTURE(Fixture, "select_correct_union_fn")
             return f(10), f("a")
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -91,6 +92,8 @@ TEST_CASE_FIXTURE(Fixture, "fx_intersection_as_argument")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -134,6 +137,8 @@ TEST_CASE_FIXTURE(Fixture, "should_still_pick_an_overload_whose_arguments_are_un
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(((number) -> string) & ((string) -> number)) -> (string, number)", toString(requireType("foo")));
@@ -173,6 +178,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_property_guarante
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -191,6 +198,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_works_at_arbitrary_dep
             return t.x.y.z.thing
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -211,6 +220,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_mixed_types")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -230,6 +241,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_one_part_missing_
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(A & B) -> number", toString(requireType("f")));
 }
@@ -244,6 +257,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_one_property_of_t
             return t.x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(A & B) -> any", toString(requireType("f")));
@@ -583,8 +598,6 @@ TEST_CASE_FIXTURE(Fixture, "intersect_false_and_bool_and_false")
 
 TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")
 {
-    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
-
     CheckResult result = check(R"(
         function foo(x: ((number?) -> number?) & ((string?) -> string?))
             local y : (nil) -> nil = x -- Not OK (fixed in DCR)
@@ -708,8 +721,6 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
 {
-    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
-
     CheckResult result = check(R"(
         function f(x : { p : number?, q : any } & { p : unknown, q : string? })
             local y : { p : number?, q : string? } = x -- OK
@@ -775,8 +786,6 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_never_properties")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
 {
-    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
-
     CheckResult result = check(R"(
         function f(x : ((number?) -> ({ p : number } & { q : number })) & ((string?) -> ({ p : number } & { r : number })))
             local y : (nil) -> { p : number, q : number, r : number} = x -- OK
@@ -1546,6 +1555,8 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     // We have one error here for the parameter being reduced to never, and
     // then three bits of extra information indicating the three upper
     // bound contributors: `{ x: number }`, `{ x: string }`, and `{ x: a }`
@@ -1566,6 +1577,8 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types_2")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("({ x: number } & { x: string }) -> never", toString(requireType("f")));
@@ -1583,6 +1596,8 @@ function f(x: Foo)
 end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1597,6 +1612,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_property_table_intersection_2")
             return x["Bar"]
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }

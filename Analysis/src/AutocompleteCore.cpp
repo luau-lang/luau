@@ -28,11 +28,10 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicVariableNames)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauExportValueSyntax)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteMetatableInheritance)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteSkipErrorTypeInUnion)
 LUAU_FASTFLAGVARIABLE(LuauCheckTypeForDeprecated)
 LUAU_FLAGVERSION(LuauCheckTypeForDeprecated, 2)
 LUAU_FASTFLAGVARIABLE(LuauUseExplicitTypeArgsInGenerics)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 
 static constexpr std::array<std::string_view, 13> kStatementStartingKeywords =
     {"while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export", "const"};
@@ -629,8 +628,7 @@ static void autocompleteProps(
     {
         autocompleteProps(module, typeArena, builtinTypes, rootTy, mt->table, indexType, nodes, result, seen);
 
-        const TableType* mtable =
-            FFlag::LuauAutocompleteMetatableInheritance ? getTableType(follow(mt->metatable)) : get<TableType>(follow(mt->metatable));
+        const TableType* mtable = getTableType(follow(mt->metatable));
         if (mtable)
             fillMetatableProps(mtable);
     }
@@ -654,21 +652,8 @@ static void autocompleteProps(
         auto iter = begin(u);
         auto endIter = end(u);
 
-        if (FFlag::LuauAutocompleteSkipErrorTypeInUnion)
-        {
-            while (iter != endIter && isSkippableTypeInUnion(*iter))
-                ++iter;
-        }
-        else
-        {
-            while (iter != endIter)
-            {
-                if (isNil(*iter))
-                    ++iter;
-                else
-                    break;
-            }
-        }
+        while (iter != endIter && isSkippableTypeInUnion(*iter))
+            ++iter;
 
         if (iter == endIter)
             return;
@@ -694,21 +679,10 @@ static void autocompleteProps(
                     innerSeen.insert(ty);
             }
 
-            if (FFlag::LuauAutocompleteSkipErrorTypeInUnion)
+            if (isSkippableTypeInUnion(*iter))
             {
-                if (isSkippableTypeInUnion(*iter))
-                {
-                    ++iter;
-                    continue;
-                }
-            }
-            else
-            {
-                if (isNil(*iter))
-                {
-                    ++iter;
-                    continue;
-                }
+                ++iter;
+                continue;
             }
 
             autocompleteProps(module, typeArena, builtinTypes, rootTy, *iter, indexType, nodes, inner, innerSeen);
@@ -1623,14 +1597,37 @@ static bool autocompleteIfElseExpression(
     if (!parent)
         return false;
 
-    if (node->is<AstExprIfElse>())
+    if (FFlag::DebugLuauIfLocalSyntax)
     {
-        // Don't try to complete when the current node is an if-else expression (i.e. only try to complete when the node is a child of an if-else
-        // expression).
-        return true;
+        if (const AstExprIfElse* selfIfElse = node->as<AstExprIfElse>())
+        {
+            if (selfIfElse->conditionLocal && selfIfElse->conditionEqualsLocation &&
+                    position >= selfIfElse->conditionEqualsLocation->end)
+                return false;
+            // Don't try to complete when the current node is an if-else expression (i.e. only try to complete when the node is a child of an if-else
+            // expression).
+            return true;
+        }
+    }
+    else
+    {
+        if (node->is<AstExprIfElse>())
+        {
+            // Don't try to complete when the current node is an if-else expression (i.e. only try to complete when the node is a child of an if-else
+            // expression).
+            return true;
+        }
     }
 
     AstExprIfElse* ifElseExpr = parent->as<AstExprIfElse>();
+
+    if (FFlag::DebugLuauIfLocalSyntax)
+    {
+        if (ifElseExpr && ifElseExpr->conditionLocal && ifElseExpr->conditionEqualsLocation &&
+            position >= ifElseExpr->conditionEqualsLocation->end && !ifElseExpr->hasThen)
+            return false;
+    }
+
     if (!ifElseExpr || ifElseExpr->condition->location.containsClosed(position))
     {
         return false;
@@ -2274,6 +2271,11 @@ AutocompleteResult autocomplete_(
               !statWhile->condition->location.containsClosed(position)))
     {
         return autocompleteWhileLoopKeywords(ancestry);
+    }
+    else if (AstStatIf* statIf = node->as<AstStatIf>(); FFlag::DebugLuauIfLocalSyntax && statIf && statIf->conditionLocal &&
+                                                        statIf->conditionEqualsLocation && position >= statIf->conditionEqualsLocation->end)
+    {
+        return autocompleteExpression(*module, builtinTypes, typeArena, ancestry, scopeAtPosition, position);
     }
     else if (AstStatIf* statIf = node->as<AstStatIf>(); statIf && !statIf->elseLocation.has_value())
     {

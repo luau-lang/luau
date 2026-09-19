@@ -3661,7 +3661,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     return NormalizationResult::True;
 }
 
-void makeTableShared(TypeId ty, DenseHashSet2<TypeId>& seen)
+void makeTableShared(TypeId ty, DenseHashSet<TypeId>& seen)
 {
     ty = follow(ty);
     if (seen.contains(ty))
@@ -3681,7 +3681,7 @@ void makeTableShared(TypeId ty, DenseHashSet2<TypeId>& seen)
 
 void makeTableShared(TypeId ty)
 {
-    DenseHashSet2<TypeId> seen;
+    DenseHashSet<TypeId> seen;
     makeTableShared(ty, seen);
 }
 

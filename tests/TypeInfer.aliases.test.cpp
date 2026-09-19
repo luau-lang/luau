@@ -13,6 +13,7 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauInstantiationCheckArguments)
 LUAU_FASTFLAG(LuauInstantiationCheckArgumentsDedup)
+LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauBlockingTypeAliasExpansion)
 
 TEST_SUITE_BEGIN("TypeAliases");
@@ -38,6 +39,8 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_type_alias")
 
         local g: F = f
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("t1 where t1 = () -> t1?", toString(requireType("g")));
@@ -106,8 +109,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
 
 TEST_CASE_FIXTURE(Fixture, "mismatched_generic_type_param")
 {
-    // We erroneously report an extra error in this case when the new solver is enabled.
-    DOES_NOT_PASS_NEW_SOLVER_GUARD();
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
 
     CheckResult result = check(R"(
         type T<A> = (A...) -> ()
@@ -385,6 +387,8 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_types_generic")
 
     CHECK_EQ(expected, decorateWithTypes(code));
     CheckResult result = check(code);
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -669,6 +673,8 @@ end
 export type f = typeof(get())
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -681,6 +687,8 @@ end
 
 export type f = typeof(get())
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -748,6 +756,8 @@ TEST_CASE_FIXTURE(Fixture, "free_variables_from_typeof_in_aliases")
         type ContainsContainsFree = { that: ContainsFree<number> }
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -796,6 +806,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_quantify_unresolved_aliases")
         export type Key = typeof(newkey(newKeyPool(), 1))
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -833,6 +845,8 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
         type FutureType = { foo: typeof(x()) }
         local d: FutureType = { smth = true } -- missing error, 'd' is resolved to 'any'
     )");
+
+    ignoreMissingAnnotations(result);
 
     CHECK_EQ("{ foo: number }", toString(requireType("d"), {true}));
 
@@ -1093,19 +1107,20 @@ type Foo<T> = Foo<T>
 TEST_CASE_FIXTURE(Fixture, "recursive_type_alias_bad_pack_use_warns")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+    ScopedFastFlag sff2{FFlag::LuauStrictVisitInstantiatedType, true};
 
     CheckResult result = check(R"(
 type Foo<T> = Foo<T...>
 )");
 
-    LUAU_REQUIRE_ERROR_COUNT(5, result);
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
     LUAU_CHECK_ERROR(result, GenericError);
-    CHECK_EQ(toString(result.errors[4]), "Generic type 'Foo<T>' expects 1 type argument, but none are specified");
+    CHECK_EQ(toString(result.errors[3]), "Generic type 'Foo<T>' expects 1 type argument, but none are specified");
 
-    auto occursCheckFailed = get<OccursCheckFailed>(result.errors[1]);
+    auto occursCheckFailed = get<OccursCheckFailed>(result.errors[0]);
     REQUIRE(occursCheckFailed);
 
-    auto swappedGeneric = get<SwappedGenericTypeParameter>(result.errors[2]);
+    auto swappedGeneric = get<SwappedGenericTypeParameter>(result.errors[1]);
     REQUIRE(swappedGeneric);
     CHECK(swappedGeneric->name == "T");
 }
@@ -1391,7 +1406,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unpack_doesnt_emplace_typeof_type")
 
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         local Obj = {}
-        
+
         local function g(): number
             return 42
         end

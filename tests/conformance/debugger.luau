@@ -99,4 +99,52 @@ breakpoint(93)
 
 pcall(continueLocals, nil) -- prevent inlining
 
+-- coroutine.finally (debugger can be in the coroutine and in the callback)
+local function cofinallytest()
+	local co = coroutine.create(function(arg)
+		print(arg)
+		return arg * 2
+	end)
+
+	local fres
+	coroutine.finally(co, function(status, value)
+		assert(status == "finished")
+		fres = value
+	end)
+
+	local s, r = coroutine.resume(co, 21)
+	assert(s)
+	assert(r == 42)
+	assert(fres == 42)
+end
+
+breakpoint(105)
+breakpoint(106)
+breakpoint(111)
+
+pcall(cofinallytest, nil) -- prevent inlining
+
+-- coroutine.finally (coverage for wrapped coroutine error after breakpoint resume)
+local function cowrapfinallytest()
+	local co
+	local wrapped = coroutine.wrap(function(arg)
+		co = coroutine.running()
+		coroutine.yield()
+		return arg * 2
+	end)
+
+	wrapped(21)
+
+	coroutine.finally(co, function() assert(false) end)
+
+	local s, r = pcall(wrapped)
+	assert(not s)
+	assert(r == "cannot run finalizers from a wrapped coroutine")
+end
+
+breakpoint(131)
+breakpoint(132)
+
+pcall(cowrapfinallytest, nil) -- prevent inlining
+
 return 'OK'

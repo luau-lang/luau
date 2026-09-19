@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Common.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/NotNull.h"
 #include "Luau/Polarity.h"
 #include "Luau/TypeFwd.h"
@@ -201,6 +201,8 @@ size_t size(TypePackId tp, TxnLog* log = nullptr);
 bool finite(TypePackId tp, TxnLog* log = nullptr);
 size_t size(const TypePack& tp, TxnLog* log = nullptr);
 std::optional<TypeId> first(TypePackId tp, bool ignoreHiddenVariadics = true);
+
+TypePackId typePackFromIterator(NotNull<TypeArena> arena, TypePackIterator startIter, TypePackIterator endIter);
 
 TypePackVar* asMutable(TypePackId tp);
 TypePack* asMutable(const TypePack* tp);

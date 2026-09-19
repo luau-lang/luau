@@ -6,16 +6,89 @@
 #include "Luau/BytecodeUtils.h"
 #include "Luau/BytecodeValidation.h"
 #include "Luau/VecDeque.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 
 #include <cstdint>
 #include <optional>
 #include <utility>
 
+#include <math.h>
+
 namespace Luau
 {
 namespace Bytecode
 {
+
+template<typename T>
+bool bcCompare(T a, T b, BcCondition cond)
+{
+    switch (cond)
+    {
+    case BcCondition::Equal:
+        return a == b;
+    case BcCondition::NotEqual:
+        return a != b;
+    case BcCondition::Less:
+        return a < b;
+    case BcCondition::NotLess:
+        return !(a < b);
+    case BcCondition::LessEqual:
+        return a <= b;
+    case BcCondition::NotLessEqual:
+        return !(a <= b);
+    default:
+        LUAU_ASSERT(!"Unsupported condition");
+    }
+
+    return false;
+}
+
+inline bool bcCompare(double a, double b, BcCondition cond)
+{
+    // Note: redundant bool() casts work around invalid MSVC optimization that merges cases in this switch, violating IEEE754 comparison semantics
+    switch (cond)
+    {
+    case BcCondition::Equal:
+        return a == b;
+    case BcCondition::NotEqual:
+        return a != b;
+    case BcCondition::Less:
+        return a < b;
+    case BcCondition::NotLess:
+        return !bool(a < b);
+    case BcCondition::LessEqual:
+        return a <= b;
+    case BcCondition::NotLessEqual:
+        return !bool(a <= b);
+    default:
+        LUAU_ASSERT(!"Unsupported condition");
+    }
+
+    return false;
+}
+
+inline std::optional<double> evaluateNumberBinaryOp(double a, double b, LuauOpcode op)
+{
+    switch (op)
+    {
+    case LuauOpcode::LOP_ADD:
+        return a + b;
+    case LuauOpcode::LOP_SUB:
+        return a - b;
+    case LuauOpcode::LOP_MUL:
+        return a * b;
+    case LuauOpcode::LOP_DIV:
+        return a / b;
+    case LuauOpcode::LOP_MOD:
+        return a - floor(a / b) * b;
+    case LuauOpcode::LOP_POW:
+        return pow(a, b);
+    case LuauOpcode::LOP_IDIV:
+        return floor(a / b);
+    default:
+        return std::nullopt;
+    }
+}
 
 // SCCP is generic over the constant representation
 // Each instantiation inherits VmConstOps with the operations the pass needs to evaluate constants
@@ -24,28 +97,27 @@ struct VmConstOps
     virtual std::optional<BcOp> evaluate(const BcOp& lhsOp, const BcOp& rhsOp, LuauOpcode op) const = 0;
     virtual bool falsey(const BcOp& falseyOp) const = 0;
 
-    // standard three way comparison: -1 if lhsOp < rhsOp, 0 if lhsOp == rhsOp, 1 if lhsOp > rhsOp
-    virtual int cmp(const BcOp& lhsOp, const BcOp& rhsOp) const = 0;
-    virtual int cmp(const BcOp& lhsOp, const BcImm& rhs) const = 0;
+    virtual bool compare(const BcOp& lhsOp, const BcOp& rhsOp, BcCondition cond) const = 0;
 
     virtual BcOp makeNil() const = 0;
-    virtual BcImm makeImm(bool value) const = 0;
-    virtual BcImm makeImm(int32_t value) const = 0;
+    virtual BcOp makeImmBool(bool value) const = 0;
 
     // true if the VmConst supports ordering comparisons (number, integer, string)
     virtual bool isOrderable(const BcOp& vmConstOp) const = 0;
     virtual bool kindEquals(const BcOp& lhsOp, const BcOp& rhsOp) const = 0;
 
+    // true if operands represent the same value exactly (NaN == NaN is true)
+    virtual bool fullyequal(const BcOp& lhsOp, const BcOp& rhsOp) const = 0;
+
     // returns std::nullopt if the comparison is not supported
-    // rhsOp may either be a VmConst or an Imm, lhs only VmConst
     virtual std::optional<bool> eq(const BcOp& lhsOp, const BcOp& rhsOp) const = 0;
-    virtual std::optional<bool> eq(const BcOp& lhsOp, bool rhs) const = 0;
-    virtual std::optional<bool> eq(const BcOp& lhsOp, int32_t rhs) const = 0;
 
-    // only true for LUA_TNUMBER
-    virtual bool isArithmeticConstant(const BcOp& vmConstOp) const = 0;
+    virtual bool isNil(const BcOp& op) const = 0;
+    virtual bool isBoolean(const BcOp& op) const = 0;
+    virtual bool isNumber(const BcOp& op) const = 0;
 
-    virtual double asNumber(const BcOp& vmConstOp) const = 0;
+    virtual bool asBoolean(const BcOp& op) const = 0;
+    virtual double asNumber(const BcOp& op) const = 0;
 
     virtual BcRef<BcImm> asImm(BcOp op) const = 0;
 
@@ -62,24 +134,26 @@ struct BcVmConstImpl : public VmConstOps
     std::optional<BcOp> evaluate(const BcOp& lhsOp, const BcOp& rhsOp, LuauOpcode op) const override;
     bool falsey(const BcOp& falseyOp) const override;
 
-    int cmp(const BcOp& lhsOp, const BcOp& rhsOp) const override;
-    int cmp(const BcOp& lhsOp, const BcImm& rhs) const override;
+    bool compare(const BcOp& lhsOp, const BcOp& rhsOp, BcCondition cond) const override;
 
     BcOp makeNil() const override;
-    BcImm makeImm(bool value) const override;
-    BcImm makeImm(int32_t value) const override;
-    BcRef<BcImm> asImm(BcOp op) const override;
+    BcOp makeImmBool(bool value) const override;
 
-    bool isOrderable(const BcOp& vmConstOp) const override;
+    bool isOrderable(const BcOp& op) const override;
     bool kindEquals(const BcOp& lhsOp, const BcOp& rhsOp) const override;
 
+    bool fullyequal(const BcOp& lhsOp, const BcOp& rhsOp) const override;
+
     std::optional<bool> eq(const BcOp& lhsOp, const BcOp& rhsOp) const override;
-    std::optional<bool> eq(const BcOp& lhsOp, bool rhs) const override;
-    std::optional<bool> eq(const BcOp& lhsOp, int32_t rhs) const override;
 
-    bool isArithmeticConstant(const BcOp& vmConstOp) const override;
+    bool isNil(const BcOp& op) const override;
+    bool isBoolean(const BcOp& op) const override;
+    bool isNumber(const BcOp& op) const override;
 
-    double asNumber(const BcOp& vmConstOp) const override;
+    bool asBoolean(const BcOp& op) const override;
+    double asNumber(const BcOp& op) const override;
+
+    BcRef<BcImm> asImm(BcOp op) const override;
 
     explicit BcVmConstImpl(BcFunction<BcVmConst>& func)
         : VmConstOps()
@@ -95,41 +169,30 @@ enum class Constness
 {
     Undetermined, //  lattice top
     NotAConstant, //  lattice bottom
-    VmConstant,
-    ImmConstant,
+    Constant,
 };
 
 struct ConstnessLattice
 {
     Constness kind = Constness::Undetermined;
-    std::optional<BcOp> vmConst = std::nullopt;
-    std::optional<BcImm> immConst = std::nullopt;
+    std::optional<BcOp> constant = std::nullopt;
 
     ConstnessLattice() = default;
 
     ConstnessLattice(Constness kind, BcOp bcOp)
         : kind(kind)
-        , vmConst(bcOp)
+        , constant(bcOp)
     {
-        LUAU_ASSERT(kind == Constness::VmConstant);
-    }
-
-    ConstnessLattice(Constness kind, BcImm imm)
-        : kind(kind)
-        , vmConst(std::nullopt)
-        , immConst(imm)
-    {
-        LUAU_ASSERT(kind == Constness::ImmConstant);
+        LUAU_ASSERT(kind == Constness::Constant);
     }
 
     explicit ConstnessLattice(Constness kind)
         : kind(kind)
-        , vmConst(std::nullopt)
-        , immConst(std::nullopt)
+        , constant(std::nullopt)
     {
     }
 
-    ConstnessLattice merge(const ConstnessLattice& other) const
+    ConstnessLattice merge(VmConstOps* impl, const ConstnessLattice& other) const
     {
         // Undetermined is lattice top: meeting with it yields the other operand
         if (kind == Constness::Undetermined)
@@ -137,25 +200,18 @@ struct ConstnessLattice
         if (other.kind == Constness::Undetermined)
             return *this;
         // two equal constants meet to themselves; anything else falls to bottom
-        if (*this == other)
+        if (equal(impl, other))
             return *this;
         return ConstnessLattice(Constness::NotAConstant);
     }
 
-    bool operator==(const ConstnessLattice& other) const
+    bool equal(VmConstOps* impl, const ConstnessLattice& other) const
     {
         if (kind != other.kind)
             return false;
-        if (kind == Constness::ImmConstant)
-            return immConst == other.immConst;
-        if (kind == Constness::VmConstant)
-            return vmConst == other.vmConst;
+        if (kind == Constness::Constant)
+            return impl->fullyequal(constant.value(), other.constant.value());
         return true;
-    }
-
-    bool operator!=(const ConstnessLattice& other) const
-    {
-        return !(*this == other);
     }
 };
 
@@ -173,7 +229,7 @@ struct JumpTarget
     ConditionState condition = ConditionState::Unknown;
 };
 
-using OpConstness = DenseHashMap2<BcOp, ConstnessLattice, BcOpHash>;
+using OpConstness = DenseHashMap<BcOp, ConstnessLattice, BcOpHash>;
 
 struct SccpState
 {
@@ -232,10 +288,10 @@ struct Sccp
 
     // this maps a block (index) to its predecessors that it was reached from
     // if a block is not in this map, it is unreachable
-    DenseHashMap2<uint32_t, DenseHashSet2<BcOp, BcOpHash>> blockUses;
+    DenseHashMap<uint32_t, DenseHashSet<BcOp, BcOpHash>> blockUses;
 
     VecDeque<BcOp> flowWorklist;
-    DenseHashSet2<BcOp, BcOpHash> flowWorklistSet;
+    DenseHashSet<BcOp, BcOpHash> flowWorklistSet;
 
     // when a def's lattice value changes, its uses must be re-evaluated
     VecDeque<BcOp> ssaWorklist;
@@ -245,14 +301,6 @@ struct Sccp
         , impl(impl)
         , interpreter(impl, &state)
     {
-    }
-
-    ConstnessLattice makeBoolImm(bool value)
-    {
-        BcImm imm{};
-        imm.kind = BcImmKind::Boolean;
-        imm.valueBoolean = value;
-        return ConstnessLattice(Constness::ImmConstant, imm);
     }
 
     std::optional<BcOp> getFallthrough(BcRef<BcBlock> block)
@@ -326,8 +374,7 @@ struct Sccp
         case LOP_JUMPIFNOTLT:
         {
             ConditionState cond = interpreter.evaluateComparisonCondition(inst->op, inst->ops[0], inst->ops[1]);
-            bool negated = (inst->op == LOP_JUMPIFNOTEQ || inst->op == LOP_JUMPIFNOTLE || inst->op == LOP_JUMPIFNOTLT);
-            return conditionalTargets(inst, inst->ops[2], cond, !negated);
+            return conditionalTargets(inst, inst->ops[2], cond, true);
         }
         case LOP_JUMPXEQKNIL:
         case LOP_JUMPXEQKB:
@@ -369,11 +416,11 @@ struct Sccp
             BcOp op = phi->ops[i];
 
             ConstnessLattice lattice = state.operandLattice(op);
-            fold = lattice.merge(fold);
+            fold = lattice.merge(impl, fold);
         }
 
         const ConstnessLattice& prevLattice = state.opConstness[phi.op];
-        if (fold != prevLattice)
+        if (!fold.equal(impl, prevLattice))
         {
             for (BcOp use : phi->uses)
                 ssaWorklist.push_back(use);
@@ -409,8 +456,8 @@ struct Sccp
         ConstnessLattice lattice = interpreter.evaluate(inst->op, inst);
         const ConstnessLattice& prevLattice = state.opConstness[inst.op];
 
-        ConstnessLattice newVal = lattice.merge(prevLattice);
-        if (newVal != prevLattice)
+        ConstnessLattice newVal = lattice.merge(impl, prevLattice);
+        if (!newVal.equal(impl, prevLattice))
         {
             for (BcOp use : inst->uses)
                 ssaWorklist.push_back(use);
@@ -498,17 +545,6 @@ struct Sccp
         }
     }
 
-    BcOp makeConstantOp(const ConstnessLattice& lattice)
-    {
-        if (lattice.kind == Constness::VmConstant)
-            return func.addConst(lattice.vmConst.value());
-        else if (lattice.kind == Constness::ImmConstant)
-            return func.addImm(lattice.immConst.value());
-
-        LUAU_ASSERT(!"makeConstantOp called on non-constant lattice value");
-        return BcOp{};
-    }
-
     void replaceOperand(BcRef<BcInst> inst, BcOp oldOp, BcOp newOp)
     {
         for (BcOp& op : inst->ops)
@@ -546,18 +582,33 @@ struct Sccp
         }
 
         inst->ops.clear();
-        if (lattice.kind == Constness::VmConstant)
+
+        if (lattice.kind == Constness::Constant)
         {
-            inst->op = LOP_LOADK;
-            BcOp constOp = lattice.vmConst.value();
-            inst->ops.push_back(constOp);
-        }
-        else
-        {
-            LUAU_ASSERT(lattice.kind == Constness::ImmConstant);
-            const BcImm& imm = lattice.immConst.value();
-            inst->op = (imm.kind == BcImmKind::Boolean) ? LOP_LOADB : LOP_LOADN;
-            inst->ops.push_back(func.addImm(imm));
+            BcOp op = lattice.constant.value();
+
+            if (op.kind == BcOpKind::Imm)
+            {
+                BcImm& imm = func.immOp(op);
+
+                if (imm.kind == BcImmKind::Boolean)
+                    inst->op = LOP_LOADB;
+                else if (imm.kind == BcImmKind::Int)
+                    inst->op = LOP_LOADN;
+                else
+                    LUAU_ASSERT(!"unknown constant");
+
+                inst->ops.push_back(op);
+            }
+            else if (op.kind == BcOpKind::VmConst)
+            {
+                inst->op = LOP_LOADK;
+                inst->ops.push_back(op);
+            }
+            else
+            {
+                LUAU_ASSERT(!"unknown constant");
+            }
         }
     }
 
@@ -613,7 +664,7 @@ struct Sccp
     {
         for (auto& [op, lattice] : state.opConstness)
         {
-            if (lattice.kind != Constness::ImmConstant && lattice.kind != Constness::VmConstant)
+            if (lattice.kind != Constness::Constant)
                 continue;
             if (op.kind != BcOpKind::Inst)
                 continue;
@@ -676,9 +727,15 @@ struct Sccp
                     else if (use.kind == BcOpKind::Phi)
                         replacePhiOperand(func.phi(use), op, unique);
 
-                    usesOf(func, unique).push_back(use);
+                    // `unique` can be VmReg(it can be param).
+                    func.recordUse(unique, use);
                 }
                 phi->uses.clear();
+
+                for (BcOp operand : phi->ops)
+                    func.eraseUse(op, operand);
+                phi->ops.clear();
+
                 it = block->phis.erase(it);
             }
         }
@@ -688,7 +745,7 @@ struct Sccp
     {
         // mark dead blocks by forward reachability from entry, not by blockUses
         // (which can miss blocks depending on worklist ordering)
-        DenseHashSet2<uint32_t> reachable;
+        DenseHashSet<uint32_t> reachable;
         std::vector<uint32_t> worklist;
 
         uint32_t entryIdx = func.getBlockIndex(*func.block(func.entryBlock));
@@ -717,17 +774,9 @@ struct Sccp
         {
             uint32_t blockidx = func.getBlockIndex(block);
             block.useCount = static_cast<uint32_t>(blockUses[blockidx].size());
-            if (!reachable.contains(blockidx) && !hasCloseUpvals(block))
+            if (!reachable.contains(blockidx))
                 block.flags |= BcBlockFlag::Dead;
         }
-    }
-
-    bool hasCloseUpvals(const BcBlock& block) const
-    {
-        for (BcOp op : block.ops)
-            if (func.instOp(op).op == LOP_CLOSEUPVALS)
-                return true;
-        return false;
     }
 
     static std::optional<LuauOpcode> arithToKOpcode(LuauOpcode op)
@@ -814,9 +863,8 @@ struct Sccp
 
                 BcOp lhs = inst->ops[0];
                 BcOp rhs = inst->ops[1];
-                // we can safely assume that, at most, one of these can be a VmConstant
+                // we can safely assume that, at most, one of these can be a Constant
                 // if they both were constant, the arith would have been folded
-                // TODO: ImmConstant?
                 ConstnessLattice lhsLat = state.operandLattice(lhs);
                 ConstnessLattice rhsLat = state.operandLattice(rhs);
 
@@ -826,7 +874,9 @@ struct Sccp
 
                 auto isConstNumber = [&](const ConstnessLattice& lat) -> bool
                 {
-                    return lat.kind == Constness::VmConstant && lat.vmConst && impl->isArithmeticConstant(lat.vmConst.value());
+                    // Only VmConst are allowed because we don't want to fold a 'compact' LOADN into Tvalue constant
+                    return lat.kind == Constness::Constant && lat.constant && lat.constant->kind == BcOpKind::VmConst &&
+                           impl->isNumber(*lat.constant);
                 };
 
                 if (isConstNumber(rhsLat) && lhsLat.kind == Constness::NotAConstant)
@@ -865,7 +915,7 @@ struct Sccp
 
                 // we can do some potential folding here now that we know one operand is constant
                 // for instance, adds of zero, muls of zero or 1, pows of zero or 1, etc
-                double valueNumber = impl->asNumber(constantK.vmConst.value());
+                double valueNumber = impl->asNumber(constantK.constant.value());
                 if (valueNumber == 0)
                 {
                     if (inst->op == LOP_ADD || (inst->op == LOP_SUB && constantIsRhs))
@@ -901,10 +951,10 @@ struct Sccp
                 {
                     inst->op = *kOpcode;
                     if (!rk)
-                        func.setOps(op, inst, {nonConstantOp, constantK.vmConst.value()});
+                        func.setOps(op, inst, {nonConstantOp, constantK.constant.value()});
                     else
                         // SUBRK and DIVRK expect B as the constant table index
-                        func.setOps(op, inst, {constantK.vmConst.value(), nonConstantOp});
+                        func.setOps(op, inst, {constantK.constant.value(), nonConstantOp});
                 }
 
                 toErase.push_back(prevConstOperand);

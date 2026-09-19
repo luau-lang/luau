@@ -13,6 +13,7 @@
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauPrettyPrintVisualizeIndexerAccess)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 
 namespace
 {
@@ -1546,7 +1547,23 @@ struct Printer
 
     void visualizeElseIf(AstStatIf& elseif)
     {
+        if (FFlag::DebugLuauIfLocalSyntax && elseif.conditionLocal)
+        {
+            const auto cstNode = lookupCstNode<CstStatIf>(&elseif);
+
+            if (elseif.conditionKeywordLocation)
+                advance(elseif.conditionKeywordLocation->begin);
+            writer.keyword(elseif.conditionIsConst ? "const" : "local");
+
+            visualize(*elseif.conditionLocal, cstNode ? cstNode->annotationColonPosition : Position::missing());
+
+            if (elseif.conditionEqualsLocation)
+                advance(elseif.conditionEqualsLocation->begin);
+            writer.symbol("=");
+        }
+
         visualize(*elseif.condition);
+
         if (elseif.thenLocation)
             advance(elseif.thenLocation->begin);
         writer.keyword("then");
@@ -1579,6 +1596,19 @@ struct Printer
     void visualizeElseIfExpr(AstExprIfElse& elseif)
     {
         const auto cstNode = lookupCstNode<CstExprIfElse>(&elseif);
+
+        if (FFlag::DebugLuauIfLocalSyntax && elseif.conditionLocal)
+        {
+            if (elseif.conditionKeywordLocation)
+                advance(elseif.conditionKeywordLocation->begin);
+            writer.keyword(elseif.conditionIsConst ? "const" : "local");
+
+            visualize(*elseif.conditionLocal, cstNode ? cstNode->annotationColonPosition : Position::missing());
+
+            if (elseif.conditionEqualsLocation)
+                advance(elseif.conditionEqualsLocation->begin);
+            writer.symbol("=");
+        }
 
         visualize(*elseif.condition);
         if (cstNode)

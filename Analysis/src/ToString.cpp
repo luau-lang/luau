@@ -3,7 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/Constraint.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Location.h"
 #include "Luau/Scope.h"
 #include "Luau/Set.h"
@@ -41,6 +41,7 @@ LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
+LUAU_FASTFLAGVARIABLE(LuauBetterMetatableStringification)
 
 namespace Luau
 {
@@ -166,12 +167,12 @@ struct StringifierState
     ToStringOptions& opts;
     ToStringResult& result;
 
-    DenseHashMap2<TypeId, std::string> cycleNames;
-    DenseHashMap2<TypePackId, std::string> cycleTpNames;
+    DenseHashMap<TypeId, std::string> cycleNames;
+    DenseHashMap<TypePackId, std::string> cycleTpNames;
     Set<void*> seen;
     // `$$$` was chosen as the tombstone for `usedNames` since it is not a valid name syntactically and is relatively short for string comparison
     // reasons.
-    DenseHashSet2<std::string> usedNames;
+    DenseHashSet<std::string> usedNames;
     size_t indentation = 0;
 
     bool exhaustive;
@@ -910,12 +911,24 @@ struct TypeStringifier
             return;
         }
 
-        state.emit("{ @metatable ");
-        stringify(mtv.metatable);
-        state.emit(",");
-        state.newline();
-        stringify(mtv.table);
-        state.emit(" }");
+        if (FFlag::LuauBetterMetatableStringification)
+        {
+            state.emit("setmetatable<");
+            stringify(mtv.table);
+            state.emit(",");
+            state.newline();
+            stringify(mtv.metatable);
+            state.emit(">");
+        }
+        else
+        {
+            state.emit("{ @metatable ");
+            stringify(mtv.metatable);
+            state.emit(",");
+            state.newline();
+            stringify(mtv.table);
+            state.emit(" }");
+        }
     }
 
     void operator()(TypeId ty, const ExternType& etv)
@@ -1446,8 +1459,8 @@ void TypeStringifier::stringify(TypePackId tpid, const std::vector<std::optional
 static void assignCycleNames(
     const std::set<TypeId>& cycles,
     const std::set<TypePackId>& cycleTPs,
-    DenseHashMap2<TypeId, std::string>& cycleNames,
-    DenseHashMap2<TypePackId, std::string>& cycleTpNames,
+    DenseHashMap<TypeId, std::string>& cycleNames,
+    DenseHashMap<TypePackId, std::string>& cycleTpNames,
     bool exhaustive
 )
 {
@@ -1928,7 +1941,7 @@ std::string dump(const std::vector<TypePackId>& typePacks)
     return toStringVector(typePacks, dumpOptions());
 }
 
-std::string dump(DenseHashMap2<TypeId, TypeId>& types)
+std::string dump(DenseHashMap<TypeId, TypeId>& types)
 {
     std::string s = "{";
     ToStringOptions& opts = dumpOptions();
@@ -1942,7 +1955,7 @@ std::string dump(DenseHashMap2<TypeId, TypeId>& types)
     return s;
 }
 
-std::string dump(DenseHashMap2<TypePackId, TypePackId>& types)
+std::string dump(DenseHashMap<TypePackId, TypePackId>& types)
 {
     std::string s = "{";
     ToStringOptions& opts = dumpOptions();
@@ -2062,13 +2075,6 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         else if constexpr (std::is_same_v<T, FunctionCheckConstraint>)
         {
             return "function_check " + tos(c.fn) + " " + tos(c.argsPack);
-        }
-        else if constexpr (std::is_same_v<T, DEPRECATED_PrimitiveTypeConstraint>)
-        {
-            if (c.expectedType)
-                return "prim " + tos(c.freeType) + "[expected: " + tos(*c.expectedType) + "] as " + tos(c.primitiveType);
-            else
-                return "prim " + tos(c.freeType) + " as " + tos(c.primitiveType);
         }
         else if constexpr (std::is_same_v<T, HasPropConstraint>)
         {

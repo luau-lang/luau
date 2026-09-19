@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Common.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Label.h"
 #include "Luau/LogBuilder.h"
 #include "Luau/ConditionX64.h"
@@ -323,8 +323,8 @@ private:
     std::vector<Label> pendingLabels;
     std::vector<uint32_t> labelLocations;
 
-    DenseHashMap2<uint32_t, int32_t> constCache32;
-    DenseHashMap2<uint64_t, int32_t> constCache64;
+    DenseHashMap<uint32_t, int32_t> constCache32;
+    DenseHashMap<uint64_t, int32_t> constCache64;
 
     bool finalized = false;
 

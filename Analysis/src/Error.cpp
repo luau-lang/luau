@@ -18,8 +18,8 @@
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_FASTINTVARIABLE(LuauCyclicSccWarningDisplayLimit, 10)
-LUAU_FASTINT(LuauCyclicSccWarningThreshold)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount,
@@ -511,31 +511,6 @@ struct ErrorConverter
 
             return s;
         }
-    }
-
-    std::string operator()(const Luau::CyclicModuleGraphTooLarge& e) const
-    {
-        std::string s =
-            "This module is part of a cycle of " + std::to_string(e.moduleCount) +
-            " modules. Large cycles can degrade typechecking and autocomplete performance. Consider reducing the number of cyclic dependencies: ";
-
-        size_t cyclicModuleDisplayLimit = std::min(e.moduleCount, static_cast<size_t>(FInt::LuauCyclicSccWarningDisplayLimit));
-
-        for (size_t i = 0; i < cyclicModuleDisplayLimit; i++)
-        {
-            if (i > 0)
-                s += ", ";
-
-            if (fileResolver != nullptr)
-                s += fileResolver->getHumanReadableModuleName(e.members[i]);
-            else
-                s += e.members[i];
-        }
-
-        if (cyclicModuleDisplayLimit < e.members.size())
-            s += ", ...";
-
-        return s;
     }
 
     std::string operator()(const Luau::CyclicModuleTopLevelAccess& e) const
@@ -1046,6 +1021,33 @@ struct ErrorConverter
     {
         return "Calling function " + toString(afc.function) + " with argument pack " + toString(afc.arguments) + " is ambiguous.";
     }
+
+    std::string operator()(const UninitializedFieldAccess& afc) const
+    {
+        LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+
+        if (afc.fieldName)
+            return "Access to field '" + *afc.fieldName + "' of self before it has been initialized";
+        else
+            return "Access to 'self' before all of its fields have been initialized";
+    }
+
+    std::string operator()(const TypeAnnotationRequired& err) const
+    {
+        ToStringOptions opts;
+        opts.functionTypeArguments = true;
+        opts.ignoreSyntheticName = true;
+        auto tos = toStringDetailed(err.inferredTy, opts);
+        if (!tos.invalid && !tos.truncated && !tos.error)
+            return "Type annotation required here.  Consider " + tos.name;
+        else
+            return "Type annotation required here.  Unable to infer the type of this function.";
+    }
+
+    std::string operator()(const ConstructorsShouldNotReturnAnything&) const
+    {
+        return "Class constructors should not return anything.";
+    }
 };
 
 struct InvalidNameChecker
@@ -1303,11 +1305,6 @@ bool ModuleHasCyclicDependency::operator==(const ModuleHasCyclicDependency& rhs)
     return cycle.size() == rhs.cycle.size() && std::equal(cycle.begin(), cycle.end(), rhs.cycle.begin());
 }
 
-bool CyclicModuleGraphTooLarge::operator==(const CyclicModuleGraphTooLarge& rhs) const
-{
-    return moduleCount == rhs.moduleCount;
-}
-
 bool CyclicModuleTopLevelAccess::operator==(const CyclicModuleTopLevelAccess& rhs) const
 {
     return cyclicModuleName == rhs.cyclicModuleName && localName == rhs.localName && propName == rhs.propName;
@@ -1502,6 +1499,16 @@ bool AmbiguousFunctionCall::operator==(const AmbiguousFunctionCall& rhs) const
     return function == rhs.function && arguments == rhs.arguments;
 }
 
+bool TypeAnnotationRequired::operator==(const TypeAnnotationRequired& rhs) const
+{
+    return inferredTy == rhs.inferredTy;
+}
+
+bool UninitializedFieldAccess::operator==(const UninitializedFieldAccess& rhs) const
+{
+    LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
+    return fieldName == rhs.fieldName;
+}
 
 std::string toString(const TypeError& error)
 {
@@ -1622,9 +1629,6 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
     }
     else if constexpr (std::is_same_v<T, ModuleHasCyclicDependency>)
-    {
-    }
-    else if constexpr (std::is_same_v<T, CyclicModuleGraphTooLarge>)
     {
     }
     else if constexpr (std::is_same_v<T, CyclicModuleTopLevelAccess>)
@@ -1764,6 +1768,16 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
         e.function = clone(e.function);
         e.arguments = clone(e.arguments);
+    }
+    else if constexpr (std::is_same_v<T, UninitializedFieldAccess>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, TypeAnnotationRequired>)
+    {
+        e.inferredTy = clone(e.inferredTy);
+    }
+    else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
+    {
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

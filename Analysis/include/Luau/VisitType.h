@@ -3,14 +3,13 @@
 
 #include <unordered_set>
 
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/TypePack.h"
 #include "Luau/Type.h"
 #include "Type.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
-LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 
 namespace Luau
 {
@@ -40,7 +39,7 @@ inline bool hasSeen(std::unordered_set<void*>& seen, const void* tv)
     return !seen.insert(ttv).second;
 }
 
-inline bool hasSeen(DenseHashSet2<void*>& seen, const void* tv)
+inline bool hasSeen(DenseHashSet<void*>& seen, const void* tv)
 {
     void* ttv = const_cast<void*>(tv);
 
@@ -57,7 +56,7 @@ inline void unsee(std::unordered_set<void*>& seen, const void* tv)
     seen.erase(ttv);
 }
 
-inline void unsee(DenseHashSet2<void*>& seen, const void* tv)
+inline void unsee(DenseHashSet<void*>& seen, const void* tv)
 {
     // When DenseHashSet is used for 'visitTypeOnce', where don't forget visited elements
 }
@@ -259,11 +258,8 @@ struct GenericTypeVisitor
                 traverse(ftv->lowerBound);
                 traverse(ftv->upperBound);
 
-                if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-                {
-                    if (ftv->primitiveType)
-                        traverse(*ftv->primitiveType);
-                }
+                if (ftv->primitiveType)
+                    traverse(*ftv->primitiveType);
             }
         }
         else if (auto gtv = get<GenericType>(ty))
@@ -526,10 +522,10 @@ struct TypeVisitor : GenericTypeVisitor<std::unordered_set<void*>>
 };
 
 /// Visit each type under a given type.  Each type will only be checked once even if there are multiple paths to it.
-struct TypeOnceVisitor : GenericTypeVisitor<DenseHashSet2<void*>>
+struct TypeOnceVisitor : GenericTypeVisitor<DenseHashSet<void*>>
 {
     explicit TypeOnceVisitor(const std::string visitorName, bool skipBoundTypes)
-        : GenericTypeVisitor{visitorName, DenseHashSet2<void*>{}, skipBoundTypes}
+        : GenericTypeVisitor{visitorName, DenseHashSet<void*>{}, skipBoundTypes}
     {
     }
 };

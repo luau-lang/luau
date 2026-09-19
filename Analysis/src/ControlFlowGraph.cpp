@@ -127,7 +127,7 @@ BlockId ControlFlowGraph::newBlock(BlockKind kind, std::string debugName)
 void ControlFlowGraph::computeRPO()
 {
     std::vector<Block*> stack;
-    DenseHashSet2<Block*> visited;
+    DenseHashSet<Block*> visited;
 
     stack.push_back(blocks[0]);
     while (!stack.empty())
@@ -225,7 +225,7 @@ void CFGBuilder::seal(Block* b)
                 b->setReachingDefinition(resolved->sym, resolved);
             }
         }
-        incompleteJoins[b] = DenseHashSet2<Instruction*>{};
+        incompleteJoins[b] = DenseHashSet<Instruction*>{};
     }
     sealedBlocks.insert(b);
 }

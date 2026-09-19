@@ -2,7 +2,7 @@
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Frontend.h"
 #include "Luau/Parser.h"
 #include "Luau/RequireTracer.h"
@@ -22,10 +22,7 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
-LUAU_FASTFLAG(LuauFrontendSourceNodeErase)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTINT(LuauCyclicSccWarningThreshold)
 LUAU_FASTFLAG(LuauExportAnnotationBinding)
 LUAU_FASTFLAG(LuauCyclicRequireTopLevelAccessError)
 
@@ -1762,7 +1759,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_dependents_stored_on_node_as_graph_upda
 
     auto validateMatchesRequireLists = [&](const std::string& message)
     {
-        DenseHashMap2<ModuleName, std::vector<ModuleName>> dependents;
+        DenseHashMap<ModuleName, std::vector<ModuleName>> dependents;
         for (const auto& module : getFrontend().sourceNodes)
         {
             for (const auto& dep : module.second->requireSet)
@@ -2051,10 +2048,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "generic_P_widening_with_cross_module_recursi
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
-        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSubtypingMissingPropertiesAsNil, true};
 
     // Module A: exports a recursive type and a component that uses it.
     fileResolver.source["game/Gui/Modules/A"] = R"(
@@ -2082,13 +2076,14 @@ TEST_CASE_FIXTURE(FrontendFixture, "generic_P_widening_with_cross_module_recursi
     )";
 
     CheckResult result = getFrontend().check("game/Gui/Modules/B");
+
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "deleted_source_is_evicted_on_recheck")
 {
-    ScopedFastFlag luauFrontendSourceNodeErase{FFlag::LuauFrontendSourceNodeErase, true};
-
     fileResolver.source["game/A"] = R"(
         export type Props = { name: string, value: number, label: string? }
         local function make(p: Props): Props
@@ -2662,40 +2657,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "scc_markdirty_propagates_to_peers")
     CHECK(getFrontend().isDirty("game/B"));
     CHECK(std::find(markedDirty.begin(), markedDirty.end(), "game/A") != markedDirty.end());
     CHECK(std::find(markedDirty.begin(), markedDirty.end(), "game/B") != markedDirty.end());
-}
-
-TEST_CASE_FIXTURE(FrontendFixture, "scc_large_cycle_warning")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauCyclicRequireTypeInference, true},
-        {FFlag::DebugLuauForceOldSolver, false},
-        {FFlag::LuauExportValueSyntax, true},
-        {FFlag::LuauExportValueTypecheck, true},
-    };
-
-    fileResolver.source["game/A"] = R"(
-        local c = require(game.C)
-        export local a = 1
-    )";
-    fileResolver.source["game/B"] = R"(
-        local a = require(game.A)
-        export local b = 2
-    )";
-    fileResolver.source["game/C"] = R"(
-        local b = require(game.B)
-        export local c = 3
-    )";
-
-    ScopedFastInt sfi{FInt::LuauCyclicSccWarningThreshold, 2};
-    CheckResult result = getFrontend().check("game/A");
-
-    bool foundWarning = false;
-    for (const TypeError& e : result.errors)
-    {
-        if (get<CyclicModuleGraphTooLarge>(e))
-            foundWarning = true;
-    }
-    CHECK(foundWarning);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "scc_old_solver_independent")
@@ -3424,13 +3385,13 @@ TEST_CASE_FIXTURE(FrontendFixture, "scc_deferred_field_access_ok")
     fileResolver.source["game/A"] = R"(
         local b = require(game.B)
         export local a_val = 1
-        export function getB()
+        export function getB(): number
             return b.b_val
         end
     )";
     fileResolver.source["game/B"] = R"(
         local a = require(game.A)
-        export function getA()
+        export function getA(): number
             return a.a_val
         end
         export local b_val = 42

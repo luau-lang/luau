@@ -19,6 +19,8 @@ using namespace Luau::Bytecode;
 
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCompileFastpcall)
+LUAU_FASTFLAG(LuauCompileExpandLimit)
+LUAU_FASTFLAG(LuauCompileExpandShortLimit)
 
 namespace
 {
@@ -922,6 +924,71 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "fastpcall_roundtrip")
             return xpcall(fn, errf, 1, 2, 3)
         end
     )");
+}
+
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "jump_expand_limits")
+{
+    // Takes too long to run without optimizations enabled
+#if !(defined(_DEBUG) || defined(_NOOPT))
+    ScopedFastFlag luauCompileExpandLimit{FFlag::LuauCompileExpandLimit, true};
+
+    BytecodeBuilder bcb;
+    bcb.beginFunction(0, false);
+
+    size_t jumpCount = 2'804'000;
+
+    for (size_t i = 0; i < jumpCount; ++i)
+        bcb.emitAD(LOP_JUMP, 0, 0);
+
+    size_t target = bcb.emitLabel();
+    bcb.emitABC(LOP_RETURN, 0, 1, 0);
+
+    bool success = true;
+    for (size_t i = 0; i < jumpCount; ++i)
+        success = success && bcb.patchJumpD(i, target);
+
+    CHECK(success);
+
+    bool error = false;
+    bcb.expandJumps(error);
+
+    CHECK(error);
+#endif
+}
+
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "jump_expand_short_limits")
+{
+    ScopedFastFlag luauCompileExpandShortLimit{FFlag::LuauCompileExpandShortLimit, true};
+
+    BytecodeBuilder bcb;
+    bcb.beginFunction(0, false);
+
+    size_t jumpCount = 32767 / 3 + 1;
+
+    for (size_t i = 0; i < jumpCount; ++i)
+        bcb.emitAD(LOP_JUMP, 0, 0);
+
+    size_t nearTarget = bcb.emitLabel();
+    bcb.emitAD(LOP_JUMP, 0, 0);
+
+    for (size_t i = 0; i < 32768; ++i)
+        bcb.emitAD(LOP_LOADN, 0, 0);
+
+    size_t farTarget = bcb.emitLabel();
+    bcb.emitABC(LOP_RETURN, 0, 1, 0);
+
+    bool success = true;
+    success = success && bcb.patchJumpD(0, nearTarget);
+
+    for (size_t i = 0; i < jumpCount; ++i)
+        success = success && bcb.patchJumpD(i + 1, farTarget);
+
+    CHECK(success);
+
+    bool error = false;
+    bcb.expandJumps(error);
+
+    CHECK(!error);
 }
 
 TEST_SUITE_END();

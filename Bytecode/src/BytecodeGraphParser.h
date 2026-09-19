@@ -468,6 +468,11 @@ struct BytecodeGraphParser
         func.addUse(inst, it->second);
     }
 
+    void addEmptyInput(BcRef<BcInst> inst)
+    {
+        func.addUse(inst, BcOp{BcOpKind::None, 0});
+    }
+
     static const uint32_t kMaxCFGBlocks = 1000;
 
     bool rebuildGraph(const Instruction code[], uint32_t codesize, std::vector<uint32_t>& lines, std::vector<uint32_t>& pcs)
@@ -1036,7 +1041,12 @@ struct BytecodeGraphParser
                 break;
             case LOP_NEWCLASS:
                 LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-                addVmRegInput(node, LUAU_INSN_B(insn));
+
+                if (int reg = LUAU_INSN_B(insn); reg != 0xff)
+                    addVmRegInput(node, LUAU_INSN_B(insn));
+                else
+                    addEmptyInput(node);
+
                 addImmInput(node, static_cast<uint32_t>(LUAU_INSN_C(insn)));
                 addVmConstInput(node, aux);
                 addProducer(LUAU_INSN_A(insn), nodeOp);
