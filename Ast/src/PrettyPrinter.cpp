@@ -936,8 +936,10 @@ struct Printer
         {
             writer.keyword("while");
             visualize(*a->condition);
-            // TODO: what if 'hasDo = false'?
-            advance(a->doLocation.begin);
+            if (a->hasDo)
+                advance(a->doLocation.begin);
+            else
+                writer.space();
             writer.keyword("do");
             visualizeBlock(*a->body);
             advance(a->body->location.end);
@@ -1054,7 +1056,10 @@ struct Printer
 
                 visualize(*a->step);
             }
-            advance(a->doLocation.begin);
+            if (a->hasDo)
+                advance(a->doLocation.begin);
+            else
+                writer.space();
             writer.keyword("do");
             visualizeBlock(*a->body);
 
@@ -1080,7 +1085,10 @@ struct Printer
                     visualize(*a->vars.data[i], Position{0, 0});
             }
 
-            advance(a->inLocation.begin);
+            if (a->hasIn)
+                advance(a->inLocation.begin);
+            else
+                writer.space();
             writer.keyword("in");
 
             CommaSeparatorInserter valComma(writer, cstNode ? cstNode->valuesCommaPositions.begin() : nullptr);
@@ -1091,7 +1099,10 @@ struct Printer
                 visualize(*val);
             }
 
-            advance(a->doLocation.begin);
+            if (a->hasDo)
+                advance(a->doLocation.begin);
+            else
+                writer.space();
             writer.keyword("do");
 
             visualizeBlock(*a->body);
