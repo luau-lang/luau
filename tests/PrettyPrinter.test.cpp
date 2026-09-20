@@ -2795,4 +2795,28 @@ TEST_CASE("pretty_print_readonly_indexer")
     CHECK_EQ(code, prettyPrint(code, {}, true, true).code);
 }
 
+TEST_CASE("pretty_print_while_missing_do_does_not_fabricate_keyword")
+{
+    std::string code = "while x\n  print(1)\nend\n";
+    std::string expected = "while x do\n  print(1)\nend\n";
+
+    CHECK_EQ(expected, prettyPrint(code, {}, false, /* ignoreParseErrors */ true).code);
+}
+
+TEST_CASE("pretty_print_for_missing_do_does_not_fabricate_keyword")
+{
+    std::string code = "for i = 1, 10\n  print(i)\nend\n";
+    std::string expected = "for i = 1, 10 do\n  print(i)\nend\n";
+
+    CHECK_EQ(expected, prettyPrint(code, {}, false, /* ignoreParseErrors */ true).code);
+}
+
+TEST_CASE("pretty_print_for_in_missing_in_and_do_does_not_fabricate_keywords")
+{
+    std::string code = "for k, v in pairs(t)\n  print(k)\nend\n";
+    std::string expected = "for k, v in pairs(t) do\n  print(k)\nend\n";
+
+    CHECK_EQ(expected, prettyPrint(code, {}, false, /* ignoreParseErrors */ true).code);
+}
+
 TEST_SUITE_END();
