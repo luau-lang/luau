@@ -1,0 +1,2 @@
+./analysis/union-types/disallow_less_specific_assign.luau(2,33): TypeError: Expected this to be 'number', but got 'number | string'; 
+the 2nd component of the union is `string`, which is not a subtype of `number`

@@ -35,6 +35,17 @@ end
 local function setAdd(s, x) s[x] = true end
 local function setHas(s, x) return s[x] == true end
 
+-- Deterministic iteration order for sets keyed by temp ids / move indices (integers).
+-- `pairs`/generalized-`for` order over these follows the VM's hash function, which would
+-- otherwise make the coloring (and thus the emitted register assignment) depend on hash
+-- order. Iterating in sorted key order makes allocation reproducible.
+local function sortedList(set)
+	local out = {}
+	for k in set do out[#out + 1] = k end
+	table.sort(out)
+	return out
+end
+
 -- Build basic blocks from the instruction list.
 -- Returns blocks = { { first=i, last=j, succ={blockIdx...}, insns={i..j} } }, and
 -- labelToBlock mapping.
@@ -246,7 +257,7 @@ function regalloc.color(insns, temps, opts)
 	-- Coloring worklists.
 	local precoloredSet = newSet()
 	local initial = {}
-	for t in nodes do
+	for _, t in sortedList(nodes) do
 		if precolored(t) then precoloredSet[t] = true
 		else table.insert(initial, t) end
 	end
@@ -336,7 +347,7 @@ function regalloc.color(insns, temps, opts)
 		local t = table.remove(simplifyWorklist)
 		table.insert(selectStack, t)
 		onStack[t] = true
-		for v in adjacent(t) do
+		for _, v in sortedList(adjacent(t)) do
 			decrementDegree(v)
 		end
 	end
@@ -377,7 +388,7 @@ function regalloc.color(insns, temps, opts)
 		coalescedNodes[v] = true
 		alias[v] = u
 		for m in moveList[v] do moveList[u][m] = true end
-		for w in adjacent(v) do
+		for _, w in sortedList(adjacent(v)) do
 			addEdge(w, u)
 			decrementDegree(w)
 		end
@@ -389,7 +400,7 @@ function regalloc.color(insns, temps, opts)
 
 	local function coalesce()
 		local m
-		for mm in worklistMoves do m = mm; break end
+		for _, mm in sortedList(worklistMoves) do m = mm; break end
 		worklistMoves[m] = nil
 		local mv = insns[m].move
 		local x = getAlias(mv.dst)
@@ -423,7 +434,7 @@ function regalloc.color(insns, temps, opts)
 	end
 
 	local function freezeMoves(u)
-		for m in nodeMoves(u) do
+		for _, m in sortedList(nodeMoves(u)) do
 			activeMoves[m] = nil
 			worklistMoves[m] = nil
 			frozenMoves[m] = true

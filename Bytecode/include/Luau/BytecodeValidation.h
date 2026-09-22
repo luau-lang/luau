@@ -5,8 +5,6 @@
 
 #include <algorithm>
 
-#include <algorithm>
-
 namespace Luau
 {
 

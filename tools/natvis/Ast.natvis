@@ -43,7 +43,7 @@
     <DisplayString>{begin}-{end}</DisplayString>
   </Type>
 
-  <Type Name="Luau::DenseHashSet2&lt;*,*,*&gt;">
+  <Type Name="Luau::DenseHashSet&lt;*,*,*&gt;">
     <DisplayString>{{ size={impl.count} }}</DisplayString>
     <Expand>
       <Item Name="[size]">impl.count</Item>
@@ -61,7 +61,7 @@
     </Expand>
   </Type>
 
-  <Type Name="Luau::DenseHashMap2&lt;*,*,*,*&gt;">
+  <Type Name="Luau::DenseHashMap&lt;*,*,*,*&gt;">
     <DisplayString>{{ size={impl.count} }}</DisplayString>
     <Expand>
       <Item Name="[size]">impl.count</Item>

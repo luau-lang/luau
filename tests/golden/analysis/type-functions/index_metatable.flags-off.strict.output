@@ -1,0 +1,1 @@
+./analysis/type-functions/index_metatable.luau(21,16): TypeError: Property '"Car"' does not exist on type 'first'
