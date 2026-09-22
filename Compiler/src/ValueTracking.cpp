@@ -13,18 +13,18 @@ namespace Compile
 struct ValueVisitor : AstVisitor
 {
 
-    DenseHashMap2<AstName, Global>& globals;
-    DenseHashMap2<AstLocal*, Variable>& variables;
-    DenseHashMap2<AstName, AstLocal*>& classLocals;
-    DenseHashSet2<AstLocal*>* exportedFunctions = nullptr;
+    DenseHashMap<AstName, Global>& globals;
+    DenseHashMap<AstLocal*, Variable>& variables;
+    DenseHashMap<AstName, AstLocal*>& classLocals;
+    DenseHashSet<AstLocal*>* exportedFunctions = nullptr;
     std::vector<AstLocal*>* exportedVariables = nullptr;
 
 
     // with LuauOptimizeExportTable, remove this constructor
     ValueVisitor(
-        DenseHashMap2<AstName, Global>& globals,
-        DenseHashMap2<AstLocal*, Variable>& variables,
-        DenseHashMap2<AstName, AstLocal*>& classLocals
+        DenseHashMap<AstName, Global>& globals,
+        DenseHashMap<AstLocal*, Variable>& variables,
+        DenseHashMap<AstName, AstLocal*>& classLocals
     )
         : globals(globals)
         , variables(variables)
@@ -33,10 +33,10 @@ struct ValueVisitor : AstVisitor
     }
 
     ValueVisitor(
-        DenseHashMap2<AstName, Global>& globals,
-        DenseHashMap2<AstLocal*, Variable>& variables,
-        DenseHashMap2<AstName, AstLocal*>& classLocals,
-        DenseHashSet2<AstLocal*>* exportedFunctions,
+        DenseHashMap<AstName, Global>& globals,
+        DenseHashMap<AstLocal*, Variable>& variables,
+        DenseHashMap<AstName, AstLocal*>& classLocals,
+        DenseHashSet<AstLocal*>* exportedFunctions,
         std::vector<AstLocal*>* exportedVariables
     )
         : globals(globals)
@@ -83,6 +83,22 @@ struct ValueVisitor : AstVisitor
                 }
             }
         }
+
+        return true;
+    }
+
+    bool visit(AstStatIf* node) override
+    {
+        if (node->conditionLocal)
+            variables[node->conditionLocal].init = node->condition;
+
+        return true;
+    }
+
+    bool visit(AstExprIfElse* node) override
+    {
+        if (node->conditionLocal)
+            variables[node->conditionLocal].init = node->condition;
 
         return true;
     }
@@ -147,7 +163,7 @@ struct ValueVisitor : AstVisitor
     }
 };
 
-void assignMutable(DenseHashMap2<AstName, Global>& globals, const AstNameTable& names, const char* const* mutableGlobals)
+void assignMutable(DenseHashMap<AstName, Global>& globals, const AstNameTable& names, const char* const* mutableGlobals)
 {
     if (AstName name = names.get("_G"); name.value)
         globals[name] = Global::Mutable;
@@ -159,10 +175,10 @@ void assignMutable(DenseHashMap2<AstName, Global>& globals, const AstNameTable& 
 }
 
 void trackValues(
-    DenseHashMap2<AstName, Global>& globals,
-    DenseHashMap2<AstLocal*, Variable>& variables,
-    DenseHashMap2<AstName, AstLocal*>& classLocals,
-    DenseHashSet2<AstLocal*>& exportedFunctions,
+    DenseHashMap<AstName, Global>& globals,
+    DenseHashMap<AstLocal*, Variable>& variables,
+    DenseHashMap<AstName, AstLocal*>& classLocals,
+    DenseHashSet<AstLocal*>& exportedFunctions,
     std::vector<AstLocal*>& exportedVariables,
     AstNode* root
 )
@@ -171,9 +187,9 @@ void trackValues(
     root->visit(&visitor);
 }
 void trackValues_DEPRECATED(
-    DenseHashMap2<AstName, Global>& globals,
-    DenseHashMap2<AstLocal*, Variable>& variables,
-    DenseHashMap2<AstName, AstLocal*>& classLocals,
+    DenseHashMap<AstName, Global>& globals,
+    DenseHashMap<AstLocal*, Variable>& variables,
+    DenseHashMap<AstName, AstLocal*>& classLocals,
     AstNode* root
 )
 {

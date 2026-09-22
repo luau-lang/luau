@@ -56,7 +56,7 @@ struct Comment
     Location location;
 };
 
-using CstNodeMap = DenseHashMap2<AstNode*, CstNode*>;
+using CstNodeMap = DenseHashMap<AstNode*, CstNode*>;
 
 struct ParseResult
 {

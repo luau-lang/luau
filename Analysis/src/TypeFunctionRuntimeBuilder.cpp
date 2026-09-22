@@ -4,7 +4,7 @@
 
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/StringUtils.h"
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
@@ -29,8 +29,8 @@ namespace Luau
 // Forked version of Clone.cpp
 class TypeFunctionSerializer
 {
-    using SeenTypes = DenseHashMap2<TypeId, TypeFunctionTypeId>;
-    using SeenTypePacks = DenseHashMap2<TypePackId, TypeFunctionTypePackId>;
+    using SeenTypes = DenseHashMap<TypeId, TypeFunctionTypeId>;
+    using SeenTypePacks = DenseHashMap<TypePackId, TypeFunctionTypePackId>;
 
     TypeFunctionRuntimeBuilderState* state = nullptr;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;
@@ -555,8 +555,8 @@ struct SerializedFunctionScope
 // Complete inverse of TypeFunctionSerializer
 class TypeFunctionDeserializer
 {
-    using SeenTypes = DenseHashMap2<TypeFunctionTypeId, TypeId>;
-    using SeenTypePacks = DenseHashMap2<TypeFunctionTypePackId, TypePackId>;
+    using SeenTypes = DenseHashMap<TypeFunctionTypeId, TypeId>;
+    using SeenTypePacks = DenseHashMap<TypeFunctionTypePackId, TypePackId>;
 
     TypeFunctionRuntimeBuilderState* state = nullptr;
     NotNull<TypeFunctionRuntime> typeFunctionRuntime;

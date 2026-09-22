@@ -16,6 +16,16 @@ local arm64 = require("./arm64_isa")
 
 local lift = {}
 
+-- Keys of a set, in ascending order. Used where the iteration order over a
+-- register-number-keyed set would otherwise leak the VM's hash order into temp-id
+-- assignment (and hence into the final register allocation / emitted assembly).
+local function sortedKeys(set)
+	local out = {}
+	for k in set do out[#out + 1] = k end
+	table.sort(out)
+	return out
+end
+
 -- Union-find.
 local function makeUF()
 	local parent = {}
@@ -127,7 +137,7 @@ function lift.liftFunction(body, opts)
 	end
 	-- ENTRY defs for every used reg.
 	local entrySites = {}
-	for reg in usedRegs do
+	for _, reg in sortedKeys(usedRegs) do
 		local id = addSite(0, reg)
 		entrySites[reg] = id
 	end
@@ -225,8 +235,8 @@ function lift.liftFunction(body, opts)
 	end
 	-- entry temps
 	local entryTemp = {}   -- reg num -> temp id (the live-in value)
-	for reg, id in entrySites do
-		entryTemp[reg] = tempFor(uf.find(id))
+	for _, reg in sortedKeys(entrySites) do
+		entryTemp[reg] = tempFor(uf.find(entrySites[reg]))
 	end
 
 	-- Annotate nodes with def/use temps and per-operand temp mapping.

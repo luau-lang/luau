@@ -16,14 +16,19 @@
 #include "Luau/Unifier2.h"
 #include "Luau/UserDefinedTypeFunction.h"
 #include "Luau/VisitType.h"
+#include <algorithm>
+#include <string_view>
 
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauStepRefineRecursionLimit, 64)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+LUAU_FASTFLAGVARIABLE(LuauKeyofLexicographicOrdering)
 LUAU_FASTFLAGVARIABLE(LuauDontBlockRefinementUnconditionally)
+LUAU_FASTFLAGVARIABLE(LuauSetmetatableOverrides)
+LUAU_FLAGVERSION(LuauSetmetatableOverrides, 2)
+LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 
 namespace Luau
 {
@@ -126,7 +131,7 @@ static std::optional<TypePackId> solveFunctionCall(NotNull<TypeFunctionContext> 
         ctx->builtins, ctx->arena, ctx->normalizer, ctx->typeFunctionRuntime, ctx->scope, ctx->ice, ctx->limits, location
     );
 
-    DenseHashSet2<TypeId> uniqueTypes;
+    DenseHashSet<TypeId> uniqueTypes;
     OverloadResolution resolution = resolver->resolveOverload(fnTy, argsPack, location, NotNull{&uniqueTypes}, /* useFreeTypeBounds */ false);
 
     if (resolution.ok.empty() && resolution.potentialOverloads.empty())
@@ -986,7 +991,7 @@ TypeFunctionReductionResult<TypeId> eqTypeFunction(
 // Collect types that prevent us from reducing a particular refinement.
 struct FindRefinementBlockers : TypeOnceVisitor
 {
-    DenseHashSet2<TypeId> found;
+    DenseHashSet<TypeId> found;
 
     FindRefinementBlockers()
         : TypeOnceVisitor("FindRefinementBlockers", /* skipBoundTypes */ true)
@@ -1162,7 +1167,7 @@ struct RefineTypeScrubber : public Substitution
     }
 };
 
-bool occurs(TypeId haystack, TypeId needle, DenseHashSet2<TypeId>& seen)
+bool occurs(TypeId haystack, TypeId needle, DenseHashSet<TypeId>& seen)
 {
     if (needle == haystack)
         return true;
@@ -1191,7 +1196,7 @@ bool occurs(TypeId haystack, TypeId needle, DenseHashSet2<TypeId>& seen)
 
 bool occurs(TypeId haystack, TypeId needle)
 {
-    DenseHashSet2<TypeId> seen;
+    DenseHashSet<TypeId> seen;
     return occurs(haystack, needle, seen);
 }
 
@@ -1478,8 +1483,8 @@ TypeFunctionReductionResult<TypeId> singletonTypeFunction(
 struct CollectUnionTypeOptions : TypeOnceVisitor
 {
     NotNull<TypeFunctionContext> ctx;
-    DenseHashSet2<TypeId> options;
-    DenseHashSet2<TypeId> blockingTypes;
+    DenseHashSet<TypeId> options;
+    DenseHashSet<TypeId> blockingTypes;
 
     explicit CollectUnionTypeOptions(NotNull<TypeFunctionContext> ctx)
         : TypeOnceVisitor("CollectUnionTypeOptions", /* skipBoundTypes */ true)
@@ -1612,7 +1617,7 @@ TypeFunctionReductionResult<TypeId> intersectTypeFunction(
     // fold over the types with `simplifyIntersection`
     TypeId resultTy = ctx->builtins->unknownType;
     // collect types which caused intersection to return never
-    DenseHashSet2<TypeId> unintersectableTypes;
+    DenseHashSet<TypeId> unintersectableTypes;
     for (auto ty : types)
     {
         // skip any `*no-refine*` types.
@@ -1680,7 +1685,7 @@ namespace
  * `isRaw` parameter indicates whether or not we should follow __index metamethods
  * returns `false` if `result` should be ignored because the answer is "all strings"
  */
-bool computeKeysOf(TypeId ty, Set<std::optional<std::string>>& result, DenseHashSet2<TypeId>& seen, bool isRaw, NotNull<TypeFunctionContext> ctx)
+bool computeKeysOf(TypeId ty, Set<std::optional<std::string>>& result, DenseHashSet<TypeId>& seen, bool isRaw, NotNull<TypeFunctionContext> ctx)
 {
 
     // if the type is the top table type, the answer is just "all strings"
@@ -1799,7 +1804,7 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
         LUAU_ASSERT(!normTy->hasTables());
 
         // seen set for key computation for extern types
-        DenseHashSet2<TypeId> seen;
+        DenseHashSet<TypeId> seen;
 
         auto externTypeIter = normTy->externTypes.ordering.begin();
         auto externTypeIterEnd = normTy->externTypes.ordering.end();
@@ -1835,7 +1840,7 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
         LUAU_ASSERT(!normTy->hasExternTypes());
 
         // seen set for key computation for tables
-        DenseHashSet2<TypeId> seen;
+        DenseHashSet<TypeId> seen;
 
         auto tablesIter = normTy->tables.begin();
         LUAU_ASSERT(tablesIter != normTy->tables.end()); // should be guaranteed by the `hasTables` check earlier
@@ -1870,12 +1875,35 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
 
     // everything is validated, we need only construct our big union of singletons now!
     std::vector<TypeId> singletons;
-    singletons.reserve(keys.size());
 
-    for (const auto& key : keys)
+    if (FFlag::LuauKeyofLexicographicOrdering)
     {
-        if (key)
-            singletons.push_back(ctx->arena->addType(SingletonType{StringSingleton{*key}}));
+        // but first, we'll sort it to keep the union at the end in lexicographic ordering
+        std::vector<std::string_view> sortedKeys;
+        sortedKeys.reserve(keys.size());
+
+        for (const auto& key : keys)
+        {
+             if (key)
+                  sortedKeys.emplace_back(*key);
+        }
+
+
+        std::stable_sort(sortedKeys.begin(), sortedKeys.end());
+        singletons.reserve(sortedKeys.size());
+
+        for (const auto& key : sortedKeys)
+            singletons.push_back(ctx->arena->addType(SingletonType{StringSingleton{std::string{key.data(), key.size()}}}));
+    }
+    else
+    {
+        singletons.reserve(keys.size());
+
+        for (const auto& key : keys)
+        {
+            if (key)
+                singletons.push_back(ctx->arena->addType(SingletonType{StringSingleton{*key}}));
+        }
     }
 
     // If there's only one entry, we don't need a UnionType.
@@ -1926,7 +1954,7 @@ bool searchPropsAndIndexer(
     TypeId ty,
     TableType::Props tblProps,
     std::optional<TableIndexer> tblIndexer,
-    DenseHashSet2<TypeId>& result,
+    DenseHashSet<TypeId>& result,
     NotNull<TypeFunctionContext> ctx
 )
 {
@@ -2000,8 +2028,8 @@ bool searchPropsAndIndexer(
 bool tblIndexInto(
     TypeId indexer,
     TypeId indexee,
-    DenseHashSet2<TypeId>& result,
-    DenseHashSet2<TypeId>& seenSet,
+    DenseHashSet<TypeId>& result,
+    DenseHashSet<TypeId>& seenSet,
     NotNull<TypeFunctionContext> ctx,
     bool isRaw
 )
@@ -2077,9 +2105,9 @@ bool tblIndexInto(
     return false;
 }
 
-bool tblIndexInto(TypeId indexer, TypeId indexee, DenseHashSet2<TypeId>& result, NotNull<TypeFunctionContext> ctx, bool isRaw)
+bool tblIndexInto(TypeId indexer, TypeId indexee, DenseHashSet<TypeId>& result, NotNull<TypeFunctionContext> ctx, bool isRaw)
 {
-    DenseHashSet2<TypeId> seenSet;
+    DenseHashSet<TypeId> seenSet;
     return tblIndexInto(indexer, indexee, result, seenSet, ctx, isRaw);
 }
 
@@ -2141,7 +2169,7 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
     else
         typesToFind = &singleType;
 
-    DenseHashSet2<TypeId> properties; // vector of types that will be returned
+    DenseHashSet<TypeId> properties; // vector of types that will be returned
 
     if (indexeeNormTy->hasExternTypes())
     {
@@ -2270,17 +2298,9 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
     TypeId targetTy = follow(typeParams.at(0));
     TypeId metatableTy = follow(typeParams.at(1));
 
-    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-    {
-        // Having the target type be a pending table does not block dispatch.
-        if (isPending(targetTy, ctx->solver) && !is<TableType>(targetTy))
-            return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
-    }
-    else
-    {
-        if (isPending(targetTy, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
-    }
+    // Having the target type be a pending table does not block dispatch.
+    if (isPending(targetTy, ctx->solver) && !is<TableType>(targetTy))
+        return {std::nullopt, Reduction::MaybeOk, {targetTy}, {}};
 
 
     std::shared_ptr<const NormalizedType> targetNorm = ctx->normalizer->normalize(targetTy);
@@ -2299,17 +2319,9 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
         targetNorm->hasExternTypes())
         return {std::nullopt, Reduction::Erroneous, {}, {}};
 
-    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-    {
-        // Having the metatable type be a pending table does not block dispatch.
-        if (isPending(metatableTy, ctx->solver) && !is<TableType>(metatableTy))
-            return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
-    }
-    else
-    {
-        if (isPending(metatableTy, ctx->solver))
-            return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
-    }
+    // Having the metatable type be a pending table does not block dispatch.
+    if (isPending(metatableTy, ctx->solver) && !is<TableType>(metatableTy))
+        return {std::nullopt, Reduction::MaybeOk, {metatableTy}, {}};
 
     // if the supposed metatable is not a table, we will fail to reduce.
     if (!get<TableType>(metatableTy) && !get<MetatableType>(metatableTy))
@@ -2329,6 +2341,14 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
         if (metatableMetamethod)
             return {std::nullopt, Reduction::Erroneous, {}, {}};
 
+        if (FFlag::LuauSetmetatableOverrides)
+        {
+            // If there's already a metatable here then grab the underlying
+            // table instead.
+            if (auto mt = get<MetatableType>(table))
+                table = mt->table;
+        }
+
         TypeId withMetatable = ctx->arena->addType(MetatableType{table, metatableTy});
 
         return {withMetatable, Reduction::MaybeOk, {}, {}};
@@ -2347,6 +2367,14 @@ TypeFunctionReductionResult<TypeId> setmetatableTypeFunction(
         // if the `__metatable` metamethod is present, then the table is locked and we cannot `setmetatable` on it.
         if (metatableMetamethod)
             return {std::nullopt, Reduction::Erroneous, {}, {}};
+
+        if (FFlag::LuauSetmetatableOverrides)
+        {
+            // If there's already a metatable here then grab the underlying
+            // table instead.
+            if (auto mt = get<MetatableType>(componentTy))
+                componentTy = mt->table;
+        }
 
         TypeId withMetatable = ctx->arena->addType(MetatableType{componentTy, metatableTy});
         SimplifyResult simplified = simplifyUnion(ctx->builtins, ctx->arena, result, withMetatable);
@@ -2611,7 +2639,7 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
     , setmetatableFunc{"setmetatable", setmetatableTypeFunction}
     , getmetatableFunc{"getmetatable", getmetatableTypeFunction}
     , objectofFunc{"objectof", objectofTypeFunction}
-    , weakoptionalFunc{"weakoptional", weakoptionalTypeFunc}
+    , weakoptionalFunc{"weakoptional", weakoptionalTypeFunc, /* canReduceGenerics */ FFlag::LuauTraverseScopeToFunction}
 {
 }
 

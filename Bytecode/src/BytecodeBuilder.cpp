@@ -2,15 +2,20 @@
 #include "Luau/BytecodeBuilder.h"
 
 #include "Luau/BytecodeUtils.h"
+#include "Luau/SmallVector.h"
 #include "Luau/StringUtils.h"
 
 #include <algorithm>
+#include <array>
 #include <stdlib.h>
 #include <string.h>
 #include <climits>
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAGVARIABLE(LuauCompileExpandLimit)
+LUAU_FASTFLAGVARIABLE(LuauCompileExpandShortLimit)
+LUAU_FASTFLAGVARIABLE(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauVirtualBcBuilder)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeCostModel)
@@ -25,11 +30,6 @@ namespace Luau
 
 static_assert(LBC_VERSION_TARGET >= LBC_VERSION_MIN && LBC_VERSION_TARGET <= LBC_VERSION_MAX, "Invalid bytecode version setup");
 static_assert(LBC_VERSION_MAX <= 127, "Bytecode version should be 7-bit so that we can extend the serialization to use varint transparently");
-
-static const uint32_t kMaxConstantCount = 1 << 23;
-static const uint32_t kMaxClosureCount = 1 << 15;
-
-static const int kMaxJumpDistance = 1 << 23;
 
 static int log2(int v)
 {
@@ -555,8 +555,52 @@ void BytecodeBuilder::undoEmit(LuauOpcode op)
     LUAU_ASSERT(!insns.empty());
     LUAU_ASSERT((insns.back() & 0xff) == op);
 
+    // Adjust local ranges referencing this instruction
+    if (FFlag::LuauCompileUndoEmitAdjust)
+    {
+        for (size_t i = 0; i < debugLocals.size();)
+        {
+            DebugLocal& l = debugLocals[i];
+
+            // If live range start has been removed, the local never existed
+            if (l.startpc == insns.size())
+            {
+                debugLocals.erase(debugLocals.begin() + i);
+                continue;
+            }
+
+            if (l.endpc == insns.size())
+                l.endpc--;
+            i++;
+        }
+
+        for (size_t i = 0; i < typedLocals.size();)
+        {
+            TypedLocal& l = typedLocals[i];
+
+            // If live range start has been removed, the local never existed
+            if (l.startpc == insns.size())
+            {
+                typedLocals.erase(typedLocals.begin() + i);
+                continue;
+            }
+
+            if (l.endpc == insns.size())
+                l.endpc--;
+            i++;
+        }
+    }
+
+    // Remove the instruction
     insns.pop_back();
     lines.pop_back();
+}
+
+unsigned BytecodeBuilder::lastInstruction()
+{
+    LUAU_ASSERT(!insns.empty());
+
+    return insns.back();
 }
 
 size_t BytecodeBuilder::emitLabel()
@@ -1308,7 +1352,7 @@ void BytecodeBuilder::foldJumps()
     }
 }
 
-std::vector<uint32_t> BytecodeBuilder::expandJumps()
+std::vector<uint32_t> BytecodeBuilder::expandJumps(bool& hasLongJumpError)
 {
     if (!hasLongJumps)
         return {};
@@ -1361,7 +1405,7 @@ std::vector<uint32_t> BytecodeBuilder::expandJumps()
         {
             int offset = int(jumps[currentJump].target) - int(jumps[currentJump].source) - 1;
 
-            if (abs(offset) > kMaxJumpDistanceConservative)
+            if (FFlag::LuauCompileExpandShortLimit ? abs(offset) >= kMaxJumpDistanceConservative : abs(offset) > kMaxJumpDistanceConservative)
             {
                 // insert jump trampoline as described above; we keep JUMPX offset uninitialized in this pass
                 newinsns.push_back(LOP_JUMP | (1 << 16));
@@ -1400,7 +1444,12 @@ std::vector<uint32_t> BytecodeBuilder::expandJumps()
         int offset = int(jump.target) - int(jump.source) - 1;
         int newoffset = int(remap[jump.target]) - int(remap[jump.source]) - 1;
 
-        if (abs(offset) > kMaxJumpDistanceConservative)
+        if (FFlag::LuauCompileExpandLimit && abs(newoffset) + 1 >= kMaxJumpDistance)
+        {
+            hasLongJumpError = true;
+            return {};
+        }
+        else if (FFlag::LuauCompileExpandShortLimit ? abs(offset) >= kMaxJumpDistanceConservative : abs(offset) > kMaxJumpDistanceConservative)
         {
             // fix up jump trampoline
             uint32_t& insnt = newinsns[remap[jump.source] - 1];
@@ -1529,6 +1578,7 @@ void BytecodeBuilder::validate() const
 {
     validateInstructions();
     validateVariadic();
+    validateCaptures();
 }
 
 void BytecodeBuilder::validateInstructions() const
@@ -1559,8 +1609,6 @@ void BytecodeBuilder::validateInstructions() const
         i += getOpLength(op);
         LUAU_ASSERT(i <= insns.size());
     }
-
-    std::vector<uint8_t> openCaptures;
 
     // validate individual instructions
     for (size_t i = 0; i < insns.size();)
@@ -1608,8 +1656,6 @@ void BytecodeBuilder::validateInstructions() const
 
         case LOP_CLOSEUPVALS:
             VREG(LUAU_INSN_A(insn));
-            while (openCaptures.size() && openCaptures.back() >= LUAU_INSN_A(insn))
-                openCaptures.pop_back();
             break;
 
         case LOP_GETIMPORT:
@@ -1932,7 +1978,6 @@ void BytecodeBuilder::validateInstructions() const
 
             case LCT_REF:
                 VREG(LUAU_INSN_B(insn));
-                openCaptures.push_back(LUAU_INSN_B(insn));
                 break;
 
             case LCT_UPVAL:
@@ -1995,12 +2040,6 @@ void BytecodeBuilder::validateInstructions() const
         i += getOpLength(op);
         LUAU_ASSERT(i <= insns.size());
     }
-
-    // all CAPTURE REF instructions must have a CLOSEUPVALS instruction after them in the bytecode stream
-    // this doesn't guarantee safety as it doesn't perform basic block based analysis, but if this fails
-    // then the bytecode is definitely unsafe to run since the compiler won't generate backwards branches
-    // except for loop edges
-    LUAU_ASSERT(openCaptures.empty());
 
 #undef VREG
 #undef VREGEND
@@ -2112,8 +2151,8 @@ void BytecodeBuilder::validateVariadic() const
             // variadic sequence since they are never executed if FASTCALL does anything, so it's okay to skip their validation until CALL
             // (we can't simply start a variadic sequence here because that would trigger assertions during linked CALL validation)
         }
-        else if (op == LOP_CLOSEUPVALS || op == LOP_NAMECALL || op == LOP_GETIMPORT || op == LOP_MOVE || op == LOP_GETUPVAL || op == LOP_GETGLOBAL ||
-                 op == LOP_GETTABLEKS || op == LOP_COVERAGE)
+        else if (op == LOP_CLOSEUPVALS || op == LOP_NAMECALL || op == LOP_NAMECALLUDATA || op == LOP_GETIMPORT || op == LOP_MOVE ||
+                 op == LOP_GETUPVAL || op == LOP_GETGLOBAL || op == LOP_GETTABLEKS || op == LOP_COVERAGE)
         {
             // instructions inside a variadic sequence must be neutral (can't change L->top)
             // while there are many neutral instructions like this, here we check that the instruction is one of the few
@@ -2130,6 +2169,188 @@ void BytecodeBuilder::validateVariadic() const
 
     LUAU_ASSERT(!variadicSeq);
 }
+
+void BytecodeBuilder::validateCaptures() const
+{
+    // Mark jump targets
+    std::vector<int8_t> jumpTargets(insns.size(), 0);
+
+    for (int i = 0; i < int(insns.size());)
+    {
+        LuauOpcode op = LuauOpcode(LUAU_INSN_OP(insns[i]));
+
+        int target = getJumpTarget(insns[i], uint32_t(i));
+
+        if (target >= 0 && !isFastCall(op))
+            jumpTargets[target] = 1;
+
+        i += getOpLength(op);
+    }
+
+    struct BytecodeBlock
+    {
+        int startpc = -1;
+        int finishpc = -1;
+        std::array<bool, 256> captured;
+        bool visited = false;
+        bool inWorklist = false;
+        SmallVector<uint32_t, 4> predecessors;
+        SmallVector<uint32_t, 4> successors;
+    };
+
+    // Reconstruct bytecode basic block graph
+    std::vector<BytecodeBlock> blocks;
+    blocks.push_back(BytecodeBlock{0, -1});
+
+    int previ = 0;
+    for (int i = 0; i < int(insns.size());)
+    {
+        LuauOpcode op = LuauOpcode(LUAU_INSN_OP(insns[i]));
+        int nexti = i + getOpLength(op);
+
+        // If instruction is a jump target, begin new block starting from it
+        if (i != 0 && jumpTargets[i] == 1)
+        {
+            blocks.back().finishpc = previ;
+            blocks.push_back(BytecodeBlock{i, -1});
+        }
+
+        int target = getJumpTarget(insns[i], uint32_t(i));
+
+        // Implicit fallthrough terminate the block and might start a new one
+        if ((target >= 0 && !isFastCall(op)) || op == LOP_RETURN)
+        {
+            blocks.back().finishpc = i;
+
+            // Start a new block if there was no explicit jump for the fallthrough
+            if (nexti < int(insns.size()) && jumpTargets[nexti] == 0)
+                blocks.push_back(BytecodeBlock{nexti, -1});
+        }
+
+        previ = i;
+        i = nexti;
+    }
+
+    if (!blocks.empty() && blocks.back().finishpc == -1)
+        blocks.back().finishpc = previ;
+
+    // Collect mapping from instruction to a block
+    std::vector<uint32_t> ownerBlockIdx(insns.size(), ~0u);
+
+    for (uint32_t blockIdx = 0; blockIdx < uint32_t(blocks.size()); blockIdx++)
+    {
+        BytecodeBlock& block = blocks[blockIdx];
+
+        for (int i = block.startpc; i <= block.finishpc; i += getOpLength(LuauOpcode(LUAU_INSN_OP(insns[i]))))
+            ownerBlockIdx[i] = blockIdx;
+    }
+
+    // Collect predecessors and successors
+    for (uint32_t blockIdx = 0; blockIdx < uint32_t(blocks.size()); blockIdx++)
+    {
+        BytecodeBlock& block = blocks[blockIdx];
+
+        // Loop variables are used after the loop to handle fallthrough
+        int i = block.startpc;
+        uint32_t insn = 0;
+        LuauOpcode op = LOP_NOP;
+
+        while (i <= block.finishpc)
+        {
+            insn = insns[i];
+            op = LuauOpcode(LUAU_INSN_OP(insn));
+
+            int target = getJumpTarget(insn, i);
+
+            if (target >= 0 && !isFastCall(op))
+            {
+                uint32_t targetIdx = ownerBlockIdx[target];
+                LUAU_ASSERT(targetIdx != ~0u);
+                block.successors.push_back(targetIdx);
+                blocks[targetIdx].predecessors.push_back(blockIdx);
+            }
+
+            i += getOpLength(op);
+        }
+
+        // Include fallthrough jump as well (excluding non-fallthrough version of LOADB)
+        if (isFallthrough(op) && !(isSkipC(op) && LUAU_INSN_C(insn) != 0) && i < int(insns.size()))
+        {
+            uint32_t targetIdx = ownerBlockIdx[i];
+            LUAU_ASSERT(targetIdx != ~0u && blockIdx != targetIdx);
+            block.successors.push_back(targetIdx);
+            blocks[targetIdx].predecessors.push_back(blockIdx);
+        }
+    }
+
+    // Walk the graph and ensure that at any reachable RETURN, we have all upvalues closed
+    std::vector<uint32_t> worklist;
+
+    worklist.push_back(0);
+    blocks[0].inWorklist = true;
+
+    while (!worklist.empty())
+    {
+        uint32_t blockIdx = worklist.back();
+        worklist.pop_back();
+
+        BytecodeBlock& block = blocks[blockIdx];
+        block.visited = true;
+        block.inWorklist = false;
+
+        std::array<bool, 256> oldCaptured = block.captured;
+
+        // Collect captured registers from each predecessor
+        for (uint32_t predIdx : block.predecessors)
+        {
+            BytecodeBlock& pred = blocks[predIdx];
+
+            for (int reg = 0; reg < int(pred.captured.size()); reg++)
+                block.captured[reg] |= pred.captured[reg];
+        }
+
+        for (int i = block.startpc; i <= block.finishpc;)
+        {
+            uint32_t insn = insns[i];
+            LuauOpcode op = LuauOpcode(LUAU_INSN_OP(insn));
+
+            switch (op)
+            {
+            case LOP_CLOSEUPVALS:
+                for (int reg = LUAU_INSN_A(insn); reg < int(block.captured.size()); reg++)
+                    block.captured[reg] = false;
+                break;
+            case LOP_CAPTURE:
+                if (LUAU_INSN_A(insn) == LCT_REF)
+                    block.captured[LUAU_INSN_B(insn)] = true;
+                break;
+            case LOP_RETURN:
+                for (int reg = 0; reg < int(block.captured.size()); reg++)
+                    LUAU_ASSERT(block.captured[reg] == false);
+                break;
+            default:
+                break;
+            }
+
+            i += getOpLength(op);
+        }
+
+        bool changed = oldCaptured != block.captured;
+
+        // Check all successors if something changed or if they have not been visited yet
+        for (uint32_t succIdx : block.successors)
+        {
+            BytecodeBlock& succ = blocks[succIdx];
+
+            if ((!succ.visited || changed) && !succ.inWorklist)
+            {
+                worklist.push_back(succIdx);
+                succ.inWorklist = true;
+            }
+        }
+    }
+}
+
 #endif
 
 static bool printableStringConstant(const char* str, size_t len)
@@ -2883,12 +3104,18 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
         {
             const DebugLocal& l = debugLocals[i];
 
+            if ((dumpFlags & Dump_Code) != 0)
+                formatAppend(result, "local %d (%.*s): ", int(i), int(debugStrings[l.name - 1].length), debugStrings[l.name - 1].data);
+            else
+                formatAppend(result, "local %d: ", int(i));
+
+            formatAppend(result, "reg %d, start pc %d line %d, ", l.reg, l.startpc, lines[l.startpc]);
+
             if (l.startpc == l.endpc)
             {
                 LUAU_ASSERT(l.startpc < lines.size());
 
-                // it would be nice to emit name as well but it requires reverse lookup through stringtable
-                formatAppend(result, "local %d: reg %d, start pc %d line %d, no live range\n", int(i), l.reg, l.startpc, lines[l.startpc]);
+                formatAppend(result, "no live range\n");
             }
             else
             {
@@ -2896,17 +3123,7 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
                 LUAU_ASSERT(l.startpc < lines.size());
                 LUAU_ASSERT(l.endpc <= lines.size()); // endpc is exclusive in the debug info, but it's more intuitive to print inclusive data
 
-                // it would be nice to emit name as well but it requires reverse lookup through stringtable
-                formatAppend(
-                    result,
-                    "local %d: reg %d, start pc %d line %d, end pc %d line %d\n",
-                    int(i),
-                    l.reg,
-                    l.startpc,
-                    lines[l.startpc],
-                    l.endpc - 1,
-                    lines[l.endpc - 1]
-                );
+                formatAppend(result, "end pc %d line %d\n", l.endpc - 1, lines[l.endpc - 1]);
             }
         }
     }

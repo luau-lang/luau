@@ -7,7 +7,7 @@
 #include "Luau/Common.h"
 #include "Luau/ConstraintGenerator.h"
 #include "Luau/ConstraintSolver.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Error.h"
 #include "Luau/Frontend.h"
 #include "Luau/Module.h"

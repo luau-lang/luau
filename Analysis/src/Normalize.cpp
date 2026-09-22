@@ -24,6 +24,7 @@ LUAU_FASTFLAGVARIABLE(LuauAllowIntersectionOfOneTableWithExtern)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysIntersectTablesWithTables)
 LUAU_FASTFLAGVARIABLE(LuauIncludeExternTypeExtensionsWithTopExternType)
 LUAU_FASTFLAGVARIABLE(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauNormalizeGuardAgainstNonTestableNegations)
 
 namespace Luau
 {
@@ -1843,6 +1844,10 @@ NormalizationResult Normalizer::intersectNormalWithNegationTy(TypeId toNegate, N
     std::optional<NormalizedType> negated;
 
     std::shared_ptr<const NormalizedType> normal = normalize(toNegate);
+
+    if (FFlag::LuauNormalizeGuardAgainstNonTestableNegations && !normal)
+        return NormalizationResult::False;
+
     negated = negateNormal(*normal);
 
     if (!negated)
@@ -3656,7 +3661,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(
     return NormalizationResult::True;
 }
 
-void makeTableShared(TypeId ty, DenseHashSet2<TypeId>& seen)
+void makeTableShared(TypeId ty, DenseHashSet<TypeId>& seen)
 {
     ty = follow(ty);
     if (seen.contains(ty))
@@ -3676,7 +3681,7 @@ void makeTableShared(TypeId ty, DenseHashSet2<TypeId>& seen)
 
 void makeTableShared(TypeId ty)
 {
-    DenseHashSet2<TypeId> seen;
+    DenseHashSet<TypeId> seen;
     makeTableShared(ty, seen);
 }
 

@@ -25,13 +25,14 @@
 #include <optional>
 #include <vector>
 
+LUAU_FASTFLAG(LuauBetterMetatableStringification);
+
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauForceAllNewSolverTests)
 LUAU_FASTFLAG(DebugLuauForceAllOldSolverTests)
 
 LUAU_FASTFLAG(DebugLuauAlwaysShowConstraintSolvingIncomplete);
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(LuauDisallowExternClassInTypeDefinitions)
 LUAU_FASTFLAG(LuauBetterInferredGenericNames)
 
 #define DOES_NOT_PASS_NEW_SOLVER_GUARD_IMPL(line) ScopedFastFlag sff_##line{FFlag::DebugLuauForceOldSolver, !FFlag::DebugLuauForceAllNewSolverTests};
@@ -182,9 +183,7 @@ struct Fixture
     // This makes sure that errant cases of constraint solving failing to complete still pop up in tests.
     ScopedFastFlag sff_DebugLuauAlwaysShowConstraintSolvingIncomplete{FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete, true};
 
-    // lots of tests might use declare class in type definitions - disable this and force all tests to adopt the new syntax
-    ScopedFastFlag sff_LuauDisallowExternClassInTypeDefinitions{FFlag::LuauDisallowExternClassInTypeDefinitions, true};
-
+    ScopedFastFlag sff_LuauBetterMetatableStringification{FFlag::LuauBetterMetatableStringification, true};
     ScopedFastFlag sff_LuauBetterInferredGenericNames{FFlag::LuauBetterInferredGenericNames, true};
 
     TestFileResolver fileResolver;
@@ -220,6 +219,11 @@ struct Fixture
     // limit how much address space we should use before we blow up.  We
     // use this to test the stack guard itself.
     void limitStackSize(size_t size);
+
+    // Edits the result, pruning any warnings about missing annotations.  This
+    // is useful for tests that are specifically about how we infer unannotated
+    // symbols.
+    void ignoreMissingAnnotations(CheckResult& result);
 
 private:
     bool hasDumpedErrors = false;
@@ -277,15 +281,15 @@ void registerHiddenTypes(Frontend& frontend);
 void createSomeExternTypes(Frontend& frontend);
 
 template<typename E>
-const E* findError(const CheckResult& result)
+std::optional<TypeError> findError(const CheckResult& result)
 {
     for (const auto& e : result.errors)
     {
         if (auto p = get<E>(e))
-            return p;
+            return e;
     }
 
-    return nullptr;
+    return std::nullopt;
 }
 
 } // namespace Luau
@@ -430,4 +434,18 @@ const E* findError(const CheckResult& result)
             MESSAGE(aa); \
             MESSAGE(bb); \
         } \
+    } while (0)
+
+#define CHECK_ERROR_IS(err, ErrorClass) \
+    do \
+    { \
+        auto e = (err); \
+        CHECK_MESSAGE(get<ErrorClass>(e), "Expected " #ErrorClass " but got " << e); \
+    } while (0)
+
+#define REQUIRE_ERROR_IS(err, ErrorClass) \
+    do \
+    { \
+        auto e = (err); \
+        REQUIRE_MESSAGE(get<ErrorClass>(e), "Expected " #ErrorClass " but got " << e); \
     } while (0)

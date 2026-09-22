@@ -5,10 +5,13 @@
 
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+
+LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 
 using namespace Luau;
 
@@ -87,6 +90,8 @@ TEST_CASE_FIXTURE(Fixture, "assignments_to_unannotated_parameters_can_transform_
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK("(unknown) -> number" == toString(requireType("f")));
@@ -102,6 +107,8 @@ TEST_CASE_FIXTURE(Fixture, "assignments_to_annotated_parameters_are_checked")
             return x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(Location{{2, 16}, {2, 17}} == result.errors[0].location);
@@ -145,6 +152,8 @@ TEST_CASE_FIXTURE(Fixture, "function_parameters_can_have_annotations")
         local four = double(2)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -157,6 +166,8 @@ TEST_CASE_FIXTURE(Fixture, "function_parameter_annotations_are_checked")
 
         local four = double("two")
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
@@ -238,6 +249,76 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_reference_generates_error")
                                 },
                             }
     );
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_generic_type_pack_reference_generates_one_error")
+{
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        type F = (IDoNotExist...) -> ()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    const UnknownSymbol* error = get<UnknownSymbol>(result.errors[0]);
+    REQUIRE(error);
+    CHECK(error->name == "IDoNotExist");
+    CHECK(error->context == UnknownSymbol::Context::Type);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_generic_type_pack_vararg_generates_one_error")
+{
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
+
+    CheckResult result = check(R"(
+        --!strict
+        function f(...: IDoNotExist...) end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    const UnknownSymbol* error = get<UnknownSymbol>(result.errors[0]);
+    REQUIRE(error);
+    CHECK(error->name == "IDoNotExist");
+    CHECK(error->context == UnknownSymbol::Context::Type);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_generic_type_pack_in_explicit_instantiation_generates_one_error")
+{
+    ScopedFastFlag sff{FFlag::LuauStrictVisitInstantiatedType, true};
+
+    for (const char* source : {
+             R"(
+                --!strict
+                local function f<T...>() end
+                f<<IDoNotExist...>>()
+            )",
+             R"(
+                --!strict
+                local t = {}
+                function t:f<T...>() end
+                t:f<<IDoNotExist...>>()
+            )",
+             R"(
+                --!nonstrict
+                local t = {}
+                function t:f<T...>() end
+                t:f<<IDoNotExist...>>()
+            )",
+         })
+    {
+        CAPTURE(source);
+        CheckResult result = check(source);
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        const UnknownSymbol* error = get<UnknownSymbol>(result.errors[0]);
+        REQUIRE(error);
+        CHECK(error->name == "IDoNotExist");
+        CHECK(error->context == UnknownSymbol::Context::Type);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "typeof_variable_type_annotation_should_return_its_type")
@@ -380,6 +461,8 @@ TEST_CASE_FIXTURE(Fixture, "type_annotations_inside_function_bodies")
             return message
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
@@ -543,6 +626,8 @@ TEST_CASE_FIXTURE(Fixture, "typeof_expr")
 
         local m: typeof(id(77))
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number", toString(requireType("m")));
@@ -897,6 +982,8 @@ TEST_CASE_FIXTURE(Fixture, "pulling_a_type_from_value_dont_falsely_create_occurs
             type T = typeof(x)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }

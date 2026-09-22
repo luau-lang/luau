@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/NotNull.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeFwd.h"
@@ -259,7 +259,7 @@ struct TypePathRenderMetadata
     };
 
     /// Return type packs selected by path component position and whether they contain a single element.
-    DenseHashMap2<size_t, ReturnTypePackInfo> returnTypePacks;
+    DenseHashMap<size_t, ReturnTypePackInfo> returnTypePacks;
 
     /// The negation containing the type at the end of the path, when the path ends by selecting a negated type.
     std::optional<TypeId> enclosingNegation;
