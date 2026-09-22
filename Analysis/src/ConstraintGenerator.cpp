@@ -44,8 +44,6 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAGVARIABLE(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-LUAU_FLAGVERSION(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, 3)
 LUAU_FASTFLAGVARIABLE(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauUdtfPopulateEnv)
@@ -3279,16 +3277,9 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantStrin
     LUAU_ASSERT(ft);
     ft->lowerBound = arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}});
     ft->upperBound = builtinTypes->stringType;
-    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-    {
-        ft->primitiveType = builtinTypes->stringType;
-        if (expectedType)
-            addConstraint(scope, string->location, SubtypeConstraint{freeTy, *expectedType});
-    }
-    else
-    {
-        addConstraint(scope, string->location, DEPRECATED_PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->stringType});
-    }
+    ft->primitiveType = builtinTypes->stringType;
+    if (expectedType)
+        addConstraint(scope, string->location, SubtypeConstraint{freeTy, *expectedType});
     return Inference{freeTy};
 }
 
@@ -3317,16 +3308,9 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantBool*
     LUAU_ASSERT(ft);
     ft->lowerBound = singletonType;
     ft->upperBound = builtinTypes->booleanType;
-    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-    {
-        ft->primitiveType = builtinTypes->booleanType;
-        if (expectedType)
-            addConstraint(scope, boolExpr->location, SubtypeConstraint{freeTy, *expectedType});
-    }
-    else
-    {
-        addConstraint(scope, boolExpr->location, DEPRECATED_PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->booleanType});
-    }
+    ft->primitiveType = builtinTypes->booleanType;
+    if (expectedType)
+        addConstraint(scope, boolExpr->location, SubtypeConstraint{freeTy, *expectedType});
     return Inference{freeTy};
 }
 
@@ -3647,6 +3631,41 @@ Inference ConstraintGenerator::checkAstExprBinary(
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType)
 {
     InConditionalContext inContext(&typeContext, TypeContext::Default);
+
+    if (FFlag::DebugLuauIfLocalAnalysis && ifElse->conditionLocal)
+    {
+        ScopePtr thenScope = childScope(ifElse->trueExpr, scope);
+        ScopePtr elseScope = childScope(ifElse->falseExpr, scope);
+
+        std::optional<TypeId> annotatedType;
+        if (ifElse->conditionLocal->annotation)
+            annotatedType = resolveType(scope, ifElse->conditionLocal->annotation, /* inTypeArguments */ false);
+
+        TypeId initType = [&]()
+        {
+            InConditionalContext flipper{&typeContext};
+            return check(scope, ifElse->condition, annotatedType).ty;
+        }();
+
+        TypeId baseType = annotatedType ? *annotatedType : initType;
+        TypeId boundType = createTypeFunctionInstance(
+            builtinTypes->typeFunctions->refineFunc,
+            {baseType, builtinTypes->truthyType},
+            {},
+            thenScope,
+            ifElse->conditionLocal->location
+        );
+
+        thenScope->bindings[ifElse->conditionLocal] = Binding{boundType, ifElse->conditionLocal->location};
+
+        DefId def = dfg->getDef(ifElse->conditionLocal);
+        thenScope->lvalueTypes[def] = boundType;
+
+        TypeId thenType = check(thenScope, ifElse->trueExpr, expectedType).ty;
+        TypeId elseType = check(elseScope, ifElse->falseExpr, expectedType).ty;
+
+        return Inference{makeUnion(scope, ifElse->location, thenType, elseType)};
+    }
 
     RefinementId refinement = [&]()
     {

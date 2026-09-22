@@ -3301,9 +3301,18 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
 WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprIfElse& expr, std::optional<TypeId> expectedType)
 {
-    WithPredicate<TypeId> result = checkExpr(scope, *expr.condition);
+    std::optional<TypeId> bindingExpectedType = std::nullopt;
+    if (FFlag::DebugLuauIfLocalAnalysis && expr.conditionLocal && expr.conditionLocal->annotation)
+        bindingExpectedType.emplace(resolveType(scope, *expr.conditionLocal->annotation));
+
+    WithPredicate<TypeId> result = checkExpr(scope, *expr.condition, bindingExpectedType);
 
     ScopePtr trueScope = childScope(scope, expr.trueExpr->location);
+    if (FFlag::DebugLuauIfLocalAnalysis && expr.conditionLocal != nullptr)
+    {
+        WithPredicate<TypeId> bindingPred = checkLocalBinding(scope, trueScope, expr.conditionLocal, result, bindingExpectedType);
+        resolve(bindingPred.predicates, trueScope, true);
+    }
     resolve(result.predicates, trueScope, true);
     WithPredicate<TypeId> trueType = checkExpr(trueScope, *expr.trueExpr, expectedType);
 

@@ -25,6 +25,8 @@
 #include <optional>
 #include <vector>
 
+LUAU_FASTFLAG(LuauBetterMetatableStringification);
+
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauForceAllNewSolverTests)
 LUAU_FASTFLAG(DebugLuauForceAllOldSolverTests)
@@ -181,6 +183,7 @@ struct Fixture
     // This makes sure that errant cases of constraint solving failing to complete still pop up in tests.
     ScopedFastFlag sff_DebugLuauAlwaysShowConstraintSolvingIncomplete{FFlag::DebugLuauAlwaysShowConstraintSolvingIncomplete, true};
 
+    ScopedFastFlag sff_LuauBetterMetatableStringification{FFlag::LuauBetterMetatableStringification, true};
     ScopedFastFlag sff_LuauBetterInferredGenericNames{FFlag::LuauBetterInferredGenericNames, true};
 
     TestFileResolver fileResolver;

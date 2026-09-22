@@ -520,6 +520,31 @@ AstExprIfElse::AstExprIfElse(const Location& location, AstExpr* condition, bool 
 {
 }
 
+AstExprIfElse::AstExprIfElse(
+    const Location& location,
+    AstExpr* condition,
+    bool hasThen,
+    AstExpr* trueExpr,
+    bool hasElse,
+    AstExpr* falseExpr,
+    AstLocal* conditionLocal,
+    bool conditionIsConst,
+    const std::optional<Location>& conditionKeywordLocation,
+    const std::optional<Location>& conditionEqualsLocation
+)
+    : AstExpr(ClassIndex(), location)
+    , condition(condition)
+    , hasThen(hasThen)
+    , trueExpr(trueExpr)
+    , hasElse(hasElse)
+    , falseExpr(falseExpr)
+    , conditionLocal(conditionLocal)
+    , conditionIsConst(conditionIsConst)
+    , conditionKeywordLocation(conditionKeywordLocation)
+    , conditionEqualsLocation(conditionEqualsLocation)
+{
+}
+
 void AstExprIfElse::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))

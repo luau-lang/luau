@@ -4424,10 +4424,13 @@ AstExpr* Parser::parseTableConstructor()
 
 AstExpr* Parser::parseIfElseExpr()
 {
-    bool hasElse = false;
     Location start = lexer.current().location;
 
     nextLexeme(); // skip if / elseif
+
+    if (FFlag::DebugLuauIfLocalSyntax &&
+        (lexer.current().type == Lexeme::ReservedLocal || (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const")))
+        return parseIfElseExprLocalCondition(start);
 
     AstExpr* condition = parseExpr();
 
@@ -4435,10 +4438,75 @@ AstExpr* Parser::parseIfElseExpr()
     Position thenPosition = hasThen ? lexer.previousLocation().begin : Position::missing();
 
     AstExpr* trueExpr = parseExpr();
-    AstExpr* falseExpr = nullptr;
 
+    bool hasElse = false;
     Position elsePosition = lexer.current().location.begin;
     bool isElseIf = false;
+    AstExpr* falseExpr = parseIfElseExprTail(hasElse, isElseIf);
+
+    Location end = falseExpr->location;
+
+    AstExprIfElse* node = allocator.alloc<AstExprIfElse>(Location(start, end), condition, hasThen, trueExpr, hasElse, falseExpr);
+    if (options.storeCstData)
+        cstNodeMap[node] = allocator.alloc<CstExprIfElse>(thenPosition, elsePosition, isElseIf);
+    return node;
+}
+
+// (`if' | `elseif') (`local' | `const') binding `=' exp then exp {elseif exp then exp} else exp
+//
+// LUAU_NOINLINE keeps the `if local`/`if const` locals off parseIfElseExpr's frame: parseIfElseExpr recurses
+// through long elseif chains and this variant is rarely taken. `start` is the location of the already
+// consumed `if`/`elseif` keyword; the current lexeme is the `local`/`const` keyword.
+LUAU_NOINLINE AstExpr* Parser::parseIfElseExprLocalCondition(const Location& start)
+{
+    LUAU_ASSERT(FFlag::DebugLuauIfLocalSyntax);
+
+    bool condIsConst = (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const");
+    std::optional<Location> condKeywordLocation = lexer.current().location;
+    nextLexeme(); // consume 'local' or 'const'
+
+    Binding binding = parseBinding(condIsConst);
+
+    if (lexer.current().type == ',')
+        report(lexer.current().location, "Expected '=' after variable name in 'if local', got ','; only a single binding is allowed");
+
+    std::optional<Location> equalsPosition;
+    if (expectAndConsume('=', "if local declaration"))
+        equalsPosition = lexer.previousLocation();
+
+    AstExpr* condition = parseExpr();
+
+    bool hasThen = expectAndConsume(Lexeme::ReservedThen, "if then else expression");
+    Position thenPosition = hasThen ? lexer.previousLocation().begin : Position::missing();
+
+    // Push the binding after the condition so the condition cannot reference it, and restore after the
+    // true expression so it is not visible in the else/elseif branch.
+    unsigned int localsBegin = saveLocals();
+    AstLocal* condLocal = pushLocal(binding);
+
+    AstExpr* trueExpr = parseExpr();
+
+    restoreLocals(localsBegin);
+
+    bool hasElse = false;
+    Position elsePosition = lexer.current().location.begin;
+    bool isElseIf = false;
+    AstExpr* falseExpr = parseIfElseExprTail(hasElse, isElseIf);
+
+    Location end = falseExpr->location;
+
+    AstExprIfElse* node = allocator.alloc<AstExprIfElse>(
+        Location(start, end), condition, hasThen, trueExpr, hasElse, falseExpr, condLocal, condIsConst, condKeywordLocation, equalsPosition
+    );
+    if (options.storeCstData)
+        cstNodeMap[node] =
+            allocator.alloc<CstExprIfElse>(thenPosition, elsePosition, isElseIf, binding.annotation ? binding.colonPosition : Position::missing());
+    return node;
+}
+
+AstExpr* Parser::parseIfElseExprTail(bool& hasElse, bool& isElseIf)
+{
+    AstExpr* falseExpr = nullptr;
     if (lexer.current().type == Lexeme::ReservedElseif)
     {
         unsigned int oldRecursionCount = recursionCounter;
@@ -4454,12 +4522,7 @@ AstExpr* Parser::parseIfElseExpr()
         falseExpr = parseExpr();
     }
 
-    Location end = falseExpr->location;
-
-    AstExprIfElse* node = allocator.alloc<AstExprIfElse>(Location(start, end), condition, hasThen, trueExpr, hasElse, falseExpr);
-    if (options.storeCstData)
-        cstNodeMap[node] = allocator.alloc<CstExprIfElse>(thenPosition, elsePosition, isElseIf);
-    return node;
+    return falseExpr;
 }
 
 // Name

@@ -6557,6 +6557,129 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_const_error_multiple_bindings")
     );
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+
+    AstStat* stat = parse("return if local x = getValue() then x else 0");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    CHECK(str->list.size == 1);
+    AstExprIfElse* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(ifElseExpr != nullptr);
+    REQUIRE(ifElseExpr->conditionLocal != nullptr);
+    CHECK(ifElseExpr->conditionLocal->name == "x");
+    CHECK_FALSE(ifElseExpr->conditionIsConst);
+    CHECK(ifElseExpr->condition != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_const_expression")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+
+    AstStat* stat = parse("return if const y = getValue() then y else 0");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    AstExprIfElse* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(ifElseExpr != nullptr);
+    REQUIRE(ifElseExpr->conditionLocal != nullptr);
+    CHECK(ifElseExpr->conditionLocal->name == "y");
+    CHECK(ifElseExpr->conditionIsConst);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_with_annotation")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+
+    AstStat* stat = parse("return if local x: number = getValue() then x else 0");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    AstExprIfElse* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(ifElseExpr != nullptr);
+    REQUIRE(ifElseExpr->conditionLocal != nullptr);
+    CHECK(ifElseExpr->conditionLocal->annotation != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_elseif_local_expression")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+
+    AstStat* stat = parse("return if local x = a() then x elseif const y = b() then y else 0");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    AstExprIfElse* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(ifElseExpr != nullptr);
+    REQUIRE(ifElseExpr->conditionLocal != nullptr);
+    CHECK(ifElseExpr->conditionLocal->name == "x");
+    CHECK_FALSE(ifElseExpr->conditionIsConst);
+
+    AstExprIfElse* elseifExpr = ifElseExpr->falseExpr->as<AstExprIfElse>();
+    REQUIRE(elseifExpr != nullptr);
+    REQUIRE(elseifExpr->conditionLocal != nullptr);
+    CHECK(elseifExpr->conditionLocal->name == "y");
+    CHECK(elseifExpr->conditionIsConst);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_binding_not_visible_in_else")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+
+    AstStat* stat = parse("return if local x = getValue() then x else x");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    AstExprIfElse* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(ifElseExpr != nullptr);
+    REQUIRE(ifElseExpr->conditionLocal != nullptr);
+
+    AstExprLocal* trueLocal = ifElseExpr->trueExpr->as<AstExprLocal>();
+    REQUIRE(trueLocal != nullptr);
+    CHECK(trueLocal->local == ifElseExpr->conditionLocal);
+
+    CHECK(ifElseExpr->falseExpr->as<AstExprGlobal>() != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_error_multiple_bindings")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+
+    matchParseError(
+        "return if local x, y = getValue() then x else 0", "Expected '=' after variable name in 'if local', got ','; only a single binding is allowed"
+    );
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_nested_in_true_branch")
+{
+    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+
+    AstStat* stat = parse("return if local x = a() then (if local y = b() then y else 0) else -1");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    AstExprIfElse* outer = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(outer != nullptr);
+    REQUIRE(outer->conditionLocal != nullptr);
+    CHECK(outer->conditionLocal->name == "x");
+
+    AstExprGroup* group = outer->trueExpr->as<AstExprGroup>();
+    REQUIRE(group != nullptr);
+    AstExprIfElse* inner = group->expr->as<AstExprIfElse>();
+    REQUIRE(inner != nullptr);
+    REQUIRE(inner->conditionLocal != nullptr);
+    CHECK(inner->conditionLocal->name == "y");
+    CHECK(inner->conditionLocal != outer->conditionLocal);
+}
+
 TEST_CASE_FIXTURE(Fixture, "type_negation_syntax")
 {
     ScopedFastFlag sff{FFlag::LuauTypeNegationSyntaxParsing, true};

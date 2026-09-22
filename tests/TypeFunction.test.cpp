@@ -1439,7 +1439,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_m
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TypeId id = requireTypeAlias("Identity");
-    CHECK_EQ(toString(id, {true}), "{ @metatable { __index: {  } }, {  } }");
+    CHECK_EQ(toString(id, {true}), "setmetatable<{  }, { __index: {  } }>");
     const MetatableType* mt = get<MetatableType>(id);
     REQUIRE(mt);
     CHECK_EQ(toString(mt->metatable), "{ __index: {  } }");
@@ -1458,7 +1458,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_m
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TypeId id = requireTypeAlias("Identity");
-    CHECK_EQ(toString(id, {true}), "{ @metatable { __index: {  } }, {  } }");
+    CHECK_EQ(toString(id, {true}), "setmetatable<{  }, { __index: {  } }>");
     const MetatableType* mt = get<MetatableType>(id);
     REQUIRE(mt);
     CHECK_EQ(toString(mt->metatable), "{ __index: {  } }");
@@ -1466,7 +1466,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_assigns_correct_m
     TypeId foobar = requireTypeAlias("FooBar");
     const MetatableType* mt2 = get<MetatableType>(foobar);
     REQUIRE(mt2);
-    CHECK_EQ(toString(mt2->metatable, {true}), "{ @metatable { __index: {  } }, {  } }");
+    CHECK_EQ(toString(mt2->metatable, {true}), "setmetatable<{  }, { __index: {  } }>");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_metatable_with_metatable_metamethod")
@@ -1482,7 +1482,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_type_function_errors_on_metatab
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     TypeId id = requireTypeAlias("Identity");
-    CHECK_EQ(toString(id, {true}), "{ @metatable { __metatable: \"blocked\" }, {  } }");
+    CHECK_EQ(toString(id, {true}), "setmetatable<{  }, { __metatable: \"blocked\" }>");
     const MetatableType* mt = get<MetatableType>(id);
     REQUIRE(mt);
     CHECK_EQ(toString(mt->metatable), "{ __metatable: \"blocked\" }");

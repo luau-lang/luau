@@ -140,8 +140,8 @@ static void displayHelp(const char* argv0)
     printf("Available options:\n");
     printf("  --formatter=plain: report analysis errors in Luacheck-compatible format\n");
     printf("  --formatter=gnu: report analysis errors in GNU-compatible format\n");
-    printf("  --mode=strict: default to strict mode when typechecking\n");
-    printf("  --solver={new|old}: selects which typechecker to use (defaults to the new solver)\n");
+    printf("  --mode={strict|nonstrict}: set the analyzer to use the given mode as the default for typechecking (default: `nonstrict`)\n");
+    printf("  --solver={new|old}: selects which typechecker to use (default: `new`)\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
 }
 
@@ -236,7 +236,7 @@ struct CliConfigResolver : Luau::ConfigResolver
     mutable std::unordered_map<std::string, Luau::Config> configCache;
     mutable std::vector<std::pair<std::string, std::string>> configErrors;
 
-    CliConfigResolver(Luau::Mode mode)
+    explicit CliConfigResolver(Luau::Mode mode)
     {
         defaultConfig.mode = mode;
     }
@@ -323,7 +323,7 @@ struct CliConfigResolver : Luau::ConfigResolver
 
 struct TaskScheduler
 {
-    TaskScheduler(unsigned threadCount)
+    explicit TaskScheduler(unsigned threadCount)
         : threadCount(threadCount)
     {
         for (unsigned i = 0; i < threadCount; i++)
@@ -345,6 +345,9 @@ struct TaskScheduler
         for (std::thread& worker : workers)
             worker.join();
     }
+
+    TaskScheduler(const TaskScheduler&) = delete;
+    TaskScheduler& operator=(const TaskScheduler&) = delete;
 
     std::function<void()> pop()
     {
@@ -422,6 +425,8 @@ int main(int argc, char** argv)
             format = ReportFormat::Gnu;
         else if (strcmp(argv[i], "--mode=strict") == 0)
             mode = Luau::Mode::Strict;
+        else if (strcmp(argv[i], "--mode=nonstrict") == 0)
+            mode = Luau::Mode::Nonstrict;
         else if (strcmp(argv[i], "--annotate") == 0)
             annotate = true;
         else if (strcmp(argv[i], "--timetrace") == 0)
@@ -475,7 +480,7 @@ int main(int argc, char** argv)
 
             std::ofstream os(path);
 
-            os << log << std::endl;
+            os << log << "\n";
             printf("Wrote JSON log to %s\n", path.c_str());
         };
     }
@@ -528,13 +533,15 @@ int main(int argc, char** argv)
             "InternalCompilerError",
             Luau::toString(error, Luau::TypeErrorToStringOptions{frontend.fileResolver}).c_str()
         );
-        return 1;
+
+        // Internal compile errors get their own exit code.
+        return 2;
     }
 
     int failed = 0;
 
     for (const Luau::ModuleName& name : checkedModules)
-        failed += !reportModuleResult(frontend, name, format, annotate);
+        failed += reportModuleResult(frontend, name, format, annotate) ? 0 : 1;
 
     std::unordered_set<Luau::ModuleName> checkedNames(checkedModules.begin(), checkedModules.end());
 
@@ -558,5 +565,5 @@ int main(int argc, char** argv)
     if (format == ReportFormat::Luacheck)
         return 0;
     else
-        return failed ? 1 : 0;
+        return failed != 0 ? 1 : 0;
 }

@@ -164,17 +164,8 @@ struct ConstraintGraph
 
     /**
      * Return whether the vertex has any unsolved dependencies.
-     *
-     * HACK: For `PrimitiveTypeConstraint` we consider it unblocked if there is
-     * a single dependency.
      */
     bool hasUnsolvedDependencies(ConstraintVertex vertex);
-
-    /**
-     * HACK: Used for `PrimitiveTypeConstraint` to check whether the free type
-     * it "controls" has other outstanding dependencies.
-     */
-    bool DEPRECATED_hasStrictlyMoreThanOneDependency(ConstraintVertex vertex);
 
     /**
      * Find all of the reference counted types that are reachable from `target`

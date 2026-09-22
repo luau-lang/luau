@@ -17,7 +17,6 @@ LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
 LUAU_FASTFLAG(LuauUdtfPopulateEnv)
-LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_DYNAMIC_FASTINT(LuauTypeFunctionSerdeIterationLimit)
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
@@ -1001,7 +1000,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_check_mutability")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK(toString(tm->givenType) == "{ @metatable {boolean}, {  } }");
+    CHECK(toString(tm->givenType) == "setmetatable<{  }, {boolean}>");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_copy_works")
@@ -1033,7 +1032,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_copy_works")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK(toString(tm->givenType) == "{ @metatable { [number]: boolean, string: number }, {  } }");
+    CHECK(toString(tm->givenType) == "setmetatable<{  }, { [number]: boolean, string: number }>");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "udtf_simple_cyclic_serialization_works")
@@ -1574,7 +1573,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_serialization")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(toString(result.errors[0]) == R"(Expected this to be 'number', but got '{ @metatable { ma: boolean }, { a: number } }')");
+    CHECK(toString(result.errors[0]) == R"(Expected this to be 'number', but got 'setmetatable<{ a: number }, { ma: boolean }>')");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "nonstrict_mode")

@@ -873,8 +873,7 @@ void collapseInvariantFreeType(NotNull<TypeArena> arena, TypeId ty)
 // Returns true if any types were collapsed.
 bool collapseDirectBoundCycleAt(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, TypeId startTy)
 {
-    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-        collapseInvariantFreeType(arena, startTy);
+    collapseInvariantFreeType(arena, startTy);
 
     startTy = follow(startTy);
 
@@ -1276,14 +1275,9 @@ GeneralizationResult<TypeId> generalizeType(
     // generalize() -- and is a no-op when the cycle has already been collapsed
     // by that pre-pass.  When this fires, freeTy may be re-bound to the
     // representative of the cycle, so we re-follow it.
-    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-    {
-        // Run this and unconditionally re-follow.
-        collapseDirectBoundCycleAt(arena, builtinTypes, freeTy);
-        freeTy = follow(freeTy);
-    }
-    else if (collapseDirectBoundCycleAt(arena, builtinTypes, freeTy))
-        freeTy = follow(freeTy);
+    // Run this and unconditionally re-follow.
+    collapseDirectBoundCycleAt(arena, builtinTypes, freeTy);
+    freeTy = follow(freeTy);
 
     if (!get<FreeType>(freeTy))
         return {freeTy, /*wasReplacedByGeneric*/ false};

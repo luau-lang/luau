@@ -1597,6 +1597,19 @@ struct Printer
     {
         const auto cstNode = lookupCstNode<CstExprIfElse>(&elseif);
 
+        if (FFlag::DebugLuauIfLocalSyntax && elseif.conditionLocal)
+        {
+            if (elseif.conditionKeywordLocation)
+                advance(elseif.conditionKeywordLocation->begin);
+            writer.keyword(elseif.conditionIsConst ? "const" : "local");
+
+            visualize(*elseif.conditionLocal, cstNode ? cstNode->annotationColonPosition : Position::missing());
+
+            if (elseif.conditionEqualsLocation)
+                advance(elseif.conditionEqualsLocation->begin);
+            writer.symbol("=");
+        }
+
         visualize(*elseif.condition);
         if (cstNode)
             maybeAdvanceAndWrite(cstNode->thenPosition, "then");

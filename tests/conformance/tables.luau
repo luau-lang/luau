@@ -613,6 +613,33 @@ do
   assert(#arr == 5) -- technically 0 is also valid, but it happens to be 5 because array capacity is 5
 end
 
+-- test appending to a sparse array that can shrink during rehash
+for tsize = 1,32 do
+  local arr = table.create(tsize, 42)
+
+  for i = 1,tsize - 1 do
+    arr[i] = nil
+  end
+
+  assert(#arr == tsize)
+  table.insert(arr, 43)
+  assert(arr[tsize] == 42)
+  assert(arr[tsize + 1] == 43)
+end
+
+-- test sparse appends switching into an array
+for tsize = 1,32 do
+  local t = {}
+
+  for i = 2,tsize do
+    table.insert(t, i, i)
+  end
+
+  for i = 2,tsize do
+    assert(t[i] == i)
+  end
+end
+
 -- test boundary invariant maintenance when replacing hash keys
 do
   local arr = {}
@@ -971,6 +998,36 @@ do
   local x = t or false
   mutate(x)
   assert(t.a == 99)
+end
+
+-- freeze a table whose metatable has __mode
+do
+  local fallback = { value = 123 }
+  local mt = setmetatable({ __index = fallback }, { __mode = "v" })
+  local object = setmetatable({}, mt)
+
+  table.freeze(mt)
+  assert(object.value == 123)
+
+  fallback = nil
+  collectgarbage("collect")
+  assert(object.value == nil)
+end
+
+-- add __mode after freezing
+do
+  local mode = {}
+  local fallback = { value = 123 }
+  local mt = setmetatable({ __index = fallback }, mode)
+  local object = setmetatable({}, mt)
+
+  table.freeze(mt)
+  assert(object.value == 123)
+
+  mode.__mode = "v"
+  fallback = nil
+  collectgarbage("collect")
+  assert(object.value == nil)
 end
 
 return "OK"

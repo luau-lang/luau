@@ -170,6 +170,48 @@ TEST_CASE("if_local_complex_type_annotation")
     CHECK_EQ(optional, prettyPrint(optional, {}, /* withTypes */ true).code);
 }
 
+TEST_CASE("if_local_expression")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    const std::string local = R"(local y = if local result = getValue() then result else fallback)";
+    CHECK_EQ(local, prettyPrint(local).code);
+
+    const std::string konst = R"(local y = if const item = map[key] then item else none)";
+    CHECK_EQ(konst, prettyPrint(konst).code);
+
+    const std::string chain = R"(local y = if ready then start elseif local hit = raycast() then hit else none)";
+    CHECK_EQ(chain, prettyPrint(chain).code);
+}
+
+TEST_CASE("if_local_expression_preserves_interior_spacing")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    const std::string spaced = R"(local y = if     local   result   =   getValue() then result else none)";
+    CHECK_EQ(spaced, prettyPrint(spaced).code);
+}
+
+TEST_CASE("if_local_expression_type_annotation")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    const std::string typed = R"(local y = if local res : string = foo() then res else bar)";
+    CHECK_EQ(typed, prettyPrint(typed, {}, /* withTypes */ true).code);
+
+    const std::string stripped = prettyPrint(typed).code;
+    CHECK(stripped.find("string") == std::string::npos);
+    CHECK(stripped.find("foo()") != std::string::npos);
+}
+
+TEST_CASE("if_const_expression_type_annotation")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+
+    const std::string typed = R"(local y = if const item : number = map[key] then item else none)";
+    CHECK_EQ(typed, prettyPrint(typed, {}, /* withTypes */ true).code);
+}
+
 TEST_CASE("elseif_chains_indent_sensibly")
 {
     const std::string code = R"(
