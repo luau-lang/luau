@@ -112,4 +112,16 @@ function fuzzfail_infinite2()
     end
 end
 
+function fuzzfail_infinite3()
+    function _()
+        (function(a)
+            for k in _() do
+            end
+        end)()
+        while 0 do
+        end
+    end
+    _()
+end
+
 return 'OK'

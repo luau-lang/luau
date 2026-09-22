@@ -24,7 +24,6 @@ LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(LuauBidirectionalInferenceBetterLambdaHandling)
-LUAU_FASTFLAG(LuauHigherOrderGenericInference)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauWarnOnUnannotatedTopLevelFunctions)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
@@ -1493,10 +1492,6 @@ g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
-
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
-    };
 
     CheckResult result = check(R"(
         local a = {{x=4}, {x=7}, {x=1}}
@@ -3114,10 +3109,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_ast_stat_fun")
 
 TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
-        {FFlag::LuauIterativeTypeSearcher, true},
-    };
+    ScopedFastFlag _{FFlag::LuauIterativeTypeSearcher, true};
 
     CheckResult result = check(R"(
         function foo(player)
@@ -4167,7 +4159,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_187542_recursive_call_in_loop")
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauAssertOnForcedConstraint, true},
-        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
     };
 
     CheckResult result = check(R"(
@@ -4607,8 +4598,6 @@ TEST_CASE_FIXTURE(Fixture, "bidi_inference_union_of_functions_distinguished_by_r
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "pass_generic_function_to_pcall")
 {
-    ScopedFastFlag sff{FFlag::LuauHigherOrderGenericInference, true};
-
     CheckResult result = check(R"(
         local function identity<T>(t: T)
             return t
@@ -5135,10 +5124,7 @@ TEST_CASE_FIXTURE(Fixture, "extend_typepack_bound_indirection_preserves_referenc
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
-        {FFlag::LuauTraverseScopeToFunction, true}
-    };
+    ScopedFastFlag _{FFlag::LuauTraverseScopeToFunction, true};
 
     CheckResult result = check(R"(
         local function f(g)

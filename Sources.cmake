@@ -262,7 +262,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/StructuralTypeEquality.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Subtyping.h
-    Analysis/include/Luau/SubtypingUnifier.h
     Analysis/include/Luau/SubtypingVariance.h
     Analysis/include/Luau/Symbol.h
     Analysis/include/Luau/TableLiteralInference.h
@@ -349,7 +348,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/StructuralTypeEquality.cpp
     Analysis/src/Substitution.cpp
     Analysis/src/Subtyping.cpp
-    Analysis/src/SubtypingUnifier.cpp
     Analysis/src/Symbol.cpp
     Analysis/src/TableLiteralInference.cpp
     Analysis/src/ToDot.cpp

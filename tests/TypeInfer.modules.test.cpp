@@ -20,7 +20,6 @@ LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(LuauExportTypecheckTypepacks)
 LUAU_FASTFLAG(LuauExportAnnotationBinding)
 LUAU_FASTINT(LuauSolverConstraintLimit)
-LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 using namespace Luau;
@@ -889,7 +888,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "internal_type_errors_are_only_reported_once"
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauMagicTypes, true},
-        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
     };
 
     fileResolver.source["game/A"] = R"(
@@ -907,9 +905,7 @@ return function(): { X: _luau_blocked_type, Y: _luau_blocked_type } return nil :
 TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
-
     ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 10};
-    ScopedFastFlag _{FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true};
 
     fileResolver.source["game/A"] = R"(
         type Array<T> = {T}
@@ -984,8 +980,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_194463_modify_bounds_of_visited_generic_regression")
 {
-    ScopedFastFlag _{FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true};
-
     fileResolver.source["game/Container"] = R"(
         local Container = {}
 

@@ -1,0 +1,2 @@
+./analysis/type-functions/keyof_basic.luau(9,12): TypeError: Expected this to be '"x" | "y"', but got '"x" | "y" | "z"'; 
+`"z"` is not a subtype of `"x" | "y"`
