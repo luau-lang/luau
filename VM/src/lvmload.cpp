@@ -221,8 +221,9 @@ static void resolveImportSafe(lua_State* L, LuaTable* env, TValue* k, uint32_t i
 static uint8_t remapUserdataType(uint8_t type, uint8_t* userdataRemapping, uint32_t count)
 {
     LUAU_ASSERT(FFlag::LuauLoadRemapOptionalUserdata);
-    uint8_t optional = uint8_t(type & LBC_TYPE_OPTIONAL_BIT);
-    uint32_t index = uint32_t(uint8_t(type & ~optional) - LBC_TYPE_TAGGED_USERDATA_BASE);
+    uint8_t tag = type & ~LBC_TYPE_OPTIONAL_BIT;
+    uint8_t optional = type & LBC_TYPE_OPTIONAL_BIT;
+    uint32_t index = uint32_t(tag - LBC_TYPE_TAGGED_USERDATA_BASE);
 
     if (index < count)
         return userdataRemapping[index] | optional;
