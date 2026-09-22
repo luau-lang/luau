@@ -145,7 +145,7 @@ struct ConstraintGraph
     /**
      * Unblock type [vertex].
      * 1. If [vertex] is now a bound type, walk the chain of bound types and
-     *    repair references to said type in the graph (see: `repairTypeReferneces`).
+     *    repair references to said type in the graph (see: `repairTypeReferences`).
      * 2. After references have been repaired, walk the reverse dependencies of
      *    [vertex] and remove [vertex] from each dependency list, and then clear
      *    the reverse dependency list of [vertex].
@@ -155,7 +155,7 @@ struct ConstraintGraph
     /**
      * Unblock type *pack* [vertex].
      * 1. If [vertex] is now a bound type, walk the chain of bound types and
-     *    repair references to said type in the graph (see: `repairTypeReferneces`).
+     *    repair references to said type in the graph (see: `repairTypeReferences`).
      * 2. After references have been repaired, walk the reverse dependencies of
      *    [vertex] and remove [vertex] from each dependency list, and then clear
      *    the reverse dependency list of [vertex].
@@ -164,17 +164,8 @@ struct ConstraintGraph
 
     /**
      * Return whether the vertex has any unsolved dependencies.
-     *
-     * HACK: For `PrimitiveTypeConstraint` we consider it unblocked if there is
-     * a single dependency.
      */
     bool hasUnsolvedDependencies(ConstraintVertex vertex);
-
-    /**
-     * HACK: Used for `PrimitiveTypeConstraint` to check whether the free type
-     * it "controls" has other outstanding dependencies.
-     */
-    bool DEPRECATED_hasStrictlyMoreThanOneDependency(ConstraintVertex vertex);
 
     /**
      * Find all of the reference counted types that are reachable from `target`

@@ -61,6 +61,8 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 const double kTypecheckTimeoutSec = 4.0;
 
@@ -289,6 +291,8 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     FFlag::DebugLuauAbortingChecks.value = true;
     FFlag::DebugLuauUserDefinedClasses.value = true;
     FFlag::DebugLuauUserDefinedClassesRuntime.value = true;
+    FFlag::DebugLuauIfLocalSyntax.value = true;
+    FFlag::DebugLuauIfLocalAnalysis.value = true;
 
     std::vector<std::string> sources = protoprint(message, kFuzzTypes);
 
