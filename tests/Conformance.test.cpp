@@ -79,6 +79,7 @@ LUAU_FASTFLAG(LuauBytecodeCostModel)
 LUAU_FASTFLAG(LuauVirtualBcBuilder)
 LUAU_FASTFLAG(LuauNewPointerEncode)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauSandboxFreezesVectorMetatable)
 LUAU_FASTFLAG(LuauBufferCage)
 LUAU_FASTFLAG(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAG(DebugLuauCoroutineFinally)
@@ -5397,6 +5398,29 @@ TEST_CASE("BytecodeDumpLinked")
     Luau::Bytecode::BcFunction<TValue*> rbc{};
 
     CHECK_EQ(toString(rbc, true), "; function() maxstacksize: 0 upvalues: 0 flags: 0\n");
+}
+
+TEST_CASE("SandboxFreezesVectorMetatable")
+{
+    ScopedFastFlag freezeVectorMetatable{FFlag::LuauSandboxFreezesVectorMetatable, true};
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_pushvector3(L, 0.0f, 0.0f, 0.0f);
+
+    luaL_newmetatable(L, "Vector7");
+    lua_pushboolean(L, true);
+    lua_setfield(L, -2, "Supported");
+
+    lua_setmetatable(L, -2);
+
+    luaL_sandbox(L);
+
+    lua_pushvector3(L, 0.0f, 0.0f, 0.0f);
+
+    CHECK(lua_getmetatable(L, -1));
+    CHECK(lua_getreadonly(L, -1));
 }
 
 TEST_SUITE_END();
