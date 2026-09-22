@@ -665,6 +665,19 @@ public:
 
     AstExprIfElse(const Location& location, AstExpr* condition, bool hasThen, AstExpr* trueExpr, bool hasElse, AstExpr* falseExpr);
 
+    AstExprIfElse(
+        const Location& location,
+        AstExpr* condition,
+        bool hasThen,
+        AstExpr* trueExpr,
+        bool hasElse,
+        AstExpr* falseExpr,
+        AstLocal* conditionLocal,
+        bool conditionIsConst,
+        const std::optional<Location>& conditionKeywordLocation,
+        const std::optional<Location>& conditionEqualsLocation
+    );
+
     void visit(AstVisitor* visitor) override;
 
     AstExpr* condition;
@@ -672,6 +685,14 @@ public:
     AstExpr* trueExpr;
     bool hasElse;
     AstExpr* falseExpr;
+
+    // Active for 'if local' and 'if const' expressions; conditionLocal is bound to `condition` and in scope for trueExpr only
+    AstLocal* conditionLocal = nullptr;
+    bool conditionIsConst = false;
+    std::optional<Location> conditionKeywordLocation;
+
+    // Location of the `=` in an `if local`/`if const` binding
+    std::optional<Location> conditionEqualsLocation;
 };
 
 class AstExprInterpString : public AstExpr
@@ -751,7 +772,8 @@ public:
         const std::optional<Location>& elseLocation,
         AstLocal* conditionLocal,
         bool conditionIsConst,
-        const std::optional<Location>& conditionKeywordLocation
+        const std::optional<Location>& conditionKeywordLocation,
+        const std::optional<Location>& conditionEqualsLocation
     );
 
     void visit(AstVisitor* visitor) override;
@@ -769,6 +791,9 @@ public:
     AstLocal* conditionLocal = nullptr;
     bool conditionIsConst = false;
     std::optional<Location> conditionKeywordLocation;
+
+    // Location of the `=` in an `if local`/`if const` binding
+    std::optional<Location> conditionEqualsLocation;
 };
 
 class AstStatWhile : public AstStat

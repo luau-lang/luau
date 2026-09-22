@@ -148,6 +148,8 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error2")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         // CLI-97375(awe): `bar()` is returning `nil` here, which isn't wrong necessarily,
@@ -352,6 +354,8 @@ end
 function T:construct(index)
 end
 )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }

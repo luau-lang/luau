@@ -126,32 +126,6 @@ struct FunctionCheckConstraint
     NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
 };
 
-// prim FreeType ExpectedType PrimitiveType
-//
-// FreeType is bounded below by the singleton type and above by PrimitiveType
-// initially. When this constraint is resolved, it will check that the bounds
-// of the free type are well-formed by subtyping.
-//
-// If they are not well-formed, then FreeType is replaced by its lower bound
-//
-// If they are well-formed and ExpectedType is potentially a singleton (an
-// actual singleton or a union that contains a singleton),
-// then FreeType is replaced by its lower bound
-//
-// else FreeType is replaced by PrimitiveType
-//
-// Clip with LuauRemovePrimitiveTypeConstraint
-struct DEPRECATED_PrimitiveTypeConstraint
-{
-    TypeId freeType;
-
-    // potentially gets used to force the lower bound?
-    std::optional<TypeId> expectedType;
-
-    // the primitive type to check against
-    TypeId primitiveType;
-};
-
 // result ~ hasProp type "prop_name"
 //
 // If the subject is a table, bind the result to the named prop.  If the table
@@ -328,7 +302,6 @@ using ConstraintV = Variant<
     TypeAliasExpansionConstraint,
     FunctionCallConstraint,
     FunctionCheckConstraint,
-    DEPRECATED_PrimitiveTypeConstraint,
     HasPropConstraint,
     HasIndexerConstraint,
     AssignPropConstraint,

@@ -1,7 +1,7 @@
 --!native
 local function prequire(name) local success, result = pcall(require, name); return success and result end
 local bench = script and require(script.Parent.bench_support) or prequire("bench_support") or require("../../bench_support")
-local cvg = require("./charonvg/main")
+local cvg = require("./charonvg-dir/main")
 
 local W, H = 800, 600
 

@@ -118,6 +118,8 @@ TEST_CASE_FIXTURE(Fixture, "type_packs_containing_never_is_itself_uninhabitable"
         local x, y, z = f()
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -333,6 +335,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_i
         end
     )");
 
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (!FFlag::DebugLuauForceOldSolver)
@@ -348,6 +351,8 @@ TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")
             return x ~= nil and x * y -- infers boolean | never, which is normalized into boolean
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -373,6 +378,8 @@ TEST_CASE_FIXTURE(Fixture, "compare_never")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_CHECK_NO_ERRORS(result);
     CHECK_EQ("(nil, number) -> boolean", toString(requireType("cmp")));
 }
@@ -394,6 +401,8 @@ TEST_CASE_FIXTURE(Fixture, "lti_error_at_declaration_for_never_normalizations")
             end
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
     CHECK(toString(result.errors[0]) == "Parameter 'a' has been reduced to never. This function is not callable with any possible value.");

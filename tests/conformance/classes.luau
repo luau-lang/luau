@@ -924,17 +924,47 @@ class EqChild extends EqParent
     public label: string
 end
 
+class EqUnrelated
+    public val: number
+
+    function __eq(self, other)
+        return self.val == other.val
+    end
+end
+
+class EqUnrelatedWithMetamethod
+    public val: number
+
+    function __eq(self, other)
+        return self.val == other.val
+    end
+end
+
 expectpass("class inheritance __eq inherited", function()
     local a = EqChild.new({ val = 42, label = "a" })
     local b = EqChild.new({ val = 42, label = "b" })
     local c = EqChild.new({ val = 99, label = "a" })
     local d = EqParent.new({ val = 42 })
+    local e = EqUnrelated.new { val = 42 }
+    local f = EqUnrelatedWithMetamethod.new { val = 42 }
     assert(a == b)
     assert(b == a)
     assert(a ~= c)
     assert(c ~= a)
     assert(a == d)
     assert(b == a)
+
+    -- We want to assert that b and d are not equal to any of e and f, and that
+    -- e and f are themselves not equal.
+    local function checkTwice(left, right)
+        assert(left ~= right)
+        assert(right ~= left)
+    end
+    checkTwice(d, e)
+    checkTwice(b, e)
+    checkTwice(d, f)
+    checkTwice(b, f)
+    checkTwice(e, f)
 end)
 
 expectpass("class inheritance GC stress", function()

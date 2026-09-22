@@ -38,15 +38,19 @@ LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAGVARIABLE(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAGVARIABLE(LuauPropertyModifierMismatchErrors)
+LUAU_FASTFLAGVARIABLE(DebugLuauWarnOnUnannotatedTopLevelFunctions)
 LUAU_FASTFLAGVARIABLE(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAGVARIABLE(LuauSoundGenericMismatches)
 LUAU_FASTFLAG(LuauImproveUniqueTableWidthSubtyping)
-LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauBidirectionalInferenceSetMetatable)
 LUAU_FASTFLAGVARIABLE(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 LUAU_FASTFLAGVARIABLE(LuauCompoundAssignSeedsAstTypes)
+LUAU_FASTFLAGVARIABLE(LuauCannotAddIndexerToTablePrimitive)
 LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 namespace Luau
 {
@@ -699,6 +703,13 @@ void TypeChecker2::visit(AstStatIf* ifStatement)
         visit(ifStatement->condition, ValueContext::RValue);
     }
 
+    if (FFlag::DebugLuauIfLocalAnalysis && ifStatement->conditionLocal && ifStatement->conditionLocal->annotation)
+    {
+        TypeId annotationType = lookupAnnotation(ifStatement->conditionLocal->annotation);
+        testPotentialLiteralIsSubtype(ifStatement->condition, annotationType);
+        visit(ifStatement->conditionLocal->annotation);
+    }
+
     visit(ifStatement->thenbody);
     if (ifStatement->elsebody)
         visit(ifStatement->elsebody);
@@ -762,15 +773,45 @@ void TypeChecker2::visit(AstStatReturn* ret)
     // at least an argument underflow, then we grab the last type out of
     // the type pack head and use that to check the subtype of
     auto lastExpr = ret->list.data[ret->list.size - 1];
-    if (head.size() < ret->list.size || lastExpr->is<AstExprCall>() || lastExpr->is<AstExprVarargs>())
+
+    if (FFlag::LuauBidirectionalInferenceSetMetatable)
     {
-        actualTail = lookupPack(lastExpr);
+        if (head.size() < ret->list.size || lastExpr->is<AstExprVarargs>())
+        {
+            actualTail = lookupPack(lastExpr);
+        }
+        else if (lastExpr->is<AstExprCall>())
+        {
+            TypeId lastType = head[ret->list.size - 1];
+            if (std::optional<bool> setMetatableSubtype = testSetMetatableCallIsSubtype(lastExpr, lastType))
+            {
+                isSubtype &= *setMetatableSubtype;
+                actualHead.push_back(lastType);
+            }
+            else
+            {
+                actualTail = lookupPack(lastExpr);
+            }
+        }
+        else
+        {
+            TypeId lastType = head[ret->list.size - 1];
+            isSubtype &= testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
+            actualHead.push_back(lastType);
+        }
     }
     else
     {
-        auto lastType = head[ret->list.size - 1];
-        isSubtype &= testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
-        actualHead.push_back(lastType);
+        if (head.size() < ret->list.size || lastExpr->is<AstExprCall>() || lastExpr->is<AstExprVarargs>())
+        {
+            actualTail = lookupPack(lastExpr);
+        }
+        else
+        {
+            TypeId lastType = head[ret->list.size - 1];
+            isSubtype &= testLiteralOrAstTypeIsSubtype(lastExpr, lastType);
+            actualHead.push_back(lastType);
+        }
     }
 
     // After all that, we still fire a pack subtype test to determine
@@ -837,7 +878,15 @@ void TypeChecker2::visit(AstStatLocal* local)
                 if (var->annotation)
                 {
                     TypeId varType = lookupAnnotation(var->annotation);
-                    testIsSubtype(valueTypes.head[j - i], varType, value->location);
+                    if (FFlag::LuauBidirectionalInferenceSetMetatable)
+                    {
+                        if (!testSetMetatableCallIsSubtype(value, varType))
+                            testIsSubtype(valueTypes.head[j - i], varType, value->location);
+                    }
+                    else
+                    {
+                        testIsSubtype(valueTypes.head[j - i], varType, value->location);
+                    }
 
                     visit(var->annotation);
                 }
@@ -1280,6 +1329,56 @@ void TypeChecker2::visit(AstStatCompoundAssign* stat)
     testIsSubtype(*resultTy, varTy, stat->location);
 }
 
+void TypeChecker2::checkFunctionAnnotations(AstExprFunction* func, AnnotationCheckMode mode, Location nameLocation)
+{
+    TypeId ty = lookupType(func);
+    const FunctionType* ft = get<FunctionType>(ty);
+
+    bool missing = false;
+
+    if (ft)
+    {
+        TypePack args = extendTypePack(*module->internalTypes, builtinTypes, ft->argTypes, func->args.size);
+
+        for (size_t i = 0; i < func->args.size; ++i)
+        {
+            const AstLocal* arg = func->args.data[i];
+            if (i == 0 && arg->name == "self" && mode != AnnotationCheckMode::Function)
+            {
+                // Annotating the self parameter is already a syntax error.  We
+                // don't need to report anything here.
+            }
+            else if (!arg->annotation && i < args.head.size())
+                missing = true;
+        }
+
+        if (func->vararg && !func->varargAnnotation && args.tail.has_value())
+            missing = true;
+
+        if (mode == AnnotationCheckMode::Constructor && func->returnAnnotation)
+        {
+            reportError(ConstructorsShouldNotReturnAnything{}, func->returnAnnotation->location);
+        }
+        else if (!func->returnAnnotation)
+        {
+            auto [head, tail] = flatten(ft->retTypes);
+
+            if (!head.empty() || tail.has_value())
+                missing = true;
+        }
+    }
+
+    if (missing)
+    {
+        Location location = nameLocation;
+        if (func->argLocation)
+            location.extend(*func->argLocation);
+        if (func->returnAnnotation)
+            location.extend(func->returnAnnotation->location);
+        reportError(TypeAnnotationRequired{ty}, location);
+    }
+}
+
 void TypeChecker2::visit(AstStatFunction* stat)
 {
     visit(stat->name, ValueContext::LValue);
@@ -1302,11 +1401,17 @@ void TypeChecker2::visit(AstStatFunction* stat)
         auto rhsType = lookupType(stat->func);
         testIsSubtype(rhsType, lhsType, stat->func->location);
     }
+
+    if (FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions && stack.size() == 1)
+        checkFunctionAnnotations(stat->func, AnnotationCheckMode::Function, stat->name->location);
 }
 
 void TypeChecker2::visit(AstStatLocalFunction* stat)
 {
     visit(stat->func);
+
+    if (FFlag::DebugLuauWarnOnUnannotatedTopLevelFunctions && stack.size() == 1)
+        checkFunctionAnnotations(stat->func, AnnotationCheckMode::Function, stat->name->location);
 }
 
 void TypeChecker2::visit(const AstTypeList* typeList)
@@ -1384,8 +1489,14 @@ void TypeChecker2::visit(AstStatClass* stat)
         else if (const auto* method = member.get_if<AstClassMethod>())
         {
             visit(method->function);
+
             if (method->functionName == "__init")
+            {
+                checkFunctionAnnotations(method->function, AnnotationCheckMode::Constructor, method->nameLocation);
                 visitConstructor(stat, method);
+            }
+            else
+                checkFunctionAnnotations(method->function, AnnotationCheckMode::Method, method->nameLocation);
         }
         else
             LUAU_ASSERT(!"Unknown class member!");
@@ -1833,6 +1944,19 @@ void TypeChecker2::visitCall(AstExprCall* call)
             AstExpr* argExpr = call->args.data[idx];
             if (FFlag::LuauCallErrorReportingRecoversArgumentLocationsForPacks)
                 argExprs.push_back(argExpr);
+
+            if (FFlag::LuauBidirectionalInferenceSetMetatable)
+            {
+                if (idx + selfOffset < paramsHead.size())
+                {
+                    if (testSetMetatableCallIsSubtype(argExpr, paramsHead[idx + selfOffset]))
+                    {
+                        args.head.push_back(paramsHead[idx + selfOffset]);
+                        continue;
+                    }
+                }
+            }
+
             // The last argument might be an ordinary value, but it can also be an entire pack.
             if (idx == call->args.size - 1)
             {
@@ -2200,6 +2324,9 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
     {
         return indexExprMetatableHelper(indexExpr, mt, exprType, indexType);
     }
+    else if (const auto primitive = get<PrimitiveType>(exprType);
+             FFlag::LuauCannotAddIndexerToTablePrimitive && primitive && primitive->type == PrimitiveType::Table)
+        reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
     else if (auto cls = get<ExternType>(exprType))
     {
         if (cls->indexer)
@@ -2921,6 +3048,14 @@ void TypeChecker2::visit(AstExprIfElse* expr)
         InConditionalContext inContext(&typeContext, TypeContext::Condition);
         visit(expr->condition, ValueContext::RValue);
     }
+
+    if (FFlag::DebugLuauIfLocalAnalysis && expr->conditionLocal && expr->conditionLocal->annotation)
+    {
+        TypeId annotationType = lookupAnnotation(expr->conditionLocal->annotation);
+        testPotentialLiteralIsSubtype(expr->condition, annotationType);
+        visit(expr->conditionLocal->annotation);
+    }
+
     visit(expr->trueExpr, ValueContext::RValue);
     visit(expr->falseExpr, ValueContext::RValue);
 }
@@ -3577,34 +3712,58 @@ void TypeChecker2::explainError(TypePackId subTy, TypePackId superTy, Location l
 bool TypeChecker2::testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedType)
 {
     NotNull<Scope> scope{findInnermostScope(expr->location)};
-    auto exprTy = lookupType(expr);
+    TypeId exprTy = FFlag::LuauSoundGenericMismatches ? follow(lookupType(expr)) : lookupType(expr);
 
-    SubtypingResult r;
-
-    if (FFlag::LuauImproveUniqueTableWidthSubtyping && !FFlag::LuauBidirectionalInferenceSimplifyTables)
+    if (FFlag::LuauSoundGenericMismatches)
     {
-        DenseHashSet<TypeId> uniqueTypes;
-        findUniqueTypes(NotNull{&uniqueTypes}, std::vector{expr}, NotNull{&module->astTypes});
+        expectedType = follow(expectedType);
 
-        // We create a separate `Subtyping` instance here because, in this
-        // particular context, we have knowledge that any table literals are
-        // unique references to their types.  Because we know that no other
-        // references to those values can exist, we can safely test those table
-        // types covariantly.
+        // If a generic type comes from an enclosing scope, then we must type check its use more strictly because...
         //
-        // These same TypeIds must _not_ be considered to be unique references
-        // if they occur in any other context, and so we need to separate the
-        // caches.
+        // HACK(CLI-225132): this is a really limited scope solution to much larger problems that exist in `Subtyping`.
+        //
+        // `Subtyping` does not appropriately deal with generic types and their scopes, leading us to consistently more permissive
+        // behavior in generic function bodies than should ever be allowed. This hack makes the simplest cases of that unsoundness
+        // raise errors to the user, but does not do anything about compositional instances of the same pattern. Doing more of that
+        // here would amount to reimplementing subtyping altogether.
+        //
+        // In general, we need to revisit our implementation subtyping to solve this problem at its heart, but, as of the time of
+        // writing this, we have not been making good headway into those problems, and this hack feels like it at least will help people
+        // avoid the problem some of the time (and hopefully enough to be worth it).
+        if (auto generic = get<GenericType>(expectedType); generic && subsumes(generic->scope, scope))
+        {
+            // If our type is already the generic type, we can proceed normally without this check.
+            // If our type is free or `never`, then it is sound to treat it as the generic type.
+            if (exprTy != expectedType && !is<FreeType, NeverType>(exprTy))
+            {
+                // We need to look at intersections for the sake of refinements.
+                // If we have a refinement like `T & ~nil`, we don't want to claim it's not `T`.
+                bool isExpectedPartOfIntersection = false;
+                if (auto intersection = get<IntersectionType>(exprTy))
+                {
+                    for (TypeId part : intersection)
+                    {
+                        if (follow(part) == expectedType)
+                        {
+                            isExpectedPartOfIntersection = true;
+                            break;
+                        }
+                    }
+                }
 
-        Subtyping st{builtinTypes, NotNull{module->internalTypes.get()}, NotNull{&normalizer}, typeFunctionRuntime, ice};
-        st.uniqueTypes = &uniqueTypes;
+                if (!isExpectedPartOfIntersection)
+                {
+                    if (isErrorSuppressing(expr->location, exprTy, expr->location, expectedType))
+                        return true;
 
-        r = st.isSubtype(exprTy, expectedType, scope);
+                    maybeReportSubtypingError(exprTy, expectedType, expr->location);
+                    return false;
+                }
+            }
+        }
     }
-    else
-    {
-        r = subtyping->isSubtype(exprTy, expectedType, scope);
-    }
+
+    SubtypingResult r = subtyping->isSubtype(exprTy, expectedType, scope);
 
     if (r.isSubtype)
         return true;
@@ -3612,10 +3771,31 @@ bool TypeChecker2::testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedT
     return testPotentialLiteralIsSubtype(expr, expectedType);
 }
 
+std::optional<bool> TypeChecker2::testSetMetatableCallIsSubtype(AstExpr* expr, TypeId expectedType)
+{
+    AstExprCall* call = expr->as<AstExprCall>();
+    if (!call || !matchSetMetatable(*call))
+        return std::nullopt;
+
+    const MetatableType* expectedMetatable = get<MetatableType>(follow(expectedType));
+    if (!expectedMetatable)
+        return std::nullopt;
+
+    bool passes = testLiteralOrAstTypeIsSubtype(call->args.data[0], expectedMetatable->table);
+    passes &= testLiteralOrAstTypeIsSubtype(call->args.data[1], expectedMetatable->metatable);
+    return passes;
+}
+
 bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedType)
 {
     auto exprType = follow(lookupType(expr));
     expectedType = follow(expectedType);
+
+    if (FFlag::LuauBidirectionalInferenceSetMetatable)
+    {
+        if (std::optional<bool> result = testSetMetatableCallIsSubtype(expr, expectedType))
+            return *result;
+    }
 
     if (auto group = expr->as<AstExprGroup>())
     {
@@ -3654,16 +3834,8 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
     {
         if (auto utv = get<UnionType>(expectedType))
         {
-            if (FFlag::LuauBidirectionalInferenceSimplifyTables)
-            {
-                if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes, NotNull{module->internalTypes.get()}))
-                    return testLiteralOrAstTypeIsSubtype(expr, *tt);
-            }
-            else
-            {
-                if (auto tt = extractMatchingTableType_DEPRECATED(utv, exprType, builtinTypes))
-                    return testLiteralOrAstTypeIsSubtype(expr, *tt);
-            }
+            if (auto tt = extractMatchingTableType(utv, exprType, builtinTypes, NotNull{module->internalTypes.get()}))
+                return testLiteralOrAstTypeIsSubtype(expr, *tt);
         }
 
         if (auto itv = get<IntersectionType>(expectedType))
