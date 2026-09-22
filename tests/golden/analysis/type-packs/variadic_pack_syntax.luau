@@ -1,0 +1,6 @@
+local function forward<T...>(...: T...): T...
+    return ...
+end
+
+local first: number, second: boolean = forward(1, true)
+assert(first == 1 and second)

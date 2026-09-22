@@ -41,6 +41,7 @@ LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
+LUAU_FASTFLAGVARIABLE(LuauBetterMetatableStringification)
 
 namespace Luau
 {
@@ -910,12 +911,24 @@ struct TypeStringifier
             return;
         }
 
-        state.emit("{ @metatable ");
-        stringify(mtv.metatable);
-        state.emit(",");
-        state.newline();
-        stringify(mtv.table);
-        state.emit(" }");
+        if (FFlag::LuauBetterMetatableStringification)
+        {
+            state.emit("setmetatable<");
+            stringify(mtv.table);
+            state.emit(",");
+            state.newline();
+            stringify(mtv.metatable);
+            state.emit(">");
+        }
+        else
+        {
+            state.emit("{ @metatable ");
+            stringify(mtv.metatable);
+            state.emit(",");
+            state.newline();
+            stringify(mtv.table);
+            state.emit(" }");
+        }
     }
 
     void operator()(TypeId ty, const ExternType& etv)
@@ -2062,13 +2075,6 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         else if constexpr (std::is_same_v<T, FunctionCheckConstraint>)
         {
             return "function_check " + tos(c.fn) + " " + tos(c.argsPack);
-        }
-        else if constexpr (std::is_same_v<T, DEPRECATED_PrimitiveTypeConstraint>)
-        {
-            if (c.expectedType)
-                return "prim " + tos(c.freeType) + "[expected: " + tos(*c.expectedType) + "] as " + tos(c.primitiveType);
-            else
-                return "prim " + tos(c.freeType) + " as " + tos(c.primitiveType);
         }
         else if constexpr (std::is_same_v<T, HasPropConstraint>)
         {
