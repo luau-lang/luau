@@ -61,6 +61,8 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
+LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 
 const double kTypecheckTimeoutSec = 4.0;
 
@@ -277,7 +279,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     // Limit the heap size for type functions to ~512 MB to avoid
     // the fuzzing infrastructure claiming we OOM'd because you can
     // make a 4GB table.
-    FInt::DebugLuauTypeFunctionRuntimeHeapLimit = 512 * 1024 * 1024;
+    FInt::DebugLuauTypeFunctionRuntimeHeapLimit.value = 512 * 1024 * 1024;
 
     for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
     {
@@ -289,6 +291,8 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     FFlag::DebugLuauAbortingChecks.value = true;
     FFlag::DebugLuauUserDefinedClasses.value = true;
     FFlag::DebugLuauUserDefinedClassesRuntime.value = true;
+    FFlag::DebugLuauIfLocalSyntax.value = true;
+    FFlag::DebugLuauIfLocalAnalysis.value = true;
 
     std::vector<std::string> sources = protoprint(message, kFuzzTypes);
 

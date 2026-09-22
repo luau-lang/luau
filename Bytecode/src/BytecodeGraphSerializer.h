@@ -61,7 +61,7 @@ struct BytecodeGraphSerializer
         return sortedBlocks;
     }
 
-    uint8_t getRegister(BcOp op)
+    uint32_t getRegisterRaw(BcOp op)
     {
         switch (op.kind)
         {
@@ -99,6 +99,60 @@ struct BytecodeGraphSerializer
         return 0;
     }
 
+    uint8_t getRegister(BcOp op)
+    {
+        uint32_t reg = getRegisterRaw(op);
+
+        if (reg >= kInvalidReg)
+        {
+            LUAU_ASSERT(!"register reference overflow");
+            error = true;
+        }
+
+        if (reg >= func.maxstacksize)
+        {
+            LUAU_ASSERT(!"register overflows the function stack");
+            error = true;
+        }
+
+        return uint8_t(reg);
+    }
+
+    uint8_t getRegInput(BcInst& insn, uint8_t index)
+    {
+        LUAU_ASSERT(index < insn.ops.size());
+        return getRegister(insn.ops[index]);
+    }
+
+    uint8_t getRegInputForRange(BcInst& insn, uint8_t index, int count)
+    {
+        LUAU_ASSERT(index < insn.ops.size());
+
+        uint32_t reg = getRegisterRaw(insn.ops[index]);
+
+        if (count < -1 || count >= 255)
+        {
+            LUAU_ASSERT(!"register count overflow");
+            error = true;
+        }
+
+        int range = count < 0 ? 0 : count;
+
+        if (reg >= kInvalidReg)
+        {
+            LUAU_ASSERT(!"register reference overflow");
+            error = true;
+        }
+
+        if (reg + range > func.maxstacksize)
+        {
+            LUAU_ASSERT(!"register overflows the function stack");
+            error = true;
+        }
+
+        return uint8_t(reg);
+    }
+
     BcImm& getImm(BcInst& insn, uint8_t index)
     {
         LUAU_ASSERT(index < insn.ops.size());
@@ -112,6 +166,30 @@ struct BytecodeGraphSerializer
         BcImm& imm = getImm(insn, index);
         LUAU_ASSERT(imm.kind == BcImmKind::Int);
         return imm.valueInt;
+    }
+
+    uint8_t getImmIntAsUnsignedABC(BcInst& insn, uint8_t index, int8_t bias)
+    {
+        BcImm& imm = getImm(insn, index);
+        LUAU_ASSERT(imm.kind == BcImmKind::Int);
+
+        int64_t result = int64_t(imm.valueInt) + bias;
+
+        if (int64_t(uint8_t(result)) != result)
+            error = true;
+
+        return uint8_t(result);
+    }
+
+    int16_t getImmIntAsSignedD(BcInst& insn, uint8_t index)
+    {
+        BcImm& imm = getImm(insn, index);
+        LUAU_ASSERT(imm.kind == BcImmKind::Int);
+
+        if (int32_t(int16_t(imm.valueInt)) != imm.valueInt)
+            error = true;
+
+        return int16_t(imm.valueInt);
     }
 
     bool getImmBool(BcInst& insn, uint8_t index)
@@ -151,15 +229,30 @@ struct BytecodeGraphSerializer
     {
         uint32_t cid = getVmConstInputRaw(insn, index);
 
-        if (cid > 0xffff)
+        if (cid > 0x7fff)
             error = true;
 
         return uint16_t(cid);
     }
 
+    uint32_t getVmConstInputAux16(BcInst& insn, uint8_t index)
+    {
+        uint32_t cid = getVmConstInputRaw(insn, index);
+
+        if (cid > 0xffff)
+            error = true;
+
+        return cid;
+    }
+
     uint32_t getVmConstInputAux(BcInst& insn, uint8_t index)
     {
-        return getVmConstInputRaw(insn, index);
+        uint32_t cid = getVmConstInputRaw(insn, index);
+
+        if (cid >= kMaxConstantCount)
+            error = true;
+
+        return cid;
     }
 
     uint8_t getUpvalInput(BcInst& insn, uint8_t index)
@@ -167,6 +260,16 @@ struct BytecodeGraphSerializer
         LUAU_ASSERT(index < insn.ops.size());
         BcOp inp = insn.ops[index];
         LUAU_ASSERT(inp.kind == BcOpKind::VmUpvalue);
+
+        if (inp.index >= func.nups)
+        {
+            LUAU_ASSERT(!"upvalue reference overflows the function upvalue count");
+            error = true;
+        }
+
+        if (inp.index >= kMaxUpvalueCount)
+            error = true;
+
         LUAU_ASSERT(inp.index < func.nups);
         return uint8_t(inp.index);
     }
@@ -177,16 +280,10 @@ struct BytecodeGraphSerializer
         BcOp inp = insn.ops[index];
         LUAU_ASSERT(inp.kind == BcOpKind::VmProto);
 
-        if (inp.index > 0xffff)
+        if (inp.index >= kMaxClosureCount)
             error = true;
 
         return uint16_t(inp.index);
-    }
-
-    uint8_t getRegInput(BcInst& insn, uint8_t index)
-    {
-        LUAU_ASSERT(index < insn.ops.size());
-        return getRegister(insn.ops[index]);
     }
 
     void recordJump(BcInst& insn, uint8_t index)
@@ -201,15 +298,16 @@ struct BytecodeGraphSerializer
     {
         BcBlock& target = func.blockOp(jump.targetBlock);
         LUAU_ASSERT(target.startpc != kBlockNoStartPc);
+
         if (isJumpD(jump.op))
         {
-            [[maybe_unused]] bool patched = bcb.patchJumpD(jump.instructionPC, target.startpc);
-            LUAU_ASSERT(patched);
+            if (!bcb.patchJumpD(jump.instructionPC, target.startpc))
+                error = true;
         }
         else if (isSkipC(jump.op))
         {
-            [[maybe_unused]] bool patched = bcb.patchSkipC(jump.instructionPC, target.startpc);
-            LUAU_ASSERT(patched);
+            if (!bcb.patchSkipC(jump.instructionPC, target.startpc))
+                error = true;
         }
     }
 
@@ -238,7 +336,7 @@ struct BytecodeGraphSerializer
         }
 
         case LOP_LOADN:
-            bcb.emitAD(LOP_LOADN, getRegister(insnOp), getImmInt(insn, 0));
+            bcb.emitAD(LOP_LOADN, getRegister(insnOp), getImmIntAsSignedD(insn, 0));
             break;
 
         case LOP_LOADK:
@@ -300,8 +398,9 @@ struct BytecodeGraphSerializer
         case LOP_GETUDATAKS:
         case LOP_GETTABLEKS:
             bcb.emitABC(insn.op, getRegister(insnOp), getRegInput(insn, 0), getImmInt(insn, 1));
-            if (insn.op == LOP_SETUDATAKS)
-                bcb.emitAux(getVmConstInputAux(insn, 2) | static_cast<uint32_t>(getImmInt(insn, 3)) << 16);
+
+            if (insn.op == LOP_GETUDATAKS)
+                bcb.emitAux(getVmConstInputAux16(insn, 2) | static_cast<uint32_t>(getImmInt(insn, 3)) << 16);
             else
                 bcb.emitAux(getVmConstInputAux(insn, 2));
             break;
@@ -309,18 +408,19 @@ struct BytecodeGraphSerializer
         case LOP_SETUDATAKS:
         case LOP_SETTABLEKS:
             bcb.emitABC(insn.op, getRegInput(insn, 0), getRegInput(insn, 1), getImmInt(insn, 2));
+
             if (insn.op == LOP_SETUDATAKS)
-                bcb.emitAux(getVmConstInputAux(insn, 3) | static_cast<uint32_t>(getImmInt(insn, 4)) << 16);
+                bcb.emitAux(getVmConstInputAux16(insn, 3) | static_cast<uint32_t>(getImmInt(insn, 4)) << 16);
             else
                 bcb.emitAux(getVmConstInputAux(insn, 3));
             break;
 
         case LOP_GETTABLEN:
-            bcb.emitABC(LOP_GETTABLEN, getRegister(insnOp), getRegInput(insn, 0), getImmInt(insn, 1) - 1);
+            bcb.emitABC(LOP_GETTABLEN, getRegister(insnOp), getRegInput(insn, 0), getImmIntAsUnsignedABC(insn, 1, -1));
             break;
 
         case LOP_SETTABLEN:
-            bcb.emitABC(LOP_SETTABLEN, getRegInput(insn, 0), getRegInput(insn, 1), getImmInt(insn, 2) - 1);
+            bcb.emitABC(LOP_SETTABLEN, getRegInput(insn, 0), getRegInput(insn, 1), getImmIntAsUnsignedABC(insn, 2, -1));
             break;
 
         case LOP_NEWCLOSURE:
@@ -330,8 +430,9 @@ struct BytecodeGraphSerializer
         case LOP_NAMECALLUDATA:
         case LOP_NAMECALL:
             bcb.emitABC(insn.op, getRegister(insnOp), getRegInput(insn, 0), getImmInt(insn, 1));
+
             if (insn.op == LOP_NAMECALLUDATA)
-                bcb.emitAux(getVmConstInputAux(insn, 2) | static_cast<uint32_t>(getImmInt(insn, 3)) << 16);
+                bcb.emitAux(getVmConstInputAux16(insn, 2) | static_cast<uint32_t>(getImmInt(insn, 3)) << 16);
             else
                 bcb.emitAux(getVmConstInputAux(insn, 2));
             break;
@@ -348,7 +449,7 @@ struct BytecodeGraphSerializer
         case LOP_RETURN:
         {
             LUAU_ASSERT(insn.ops.size() > 1);
-            bcb.emitABC(LOP_RETURN, getRegInput(insn, 1), getImmInt(insn, 0) + 1, 0);
+            bcb.emitABC(LOP_RETURN, getRegInputForRange(insn, 1, getImmInt(insn, 0)), getImmInt(insn, 0) + 1, 0);
             break;
         }
 
@@ -485,7 +586,7 @@ struct BytecodeGraphSerializer
 
         case LOP_GETVARARGS:
             LUAU_ASSERT(insn.ops.size() == 2 && insn.ops[0].kind == BcOpKind::VmReg);
-            bcb.emitABC(LOP_GETVARARGS, insn.ops[0].index, getImmInt(insn, 1) + 1, 0);
+            bcb.emitABC(LOP_GETVARARGS, getRegInputForRange(insn, 0, getImmInt(insn, 1)), getImmInt(insn, 1) + 1, 0);
             break;
 
         case LOP_DUPCLOSURE:
@@ -570,7 +671,12 @@ struct BytecodeGraphSerializer
 
         case LOP_NEWCLASS:
             LUAU_ASSERT(FFlag::DebugLuauUserDefinedClasses);
-            bcb.emitABC(LOP_NEWCLASS, getRegister(insnOp), getRegInput(insn, 0), getImmImport(insn, 1));
+
+            if (insn.ops[0].kind != BcOpKind::None)
+                bcb.emitABC(LOP_NEWCLASS, getRegister(insnOp), getRegInput(insn, 0), getImmImport(insn, 1));
+            else
+                bcb.emitABC(LOP_NEWCLASS, getRegister(insnOp), 0xff, getImmImport(insn, 1));
+
             bcb.emitAux(getVmConstInputAux(insn, 2));
             break;
 

@@ -23,7 +23,7 @@ struct TypeArena
     bool collectSingletonStats = false;
     size_t boolSingletonsMinted = 0;
     size_t strSingletonsMinted = 0;
-    DenseHashSet2<std::optional<std::string>> uniqueStrSingletonsMinted;
+    DenseHashSet<std::optional<std::string>> uniqueStrSingletonsMinted;
 
     void clear();
 

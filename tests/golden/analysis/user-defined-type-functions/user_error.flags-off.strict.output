@@ -1,0 +1,2 @@
+./analysis/user-defined-type-functions/user_error.luau(8,1): TypeError: 'errors_if_string' type function errored at runtime: [string "errors_if_string"]:3: We are in a math class! not english
+./analysis/user-defined-type-functions/user_error.luau(8,29): TypeError: 'errors_if_string' type function errored at runtime: [string "errors_if_string"]:3: We are in a math class! not english

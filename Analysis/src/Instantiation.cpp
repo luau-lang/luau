@@ -184,8 +184,8 @@ std::optional<TypeId> instantiate(
     if (ft->generics.empty() && ft->genericPacks.empty())
         return ty;
 
-    DenseHashMap2<TypeId, TypeId> replacements;
-    DenseHashMap2<TypePackId, TypePackId> replacementPacks;
+    DenseHashMap<TypeId, TypeId> replacements;
+    DenseHashMap<TypePackId, TypePackId> replacementPacks;
 
     for (TypeId g : ft->generics)
     {

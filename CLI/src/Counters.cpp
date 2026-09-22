@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Counters.h"
 #include "Luau/CodeGenOptions.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 
 #include "lua.h"
 
@@ -19,7 +19,7 @@ struct LineCounters
 struct FunctionCounters
 {
     std::string name;
-    Luau::DenseHashMap2<int, LineCounters> counters;
+    Luau::DenseHashMap<int, LineCounters> counters;
 };
 
 struct ModuleCounters

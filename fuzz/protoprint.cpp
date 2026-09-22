@@ -321,7 +321,7 @@ struct ProtoToLuau
         std::vector<const luau::Name*> props;
     };
 
-    std::string source = "open class _ end\n";
+    std::string source = "";
     std::vector<Function> functions;
     std::vector<Class> classes;
     bool types = false;
@@ -768,8 +768,11 @@ struct ProtoToLuau
 
     void print(const luau::ExprClassInst& expr, std::optional<size_t> classIndex = std::nullopt)
     {
-        if (classes.size() == 0)
-            source += "_.new() { }";
+        if (classes.empty())
+        {
+            source += "nil";
+            return;
+        }
 
         size_t index = classIndex.value_or(size_t(expr.index()) % classes.size());
         const Class& cls = classes[index];
@@ -895,6 +898,12 @@ struct ProtoToLuau
     void print(const luau::StatIf& stat)
     {
         source += "if ";
+        if (stat.has_condition_local())
+        {
+            source += stat.condition_is_const() ? "const " : "local ";
+            print(stat.condition_local());
+            source += " = ";
+        }
         print(stat.cond());
         source += " then\n";
         print(stat.then());
@@ -1189,7 +1198,7 @@ struct ProtoToLuau
         source += "public ";
         ident(prop.name());
 
-        if (prop.has_type())
+        if (types && prop.has_type())
         {
             source += ':';
             print(prop.type());
@@ -1231,13 +1240,10 @@ struct ProtoToLuau
         source += "class ";
         print(stat.name());
 
-        if (stat.has_extends())
+        if (stat.has_extends() && !classes.empty())
         {
             source += " extends ";
-            if (classes.size() == 0)
-                source += "_";
-            else
-                print(*classes[size_t(stat.extends()) % classes.size()].name);
+            print(*classes[size_t(stat.extends()) % classes.size()].name);
         }
 
         source += '\n';
@@ -1252,6 +1258,8 @@ struct ProtoToLuau
             source += '\n';
         }
 
+        classes.emplace_back(Class{ &stat.name(), std::move(propNames) });
+
         for (size_t i = 0; i < stat.methods_size(); ++i)
         {
             print(stat.methods(i));
@@ -1260,8 +1268,7 @@ struct ProtoToLuau
 
         source += "end\n";
 
-        classes.emplace_back(Class{&stat.name(), std::move(propNames)});
-
+        source += "local ";
         print(stat.local());
         source += " = ";
         print(stat.inst(), classes.size() - 1);

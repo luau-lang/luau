@@ -77,6 +77,13 @@ struct TypeChecker
 
     ControlFlow check(const ScopePtr& scope, const AstStat& program);
     ControlFlow check(const ScopePtr& scope, const AstStatBlock& block);
+    WithPredicate<TypeId> checkLocalBinding(
+        const ScopePtr& scope,
+        const ScopePtr& bindingScope,
+        AstLocal* local,
+        const WithPredicate<TypeId>& result,
+        std::optional<TypeId> expectedType
+    );
     ControlFlow check(const ScopePtr& scope, const AstStatIf& statement);
     ControlFlow check(const ScopePtr& scope, const AstStatWhile& statement);
     ControlFlow check(const ScopePtr& scope, const AstStatRepeat& statement);
@@ -491,12 +498,12 @@ private:
      * We use this to avoid doing second-pass analysis of type aliases that are duplicates. We record a pair
      * (exported, name) to properly deal with the case where the two duplicates do not have the same export status.
      */
-    DenseHashSet2<std::pair<bool, Name>, HashBoolNamePair> duplicateTypeAliases;
+    DenseHashSet<std::pair<bool, Name>, HashBoolNamePair> duplicateTypeAliases;
 
     /**
      * A set of incorrect class definitions which is used to avoid a second-pass analysis.
      */
-    DenseHashSet2<const AstStatDeclareExternType*> incorrectExternTypeDefinitions;
+    DenseHashSet<const AstStatDeclareExternType*> incorrectExternTypeDefinitions;
 
     std::vector<std::pair<TypeId, ScopePtr>> deferredQuantification;
 };

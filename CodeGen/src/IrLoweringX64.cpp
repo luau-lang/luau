@@ -2,7 +2,7 @@
 #include "IrLoweringX64.h"
 
 #include "Luau/CodeGenOptions.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrCallWrapperX64.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
@@ -16,7 +16,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenFixBufferLenCheck)
 LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
@@ -2535,7 +2534,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         {
             int offset = intOp(OP_B(inst));
 
-            int endOffset = FFlag::LuauCodegenFixBufferLenCheck ? maxOffset : accessSize;
+            int endOffset = maxOffset;
 
             // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
             if (offset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))

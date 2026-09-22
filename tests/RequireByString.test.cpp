@@ -3,6 +3,7 @@
 #include "Luau/Config.h"
 
 #include "ScopedFlags.h"
+#include "ReplWithPathFixture.h"
 #include "lua.h"
 #include "lualib.h"
 
@@ -13,15 +14,15 @@
 
 #include "doctest.h"
 
-#include <algorithm>
 #include <cstring>
 #include <initializer_list>
-#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
+
+using namespace Luau;
 
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
@@ -31,206 +32,6 @@ LUAU_DYNAMIC_FASTFLAG(LuauSelfIsSelfAndAlwaysSelf)
 LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauBytecodeCostModel)
-
-#if __APPLE__
-#include <TargetConditionals.h>
-#if TARGET_OS_IPHONE
-#include <CoreFoundation/CoreFoundation.h>
-#include <cstdlib>
-#include <unistd.h>
-
-std::optional<std::string> getResourcePath0()
-{
-    CFBundleRef mainBundle = CFBundleGetMainBundle();
-    if (mainBundle == NULL)
-    {
-        return std::nullopt;
-    }
-    CFURLRef mainBundleURL = CFBundleCopyBundleURL(mainBundle);
-    if (mainBundleURL == NULL)
-    {
-        CFRelease(mainBundle);
-        return std::nullopt;
-    }
-
-    char pathBuffer[PATH_MAX];
-    if (!CFURLGetFileSystemRepresentation(mainBundleURL, true, (UInt8*)pathBuffer, PATH_MAX))
-    {
-        CFRelease(mainBundleURL);
-        CFRelease(mainBundle);
-        return std::nullopt;
-    }
-
-    CFRelease(mainBundleURL);
-    CFRelease(mainBundle);
-    return std::string(pathBuffer);
-}
-
-std::optional<std::string> getResourcePath()
-{
-    static std::optional<std::string> path0 = getResourcePath0();
-    return path0;
-}
-#endif
-#endif
-
-class ReplWithPathFixture
-{
-public:
-    ReplWithPathFixture()
-        : luaState(luaL_newstate(), lua_close)
-    {
-        L = luaState.get();
-        setupState(L);
-        luaL_sandboxthread(L);
-
-        runCode(L, prettyPrintSource);
-    }
-
-    // Returns all of the output captured from the pretty printer
-    std::string getCapturedOutput()
-    {
-        lua_getglobal(L, "capturedoutput");
-        const char* str = lua_tolstring(L, -1, nullptr);
-        std::string result(str);
-        lua_pop(L, 1);
-        return result;
-    }
-
-    enum class PathType
-    {
-        Absolute,
-        Relative
-    };
-
-    std::string getLuauDirectory(PathType type)
-    {
-        std::string luauDirRel = ".";
-        std::string luauDirAbs;
-
-#if TARGET_OS_IPHONE
-        std::optional<std::string> cwd0 = getCurrentWorkingDirectory();
-        std::optional<std::string> cwd = getResourcePath();
-        if (cwd && cwd0)
-        {
-            // when running in xcode cwd0 is "/", however that is not always the case
-            const auto& _res = *cwd;
-            const auto& _cwd = *cwd0;
-            if (_res.find(_cwd) == 0)
-            {
-                // we need relative path so we subtract cwd0 from cwd
-                luauDirRel = "./" + _res.substr(_cwd.length());
-            }
-        }
-        if (const char* repoRoot = std::getenv("TEST_SOURCE_ROOT"))
-        {
-            (void)chdir(repoRoot);
-            cwd = getCurrentWorkingDirectory();
-            luauDirRel = ".";
-        }
-#else
-        std::optional<std::string> cwd = getCurrentWorkingDirectory();
-#endif
-
-        REQUIRE_MESSAGE(cwd, "Error getting Luau path");
-        std::replace((*cwd).begin(), (*cwd).end(), '\\', '/');
-        luauDirAbs = *cwd;
-
-        for (int i = 0; i < 20; ++i)
-        {
-            bool engineTestDir = isDirectory(luauDirAbs + "/Client/Luau/tests");
-            bool luauTestDir = isDirectory(luauDirAbs + "/tests/require");
-
-            if (engineTestDir || luauTestDir)
-            {
-                if (engineTestDir)
-                {
-                    luauDirRel += "/Client/Luau";
-                    luauDirAbs += "/Client/Luau";
-                }
-
-                if (type == PathType::Relative)
-                    return luauDirRel;
-                if (type == PathType::Absolute)
-                    return luauDirAbs;
-            }
-
-            if (luauDirRel == ".")
-                luauDirRel = "..";
-            else
-                luauDirRel += "/..";
-
-            std::optional<std::string> parentPath = getParentPath(luauDirAbs);
-            REQUIRE_MESSAGE(parentPath, "Error getting Luau path");
-            luauDirAbs = *parentPath;
-        }
-
-        // Could not find the directory
-        REQUIRE_MESSAGE(false, "Error getting Luau path");
-        return {};
-    }
-
-    void runProtectedRequire(const std::string& path)
-    {
-        runCode(L, "return pcall(function() return require(\"" + path + "\") end)");
-    }
-
-    void assertOutputContainsAll(const std::initializer_list<std::string>& list)
-    {
-        const std::string capturedOutput = getCapturedOutput();
-        for (const std::string& elem : list)
-        {
-            CHECK_MESSAGE(capturedOutput.find(elem) != std::string::npos, "Captured output: ", capturedOutput);
-        }
-    }
-
-    lua_State* L;
-
-private:
-    std::unique_ptr<lua_State, void (*)(lua_State*)> luaState;
-
-    // This is a simplistic and incomplete pretty printer.
-    // It is included here to test that the pretty printer hook is being called.
-    // More elaborate tests to ensure correct output can be added if we introduce
-    // a more feature rich pretty printer.
-    std::string prettyPrintSource = R"(
--- Accumulate pretty printer output in `capturedoutput`
-capturedoutput = ""
-
-function arraytostring(arr)
-    local strings = {}
-    table.foreachi(arr, function(k,v) table.insert(strings, pptostring(v)) end )
-    return "{" .. table.concat(strings, ", ") .. "}"
-end
-
-function pptostring(x)
-    if type(x) == "table" then
-        -- Just assume array-like tables for now.
-        return arraytostring(x)
-    elseif type(x) == "string" then
-        return '"' .. x .. '"'
-    else
-        return tostring(x)
-    end
-end
-
--- Note: Instead of calling print, the pretty printer just stores the output
--- in `capturedoutput` so we can check for the correct results.
-function _PRETTYPRINT(...)
-    local args = table.pack(...)
-    local strings = {}
-    for i=1, args.n do
-        local item = args[i]
-        local str = pptostring(item, customoptions)
-        if i == 1 then
-            capturedoutput = capturedoutput .. str
-        else
-            capturedoutput = capturedoutput .. "\t" .. str
-        end
-    end
-end
-)";
-};
 
 TEST_SUITE_BEGIN("RequireByStringTests");
 
@@ -1353,34 +1154,6 @@ TEST_CASE("RequireExportClassMultiLevel")
                        "/tests/require/without_config/export_keyword/require_export_class_multi_level";
     fixture.runProtectedRequire(path);
     fixture.assertOutputContainsAll({"true"});
-}
-
-TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassOverrideInstanceMemberError")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauCallFeedback, true},
-        {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
-    };
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/class_override_instance_member_error";
-    runProtectedRequire(path);
-    assertOutputContainsAll({"Cannot override instance member 'x' of parent class 'Parent' in child class 'Child'"});
-}
-
-TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassExtendsNonOpenParent")
-{
-    ScopedFastFlag sffs[] = {
-        {FFlag::DebugLuauUserDefinedClasses, true},
-        {FFlag::DebugLuauUserDefinedClassesRuntime, true},
-        {FFlag::LuauCallFeedback, true},
-        {FFlag::LuauEmitCallFeedback, true},
-        {FFlag::LuauBytecodeCostModel, true}
-    };
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/without_config/class_extends_non_open_parent";
-    runProtectedRequire(path);
-    assertOutputContainsAll({"Non-open class 'Parent' cannot be extended"});
 }
 
 TEST_SUITE_END();

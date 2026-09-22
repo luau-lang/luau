@@ -4,7 +4,7 @@
 
 #include "Luau/Ast.h"
 #include "Luau/VecDeque.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
@@ -35,12 +35,12 @@ struct TypeFunctionInferenceResult
 struct TypeFunctionReductionGuesser
 {
     // Tracks our hypothesis about what a type function reduces to
-    DenseHashMap2<TypeId, TypeId> functionReducesTo;
+    DenseHashMap<TypeId, TypeId> functionReducesTo;
     // Tracks our constraints on type function operands
-    DenseHashMap2<TypeId, TypeId> substitutable;
+    DenseHashMap<TypeId, TypeId> substitutable;
     // List of instances to try progress
     VecDeque<TypeId> toInfer;
-    DenseHashSet2<TypeId> cyclicInstances;
+    DenseHashSet<TypeId> cyclicInstances;
 
     // Utilities
     NotNull<TypeArena> arena;
@@ -73,7 +73,7 @@ private:
     void infer();
     bool done();
 
-    bool isFunctionGenericsSaturated(const FunctionType& ftv, DenseHashSet2<TypeId>& argsUsed);
+    bool isFunctionGenericsSaturated(const FunctionType& ftv, DenseHashSet<TypeId>& argsUsed);
     void inferTypeFunctionSubstitutions(TypeId ty, const TypeFunctionInstanceType* instance);
     TypeFunctionInferenceResult inferNumericBinopFunction(const TypeFunctionInstanceType* instance);
     TypeFunctionInferenceResult inferComparisonFunction(const TypeFunctionInstanceType* instance);

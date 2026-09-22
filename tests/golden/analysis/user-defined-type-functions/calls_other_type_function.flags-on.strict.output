@@ -1,0 +1,1 @@
+./analysis/user-defined-type-functions/calls_other_type_function.luau(10,12): TypeError: Expected this to be 'nil', but got '"hi"'

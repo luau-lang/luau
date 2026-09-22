@@ -82,27 +82,27 @@ struct ConstraintSnapshot
 
 struct BoundarySnapshot
 {
-    DenseHashMap2<const Constraint*, ConstraintSnapshot> unsolvedConstraints;
+    DenseHashMap<const Constraint*, ConstraintSnapshot> unsolvedConstraints;
     ScopeSnapshot rootScope;
-    DenseHashMap2<const void*, std::string> typeStrings;
+    DenseHashMap<const void*, std::string> typeStrings;
 };
 
 struct ConstraintStepSnapshot
 {
     const Constraint* currentConstraint = nullptr;
     bool forced = false;
-    DenseHashMap2<const Constraint*, ConstraintSnapshot> unsolvedConstraints;
+    DenseHashMap<const Constraint*, ConstraintSnapshot> unsolvedConstraints;
     ScopeSnapshot rootScope;
-    DenseHashMap2<const void*, std::string> typeStrings;
+    DenseHashMap<const void*, std::string> typeStrings;
 };
 
 struct GeneralizeStepSnapshot
 {
     std::string before;
     std::string after;
-    DenseHashMap2<const Constraint*, ConstraintSnapshot> unsolvedConstraints;
+    DenseHashMap<const Constraint*, ConstraintSnapshot> unsolvedConstraints;
     ScopeSnapshot rootScope;
-    DenseHashMap2<const void*, std::string> typeStrings;
+    DenseHashMap<const void*, std::string> typeStrings;
 };
 
 using StepSnapshot = Variant<ConstraintStepSnapshot, GeneralizeStepSnapshot>;

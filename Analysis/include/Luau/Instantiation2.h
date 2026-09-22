@@ -16,10 +16,10 @@ struct TypeCheckLimits;
 
 struct Replacer_DEPRECATED : Substitution
 {
-    DenseHashMap2<TypeId, TypeId> replacements;
-    DenseHashMap2<TypePackId, TypePackId> replacementPacks;
+    DenseHashMap<TypeId, TypeId> replacements;
+    DenseHashMap<TypePackId, TypePackId> replacementPacks;
 
-    Replacer_DEPRECATED(NotNull<TypeArena> arena, DenseHashMap2<TypeId, TypeId> replacements, DenseHashMap2<TypePackId, TypePackId> replacementPacks)
+    Replacer_DEPRECATED(NotNull<TypeArena> arena, DenseHashMap<TypeId, TypeId> replacements, DenseHashMap<TypePackId, TypePackId> replacementPacks)
         : Substitution(TxnLog::empty(), arena)
         , replacements(std::move(replacements))
         , replacementPacks(std::move(replacementPacks))
@@ -55,13 +55,13 @@ struct Replacer_DEPRECATED : Substitution
 
 struct Replacer : Substitution
 {
-    NotNull<DenseHashMap2<TypeId, TypeId>> replacements;
-    NotNull<DenseHashMap2<TypePackId, TypePackId>> replacementPacks;
+    NotNull<DenseHashMap<TypeId, TypeId>> replacements;
+    NotNull<DenseHashMap<TypePackId, TypePackId>> replacementPacks;
 
     Replacer(
         NotNull<TypeArena> arena,
-        NotNull<DenseHashMap2<TypeId, TypeId>> replacements,
-        NotNull<DenseHashMap2<TypePackId, TypePackId>> replacementPacks
+        NotNull<DenseHashMap<TypeId, TypeId>> replacements,
+        NotNull<DenseHashMap<TypePackId, TypePackId>> replacementPacks
     );
 
     bool isDirty(TypeId ty) override;
@@ -83,55 +83,10 @@ private:
     bool checkReplacementKeys() const;
 };
 
-// A substitution which replaces generic functions by monomorphic functions
-struct Instantiation2_DEPRECATED final : Substitution
-{
-    // Mapping from generic types to free types to be used in instantiation.
-    DenseHashMap2<TypeId, TypeId> genericSubstitutions;
-    // Mapping from generic type packs to `TypePack`s of free types to be used in instantiation.
-    DenseHashMap2<TypePackId, TypePackId> genericPackSubstitutions;
-
-    // Make `NotNull` with LuauInstantiationUsesGenericPolarity
-    Subtyping* subtyping = nullptr;
-    Scope* scope = nullptr;
-
-    Instantiation2_DEPRECATED(
-        TypeArena* arena,
-        DenseHashMap2<TypeId, TypeId> genericSubstitutions,
-        DenseHashMap2<TypePackId, TypePackId> genericPackSubstitutions
-    )
-        : Substitution(TxnLog::empty(), arena)
-        , genericSubstitutions(std::move(genericSubstitutions))
-        , genericPackSubstitutions(std::move(genericPackSubstitutions))
-    {
-    }
-
-    Instantiation2_DEPRECATED(
-        TypeArena* arena,
-        DenseHashMap2<TypeId, TypeId> genericSubstitutions,
-        DenseHashMap2<TypePackId, TypePackId> genericPackSubstitutions,
-        NotNull<Subtyping> subtyping,
-        NotNull<Scope> scope
-    )
-        : Substitution(TxnLog::empty(), arena)
-        , genericSubstitutions(std::move(genericSubstitutions))
-        , genericPackSubstitutions(std::move(genericPackSubstitutions))
-        , subtyping(subtyping)
-        , scope(scope)
-    {
-    }
-
-    bool ignoreChildren(TypeId ty) override;
-    bool isDirty(TypeId ty) override;
-    bool isDirty(TypePackId tp) override;
-    TypeId clean(TypeId ty) override;
-    TypePackId clean(TypePackId tp) override;
-};
-
 void resolveGenericSubstitutions(
     TypeArena* arena,
-    DenseHashMap2<TypeId, TypeId>& genericSubstitutions,
-    DenseHashMap2<TypePackId, TypePackId>& genericPackSubstitutions,
+    DenseHashMap<TypeId, TypeId>& genericSubstitutions,
+    DenseHashMap<TypePackId, TypePackId>& genericPackSubstitutions,
     NotNull<Subtyping> subtyping,
     NotNull<Scope> scope
 );
@@ -141,8 +96,8 @@ void resolveGenericSubstitutions(
 // substitutions.
 std::optional<TypeId> instantiate2(
     TypeArena* arena,
-    DenseHashMap2<TypeId, TypeId> genericSubstitutions,
-    DenseHashMap2<TypePackId, TypePackId> genericPackSubstitutions,
+    DenseHashMap<TypeId, TypeId> genericSubstitutions,
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
     NotNull<Subtyping> subtyping,
     NotNull<Scope> scope,
     TypeId ty
@@ -150,8 +105,8 @@ std::optional<TypeId> instantiate2(
 
 std::optional<TypePackId> instantiate2(
     TypeArena* arena,
-    DenseHashMap2<TypeId, TypeId> genericSubstitutions,
-    DenseHashMap2<TypePackId, TypePackId> genericPackSubstitutions,
+    DenseHashMap<TypeId, TypeId> genericSubstitutions,
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
     NotNull<Subtyping> subtyping,
     NotNull<Scope> scope,
     TypePackId tp

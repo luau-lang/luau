@@ -3,7 +3,7 @@
 
 #include "Luau/TypeArena.h"
 #include "Luau/TypeFwd.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 
 // We provide an implementation of substitution on types,
 // which recursively replaces types by other types.
@@ -105,8 +105,8 @@ struct Tarjan
     virtual ~Tarjan() = default;
 
     // Vertices (types and type packs) are indexed, using pre-order traversal.
-    DenseHashMap2<TypeId, int> typeToIndex;
-    DenseHashMap2<TypePackId, int> packToIndex;
+    DenseHashMap<TypeId, int> typeToIndex;
+    DenseHashMap<TypePackId, int> packToIndex;
 
     std::vector<TarjanNode> nodes;
 
@@ -206,13 +206,13 @@ protected:
 
 public:
     TypeArena* arena;
-    DenseHashMap2<TypeId, TypeId> newTypes;
-    DenseHashMap2<TypePackId, TypePackId> newPacks;
-    DenseHashSet2<TypeId> replacedTypes;
-    DenseHashSet2<TypePackId> replacedTypePacks;
+    DenseHashMap<TypeId, TypeId> newTypes;
+    DenseHashMap<TypePackId, TypePackId> newPacks;
+    DenseHashSet<TypeId> replacedTypes;
+    DenseHashSet<TypePackId> replacedTypePacks;
 
-    DenseHashSet2<TypeId> noTraverseTypes;
-    DenseHashSet2<TypePackId> noTraverseTypePacks;
+    DenseHashSet<TypeId> noTraverseTypes;
+    DenseHashSet<TypePackId> noTraverseTypePacks;
 
     std::optional<TypeId> substitute(TypeId ty);
     std::optional<TypePackId> substitute(TypePackId tp);

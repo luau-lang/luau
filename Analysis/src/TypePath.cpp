@@ -4,7 +4,7 @@
 
 #include "Luau/Anyification.h"
 #include "Luau/Common.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
@@ -283,7 +283,7 @@ bool isSingletonTypePack(TypePackId pack)
 {
     LUAU_ASSERT(FFlag::LuauNewTypePathErrorMessages);
 
-    DenseHashSet2<TypePackId> seen;
+    DenseHashSet<TypePackId> seen;
     bool foundElement = false;
     int steps = 0;
 
