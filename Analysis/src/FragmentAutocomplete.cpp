@@ -31,8 +31,10 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
+LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauFragmentACEnableTypeFunctionEvaluation)
+LUAU_FASTFLAGVARIABLE(LuauFragmentACLocalAutocompleteFix)
 
 namespace Luau
 {
@@ -330,7 +332,19 @@ std::optional<Position> blockDiffStart(AstStatBlock* blockOld, AstStatBlock* blo
 
         bool isSame = oldStat->classIndex == newStat->classIndex && oldStat->location == newStat->location;
         if (!isSame)
-            return {oldStat->location.begin};
+        {
+            // local x;
+            // +++ x.@1 ++++
+            // if x then
+            // In the case of a diff like Statements{a, b} | Statements{a, c, b} (here, c corresponds to the addition of the index on x `x.@1`)
+            // we want to start the autocomplete region at the earliest differing statement. If we return b's begin unconditionally, we might end up
+            // returning a position that occurs after the cursor position (at c), which will cause fragment autocomplete to return a useless range.
+            // To avoid this, we can produce a more granular diff by returning the earlier begin location instead of the old one.
+            if (FFlag::LuauFragmentACLocalAutocompleteFix)
+                return newStat->location.begin < oldStat->location.begin ? newStat->location.begin : oldStat->location.begin;
+            else
+                return oldStat->location.begin;
+        }
     }
 
     if (oldSize <= stIndex)
@@ -510,6 +524,16 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
                     localStack.push_back(v);
                     localMap[v->name] = v;
                 }
+            }
+        }
+
+        // Add the `if local`/`if const` binding to the local map if the cursor is in the then-body of the `AstStatIf`
+        if (FFlag::DebugLuauIfLocalAnalysis)
+        {
+            if (auto ifStat = node->as<AstStatIf>(); ifStat && ifStat->conditionLocal && ifStat->thenbody->location.containsClosed(cursorPos))
+            {
+                localStack.push_back(ifStat->conditionLocal);
+                localMap[ifStat->conditionLocal->name] = ifStat->conditionLocal;
             }
         }
     }
@@ -715,6 +739,8 @@ void cloneTypesFromFragment(
         {
             if (auto res = stale->refinements.find(syms); res != stale->refinements.end())
             {
+                if (FFlag::LuauFragmentACLocalAutocompleteFix && get<NeverType>(follow(res->second)))
+                    continue;
                 destScope->rvalueRefinements[d] = Luau::cloneIncremental(res->second, *destArena, cloneState, destScope);
                 // If we've found a refinement, just break, otherwise we might end up doing the wrong thing for:
                 //

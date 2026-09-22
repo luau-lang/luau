@@ -67,6 +67,12 @@ void check(
     Module* module
 );
 
+enum class AnnotationCheckMode {
+    Function,
+    Method,
+    Constructor,
+};
+
 struct TypeChecker2
 {
     NotNull<BuiltinTypes> builtinTypes;
@@ -137,6 +143,7 @@ private:
     void reportErrorsFromAssigningToNever(AstExpr* lhs, TypeId rhsType);
     void visit(AstStatAssign* assign);
     void visit(AstStatCompoundAssign* stat);
+    void checkFunctionAnnotations(AstExprFunction* func, AnnotationCheckMode mode, Location location);
     void visit(AstStatFunction* stat);
     void visit(AstStatLocalFunction* stat);
     void visit(const AstTypeList* typeList);
@@ -199,6 +206,7 @@ private:
 
     bool testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedType);
 
+    std::optional<bool> testSetMetatableCallIsSubtype(AstExpr* expr, TypeId expectedType);
     bool testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedType);
 
     void maybeReportSubtypingError(TypeId subTy, TypeId superTy, const Location& location);

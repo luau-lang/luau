@@ -4,7 +4,6 @@
 #include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAGVARIABLE(LuauIterableConstraintMutatesIterator)
 
 namespace Luau
@@ -151,10 +150,6 @@ std::pair<TypeIds, TypePackIds> Constraint::getMaybeMutatedTypes() const
         rci.traverse(fcc->fn);
         rci.traverse(fcc->argsPack);
         rci.traverseIntoTypeFunctions = true;
-    }
-    else if (auto ptc = get<DEPRECATED_PrimitiveTypeConstraint>(*this); !FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier && ptc)
-    {
-        rci.traverse(ptc->freeType);
     }
     else if (auto hpc = get<HasPropConstraint>(*this))
     {

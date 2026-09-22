@@ -44,17 +44,16 @@ LUAU_FASTFLAGVARIABLE(LuauDisallowRedefiningBuiltinTypes)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAGVARIABLE(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-LUAU_FLAGVERSION(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, 3)
-LUAU_FASTFLAGVARIABLE(LuauDeprecatedAttributeOnAnonymousFunctions)
 LUAU_FASTFLAGVARIABLE(DebugLuauCFG)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauUdtfPopulateEnv)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAG(LuauStrictVisitInstantiatedType)
 LUAU_FASTFLAG(LuauSetmetatableOverrides)
+LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceSetMetatable)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 
 namespace Luau
 {
@@ -2763,7 +2762,12 @@ InferencePack ConstraintGenerator::checkPack(
     InferencePack result;
 
     if (AstExprCall* call = expr->as<AstExprCall>())
-        result = checkPack(scope, call);
+    {
+        if (FFlag::LuauBidirectionalInferenceSetMetatable && !expectedTypes.empty() && matchSetMetatable(*call))
+            result = checkPack(scope, call, expectedTypes.front());
+        else
+            result = checkPack(scope, call);
+    }
     else if (expr->is<AstExprVarargs>())
     {
         if (scope->varargPack)
@@ -2797,7 +2801,7 @@ InferencePack ConstraintGenerator::checkPack(
     return result;
 }
 
-InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall* call)
+InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall* call, std::optional<TypeId> expectedType)
 {
     Checkpoint funcBeginCheckpoint = checkpoint(this);
 
@@ -2809,7 +2813,7 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
 
     Checkpoint funcEndCheckpoint = checkpoint(this);
 
-    return checkExprCall(scope, call, fnType, funcBeginCheckpoint, funcEndCheckpoint);
+    return checkExprCall(scope, call, fnType, funcBeginCheckpoint, funcEndCheckpoint, expectedType);
 }
 
 InferencePack ConstraintGenerator::checkExprCall(
@@ -2817,7 +2821,8 @@ InferencePack ConstraintGenerator::checkExprCall(
     AstExprCall* call,
     TypeId fnType,
     Checkpoint funcBeginCheckpoint,
-    Checkpoint funcEndCheckpoint
+    Checkpoint funcEndCheckpoint,
+    std::optional<TypeId> expectedType
 )
 {
     std::vector<AstExpr*> exprArgs;
@@ -2859,6 +2864,15 @@ InferencePack ConstraintGenerator::checkExprCall(
 
     std::vector<std::optional<TypeId>> expectedTypesForCall = getExpectedCallTypesForFunctionOverloads(fnType);
 
+    if (FFlag::LuauBidirectionalInferenceSetMetatable)
+    {
+        if (matchSetMetatable(*call) && expectedType)
+        {
+            if (const MetatableType* expectedMetatable = get<MetatableType>(follow(*expectedType)))
+                expectedTypesForCall = {expectedMetatable->table, expectedMetatable->metatable};
+        }
+    }
+
     module->astOriginalCallTypes[call->func] = fnType;
 
     Checkpoint argBeginCheckpoint = checkpoint(this);
@@ -2866,6 +2880,32 @@ InferencePack ConstraintGenerator::checkExprCall(
     std::vector<TypeId> args;
     std::optional<TypePackId> argTail;
     std::vector<RefinementId> argumentRefinements;
+
+    // Currently, `setmetatable` is bespoke in that instead of resolving a
+    // function call, we *manually* construct a `MetatableType`. This causes
+    // an issue for something like:
+    //
+    //  local a = setmetatable({ a = 1 }, {
+    //      __call = function(self, b: number)
+    //          return self.a * b
+    //      end,
+    //  })
+    //  local foo = a(12)
+    //
+    // ... we want lambda calls within a function call to be open to
+    // bidirectional inference, but we also need to ensure that they're
+    // generalized at the right time.
+    //
+    // Aside from a future where we use an expected return type in order
+    // to bidirectionally infer a function call, `setmetatable` should
+    // never be able to `check` its arguments, so we just claim that
+    // lambdas within `setmetatable` should be let-generalized.
+    bool generalize = FFlag::LuauTraverseScopeToFunction ? matchSetMetatable(*call) : false;
+    if (FFlag::LuauBidirectionalInferenceSetMetatable && matchSetMetatable(*call))
+    {
+        if (expectedType)
+            generalize = false;
+    }
 
     for (size_t i = 0; i < exprArgs.size(); ++i)
     {
@@ -2890,16 +2930,17 @@ InferencePack ConstraintGenerator::checkExprCall(
             {
                 expectedType = expectedTypesForCall[i];
             }
+
             if (i == 0 && matchAssert(*call))
             {
                 InConditionalContext flipper{&typeContext};
-                auto [ty, refinement] = check(scope, arg, expectedType, /*forceSingleton*/ false, /*generalize*/ false);
+                auto [ty, refinement] = check(scope, arg, expectedType, /*forceSingleton*/ false, generalize);
                 args.push_back(ty);
                 argumentRefinements.push_back(refinement);
             }
             else
             {
-                auto [ty, refinement] = check(scope, arg, expectedType, /*forceSingleton*/ false, /*generalize*/ false);
+                auto [ty, refinement] = check(scope, arg, expectedType, /*forceSingleton*/ false, generalize);
                 args.push_back(ty);
                 argumentRefinements.push_back(refinement);
             }
@@ -3007,6 +3048,27 @@ InferencePack ConstraintGenerator::checkExprCall(
                 resultTy = arena->addType(MetatableType{target, mt});
         }
 
+        if (FFlag::LuauBidirectionalInferenceSetMetatable)
+        {
+            module->astTypes[call] = resultTy;
+
+            if (expectedType)
+            {
+                NotNull<Constraint> ptc = addConstraint(
+                    scope,
+                    call->location,
+                    PushTypeConstraint{
+                        /* expectedType */ *expectedType,
+                        /* targetType */ resultTy,
+                        /* astTypes */ NotNull{&module->astTypes},
+                        /* astExpectedTypes */ NotNull{&module->astExpectedTypes},
+                        /* expr */ NotNull{call},
+                    }
+                );
+
+                addAllAsReverseDependencies(argBeginCheckpoint, argEndCheckpoint, this, ptc);
+            }
+        }
 
         if (AstExprLocal* targetLocal = targetExpr->as<AstExprLocal>())
         {
@@ -3140,7 +3202,12 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::
     else if (expr->is<AstExprVarargs>())
         result = flattenPack(scope, expr->location, checkPack(scope, expr));
     else if (auto call = expr->as<AstExprCall>())
-        result = flattenPack(scope, expr->location, checkPack(scope, call)); // TODO: needs predicates too
+    {
+        if (FFlag::LuauBidirectionalInferenceSetMetatable)
+            result = flattenPack(scope, expr->location, checkPack(scope, call, matchSetMetatable(*call) ? expectedType : std::nullopt)); // TODO: needs predicates too
+        else
+            result = flattenPack(scope, expr->location, checkPack(scope, call)); // TODO: needs predicates too
+    }
     else if (auto a = expr->as<AstExprFunction>())
         result = check(scope, a, expectedType, generalize);
     else if (auto indexName = expr->as<AstExprIndexName>())
@@ -3209,16 +3276,9 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantStrin
     LUAU_ASSERT(ft);
     ft->lowerBound = arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}});
     ft->upperBound = builtinTypes->stringType;
-    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-    {
-        ft->primitiveType = builtinTypes->stringType;
-        if (expectedType)
-            addConstraint(scope, string->location, SubtypeConstraint{freeTy, *expectedType});
-    }
-    else
-    {
-        addConstraint(scope, string->location, DEPRECATED_PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->stringType});
-    }
+    ft->primitiveType = builtinTypes->stringType;
+    if (expectedType)
+        addConstraint(scope, string->location, SubtypeConstraint{freeTy, *expectedType});
     return Inference{freeTy};
 }
 
@@ -3247,16 +3307,9 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantBool*
     LUAU_ASSERT(ft);
     ft->lowerBound = singletonType;
     ft->upperBound = builtinTypes->booleanType;
-    if (FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
-    {
-        ft->primitiveType = builtinTypes->booleanType;
-        if (expectedType)
-            addConstraint(scope, boolExpr->location, SubtypeConstraint{freeTy, *expectedType});
-    }
-    else
-    {
-        addConstraint(scope, boolExpr->location, DEPRECATED_PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->booleanType});
-    }
+    ft->primitiveType = builtinTypes->booleanType;
+    if (expectedType)
+        addConstraint(scope, boolExpr->location, SubtypeConstraint{freeTy, *expectedType});
     return Inference{freeTy};
 }
 
@@ -3422,8 +3475,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprFunction* fun
         }
     );
 
-    if (FFlag::LuauDeprecatedAttributeOnAnonymousFunctions)
-        propagateDeprecatedAttributeToConstraint(gc->c, func);
+    propagateDeprecatedAttributeToConstraint(gc->c, func);
 
     sig.signatureScope->interiorFreeTypes = std::move(interiorFreeTypes.back().types);
     sig.signatureScope->interiorFreeTypePacks = std::move(interiorFreeTypes.back().typePacks);
@@ -3578,6 +3630,41 @@ Inference ConstraintGenerator::checkAstExprBinary(
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType)
 {
     InConditionalContext inContext(&typeContext, TypeContext::Default);
+
+    if (FFlag::DebugLuauIfLocalAnalysis && ifElse->conditionLocal)
+    {
+        ScopePtr thenScope = childScope(ifElse->trueExpr, scope);
+        ScopePtr elseScope = childScope(ifElse->falseExpr, scope);
+
+        std::optional<TypeId> annotatedType;
+        if (ifElse->conditionLocal->annotation)
+            annotatedType = resolveType(scope, ifElse->conditionLocal->annotation, /* inTypeArguments */ false);
+
+        TypeId initType = [&]()
+        {
+            InConditionalContext flipper{&typeContext};
+            return check(scope, ifElse->condition, annotatedType).ty;
+        }();
+
+        TypeId baseType = annotatedType ? *annotatedType : initType;
+        TypeId boundType = createTypeFunctionInstance(
+            builtinTypes->typeFunctions->refineFunc,
+            {baseType, builtinTypes->truthyType},
+            {},
+            thenScope,
+            ifElse->conditionLocal->location
+        );
+
+        thenScope->bindings[ifElse->conditionLocal] = Binding{boundType, ifElse->conditionLocal->location};
+
+        DefId def = dfg->getDef(ifElse->conditionLocal);
+        thenScope->lvalueTypes[def] = boundType;
+
+        TypeId thenType = check(thenScope, ifElse->trueExpr, expectedType).ty;
+        TypeId elseType = check(elseScope, ifElse->falseExpr, expectedType).ty;
+
+        return Inference{makeUnion(scope, ifElse->location, thenType, elseType)};
+    }
 
     RefinementId refinement = [&]()
     {

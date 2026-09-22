@@ -1,0 +1,5 @@
+./analysis/user-defined-type-functions/error_handling_pcall.luau(10,16): TypeError: Unknown global 'pcall'; consider assigning to it first
+./analysis/user-defined-type-functions/error_handling_pcall.luau(11,16): TypeError: Unknown global 'xpcall'; consider assigning to it first
+./analysis/user-defined-type-functions/error_handling_pcall.luau(17,14): TypeError: 'recover' type function errored at runtime: [string "recover"]:10: this function is not supported in type functions
+./analysis/user-defined-type-functions/error_handling_pcall.luau(17,32): TypeError: Expected this to be 'recover<number>', but got 'number'; 
+it reduces to `never`, and `number` is not a subtype of `never`

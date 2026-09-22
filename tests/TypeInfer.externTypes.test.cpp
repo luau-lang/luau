@@ -147,6 +147,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_us
         makeClone(oopsies)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors.at(0));
     REQUIRE(tm != nullptr);
@@ -174,6 +176,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_us
 
         makeClone(oopsies)
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors.at(0));
@@ -321,6 +325,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "higher_order_function_return_values_are_co
         end)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -335,6 +341,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "higher_order_function_return_type_is_not_c
             return ChildClass.New()
         end)
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -398,6 +406,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "table_class_unification_reports_sane_error
         foo(a)
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -452,6 +462,8 @@ local a: Vector2
 local b = foo
 b(a)
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -913,6 +925,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "cyclic_tables_are_assumed_to_be_compatible
         c.Touched:Connect(onTouch)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1026,6 +1040,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_never")
         end
     )");
 
+    ignoreMissingAnnotations(results);
+
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Bing | Foobar) -> Bing", toString(requireType("update")));
 }
@@ -1046,6 +1062,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_intersection")
             return foo
         end
     )");
+
+    ignoreMissingAnnotations(results);
 
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Foobar) -> Foobar & { read IsEnabled: string }", toString(requireType("update")));
@@ -1068,6 +1086,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_superset")
         end
     )");
 
+    ignoreMissingAnnotations(results);
+
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Foobar) -> Foobar", toString(requireType("update")));
 }
@@ -1088,6 +1108,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_idempotent")
             return foo
         end
     )");
+
+    ignoreMissingAnnotations(results);
 
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Foobar) -> Foobar", toString(requireType("update")));
@@ -1118,12 +1140,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function update(obj: Foobar)
             assert(typeof(obj.Baz) == "number")
             return obj
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(Foobar) -> Foobar & { read Baz: number }", toString(requireType("update")));
 }
@@ -1277,7 +1301,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_2")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local World : { [number]: { PlayerData: { Settings: { Audio: {} & Folder } } } }
 
         local function Spread(Id: number)
@@ -1285,7 +1309,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_2")
             assert(Ownership)
             return Ownership
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(number) -> { PlayerData: { Settings: { Audio: Folder & {  } } } }", toString(requireType("Spread")));
 }
