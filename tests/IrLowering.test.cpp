@@ -8641,8 +8641,6 @@ bb_bytecode_2:
     );
 }
 
-// The compile-time and run-time userdata type lists are in different orders, so 'vec2?' only reports
-// as 'vec2' if the load-time remapping ran for the optional form as well.
 TEST_CASE_FIXTURE(LoweringFixture, "OptionalUserdataTypeRemapping")
 {
     // This test requires runtime component to be present
