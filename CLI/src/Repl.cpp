@@ -21,7 +21,6 @@
 
 #include "isocline.h"
 
-#include <stdlib.h>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -44,6 +43,7 @@
 
 #include <locale.h>
 #include <signal.h>
+#include <stdlib.h>
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
 

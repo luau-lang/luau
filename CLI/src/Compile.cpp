@@ -12,8 +12,9 @@
 #include "Luau/FileUtils.h"
 #include "Luau/Flags.h"
 
-#include <stdlib.h>
 #include <memory>
+
+#include <stdlib.h>
 
 #ifdef _WIN32
 #include <io.h>
