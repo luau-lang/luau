@@ -3,6 +3,11 @@
 
 #include "Luau/Common.h"
 
+#include <string_view>
+
+#include <errno.h>
+#include <string.h>
+
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -18,9 +23,6 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #endif
-
-#include <string.h>
-#include <string_view>
 
 #ifdef _WIN32
 static std::wstring fromUtf8(const std::string& path)

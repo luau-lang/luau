@@ -12,6 +12,8 @@
 
 #include <memory>
 
+#include <stdlib.h>
+
 using Luau::CodeGen::FunctionBytecodeSummary;
 
 struct GlobalOptions
