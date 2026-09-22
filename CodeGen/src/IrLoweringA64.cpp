@@ -3058,22 +3058,22 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // register layout: ra + 1 = table, ra + 2 = internal index, ra + 3 .. ra + aux = iteration variables
         regs.spill(index);
 
-        int ra = vmRegOp(OP_A(inst));
-        int aux = intOp(OP_B(inst));
-
-        // ipairs-style traversal is handled in IR
-        CODEGEN_ASSERT(aux >= 0);
-
-        // clear extra variables since we might have more than two
-        if (aux > 2)
-        {
-            CODEGEN_ASSERT(LUA_TNIL == 0);
-            for (int i = 2; i < aux; ++i)
-                build.str(wzr, mem(rBase, (ra + 3 + i) * sizeof(TValue) + offsetof(TValue, tt)));
-        }
-
         if (FFlag::LuauCodegenA64ForgLoopArray)
         {
+            int ra = vmRegOp(OP_A(inst));
+            int aux = intOp(OP_B(inst));
+
+            // ipairs-style traversal is handled in IR
+            CODEGEN_ASSERT(aux >= 0);
+
+            // clear extra variables since we might have more than two
+            if (aux > 2)
+            {
+                CODEGEN_ASSERT(LUA_TNIL == 0);
+                for (int i = 2; i < aux; ++i)
+                    build.str(wzr, mem(rBase, (ra + 3 + i) * sizeof(TValue) + offsetof(TValue, tt)));
+            }
+
             // x1 = table and w2 = index are also the second and third arguments of the node
             // fallback below, so the array walk leaves them where the call already wants them
             build.ldr(x1, mem(rBase, (ra + 1) * sizeof(TValue) + offsetof(TValue, value.gc)));
@@ -3132,11 +3132,18 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         else
         {
+            // clear extra variables since we might have more than two
+            if (intOp(OP_B(inst)) > 2)
+            {
+                CODEGEN_ASSERT(LUA_TNIL == 0);
+                for (int i = 2; i < intOp(OP_B(inst)); ++i)
+                    build.str(wzr, mem(rBase, (vmRegOp(OP_A(inst)) + 3 + i) * sizeof(TValue) + offsetof(TValue, tt)));
+            }
             // we use full iter fallback for now; in the future it could be worthwhile to accelerate array iteration here
             build.mov(x0, rState);
-            build.ldr(x1, mem(rBase, (ra + 1) * sizeof(TValue) + offsetof(TValue, value.gc)));
-            build.ldr(w2, mem(rBase, (ra + 2) * sizeof(TValue) + offsetof(TValue, value.p)));
-            build.add(x3, rBase, uint16_t(ra * sizeof(TValue)));
+            build.ldr(x1, mem(rBase, (vmRegOp(OP_A(inst)) + 1) * sizeof(TValue) + offsetof(TValue, value.gc)));
+            build.ldr(w2, mem(rBase, (vmRegOp(OP_A(inst)) + 2) * sizeof(TValue) + offsetof(TValue, value.p)));
+            build.add(x3, rBase, uint16_t(vmRegOp(OP_A(inst)) * sizeof(TValue)));
             build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, forgLoopTableIter)));
             build.blr(x4);
             // note: no emitUpdateBase necessary because forgLoopTableIter does not reallocate stack
