@@ -1000,6 +1000,41 @@ do
   assert(t.a == 99)
 end
 
+do
+  local t = { x = 1 }
+  local m = setmetatable({}, { __add = function(_, r) r.x = 99; return 0 end })
+  local _ = m + t
+  assert(t.x == 99)
+end
+
+do
+  local t = { x = 1 }
+  local m = setmetatable({}, { __concat = function(l, _) l.x = 99; return "" end })
+  local _ = t .. m
+  assert(t.x == 99)
+end
+
+do
+  local t = { x = 1 }
+  local p = setmetatable({}, { __index = function(_, k) k.x = 99 end })
+  local _ = p[t]
+  assert(t.x == 99)
+end
+
+do
+  local t = { x = 1 }
+  local p = setmetatable({}, { __index = function(_, k) k.x = 99 end })
+  if p[t] then end
+  assert(t.x == 99)
+end
+
+do
+  local t = { f = function() return 1 end }
+  local p = setmetatable({}, { __index = function(_, k) k.f = function() return 99 end end })
+  local _ = p[t]
+  assert(t.f() == 99)
+end
+
 -- freeze a table whose metatable has __mode
 do
   local fallback = { value = 123 }

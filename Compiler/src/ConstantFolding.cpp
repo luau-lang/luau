@@ -12,6 +12,7 @@
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileNoFoldVectorEqW)
+LUAU_FASTFLAGVARIABLE(LuauCompileConstTableMetamethodEscape)
 
 namespace Luau
 {
@@ -698,6 +699,41 @@ struct TableMutationTracker : AstVisitor
 
             markEscaped(item.value);
         }
+
+        return true;
+    }
+
+    bool visit(AstExprBinary* node) override
+    {
+        if (FFlag::LuauCompileConstTableMetamethodEscape)
+        {
+            // Arithmetic and concatenation can pass either operand to a metamethod
+            switch (node->op)
+            {
+            case AstExprBinary::Add:
+            case AstExprBinary::Sub:
+            case AstExprBinary::Mul:
+            case AstExprBinary::Div:
+            case AstExprBinary::FloorDiv:
+            case AstExprBinary::Mod:
+            case AstExprBinary::Pow:
+            case AstExprBinary::Concat:
+                markEscaped(node->left);
+                markEscaped(node->right);
+                break;
+            default:
+                break;
+            }
+        }
+
+        return true;
+    }
+
+    bool visit(AstExprIndexExpr* node) override
+    {
+        // Keys can escape into __index and __newindex metamethods
+        if (FFlag::LuauCompileConstTableMetamethodEscape)
+            markEscaped(node->index);
 
         return true;
     }

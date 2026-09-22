@@ -69,6 +69,7 @@ LUAU_FASTFLAG(LuauCodegenDseRestoreHintUpdate)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
+LUAU_FASTFLAG(LuauCompileConstTableMetamethodEscape)
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_FASTFLAG(LuauEnumMoreEdges)
 LUAU_DYNAMIC_FASTFLAG(LuauTableMoveTimeoutFix)
@@ -1342,6 +1343,8 @@ TEST_CASE("Integers")
 
 TEST_CASE("Tables")
 {
+    ScopedFastFlag luauCompileConstTableMetamethodEscape{FFlag::LuauCompileConstTableMetamethodEscape, true};
+
     runConformance(
         "tables.luau",
         [](lua_State* L)

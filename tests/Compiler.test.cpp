@@ -44,6 +44,7 @@ LUAU_FASTFLAG(LuauCompileRecursiveAliases)
 LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
+LUAU_FASTFLAG(LuauCompileConstTableMetamethodEscape)
 
 using namespace Luau;
 
@@ -12946,6 +12947,117 @@ LOADN R1 2
 SETTABLEKS R1 R0 K1 ['a\x00']
 LOADN R1 3
 RETURN R1 1
+)"
+    );
+}
+
+TEST_CASE("FoldConstTablePropsMetamethodEscape")
+{
+    ScopedFastFlag luauCompileConstTableMetamethodEscape{FFlag::LuauCompileConstTableMetamethodEscape, true};
+
+    // t is no longer constant when a metamethod on the other operand can receive it
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = { a = 1 }
+local _ = m + t
+return t.a
+)",
+                   0,
+                   1
+               ),
+        R"(
+DUPTABLE R0 2
+GETIMPORT R2 4 [m]
+ADD R1 R2 R0
+GETTABLEKS R2 R0 K0 ['a']
+RETURN R2 1
+)"
+    );
+
+    // handle '..'
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = { a = 1 }
+local _ = t .. m
+return t.a
+)",
+                   0,
+                   1
+               ),
+        R"(
+DUPTABLE R0 2
+MOVE R2 R0
+GETIMPORT R3 4 [m]
+CONCAT R1 R2 R3
+GETTABLEKS R2 R0 K0 ['a']
+RETURN R2 1
+)"
+    );
+
+    // t is no longer constant when used as a key, since __index can receive it
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = { a = 1 }
+local _ = p[t]
+return t.a
+)",
+                   0,
+                   1
+               ),
+        R"(
+DUPTABLE R0 2
+GETIMPORT R2 4 [p]
+GETTABLE R1 R2 R0
+GETTABLEKS R2 R0 K0 ['a']
+RETURN R2 1
+)"
+    );
+
+    // comparisons only call a metamethod both operands share, so t is still constant
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = { a = 1 }
+local _ = m == t
+return t.a
+)",
+                   0,
+                   1
+               ),
+        R"(
+DUPTABLE R0 2
+GETIMPORT R2 4 [m]
+JUMPIFEQ R2 R0 L0
+LOADB R1 0 +1
+L0: LOADB R1 1
+L1: LOADN R2 1
+RETURN R2 1
+)"
+    );
+
+    // cannot inline if the table is passed to __index
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local t = { f = function() return 1 end }
+local _ = p[t]
+return t.f()
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPTABLE R0 1
+DUPCLOSURE R1 K2 ['f']
+SETTABLEKS R1 R0 K0 ['f']
+GETIMPORT R2 4 [p]
+GETTABLE R1 R2 R0
+GETTABLEKS R2 R0 K0 ['f']
+CALL R2 0 -1
+RETURN R2 -1
 )"
     );
 }
