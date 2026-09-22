@@ -905,6 +905,7 @@ return function(): { X: _luau_blocked_type, Y: _luau_blocked_type } return nil :
 TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
+
     ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 10};
 
     fileResolver.source["game/A"] = R"(
