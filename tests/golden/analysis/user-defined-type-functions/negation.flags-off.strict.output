@@ -1,0 +1,3 @@
+./analysis/user-defined-type-functions/negation.luau(5,27): TypeError: Subtyping test returned a reasoning with an invalid path
+./analysis/user-defined-type-functions/negation.luau(5,27): TypeError: Expected this to be '~(false?)', but got 'boolean'
+./analysis/user-defined-type-functions/negation.luau(5,7): LocalUnused: Variable 'x' is never used; prefix with '_' to silence

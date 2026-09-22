@@ -95,6 +95,14 @@ struct ValueVisitor : AstVisitor
         return true;
     }
 
+    bool visit(AstExprIfElse* node) override
+    {
+        if (node->conditionLocal)
+            variables[node->conditionLocal].init = node->condition;
+
+        return true;
+    }
+
     bool visit(AstStatAssign* node) override
     {
         for (size_t i = 0; i < node->vars.size; ++i)

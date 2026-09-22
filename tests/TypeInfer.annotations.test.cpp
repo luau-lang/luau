@@ -90,6 +90,8 @@ TEST_CASE_FIXTURE(Fixture, "assignments_to_unannotated_parameters_can_transform_
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK("(unknown) -> number" == toString(requireType("f")));
@@ -105,6 +107,8 @@ TEST_CASE_FIXTURE(Fixture, "assignments_to_annotated_parameters_are_checked")
             return x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(Location{{2, 16}, {2, 17}} == result.errors[0].location);
@@ -148,6 +152,8 @@ TEST_CASE_FIXTURE(Fixture, "function_parameters_can_have_annotations")
         local four = double(2)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -160,6 +166,8 @@ TEST_CASE_FIXTURE(Fixture, "function_parameter_annotations_are_checked")
 
         local four = double("two")
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
@@ -454,6 +462,8 @@ TEST_CASE_FIXTURE(Fixture, "type_annotations_inside_function_bodies")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 }
@@ -616,6 +626,8 @@ TEST_CASE_FIXTURE(Fixture, "typeof_expr")
 
         local m: typeof(id(77))
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number", toString(requireType("m")));
@@ -970,6 +982,8 @@ TEST_CASE_FIXTURE(Fixture, "pulling_a_type_from_value_dont_falsely_create_occurs
             type T = typeof(x)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }

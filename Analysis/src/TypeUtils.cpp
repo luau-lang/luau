@@ -13,6 +13,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAG(LuauTraverseScopeToFunction)
+
 namespace Luau
 {
 
@@ -277,7 +279,14 @@ TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, Ty
                 result.head.push_back(newPack.head.back());
             }
 
-            asMutable(pack)->ty.emplace<TypePack>(std::move(newPack));
+            if (FFlag::LuauTraverseScopeToFunction)
+            {
+                emplaceTypePack<BoundTypePack>(asMutable(pack), arena.addTypePack(std::move(newPack)));
+            }
+            else
+            {
+                asMutable(pack)->ty.emplace<TypePack>(std::move(newPack));
+            }
 
             return result;
         }

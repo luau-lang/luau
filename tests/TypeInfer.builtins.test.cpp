@@ -136,6 +136,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
         table.sort(t, p)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -394,9 +396,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_union_of_tables")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK("{ @metatable {  }, A } | { @metatable {  }, B }" == toString(requireTypeAlias("X")));
+        CHECK("setmetatable<A, {  }> | setmetatable<B, {  }>" == toString(requireTypeAlias("X")));
     else
-        CHECK("{ @metatable {|  |}, A } | { @metatable {|  |}, B }" == toString(requireTypeAlias("X")));
+        CHECK("setmetatable<A, {|  |}> | setmetatable<B, {|  |}>" == toString(requireTypeAlias("X")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_2_args_overload")
@@ -548,6 +550,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
         local answer = coroutine.resume(co, 3)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -596,6 +600,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_arg_types_inference")
             return string.format("%f %d %s", a, b, c)
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(number, number, string) -> string", toString(requireType("f")));
@@ -653,6 +659,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_tostring_specifier_type_constr
             return x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(string) -> string", toString(requireType("f")));
@@ -1099,6 +1107,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -1127,6 +1137,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types3")
             return x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (!FFlag::DebugLuauForceOldSolver)
@@ -1427,6 +1439,8 @@ local function f(x: string)
 end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1678,14 +1692,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_find_should_not_crash")
 {
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function StringSplit(input, separator)
             string.find(input, separator)
             if not separator then
                 separator = "%s+"
             end
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_clone_type_states")
@@ -1728,6 +1744,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_not_break")
         return Immutable
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1742,6 +1760,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_clone_should_not_break_2")
             return new
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
