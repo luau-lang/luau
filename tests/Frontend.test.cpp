@@ -22,8 +22,6 @@ LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(LuauSubtypingMissingPropertiesAsNil)
-LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
-LUAU_FASTFLAG(LuauFrontendSourceNodeErase)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAG(LuauExportAnnotationBinding)
 LUAU_FASTFLAG(LuauCyclicRequireTopLevelAccessError)
@@ -2050,10 +2048,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "generic_P_widening_with_cross_module_recursi
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauSubtypingMissingPropertiesAsNil, true},
-        {FFlag::LuauBidirectionalInferenceSimplifyTables, true},
-    };
+    ScopedFastFlag _{FFlag::LuauSubtypingMissingPropertiesAsNil, true};
 
     // Module A: exports a recursive type and a component that uses it.
     fileResolver.source["game/Gui/Modules/A"] = R"(
@@ -2081,13 +2076,14 @@ TEST_CASE_FIXTURE(FrontendFixture, "generic_P_widening_with_cross_module_recursi
     )";
 
     CheckResult result = getFrontend().check("game/Gui/Modules/B");
+
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "deleted_source_is_evicted_on_recheck")
 {
-    ScopedFastFlag luauFrontendSourceNodeErase{FFlag::LuauFrontendSourceNodeErase, true};
-
     fileResolver.source["game/A"] = R"(
         export type Props = { name: string, value: number, label: string? }
         local function make(p: Props): Props
@@ -3389,13 +3385,13 @@ TEST_CASE_FIXTURE(FrontendFixture, "scc_deferred_field_access_ok")
     fileResolver.source["game/A"] = R"(
         local b = require(game.B)
         export local a_val = 1
-        export function getB()
+        export function getB(): number
             return b.b_val
         end
     )";
     fileResolver.source["game/B"] = R"(
         local a = require(game.A)
-        export function getA()
+        export function getA(): number
             return a.a_val
         end
         export local b_val = 42

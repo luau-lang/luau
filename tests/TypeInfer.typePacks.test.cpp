@@ -26,6 +26,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_multi_return")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     const FunctionType* takeTwoType = get<FunctionType>(requireType("take_two"));
@@ -57,6 +58,7 @@ TEST_CASE_FIXTURE(Fixture, "self_and_varargs_should_work")
         t:f(1)
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -72,6 +74,7 @@ TEST_CASE_FIXTURE(Fixture, "last_element_of_return_statement_can_itself_be_a_pac
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 
@@ -96,6 +99,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -129,6 +133,7 @@ TEST_CASE_FIXTURE(Fixture, "no_return_size_should_be_zero")
         g(h())
         f(g(),h())
     )");
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     const FunctionType* fTy = get<FunctionType>(requireType("f"));
@@ -157,6 +162,7 @@ TEST_CASE_FIXTURE(Fixture, "varargs_inference_through_multiple_scopes")
         f("foo")
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -174,6 +180,7 @@ TEST_CASE_FIXTURE(Fixture, "multiple_varargs_inference_are_not_confused")
         f("foo", "bar")(1, 2)
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -188,6 +195,7 @@ TEST_CASE_FIXTURE(Fixture, "parenthesized_varargs_returns_any")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("any", toString(requireType("value")));
 }
@@ -1147,6 +1155,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     CHECK("Unknown type 't0'" == toString(result.errors[0]));
@@ -1257,6 +1266,7 @@ function test(name, searchTerm)
 end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 

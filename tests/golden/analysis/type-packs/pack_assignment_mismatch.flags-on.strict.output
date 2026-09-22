@@ -1,0 +1,1 @@
+./analysis/type-packs/pack_assignment_mismatch.luau(5,41): TypeError: Expected this to be 'boolean', but got 'string'

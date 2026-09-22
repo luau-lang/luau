@@ -770,6 +770,15 @@ void Fixture::limitStackSize(size_t size)
     dynamicScopedInts.emplace_back(FInt::LuauStackGuardThreshold, (int)(addressSpaceSize - size));
 }
 
+void Fixture::ignoreMissingAnnotations(CheckResult& result)
+{
+    auto it = std::remove_if(result.errors.begin(), result.errors.end(), [](const TypeError& err)
+    {
+        return get<TypeAnnotationRequired>(err);
+    });
+    result.errors.erase(it, result.errors.end());
+}
+
 BuiltinsFixture::BuiltinsFixture(bool prepareAutocomplete)
     : Fixture(prepareAutocomplete)
 {

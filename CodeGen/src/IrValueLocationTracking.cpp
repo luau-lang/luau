@@ -4,7 +4,6 @@
 #include "Luau/IrDump.h"
 #include "Luau/IrUtils.h"
 
-LUAU_FASTFLAG(LuauCodegenDseRestoreHints)
 LUAU_FASTFLAGVARIABLE(LuauCodegenDseRestoreHintUpdate)
 
 namespace Luau

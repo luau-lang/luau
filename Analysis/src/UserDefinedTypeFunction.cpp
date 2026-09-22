@@ -15,6 +15,7 @@
 
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
+LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsReturnAfterAllSerialized)
 
 namespace Luau
 {
@@ -368,6 +369,21 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
     resetTypeFunctionState(L);
 
+    if (FFlag::LuauTypeFunctionsReturnAfterAllSerialized)
+    {
+        // If something in our environment failed to serialize, return an error.
+        if (FFlag::LuauTypeFunctionStructuredErrors)
+        {
+            if (!runtimeBuilder->errors.empty())
+                return {std::nullopt, Reduction::Erroneous, {}, {}, toString(runtimeBuilder->errors.front())};
+        }
+        else
+        {
+            if (runtimeBuilder->errors_DEPRECATED.size() != 0)
+                return {std::nullopt, Reduction::Erroneous, {}, {}, runtimeBuilder->errors_DEPRECATED.front()};
+        }
+    }
+
     // Push serialized arguments onto the stack
     for (auto typeParam : typeParams)
     {
@@ -377,7 +393,7 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
         TypeFunctionTypeId serializedTy = serialize(ty, runtimeBuilder.get());
 
-        // Check if there were any errors while serializing
+        // Check if there were any more errors while serializing.
         if (FFlag::LuauTypeFunctionStructuredErrors)
         {
             if (!runtimeBuilder->errors.empty())
@@ -394,6 +410,7 @@ TypeFunctionReductionResult<TypeId> userDefinedTypeFunction(
 
         allocTypeUserData(L, serializedTy->type);
     }
+
 
     // Set up an interrupt handler for type functions to respect type checking limits and LSP cancellation requests.
     lua_callbacks(L)->interrupt = [](lua_State* L, int gc)

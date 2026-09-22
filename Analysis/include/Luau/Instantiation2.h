@@ -83,51 +83,6 @@ private:
     bool checkReplacementKeys() const;
 };
 
-// A substitution which replaces generic functions by monomorphic functions
-struct Instantiation2_DEPRECATED final : Substitution
-{
-    // Mapping from generic types to free types to be used in instantiation.
-    DenseHashMap<TypeId, TypeId> genericSubstitutions;
-    // Mapping from generic type packs to `TypePack`s of free types to be used in instantiation.
-    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions;
-
-    // Make `NotNull` with LuauInstantiationUsesGenericPolarity
-    Subtyping* subtyping = nullptr;
-    Scope* scope = nullptr;
-
-    Instantiation2_DEPRECATED(
-        TypeArena* arena,
-        DenseHashMap<TypeId, TypeId> genericSubstitutions,
-        DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions
-    )
-        : Substitution(TxnLog::empty(), arena)
-        , genericSubstitutions(std::move(genericSubstitutions))
-        , genericPackSubstitutions(std::move(genericPackSubstitutions))
-    {
-    }
-
-    Instantiation2_DEPRECATED(
-        TypeArena* arena,
-        DenseHashMap<TypeId, TypeId> genericSubstitutions,
-        DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
-        NotNull<Subtyping> subtyping,
-        NotNull<Scope> scope
-    )
-        : Substitution(TxnLog::empty(), arena)
-        , genericSubstitutions(std::move(genericSubstitutions))
-        , genericPackSubstitutions(std::move(genericPackSubstitutions))
-        , subtyping(subtyping)
-        , scope(scope)
-    {
-    }
-
-    bool ignoreChildren(TypeId ty) override;
-    bool isDirty(TypeId ty) override;
-    bool isDirty(TypePackId tp) override;
-    TypeId clean(TypeId ty) override;
-    TypePackId clean(TypePackId tp) override;
-};
-
 void resolveGenericSubstitutions(
     TypeArena* arena,
     DenseHashMap<TypeId, TypeId>& genericSubstitutions,

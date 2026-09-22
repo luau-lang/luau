@@ -19,6 +19,7 @@
 #include <math.h>
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenSkipDeadPredecessorTags)
+LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 
 namespace Luau
 {
@@ -1877,6 +1878,10 @@ void propagateTagsFromPredecessors(
     uint32_t blockIdx = function.getBlockIndex(block);
 
     if (blockIdx >= function.cfg.predecessorsOffsets.size())
+        return;
+
+    // Entry block has an implicit edge as the function start and it has no tag info at that moment
+    if (FFlag::LuauCodegenPropagateFallbackTags && function.entryBlock == blockIdx)
         return;
 
     BlockIteratorWrapper preds = predecessors(function.cfg, blockIdx);
