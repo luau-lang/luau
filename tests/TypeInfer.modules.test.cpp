@@ -906,11 +906,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
 {
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
-    ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 5};
+    ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 10};
 
     fileResolver.source["game/A"] = R"(
         type Array<T> = {T}
-        type Hello = Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<number>>>>>>>>>>
+        type Hello = Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<number>>>>>>>>>>>
         local X = {}
         X.foo = 42
         X.bar = ""
