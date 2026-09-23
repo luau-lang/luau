@@ -3834,4 +3834,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_local_expression_bidirectional_table_anno
     LUAU_REQUIRE_ERROR(result, TypeMismatch);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "refining_many_string_literals_does_not_depend_on_the_standard_library")
+{
+    // Normalizing the refined union below costs a different amount of fuel depending on the order in
+    // which NormalizedTyvars is walked. That order used to come from std::unordered_map, so builds
+    // against libstdc++ ran out of fuel here while MSVC builds did not.
+    CheckResult result = check(R"(
+        local t = {}
+        t.elements = { "Fire", "Water", "Nature", "Spark", "Blast", "Holy", "Curse", "Cosmic" }
+        t.infusable = {}
+        for _, element in t.elements do
+            if element ~= "Normal" then
+                table.insert(t.infusable, element)
+            end
+        end
+        return t
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

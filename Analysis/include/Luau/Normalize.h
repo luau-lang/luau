@@ -7,6 +7,7 @@
 #include "Luau/TypeIds.h"
 #include "Luau/UnifierSharedState.h"
 
+#include <iterator>
 #include <map>
 #include <memory>
 #include <unordered_map>
@@ -166,7 +167,100 @@ struct NormalizedFunctionType
 // * X is either a free type, a generic or a blocked type.
 // * T is a normalized type.
 struct NormalizedType;
-using NormalizedTyvars = std::unordered_map<TypeId, std::unique_ptr<NormalizedType>>;
+// Insertion-ordered rather than hashed: unionNormals and intersectNormals build an ordered decision
+// diagram by walking this map, so its iteration order decides how much work normalization does. A
+// std::unordered_map made that order (and so which types hit the fuel limit) differ between standard
+// libraries.
+template<typename Value>
+class InsertionOrderedTyvars
+{
+public:
+    using value_type = std::pair<TypeId, std::unique_ptr<Value>>;
+    using iterator = typename std::vector<value_type>::iterator;
+    using const_iterator = typename std::vector<value_type>::const_iterator;
+
+    iterator begin()
+    {
+        return entries.begin();
+    }
+
+    iterator end()
+    {
+        return entries.end();
+    }
+
+    const_iterator begin() const
+    {
+        return entries.begin();
+    }
+
+    const_iterator end() const
+    {
+        return entries.end();
+    }
+
+    bool empty() const
+    {
+        return entries.empty();
+    }
+
+    size_t size() const
+    {
+        return entries.size();
+    }
+
+    void clear()
+    {
+        entries.clear();
+    }
+
+    iterator find(TypeId ty)
+    {
+        for (auto it = entries.begin(); it != entries.end(); ++it)
+        {
+            if (it->first == ty)
+                return it;
+        }
+        return entries.end();
+    }
+
+    const_iterator find(TypeId ty) const
+    {
+        for (auto it = entries.begin(); it != entries.end(); ++it)
+        {
+            if (it->first == ty)
+                return it;
+        }
+        return entries.end();
+    }
+
+    std::pair<iterator, bool> emplace(TypeId ty, std::unique_ptr<Value> value)
+    {
+        if (auto it = find(ty); it != entries.end())
+            return {it, false};
+
+        entries.emplace_back(ty, std::move(value));
+        return {std::prev(entries.end()), true};
+    }
+
+    void insert_or_assign(TypeId ty, std::unique_ptr<Value> value)
+    {
+        if (auto it = find(ty); it != entries.end())
+            it->second = std::move(value);
+        else
+            entries.emplace_back(ty, std::move(value));
+    }
+
+    iterator erase(iterator it)
+    {
+        return entries.erase(it);
+    }
+
+private:
+    std::vector<value_type> entries;
+};
+
+using NormalizedTyvars = InsertionOrderedTyvars<NormalizedType>;
 
 // Operations provided by `Normalizer` can have ternary results:
 //   1. The operation returned true.
