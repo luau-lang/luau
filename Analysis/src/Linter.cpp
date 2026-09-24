@@ -924,6 +924,11 @@ private:
         return true;
     }
 
+    bool visit(AstStatTypeFunction* node) override
+    {
+        return false;
+    }
+
     bool visit(AstExprFunction* node) override
     {
         if (node->self)
