@@ -491,9 +491,6 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
                 restoreAddr = getRestoreAddress(inst, restoreLocation);
             }
 
-            bool hasStackSlot = FFlag::LuauCodegenX64IntSpillRestore && spill.stackSlot != kNoStackSlot;
-            bool restoreIntFromDouble = spill.valueKind == IrValueKind::Int && !hasStackSlot && restoreLocation.kind == IrValueKind::Double;
-
             if (spill.valueKind == IrValueKind::Tvalue)
             {
                 build.vmovups(reg, restoreAddr);
