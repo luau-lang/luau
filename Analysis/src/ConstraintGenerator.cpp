@@ -54,6 +54,7 @@ LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceSetMetatable)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalAnalysis)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
+LUAU_FASTFLAGVARIABLE(LuauTypeNegationSyntaxSupport)
 
 namespace Luau
 {
@@ -4608,7 +4609,7 @@ TypeId ConstraintGenerator::resolveReferenceType(
     if (alias.has_value())
     {
         // If the alias is not generic, we don't need to set up a blocked type and an instantiation constraint
-        if (alias.has_value() && alias->typeParams.empty() && alias->typePackParams.empty() && !ref->hasParameterList)
+        if (alias->typeParams.empty() && alias->typePackParams.empty() && !ref->hasParameterList)
         {
             result = alias->type;
         }
@@ -4662,10 +4663,13 @@ TypeId ConstraintGenerator::resolveReferenceType(
             result = freshType(scope, Polarity::Mixed);
     }
 
-    if (is<TypeFunctionInstanceType>(follow(result)))
+    if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(follow(result)))
     {
-        reportError(ty->location, UnappliedTypeFunction{});
-        addConstraint(scope, ty->location, ReduceConstraint{result});
+        if (!FFlag::LuauTypeNegationSyntaxSupport || !tfit->appliedByConstraintGenerator)
+        {
+            reportError(ty->location, UnappliedTypeFunction{});
+            addConstraint(scope, ty->location, ReduceConstraint{result});
+        }
     }
 
     if (auto genericType = getMutable<GenericType>(follow(result)))
@@ -4882,6 +4886,17 @@ TypeId ConstraintGenerator::resolveType_(const ScopePtr& scope, AstType* ty, boo
     else if (ty->is<AstTypeOptional>())
     {
         result = builtinTypes->nilType;
+    }
+    else if (AstTypeNegation* nty = ty->as<AstTypeNegation>(); FFlag::LuauTypeNegationSyntaxSupport && nty)
+    {
+        TypeId inner = resolveType(scope, nty->inner, inTypeArguments);
+        result = createTypeFunctionInstance(
+            builtinTypes->typeFunctions->negateFunc,
+            {inner},
+            {},
+            scope,
+            nty->location
+        );
     }
     else if (auto unionAnnotation = ty->as<AstTypeUnion>())
     {
@@ -5410,6 +5425,14 @@ TypeId ConstraintGenerator::createTypeFunctionInstance(
 {
     TypeId result = arena->addTypeFunction(function, std::move(typeArguments), std::move(packArguments));
     addConstraint(scope, location, ReduceConstraint{result});
+
+    if (FFlag::LuauTypeNegationSyntaxSupport)
+    {
+        TypeFunctionInstanceType* tfit = getMutable<TypeFunctionInstanceType>(result);
+        LUAU_ASSERT(tfit);
+        tfit->appliedByConstraintGenerator = true;
+    }
+
     return result;
 }
 

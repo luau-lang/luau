@@ -535,6 +535,16 @@ public:
     Position closePosition;
 };
 
+class CstTypeNegation : public CstNode
+{
+public:
+    LUAU_CST_RTTI(CstTypeNegation);
+
+    CstTypeNegation(Position tildePosition);
+
+    Position tildePosition;
+};
+
 class CstTypeUnion : public CstNode
 {
 public:

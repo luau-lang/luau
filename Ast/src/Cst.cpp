@@ -304,6 +304,12 @@ CstTypeTypeof::CstTypeTypeof(Position openPosition, Position closePosition)
 {
 }
 
+CstTypeNegation::CstTypeNegation(Position tildePosition)
+    : CstNode(CstClassIndex())
+    , tildePosition(tildePosition)
+{
+}
+
 CstTypeUnion::CstTypeUnion(Position leadingPosition, AstArray<Position> separatorPositions)
     : CstNode(CstClassIndex())
     , leadingPosition(leadingPosition)
