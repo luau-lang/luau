@@ -234,9 +234,9 @@ struct lua_Page
 
 static_assert(offsetof(lua_Page, data) % 16 == 0, "data must be 16 byte aligned to provide properly aligned allocation of userdata objects");
 
-l_noret luaM_toobig(lua_State* L)
+l_noret luaM_toobig(lua_State* L, const char* msg, size_t max)
 {
-    luaG_runerror(L, "memory allocation error: block too big");
+    luaG_runerror(L, "memory allocation error: %s (exceeds maximum of %zu bytes)", msg, max);
 }
 
 enum class AllocationPath
