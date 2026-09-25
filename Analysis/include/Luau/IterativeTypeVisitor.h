@@ -3,7 +3,7 @@
 
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
-#include "Luau/Set.h"
+#include "Luau/DenseHash.h"
 
 #include <string>
 
@@ -12,7 +12,7 @@ namespace Luau
 
 struct IterativeTypeVisitor
 {
-    using SeenSet = Set<const void*>;
+    using SeenSet = DenseHashSet<const void*>;
 
     // We avoid Luau::Variant here because we can move the tag bit and make this struct 64 bits shorter.
     struct WorkItem

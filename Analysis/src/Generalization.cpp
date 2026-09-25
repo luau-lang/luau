@@ -19,6 +19,7 @@
 
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxDepth, 15)
 LUAU_FASTINTVARIABLE(LuauGenericCounterMaxSteps, 1500)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauIterativeTypeSearcher)
 LUAU_FLAGVERSION(LuauIterativeTypeSearcher, 2)
 
@@ -84,12 +85,10 @@ struct FreeTypeSearcher_DEPRECATED : TypeVisitor
         return false;
     }
 
-    DenseHashMap<const void*, size_t> negativeTypes;
-    DenseHashMap<const void*, size_t> positiveTypes;
-
     InsertionOrderedMap<TypeId, GeneralizationParams<TypeId>> types;
     InsertionOrderedMap<TypePackId, GeneralizationParams<TypePackId>> typePacks;
 
+    // Holds both free and unsealed tables.  We walk this set to close them all up.
     OrderedSet<TypeId> unsealedTables;
 
     bool visit(TypeId ty) override
@@ -1093,7 +1092,7 @@ struct FindTypesWithPolarity
             push(ft->lowerBound, polarity, isWithinFunction);
             push(ft->upperBound, polarity, isWithinFunction);
         }
-        else if (auto genTy = get<GenericType>(ty))
+        else if (get<GenericType>(ty))
         {
             GeneralizationParams<TypeId>& params = types[ty];
             params.useCount++;
@@ -1213,7 +1212,7 @@ struct FindTypesWithPolarity
             for (auto packArg : tfit->packArguments)
                 push(packArg, polarity, isWithinFunction);
         }
-        else if (auto gtp = get<GenericTypePack>(tp))
+        else if (get<GenericTypePack>(tp))
         {
             GeneralizationParams<TypePackId>& params = typePacks[tp];
             params.useCount++;
@@ -1391,7 +1390,7 @@ GeneralizationResult<TypePackId> generalizeTypePack(
     return {tp, /*wasReplacedByGeneric*/ false};
 }
 
-void sealTable(NotNull<Scope> scope, TypeId ty)
+void sealTable(NotNull<Scope> scope, TypeId ty, TableState targetState)
 {
     TableType* tableTy = getMutable<TableType>(follow(ty));
     if (!tableTy)
@@ -1401,7 +1400,12 @@ void sealTable(NotNull<Scope> scope, TypeId ty)
         return;
 
     if (tableTy->state == TableState::Unsealed || tableTy->state == TableState::Free)
-        tableTy->state = TableState::Sealed;
+    {
+        if (FFlag::DebugLuauExactTableTypes)
+            tableTy->state = targetState;
+        else
+            tableTy->state = TableState::Sealed;
+    }
 }
 
 std::optional<TypeId> generalize(
@@ -1481,7 +1485,14 @@ std::optional<TypeId> generalize(
             if (generalizationTarget && unsealedTableTy != *generalizationTarget)
                 continue;
 
-            sealTable(scope, unsealedTableTy);
+            TableState targetState = TableState::Sealed;
+            if (FFlag::DebugLuauExactTableTypes)
+            {
+                if (auto tt = get<TableType>(unsealedTableTy); tt && tt->state == TableState::Unsealed)
+                    targetState = TableState::Exact;
+            }
+
+            sealTable(scope, unsealedTableTy, targetState);
         }
 
         for (const auto& [freePackId, params] : ftwp.typePacks)
@@ -1563,7 +1574,14 @@ std::optional<TypeId> generalize(
             if (generalizationTarget && unsealedTableTy != *generalizationTarget)
                 continue;
 
-            sealTable(scope, unsealedTableTy);
+            TableState targetState = TableState::Sealed;
+            if (FFlag::DebugLuauExactTableTypes)
+            {
+                if (auto tt = get<TableType>(unsealedTableTy); tt && tt->state == TableState::Unsealed)
+                    targetState = TableState::Exact;
+            }
+
+            sealTable(scope, unsealedTableTy, targetState);
         }
 
         for (const auto& [freePackId, params] : fts.typePacks)

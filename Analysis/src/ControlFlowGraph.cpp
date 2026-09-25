@@ -627,9 +627,9 @@ DefId CFGBuilder::trimTrivialJoin(InstrId inst, Join* j)
         same = op;
     }
 
-    Set<Instruction*> tmp_;
-    Set<Instruction*>& usingInsts = tmp_;
-    if (Set<Instruction*>* uses = usingInstructions.find(curr))
+    DenseHashSet<Instruction*> tmp_;
+    DenseHashSet<Instruction*>& usingInsts = tmp_;
+    if (DenseHashSet<Instruction*>* uses = usingInstructions.find(curr))
         usingInsts = *uses;
     usingInsts.erase(inst);
 

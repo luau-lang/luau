@@ -7,7 +7,7 @@
 #include "Luau/StringUtils.h"
 
 
-#include "ClassFixture.h"
+#include "ExternTypeFixture.h"
 #include "Fixture.h"
 #include "ScopedFlags.h"
 
@@ -23,8 +23,8 @@ LUAU_FASTFLAG(LuauCheckTypeForDeprecated)
 LUAU_FASTFLAG(LuauAutocompleteDotMethodConversion)
 LUAU_FASTFLAG(LuauUseExplicitTypeArgsInGenerics)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
-LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
 using namespace Luau;
 
@@ -151,7 +151,7 @@ struct ACFixtureImpl : BaseType
 
         if (!result.parseResult.errors.empty())
         {
-            for (const auto &e: result.parseResult.errors)
+            for (const auto& e : result.parseResult.errors)
                 printf("Parse error at (%s): %s\n", toString(e.getLocation()).c_str(), e.getMessage().c_str());
         }
 
@@ -5505,7 +5505,7 @@ TEST_CASE_FIXTURE(ACFixture, "we_know_the_fields_of_a_class_instance")
             public y: number
         end
 
-        local p = Point2d.new { x=3, y=4 }
+        local p = Point2d { x=3, y=4 }
 
         local q = p.@1
     )");
@@ -5904,7 +5904,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_deprecated_on_recursive_intersection"
 
 TEST_CASE_FIXTURE(ACFixture, "if_local_binding_is_in_scope_in_then_body")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local t = {}
@@ -5919,7 +5919,7 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_binding_is_in_scope_in_then_body")
 
 TEST_CASE_FIXTURE(ACFixture, "if_local_binding_offers_member_completion")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local t = {foo = 1, bar = 2}
@@ -5935,7 +5935,7 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_binding_offers_member_completion")
 
 TEST_CASE_FIXTURE(ACFixture, "if_local_optional_binding_is_in_scope_in_then_body")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         type Test = {name: string, age: number}
@@ -5953,7 +5953,7 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_optional_binding_is_in_scope_in_then_body
 
 TEST_CASE_FIXTURE(ACFixture, "if_local_optional_binding_offers_member_completion")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         type Test = {name: string, age: number}
@@ -5972,7 +5972,7 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_optional_binding_offers_member_completion
 
 TEST_CASE_FIXTURE(ACFixture, "if_local_optional_binding_member_completion_in_call_arg")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         type Test = {name: string, age: number}
@@ -5991,7 +5991,7 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_optional_binding_member_completion_in_cal
 
 TEST_CASE_FIXTURE(ACFixture, "if_local_value_offers_expression_completion")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local thing = {}
@@ -6005,7 +6005,7 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_value_offers_expression_completion")
 
 TEST_CASE_FIXTURE(ACFixture, "if_local_value_offers_member_completion")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local t = {foo = 1, bar = 2}
@@ -6020,7 +6020,7 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_value_offers_member_completion")
 
 TEST_CASE_FIXTURE(ACFixture, "elseif_local_value_offers_expression_completion")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local thing = {}
@@ -6035,7 +6035,7 @@ TEST_CASE_FIXTURE(ACFixture, "elseif_local_value_offers_expression_completion")
 
 TEST_CASE_FIXTURE(ACFixture, "elseif_local_value_completes")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local t = {foo = 1, bar = 2}
@@ -6051,7 +6051,7 @@ TEST_CASE_FIXTURE(ACFixture, "elseif_local_value_completes")
 
 TEST_CASE_FIXTURE(ACFixture, "if_local_annotation_correctly_suggests_types")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local one = 4
@@ -6068,7 +6068,7 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_annotation_correctly_suggests_types")
 
 TEST_CASE_FIXTURE(ACFixture, "elseif_local_annotation_correctly_suggests_types")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local one = 4
@@ -6086,7 +6086,7 @@ TEST_CASE_FIXTURE(ACFixture, "elseif_local_annotation_correctly_suggests_types")
 
 TEST_CASE_FIXTURE(ACFixture, "if_const_value_completes")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local t = {foo = 1, bar = 2}
@@ -6101,7 +6101,7 @@ TEST_CASE_FIXTURE(ACFixture, "if_const_value_completes")
 
 TEST_CASE_FIXTURE(ACFixture, "if_local_expression_binding_is_in_scope_in_true_expr")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local t = {}
@@ -6114,7 +6114,7 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_expression_binding_is_in_scope_in_true_ex
 
 TEST_CASE_FIXTURE(ACFixture, "if_local_expression_binding_offers_member_completion")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local t = {foo = 1, bar = 2}
@@ -6128,7 +6128,7 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_expression_binding_offers_member_completi
 
 TEST_CASE_FIXTURE(ACFixture, "if_local_expression_value_offers_expression_completion")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local thing = {}
@@ -6141,7 +6141,7 @@ TEST_CASE_FIXTURE(ACFixture, "if_local_expression_value_offers_expression_comple
 
 TEST_CASE_FIXTURE(ACFixture, "if_const_expression_binding_is_in_scope_in_true_expr")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::DebugLuauIfLocalAnalysis, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
 
     check(R"(
         local t = {}

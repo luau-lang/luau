@@ -2206,7 +2206,7 @@ void Frontend::traverseDependents(const ModuleName& name, std::function<bool(Sou
         if (!processSubtree(sourceNode))
             continue;
 
-        const Set<ModuleName>& dependents = sourceNode.dependents;
+        const DenseHashSet<ModuleName>& dependents = sourceNode.dependents;
         queue.insert(queue.end(), dependents.begin(), dependents.end());
     }
 }

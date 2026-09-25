@@ -55,8 +55,6 @@ void luaC_validate(lua_State* L);
 #endif
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenA64FarRefs)
-LUAU_FASTFLAG(LuauCodegenProtectData)
 LUAU_FASTFLAG(LuauBytecodeFold)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
@@ -65,7 +63,7 @@ LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauCodegenBufferInteger)
-LUAU_FASTFLAG(LuauCodegenDseRestoreHintUpdate)
+LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(DebugLuauUserDefinedClassesRuntime)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
@@ -78,12 +76,14 @@ LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauBytecodeCostModel)
 LUAU_FASTFLAG(LuauVirtualBcBuilder)
 LUAU_FASTFLAG(LuauNewPointerEncode)
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
 LUAU_FASTFLAG(LuauSandboxFreezesVectorMetatable)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauBufferCage)
 LUAU_FASTFLAG(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAG(DebugLuauCoroutineFinally)
 LUAU_FASTFLAG(DebugLuauCoroutineFinallyAnalysis)
+LUAU_FASTFLAG(LuauExportValueSyntax)
+LUAU_DYNAMIC_FASTFLAG(LuauTableRobustOom)
 
 #ifndef LUAU_CONFORMANCE_SOURCE_DIR
 // Walks up from the current directory looking for the Client folder,
@@ -517,6 +517,8 @@ static StateRef runConformance(
     return globalState;
 }
 
+static unsigned reallocSizeLimit = 0;
+
 static void* limitedRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
 {
     if (nsize == 0)
@@ -524,9 +526,9 @@ static void* limitedRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
         free(ptr);
         return nullptr;
     }
-    else if (nsize > 8 * 1024 * 1024)
+    else if (nsize > (reallocSizeLimit == 0 ? 8 * 1024 * 1024 : reallocSizeLimit))
     {
-        // For testing purposes return null for large allocations so we can generate errors related to memory allocation failures
+        // For testing purposes return null for large (or custom) allocations so we can generate errors related to memory allocation failures
         return nullptr;
     }
     else
@@ -1343,6 +1345,10 @@ TEST_CASE("Integers")
 
 TEST_CASE("Tables")
 {
+    ScopedFastFlag luauTableRobustOom{DFFlag::LuauTableRobustOom, true};
+
+    reallocSizeLimit = 0;
+
     runConformance(
         "tables.luau",
         [](lua_State* L)
@@ -1367,7 +1373,22 @@ TEST_CASE("Tables")
                 "makelud"
             );
             lua_setglobal(L, "makelud");
-        }
+
+            lua_pushcclosurek(
+                L,
+                [](lua_State* L)
+                {
+                    reallocSizeLimit = luaL_checkunsigned(L, 1);
+                    return 0;
+                },
+                "setallocationlimit",
+                0,
+                nullptr
+            );
+            lua_setglobal(L, "setallocationlimit");
+        },
+        nullptr,
+        lua_newstate(limitedRealloc, nullptr)
     );
 }
 
@@ -3335,7 +3356,7 @@ TEST_CASE("IfElseExpression")
 
 TEST_CASE("IfLocal")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}, {FFlag::LuauCompileUndoEmitAdjust, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauCompileUndoEmitAdjust, true}};
     runConformance("iflocal.luau");
 }
 
@@ -3619,7 +3640,7 @@ foo()
 class HeapClass
     public value
 end
-local object = HeapClass.new { value = x }
+local object = HeapClass { value = x }
 
 return f, object
 )";
@@ -4611,7 +4632,6 @@ TEST_CASE("Native")
 TEST_CASE("NativeIntegerSpills")
 {
     ScopedFastFlag integerType{FFlag::LuauIntegerType2, true};
-    ScopedFastFlag luauCodegenDseRestoreHintUpdate{FFlag::LuauCodegenDseRestoreHintUpdate, true};
 
     lua_CompileOptions copts = defaultOptions();
 
@@ -5013,11 +5033,50 @@ TEST_CASE("LargeNestedClosure")
     CHECK(lua_tonumber(L, -1) == kCount);
 }
 
+TEST_CASE("ExportEdgeCase")
+{
+    ScopedFastFlag luauExportValueSyntax{FFlag::LuauExportValueSyntax, true};
+
+    std::string source = "local t = {\n";
+
+    for (size_t idx = 0; idx < 1030; ++idx)
+    {
+        source += "k" + std::to_string(idx) + " = " + "\"v" + std::to_string(idx) + "\",\n";
+    }
+    source += "k1030 = \"v1030\"}\n";
+    source += "export local x = 33\n";
+    source += "local function a(...) end a(x)";
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    if (codegen && (luau_codegen_supported() != 0))
+        luau_codegen_create(L);
+
+    luaL_openlibs(L);
+    luaL_sandbox(L);
+    luaL_sandboxthread(L);
+
+    validateBytecodeGraph(source, defaultOptions());
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source.data(), source.size(), nullptr, &bytecodeSize);
+    int result = luau_load(L, "=ExportEdgeCase", bytecode, bytecodeSize, 0);
+    free(bytecode);
+
+    REQUIRE(result == 0);
+
+    if (codegen && (luau_codegen_supported() != 0))
+    {
+        Luau::CodeGen::CompilationOptions nativeOptions{Luau::CodeGen::CodeGen_ColdFunctions};
+        Luau::CodeGen::compile(L, -1, nativeOptions);
+    }
+
+    int status = lua_resume(L, nullptr, 0);
+    REQUIRE(status == 0);
+}
+
 TEST_CASE("LargeModuleA64")
 {
-    ScopedFastFlag luauCodegenA64FarRefs{FFlag::LuauCodegenA64FarRefs, true};
-    ScopedFastFlag luauCodegenProtectData{FFlag::LuauCodegenProtectData, true};
-
     std::string source;
 
     for (int i = 0; i < 60; i++)
@@ -5421,6 +5480,47 @@ TEST_CASE("SandboxFreezesVectorMetatable")
 
     CHECK(lua_getmetatable(L, -1));
     CHECK(lua_getreadonly(L, -1));
+}
+
+TEST_CASE("ClassInheritanceRepeatedCallMemberOffsetCorruption")
+{
+    // This test ensures that inheritance doesn't mutate the original class object loaded into the constant table.
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauUserDefinedClassesRuntime, true},
+        {FFlag::LuauCallFeedback, true},
+        {FFlag::LuauEmitCallFeedback, true},
+        {FFlag::LuauBytecodeCostModel, true},
+    };
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+    luaL_openlibs(L);
+
+    static const char* source = R"(
+        open class Parent
+            public x: number
+        end
+
+        class Child extends Parent
+            public y: number
+        end
+    )";
+
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source, strlen(source), nullptr, &bytecodeSize);
+    int loadResult = luau_load(L, "=ClassCorruption", bytecode, bytecodeSize, 0);
+    free(bytecode);
+    REQUIRE(loadResult == 0);
+
+    // Call the SAME loaded main closure repeatedly. Each call re-executes NEWCLASS for Child, which clones the shared template and re-runs
+    // luaR_inheritclass on the shared memberstooffset table.
+    for (int i = 0; i < 1000; ++i)
+    {
+        lua_pushvalue(L, -1); // duplicate the main closure; the original stays on the stack for the next iteration
+        int status = lua_pcall(L, 0, 0, 0);
+        REQUIRE(status == LUA_OK);
+    }
 }
 
 TEST_SUITE_END();

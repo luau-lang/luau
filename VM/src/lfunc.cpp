@@ -6,7 +6,6 @@
 #include "lmem.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCIProto)
 LUAU_FASTINTVARIABLE(LuauInlineHitsThreshold, 32)
 
 Proto* luaF_newproto(lua_State* L)

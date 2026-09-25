@@ -16,7 +16,6 @@
 #include "Luau/Unifier2.h"
 
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceBetterLambdaHandling)
-LUAU_FASTFLAG(LuauRelaxConstraintOrderingForFunctionCheck)
 LUAU_FASTFLAG(LuauBidirectionalInferenceSetMetatable)
 
 namespace Luau
@@ -174,7 +173,7 @@ struct BidirectionalTypePusher
         expectedType = follow(expectedType);
         exprType = follow(exprType);
 
-        if (FFlag::LuauRelaxConstraintOrderingForFunctionCheck && !isCheckableExpr(expr))
+        if (!isCheckableExpr(expr))
         {
             // NOTE: For now we aren't using the result of this function, so
             // just return the original expression type.
@@ -233,15 +232,6 @@ struct BidirectionalTypePusher
                 return exprType;
             }
         }
-
-        if (!FFlag::LuauRelaxConstraintOrderingForFunctionCheck)
-        {
-            if (!isLiteral(expr))
-                // NOTE: For now we aren't using the result of this function, so
-                // just return the original expression type.
-                return exprType;
-        }
-
 
         if (expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantBool>() ||
             expr->is<AstExprConstantNil>())

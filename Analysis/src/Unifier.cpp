@@ -2281,6 +2281,7 @@ void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
         case TableState::Sealed:
         case TableState::Unsealed:
         case TableState::Generic:
+        case TableState::Exact:
             reportError(std::move(mismatchError));
         }
     }

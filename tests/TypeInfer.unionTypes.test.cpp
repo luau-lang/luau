@@ -919,6 +919,8 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_variadics
 
 TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1090,6 +1092,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_union_bounds")
 
 TEST_CASE_FIXTURE(Fixture, "oss_2134")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         local function addIndex <A, B, C> (op: ((value: A) -> B, array: {A}) -> {C})
             return function <K> (idxOp: (key: K, value: A) -> B, tbl: { [K]: A })
@@ -1127,6 +1131,8 @@ TEST_CASE_FIXTURE(Fixture, "oss_2134")
 
 TEST_CASE_FIXTURE(Fixture, "oss_2393")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         --!strict
 

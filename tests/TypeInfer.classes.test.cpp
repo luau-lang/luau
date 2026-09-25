@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass);
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
+LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 
 namespace
 {
@@ -101,7 +102,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "class_decl")
             public y: number
         end
 
-        local p = Point.new { x = 2, y = 3 }
+        local p = Point { x = 2, y = 3 }
 
         local x = p.x
         local y = p.y
@@ -137,7 +138,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "point_class")
             end
         end
 
-        local p = Point.new(2, 3)
+        local p = Point(2, 3)
         local len = p:length()
     )");
 
@@ -160,7 +161,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "self_argument_has_self_type")
             end
         end
 
-        local i = I.new{}
+        local i = I{}
         local i2 = i:m()
     )");
 
@@ -181,7 +182,7 @@ class Point
     end
 end
 
-local p = Point.new { x = 1, y = 2 }
+local p = Point { x = 1, y = 2 }
 local _ = tostring(p)
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -199,12 +200,12 @@ class Point
         return self.x == other.x and self.y == other.y
     end
     function zero(): Point
-        return Point.new { x = 0, y = 0 }
+        return Point { x = 0, y = 0 }
     end
 end
 
-local p1 = Point.new { x = 1, y = 2 }
-local p2 = Point.new { x = 1, y = 2 }
+local p1 = Point { x = 1, y = 2 }
+local p2 = Point { x = 1, y = 2 }
 local _ = p1 == p2
 local _ = p1 ~= Point.zero()
 )");
@@ -225,8 +226,8 @@ class Box
     public x
 end
 
-local p1 = Point.new { x = 1, y = 2 }
-local p2 = Box.new { x = 1 }
+local p1 = Point { x = 1, y = 2 }
+local p2 = Box { x = 1 }
 local _ = p1 == p1
 -- This one too
 local _ = p1 ~= p2
@@ -253,7 +254,7 @@ class Point
     end
 end
 
-local p = Point.new {}
+local p = Point {}
 p:__add()
 )");
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -271,7 +272,7 @@ class Point
     end
 
     function zero(): Point
-        return Point.new { x = 0, y = 0 }
+        return Point { x = 0, y = 0 }
     end
 
     function __tostring(self): string
@@ -290,7 +291,12 @@ local p = Point
     CHECK(et->parent == builtinTypes->classType);
 
     CHECK(et->props.count("zero") == 1);
-    CHECK(et->props.count("new") == 1);
+
+    std::optional<TypeId> metatable = et->metatable;
+    REQUIRE(metatable);
+    auto mt = get<TableType>(*metatable);
+    REQUIRE(mt);
+    CHECK(mt->props.count("__call") == 1);
 }
 
 TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_unknown_value")
@@ -428,7 +434,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class")
     fileResolver.source["game/B"] = R"(
         local A = require(game.A)
 
-        local x : unknown = (A.Point.new { x = 0 } ) :: any
+        local x : unknown = (A.Point { x = 0 } ) :: any
         if class.isinstance(x, A.Point) then
             local y = x
         end
@@ -453,7 +459,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class_but_not_a_c
     fileResolver.source["game/B"] = R"(
         local A = require(game.A)
 
-        local x : unknown = (A.Point.new { x = 0 } ) :: any
+        local x : unknown = (A.Point { x = 0 } ) :: any
         if class.isinstance(x, A.notAPoint) then
             local y = x
         end
@@ -534,17 +540,19 @@ TEST_CASE_FIXTURE(ClassesFixture, "class_refers_to_later_type_alias")
 
 TEST_CASE_FIXTURE(ClassesFixture, "accept_read_only_tables")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         class Foo
             public bar: number | string
         end
 
         local function ofnumbertbl(tbl: { bar: number })
-            return Foo.new(tbl)
+            return Foo(tbl)
         end
 
         local function inference(tbl)
-            return Foo.new(tbl)
+            return Foo(tbl)
         end
     )");
     ignoreMissingAnnotations(result);
@@ -1029,6 +1037,8 @@ TEST_CASE_FIXTURE(ClassesFixture, "method_calls_on_fully_initialized_instances_a
 
 TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor")
 {
+    ScopedFastFlag sff{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
     CheckResult result = check(R"(
         class Foo
             public values: {number}
@@ -1037,8 +1047,8 @@ TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor")
             end
         end
 
-        local f = Foo.new(3, 4, 5) -- OK
-        local g = Foo.new(3, 4, 5, "six") -- Error
+        local f = Foo(3, 4, 5) -- OK
+        local g = Foo(3, 4, 5, "six") -- Error
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -1047,6 +1057,8 @@ TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor")
 
 TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor_with_leading_positional_arguments")
 {
+    ScopedFastFlag sff{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
     CheckResult result = check(R"(
         class Foo
             public x: number
@@ -1059,8 +1071,8 @@ TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor_with_leading_positional_
             end
         end
 
-        local f = Foo.new(3, "four", 5) -- OK
-        local g = Foo.new(3, "four", 5, "six") -- Error
+        local f = Foo(3, "four", 5) -- OK
+        local g = Foo(3, "four", 5, "six") -- Error
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -1078,11 +1090,11 @@ TEST_CASE_FIXTURE(ClassesFixture, "class_methods_should_be_annotated_except_for_
             end
 
             function double(this)
-                return Foo.new(this.x * 2)
+                return Foo(this.x * 2)
             end
 
             function double2(self): Foo
-                return Foo.new(self.x * 2)
+                return Foo(self.x * 2)
             end
         end
     )");
@@ -1198,12 +1210,11 @@ _ = l0 {  }
 )"
     );
 
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
     auto err = get<SyntaxError>(result.errors[0]);
     REQUIRE(err);
     CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
     REQUIRE(get<UnknownSymbol>(result.errors[1]));
-    REQUIRE(get<CannotCallNonFunction>(result.errors[2]));
 }
 
 TEST_CASE_FIXTURE(ClassesFixture, "prop_with_typeof_reassigned_class")
@@ -1305,7 +1316,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "read_unknown_property_from_class_object_or_in
             public y: number
 
             function zero(): Point
-                return Point.new {x=0, y=0}
+                return Point {x=0, y=0}
             end
         end
 
@@ -1333,7 +1344,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "writes_to_class_object_properties_are_forbidd
             public y: number
 
             function zero(): Point
-                return Point.new {x=0, y=0}
+                return Point {x=0, y=0}
             end
 
             function magnitude(self): number
@@ -1342,8 +1353,8 @@ TEST_CASE_FIXTURE(ClassesFixture, "writes_to_class_object_properties_are_forbidd
         end
 
         Point.magnitude = function(p: Point) return 3 end
-        Point.zero = function() return Point.new { x = 1, y = 1 } end
-        Point.one = function() return Point.new { x = 1, y = 1 } end
+        Point.zero = function() return Point { x = 1, y = 1 } end
+        Point.one = function() return Point { x = 1, y = 1 } end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
@@ -1364,7 +1375,6 @@ TEST_CASE_FIXTURE(ClassesFixture, "writes_to_class_object_properties_are_forbidd
     CHECK(pav2->context == PropertyAccessViolation::CannotWrite);
 }
 
-
 TEST_CASE_FIXTURE(ClassesFixture, "writes_to_unknown_class_instance_properties_are_forbidden")
 {
     CheckResult result = check(R"(
@@ -1373,7 +1383,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "writes_to_unknown_class_instance_properties_a
             public y: number
 
             function zero(): Point
-                return Point.new {x=0, y=0}
+                return Point {x=0, y=0}
             end
 
             function magnitude(self): number
@@ -1384,8 +1394,8 @@ TEST_CASE_FIXTURE(ClassesFixture, "writes_to_unknown_class_instance_properties_a
         local p = Point.zero()
 
         p.magnitude = function(p: Point) return 3 end
-        p.zero = function() return Point.new { x = 1, y = 1 } end
-        p.one = function() return Point.new { x = 1, y = 1 } end
+        p.zero = function() return Point { x = 1, y = 1 } end
+        p.one = function() return Point { x = 1, y = 1 } end
 
         p.__index = {}
     )");

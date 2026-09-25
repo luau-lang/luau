@@ -24,6 +24,7 @@ LuauClass* luaR_newblankclass(lua_State* L, TString* name, bool isopen)
     classobject->staticmembers = NULL;
     classobject->memberstooffset = NULL;
     classobject->offsettomember = NULL;
+    classobject->metatable = NULL;
     classobject->instancemetatable = NULL;
     classobject->numberofinstancemembers = 0;
     classobject->numberofallmembers = 0;
@@ -34,34 +35,29 @@ LuauClass* luaR_newblankclass(lua_State* L, TString* name, bool isopen)
 }
 
 /*
- * We rewrite both the `new` and `__init` methods because, in the inheritance
- * scenario, a LuauClass is cloned from the original and flattened out.  This
- * flattened-out LuauClass's constructors need to have their closures updated.
- * Otherwise they point at the old un-flattened LuauClass.
+ * We rewrite both the `__call` metamethod and the `__init` method because in the inheritance scenario, a LuauClass is cloned from the original and
+ * flattened out. This flattened-out LuauClass's constructors need to have their closures updated. Otherwise they point at the old un-flattened
+ * LuauClass.
  */
 static void luaR_setupconstructor(lua_State* L, LuauClass* classobject, LuaTable* env)
 {
-    TString* newKey = luaS_new(L, "new");
+    classobject->metatable = luaH_new(L, 0, 1);
+    luaC_objbarrier(L, classobject, classobject->metatable);
 
-    // We should probably pass an empty table here rather than the global
-    // environment.
-    Closure* constructor = luaF_newCclosure(L, 1, env);
+    Closure* constructor = luaF_newCclosure(L, 0, env);
     constructor->c.f = luaR_constructobject;
     constructor->c.debugname = luaS_new(L, "luaR_constructobject");
 
-    // Capture the classobject to construct as an upvalue.
-    setclassvalue(L, &constructor->c.upvals[0], classobject);
     LUAU_ASSERT(iswhite(obj2gco(constructor)));
 
     constructor->c.cont = NULL;
 
-    const TValue* offsetValue = luaH_getstr(classobject->memberstooffset, newKey);
-    const double offsetDouble = nvalue(offsetValue);
-    LUAU_ASSERT(offsetDouble >= classobject->numberofinstancemembers && offsetDouble < classobject->numberofallmembers);
-    const uint32_t offset = uint32_t(offsetDouble) - classobject->numberofinstancemembers;
+    TValue* callSlot = luaH_setstr(L, classobject->metatable, L->global->tmname[TM_CALL]);
+    LUAU_ASSERT(ttisnil(callSlot));
+    setclvalue(L, callSlot, constructor);
+    luaC_barrier(L, classobject->metatable, callSlot);
 
-    setclvalue(L, &classobject->staticmembers[offset], constructor);
-    luaC_barrier(L, classobject, &classobject->staticmembers[offset]);
+    classobject->metatable->readonly = true;
 
     // Add the default constructor.
     //
@@ -134,7 +130,7 @@ LUAI_FUNC LuauClass* luaR_cloneclass(lua_State* L, LuauClass* classobject)
 
     // The name->offset mapping is fixed when the class shape is built and is never mutated afterwards (shapes in a Proto's constant table are
     // additionally marked readonly), so the clone shares it rather than paying for a table copy on every class definition that executes.
-    newclass->memberstooffset = classobject->memberstooffset;
+    newclass->memberstooffset = luaH_clone(L, classobject->memberstooffset);
 
     newclass->offsettomember = luaM_newarray(L, numallmembers, TString*, newclass->memcat);
     memcpy(newclass->offsettomember, classobject->offsettomember, numallmembers * sizeof(TString*));
@@ -206,6 +202,7 @@ void luaR_inheritclass(lua_State* L, LuauClass* child, LuauClass* parent)
             TString* memberName = parent->offsettomember[idx];
             const TValue* existing = luaH_getstr(child->memberstooffset, memberName);
             if (!ttisnil(existing))
+            {
                 luaG_runerror(
                     L,
                     "Cannot override instance member '%s' of parent class '%s' in child class '%s'",
@@ -213,6 +210,7 @@ void luaR_inheritclass(lua_State* L, LuauClass* child, LuauClass* parent)
                     getstr(parent->name),
                     getstr(child->name)
                 );
+            }
         }
     }
 
@@ -365,6 +363,22 @@ void luaR_addclassmember(lua_State* L, LuauClass* classobject, TString* name, TV
             classobject->instancemetatable = luaH_new(L, 0, 1);
             luaC_objbarrier(L, classobject, classobject->instancemetatable);
         }
+        else
+        {
+            // Check if we're overriding a comparison metamethod
+            global_State* g = L->global;
+            bool isComparisonMetamethod =
+                (name == g->tmname[TM_EQ]) || (name == g->tmname[TM_LT]) || (name == g->tmname[TM_LE]);
+
+            if (isComparisonMetamethod)
+            {
+                const TValue* existing = luaH_getstr(classobject->instancemetatable, name);
+                if (!ttisnil(existing))
+                    luaG_runerror(
+                        L, "Overriding comparison metamethods is not allowed ('%s' in class '%s')", getstr(name), getstr(classobject->name)
+                    );
+            }
+        }
         TValue* dest = luaH_setstr(L, classobject->instancemetatable, name);
         setobj2t(L, dest, value);
         luaC_barrier(L, classobject->instancemetatable, value);
@@ -373,8 +387,8 @@ void luaR_addclassmember(lua_State* L, LuauClass* classobject, TString* name, TV
 
 int luaR_constructobject(lua_State* L)
 {
-    Closure* cl = clvalue(L->ci->func);
-    LuauClass* classobject = classvalue(&cl->c.upvals[0]);
+    // This runs as the class's `__call` metamethod, so luaV_tryfuncTM has inserted the class being called ahead of the call arguments.
+    LuauClass* classobject = classvalue(L->base);
 
     LuauObject* self = luaM_newgco(L, LuauObject, sizeof(LuauObject), L->activememcat, LUA_TOBJECT);
     memset(self, 0, sizeof(LuauObject));
@@ -392,7 +406,8 @@ int luaR_constructobject(lua_State* L)
 
     const TValue* initFunction = &classobject->staticmembers[initOffset];
 
-    int numargs = int(L->top - L->base);
+    // Discount the class object
+    int numargs = int(L->top - L->base) - 1;
 
     // Put self onto the stack to ensure that it unconditionally survives GC during execution of __init.
     // The reference via the `self` argument to __init is insufficient to guarantee survival because `__init` may do `self = nil` and trigger GC.
@@ -408,8 +423,9 @@ int luaR_constructobject(lua_State* L)
     // self
     setobjectvalue(L, L->top++, self);
 
-    // Forward .new() arguments.
-    for (int i = 0; i < numargs; i++)
+    // Forward arguments
+    // Skip the class object placed on the stack by luaV_tryfuncTM
+    for (int i = 1; i < numargs + 1; i++)
         setobj2s(L, L->top++, L->base + i);
 
     luaD_call(L, argsBase, 0);

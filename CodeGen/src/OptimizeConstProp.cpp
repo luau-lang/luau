@@ -23,7 +23,6 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenLiveSlotReuseLimit, 8)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks)
-LUAU_FASTFLAGVARIABLE(LuauCodegenConstVectorBufferRead)
 LUAU_FASTFLAGVARIABLE(LuauCodegenPropagateFallbackTags)
 LUAU_FLAGVERSION(LuauCodegenPropagateFallbackTags, 2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenNoLinearFastpcall)
@@ -916,8 +915,7 @@ struct ConstPropState
             }
 
             // Forward component reads from a constant vector pointer
-            if (FFlag::LuauCodegenConstVectorBufferRead && addrInst.cmd == IrCmd::LOAD_POINTER && OP_A(addrInst).kind == IrOpKind::VmReg &&
-                function.proto)
+            if (addrInst.cmd == IrCmd::LOAD_POINTER && OP_A(addrInst).kind == IrOpKind::VmReg && function.proto)
             {
                 if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_TVALUE, OP_A(addrInst)))
                 {
