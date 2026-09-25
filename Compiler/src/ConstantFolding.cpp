@@ -10,7 +10,7 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauIntegerType2)
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 
 namespace Luau
 {
@@ -1172,7 +1172,7 @@ struct ConstantVisitor : AstVisitor
         // all values that align wrt indexing are simple - we just match them 1-1
         for (size_t i = 0; i < node->vars.size && i < node->values.size; ++i)
         {
-            if (FFlag::DebugLuauIfLocalSyntax)
+            if (FFlag::LuauExperimentalIfLocalSyntax)
             {
                 recordLocal(node->vars.data[i], node->values.data[i]);
             }

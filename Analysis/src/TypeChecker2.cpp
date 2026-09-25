@@ -50,7 +50,7 @@ LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
 namespace Luau
 {
@@ -703,7 +703,7 @@ void TypeChecker2::visit(AstStatIf* ifStatement)
         visit(ifStatement->condition, ValueContext::RValue);
     }
 
-    if (FFlag::DebugLuauIfLocalAnalysis && ifStatement->conditionLocal && ifStatement->conditionLocal->annotation)
+    if (FFlag::LuauExperimentalIfLocalAnalysis && ifStatement->conditionLocal && ifStatement->conditionLocal->annotation)
     {
         TypeId annotationType = lookupAnnotation(ifStatement->conditionLocal->annotation);
         testPotentialLiteralIsSubtype(ifStatement->condition, annotationType);
@@ -3049,7 +3049,7 @@ void TypeChecker2::visit(AstExprIfElse* expr)
         visit(expr->condition, ValueContext::RValue);
     }
 
-    if (FFlag::DebugLuauIfLocalAnalysis && expr->conditionLocal && expr->conditionLocal->annotation)
+    if (FFlag::LuauExperimentalIfLocalAnalysis && expr->conditionLocal && expr->conditionLocal->annotation)
     {
         TypeId annotationType = lookupAnnotation(expr->conditionLocal->annotation);
         testPotentialLiteralIsSubtype(expr->condition, annotationType);
@@ -3852,7 +3852,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
         return testIsSubtype(exprType, expectedType, expr->location);
     }
 
-    Set<std::optional<std::string>> missingKeys;
+    DenseHashSet<std::optional<std::string>> missingKeys;
     for (const auto& [name, prop] : expectedTableType->props)
     {
         if (prop.readTy)
@@ -3892,7 +3892,11 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
                     isSubtype &= testIsSubtype(inferredKeyType, expectedTableType->indexer->indexType, item.key->location);
                     isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType);
                 }
-                // If there's not an indexer, then by width subtyping we can just do nothing :)
+
+                if (expectedTableType->state == TableState::Exact)
+                    reportError(MissingProperties{expectedType, exprType, {keyStr}, MissingProperties::Extra}, item.key->location);
+
+                // If there's not an indexer and the table is not exact, by width subtyping we can just do nothing :)
             }
             else
             {

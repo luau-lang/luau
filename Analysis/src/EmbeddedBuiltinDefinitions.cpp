@@ -4,6 +4,7 @@
 LUAU_FASTFLAG(LuauIntegerLibrary)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(DebugLuauCoroutineFinallyAnalysis)
 
@@ -235,6 +236,32 @@ declare table: {
 
 )BUILTIN_SRC";
 
+static constexpr const char* kBuiltinDefinitionTableSrc_EXACT_TABLES = R"BUILTIN_SRC(
+
+declare table: {
+    concat: <V>(t: {V, ...}, sep: string?, i: number?, j: number?) -> string,
+    insert: (<V>(t: {V, ...}, value: V) -> ()) & (<V>(t: {V, ...}, pos: number, value: V) -> ()),
+    maxn: <V>(t: {V, ...}) -> number,
+    remove: <V>(t: {V, ...}, number?) -> V?,
+    sort: <V>(t: {V, ...}, comp: ((V, V) -> boolean)?) -> (),
+    create: <V>(count: number, value: V?) -> {V},
+    find: <V>(haystack: {V, ...}, needle: V, init: number?) -> number?,
+
+    unpack: <V>(list: {V, ...}, i: number?, j: number?) -> ...V,
+    pack: <V>(...V) -> { n: number, [number]: V },
+
+    getn: <V>(t: {V, ...}) -> number,
+    foreach: <K, V>(t: {[K]: V, ...}, f: (K, V) -> ()) -> (),
+    foreachi: <V>({V, ...}, (number, V) -> ()) -> (),
+
+    move: <V>(src: {V, ...}, a: number, b: number, t: number, dst: {V, ...}?) -> {V, ...},
+
+    clear: (table: {...}) -> (),
+    isfrozen: (t: {...}) -> boolean,
+}
+
+)BUILTIN_SRC";
+
 static constexpr const char* kBuiltinDefinitionDebugSrc = R"BUILTIN_SRC(
 
 declare debug: {
@@ -424,7 +451,10 @@ std::string getBuiltinDefinitionSource()
     else
         result += kBuiltinDefinitionCoroutineSrc_DEPRECATED;
 
-    result += kBuiltinDefinitionTableSrc;
+    if (FFlag::DebugLuauExactTableTypes)
+        result += kBuiltinDefinitionTableSrc_EXACT_TABLES;
+    else
+        result += kBuiltinDefinitionTableSrc;
     result += kBuiltinDefinitionDebugSrc;
     result += kBuiltinDefinitionUtf8Src;
     if (FFlag::LuauIntegerType2 && FFlag::LuauIntegerLibrary)

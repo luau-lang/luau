@@ -5,8 +5,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenProtectData)
-
 #if defined(_WIN32)
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -188,65 +186,38 @@ CodeAllocationData CodeAllocator::allocate(const uint8_t* data, size_t dataSize,
     size_t pageAlignedSize;
     size_t totalSize;
 
-    if (FFlag::LuauCodegenProtectData)
+    if (dataSize != 0)
     {
-        if (dataSize != 0)
-        {
-            // Data and code sections occupy separate page ranges so that data can be made read-only
-            // and code can be made executable independently. The code section starts on the first page
-            // boundary after the unwind info header and data.
-
-            // Function has to fit into a single block with unwinding information
-            if (alignToPageSize(kMaxReservedDataSize + dataSize) + codeSize > blockSize)
-                return {};
-
-            // We might need a new block
-            if (alignToPageSize(dataSize) + codeSize > size_t(blockEnd - blockPos))
-            {
-                if (!allocateNewBlock(startOffset))
-                    return {};
-
-                CODEGEN_ASSERT(alignToPageSize(startOffset + dataSize) + codeSize <= size_t(blockEnd - blockPos));
-            }
-
-            codeOffset = alignToPageSize(startOffset + dataSize);
-            dataOffset = codeOffset - dataSize;
-            totalSize = alignToPageSize(dataSize) + codeSize;
-            pageAlignedSize = alignToPageSize(codeOffset + codeSize);
-        }
-        else
-        {
-            // No data to protect — code starts directly after the unwind info header
-            totalSize = codeSize;
-
-            if (totalSize > blockSize - kMaxReservedDataSize)
-                return {};
-
-            if (totalSize > size_t(blockEnd - blockPos))
-            {
-                if (!allocateNewBlock(startOffset))
-                    return {};
-
-                CODEGEN_ASSERT(totalSize <= size_t(blockEnd - blockPos));
-            }
-
-            dataOffset = startOffset;
-            codeOffset = startOffset;
-            pageAlignedSize = alignToPageSize(startOffset + totalSize);
-        }
-    }
-    else
-    {
-        // 'Round up' to preserve code alignment
-        size_t alignedDataSize = (dataSize + (kCodeAlignment - 1)) & ~(kCodeAlignment - 1);
-
-        totalSize = alignedDataSize + codeSize;
+        // Data and code sections occupy separate page ranges so that data can be made read-only
+        // and code can be made executable independently. The code section starts on the first page
+        // boundary after the unwind info header and data.
 
         // Function has to fit into a single block with unwinding information
-        if (totalSize > blockSize - kMaxReservedDataSize)
+        if (alignToPageSize(kMaxReservedDataSize + dataSize) + codeSize > blockSize)
             return {};
 
         // We might need a new block
+        if (alignToPageSize(dataSize) + codeSize > size_t(blockEnd - blockPos))
+        {
+            if (!allocateNewBlock(startOffset))
+                return {};
+
+            CODEGEN_ASSERT(alignToPageSize(startOffset + dataSize) + codeSize <= size_t(blockEnd - blockPos));
+        }
+
+        codeOffset = alignToPageSize(startOffset + dataSize);
+        dataOffset = codeOffset - dataSize;
+        totalSize = alignToPageSize(dataSize) + codeSize;
+        pageAlignedSize = alignToPageSize(codeOffset + codeSize);
+    }
+    else
+    {
+        // No data to protect — code starts directly after the unwind info header
+        totalSize = codeSize;
+
+        if (totalSize > blockSize - kMaxReservedDataSize)
+            return {};
+
         if (totalSize > size_t(blockEnd - blockPos))
         {
             if (!allocateNewBlock(startOffset))
@@ -255,8 +226,8 @@ CodeAllocationData CodeAllocator::allocate(const uint8_t* data, size_t dataSize,
             CODEGEN_ASSERT(totalSize <= size_t(blockEnd - blockPos));
         }
 
-        dataOffset = startOffset + alignedDataSize - dataSize;
-        codeOffset = startOffset + alignedDataSize;
+        dataOffset = startOffset;
+        codeOffset = startOffset;
         pageAlignedSize = alignToPageSize(startOffset + totalSize);
     }
 
@@ -267,21 +238,13 @@ CodeAllocationData CodeAllocator::allocate(const uint8_t* data, size_t dataSize,
     if (codeSize != 0)
         memcpy(blockPos + codeOffset, code, codeSize);
 
-    if (FFlag::LuauCodegenProtectData)
+    if (dataSize != 0)
     {
-        if (dataSize != 0)
-        {
-            // Make data pages read-only and code pages executable independently
-            if (!makePagesReadOnly(blockPos, codeOffset))
-                return {};
-            if (!makePagesExecutable(blockPos + codeOffset, pageAlignedSize - codeOffset))
-                return {};
-        }
-        else
-        {
-            if (!makePagesExecutable(blockPos, pageAlignedSize))
-                return {};
-        }
+        // Make data pages read-only and code pages executable independently
+        if (!makePagesReadOnly(blockPos, codeOffset))
+            return {};
+        if (!makePagesExecutable(blockPos + codeOffset, pageAlignedSize - codeOffset))
+            return {};
     }
     else
     {

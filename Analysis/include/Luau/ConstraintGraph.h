@@ -3,7 +3,6 @@
 #pragma once
 
 #include "Luau/Constraint.h"
-#include "Luau/Set.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 

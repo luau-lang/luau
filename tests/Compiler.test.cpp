@@ -25,10 +25,8 @@ LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauIntegerFastcalls)
-LUAU_FASTFLAG(LuauCompileExpandShortLimit)
 LUAU_FASTFLAG(LuauCompileIifeInline)
 LUAU_FASTFLAG(LuauCompileCleanBlockDeadClose)
-LUAU_FASTFLAG(LuauCompileContinueEagerClose)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
 LUAU_FASTFLAG(LuauCompileEmitVectorDouble)
 LUAU_FASTFLAG(LuauCompileMoveElision)
@@ -41,7 +39,7 @@ LUAU_FASTFLAG(LuauOptimizeExportTable)
 LUAU_FASTFLAG(LuauCompileFastpcall)
 LUAU_FASTFLAG(LuauExportedTypesParticipateInScc)
 LUAU_FASTFLAG(LuauCompileRecursiveAliases)
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 LUAU_FASTFLAG(LuauCompileUndoEmitAdjust)
 
 using namespace Luau;
@@ -319,7 +317,7 @@ TEST_CASE("BasicFunctionCall")
     Luau::compileOrThrow(bcb, "local function foo(a, b) return b end function test() return foo(2) end");
 
     CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 LOADN R1 2
 CALL R0 1 -1
 RETURN R0 -1
@@ -690,7 +688,7 @@ RETURN R0 0
 
     // ... even when it's an upvalue
     CHECK_EQ("\n" + compileFunction0("local ip = ipairs function foo() for k,v in ip({}) do end end"), R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 NEWTABLE R1 0 0
 CALLFB R0 1 3 [0]
 FORGPREP_INEXT R0 L0
@@ -993,37 +991,34 @@ K0: 'Animal'
 K1: 'species'
 K2: function live
 K3: 'live'
-K4: 'new'
-K5: '__init'
-K6: class Animal (props: 1, methods: 3)
+K4: '__init'
+K5: class Animal (props: 1, methods: 2)
   props:
     K1 ['species']
   methods:
     K3 ['live']
-    K4 ['new']
-    K5 ['__init']
-K7: 'Cat'
-K8: 'breed'
-K9: function describe
-K10: 'describe'
-K11: class Cat (props: 1, methods: 3)
+    K4 ['__init']
+K6: 'Cat'
+K7: 'breed'
+K8: function describe
+K9: 'describe'
+K10: class Cat (props: 1, methods: 2)
   props:
-    K8 ['breed']
+    K7 ['breed']
   methods:
-    K10 ['describe']
-    K4 ['new']
-    K5 ['__init']
-K12: 'print'
-K13: print
+    K9 ['describe']
+    K4 ['__init']
+K11: 'print'
+K12: print
 LOADNIL R0
 LOADNIL R1
-NEWCLASS R0 no_base K6 1 [class Animal (props: 1, methods: 3)]
+NEWCLASS R0 no_base K5 1 [class Animal (props: 1, methods: 2)]
 DUPCLOSURE R2 K2 ['live']
 NEWCLASSMEMBER R0 R2 ['live']
-NEWCLASS R1 R0 K11 0 [class Cat (props: 1, methods: 3)]
-DUPCLOSURE R2 K9 ['describe']
+NEWCLASS R1 R0 K10 0 [class Cat (props: 1, methods: 2)]
+DUPCLOSURE R2 K8 ['describe']
 NEWCLASSMEMBER R1 R2 ['describe']
-GETIMPORT R2 13 [print]
+GETIMPORT R2 12 [print]
 MOVE R3 R1
 CALL R2 1 0
 RETURN R0 0
@@ -1293,7 +1288,7 @@ RETURN R0 0
 )");
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 LOADN R1 5
 SETTABLEKS R1 R0 K0 ['_tweakingTooltipFrame']
 RETURN R0 0
@@ -2070,8 +2065,8 @@ RETURN R0 1
 )");
 
     CHECK_EQ("\n" + compileFunction("local a = 1 function foo() return a + a end function bar() a = 5 end", 0), R"(
-GETUPVAL R1 0
-GETUPVAL R2 0
+GETUPVAL R1 U0
+GETUPVAL R2 U0
 ADD R0 R1 R2
 RETURN R0 1
 )");
@@ -2571,7 +2566,7 @@ CALLFB R0 0 1 [0]
 LOADK R1 K3 [0.5]
 JUMPIFLT R1 R0 L1
 ADDK R0 R0 K4 [0.29999999999999999]
-L1: GETUPVAL R1 0
+L1: GETUPVAL R1 U0
 JUMPIF R1 L2
 LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L2
@@ -2866,8 +2861,6 @@ CLOSEUPVALS R0
 RETURN R0 0
 )"
     );
-
-    ScopedFastFlag luauCompileContinueEagerClose{FFlag::LuauCompileContinueEagerClose, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -4230,10 +4223,10 @@ CALLFB R4 1 0 [2]
 GETIMPORT R4 1 [print]
 MOVE R5 R3
 CALLFB R4 1 0 [3]
-GETUPVAL R4 0
+GETUPVAL R4 U0
 GETIMPORT R5 3 [a]
 ADD R4 R4 R5
-SETUPVAL R4 0
+SETUPVAL R4 U0
 GETIMPORT R4 3 [a]
 RETURN R4 1
 )");
@@ -4447,7 +4440,7 @@ writeMany(b, 0, x, y, z, w, u, v)
 return b
 )"
     );
-    
+
     ScopedFastFlag luauCompileLoopUnrollZero{FFlag::LuauCompileLoopUnrollZero, true};
 
     CHECK_EQ(
@@ -4460,7 +4453,7 @@ end
 
 return t
 )"),
-R"(
+        R"(
 -- remark: allocation: table hash 0
 local t = {}
 
@@ -4471,7 +4464,7 @@ end
 
 return t
 )"
-);
+    );
 }
 
 TEST_CASE("AssignmentConflict")
@@ -4587,7 +4580,7 @@ L0: RETURN R1 -1
     CHECK_EQ("\n" + compileFunction0("local abs = math.abs function foo() return abs(-5) end return foo()"), R"(
 LOADN R1 -5
 FASTCALL1 2 R1 L0
-GETUPVAL R0 0
+GETUPVAL R0 U0
 CALL R0 1 -1
 L0: RETURN R0 -1
 )");
@@ -5117,7 +5110,7 @@ MOVE R3 R0
 GETIMPORT R2 2 [table.unpack]
 CALL R2 1 -1
 L0: FASTCALL 42 L1
-GETUPVAL R1 0
+GETUPVAL R1 U0
 GETTABLEKS R1 R1 K3 ['char']
 CALL R1 -1 1
 L1: RETURN R1 1
@@ -5168,9 +5161,9 @@ RETURN R0 0
 
     // upvalues
     CHECK_EQ("\n" + compileFunction0("local a = 1 function foo() a += 4 end"), R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 ADDK R0 R0 K0 [4]
-SETUPVAL R0 0
+SETUPVAL R0 U0
 RETURN R0 0
 )");
 
@@ -5256,8 +5249,6 @@ RETURN R0 0
 
 TEST_CASE("JumpTrampoline")
 {
-    ScopedFastFlag luauCompileExpandShortLimit{FFlag::LuauCompileExpandShortLimit, true};
-
     std::string source;
     source += "local sum: number = 0\n";
     source += "for i=1,3 do\n";
@@ -7018,7 +7009,7 @@ TEST_CASE("LoopUnrollEmpty")
     // zero roundtrip loops are counted as zero-cost by the cost model and have to be zero-cost when compiled
     CHECK_EQ(
         "\n" + compileFunction(
-            R"(
+                   R"(
 local t = {}
 
 for i=1,24 do
@@ -7032,14 +7023,14 @@ end
 
 return t
 )",
-0,
-2
-),
-R"(
+                   0,
+                   2
+               ),
+        R"(
 NEWTABLE R0 0 8
 RETURN R0 1
 )"
-);
+    );
 }
 
 TEST_CASE("InlineBasic")
@@ -7215,7 +7206,7 @@ LOADN R2 1
 JUMPIFNOTLE R0 R2 L0
 LOADN R1 1
 RETURN R1 1
-L0: GETUPVAL R2 0
+L0: GETUPVAL R2 U0
 SUBK R3 R0 K0 [1]
 CALLFB R2 1 1 [0]
 MUL R1 R2 R0
@@ -7253,7 +7244,7 @@ L2: LOADN R2 1
 JUMPIFNOTLE R0 R2 L3
 LOADN R1 1
 RETURN R1 1
-L3: GETUPVAL R2 0
+L3: GETUPVAL R2 U0
 SUBK R3 R0 K2 [1]
 CALLFB R2 1 1 [0]
 MUL R1 R2 R0
@@ -7479,7 +7470,7 @@ end
                    2
                ),
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 RETURN R0 1
 )"
     );
@@ -7532,7 +7523,7 @@ end
 DUPCLOSURE R0 K0 ['foo']
 CAPTURE UPVAL U0
 LOADN R2 42
-GETUPVAL R3 0
+GETUPVAL R3 U0
 ADD R1 R2 R3
 RETURN R1 1
 )"
@@ -8634,7 +8625,7 @@ end
                    2
                ),
         R"(
-GETUPVAL R4 0
+GETUPVAL R4 U0
 JUMPIFLT R1 R0 L0
 LOADB R3 0 +1
 L0: LOADB R3 1
@@ -8668,7 +8659,7 @@ greater = function(a, b) return a < b end
                    2
                ),
         R"(
-GETUPVAL R4 0
+GETUPVAL R4 U0
 MOVE R5 R4
 MOVE R6 R0
 MOVE R7 R1
@@ -9106,7 +9097,7 @@ LOADK R2 K2 ['InitialElevation']
 NAMECALL R0 R0 K3 ['FindFirstChild']
 CALLFB R0 2 1 [0]
 JUMPIFNOT R0 L0
-GETUPVAL R1 0
+GETUPVAL R1 U0
 GETTABLEKS R2 R0 K4 ['Value']
 SETTABLEKS R2 R1 K2 ['InitialElevation']
 JUMP L0
@@ -9116,7 +9107,7 @@ LOADK R2 K5 ['InitialDistance']
 NAMECALL R0 R0 K3 ['FindFirstChild']
 CALLFB R0 2 1 [1]
 JUMPIFNOT R0 L1
-GETUPVAL R1 0
+GETUPVAL R1 U0
 GETTABLEKS R2 R0 K4 ['Value']
 SETTABLEKS R2 R1 K5 ['InitialDistance']
 JUMP L1
@@ -12197,8 +12188,8 @@ TEST_CASE("ClassDeclBasic")
     auto res0 = "\n" + compileFunction(source.c_str(), 0, 0, 0);
     CHECK(R"(
 LOADNIL R0
-NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
-GETGLOBAL R1 K6 ['print']
+NEWCLASS R0 no_base K4 0 [class Point (props: 2, methods: 1)]
+GETGLOBAL R1 K5 ['print']
 MOVE R2 R0
 CALL R1 1 0
 RETURN R0 0
@@ -12233,10 +12224,10 @@ RETURN R1 1
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(R"(
 LOADNIL R0
-NEWCLASS R0 no_base K6 0 [class Point (props: 2, methods: 3)]
+NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 ['magnitude']
-GETGLOBAL R1 K7 ['print']
+GETGLOBAL R1 K6 ['print']
 MOVE R2 R0
 CALL R1 1 0
 RETURN R0 0
@@ -12274,10 +12265,10 @@ RETURN R0 0
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(res1 == R"(
 LOADNIL R0
-NEWCLASS R0 no_base K6 0 [class Point (props: 2, methods: 3)]
+NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 ['print']
-DUPTABLE R1 7
+DUPTABLE R1 6
 LOADK R2 K0 ['Point']
 SETTABLE R0 R1 R2
 RETURN R1 1
@@ -12311,10 +12302,10 @@ RETURN R0 0
     auto res1 = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(res1 == R"(
 LOADNIL R0
-NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
+NEWCLASS R0 no_base K4 0 [class Point (props: 2, methods: 1)]
 NEWCLOSURE R1 P0
 NEWCLASSMEMBER R0 R1 ['__init']
-DUPTABLE R1 6
+DUPTABLE R1 5
 LOADK R2 K0 ['Point']
 SETTABLE R0 R1 R2
 RETURN R1 1
@@ -12336,7 +12327,7 @@ TEST_CASE("ClassDeclHoistingForwardReference")
     CHECK(R"(
 LOADNIL R0
 MOVE R1 R0
-NEWCLASS R0 no_base K4 0 [class Point (props: 1, methods: 2)]
+NEWCLASS R0 no_base K3 0 [class Point (props: 1, methods: 1)]
 RETURN R0 0
 )" == res);
 }
@@ -12356,13 +12347,13 @@ TEST_CASE("ClassDeclHoistingNestedFunctionUpvalCapture")
 
     auto inner = "\n" + compileFunction(source.c_str(), 0, 0, 0);
     CHECK(R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 RETURN R0 1
 )" == inner);
     auto outer = "\n" + compileFunction(source.c_str(), 1, 0, 0);
     CHECK(outer == R"(
 LOADNIL R0
-NEWCLASS R0 no_base K4 0 [class Point (props: 1, methods: 2)]
+NEWCLASS R0 no_base K3 0 [class Point (props: 1, methods: 1)]
 NEWCLOSURE R1 P0
 CAPTURE REF R0
 CLOSEUPVALS R0
@@ -13041,7 +13032,7 @@ return t, get
                    0
                ),
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 GETTABLEKS R0 R0 K0 ['x']
 RETURN R0 1
 )"
@@ -13061,7 +13052,7 @@ return make()
                    0
                ),
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 GETTABLEKS R0 R0 K0 ['x']
 RETURN R0 1
 )"
@@ -13287,9 +13278,9 @@ end
         R"(
 LOADNIL R0
 NEWTABLE R1 0 0
-NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
+NEWCLASS R0 no_base K4 0 [class Point (props: 2, methods: 1)]
 SETTABLEKS R0 R1 K0 ['Point']
-GETIMPORT R2 8 [table.freeze]
+GETIMPORT R2 7 [table.freeze]
 MOVE R3 R1
 CALL R2 1 1
 RETURN R2 1
@@ -13317,13 +13308,13 @@ end
         R"(
 LOADNIL R0
 NEWTABLE R1 0 0
-NEWCLASS R0 no_base K9 0 [class Point (props: 2, methods: 4)]
+NEWCLASS R0 no_base K8 0 [class Point (props: 2, methods: 3)]
 DUPCLOSURE R2 K3 ['getX']
 NEWCLASSMEMBER R0 R2 ['getX']
 DUPCLOSURE R2 K5 ['getY']
 NEWCLASSMEMBER R0 R2 ['getY']
 SETTABLEKS R0 R1 K0 ['Point']
-GETIMPORT R2 12 [table.freeze]
+GETIMPORT R2 11 [table.freeze]
 MOVE R3 R1
 CALL R2 1 1
 RETURN R2 1
@@ -13346,8 +13337,8 @@ local p = Point.new({x = 1, y = 2})
         R"(
 LOADNIL R0
 NEWTABLE R1 0 0
-NEWCLASS R0 no_base K5 0 [class Point (props: 2, methods: 2)]
-GETTABLEKS R2 R0 K3 ['new']
+NEWCLASS R0 no_base K4 0 [class Point (props: 2, methods: 1)]
+GETTABLEKS R2 R0 K5 ['new']
 DUPTABLE R3 8
 CALL R2 1 1
 SETTABLEKS R0 R1 K0 ['Point']
@@ -13471,9 +13462,9 @@ print(Cat)
     CHECK(R"(
 LOADNIL R0
 LOADNIL R1
-NEWCLASS R0 no_base K4 1 [class Animal (props: 1, methods: 2)]
-NEWCLASS R1 R0 K7 0 [class Cat (props: 1, methods: 2)]
-GETGLOBAL R2 K8 ['print']
+NEWCLASS R0 no_base K3 1 [class Animal (props: 1, methods: 1)]
+NEWCLASS R1 R0 K6 0 [class Cat (props: 1, methods: 1)]
+GETGLOBAL R2 K7 ['print']
 MOVE R3 R1
 CALL R2 1 0
 RETURN R0 0
@@ -13523,13 +13514,13 @@ RETURN R1 1
     CHECK(R"(
 LOADNIL R0
 LOADNIL R1
-NEWCLASS R0 no_base K5 1 [class Animal (props: 1, methods: 3)]
+NEWCLASS R0 no_base K4 1 [class Animal (props: 1, methods: 2)]
 NEWCLOSURE R2 P0
 NEWCLASSMEMBER R0 R2 ['live']
-NEWCLASS R1 R0 K9 0 [class Cat (props: 1, methods: 3)]
+NEWCLASS R1 R0 K8 0 [class Cat (props: 1, methods: 2)]
 NEWCLOSURE R2 P1
 NEWCLASSMEMBER R1 R2 ['describe']
-GETGLOBAL R2 K10 ['print']
+GETGLOBAL R2 K9 ['print']
 MOVE R3 R1
 CALL R2 1 0
 RETURN R0 0
@@ -13561,10 +13552,10 @@ print(C)
 LOADNIL R0
 LOADNIL R1
 LOADNIL R2
-NEWCLASS R0 no_base K4 1 [class A (props: 1, methods: 2)]
-NEWCLASS R1 R0 K7 1 [class B (props: 1, methods: 2)]
-NEWCLASS R2 R1 K10 0 [class C (props: 1, methods: 2)]
-GETGLOBAL R3 K11 ['print']
+NEWCLASS R0 no_base K3 1 [class A (props: 1, methods: 1)]
+NEWCLASS R1 R0 K6 1 [class B (props: 1, methods: 1)]
+NEWCLASS R2 R1 K9 0 [class C (props: 1, methods: 1)]
+GETGLOBAL R3 K10 ['print']
 MOVE R4 R2
 CALL R3 1 0
 RETURN R0 0
@@ -13591,11 +13582,11 @@ end
         R"(
 LOADNIL R0
 LOADNIL R1
-NEWCLASS R0 no_base K4 1 [class Animal (props: 1, methods: 2)]
+NEWCLASS R0 no_base K3 1 [class Animal (props: 1, methods: 1)]
 NEWTABLE R2 0 0
-NEWCLASS R1 R0 K7 0 [class Cat (props: 1, methods: 2)]
-SETTABLEKS R1 R2 K5 ['Cat']
-GETIMPORT R3 10 [table.freeze]
+NEWCLASS R1 R0 K6 0 [class Cat (props: 1, methods: 1)]
+SETTABLEKS R1 R2 K4 ['Cat']
+GETIMPORT R3 9 [table.freeze]
 MOVE R4 R2
 CALL R3 1 1
 RETURN R3 1
@@ -13617,9 +13608,9 @@ end
         R"(
 LOADNIL R0
 LOADNIL R1
-NEWCLASS R0 no_base K3 0 [class _ (props: 0, methods: 2)]
+NEWCLASS R0 no_base K2 0 [class _ (props: 0, methods: 1)]
 LOADNIL R2
-NEWCLASS R1 R2 K5 0 [class l0 (props: 0, methods: 2)]
+NEWCLASS R1 R2 K4 0 [class l0 (props: 0, methods: 1)]
 RETURN R0 0
 )"
     );
@@ -13672,7 +13663,7 @@ L0: RETURN R2 2
 
 TEST_CASE("IfLocal")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -13694,7 +13685,7 @@ L0: RETURN R0 0
 
 TEST_CASE("IfLocalElse")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -13722,7 +13713,7 @@ RETURN R0 0
 
 TEST_CASE("IfLocalElseif")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -13758,7 +13749,7 @@ RETURN R0 0
 }
 TEST_CASE("IfLocalNoElseTrailingCode")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -13784,7 +13775,7 @@ RETURN R0 0
 
 TEST_CASE("IfLocalElseTrailingCode")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -13816,7 +13807,7 @@ RETURN R0 0
 
 TEST_CASE("IfLocalThenReturns")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -13841,7 +13832,7 @@ RETURN R0 0
 
 TEST_CASE("IfLocalNested")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -13877,7 +13868,7 @@ RETURN R0 0
 
 TEST_CASE("IfLocalConstantPropagation")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -13919,7 +13910,7 @@ RETURN R0 0
 
 TEST_CASE("IfLocalTypePropagation")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
 
     const char* source = R"(
 function foo(a: number)
@@ -13951,7 +13942,7 @@ RETURN R1 1
 
 TEST_CASE("IfLocalEarlyTerminateNoClose")
 {
-    ScopedFastFlag sffs[] = {{FFlag::DebugLuauIfLocalSyntax, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -13990,7 +13981,7 @@ RETURN R0 0
 
 TEST_CASE("IfConst")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalIfLocalSyntax, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -14012,7 +14003,7 @@ L0: RETURN R0 0
 
 TEST_CASE("IfLocalUpvalueCapture")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalIfLocalSyntax, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -14039,7 +14030,7 @@ L0: RETURN R0 1
 
 TEST_CASE("IfLocalMultipleReturnTruncated")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalIfLocalSyntax, true};
 
     CHECK_EQ(
         "\n" + compileFunction(
@@ -14066,7 +14057,7 @@ L0: RETURN R0 0
 
 TEST_CASE("IfLocalExpression")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalIfLocalSyntax, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -14086,7 +14077,7 @@ RETURN R0 0
 
 TEST_CASE("IfConstExpression")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalIfLocalSyntax, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -14106,7 +14097,7 @@ RETURN R0 0
 
 TEST_CASE("IfLocalExpressionReturn")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalIfLocalSyntax, true};
 
     CHECK_EQ(
         "\n" + compileFunction0(R"(
@@ -14126,7 +14117,7 @@ RETURN R0 1
 
 TEST_CASE("IfLocalExpressionUpvalueCapture")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalIfLocalSyntax, true};
 
     CHECK_EQ(
         "\n" + compileFunction(

@@ -309,6 +309,8 @@ TEST_CASE_FIXTURE(Fixture, "inferred_methods_of_free_tables_have_the_same_level_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_oop")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
    --!strict
 local Class = {}
@@ -405,9 +407,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "augmenting_an_unsealed_table_with_a_metatabl
     )");
 
     if (!FFlag::DebugLuauForceOldSolver)
-        CHECK("{ @metatable { number: number }, { method: (unknown) -> string } }" == toString(requireType("B"), {true}));
+        CHECK("setmetatable<{ method: (unknown) -> string }, { number: number }>" == toString(requireType("B"), {true}));
     else
-        CHECK("{ @metatable {| number: number |}, {| method: <T>(T) -> string |} }" == toString(requireType("B"), {true}));
+        CHECK("setmetatable<{| method: <T>(T) -> string |}, {| number: number |}>" == toString(requireType("B"), {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")
@@ -613,7 +615,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_metatable")
 
     TypeId clsType = clsBinding->typeId;
 
-    CHECK("{ @metatable cls, tbl }" == toString(clsType));
+    CHECK("setmetatable<tbl, cls>" == toString(clsType));
 }
 
 // https://luau.org/typecheck#adding-types-for-faux-object-oriented-programs
@@ -751,6 +753,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_and_property")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
     };
@@ -768,6 +772,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult results = check(R"(
@@ -784,11 +790,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
     auto err = get<TypeMismatch>(results.errors[0]);
     REQUIRE(err);
     CHECK_EQ("{ const: number }", toString(err->wantedType));
-    CHECK_EQ("{ @metatable t1, {  } } where t1 = { __index: t1, const: number }", toString(err->givenType, {/* exhaustive */ true}));
+    CHECK_EQ("setmetatable<{  }, t1> where t1 = { __index: t1, const: number }", toString(err->givenType, {/* exhaustive */ true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult results = check(R"(
@@ -807,7 +815,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
     auto err = get<TypeMismatch>(results.errors[0]);
     REQUIRE(err);
     CHECK_EQ("{ read foo: string }", toString(err->wantedType, {/* exhaustive */ true}));
-    CHECK_EQ("{ @metatable { __index: { bar: boolean, foo: string } }, { foo: number } }", toString(err->givenType, {/* exhaustive */ true}));
+    CHECK_EQ("setmetatable<{ foo: number }, { __index: { bar: boolean, foo: string } }>", toString(err->givenType, {/* exhaustive */ true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assign_to_prop_of_intersection_of_metatables")
@@ -857,6 +865,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assign_to_prop_of_intersection_of_metatables
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "subclass_property_access")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};
@@ -1037,7 +1047,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_1")
     auto err = get<UnknownProperty>(result.errors[0]);
     REQUIRE(err);
     CHECK_EQ("propA", err->key);
-    CHECK_EQ("{ @metatable mt2, root }", toString(err->table));
+    CHECK_EQ("setmetatable<root, mt2>", toString(err->table));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_2")
@@ -1063,7 +1073,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_overrides_2")
     auto err = get<UnknownProperty>(result.errors[0]);
     REQUIRE(err);
     CHECK_EQ("propA", err->key);
-    CHECK_EQ("{ @metatable MT2, { Name: string } }", toString(err->table));
+    CHECK_EQ("setmetatable<{ Name: string }, MT2>", toString(err->table));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_setmetatable_invalid_types")

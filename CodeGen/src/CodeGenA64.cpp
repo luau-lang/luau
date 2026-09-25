@@ -17,7 +17,6 @@
 #endif
 
 LUAU_DYNAMIC_FASTFLAG(AddReturnExectargetCheck)
-LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
 {
@@ -118,15 +117,8 @@ static void emitContinueCall(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.tbnz(x0, 0, helpers.exitNoContinueVm);
 
     // Need to update state of the current function before we jump away
-    if (FFlag::LuauCIProto)
-    {
-        build.ldr(x1, mem(rState, offsetof(lua_State, ci)));
-        build.ldr(x1, mem(x1, offsetof(CallInfo, p))); // L->ci->p aka proto
-    }
-    else
-    {
-        build.ldr(x1, mem(x0, offsetof(Closure, l.p))); // cl->l.p aka proto
-    }
+    build.ldr(x1, mem(rState, offsetof(lua_State, ci)));
+    build.ldr(x1, mem(x1, offsetof(CallInfo, p))); // L->ci->p aka proto
 
     build.ldr(x2, mem(x1, offsetof(Proto, exectarget)));
     build.cbz(x2, helpers.exitContinueVm);
@@ -195,10 +187,7 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.ldr(rClosure, mem(x2, offsetof(CallInfo, func)));
     build.ldr(rClosure, mem(rClosure, offsetof(TValue, value.gc)));
 
-    if (FFlag::LuauCIProto)
-        build.ldr(x1, mem(x2, offsetof(CallInfo, p))); // ci->p aka proto
-    else
-        build.ldr(x1, mem(rClosure, offsetof(Closure, l.p))); // cl->l.p aka proto
+    build.ldr(x1, mem(x2, offsetof(CallInfo, p))); // ci->p aka proto
 
     if (DFFlag::AddReturnExectargetCheck)
     {

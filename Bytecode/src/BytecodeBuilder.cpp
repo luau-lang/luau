@@ -12,8 +12,6 @@
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAGVARIABLE(LuauCompileExpandLimit)
-LUAU_FASTFLAGVARIABLE(LuauCompileExpandShortLimit)
 LUAU_FASTFLAGVARIABLE(LuauCompileUndoEmitAdjust)
 LUAU_FASTFLAGVARIABLE(LuauEmitCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauVirtualBcBuilder)
@@ -1404,7 +1402,7 @@ std::vector<uint32_t> BytecodeBuilder::expandJumps(bool& hasLongJumpError)
         {
             int offset = int(jumps[currentJump].target) - int(jumps[currentJump].source) - 1;
 
-            if (FFlag::LuauCompileExpandShortLimit ? abs(offset) >= kMaxJumpDistanceConservative : abs(offset) > kMaxJumpDistanceConservative)
+            if (abs(offset) >= kMaxJumpDistanceConservative)
             {
                 // insert jump trampoline as described above; we keep JUMPX offset uninitialized in this pass
                 newinsns.push_back(LOP_JUMP | (1 << 16));
@@ -1443,12 +1441,12 @@ std::vector<uint32_t> BytecodeBuilder::expandJumps(bool& hasLongJumpError)
         int offset = int(jump.target) - int(jump.source) - 1;
         int newoffset = int(remap[jump.target]) - int(remap[jump.source]) - 1;
 
-        if (FFlag::LuauCompileExpandLimit && abs(newoffset) + 1 >= kMaxJumpDistance)
+        if (abs(newoffset) + 1 >= kMaxJumpDistance)
         {
             hasLongJumpError = true;
             return {};
         }
-        else if (FFlag::LuauCompileExpandShortLimit ? abs(offset) >= kMaxJumpDistanceConservative : abs(offset) > kMaxJumpDistanceConservative)
+        else if (abs(offset) >= kMaxJumpDistanceConservative)
         {
             // fix up jump trampoline
             uint32_t& insnt = newinsns[remap[jump.source] - 1];
@@ -2642,11 +2640,11 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_GETUPVAL:
-        formatAppend(result, "GETUPVAL R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        formatAppend(result, "GETUPVAL R%d U%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
         break;
 
     case LOP_SETUPVAL:
-        formatAppend(result, "SETUPVAL R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        formatAppend(result, "SETUPVAL R%d U%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
         break;
 
     case LOP_CLOSEUPVALS:

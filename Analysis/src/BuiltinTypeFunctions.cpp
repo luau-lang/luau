@@ -1685,7 +1685,13 @@ namespace
  * `isRaw` parameter indicates whether or not we should follow __index metamethods
  * returns `false` if `result` should be ignored because the answer is "all strings"
  */
-bool computeKeysOf(TypeId ty, Set<std::optional<std::string>>& result, DenseHashSet<TypeId>& seen, bool isRaw, NotNull<TypeFunctionContext> ctx)
+bool computeKeysOf(
+    TypeId ty,
+    DenseHashSet<std::optional<std::string>>& result,
+    DenseHashSet<TypeId>& seen,
+    bool isRaw,
+    NotNull<TypeFunctionContext> ctx
+)
 {
 
     // if the type is the top table type, the answer is just "all strings"
@@ -1796,7 +1802,7 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
 
     // We're going to collect the keys in here, and we use optional strings
     // so that we can differentiate between the empty string and _no_ string.
-    Set<std::optional<std::string>> keys;
+    DenseHashSet<std::optional<std::string>> keys;
 
     // computing the keys for extern types
     if (normTy->hasExternTypes())
@@ -1819,18 +1825,22 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
         {
             seen.clear(); // we'll reuse the same seen set
 
-            Set<std::optional<std::string>> localKeys;
+            DenseHashSet<std::optional<std::string>> localKeys;
 
             // we can skip to the next class if this one is a top type
             if (!computeKeysOf(*externTypeIter, localKeys, seen, isRaw, ctx))
                 continue;
 
+            std::vector<std::optional<std::string>> toDelete;
             for (auto& key : keys)
             {
                 // remove any keys that are not present in each class
                 if (!localKeys.contains(key))
-                    keys.erase(key);
+                    toDelete.emplace_back(key);
             }
+
+            for (auto& k : toDelete)
+                keys.erase(k);
         }
     }
 
@@ -1854,18 +1864,22 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
         {
             seen.clear(); // we'll reuse the same seen set
 
-            Set<std::optional<std::string>> localKeys;
+            DenseHashSet<std::optional<std::string>> localKeys;
 
             // we can skip to the next table if this one is the top table type
             if (!computeKeysOf(*tablesIter, localKeys, seen, isRaw, ctx))
                 continue;
 
+            std::vector<std::optional<std::string>> toDelete;
             for (auto& key : keys)
             {
                 // remove any keys that are not present in each table
                 if (!localKeys.contains(key))
                     keys.erase(key);
             }
+
+            for (auto& k : toDelete)
+                keys.erase(k);
         }
     }
 
@@ -1884,8 +1898,8 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
 
         for (const auto& key : keys)
         {
-             if (key)
-                  sortedKeys.emplace_back(*key);
+            if (key)
+                sortedKeys.emplace_back(*key);
         }
 
 
