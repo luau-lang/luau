@@ -3,6 +3,7 @@
 
 #include "Luau/Ast.h" // Used for some of the enumerations
 #include "Luau/DenseHash.h"
+#include "Luau/IterativeTypeVisitor.h"
 #include "Luau/NotNull.h"
 #include "Luau/Variant.h"
 #include "Luau/TypeFwd.h"
@@ -331,8 +332,14 @@ struct Constraint
     /**
      * Return the types and type packs that may be mutated by this constraint.
      * Currently we do not do anything with type packs.
+     * clip with LuauReferenceCountInitializerIsIterative
      */
-    std::pair<TypeIds, TypePackIds> getMaybeMutatedTypes() const;
+    std::pair<TypeIds, TypePackIds> getMaybeMutatedTypes_DEPRECATED() const;
+
+    /**
+     * Return the types and type packs that may be mutated by this constraint.
+     */
+    std::pair<TypeIds, TypePackIds> getMaybeMutatedTypesIn(NotNull<TypeArena> currentArena) const;
 };
 
 using ConstraintPtr = std::unique_ptr<Constraint>;
@@ -357,13 +364,39 @@ const T* get(const Constraint& c)
     return getMutable<T>(asMutable(c));
 }
 
-struct ReferenceCountInitializer : TypeOnceVisitor
+struct ReferenceCountInitializer_DEPRECATED : TypeOnceVisitor
 {
     NotNull<TypeIds> mutatedTypes;
     TypePackIds* mutatedTypePacks;
     bool traverseIntoTypeFunctions = true;
 
-    explicit ReferenceCountInitializer(NotNull<TypeIds> mutatedTypes, NotNull<TypePackIds> mutatedTypePacks);
+    explicit ReferenceCountInitializer_DEPRECATED(NotNull<TypeIds> mutatedTypes, NotNull<TypePackIds> mutatedTypePacks);
+
+    bool visit(TypeId ty, const FreeType&) override;
+
+    bool visit(TypeId ty, const BlockedType&) override;
+
+    bool visit(TypeId ty, const PendingExpansionType&) override;
+
+    bool visit(TypeId ty, const TableType& tt) override;
+
+    bool visit(TypeId ty, const ExternType&) override;
+
+    bool visit(TypeId, const TypeFunctionInstanceType& tfit) override;
+
+    bool visit(TypePackId tp, const BlockedTypePack&) override;
+    bool visit(TypePackId tp, const FreeTypePack&) override;
+};
+
+struct ReferenceCountInitializer : IterativeTypeVisitor
+{
+    NotNull<TypeArena> currentArena;
+    NotNull<TypeIds> mutatedTypes;
+    NotNull<TypePackIds> mutatedTypePacks;
+
+    explicit ReferenceCountInitializer(NotNull<TypeArena> currentArena, NotNull<TypeIds> mutatedTypes, NotNull<TypePackIds> mutatedTypePacks);
+
+    bool visit(TypeId ty) override;
 
     bool visit(TypeId ty, const FreeType&) override;
 

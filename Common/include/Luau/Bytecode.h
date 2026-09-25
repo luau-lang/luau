@@ -369,7 +369,7 @@ enum LuauOpcode
 
     // CAPTURE: capture a local or an upvalue as an upvalue into a newly created closure; only valid after NEWCLOSURE
     // A: capture type, see LuauCaptureType
-    // B: source register (for VAL/REF) or upvalue index (for UPVAL/UPREF)
+    // B: source register (for VAL/REF) or upvalue index (for UPVAL)
     LOP_CAPTURE,
 
     // SUBRK, DIVRK: compute arithmetic operation between the constant and a source register and put the result into target register

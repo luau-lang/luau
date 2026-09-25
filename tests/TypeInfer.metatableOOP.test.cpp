@@ -309,6 +309,8 @@ TEST_CASE_FIXTURE(Fixture, "inferred_methods_of_free_tables_have_the_same_level_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_oop")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
    --!strict
 local Class = {}
@@ -751,6 +753,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "oop_invoke_with_inferred_self_and_property")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
     };
@@ -768,6 +772,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_allows_upcast")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult results = check(R"(
@@ -789,6 +795,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_disallows_invalid_upcast")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_field_precedence_for_subtyping")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag _{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult results = check(R"(
@@ -857,6 +865,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assign_to_prop_of_intersection_of_metatables
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "subclass_property_access")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     ScopedFastFlag _{FFlag::LuauSetmetatableOverrides, true};

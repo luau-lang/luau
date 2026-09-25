@@ -18,7 +18,6 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenSkipDeadPredecessorTags)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 
 namespace Luau
@@ -1895,7 +1894,7 @@ void propagateTagsFromPredecessors(
 
     for (uint32_t predIdx : preds)
     {
-        if (FFlag::LuauCodegenSkipDeadPredecessorTags && function.blocks[predIdx].kind == IrBlockKind::Dead)
+        if (function.blocks[predIdx].kind == IrBlockKind::Dead)
             continue;
 
         if (predIdx >= numBlockExitTags)
@@ -1910,7 +1909,7 @@ void propagateTagsFromPredecessors(
 
     for (uint32_t predIdx : preds)
     {
-        if (FFlag::LuauCodegenSkipDeadPredecessorTags && function.blocks[predIdx].kind == IrBlockKind::Dead)
+        if (function.blocks[predIdx].kind == IrBlockKind::Dead)
             continue;
 
         const std::vector<uint8_t>& predTags = function.blockExitTags[predIdx];

@@ -15,7 +15,6 @@
 #include <utility>
 
 LUAU_DYNAMIC_FASTFLAGVARIABLE(AddReturnExectargetCheck, false)
-LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
 {
@@ -498,10 +497,7 @@ void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers)
     build.mov(rax, qword[rax + offsetof(TValue, value.gc)]);
     build.mov(sClosure, rax);
 
-    if (FFlag::LuauCIProto)
-        build.mov(proto, qword[cip + offsetof(CallInfo, p)]);
-    else
-        build.mov(proto, qword[rax + offsetof(Closure, l.p)]);
+    build.mov(proto, qword[cip + offsetof(CallInfo, p)]);
 
     build.mov(execdata, qword[proto + offsetof(Proto, execdata)]);
 
@@ -554,10 +550,7 @@ void emitDispatchLuauCall(AssemblyBuilderX64& build, ModuleHelpers& helpers)
     build.mov(rax, qword[rax + offsetof(TValue, value.gc)]);
     build.mov(sClosure, rax);
 
-    if (FFlag::LuauCIProto)
-        build.mov(proto, qword[ci + offsetof(CallInfo, p)]);
-    else
-        build.mov(proto, qword[rax + offsetof(Closure, l.p)]);
+    build.mov(proto, qword[ci + offsetof(CallInfo, p)]);
 
     // Switch current code
     build.mov(rax, qword[proto + offsetof(Proto, code)]);

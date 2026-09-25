@@ -112,7 +112,7 @@ TEST_CASE_FIXTURE(FeedbackVectorFixture, "simple_call")
     )");
 
     CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 CALLFB R1 0 1 [0]
 LOADK R2 K0 [1]
 ADD R0 R1 R2

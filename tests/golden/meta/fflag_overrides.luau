@@ -5,5 +5,5 @@ class Point
     public x: number
 end
 
-local point = Point.new({ x = 42 })
+local point = Point({ x = 42 })
 assert(point.x == 42)

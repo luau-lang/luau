@@ -32,11 +32,9 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileIifeInline)
-LUAU_FASTFLAG(LuauCompileExpandLimit)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauCompileMoveElision)
 LUAU_FASTFLAGVARIABLE(LuauCompileCleanBlockDeadClose)
-LUAU_FASTFLAGVARIABLE(LuauCompileContinueEagerClose)
 LUAU_FASTFLAGVARIABLE(LuauCompileLoopUnrollZero)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauCompileConcatTargetTop)
@@ -46,7 +44,7 @@ LUAU_FASTFLAGVARIABLE(LuauOptimizeExportTable)
 LUAU_FASTFLAG(LuauCompileFastpcall)
 LUAU_FASTFLAGVARIABLE(LuauExportedTypesParticipateInScc)
 LUAU_FLAGVERSION(LuauExportedTypesParticipateInScc, 2)
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 
 namespace Luau
 {
@@ -442,17 +440,28 @@ struct Compiler
         if (tableCid < 0)
             CompileError::raise(locNode->location, "Exceeded constant limit; simplify the code to compile");
 
-        uint32_t iid = BytecodeBuilder::getImportId(tableCid, freezeCid);
-        int32_t cid = bytecode.addImport(iid);
-
-        if (cid >= 0 && cid < 32768)
+        // Note: GETIMPORT encoding is limited to 10 bits per object id component
+        // otherwise we can fallback to getglobal
+        bool getGlobalFallback = true;
+        if (tableCid < 1024 && freezeCid < 1024)
         {
-            bytecode.emitAD(LOP_GETIMPORT, freezeReg, int16_t(cid));
-            bytecode.emitAux(iid);
+            uint32_t iid = BytecodeBuilder::getImportId(tableCid, freezeCid);
+            int32_t cid = bytecode.addImport(iid);
+            if (cid >= 0 && cid < 32768)
+            {
+                bytecode.emitAD(LOP_GETIMPORT, freezeReg, int16_t(cid));
+                bytecode.emitAux(iid);
+                getGlobalFallback = false;
+            }
         }
-        else
+
+        if (getGlobalFallback)
         {
-            CompileError::raise(locNode->location, "Exceeded constant limit; simplify the code to compile");
+            bytecode.emitABC(LOP_GETGLOBAL, freezeReg, 0, uint8_t(BytecodeBuilder::getStringHash(sref(tableName))));
+            bytecode.emitAux(tableCid);
+
+            bytecode.emitABC(LOP_GETTABLEKS, freezeReg, freezeReg, uint8_t(BytecodeBuilder::getStringHash(sref(freezeName))));
+            bytecode.emitAux(freezeCid);
         }
 
         bytecode.emitABC(LOP_MOVE, uint8_t(freezeReg + 1), tableReg, 0);
@@ -587,7 +596,7 @@ struct Compiler
         bool hasLongJumpError = false;
         bytecode.expandJumps(hasLongJumpError);
 
-        if (FFlag::LuauCompileExpandLimit && hasLongJumpError)
+        if (hasLongJumpError)
             CompileError::raise(func->location, "Exceeded jump distance limit; simplify the code to compile");
 
         popLocals(0);
@@ -1812,15 +1821,11 @@ struct Compiler
             );
         }
 
-        // All classes have `new` and `__init` methods.
-        int newCid = bytecode.addConstantString(sref(names.getOrAdd("new")));
-        checkConstant(newCid, decl->location);
-        shape.methodNames.emplace_back(newCid);
-
+        // All classes have `__init` methods.
         if (!hasExplicitConstructor)
         {
             int initCid = bytecode.addConstantString(sref(names.getOrAdd("__init")));
-            checkConstant(newCid, decl->location);
+            checkConstant(initCid, decl->location);
             shape.methodNames.emplace_back(initCid);
         }
 
@@ -2536,7 +2541,7 @@ struct Compiler
 
     void compileExprIfElse(AstExprIfElse* expr, uint8_t target, bool targetTemp)
     {
-        if (FFlag::DebugLuauIfLocalSyntax && expr->conditionLocal)
+        if (FFlag::LuauExperimentalIfLocalSyntax && expr->conditionLocal)
         {
             compileExprIfElseLocal(expr, target, targetTemp);
             return;
@@ -3804,7 +3809,7 @@ struct Compiler
             return;
         }
 
-        if (FFlag::DebugLuauIfLocalSyntax && stat->conditionLocal)
+        if (FFlag::LuauExperimentalIfLocalSyntax && stat->conditionLocal)
         {
             compileStatIfLocal(stat);
             return;
@@ -3948,15 +3953,8 @@ struct Compiler
             // this is because the upvalues defined inside the loop body may be captured by a closure defined in the until
             // expression that continue will jump to.
             // but any locals defined in nested blocks or after first continue (which performs validateContinueUntil) do have to be closed
-            if (FFlag::LuauCompileContinueEagerClose)
-            {
-                if (!loops.back().continueUsed)
-                    loops.back().localOffsetContinue = localStack.size();
-            }
-            else
-            {
+            if (!loops.back().continueUsed)
                 loops.back().localOffsetContinue = localStack.size();
-            }
 
             // if continue was called from this statement, any local defined after this in the loop body should not be accessed by until condition
             // it is sufficient to check this condition once, as if this holds for the first continue, it must hold for all subsequent continues.

@@ -13,7 +13,7 @@
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAGVARIABLE(LuauPrettyPrintVisualizeIndexerAccess)
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 
 namespace
 {
@@ -1547,7 +1547,7 @@ struct Printer
 
     void visualizeElseIf(AstStatIf& elseif)
     {
-        if (FFlag::DebugLuauIfLocalSyntax && elseif.conditionLocal)
+        if (FFlag::LuauExperimentalIfLocalSyntax && elseif.conditionLocal)
         {
             const auto cstNode = lookupCstNode<CstStatIf>(&elseif);
 
@@ -1597,7 +1597,7 @@ struct Printer
     {
         const auto cstNode = lookupCstNode<CstExprIfElse>(&elseif);
 
-        if (FFlag::DebugLuauIfLocalSyntax && elseif.conditionLocal)
+        if (FFlag::LuauExperimentalIfLocalSyntax && elseif.conditionLocal)
         {
             if (elseif.conditionKeywordLocation)
                 advance(elseif.conditionKeywordLocation->begin);

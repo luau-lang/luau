@@ -257,7 +257,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Refinement.h
     Analysis/include/Luau/RequireTracer.h
     Analysis/include/Luau/Scope.h
-    Analysis/include/Luau/Set.h
     Analysis/include/Luau/Simplify.h
     Analysis/include/Luau/StructuralTypeEquality.h
     Analysis/include/Luau/Substitution.h
@@ -506,8 +505,8 @@ if(TARGET Luau.UnitTest)
         tests/BuiltinDefinitions.test.cpp
         tests/BytecodeCallInliner.test.cpp
         tests/BytecodeCompiler.test.cpp
-        tests/ClassFixture.cpp
-        tests/ClassFixture.h
+        tests/ExternTypeFixture.cpp
+        tests/ExternTypeFixture.h
         tests/CodeAllocator.test.cpp
         tests/Compiler.test.cpp
         tests/Config.test.cpp
@@ -547,7 +546,6 @@ if(TARGET Luau.UnitTest)
         tests/Sccp.test.cpp
         tests/ScopedFlags.h
         tests/Simplify.test.cpp
-        tests/Set.test.cpp
         tests/StringUtils.test.cpp
         tests/Subtyping.test.cpp
         tests/Symbol.test.cpp

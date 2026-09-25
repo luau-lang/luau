@@ -45,4 +45,27 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassExtendsNonOpenParent")
     assertOutputContainsAll({"Non-open class 'Parent' cannot be extended"});
 }
 
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireClassOverridesComparisonMetamethods")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauUserDefinedClassesRuntime, true},
+        {FFlag::LuauCallFeedback, true},
+        {FFlag::LuauEmitCallFeedback, true},
+        {FFlag::LuauBytecodeCostModel, true}
+    };
+
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/classes/class_override_eq";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"Overriding comparison metamethods is not allowed ('__eq' in class 'Child')"});
+
+    path = getLuauDirectory(PathType::Relative) + "/tests/classes/class_override_lt";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"Overriding comparison metamethods is not allowed ('__lt' in class 'Child')"});
+
+    path = getLuauDirectory(PathType::Relative) + "/tests/classes/class_override_le";
+    runProtectedRequire(path);
+    assertOutputContainsAll({"Overriding comparison metamethods is not allowed ('__le' in class 'Child')"});
+}
+
 TEST_SUITE_END();

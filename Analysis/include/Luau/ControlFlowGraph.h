@@ -7,7 +7,6 @@
 #include "Luau/Symbol.h"
 #include "Luau/TypedAllocator.h"
 #include "Luau/Variant.h"
-#include "Luau/Set.h"
 
 #include <memory>
 #include <optional>
@@ -412,7 +411,7 @@ private:
     DenseHashMap<Symbol, size_t> versionCounter;
 
     // Maps defs to the Instructions that use them
-    DenseHashMap<Definition*, Set<Instruction*>> usingInstructions;
+    DenseHashMap<Definition*, DenseHashSet<Instruction*>> usingInstructions;
 };
 
 } // namespace Luau::CFG

@@ -28,6 +28,7 @@ LUAU_FASTFLAG(LuauPropertyModifierMismatchErrors)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAGVARIABLE(LuauImproveUniqueTableWidthSubtyping)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
 
@@ -723,7 +724,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         return {true};
 
     std::pair<TypeId, TypeId> typePair{subTy, superTy};
-    if (!seenTypes.insert(typePair))
+    if (!seenTypes.try_insert(typePair))
     {
         /* TODO: Caching results for recursive types is really tricky to think
          * about.
@@ -948,7 +949,12 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     {
         const bool forceCovariantTest = false;
         result = isCovariantWith(env, p.first, p.second, forceCovariantTest, scope);
-        if (result.isSubtype && !p.first->indexer && p.second->indexer && p.first->state != TableState::Sealed)
+
+        bool tableIsMutable = p.first->state != TableState::Sealed;
+        if (FFlag::DebugLuauExactTableTypes && p.first->state == TableState::Exact)
+            tableIsMutable = false;
+
+        if (result.isSubtype && !p.first->indexer && p.second->indexer && tableIsMutable)
         {
             // FIXME CLI-182960
             //
@@ -1005,7 +1011,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
     superTp = follow(superTp);
 
     std::pair<TypePackId, TypePackId> typePair = {subTp, superTp};
-    if (!seenPacks.insert(typePair))
+    if (!seenPacks.try_insert(typePair))
         return SubtypingResult{true, false, false};
     ScopedSeenSet<Subtyping::SeenTypePackSet, std::pair<TypePackId, TypePackId>> popper{seenPacks, std::move(typePair)};
 
@@ -2044,6 +2050,18 @@ SubtypingResult Subtyping::isCovariantWith(
         return {false};
     }
 
+    if (FFlag::DebugLuauExactTableTypes)
+    {
+        // Sealed </: Exact
+        // Unsealed <: Exact (but I guess we should seal it and make it exact?)
+
+        // Inexact tables are never subtypes of exact tables.
+        if (superTable->state == TableState::Exact && subTable->state != TableState::Exact)
+        {
+            return {false};
+        }
+    }
+
     // This is an unfortunately complicated state machine. Consider something like:
     //
     //  local function launderone(t: { propone: string }): { propone: any }
@@ -2153,6 +2171,23 @@ SubtypingResult Subtyping::isCovariantWith(
         }
     }
 
+    if (FFlag::DebugLuauExactTableTypes && superTable->state == TableState::Exact)
+    {
+        // We have already handled the inexact </: exact case.
+        LUAU_ASSERT(subTable->state == TableState::Exact);
+
+        if (subTable->indexer.has_value() != superTable->indexer.has_value())
+            return {false};
+
+        for (const auto& [name, subProp]: subTable->props)
+        {
+            // If the supertype table is exact, then every subtype table
+            // property must map to the supertype somewhere.
+            if (0 == superTable->props.count(name))
+                return {false};
+        }
+    }
+
     if (superTable->indexer)
     {
         if (subTable->indexer)
@@ -2162,6 +2197,8 @@ SubtypingResult Subtyping::isCovariantWith(
             // result type.
             record(isCovariantWith(env, *subTable->indexer, *superTable->indexer, scope));
         }
+        else if (subTable->state == TableState::Exact)
+            return {false};
         else if (subTable->state != TableState::Sealed)
         {
             // As above, we assume that {| |} <: {T} because the unsealed table
@@ -2484,7 +2521,9 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Tabl
 {
     SubtypingResult result{false};
     if (superPrim->type == PrimitiveType::Table)
+    {
         result.isSubtype = true;
+    }
 
     return result;
 }
@@ -2514,7 +2553,11 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Prim
     }
     else if (subPrim->type == PrimitiveType::Table)
     {
-        const bool isSubtype = superTable->props.empty() && (!superTable->indexer.has_value() || superTable->state == TableState::Generic);
+        bool isSubtype = superTable->props.empty() && (!superTable->indexer.has_value() || superTable->state == TableState::Generic);
+
+        if (FFlag::DebugLuauExactTableTypes && superTable->state == TableState::Exact)
+            isSubtype = false;
+
         return {isSubtype};
     }
 

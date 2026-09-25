@@ -279,10 +279,7 @@ static void emitDispatchLuauCall(AssemblyBuilderA64& build, ModuleHelpers& helpe
     build.ldr(rClosure, mem(x1, offsetof(CallInfo, func)));
     build.ldr(rClosure, mem(rClosure, offsetof(TValue, value.gc)));
 
-    if (FFlag::LuauCIProto)
-        build.ldr(x2, mem(x1, offsetof(CallInfo, p)));
-    else
-        build.ldr(x2, mem(rClosure, offsetof(Closure, l.p)));
+    build.ldr(x2, mem(x1, offsetof(CallInfo, p)));
 
     // Switch current code and constants
     static_assert(offsetof(Proto, code) == offsetof(Proto, k) + sizeof(Proto::k));
@@ -705,13 +702,14 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         break;
     case IrCmd::IDIV_INT64:
-        // floored division: q = a / b, then if (q < 0 && a % b != 0) q -= 1
-        inst.regA64 = regs.allocReg(KindA64::x, index); // can't reuse: both operands needed for remainder
+        // floored division: q = a / b, then if ((a ^ b) < 0 && a % b != 0) q -= 1
+        inst.regA64 = regs.allocReg(KindA64::x, index); // can't reuse: both operands needed for remainder and sign test
         {
             RegisterA64 temp1 = tempInt64(OP_A(inst));
             RegisterA64 temp2 = tempInt64(OP_B(inst));
             RegisterA64 tempRem = regs.allocTemp(KindA64::x);
             RegisterA64 tempAdj = regs.allocTemp(KindA64::x);
+            RegisterA64 tempSign = regs.allocTemp(KindA64::x);
 
             build.sdiv(inst.regA64, temp1, temp2); // result = a / b
             build.mov(tempRem, inst.regA64);       // copy quotient; rem requires dst to initially hold quotient
@@ -719,11 +717,12 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
             build.sub(tempAdj, inst.regA64, uint16_t(1)); // adjusted = result - 1
 
-            build.cmp(tempRem, uint16_t(0));
-            build.csel(tempAdj, tempAdj, inst.regA64, ConditionA64::NotEqual); // (remainder != 0) ? result-1 : result
+            build.eor(tempSign, temp1, temp2); // sign check: negative if a and b have opposite signs
+            build.cmp(tempSign, uint16_t(0));
+            build.csel(tempAdj, tempAdj, inst.regA64, ConditionA64::Less); // (opposite signs) ? result-1 : result
 
-            build.cmp(inst.regA64, uint16_t(0));
-            build.csel(inst.regA64, tempAdj, inst.regA64, ConditionA64::Less); // (result < 0) ? tempAdj : result
+            build.cmp(tempRem, uint16_t(0));
+            build.csel(inst.regA64, tempAdj, inst.regA64, ConditionA64::NotEqual); // (remainder != 0) ? tempAdj : result
         }
         break;
     case IrCmd::CHECK_DIV_INT64:
@@ -3281,13 +3280,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.mov(x0, rState);
         build.mov(w1, uintOp(OP_A(inst)));
 
-        if (FFlag::LuauCIProto)
-        {
-            build.ldr(x3, mem(rState, offsetof(lua_State, ci)));
-            build.ldr(x3, mem(x3, offsetof(CallInfo, p)));
-        }
-        else
-            build.ldr(x3, mem(rClosure, offsetof(Closure, l.p)));
+        build.ldr(x3, mem(rState, offsetof(lua_State, ci)));
+        build.ldr(x3, mem(x3, offsetof(CallInfo, p)));
         build.ldr(x3, mem(x3, offsetof(Proto, p)));
 
         unsigned protoIndex = uintOp(OP_C(inst)); // 0..32767

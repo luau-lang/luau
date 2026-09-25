@@ -9,7 +9,6 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/RequireTracer.h"
 #include "Luau/Scope.h"
-#include "Luau/Set.h"
 #include "Luau/TypeCheckLimits.h"
 
 #include <mutex>
@@ -83,7 +82,7 @@ struct SourceNode
     DenseHashSet<ModuleName> requireSet;
 
     std::vector<std::pair<ModuleName, Location>> requireLocations;
-    Set<ModuleName> dependents;
+    DenseHashSet<ModuleName> dependents;
 
     bool dirtySourceModule = true;
     bool dirtyModule = true;

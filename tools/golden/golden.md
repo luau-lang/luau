@@ -45,7 +45,7 @@ and populate all of its expectations in one step:
 python3 -m tools.golden --update=all --config=all example
 ```
 
-## Layout and test IDs
+## Layout and test selectors
 
 Any `.luau` file that is not inside an `init.luau` folder is its own single-file
 test:
@@ -81,19 +81,23 @@ outcome (see below), or discovery fails.
 
 IDs always use forward slashes and are relative to `tests/golden`; single-file
 IDs omit `.luau`, while multifile IDs name the directory. Select one or more
-test IDs or directory IDs as positional arguments. A directory ID selects every
-test transitively beneath it:
+test IDs, source paths, or directories as positional arguments. Paths can be
+absolute, relative to the current directory, or relative to `tests/golden`.
+A helper path inside a multifile test selects its owning test. A directory
+selects every test transitively beneath it:
 
 ```sh
 python3 -m tools.golden types/generic packages/cycle
+python3 -m tools.golden tests/golden/types/generic.luau
 python3 -m tools.golden analysis/tables
 python3 -m tools.golden analysis
 ```
 
 Selection is not glob-based. Overlapping selections do not run a test more than
-once. IDs that match neither a test nor a directory containing tests, duplicate
-test IDs, orphan output files, misplaced directives, and an empty suite are
-errors.
+once. Selectors that match neither a test nor a directory containing tests,
+paths outside `tests/golden`, duplicate test IDs, orphan output files, misplaced
+directives, and an empty suite are errors. Test IDs remain the canonical names
+shown in runner output.
 
 ## Directives
 
