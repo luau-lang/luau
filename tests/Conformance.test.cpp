@@ -22,6 +22,7 @@
 #include "doctest.h"
 #include "ScopedFlags.h"
 #include "BufferCage.h"
+#undef FASTCALL
 #include "ConformanceIrHooks.h"
 
 #include <cstdlib>
