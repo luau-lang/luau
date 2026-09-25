@@ -12,6 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauNextReadOnlyIndexer)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -69,6 +70,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "next_iterator_should_infer_types_and_type_ch
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "next_accepts_read_only_indexers")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::LuauNextReadOnlyIndexer, true},
+    };
+
+    CheckResult result = check(R"(
+        local array: { read string } = { "foo", "bar" }
+        local arrayKey: number?, arrayValue: string = next(array)
+
+        local map: { read [string]: number } = { foo = 1 }
+        local mapKey: string?, mapValue: number = next(map)
+
+        local mutableMap: { [string]: number } = { foo = 1 }
+        local mutableKey: string?, mutableValue: number = next(mutableMap)
+
+        local _, state = pairs(mutableMap)
+        state["foo"] = 2
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_iterator_should_infer_types_and_type_check")
