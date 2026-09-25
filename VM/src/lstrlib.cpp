@@ -9,6 +9,7 @@
 #include <stdio.h>
 
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauOptimizeStringSplit, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauOptimizeStringGsub, false)
 
 // macro to `unsign' a character
 #define uchar(c) ((unsigned char)(c))
@@ -830,6 +831,58 @@ static void add_value(MatchState* ms, luaL_Strbuf* b, const char* s, const char*
     luaL_addvalue(b); // add result to accumulator
 }
 
+// checks if a pattern only matches its own text; note that ')' is not in SPECIALS but it is still an error in a pattern
+static bool isliteralpattern(const char* p, size_t lp)
+{
+    for (size_t i = 0; i < lp; i++)
+    {
+        switch (p[i])
+        {
+        case '^':
+        case '$':
+        case '*':
+        case '+':
+        case '?':
+        case '.':
+        case '(':
+        case ')':
+        case '[':
+        case '%':
+        case '-':
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// finds the first occurrence of a non-empty literal in [s, end)
+static const char* findliteral(const char* s, const char* end, const char* p, size_t lp)
+{
+    if (size_t(end - s) < lp)
+        return NULL;
+
+    const char* last = end - lp;
+
+    if (lp == 1)
+    {
+        // matches that immediately follow each other don't need a memchr call
+        if (*s == p[0])
+            return s;
+
+        return (const char*)memchr(s, p[0], last - s + 1);
+    }
+
+    // the first and the last characters are checked inline to avoid a memcmp call at most positions
+    for (; s <= last; s++)
+    {
+        if (s[0] == p[0] && s[lp - 1] == p[lp - 1] && memcmp(s, p, lp) == 0)
+            return s;
+    }
+
+    return NULL;
+}
+
 static int str_gsub(lua_State* L)
 {
     size_t srcl, lp;
@@ -849,24 +902,67 @@ static int str_gsub(lua_State* L)
         lp--; // skip anchor character
     }
     prepstate(&ms, L, src, srcl, p, lp);
-    while (n < max_s)
+
+    // a non-empty pattern without special characters can only match its own text, so we can search for it directly
+    if (DFFlag::LuauOptimizeStringGsub && !anchor && lp > 0 && isliteralpattern(p, lp))
     {
-        const char* e;
-        reprepstate(&ms);
-        e = match(&ms, src, p);
-        if (e)
+        // replacement strings without escapes can be appended as is; this is determined on the first match
+        int plainrepl = -1;
+        const char* repl = NULL;
+        size_t repll = 0;
+
+        while (n < max_s)
         {
+            const char* e = findliteral(src, ms.src_end, p, lp);
+            if (!e)
+                break;
+
             n++;
-            add_value(&ms, &b, src, e, tr);
+
+            if (e != src)
+                luaL_addlstring(&b, src, e - src);
+
+            if (plainrepl < 0)
+            {
+                repl = (tr == LUA_TSTRING || tr == LUA_TNUMBER) ? lua_tolstring(L, 3, &repll) : NULL;
+                plainrepl = repl && !memchr(repl, L_ESC, repll);
+            }
+
+            if (plainrepl)
+            {
+                if (repll != 0)
+                    luaL_addlstring(&b, repl, repll);
+            }
+            else
+            {
+                reprepstate(&ms);
+                add_value(&ms, &b, e, e + lp, tr);
+            }
+
+            src = e + lp;
         }
-        if (e && e > src) // non empty match?
-            src = e;      // skip it
-        else if (src < ms.src_end)
-            luaL_addchar(&b, *src++);
-        else
-            break;
-        if (anchor)
-            break;
+    }
+    else
+    {
+        while (n < max_s)
+        {
+            const char* e;
+            reprepstate(&ms);
+            e = match(&ms, src, p);
+            if (e)
+            {
+                n++;
+                add_value(&ms, &b, src, e, tr);
+            }
+            if (e && e > src) // non empty match?
+                src = e;      // skip it
+            else if (src < ms.src_end)
+                luaL_addchar(&b, *src++);
+            else
+                break;
+            if (anchor)
+                break;
+        }
     }
     luaL_addlstring(&b, src, ms.src_end - src);
     luaL_pushresult(&b);
