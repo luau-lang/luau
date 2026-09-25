@@ -676,18 +676,6 @@ const void* lua_topointer(lua_State* L, int idx)
     }
 }
 
-lua_Destructor lua_toinlineuserdatadtor(lua_State* L, int idx)
-{
-    StkId o = index2addr(L, idx);
-    if (!ttisuserdata(o) || uvalue(o)->tag != UTAG_IDTOR)
-        return NULL;
-
-    Udata* u = uvalue(o);
-    lua_Destructor dtor = nullptr;
-    memcpy(&dtor, &u->data + u->len - sizeof(dtor), sizeof(dtor));
-    return dtor;
-}
-
 /*
 ** push functions (C -> stack)
 */
@@ -1002,6 +990,19 @@ void lua_getfenv(lua_State* L, int idx)
         break;
     }
     api_incr_top(L);
+}
+
+lua_Destructor lua_getinlineuserdatadtor(lua_State* L, int idx)
+{
+    StkId o = index2addr(L, idx);
+    api_check(L, ttisuserdata(o));
+    if (uvalue(o)->tag != UTAG_IDTOR)
+        return NULL;
+
+    Udata* u = uvalue(o);
+    lua_Destructor dtor = nullptr;
+    memcpy(&dtor, &u->data + u->len - sizeof(dtor), sizeof(dtor));
+    return dtor;
 }
 
 /*

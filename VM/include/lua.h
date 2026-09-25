@@ -190,7 +190,6 @@ LUA_API int lua_lightuserdatatag(lua_State* L, int idx);
 LUA_API lua_State* lua_tothread(lua_State* L, int idx);
 LUA_API void* lua_tobuffer(lua_State* L, int idx, size_t* len);
 LUA_API const void* lua_topointer(lua_State* L, int idx);
-LUA_API lua_Destructor lua_toinlineuserdatadtor(lua_State* L, int idx);
 
 /*
 ** push functions (C -> stack)
@@ -237,6 +236,8 @@ LUA_API void lua_setsafeenv(lua_State* L, int idx, int enabled);
 
 LUA_API int lua_getmetatable(lua_State* L, int objindex);
 LUA_API void lua_getfenv(lua_State* L, int idx);
+
+LUA_API lua_Destructor lua_getinlineuserdatadtor(lua_State* L, int idx);
 
 /*
 ** set functions (stack -> Lua)

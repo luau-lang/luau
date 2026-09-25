@@ -3975,13 +3975,13 @@ TEST_CASE("UserdataApi")
     };
     void* ud9 = lua_newuserdatadtor(L, sizeof(int), idtorAdd);
     *(int*)ud9 = 1;
-    CHECK((lua_toinlineuserdatadtor(L, -1) == idtorAdd));
+    CHECK((lua_getinlineuserdatadtor(L, -1) == idtorAdd));
     // Tag 51, not UTAG_IDTOR.
-    CHECK((lua_toinlineuserdatadtor(L, -2) == nullptr));
+    CHECK((lua_getinlineuserdatadtor(L, -2) == nullptr));
     lua_setinlineuserdatadtor(L, -1, nullptr);
-    CHECK((lua_toinlineuserdatadtor(L, -1) == nullptr));
+    CHECK((lua_getinlineuserdatadtor(L, -1) == nullptr));
     lua_setinlineuserdatadtor(L, -1, idtorSub);
-    CHECK((lua_toinlineuserdatadtor(L, -1) == idtorSub));
+    CHECK((lua_getinlineuserdatadtor(L, -1) == idtorSub));
 
     globalState.reset();
 
