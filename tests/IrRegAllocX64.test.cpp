@@ -1,10 +1,13 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrRegAllocX64.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::X64;
+
+LUAU_FASTFLAG(LuauCodegenX64IntSpillRestore)
 
 class IrRegAllocX64Fixture
 {
@@ -54,6 +57,34 @@ TEST_CASE_FIXTURE(IrRegAllocX64Fixture, "RelocateFix")
  vmovsd      qword ptr [rsp+048h],rax
  vmovsd      qword ptr [rsp+050h],rax
  vmovsd      rax,qword ptr [rsp+048h]
+)");
+}
+
+TEST_CASE_FIXTURE(IrRegAllocX64Fixture, "RestoreStackSpillIgnoresLaterConvertedLocation")
+{
+    ScopedFastFlag luauCodegenX64IntSpillRestore{FFlag::LuauCodegenX64IntSpillRestore, true};
+
+    IrInst irInst0{IrCmd::BUFFER_READI32};
+    irInst0.lastUse = 2;
+    function.instructions.push_back(irInst0);
+
+    IrInst irInst1{IrCmd::BUFFER_READI32};
+    irInst1.lastUse = 2;
+    function.instructions.push_back(irInst1);
+
+    function.instructions[0].regX64 = regs.takeReg(eax, 0);
+    regs.preserve(function.instructions[0]);
+    function.recordRestoreLocation(0, {IrOp{IrOpKind::VmReg, 16}, IrValueKind::Double, IrCmd::UINT_TO_NUM, false});
+
+    function.instructions[1].regX64 = regs.takeReg(eax, 1);
+    regs.restore(function.instructions[0], true);
+
+    LUAU_ASSERT(function.instructions[0].regX64 == eax);
+
+    checkMatch(R"(
+ mov         dword ptr [rsp+048h],eax
+ mov         dword ptr [rsp+04Ch],eax
+ mov         eax,dword ptr [rsp+048h]
 )");
 }
 

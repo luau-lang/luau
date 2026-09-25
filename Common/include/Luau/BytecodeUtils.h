@@ -3,6 +3,8 @@
 
 #include "Luau/Bytecode.h"
 
+#include <stdint.h>
+
 namespace Luau
 {
 

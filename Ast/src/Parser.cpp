@@ -6,11 +6,12 @@
 #include "Luau/TimeTrace.h"
 
 #include <algorithm>
+#include <unordered_set>
 
 #include <errno.h>
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
-#include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauTypeLengthLimit, 1000)

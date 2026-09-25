@@ -8,10 +8,12 @@
 #include "Luau/FileUtils.h"
 
 #include <algorithm>
-#include <stdio.h>
 #include <string>
 #include <string_view>
 #include <queue>
+
+#include <stdlib.h>
+#include <stdio.h>
 
 #define VERBOSE 0 // 1 - print out commandline invocations.  2 - print out stdout
 

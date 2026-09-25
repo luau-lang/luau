@@ -10,6 +10,7 @@
 #include "lstate.h"
 
 LUAU_FASTFLAG(DebugCodegenLimitRegs)
+LUAU_FASTFLAGVARIABLE(LuauCodegenX64IntSpillRestore)
 
 namespace Luau
 {
@@ -498,7 +499,8 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
             {
                 build.vmovsd(reg, restoreAddr);
             }
-            else if (spill.valueKind == IrValueKind::Int && restoreLocation.kind == IrValueKind::Double)
+            else if (spill.valueKind == IrValueKind::Int && restoreLocation.kind == IrValueKind::Double &&
+                     (!FFlag::LuauCodegenX64IntSpillRestore || spill.stackSlot == kNoStackSlot))
             {
                 // Handle restore of an int/uint value from a location storing a double number
                 if (restoreLocation.conversionCmd == IrCmd::INT_TO_NUM)
