@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAGVARIABLE(LuauDoNotIceForBindingGeneric)
+LUAU_FASTFLAGVARIABLE(LuauSubtypingSkipUnreadReasoning)
 
 
 namespace Luau
@@ -304,6 +305,11 @@ SubtypingResult& SubtypingResult::withBothComponent(TypePath::Component componen
 
 SubtypingResult& SubtypingResult::withSubComponent(TypePath::Component component)
 {
+    // Nothing reads the reasoning of a successful result: andAlso and orElse drop it, and negate
+    // discards it.
+    if (FFlag::LuauSubtypingSkipUnreadReasoning && isSubtype)
+        return *this;
+
     if (reasoning.empty())
         reasoning.insert(SubtypingReasoning{Path(std::move(component)), TypePath::kEmpty});
     else
@@ -317,6 +323,9 @@ SubtypingResult& SubtypingResult::withSubComponent(TypePath::Component component
 
 SubtypingResult& SubtypingResult::withSuperComponent(TypePath::Component component)
 {
+    if (FFlag::LuauSubtypingSkipUnreadReasoning && isSubtype)
+        return *this;
+
     if (reasoning.empty())
         reasoning.insert(SubtypingReasoning{TypePath::kEmpty, Path(std::move(component))});
     else
@@ -335,6 +344,9 @@ SubtypingResult& SubtypingResult::withBothPath(TypePath::Path path)
 
 SubtypingResult& SubtypingResult::withSubPath(TypePath::Path path)
 {
+    if (FFlag::LuauSubtypingSkipUnreadReasoning && isSubtype)
+        return *this;
+
     if (reasoning.empty())
         reasoning.insert(SubtypingReasoning{std::move(path), TypePath::kEmpty});
     else
@@ -348,6 +360,9 @@ SubtypingResult& SubtypingResult::withSubPath(TypePath::Path path)
 
 SubtypingResult& SubtypingResult::withSuperPath(TypePath::Path path)
 {
+    if (FFlag::LuauSubtypingSkipUnreadReasoning && isSubtype)
+        return *this;
+
     if (reasoning.empty())
         reasoning.insert(SubtypingReasoning{TypePath::kEmpty, std::move(path)});
     else
@@ -1532,6 +1547,9 @@ template<typename SubTy, typename SuperTy>
 SubtypingResult Subtyping::isContravariantWith(SubtypingEnvironment& env, SubTy subTy, SuperTy superTy, NotNull<Scope> scope)
 {
     SubtypingResult result = isCovariantWith(env, superTy, subTy, scope);
+    if (FFlag::LuauSubtypingSkipUnreadReasoning && result.isSubtype)
+        return result;
+
     if (result.reasoning.empty())
         result.reasoning.insert(SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Contravariant});
     else
@@ -1563,6 +1581,9 @@ SubtypingResult Subtyping::isInvariantWith(SubtypingEnvironment& env, SubTy subT
 {
     SubtypingResult result = isCovariantWith(env, subTy, superTy, scope);
     result.andAlso(isContravariantWith(env, subTy, superTy, scope));
+
+    if (FFlag::LuauSubtypingSkipUnreadReasoning && result.isSubtype)
+        return result;
 
     if (result.reasoning.empty())
         result.reasoning.insert(SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invariant});
@@ -1651,7 +1672,14 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
         if (next.isSubtype)
             return next;
 
-        result.andAlso(next.withSuperComponent(TypePath::Index{index, TypePath::Index::Variant::Union}));
+        if (FFlag::LuauSubtypingSkipUnreadReasoning)
+        {
+            // The reasoning is cleared below, so merging each option's into it is wasted work.
+            next.reasoning.clear();
+            result.andAlso(std::move(next));
+        }
+        else
+            result.andAlso(next.withSuperComponent(TypePath::Index{index, TypePath::Index::Variant::Union}));
         ++index;
     }
 
