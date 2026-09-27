@@ -17,6 +17,7 @@ using namespace Luau;
 
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(LuauForInLoopScopeAfterValues)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -1666,6 +1667,87 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_inside_lambdas
     REQUIRE(err);
     CHECK_EQ("number", toString(err->wantedType));
     CHECK_EQ("string", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_lambda_has_its_own_return_type")
+{
+    ScopedFastFlag forInLoopScopeAfterValues{FFlag::LuauForInLoopScopeAfterValues, true};
+
+    CheckResult result = check(R"(
+        local function call(f: () -> number): {number}
+            return {f()}
+        end
+
+        local function outer(): string
+            for _, v in call(function() return 1 end) do
+                return tostring(v)
+            end
+            return ""
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_lambda_checks_its_return_annotation")
+{
+    ScopedFastFlag forInLoopScopeAfterValues{FFlag::LuauForInLoopScopeAfterValues, true};
+
+    CheckResult result = check(R"(
+        local function call(f: () -> number): {number}
+            return {f()}
+        end
+
+        local function outer(): string
+            for _, v in call(function(): number return "" end) do
+                return tostring(v)
+            end
+            return ""
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("number", toString(err->wantedType));
+    CHECK_EQ("string", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_lambda_preserves_enclosing_return_annotation")
+{
+    ScopedFastFlag forInLoopScopeAfterValues{FFlag::LuauForInLoopScopeAfterValues, true};
+
+    CheckResult result = check(R"(
+        local function call(f: () -> number): {number}
+            return {f()}
+        end
+
+        local function outer(): string
+            for _, v in call(function() return 1 end) do
+                return v
+            end
+            return ""
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("string", toString(err->wantedType));
+    CHECK_EQ("number", toString(err->givenType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_table_of_lambdas_have_their_own_return_types")
+{
+    ScopedFastFlag forInLoopScopeAfterValues{FFlag::LuauForInLoopScopeAfterValues, true};
+
+    CheckResult result = check(R"(
+        for _, fn in { function() return 1 end, function() return 2 end } do
+            local n: number = fn()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

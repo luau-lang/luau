@@ -55,6 +55,7 @@ LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceSetMetatable)
 LUAU_FASTFLAGVARIABLE(LuauThreadGeneralizeThroughConstraintGeneration)
 LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
+LUAU_FASTFLAGVARIABLE(LuauForInLoopScopeAfterValues)
 
 namespace Luau
 {
@@ -1641,7 +1642,10 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFor* for_)
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forIn)
 {
-    ScopePtr loopScope = childScope(forIn, scope);
+    ScopePtr loopScope;
+    if (!FFlag::LuauForInLoopScopeAfterValues)
+        loopScope = childScope(forIn, scope);
+
     TypePackId iterator = nullptr;
     if (FFlag::LuauThreadGeneralizeThroughConstraintGeneration)
     {
@@ -1651,6 +1655,10 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forI
     {
         iterator = checkPack_DEPRECATED(scope, forIn->values).tp;
     }
+
+    // The loop scope covers the iterator expressions too, so it must come after the scopes of any functions in them
+    if (FFlag::LuauForInLoopScopeAfterValues)
+        loopScope = childScope(forIn, scope);
 
     std::vector<TypeId> variableTypes;
     variableTypes.reserve(forIn->vars.size);
