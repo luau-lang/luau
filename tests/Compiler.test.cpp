@@ -10128,6 +10128,109 @@ RETURN R0 2
     );
 }
 
+TEST_CASE("InlineElideTargetReadByArgument")
+{
+    ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};
+
+    // Argument cannot be computed using the target register as a temporary when it reads the local that is being assigned
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function id(v) return v end
+
+local x = ...
+x = id(string.upper(x))
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['id']
+GETVARARGS R1 1
+GETIMPORT R2 3 [string.upper]
+MOVE R3 R1
+CALL R2 1 1
+MOVE R1 R2
+RETURN R1 1
+)"
+    );
+
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function id(v) return v end
+
+local x = ...
+x = id(x > 1 or x + 2)
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['id']
+GETVARARGS R1 1
+LOADB R2 1
+LOADN R3 1
+JUMPIFLT R3 R1 L0
+ADDK R2 R1 K1 [2]
+L0: MOVE R1 R2
+RETURN R1 1
+)"
+    );
+
+    // Same applies when the returned parameter is mutated
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function withdefault(v)
+    if v == nil then v = 0 end
+    return v
+end
+
+local x = ...
+x = withdefault({x})
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['withdefault']
+GETVARARGS R1 1
+NEWTABLE R2 0 1
+MOVE R3 R1
+SETLIST R2 R3 1 [1]
+MOVE R1 R2
+JUMPXEQKNIL R1 L0 NOT
+LOADN R1 0
+L0: RETURN R1 1
+)"
+    );
+
+    // Argument can still be computed directly into the target when it is safe to do so
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
+local function id(v) return v end
+
+local x = ...
+x = id(x + 1)
+return x
+)",
+                   1,
+                   2
+               ),
+        R"(
+DUPCLOSURE R0 K0 ['id']
+GETVARARGS R1 1
+ADDK R1 R1 K1 [1]
+RETURN R1 1
+)"
+    );
+}
+
 TEST_CASE("InlineNoElideWhenNoTarget")
 {
     ScopedFastFlag luauCompileMoveElision{FFlag::LuauCompileMoveElision, true};

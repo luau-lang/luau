@@ -1120,6 +1120,16 @@ struct Compiler
         return visitor.used;
     }
 
+    // Target register of an inlined call can hold a local that is being assigned to, such as 'x' in 'x = id(f(x))'
+    // Expression can only be computed with target as a temporary if it doesn't read that local, otherwise it is compiled like 'x = f(x)'
+    void compileExprToInlineTarget(AstExpr* node, uint8_t target)
+    {
+        FindRegisterUseByLocal visitor(this, target);
+        node->visit(&visitor);
+
+        compileExpr(node, target, /* targetTemp= */ !visitor.used);
+    }
+
     void compileInlinedCall(AstExprCall* expr, AstExprFunction* func, uint8_t target, uint8_t targetCount)
     {
         Function* fi = FFlag::LuauCompileMoveElision ? functions.find(func) : nullptr;
@@ -1171,7 +1181,7 @@ struct Compiler
                 if (canUseParameterTarget && !isRegisterUsedInCallArguments(expr, i + 1, target))
                 {
                     if (arg)
-                        compileExprTemp(arg, target);
+                        compileExprToInlineTarget(arg, target);
                     else
                         bytecode.emitABC(LOP_LOADNIL, target, 0, 0);
 
@@ -1213,7 +1223,7 @@ struct Compiler
                 }
                 else if (canUseParameterTarget && !isRegisterUsedInCallArguments(expr, i + 1, target))
                 {
-                    compileExprTemp(arg, target);
+                    compileExprToInlineTarget(arg, target);
 
                     args.push_back({var, target, {Constant::Type_Unknown}, kDefaultAllocPc});
                 }

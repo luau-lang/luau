@@ -244,6 +244,24 @@ clobber()
 assert(x[1] == 1234)
 assert(x[2] == 4567)
 
+-- inlined call that returns its argument must not clobber the assigned local before the argument reads it
+do
+  local function id(v) return v end
+  local function withdefault(v) if v == nil then v = 0 end return v end
+
+  local function call(x) x = id(string.upper(x)) return x end
+  local function nestedtable(x) x = id(table.concat({x, "b"})) return x end
+  local function tablector(x) x = id({x}) return x end
+  local function andor(x) x = id(x > 1 or x + 2) return x end
+  local function mutatedparam(x) x = withdefault(string.upper(x)) return x end
+
+  assert(call("a") == "A")
+  assert(nestedtable("a") == "ab")
+  assert(tablector("a")[1] == "a")
+  assert(andor(0) == 2)
+  assert(mutatedparam("a") == "A")
+end
+
 -- C-stack overflow while handling C-stack overflow
 if not limitedstack then
   local function loop ()
