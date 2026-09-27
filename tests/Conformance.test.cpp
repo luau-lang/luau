@@ -70,6 +70,7 @@ LUAU_FASTFLAG(LuauCompileNoFoldVectorEqW)
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_FASTFLAG(LuauEnumMoreEdges)
 LUAU_DYNAMIC_FASTFLAG(LuauTableMoveTimeoutFix)
+LUAU_DYNAMIC_FASTFLAG(LuauGcHeapShrinkFix)
 LUAU_FASTFLAG(LuauFastpcallInterrupt)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCallFeedback)
@@ -3200,6 +3201,34 @@ TEST_CASE("ApiAlloc")
     bool allocfIsSet = lua_getallocf(L, &udCheck) == limitedRealloc;
     CHECK(allocfIsSet);
     CHECK(udCheck == &ud);
+}
+
+TEST_CASE("ApiAllocationRateAfterFullGC")
+{
+    ScopedFastFlag luauGcHeapShrinkFix{DFFlag::LuauGcHeapShrinkFix, true};
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    // grow the heap so that incremental collection cycles complete
+    lua_createtable(L, 0, 0);
+    for (int i = 1; i <= 100000; i++)
+    {
+        lua_createtable(L, 1, 0);
+        lua_rawseti(L, -2, i);
+    }
+    lua_pop(L, 1);
+
+    // full collection shrinks the heap below its size at the end of the last incremental cycle
+    lua_gc(L, LUA_GCCOLLECT, 0);
+
+    // allocation rate is only measured over intervals longer than 1ms
+    double start = lua_clock();
+    while (lua_clock() - start < 0.002)
+    {
+    }
+
+    CHECK(lua_allocationrate(L) >= 0);
 }
 
 TEST_CASE("ApiEncode")
