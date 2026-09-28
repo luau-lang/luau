@@ -16,6 +16,62 @@ TEST_CASE("TypeError_code_should_return_nonzero_code")
     CHECK_GE(e.code(), 1000);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_bounds_mismatch_owns_name")
+{
+    std::string expectedName;
+    SUBCASE("short name")
+    {
+        expectedName = "PhaseT";
+    }
+    SUBCASE("heap allocated name")
+    {
+        expectedName = "GenericParameterNameLongEnoughToRequireAllocatedStorage";
+    }
+
+    TypeError error;
+    {
+        std::string originalName = expectedName;
+        error = TypeError{Location{}, GenericBoundsMismatch{originalName, {getBuiltins()->numberType}, {getBuiltins()->stringType}}};
+
+        // Modify the still-live source buffer so a borrowed name fails deterministically,
+        // without reading dangling memory in the unpatched implementation.
+        for (char& character : originalName)
+            character = 'x';
+
+        const auto* mismatch = get<GenericBoundsMismatch>(error);
+        REQUIRE(mismatch);
+        REQUIRE_EQ(expectedName, mismatch->genericName);
+    }
+
+    CHECK_EQ(
+        "No valid instantiation could be inferred for generic type parameter " + expectedName +
+            ". It was expected to be at least:\n\tnumber\nand at most:\n\tstring\nbut these types are not compatible with one another.",
+        toString(error)
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_bounds_mismatch_name_survives_type_graph_cleanup")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    getFrontend().options.retainFullTypeGraphs = false;
+
+    CheckResult result = check(R"(
+        local function combine<PhaseT>(a: { PhaseT }, b: { PhaseT }): { read PhaseT }
+            return {}
+        end
+
+        local x: { number }
+        local y: { boolean }
+        local z = combine(x, y)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const auto* mismatch = get<GenericBoundsMismatch>(result.errors[0]);
+    REQUIRE(mismatch);
+    CHECK_EQ("PhaseT", mismatch->genericName);
+    CHECK_EQ(0, toString(result.errors[0]).find("No valid instantiation could be inferred for generic type parameter PhaseT."));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_names_show_instead_of_tables")
 {
     DOES_NOT_PASS_WITH_EXACT_TABLES();
