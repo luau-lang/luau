@@ -25,7 +25,6 @@ LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauRefactorStringSemanticSubtyping)
 LUAU_FASTFLAG(DebugLuauParseExactTables)
 LUAU_FASTFLAG(DebugLuauExactTableTypes)
-LUAU_FASTFLAG(LuauFixSuperNegationTypePaths)
 LUAU_FASTFLAG(LuauSubtypingSkipUnreadReasoning)
 
 using namespace Luau;
@@ -2255,7 +2254,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "multiple_reasonings")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "successful_subtyping_has_no_reasoning")
 {
-    ScopedFastFlag sffs[] = {{FFlag::LuauFixSuperNegationTypePaths, true}, {FFlag::LuauSubtypingSkipUnreadReasoning, true}};
+    ScopedFastFlag sff{FFlag::LuauSubtypingSkipUnreadReasoning, true};
 
     SubtypingResult result = isSubtype(getBuiltins()->numberType, negate(getBuiltins()->stringType));
     CHECK(result.isSubtype);

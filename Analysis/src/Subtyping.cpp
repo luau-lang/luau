@@ -1674,7 +1674,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 
         if (FFlag::LuauSubtypingSkipUnreadReasoning)
         {
-            // The reasoning is cleared below, so merging each option's into it is wasted work.
+            // The failed reasoning emitted when subtyping `T <: A | B | C` is always cleared before returning, so we can simply skip its inclusion.
             next.reasoning.clear();
             result.andAlso(std::move(next));
         }
