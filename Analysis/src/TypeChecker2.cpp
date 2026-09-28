@@ -221,11 +221,18 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
     // The mentioned functions are only consulted for an instance with a generic argument.
     void ensureMentionedFunctions()
     {
-        if (!unscannedDeclStack)
-            return;
+        if (FFlag::LuauSkipUnusedTypeTraversals)
+        {
+            if (!unscannedDeclStack)
+                return;
 
-        findMentionedFunctions(*unscannedDeclStack);
-        unscannedDeclStack = nullptr;
+            findMentionedFunctions(*unscannedDeclStack);
+            unscannedDeclStack = nullptr;
+        }
+        else
+        {
+            LUAU_ASSERT(!unscannedDeclStack);
+        }
     }
 
     bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
