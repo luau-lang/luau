@@ -1368,7 +1368,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "clearModules_cleans_up_reverse_dependency_ed
     LUAU_REQUIRE_NO_ERRORS(getFrontend().check("game/Gui/Modules/B"));
 
     // Before clearing: A has B as a dependent
-    CHECK(getFrontend().sourceNodes["game/Gui/Modules/A"]->dependents.count("game/Gui/Modules/B") == 1);
+    CHECK(getFrontend().sourceNodes["game/Gui/Modules/A"]->dependents.contains("game/Gui/Modules/B"));
 
     getFrontend().clearModules({"game/Gui/Modules/B"});
 
@@ -1376,7 +1376,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "clearModules_cleans_up_reverse_dependency_ed
     CHECK(getFrontend().sourceNodes.count("game/Gui/Modules/B") == 0);
 
     // A should no longer list B as a dependent
-    CHECK(getFrontend().sourceNodes["game/Gui/Modules/A"]->dependents.count("game/Gui/Modules/B") == 0);
+    CHECK(!getFrontend().sourceNodes["game/Gui/Modules/A"]->dependents.contains("game/Gui/Modules/B"));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "clearModules_nonexistent_module_is_noop")
@@ -1768,9 +1768,9 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_dependents_stored_on_node_as_graph_upda
 
         for (const auto& module : getFrontend().sourceNodes)
         {
-            Set<ModuleName>& dependentsForModule = module.second->dependents;
+            DenseHashSet<ModuleName>& dependentsForModule = module.second->dependents;
             for (const auto& dep : dependents[module.first])
-                CHECK_MESSAGE(1 == dependentsForModule.count(dep), "Mismatch in dependents for " << module.first << ": " << message);
+                CHECK_MESSAGE(dependentsForModule.contains(dep), "Mismatch in dependents for " << module.first << ": " << message);
         }
     };
 
@@ -1778,7 +1778,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_dependents_stored_on_node_as_graph_upda
     {
         SourceNode& fromNode = *getFrontend().sourceNodes[from];
         CHECK_MESSAGE(
-            fromNode.dependents.count(to) == int(expected),
+            fromNode.dependents.contains(to) == expected,
             "Expected " << from << " to " << (expected ? std::string() : std::string("not ")) << "have a reverse dependency on " << to
         );
     };
@@ -2046,6 +2046,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "parse_types")
 
 TEST_CASE_FIXTURE(FrontendFixture, "generic_P_widening_with_cross_module_recursive_type")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
     ScopedFastFlag _{FFlag::LuauSubtypingMissingPropertiesAsNil, true};

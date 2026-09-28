@@ -8,6 +8,7 @@
 
 LUAU_FASTFLAG(DebugLuauLogSolver)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
+LUAU_FASTFLAG(LuauReferenceCountInitializerIsIterative)
 
 namespace Luau
 {
@@ -389,8 +390,16 @@ void ConstraintGraph::shiftReferences(T source, T target)
 
     TypeIds mutatedTypes;
     TypePackIds mutatedTypePacks;
-    ReferenceCountInitializer rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
-    rci.traverse(target);
+    if (FFlag::LuauReferenceCountInitializerIsIterative)
+    {
+        ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+        rci.run(target);
+    }
+    else
+    {
+        ReferenceCountInitializer_DEPRECATED rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+        rci.traverse(target);
+    }
     copyDependenciesToReachableTypes(source, sourceDependencies, std::move(mutatedTypes), std::move(mutatedTypePacks));
 
     // Types in the constraint graph are always dynamically discovered, so
@@ -445,8 +454,17 @@ void ConstraintGraph::copyDependenciesOf(T source, T target)
     auto sourceDependencies = findDependencyList(source);
     TypeIds mutatedTypes;
     TypePackIds mutatedTypePacks;
-    ReferenceCountInitializer rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
-    rci.traverse(target);
+
+    if (FFlag::LuauReferenceCountInitializerIsIterative)
+    {
+        ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+        rci.run(target);
+    }
+    else
+    {
+        ReferenceCountInitializer_DEPRECATED rci{NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
+        rci.traverse(target);
+    }
     // We do not want to _delete_ the original vertex, so we pass nullopt here.
     copyDependenciesToReachableTypes(std::nullopt, sourceDependencies, std::move(mutatedTypes), std::move(mutatedTypePacks));
 }

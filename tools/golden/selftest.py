@@ -18,7 +18,11 @@ from unittest import mock
 from . import cli, execution, suite
 from .cli import create_argument_parser, main
 from .directives import directives_from_file, parse_directives
-from .discovery import discover_tests, select_tests
+from .discovery import (
+    discover_test_index,
+    load_and_validate_tests,
+    select_test_entries,
+)
 from .executables import resolve_executables
 from .execution import execute_configuration, run_command
 from .expectations import (
@@ -182,10 +186,10 @@ class DiscoveryTests(unittest.TestCase):
             _write(root / "case.flags-on.strict.output")
 
             with self.assertRaisesRegex(GoldenError, "no status resolves.*flags-off"):
-                _ = discover_tests(root)
+                _ = load_and_validate_tests(discover_test_index(root))
 
             _write(root / "case.flags-off.nonstrict.output")
-            tests = discover_tests(root)
+            tests = load_and_validate_tests(discover_test_index(root))
 
             self.assertEqual(["case"], [test.test_id for test in tests])
 
@@ -194,7 +198,7 @@ class DiscoveryTests(unittest.TestCase):
             root = Path(temporary)
             _write(root / "case.luau", "return true\n")
             with self.assertRaisesRegex(GoldenError, "no status resolves"):
-                _ = discover_tests(root)
+                _ = load_and_validate_tests(discover_test_index(root))
 
     def test_targeted_update_bootstraps_directiveless_test(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -207,7 +211,7 @@ class DiscoveryTests(unittest.TestCase):
                 frozenset(CONFIGURATIONS),
             )
 
-            tests = discover_tests(root, update)
+            tests = load_and_validate_tests(discover_test_index(root), update)
 
             self.assertEqual(["case"], [test.test_id for test in tests])
 
@@ -224,7 +228,16 @@ class DiscoveryTests(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(GoldenError, "unselected.luau.*no status resolves"):
-                _ = discover_tests(root, update)
+                _ = load_and_validate_tests(discover_test_index(root), update)
+
+    def test_unknown_selector_precedes_incomplete_test_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _write(root / "incomplete.luau", "return true\n")
+            index = discover_test_index(root)
+
+            with self.assertRaisesRegex(GoldenError, "unknown golden test ID.*tests/golden/missing"):
+                _ = select_test_entries(index, ["tests/golden/missing"], root)
 
     def test_targeted_update_must_cover_every_incomplete_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -238,7 +251,7 @@ class DiscoveryTests(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(GoldenError, "no status resolves.*flags-off"):
-                _ = discover_tests(root, update)
+                _ = load_and_validate_tests(discover_test_index(root), update)
 
     def test_rejects_root_level_init(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -247,7 +260,7 @@ class DiscoveryTests(unittest.TestCase):
             _write(root / "helper.luau", "return true\n")
 
             with self.assertRaisesRegex(GoldenError, "root-level init.luau is not supported"):
-                _ = discover_tests(root)
+                _ = load_and_validate_tests(discover_test_index(root))
 
     def test_discovers_single_and_multifile_tests(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -259,13 +272,17 @@ class DiscoveryTests(unittest.TestCase):
             # test, not a standalone test -- even in a subfolder with no init.luau.
             _write(root / "package" / "sub" / "module.luau", "return 2\n")
 
-            tests = discover_tests(root)
+            index = discover_test_index(root)
+            tests = load_and_validate_tests(index)
 
             self.assertEqual(["package", "single"], [test.test_id for test in tests])
             self.assertEqual("package/init.luau", tests[0].entry_argument)
-            self.assertEqual(["single"], [test.test_id for test in select_tests(tests, ["single"])])
+            self.assertEqual(
+                ["single"],
+                [entry.test_id for entry in select_test_entries(index, ["single"], root)],
+            )
             with self.assertRaisesRegex(GoldenError, "unknown golden test"):
-                _ = select_tests(tests, ["missing"])
+                _ = select_test_entries(index, ["missing"], root)
 
     def test_selects_test_groups_transitively(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -274,30 +291,87 @@ class DiscoveryTests(unittest.TestCase):
             _write(root / "analysis" / "tables" / "nested" / "index.luau", "--!golden ok\n")
             _write(root / "analysis" / "types" / "union.luau", "--!golden ok\n")
             _write(root / "runtime" / "tables.luau", "--!golden ok\n")
-            tests = discover_tests(root)
+            index = discover_test_index(root)
 
             self.assertEqual(
                 ["analysis/tables/array", "analysis/tables/nested/index"],
-                [test.test_id for test in select_tests(tests, ["analysis/tables"])],
+                [entry.test_id for entry in select_test_entries(index, ["analysis/tables"], root)],
             )
             self.assertEqual(
                 ["analysis/tables/array", "analysis/tables/nested/index", "analysis/types/union"],
-                [test.test_id for test in select_tests(tests, ["analysis"])],
+                [entry.test_id for entry in select_test_entries(index, ["analysis"], root)],
             )
             self.assertEqual(
                 ["analysis/tables/array", "analysis/tables/nested/index", "analysis/types/union"],
-                [test.test_id for test in select_tests(tests, ["analysis", "analysis/tables"])],
+                [entry.test_id for entry in select_test_entries(index, ["analysis", "analysis/tables"], root)],
             )
 
             with self.assertRaisesRegex(GoldenError, "unknown golden test ID.*analysis/missing"):
-                _ = select_tests(tests, ["analysis/missing"])
+                _ = select_test_entries(index, ["analysis/missing"], root)
+
+    def test_normalizes_source_file_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source_root = Path(temporary)
+            root = source_root / "tests" / "golden"
+            entry = root / "analysis" / "case.luau"
+            _write(entry, "--!golden ok\n")
+            index = discover_test_index(root)
+
+            self.assertEqual(
+                ["analysis/case", "analysis/case", "analysis/case"],
+                [
+                    selected.test_id
+                    for selector in ("analysis/case.luau", "tests/golden/analysis/case.luau", str(entry))
+                    for selected in select_test_entries(index, [selector], source_root)
+                ],
+            )
+
+    def test_multifile_helper_paths_select_the_owning_test(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "tests" / "golden"
+            _write(root / "package" / "init.luau", "--!golden ok\n")
+            helper = root / "package" / "nested" / "helper.luau"
+            _write(helper, "return true\n")
+
+            self.assertEqual(
+                ["package"],
+                [
+                    entry.test_id
+                    for entry in select_test_entries(
+                        discover_test_index(root),
+                        [str(helper), str(helper.parent)],
+                        Path(temporary),
+                    )
+                ],
+            )
+
+    def test_rejects_explicit_paths_outside_the_test_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            root = workspace / "tests" / "golden"
+            _write(root / "case.luau", "--!golden ok\n")
+            outside = workspace / "outside.luau"
+            _write(outside, "return true\n")
+
+            with self.assertRaisesRegex(GoldenError, "outside the test root"):
+                _ = select_test_entries(discover_test_index(root), [str(outside)], workspace)
+
+    def test_rejects_non_source_files_inside_multifile_tests(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "tests" / "golden"
+            _write(root / "package" / "init.luau", "--!golden ok\n")
+            readme = root / "package" / "README.md"
+            _write(readme, "fixture\n")
+
+            with self.assertRaisesRegex(GoldenError, "not a Luau source file"):
+                _ = select_test_entries(discover_test_index(root), [str(readme)], Path(temporary))
 
     def test_rejects_misplaced_directive_and_absorbs_nested_init(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             _write(root / "late.luau", "local x = 1\n--!golden ok\n")
             with self.assertRaisesRegex(GoldenError, "misplaced"):
-                _ = discover_tests(root)
+                _ = load_and_validate_tests(discover_test_index(root))
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -305,7 +379,7 @@ class DiscoveryTests(unittest.TestCase):
             # A deeper init.luau is a helper of the outer unit, not its own test.
             _write(root / "package" / "nested" / "init.luau", "--!golden ok\n")
 
-            tests = discover_tests(root)
+            tests = load_and_validate_tests(discover_test_index(root))
 
             self.assertEqual(["package"], [test.test_id for test in tests])
 
@@ -315,21 +389,21 @@ class DiscoveryTests(unittest.TestCase):
             _write(root / "same.luau", "--!golden ok\n")
             _write(root / "same" / "init.luau", "--!golden ok\n")
             with self.assertRaisesRegex(GoldenError, "duplicate golden test ID"):
-                _ = discover_tests(root)
+                _ = load_and_validate_tests(discover_test_index(root))
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             _write(root / "case.luau", "--!golden ok\n")
             _write(root / "missing.flags-on.runtime.output", "orphan\n")
             with self.assertRaisesRegex(GoldenError, "orphan exact-output"):
-                _ = discover_tests(root)
+                _ = load_and_validate_tests(discover_test_index(root))
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             _write(root / "case.luau", "--!golden status: ok, runtime.output: /value/\n")
             _write(root / "case.flags-on.runtime.output", "value\n")
             with self.assertRaisesRegex(GoldenError, "regex and exact"):
-                _ = discover_tests(root)
+                _ = load_and_validate_tests(discover_test_index(root))
 
     def test_rejects_malformed_exact_output_filenames(self) -> None:
         malformed_names = (
@@ -345,18 +419,18 @@ class DiscoveryTests(unittest.TestCase):
                 _write(root / name)
 
                 with self.assertRaisesRegex(GoldenError, "malformed exact-output filename"):
-                    _ = discover_tests(root)
+                    _ = load_and_validate_tests(discover_test_index(root))
 
     def test_rejects_empty_suite_and_invalid_exact_utf8(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(GoldenError, "suite is empty"):
-            _ = discover_tests(Path(temporary))
+            _ = load_and_validate_tests(discover_test_index(Path(temporary)))
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             _write(root / "case.luau", "--!golden ok\n")
             _ = (root / "case.flags-on.runtime.output").write_bytes(b"\xff")
             with self.assertRaisesRegex(GoldenError, "not valid UTF-8"):
-                _ = discover_tests(root)
+                _ = load_and_validate_tests(discover_test_index(root))
 
 
 class ExecutableResolutionTests(unittest.TestCase):
@@ -602,7 +676,10 @@ class ValidationAndUpdateTests(unittest.TestCase):
             # A harness failure captured nothing worth dumping.
             self.assertFalse(test.actual_path("flags-on", "runtime").exists())
             # The `.output.tmp` files must not masquerade as exact-output files.
-            self.assertEqual(["case"], [found.test_id for found in discover_tests(root)])
+            self.assertEqual(
+                ["case"],
+                [found.test_id for found in load_and_validate_tests(discover_test_index(root))],
+            )
 
     def test_remove_actual_outputs_deletes_only_tmp_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -757,7 +834,7 @@ commands:
                 redirect_stdout(io.StringIO()),
             ):
                 code = main(
-                    ["--update=strict", "--jobs=1", "case"],
+                    ["--update=strict", "--jobs=1", "tests/golden/case.luau"],
                     source_root=Path(temporary),
                     test_root=root,
                     cwd=Path(temporary),
@@ -770,6 +847,31 @@ commands:
                     "snapshot\n",
                     (root / f"case.{config}.strict.output").read_text(encoding="utf-8"),
                 )
+
+    def test_unknown_path_precedes_incomplete_suite_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            source_root = workspace / "Client" / "Luau"
+            root = source_root / "tests" / "golden"
+            _write(root / "analysis" / "type-functions" / "incomplete.luau", "return true\n")
+            errors = io.StringIO()
+
+            with redirect_stderr(errors):
+                code = main(
+                    [
+                        "--update=all",
+                        "--config=all",
+                        "tests/golden/analysis/type-functions/incomplete",
+                    ],
+                    source_root=source_root,
+                    test_root=root,
+                    cwd=workspace,
+                    environ={},
+                )
+
+            self.assertEqual(2, code)
+            self.assertIn("unknown golden test ID(s) or path(s)", errors.getvalue())
+            self.assertNotIn("no status resolves", errors.getvalue())
 
     def test_targeted_update_bootstraps_fresh_test_group(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -784,7 +886,7 @@ commands:
                 redirect_stdout(io.StringIO()),
             ):
                 code = main(
-                    ["--update=strict", "--jobs=1", "analysis/tables"],
+                    ["--update=strict", "--jobs=1", "tests/golden/analysis/tables"],
                     source_root=Path(temporary),
                     test_root=root,
                     cwd=Path(temporary),
@@ -967,7 +1069,7 @@ class EndToEndTests(unittest.TestCase):
                 "class Point\n"
                 "    public x: number\n"
                 "end\n"
-                "local point = Point.new({ x = 42 })\n"
+                "local point = Point({ x = 42 })\n"
                 "assert(point.x == 42)\n",
             )
 
@@ -1000,7 +1102,7 @@ class EndToEndTests(unittest.TestCase):
                 "class Point\n"
                 "    public x: number\n"
                 "end\n"
-                "local point = Point.new({ x = 42 })\n"
+                "local point = Point({ x = 42 })\n"
                 "assert(point.x == 42)\n",
             )
 

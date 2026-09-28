@@ -203,7 +203,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining")
         RETURN R2 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         LOADK R3 K0 [42]
         CALLFB R1 2 1 [0]
@@ -223,7 +223,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 LOADK R3 K0 [42]
 CMPPROTO R1 #0 L0
@@ -251,7 +251,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining_undercall")
         RETURN R2 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         CALL R1 1 1
         LOADK R3 K0 [2]
@@ -270,7 +270,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining_undercall")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 CMPPROTO R1 #0 L1
 LOADNIL R3
@@ -297,7 +297,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining_under_return")
         RETURN R0 1
 
         Function 1 (caller):
-        GETUPVAL R0 0
+        GETUPVAL R0 U0
         LOADK R1 K0 [10]
         CALL R0 1 2
         RETURN R1 1
@@ -315,7 +315,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "simple_inlining_under_return")
         end
     )"),
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 LOADK R1 K0 [10]
 CMPPROTO R0 #0 L0
 MOVE R0 R1
@@ -343,7 +343,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "namecall_inlining")
         LOADK R3 K3 [7]
         SETTABLE R3 R1 R2
         LOADK R2 K1 ['inlinee']
-        GETUPVAL R3 0
+        GETUPVAL R3 U0
         SETTABLE R3 R1 R2
         LOADK R4 K4 [42]
         NAMECALL R2 R1 K1 ['inlinee']
@@ -371,7 +371,7 @@ LOADK R2 K0 ['v']
 LOADK R3 K3 [7]
 SETTABLE R3 R1 R2
 LOADK R2 K1 ['inlinee']
-GETUPVAL R3 0
+GETUPVAL R3 U0
 SETTABLE R3 R1 R2
 LOADK R4 K4 [42]
 MOVE R3 R1
@@ -404,7 +404,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "early_return_inlining")
         RETURN R2 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         LOADK R3 K0 [42]
         CALL R1 2 1
@@ -426,7 +426,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "early_return_inlining")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 LOADK R3 K0 [42]
 CMPPROTO R1 #0 L1
@@ -461,7 +461,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "multi_return_inlining")
         RETURN R2 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         LOADK R3 K0 [42]
         CALLFB R1 2 1 [0]
@@ -483,7 +483,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "multi_return_inlining")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 LOADK R3 K0 [42]
 CMPPROTO R1 #0 L1
@@ -538,7 +538,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_inlining")
         RETURN R3 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         LOADK R3 K0 [42]
         CALL R1 2 1
@@ -562,7 +562,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_inlining")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 LOADK R3 K0 [42]
 CMPPROTO R1 #0 L1
@@ -596,7 +596,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "mixed_vararg_func_inlining")
         RETURN R2 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         LOADK R3 K0 [100]
         CALL R1 2 1
@@ -617,7 +617,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "mixed_vararg_func_inlining")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 LOADK R3 K0 [100]
 CMPPROTO R1 #0 L0
@@ -647,7 +647,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "mixed_vararg_func_inlining_nil_factor
         RETURN R4 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         LOADK R3 K0 [100]
         CALL R1 2 1
@@ -668,7 +668,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "mixed_vararg_func_inlining_nil_factor
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 LOADK R3 K0 [100]
 CMPPROTO R1 #0 L0
@@ -703,7 +703,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_vararg_multi_usage")
         RETURN R1 1
 
         Function 1 (caller):
-        GETUPVAL R0 0
+        GETUPVAL R0 U0
         LOADK R1 K0 [10]
         LOADK R2 K1 [20]
         LOADK R3 K2 [30]
@@ -724,7 +724,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_vararg_multi_usage")
         end
     )"),
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 LOADK R1 K0 [10]
 LOADK R2 K1 [20]
 LOADK R3 K2 [30]
@@ -762,7 +762,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_vararg_multi_usage_2")
         RETURN R2 1
 
         Function 1 (caller):
-        GETUPVAL R0 0
+        GETUPVAL R0 U0
         LOADK R1 K0 [10]
         LOADK R2 K1 [20]
         LOADK R3 K2 [30]
@@ -783,7 +783,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_func_vararg_multi_usage_2")
         end
     )"),
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 LOADK R1 K0 [10]
 LOADK R2 K1 [20]
 LOADK R3 K2 [30]
@@ -825,7 +825,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "loop_phis")
         L3: RETURN R1 1
 
         Function 1 (caller):
-        GETUPVAL R1 0
+        GETUPVAL R1 U0
         MOVE R2 R0
         CALL R1 1 1
         RETURN R1 1
@@ -849,7 +849,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "loop_phis")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 CMPPROTO R1 #0 L4
 LOADK R3 K0 [0]
@@ -888,7 +888,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "retain_target_on_block_split")
         MOVE R2 R0
         LOADN R3 1
         FORNPREP R2 L1
-        L0: GETUPVAL R5 0
+        L0: GETUPVAL R5 U0
         MOVE R6 R4
         CALL R5 1 1
         ADD R1 R1 R5
@@ -916,7 +916,7 @@ LOADK R4 K1 [1]
 MOVE R2 R0
 LOADN R3 1
 FORNPREP R2 L3
-L0: GETUPVAL R5 0
+L0: GETUPVAL R5 U0
 MOVE R6 R4
 CMPPROTO R5 #0 L1
 LOADK R8 K1 [1]
@@ -955,7 +955,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants")
     REQUIRE_EQ(
         "\n" + result,
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 LOADK R2 K0 [5]
 LOADK R3 K1 [42]
 CMPPROTO R1 #0 L0
@@ -992,7 +992,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_chained")
     REQUIRE_EQ(
         "\n" + result,
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 LOADK R2 K0 [10]
 LOADK R3 K1 [11]
 CMPPROTO R1 #0 L0
@@ -1031,7 +1031,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_div_by_zero")
     REQUIRE_EQ(
         "\n" + result,
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 LOADK R2 K0 [10]
 LOADK R3 K1 [0]
 CMPPROTO R1 #0 L0
@@ -1073,7 +1073,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_with_branch")
         "\n" + result,
         R"(
 LOADB R0 1
-GETUPVAL R1 0
+GETUPVAL R1 U0
 LOADB R2 1
 CMPPROTO R1 #0 L0
 LOADK R3 K0 [1]
@@ -1113,7 +1113,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_with_branches")
     );
 
     REQUIRE_EQ("\n" + result, R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 LOADK R1 K0 [5]
 CMPPROTO R0 #0 L0
 LOADK R2 K1 [1]
@@ -1153,7 +1153,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_with_for_loop")
         "\n" + result,
         R"(
 LOADK R0 K0 [10]
-GETUPVAL R1 0
+GETUPVAL R1 U0
 LOADK R2 K0 [10]
 CMPPROTO R1 #0 L2
 LOADK R3 K1 [0]
@@ -1197,7 +1197,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_prunes_ordering_branch
     REQUIRE_EQ(
         "\n" + result,
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 LOADK R1 K0 [3]
 LOADK R2 K1 [10]
 CMPPROTO R0 #0 L0
@@ -1235,7 +1235,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_prunes_equality_branch
     REQUIRE_EQ(
         "\n" + result,
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 LOADK R1 K0 [7]
 LOADK R2 K0 [7]
 CMPPROTO R0 #0 L0
@@ -1274,7 +1274,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_string_equality")
     REQUIRE_EQ(
         "\n" + result,
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 LOADK R1 K0 ['yes']
 CMPPROTO R0 #0 L0
 LOADK R2 K0 ['yes']
@@ -1313,7 +1313,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_constants_nil_argument")
     REQUIRE_EQ(
         "\n" + result,
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 CMPPROTO R0 #0 L0
 LOADNIL R1
 LOADNIL R2
@@ -1349,7 +1349,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "does_not_fold_runtime_arguments")
     REQUIRE_EQ(
         "\n" + result,
         R"(
-GETUPVAL R2 0
+GETUPVAL R2 U0
 MOVE R3 R0
 MOVE R4 R1
 CMPPROTO R2 #0 L0
@@ -1461,8 +1461,8 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_inlinee_with_vararg")
     )"),
         R"(
 NEWTABLE R0 0 2
-GETUPVAL R1 0
-GETUPVAL R2 0
+GETUPVAL R1 U0
+GETUPVAL R2 U0
 CMPPROTO R2 #0 L0
 LOADNIL R3
 LOADNIL R2
@@ -1489,7 +1489,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_varargs_sequence_in_setlist")
         end
     )"),
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 CMPPROTO R0 #0 L0
 NEWTABLE R1 0 0
 MOVE R0 R1
@@ -1517,7 +1517,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "empty_varargs_sequence_in_for_loop")
         end
     )"),
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 CMPPROTO R0 #0 L2
 LOADNIL R1
 LOADNIL R3
@@ -1553,7 +1553,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_in_loops_phi")
             end
     )"),
         R"(
-GETUPVAL R0 0
+GETUPVAL R0 U0
 CMPPROTO R0 #0 L3
 L0: LOADNIL R1
 L1: JUMPIFNOT R1 L2
@@ -1680,7 +1680,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "vararg_projection_in_return_phi")
         end
     )"),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 MOVE R2 R0
 CMPPROTO R1 #0 L1
 MOVE R4 R2
@@ -1709,7 +1709,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_sub_constant_lhs_is_negation_not
         end
     )", 0, true),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 LOADK R2 K0 [0]
 MOVE R3 R0
 CMPPROTO R1 #0 L0
@@ -1738,7 +1738,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_div_constant_lhs_one_is_reciproc
         end
     )", 0, true),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 LOADK R2 K0 [1]
 MOVE R3 R0
 CMPPROTO R1 #0 L0
@@ -1767,7 +1767,7 @@ TEST_CASE_FIXTURE(BytecodeInlinerFixture, "fold_jumpxeqkb_bool_immediate_value")
         end
     )", 0, true, 1),
         R"(
-GETUPVAL R1 0
+GETUPVAL R1 U0
 LOADB R2 1
 CMPPROTO R1 #0 L0
 LOADN R3 1

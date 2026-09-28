@@ -1030,4 +1030,81 @@ do
   assert(object.value == nil)
 end
 
+do
+  local t = {}
+
+  t[64] = "item"
+  for i = 1,200 do t["key" .. i] = i end
+
+  -- resize the table array part, but force a failure at node reallocation
+  setallocationlimit(3000)
+  local ok = pcall(table.move, t, 1, 128, 1, t)
+  setallocationlimit(0)
+
+  -- table should remain unmodified after that failure
+  -- we should see our number/string keys
+  assert(not ok)
+  assert(t[64] == "item")
+  assert(t.key1 == 1)
+
+  -- and the table should remain consistent for iteration
+  local seen = {}
+  local key = nil
+
+  while true do
+    key = next(t, key)
+    if key == nil then
+      break
+    elseif seen[key] then
+      assert(false, "found a repeat")
+    end
+
+    seen[key] = true
+  end
+end
+
+do
+  local t = table.create(1024, 1)
+  t.foo = "foo"
+  t.bar = "bar"
+
+  -- make the array sparse
+  for i = 257, 1024 do t[i] = nil end
+
+  -- force the reallocation which will shrink the array part and fail
+  setallocationlimit(3000)
+  local ok = pcall(function() t[1025] = true end)
+  setallocationlimit(0)
+
+  assert(not ok)
+
+  assert(t.foo == "foo")
+  assert(t.bar == "bar")
+
+  assert(t[1] == 1)
+  assert(t[128] == 1)
+
+  assert(t[513] == nil)
+end
+
+do
+  local t = table.create(1024, 1)
+
+  t.__index = {}
+
+  -- freezing might attempt to restructure the array part
+  setallocationlimit(1)
+  table.freeze(t)
+  setallocationlimit(0)
+
+  -- check allocator path for small blocks
+  local t = table.create(2, 1)
+
+  t.__index = {}
+
+  setallocationlimit(1)
+  table.freeze(t)
+  setallocationlimit(0)
+end
+
 return "OK"

@@ -403,18 +403,28 @@ struct FunctionType
 
 enum class TableState
 {
-    // Sealed tables have an exact, known shape
+    // A sealed table type describes an inexact subset of a table.  It
+    // participates in width subtyping.
     Sealed,
 
-    // An unsealed table can have extra properties added to it
+    // An unsealed table type represents a table whose construction has been
+    // directly witnessed by the analysis engine.  Adding extra properties to an
+    // unsealed table is permitted.
     Unsealed,
 
-    // Tables which are not yet fully understood.  We are still in the process of learning its shape.
+    // Tables which are not yet fully understood.  We are still in the process
+    // of learning its shape. Only used in the old solver.
     Free,
 
-    // A table which is a generic parameter to a function.  We know that certain properties are required,
-    // but we don't care about the full shape.
+    // A table which is a generic parameter to a function.  We know that certain
+    // properties are required, but we don't care about the full shape.  Only
+    // used in the old solver.
     Generic,
+
+    // An exact table type is similar to a sealed table, but it does not
+    // participate in width subtyping.  It describes the exact exhaustive shape
+    // of the whole table.
+    Exact,
 };
 
 struct TableIndexer

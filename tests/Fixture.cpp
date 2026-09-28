@@ -10,6 +10,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/Parser.h"
 #include "Luau/PrettyPrinter.h"
+#include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Type.h"
 #include "Luau/TypeAttach.h"
@@ -33,6 +34,11 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForceAllOldSolverTests);
 
 LUAU_FASTINT(LuauStackGuardThreshold)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
+LUAU_FASTFLAG(DebugLuauParseExactTables)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
+
+LUAU_FASTFLAGVARIABLE(DebugLuauForceExactTables)
+LUAU_FASTFLAGVARIABLE(DebugLuauRunFailingExactTableTests)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -1022,6 +1028,48 @@ void createSomeExternTypes(Frontend& frontend)
         persist(ty.type);
 
     freeze(arena);
+}
+
+doctest::String toString(Relation rel)
+{
+    switch (rel)
+    {
+    case Relation::Disjoint:
+        return "Relation::Disjoint";
+    case Relation::Coincident:
+        return "Relation::Coincident";
+    case Relation::Intersects:
+        return "Relation::Intersects";
+    case Relation::Subset:
+        return "Relation::Subset";
+    case Relation::Superset:
+        return "Relation::Superset";
+
+    default:
+        LUAU_ASSERT(0);
+        return "Relation::???";
+    }
+}
+
+doctest::String toString(TableState state)
+{
+    switch (state)
+    {
+    case TableState::Unsealed:
+        return "TableState::Unsealed";
+    case TableState::Sealed:
+        return "TableState::Sealed";
+    case TableState::Free:
+        return "TableState::Free";
+    case TableState::Generic:
+        return "TableState::Generic";
+    case TableState::Exact:
+        return "TableState::Exact";
+
+    default:
+        LUAU_ASSERT(0);
+        return "TableState::???";
+    }
 }
 
 void dump(const std::vector<Constraint>& constraints)

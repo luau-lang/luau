@@ -16,8 +16,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCIProto)
-
 namespace Luau
 {
 namespace CodeGen
@@ -2847,16 +2845,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::NEWCLOSURE:
     {
         ScopedRegX64 tmp2{regs, SizeX64::qword};
-        if (FFlag::LuauCIProto)
-        {
-            build.mov(tmp2.reg, qword[rState + offsetof(lua_State, ci)]);
-            build.mov(tmp2.reg, qword[tmp2.reg + offsetof(CallInfo, p)]);
-        }
-        else
-        {
-            build.mov(tmp2.reg, sClosure);
-            build.mov(tmp2.reg, qword[tmp2.reg + offsetof(Closure, l.p)]);
-        }
+        build.mov(tmp2.reg, qword[rState + offsetof(lua_State, ci)]);
+        build.mov(tmp2.reg, qword[tmp2.reg + offsetof(CallInfo, p)]);
         build.mov(tmp2.reg, qword[tmp2.reg + offsetof(Proto, p)]);
         build.mov(tmp2.reg, qword[tmp2.reg + sizeof(Proto*) * uintOp(OP_C(inst))]);
 

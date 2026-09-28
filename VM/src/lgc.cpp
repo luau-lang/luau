@@ -475,6 +475,8 @@ static void traverseclass(global_State* g, LuauClass* classobject)
         markobject(g, classobject->offsettomember[i]);
     for (uint32_t i = 0; i < classobject->numberofallmembers - classobject->numberofinstancemembers; i++)
         markvalue(g, &classobject->staticmembers[i]);
+    if (classobject->metatable)
+        markobject(g, classobject->metatable);
     if (classobject->instancemetatable)
         markobject(g, classobject->instancemetatable);
 }
