@@ -33,6 +33,7 @@
 #include "Luau/Simplify.h"
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAGVARIABLE(LuauSkipUnusedTypeTraversals)
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
@@ -197,9 +198,18 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
     DenseHashSet<TypePackId> internalPackFunctions;
     DenseHashSet<TypeId> mentionedFunctions;
     DenseHashSet<TypePackId> mentionedFunctionPacks;
+    const std::vector<TypeId>* unscannedDeclStack = nullptr;
 
     explicit InternalTypeFunctionFinder(std::vector<TypeId>& declStack)
         : TypeOnceVisitor("InternalTypeFunctionFinder", /* skipBoundTypes */ true)
+    {
+        if (FFlag::LuauSkipUnusedTypeTraversals)
+            unscannedDeclStack = &declStack;
+        else
+            findMentionedFunctions(declStack);
+    }
+
+    void findMentionedFunctions(const std::vector<TypeId>& declStack)
     {
         TypeFunctionFinder f;
         for (TypeId fn : declStack)
@@ -207,6 +217,23 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
 
         mentionedFunctions = std::move(f.mentionedFunctions);
         mentionedFunctionPacks = std::move(f.mentionedFunctionPacks);
+    }
+
+    // The mentioned functions are only consulted for an instance with a generic argument.
+    void ensureMentionedFunctions()
+    {
+        if (FFlag::LuauSkipUnusedTypeTraversals)
+        {
+            if (!unscannedDeclStack)
+                return;
+
+            findMentionedFunctions(*unscannedDeclStack);
+            unscannedDeclStack = nullptr;
+        }
+        else
+        {
+            LUAU_ASSERT(!unscannedDeclStack);
+        }
     }
 
     bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
@@ -233,6 +260,7 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
 
         if (hasGeneric)
         {
+            ensureMentionedFunctions();
             for (TypeId mentioned : mentionedFunctions)
             {
                 const TypeFunctionInstanceType* mentionedTfit = get<TypeFunctionInstanceType>(mentioned);
@@ -273,6 +301,7 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
 
         if (hasGeneric)
         {
+            ensureMentionedFunctions();
             for (TypePackId mentioned : mentionedFunctionPacks)
             {
                 const TypeFunctionInstanceTypePack* mentionedTfitp = get<TypeFunctionInstanceTypePack>(mentioned);
