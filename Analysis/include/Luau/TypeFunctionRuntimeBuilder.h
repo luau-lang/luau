@@ -27,6 +27,11 @@ struct TypeFunctionRuntimeBuilderState
 
     std::vector<TypeFunctionError> errors{};
 
+    // Set when the evaluation reads the solver or the scope it runs in (for
+    // example `issubtypeof`, or a generic in its result), rather than only its
+    // arguments, so its result cannot be reused for the same arguments elsewhere
+    bool dependsOnContext = false;
+
     TypeFunctionRuntimeBuilderState(NotNull<TypeFunctionContext> ctx)
         : ctx(ctx)
     {
