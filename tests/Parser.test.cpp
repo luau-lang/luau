@@ -22,10 +22,11 @@ LUAU_FASTFLAG(DebugLuauNoInline)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass)
+LUAU_FASTFLAG(DebugLuauParseExactTables)
 
 LUAU_FASTFLAG(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 extern bool luau_telemetry_parsed_return_type_variadic_with_type_suffix;
 
@@ -3336,53 +3337,6 @@ TEST_CASE_FIXTURE(Fixture, "class_declaration")
     CHECK(global->name == first->name->name);
 }
 
-TEST_CASE_FIXTURE(Fixture, "classes_cannot_define_new_method")
-{
-    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-
-    ParseResult res = tryParse(R"(
-        class Point2
-            public x: number
-            public y: number
-
-            function new(x: number, y: number) end
-        end
-    )");
-
-    REQUIRE(1 == res.errors.size());
-    CHECK_EQ(res.errors[0].getMessage(), R"(Class methods cannot be named 'new'.  Name it '__init' to define a constructor.)");
-}
-
-TEST_CASE_FIXTURE(Fixture, "classes_can_define_new_prefixed_method")
-{
-    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-
-    ParseResult res = tryParse(R"(
-        class Point2
-            public x: number
-            public y: number
-
-            function newb(x: number, y: number) end
-        end
-    )");
-
-    REQUIRE(res.errors.empty());
-}
-
-TEST_CASE_FIXTURE(Fixture, "classes_cannot_define_new_prop")
-{
-    ScopedFastFlag _{FFlag::DebugLuauUserDefinedClasses, true};
-
-    ParseResult res = tryParse(R"(
-        class Point2
-            public new
-        end
-    )");
-
-    REQUIRE(1 == res.errors.size());
-    CHECK_EQ(res.errors[0].getMessage(), R"(Class properties cannot be named 'new'. Define a method named '__init' to define a constructor.)");
-}
-
 TEST_CASE_FIXTURE(Fixture, "class_parse_errors")
 {
     tryParse(R"( class Hello )");
@@ -3900,7 +3854,7 @@ TEST_CASE_FIXTURE(Fixture, "large_classes_example")
             end
         end
 
-        local player = PlayerStats.new("John Doe")
+        local player = PlayerStats("John Doe")
         print(player.name)
         player:heal(20)
         print(player.name)
@@ -4194,6 +4148,92 @@ TEST_CASE_FIXTURE(Fixture, "type_pack_explicit_with_cst")
     CHECK_EQ(cstNode->closeParenthesesPosition, Position{0, 33});
     REQUIRE_EQ(cstNode->commaPositions.size, 1);
     CHECK_EQ(cstNode->commaPositions.data[0], Position{0, 22});
+}
+
+TEST_CASE_FIXTURE(Fixture, "valid_exact_table_types")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauParseExactTables, true},
+    };
+
+    ParseResult result = tryParse(R"(
+        type A = {}
+        type B = {x: number}
+        type C = {x: number, ...}
+        type D = {...}
+        type E = {[number]: boolean, ...}
+        type F = {number}
+        type G = {number, ...}
+    )");
+
+    AstStatBlock* block = result.root;
+    REQUIRE(7 == block->body.size);
+
+    auto alias0 = block->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(alias0->type->as<AstTypeTable>());
+    CHECK(alias0->type->as<AstTypeTable>()->isExact);
+
+    auto alias1 = block->body.data[1]->as<AstStatTypeAlias>();
+    REQUIRE(alias1->type->as<AstTypeTable>());
+    CHECK(alias1->type->as<AstTypeTable>()->isExact);
+
+    auto alias2 = block->body.data[2]->as<AstStatTypeAlias>();
+    REQUIRE(alias2->type->as<AstTypeTable>());
+    CHECK(!alias2->type->as<AstTypeTable>()->isExact);
+
+    auto alias3 = block->body.data[3]->as<AstStatTypeAlias>();
+    REQUIRE(alias3->type->as<AstTypeTable>());
+    CHECK(!alias3->type->as<AstTypeTable>()->isExact);
+
+    auto alias4 = block->body.data[4]->as<AstStatTypeAlias>();
+    REQUIRE(alias4->type->as<AstTypeTable>());
+    CHECK(!alias4->type->as<AstTypeTable>()->isExact);
+
+    auto alias5 = block->body.data[5]->as<AstStatTypeAlias>();
+    REQUIRE(alias5->type->as<AstTypeTable>());
+    CHECK(alias5->type->as<AstTypeTable>()->isExact);
+
+    auto alias6 = block->body.data[6]->as<AstStatTypeAlias>();
+    REQUIRE(alias6->type->as<AstTypeTable>());
+    CHECK(!alias6->type->as<AstTypeTable>()->isExact);
+}
+
+TEST_CASE_FIXTURE(Fixture, "invalid_exact_table_types")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauParseExactTables, true},
+    };
+
+    ParseResult result = tryParse(R"(
+        type A = {read ...}
+    )");
+
+    CHECK(0 != result.errors.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "exact_table_type_ellipsis_must_be_last")
+{
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauParseExactTables, true},
+    };
+
+    ParseResult result = tryParse(R"(
+        type A = {..., x: number}
+    )");
+
+    CHECK(result.errors.size() == 1);
+
+    CHECK(Location({1, 21}, {1, 22}) == result.errors.at(0).getLocation());
+
+    REQUIRE(result.root);
+    REQUIRE(result.root->body.size == 1);
+
+    AstStatTypeAlias* alias = result.root->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(alias);
+
+    AstTypeTable* table = alias->type->as<AstTypeTable>();
+    REQUIRE(table);
+    CHECK(!table->isExact);
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_return_type_pack_with_cst_func_return")
@@ -6247,7 +6287,7 @@ TEST_CASE_FIXTURE(Fixture, "extern_read_write_attributes")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         if local x = getValue() then
@@ -6267,7 +6307,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_const")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         if const y = getValue() then
@@ -6286,7 +6326,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_const")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_with_annotation")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         if local x: number = getValue() then
@@ -6304,7 +6344,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_with_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "parse_elseif_local")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         if local x = a() then
@@ -6327,16 +6367,32 @@ TEST_CASE_FIXTURE(Fixture, "parse_elseif_local")
     CHECK(elseifStat->conditionLocal->name == "y");
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_if_const_compat")
+{
+    AstStatBlock* block = parse(R"(
+        if const then
+            print(y)
+        end
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(block->body.size == 1);
+    AstStatIf* ifStat = block->body.data[0]->as<AstStatIf>();
+    REQUIRE(ifStat != nullptr);
+    CHECK(ifStat->conditionLocal == nullptr);
+    CHECK(!ifStat->conditionIsConst);
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_error_missing_equals")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     matchParseError("if local x then end", "Expected '=' when parsing if local declaration, got 'then'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_error_multiple_bindings")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     matchParseError(
         "if local x, y = getValue() then end", "Expected '=' after variable name in 'if local', got ','; only a single binding is allowed"
@@ -6345,7 +6401,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_error_multiple_bindings")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_disabled_flag")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, false};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, false};
 
     // With flag disabled, `if local` should fail to parse
     matchParseError("if local x = getValue() then end", "Expected identifier when parsing expression, got 'local'");
@@ -6353,7 +6409,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_disabled_flag")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_interleaved_with_non_initializers")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         if a() then
@@ -6384,7 +6440,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_interleaved_with_non_initializers")
 
 TEST_CASE_FIXTURE(Fixture, "parse_deeply_nested_if_local")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     constexpr int depth = 64;
 
@@ -6410,7 +6466,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_deeply_nested_if_local")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_const_with_annotation")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         if const x: number = getValue() then
@@ -6430,7 +6486,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_const_with_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "parse_elseif_const")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         if local x = a() then
@@ -6456,7 +6512,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_elseif_const")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_with_else_block")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         if local x = getValue() then
@@ -6479,7 +6535,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_with_else_block")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_condition_keyword_location")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStatBlock* block = parse("if local x = v then end");
 
@@ -6502,7 +6558,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_condition_keyword_location")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_condition_is_if_else_expr")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         if local x = if a then b else c then
@@ -6520,7 +6576,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_condition_is_if_else_expr")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_nested_binding_in_then_block")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStatBlock* block = parse(R"(
         if local x = a() then
@@ -6549,7 +6605,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_nested_binding_in_then_block")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_const_error_multiple_bindings")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     matchParseError(
         "if const x, y = getValue() then end", "Expected '=' after variable name in 'if local', got ','; only a single binding is allowed"
@@ -6558,7 +6614,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_const_error_multiple_bindings")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStat* stat = parse("return if local x = getValue() then x else 0");
 
@@ -6576,7 +6632,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_const_expression")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStat* stat = parse("return if const y = getValue() then y else 0");
 
@@ -6590,9 +6646,22 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_const_expression")
     CHECK(ifElseExpr->conditionIsConst);
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_if_const_expression_compat")
+{
+    AstStat* stat = parse("return if const then y else 0");
+
+    REQUIRE(stat != nullptr);
+    AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+    REQUIRE(str != nullptr);
+    AstExprIfElse* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+    REQUIRE(ifElseExpr != nullptr);
+    REQUIRE(ifElseExpr->conditionLocal == nullptr);
+    CHECK(!ifElseExpr->conditionIsConst);
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_with_annotation")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStat* stat = parse("return if local x: number = getValue() then x else 0");
 
@@ -6607,7 +6676,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_with_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "parse_elseif_local_expression")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStat* stat = parse("return if local x = a() then x elseif const y = b() then y else 0");
 
@@ -6629,7 +6698,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_elseif_local_expression")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_binding_not_visible_in_else")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStat* stat = parse("return if local x = getValue() then x else x");
 
@@ -6649,7 +6718,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_binding_not_visible_in_els
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_error_multiple_bindings")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     matchParseError(
         "return if local x, y = getValue() then x else 0", "Expected '=' after variable name in 'if local', got ','; only a single binding is allowed"
@@ -6658,7 +6727,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_error_multiple_bindings")
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_nested_in_true_branch")
 {
-    ScopedFastFlag sff = {FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff = {FFlag::LuauExperimentalIfLocalSyntax, true};
 
     AstStat* stat = parse("return if local x = a() then (if local y = b() then y else 0) else -1");
 
@@ -6679,5 +6748,4 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_local_expression_nested_in_true_branch")
     CHECK(inner->conditionLocal != outer->conditionLocal);
 }
 
-// TODO unit tests for various parse errors.
 TEST_SUITE_END();

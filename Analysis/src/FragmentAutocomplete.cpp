@@ -31,7 +31,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 
 LUAU_FASTFLAGVARIABLE(DebugLogFragmentsFromAutocomplete)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
 LUAU_FASTFLAGVARIABLE(LuauFragmentACEnableTypeFunctionEvaluation)
 LUAU_FASTFLAGVARIABLE(LuauFragmentACLocalAutocompleteFix)
@@ -528,7 +528,7 @@ FragmentAutocompleteAncestryResult findAncestryForFragmentParse(AstStatBlock* st
         }
 
         // Add the `if local`/`if const` binding to the local map if the cursor is in the then-body of the `AstStatIf`
-        if (FFlag::DebugLuauIfLocalAnalysis)
+        if (FFlag::LuauExperimentalIfLocalAnalysis)
         {
             if (auto ifStat = node->as<AstStatIf>(); ifStat && ifStat->conditionLocal && ifStat->thenbody->location.containsClosed(cursorPos))
             {
@@ -834,100 +834,6 @@ bool statIsBeforePos(const AstNode* stat, const Position& cursorPos)
     return (stat->location.begin < cursorPos);
 }
 
-FragmentAutocompleteAncestryResult findAncestryForFragmentParse_DEPRECATED(AstStatBlock* root, const Position& cursorPos)
-{
-    std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(root, cursorPos);
-    // Should always contain the root AstStat
-    LUAU_ASSERT(ancestry.size() >= 1);
-    DenseHashMap<AstName, AstLocal*> localMap;
-    std::vector<AstLocal*> localStack;
-    AstStat* nearestStatement = nullptr;
-    for (AstNode* node : ancestry)
-    {
-        if (auto block = node->as<AstStatBlock>())
-        {
-            for (auto stat : block->body)
-            {
-                if (stat->location.begin <= cursorPos)
-                    nearestStatement = stat;
-            }
-        }
-    }
-    if (!nearestStatement)
-        nearestStatement = ancestry[0]->asStat();
-    LUAU_ASSERT(nearestStatement);
-
-    for (AstNode* node : ancestry)
-    {
-        if (auto block = node->as<AstStatBlock>())
-        {
-            for (auto stat : block->body)
-            {
-                if (statIsBeforePos(stat, nearestStatement->location.begin))
-                {
-                    // This statement precedes the current one
-                    if (auto statLoc = stat->as<AstStatLocal>())
-                    {
-                        for (auto v : statLoc->vars)
-                        {
-                            localStack.push_back(v);
-                            localMap[v->name] = v;
-                        }
-                    }
-                    else if (auto locFun = stat->as<AstStatLocalFunction>())
-                    {
-                        localStack.push_back(locFun->name);
-                        localMap[locFun->name->name] = locFun->name;
-                        if (locFun->location.contains(cursorPos))
-                        {
-                            for (AstLocal* loc : locFun->func->args)
-                            {
-                                localStack.push_back(loc);
-                                localMap[loc->name] = loc;
-                            }
-                        }
-                    }
-                    else if (auto globFun = stat->as<AstStatFunction>())
-                    {
-                        if (globFun->location.contains(cursorPos))
-                        {
-                            for (AstLocal* loc : globFun->func->args)
-                            {
-                                localStack.push_back(loc);
-                                localMap[loc->name] = loc;
-                            }
-                        }
-                    }
-                    else if (auto typeFun = stat->as<AstStatTypeFunction>())
-                    {
-                        if (typeFun->location.contains(cursorPos))
-                        {
-                            for (AstLocal* loc : typeFun->body->args)
-                            {
-                                localStack.push_back(loc);
-                                localMap[loc->name] = loc;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if (auto exprFunc = node->as<AstExprFunction>())
-        {
-            if (exprFunc->location.contains(cursorPos))
-            {
-                for (auto v : exprFunc->args)
-                {
-                    localStack.push_back(v);
-                    localMap[v->name] = v;
-                }
-            }
-        }
-    }
-
-    return {std::move(localMap), std::move(localStack), std::move(ancestry), std::move(nearestStatement)};
-}
-
 /**
  * Get document offsets is a function that takes a source text document as well as a start position and end position(line, column) in that
  * document and attempts to get the concrete text between those points. It returns a pair of:
@@ -991,22 +897,6 @@ static std::pair<size_t, size_t> getDocumentOffsets(std::string_view src, const 
     return {min, len};
 }
 
-ScopePtr findClosestScope_DEPRECATED(const ModulePtr& module, const AstStat* nearestStatement)
-{
-    LUAU_ASSERT(module->hasModuleScope());
-
-    ScopePtr closest = module->getModuleScope();
-
-    // find the scope the nearest statement belonged to.
-    for (const auto& [loc, sc] : module->scopes)
-    {
-        if (loc.encloses(nearestStatement->location) && closest->location.begin <= loc.begin)
-            closest = sc;
-    }
-
-    return closest;
-}
-
 ScopePtr findClosestScope(const ModulePtr& module, const Position& scopePos)
 {
     LUAU_ASSERT(module->hasModuleScope());
@@ -1022,73 +912,6 @@ ScopePtr findClosestScope(const ModulePtr& module, const Position& scopePos)
             closest = sc;
     }
     return closest;
-}
-
-std::optional<FragmentParseResult> parseFragment_DEPRECATED(
-    AstStatBlock* root,
-    AstNameTable* names,
-    std::string_view src,
-    const Position& cursorPos,
-    std::optional<Position> fragmentEndPosition
-)
-{
-    FragmentAutocompleteAncestryResult result = findAncestryForFragmentParse_DEPRECATED(root, cursorPos);
-    AstStat* nearestStatement = result.nearestStatement;
-
-    const Location& rootSpan = root->location;
-    // Did we append vs did we insert inline
-    bool appended = cursorPos >= rootSpan.end;
-    // statement spans multiple lines
-    bool multiline = nearestStatement->location.begin.line != nearestStatement->location.end.line;
-
-    const Position endPos = fragmentEndPosition.value_or(cursorPos);
-
-    // We start by re-parsing everything (we'll refine this as we go)
-    Position startPos = root->location.begin;
-
-    // If we added to the end of the sourceModule, use the end of the nearest location
-    if (appended && multiline)
-        startPos = nearestStatement->location.end;
-    // Statement spans one line && cursorPos is either on the same line or after
-    else if (!multiline && cursorPos.line >= nearestStatement->location.end.line)
-        startPos = nearestStatement->location.begin;
-    else if (multiline && nearestStatement->location.end.line < cursorPos.line)
-        startPos = nearestStatement->location.end;
-    else
-        startPos = nearestStatement->location.begin;
-
-    auto [offsetStart, parseLength] = getDocumentOffsets(src, startPos, endPos);
-    const char* srcStart = src.data() + offsetStart;
-    std::string_view dbg = src.substr(offsetStart, parseLength);
-    FragmentParseResult fragmentResult;
-    fragmentResult.fragmentToParse = std::string(dbg.data(), parseLength);
-    // For the duration of the incremental parse, we want to allow the name table to re-use duplicate names
-    if (FFlag::DebugLogFragmentsFromAutocomplete)
-        logLuau("Fragment Selected", dbg);
-
-    ParseOptions opts;
-    opts.allowDeclarationSyntax = false;
-    opts.captureComments = true;
-    opts.parseFragment = FragmentParseResumeSettings{std::move(result.localMap), std::move(result.localStack), startPos};
-    ParseResult p = Luau::Parser::parse(srcStart, parseLength, *names, *fragmentResult.alloc, std::move(opts));
-    // This means we threw a ParseError and we should decline to offer autocomplete here.
-    if (p.root == nullptr)
-        return std::nullopt;
-
-    std::vector<AstNode*> fabricatedAncestry = std::move(result.ancestry);
-
-    // Get the ancestry for the fragment at the offset cursor position.
-    // Consumers have the option to request with fragment end position, so we cannot just use the end position of our parse result as the
-    // cursor position. Instead, use the cursor position calculated as an offset from our start position.
-    std::vector<AstNode*> fragmentAncestry = findAncestryAtPositionForAutocomplete(p.root, cursorPos);
-    fabricatedAncestry.insert(fabricatedAncestry.end(), fragmentAncestry.begin(), fragmentAncestry.end());
-    if (nearestStatement == nullptr)
-        nearestStatement = p.root;
-    fragmentResult.root = std::move(p.root);
-    fragmentResult.ancestry = std::move(fabricatedAncestry);
-    fragmentResult.nearestStatement = nearestStatement;
-    fragmentResult.commentLocations = std::move(p.commentLocations);
-    return fragmentResult;
 }
 
 static void reportWaypoint(IFragmentAutocompleteReporter* reporter, FragmentAutocompleteWaypoint type)

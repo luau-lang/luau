@@ -8,6 +8,8 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauOptimizeStringSplit, false)
+
 // macro to `unsign' a character
 #define uchar(c) ((unsigned char)(c))
 
@@ -1084,42 +1086,119 @@ static int str_split(lua_State* L)
     size_t needleLen;
     const char* needle = luaL_optlstring(L, 2, ",", &needleLen);
 
-    const char* begin = haystack;
-    const char* end = haystack + haystackLen;
-    const char* spanStart = begin;
-    int numMatches = 0;
-
-    lua_createtable(L, 0, 0);
-
-    if (needleLen == 0)
-        begin++;
-
-    // Don't iterate the last needleLen - 1 bytes of the string - they are
-    // impossible to be splits and would let us memcmp past the end of the
-    // buffer.
-    for (const char* iter = begin; iter <= end - needleLen; iter++)
+    if (DFFlag::LuauOptimizeStringSplit)
     {
-        // Use of memcmp here instead of strncmp is so that we allow embedded
-        // nulls to be used in either of the haystack or the needle strings.
-        // Most Lua string APIs allow embedded nulls, and this should be no
-        // exception.
-        if (memcmp(iter, needle, needleLen) == 0)
+        const char* end = haystack + haystackLen;
+        const char* spanStart = haystack;
+        int numMatches = 0;
+
+        // Use of memchr/memcmp here instead of strchr/strncmp is so that we allow
+        // embedded nulls to be used in either of the haystack or the needle
+        // strings. Most Lua string APIs allow embedded nulls, and this should be
+        // no exception.
+        if (needleLen == 0)
+        {
+            // empty separator splits the string into individual characters, so the result size is known up front
+            lua_createtable(L, int(haystackLen), 0);
+
+            for (const char* iter = haystack; iter < end; iter++)
+            {
+                lua_pushlstring(L, iter, 1);
+                lua_rawseti(L, -2, ++numMatches);
+            }
+
+            return 1;
+        }
+        else if (needleLen == 1)
+        {
+            // every occurrence of a single character separator is a split, so we can cheaply count them up front
+            // and allocate the result table at its final size
+            char sep = needle[0];
+
+            int count = 1;
+            for (const char* iter = haystack; (iter = (const char*)memchr(iter, sep, end - iter)) != NULL; iter++)
+                count++;
+
+            lua_createtable(L, count, 0);
+
+            for (const char* found; (found = (const char*)memchr(spanStart, sep, end - spanStart)) != NULL; spanStart = found + 1)
+            {
+                lua_pushlstring(L, spanStart, found - spanStart);
+                lua_rawseti(L, -2, ++numMatches);
+            }
+        }
+        else
+        {
+            lua_createtable(L, 0, 0);
+
+            if (needleLen <= haystackLen)
+            {
+                // Don't iterate the last needleLen - 1 bytes of the string - they are
+                // impossible to be splits and would let us memcmp past the end of the
+                // buffer.
+                const char* last = end - needleLen;
+
+                for (const char* iter = haystack; iter <= last;)
+                {
+                    // the first and the last characters are checked inline to avoid a memcmp call at most positions
+                    if (iter[0] == needle[0] && iter[needleLen - 1] == needle[needleLen - 1] && memcmp(iter, needle, needleLen) == 0)
+                    {
+                        lua_pushlstring(L, spanStart, iter - spanStart);
+                        lua_rawseti(L, -2, ++numMatches);
+
+                        spanStart = iter + needleLen;
+                        iter = spanStart;
+                    }
+                    else
+                    {
+                        iter++;
+                    }
+                }
+            }
+        }
+
+        lua_pushlstring(L, spanStart, end - spanStart);
+        lua_rawseti(L, -2, ++numMatches);
+    }
+    else
+    {
+        const char* begin = haystack;
+        const char* end = haystack + haystackLen;
+        const char* spanStart = begin;
+        int numMatches = 0;
+
+        lua_createtable(L, 0, 0);
+
+        if (needleLen == 0)
+            begin++;
+
+        // Don't iterate the last needleLen - 1 bytes of the string - they are
+        // impossible to be splits and would let us memcmp past the end of the
+        // buffer.
+        for (const char* iter = begin; iter <= end - needleLen; iter++)
+        {
+            // Use of memcmp here instead of strncmp is so that we allow embedded
+            // nulls to be used in either of the haystack or the needle strings.
+            // Most Lua string APIs allow embedded nulls, and this should be no
+            // exception.
+            if (memcmp(iter, needle, needleLen) == 0)
+            {
+                lua_pushinteger(L, ++numMatches);
+                lua_pushlstring(L, spanStart, iter - spanStart);
+                lua_settable(L, -3);
+
+                spanStart = iter + needleLen;
+                if (needleLen > 0)
+                    iter += needleLen - 1;
+            }
+        }
+
+        if (needleLen > 0)
         {
             lua_pushinteger(L, ++numMatches);
-            lua_pushlstring(L, spanStart, iter - spanStart);
+            lua_pushlstring(L, spanStart, end - spanStart);
             lua_settable(L, -3);
-
-            spanStart = iter + needleLen;
-            if (needleLen > 0)
-                iter += needleLen - 1;
         }
-    }
-
-    if (needleLen > 0)
-    {
-        lua_pushinteger(L, ++numMatches);
-        lua_pushlstring(L, spanStart, end - spanStart);
-        lua_settable(L, -3);
     }
 
     return 1;

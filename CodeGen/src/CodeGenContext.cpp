@@ -15,7 +15,6 @@
 
 LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
 LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
-LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
 {
@@ -739,7 +738,7 @@ void disableNativeExecutionForFunction(lua_State* L, const int level) noexcept
     const TValue* o = ci->func;
     CODEGEN_ASSERT(ttisfunction(o));
 
-    Proto* proto = FFlag::LuauCIProto ? ci->p : clvalue(o)->l.p;
+    Proto* proto = ci->p;
     CODEGEN_ASSERT(proto);
 
     CODEGEN_ASSERT(proto->codeentry != proto->code);

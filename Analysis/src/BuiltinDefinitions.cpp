@@ -25,6 +25,7 @@
 #include <string_view>
 
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAG(LuauUdtfErrorHandling)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
@@ -1304,7 +1305,9 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes, SolverMode mode)
              {},
              {optionalString},
              {},
-             {arena->addType(TableType{{}, TableIndexer{numberType, stringType}, TypeLevel{}, TableState::Sealed})},
+             {arena->addType(TableType{{}, TableIndexer{numberType, stringType}, TypeLevel{},
+                FFlag::DebugLuauExactTableTypes ? TableState::Exact : TableState::Sealed
+             })},
              /* checked */ true
          )}},
         {"pack",
@@ -1732,7 +1735,11 @@ static std::optional<TypeId> freezeTable(TypeId inputType, const MagicFunctionCa
         auto tableTy = getMutable<TableType>(resultType);
         // `clone` should not break this.
         LUAU_ASSERT(tableTy);
-        tableTy->state = TableState::Sealed;
+
+        if (FFlag::DebugLuauExactTableTypes && (tableTy->state == TableState::Unsealed || tableTy->state == TableState::Exact))
+            tableTy->state = TableState::Exact;
+        else
+            tableTy->state = TableState::Sealed;
 
         // We'll mutate the table to make every property type read-only.
         for (auto iter = tableTy->props.begin(); iter != tableTy->props.end();)

@@ -226,6 +226,30 @@ do
   assert(eq(string.split("abc", "b"), {'a', 'c'}))
   assert(eq(string.split("abc", "d"), {'abc'}))
   assert(eq(string.split("abc", "c"), {'ab', ''}))
+  assert(eq(string.split("a,b,c"), {'a', 'b', 'c'}))
+  assert(eq(string.split("", ""), {}))
+  assert(eq(string.split("", ","), {''}))
+  assert(eq(string.split(",", ","), {'', ''}))
+  assert(eq(string.split(",a,,b,", ","), {'', 'a', '', 'b', ''}))
+  assert(eq(string.split("abc", "abcd"), {'abc'}))
+  assert(eq(string.split("abc", "abc"), {'', ''}))
+  assert(eq(string.split("aaaa", "aa"), {'', '', ''}))
+  assert(eq(string.split("aaa", "aa"), {'', 'a'}))
+  assert(eq(string.split("abababa", "aba"), {'', 'b', ''}))
+  assert(eq(string.split("aabaab", "ab"), {'a', 'a', ''}))
+  assert(eq(string.split("aXa,aba", "aba"), {'aXa,', ''}))
+  assert(eq(string.split("aaaa", "aab"), {'aaaa'}))
+  assert(eq(string.split("a\r\nb\rc\n\r\nd", "\r\n"), {'a', 'b\rc\n', 'd'}))
+  assert(eq(string.split("a\0b\0\0c", "\0"), {'a', 'b', '', 'c'}))
+  assert(eq(string.split("a\0\0b\0c", "\0\0"), {'a', 'b\0c'}))
+  assert(eq(string.split("a\0b", ""), {'a', '\0', 'b'}))
+
+  local long = string.rep("x", 1000)
+  local parts = string.split(table.concat(table.create(100, long), ";"), ";")
+  assert(#parts == 100)
+  for i=1,#parts do
+    assert(parts[i] == long)
+  end
 end
 
 -- validate that variadic string fast calls get correct number of arguments
