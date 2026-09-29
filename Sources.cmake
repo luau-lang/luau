@@ -46,12 +46,14 @@ target_sources(Luau.Ast PRIVATE
 target_sources(Luau.Bytecode PRIVATE
     Bytecode/include/Luau/BytecodeBuilder.h
     Bytecode/include/Luau/BytecodeCallInliner.h
+    Bytecode/include/Luau/BytecodeDump.h
     Bytecode/include/Luau/BytecodeGraph.h
     Bytecode/include/Luau/BytecodeOps.h
     Bytecode/include/Luau/BytecodeValidation.h
     Bytecode/include/Luau/Sccp.h
 
     Bytecode/src/BytecodeBuilder.cpp
+    Bytecode/src/BytecodeDump.cpp
     Bytecode/src/BytecodeGraph.cpp
     Bytecode/src/BytecodeGraphParser.h
     Bytecode/src/BytecodeGraphSerializer.h
@@ -255,12 +257,10 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Refinement.h
     Analysis/include/Luau/RequireTracer.h
     Analysis/include/Luau/Scope.h
-    Analysis/include/Luau/Set.h
     Analysis/include/Luau/Simplify.h
     Analysis/include/Luau/StructuralTypeEquality.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Subtyping.h
-    Analysis/include/Luau/SubtypingUnifier.h
     Analysis/include/Luau/SubtypingVariance.h
     Analysis/include/Luau/Symbol.h
     Analysis/include/Luau/TableLiteralInference.h
@@ -347,7 +347,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/StructuralTypeEquality.cpp
     Analysis/src/Substitution.cpp
     Analysis/src/Subtyping.cpp
-    Analysis/src/SubtypingUnifier.cpp
     Analysis/src/Symbol.cpp
     Analysis/src/TableLiteralInference.cpp
     Analysis/src/ToDot.cpp
@@ -506,8 +505,8 @@ if(TARGET Luau.UnitTest)
         tests/BuiltinDefinitions.test.cpp
         tests/BytecodeCallInliner.test.cpp
         tests/BytecodeCompiler.test.cpp
-        tests/ClassFixture.cpp
-        tests/ClassFixture.h
+        tests/ExternTypeFixture.cpp
+        tests/ExternTypeFixture.h
         tests/CodeAllocator.test.cpp
         tests/Compiler.test.cpp
         tests/Config.test.cpp
@@ -547,7 +546,6 @@ if(TARGET Luau.UnitTest)
         tests/Sccp.test.cpp
         tests/ScopedFlags.h
         tests/Simplify.test.cpp
-        tests/Set.test.cpp
         tests/StringUtils.test.cpp
         tests/Subtyping.test.cpp
         tests/Symbol.test.cpp
@@ -573,7 +571,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.loops.test.cpp
         tests/TypeInfer.modules.test.cpp
         tests/TypeInfer.negations.test.cpp
-        tests/TypeInfer.oop.test.cpp
+        tests/TypeInfer.metatableOOP.test.cpp
         tests/TypeInfer.operators.test.cpp
         tests/TypeInfer.primitives.test.cpp
         tests/TypeInfer.provisional.test.cpp
@@ -599,6 +597,7 @@ endif()
 if(TARGET Luau.Conformance)
     # Luau.Conformance Sources
     target_sources(Luau.Conformance PRIVATE
+        tests/BufferCage.h
         tests/RegisterCallbacks.h
         tests/RegisterCallbacks.cpp
         tests/ConformanceIrHooks.h
@@ -624,6 +623,9 @@ if(TARGET Luau.CLI.Test)
         CLI/src/Repl.cpp
         CLI/src/ReplRequirer.cpp
 
+        tests/ClassRuntimeErrors.test.cpp
+        tests/ReplWithPathFixture.h
+        tests/ReplWithPathFixture.cpp
         tests/RegisterCallbacks.h
         tests/RegisterCallbacks.cpp
         tests/Repl.test.cpp

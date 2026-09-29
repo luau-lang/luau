@@ -146,8 +146,12 @@ function transform.transformFunction(name, sigDesc, body, backend)
 
 	-- Link each fixed-size alloca-result node to its region; give the region a stable pointer
 	-- temp for redirecting sp-relative math and a shared lower (the result's seeded lower).
-	for node, al in allocaNodes do
-		if al.kind == "resultSize" then
+	-- Iterate in body order (allocaNodes is keyed by node identity, whose `pairs` order is
+	-- hash-dependent; region pointer temps are allocated here, so a stable order keeps temp
+	-- ids — and therefore register allocation — reproducible).
+	for _, node in lf.nodes do
+		local al = allocaNodes[node]
+		if al and al.kind == "resultSize" then
 			for _, r in allocaRegions do
 				if r.stmt == node.stmt then al.region = r; break end
 			end
@@ -477,8 +481,11 @@ function transform.transformFunction(name, sigDesc, body, backend)
 	end
 	for _, s in failStubs do emit(s) end
 
+	-- Sorted by callee name: calledExterns is keyed by callee, and this list drives the
+	-- order of emitted extern/glue directives, so it must not depend on hash order.
 	local externsList = {}
 	for _, e in calledExterns do table.insert(externsList, e) end
+	table.sort(externsList, function(a, b) return a.name < b.name end)
 
 	return {
 		name = name, sigDesc = sigDesc, fipNodes = out, temps = temps, vMyth = vMyth,

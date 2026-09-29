@@ -8,16 +8,14 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/VisitType.h"
 
-LUAU_FASTFLAGVARIABLE(LuauBidirectionalInferenceSimplifyTables)
-
 namespace Luau
 {
 
 ExpectedTypeVisitor::ExpectedTypeVisitor(
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes,
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes,
-    NotNull<DenseHashMap2<const AstType*, TypeId>> astResolvedTypes,
-    NotNull<DenseHashMap2<const AstNode*, TypeId>> astOverloadResolvedTypes,
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
+    NotNull<DenseHashMap<const AstType*, TypeId>> astResolvedTypes,
+    NotNull<DenseHashMap<const AstNode*, TypeId>> astOverloadResolvedTypes,
     NotNull<TypeArena> arena,
     NotNull<BuiltinTypes> builtinTypes,
     NotNull<Scope> rootScope
@@ -230,21 +228,10 @@ void ExpectedTypeVisitor::applyExpectedType(TypeId expectedType, const AstExpr* 
             {
                 if (auto exprType = astTypes->find(expr))
                 {
-                    if (FFlag::LuauBidirectionalInferenceSimplifyTables)
+                    if (auto tt = extractMatchingTableType(utv, *exprType, builtinTypes, arena))
                     {
-                        if (auto tt = extractMatchingTableType(utv, *exprType, builtinTypes, arena))
-                        {
-                            applyExpectedType(*tt, expr);
-                            return;
-                        }
-                    }
-                    else
-                    {
-                        if (auto tt = extractMatchingTableType_DEPRECATED(utv, *exprType, builtinTypes))
-                        {
-                            applyExpectedType(*tt, expr);
-                            return;
-                        }
+                        applyExpectedType(*tt, expr);
+                        return;
                     }
                 }
             }

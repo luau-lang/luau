@@ -13,6 +13,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauFrozenMetaButterfly)
+
 // clang-format off
 const char* const luaT_typenames[] = {
     // ORDER TYPE
@@ -122,12 +124,23 @@ const TValue* luaT_gettmbyobj(lua_State* L, const TValue* o, TMS event)
     case LUA_TUSERDATA:
         mt = uvalue(o)->metatable;
         break;
+    case LUA_TCLASS:
+    {
+        // We store a metatable for class objects on the
+        // class object itself, use that.
+        mt = classvalue(o)->metatable;
+        break;
+    }
     case LUA_TOBJECT:
         mt = objectvalue(o)->lclass->instancemetatable;
         break;
     default:
         mt = L->global->mt[ttype(o)];
     }
+
+    if (FFlag::LuauFrozenMetaButterfly && mt && hasmetacache(mt))
+        return getmetacache(mt, event);
+
     return (mt ? luaH_getstr(mt, L->global->tmname[event]) : luaO_nilobject);
 }
 

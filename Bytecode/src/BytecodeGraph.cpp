@@ -301,8 +301,8 @@ std::optional<CompTimeBcFunction> fromFunctionBytecode(std::string bytecode, std
 
 struct CompTimeBytecodeGraphSerializer : public BytecodeGraphSerializer<BcVmConst>
 {
-    std::vector<uint16_t>& consts;
-    CompTimeBytecodeGraphSerializer(BytecodeBuilder& bcb, CompTimeBcFunction& fn, std::vector<uint16_t>& consts)
+    std::vector<uint32_t>& consts;
+    CompTimeBytecodeGraphSerializer(BytecodeBuilder& bcb, CompTimeBcFunction& fn, std::vector<uint32_t>& consts)
         : BytecodeGraphSerializer<BcVmConst>(bcb, fn)
         , consts(consts)
     {
@@ -328,8 +328,9 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
     for (auto& upval : fn.upvalueNames)
         bcb.pushDebugUpval({upval.data(), upval.size()});
 
-    std::vector<uint16_t> consts;
+    std::vector<uint32_t> consts;
     consts.reserve(fn.constants.size());
+
     for (auto& c : fn.constants)
     {
         switch (c.kind)
@@ -408,7 +409,11 @@ std::string toFunctionBytecode(BytecodeBuilder& bcb, CompTimeBcFunction& fn)
 
     bcb.foldJumps();
 
-    bcb.expandJumps();
+    bool hasLongJumpError = false;
+    bcb.expandJumps(hasLongJumpError);
+
+    if (hasLongJumpError)
+        return "";
 
     bcb.endFunction(fn.maxstacksize, fn.nups, fn.flags);
 

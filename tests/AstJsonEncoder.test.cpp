@@ -12,14 +12,14 @@
 using namespace Luau;
 
 
-LUAU_FASTFLAG(LuauDisallowExternClassInTypeDefinitions)
 LUAU_FASTFLAG(LuauSingleTypeOptionalPackReturnsAttributeParens)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
 struct JsonEncoderFixture
 {
     Allocator allocator;
     AstNameTable names{allocator};
-    ScopedFastFlag sff{FFlag::LuauDisallowExternClassInTypeDefinitions, true};
 
     ParseResult parse(std::string_view src)
     {
@@ -336,6 +336,68 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatIf")
         R"({"type":"AstStatIf","location":"0,0 - 0,21","condition":{"type":"AstExprConstantBool","location":"0,3 - 0,7","value":true},"thenbody":{"type":"AstStatBlock","location":"0,12 - 0,13","hasEnd":true,"body":[]},"elsebody":{"type":"AstStatBlock","location":"0,17 - 0,18","hasEnd":true,"body":[]},"hasThen":true})";
 
     CHECK(toJson(statement) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatIf_if_local")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    AstStat* statement = expectParseStatement("if local x = y then end");
+
+    std::string_view expected =
+        R"({"type":"AstStatIf","location":"0,0 - 0,23","condition":{"type":"AstExprGlobal","location":"0,13 - 0,14","global":"y"},"thenbody":{"type":"AstStatBlock","location":"0,19 - 0,20","hasEnd":true,"body":[]},"hasThen":true,"conditionLocal":{"luauType":null,"name":"x","isConst":false,"type":"AstLocal","location":"0,9 - 0,10"}})";
+
+    CHECK(toJson(statement) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatIf_if_const")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    AstStat* statement = expectParseStatement("if const x = y then end");
+
+    std::string_view expected =
+        R"({"type":"AstStatIf","location":"0,0 - 0,23","condition":{"type":"AstExprGlobal","location":"0,13 - 0,14","global":"y"},"thenbody":{"type":"AstStatBlock","location":"0,19 - 0,20","hasEnd":true,"body":[]},"hasThen":true,"conditionLocal":{"luauType":null,"name":"x","isConst":true,"type":"AstLocal","location":"0,9 - 0,10"}})";
+
+    CHECK(toJson(statement) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatIf_if_local_type")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    AstStat* statement = expectParseStatement("if local x: number = y then end");
+
+    std::string_view expected =
+        R"({"type":"AstStatIf","location":"0,0 - 0,31","condition":{"type":"AstExprGlobal","location":"0,21 - 0,22","global":"y"},"thenbody":{"type":"AstStatBlock","location":"0,27 - 0,28","hasEnd":true,"body":[]},"hasThen":true,"conditionLocal":{"luauType":{"type":"AstTypeReference","location":"0,12 - 0,18","name":"number","nameLocation":"0,12 - 0,18","parameters":[]},"name":"x","isConst":false,"type":"AstLocal","location":"0,9 - 0,10"}})";
+
+    CHECK(toJson(statement) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstExprIfElse_if_local")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    AstExpr* expr = expectParseExpr("if local x = y then x else z");
+    REQUIRE(expr->is<AstExprIfElse>());
+
+    std::string_view expected =
+        R"({"type":"AstExprIfElse","location":"0,4 - 0,32","condition":{"type":"AstExprGlobal","location":"0,17 - 0,18","global":"y"},"hasThen":true,"trueExpr":{"type":"AstExprLocal","location":"0,24 - 0,25","local":{"luauType":null,"name":"x","isConst":false,"type":"AstLocal","location":"0,13 - 0,14"}},"hasElse":true,"falseExpr":{"type":"AstExprGlobal","location":"0,31 - 0,32","global":"z"},"conditionLocal":{"luauType":null,"name":"x","isConst":false,"type":"AstLocal","location":"0,13 - 0,14"}})";
+
+    CHECK(toJson(expr) == expected);
+}
+
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstExprIfElse_if_const")
+{
+    ScopedFastFlag sffs[] = {{FFlag::LuauExperimentalIfLocalSyntax, true}, {FFlag::LuauExperimentalIfLocalAnalysis, true}};
+
+    AstExpr* expr = expectParseExpr("if const x = y then x else z");
+    REQUIRE(expr->is<AstExprIfElse>());
+
+    std::string_view expected =
+        R"({"type":"AstExprIfElse","location":"0,4 - 0,32","condition":{"type":"AstExprGlobal","location":"0,17 - 0,18","global":"y"},"hasThen":true,"trueExpr":{"type":"AstExprLocal","location":"0,24 - 0,25","local":{"luauType":null,"name":"x","isConst":true,"type":"AstLocal","location":"0,13 - 0,14"}},"hasElse":true,"falseExpr":{"type":"AstExprGlobal","location":"0,31 - 0,32","global":"z"},"conditionLocal":{"luauType":null,"name":"x","isConst":true,"type":"AstLocal","location":"0,13 - 0,14"}})";
+
+    CHECK(toJson(expr) == expected);
 }
 
 TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstStatWhile")

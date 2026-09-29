@@ -168,7 +168,7 @@ struct RequireTracer : AstVisitor
     FileResolver* fileResolver;
     ModuleName currentModuleName;
 
-    DenseHashMap2<AstLocal*, AstExpr*> locals;
+    DenseHashMap<AstLocal*, AstExpr*> locals;
     std::vector<AstNode*> work;
     std::vector<AstExprCall*> requireCalls;
 };

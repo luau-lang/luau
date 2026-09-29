@@ -265,8 +265,8 @@ private:
     // unique_ptr is used to give us stable pointers across insertions into the
     // map. Otherwise, it would be really easy to accidentally invalidate the
     // pointers returned from queue/pending.
-    DenseHashMap2<TypeId, std::unique_ptr<PendingType>> typeVarChanges;
-    DenseHashMap2<TypePackId, std::unique_ptr<PendingTypePack>> typePackChanges;
+    DenseHashMap<TypeId, std::unique_ptr<PendingType>> typeVarChanges;
+    DenseHashMap<TypePackId, std::unique_ptr<PendingTypePack>> typePackChanges;
 
     TxnLog* parent = nullptr;
 

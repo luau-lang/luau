@@ -5,7 +5,7 @@
 #include "Luau/TypeArena.h"
 #include "Luau/TypePack.h"
 
-#include "ClassFixture.h"
+#include "ExternTypeFixture.h"
 #include "doctest.h"
 #include "Fixture.h"
 #include "ScopedFlags.h"
@@ -28,14 +28,14 @@ struct TypePathFixture : Fixture
 {
     ScopedFastFlag sff1{FFlag::DebugLuauForceOldSolver, false};
     TypeArena arena;
-    const DenseHashMap2<TypePackId, TypePackId> emptyMap_DEPRECATED;
+    const DenseHashMap<TypePackId, TypePackId> emptyMap_DEPRECATED;
 };
 
 struct TypePathBuiltinsFixture : BuiltinsFixture
 {
     ScopedFastFlag sff1{FFlag::DebugLuauForceOldSolver, false};
     TypeArena arena;
-    const DenseHashMap2<TypePackId, TypePackId> emptyMap_DEPRECATED;
+    const DenseHashMap<TypePackId, TypePackId> emptyMap_DEPRECATED;
 };
 
 TEST_SUITE_BEGIN("TypePathManipulation");
@@ -556,6 +556,8 @@ TEST_CASE_FIXTURE(TypePathFixture, "step_limit")
 
 TEST_CASE_FIXTURE(TypePathBuiltinsFixture, "complex_chains")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     SUBCASE("add_metamethod_return_type")
     {
         TYPESOLVE_CODE(R"(

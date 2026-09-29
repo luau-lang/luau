@@ -6,7 +6,7 @@
 #include "Luau/Type.h"
 
 #include "Fixture.h"
-#include "ClassFixture.h"
+#include "ExternTypeFixture.h"
 
 #include "ScopedFlags.h"
 #include "doctest.h"
@@ -16,8 +16,6 @@ using std::nullopt;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
-LUAU_FASTFLAG(LuauDropUnionSubtypeReasoning)
-LUAU_FASTFLAG(LuauAllowIntersectionOfOneTableWithExtern)
 
 TEST_SUITE_BEGIN("TypeInferExternTypes");
 
@@ -148,6 +146,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_us
         makeClone(oopsies)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors.at(0));
     REQUIRE(tm != nullptr);
@@ -175,6 +175,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "we_can_report_when_someone_is_trying_to_us
 
         makeClone(oopsies)
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors.at(0));
@@ -322,6 +324,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "higher_order_function_return_values_are_co
         end)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -336,6 +340,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "higher_order_function_return_type_is_not_c
             return ChildClass.New()
         end)
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -388,6 +394,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "table_indexers_are_invariant")
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "table_class_unification_reports_sane_errors_for_missing_properties")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         function foo(bar)
             bar.Y = 1 -- valid
@@ -398,6 +406,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "table_class_unification_reports_sane_error
         local a: Vector2
         foo(a)
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -444,6 +454,8 @@ b.X = 2 -- real Vector2.X is also read-only
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "detailed_class_unification_error")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
 local function foo(v)
     return v.X :: number + string.len(v.Y)
@@ -453,6 +465,8 @@ local a: Vector2
 local b = foo
 b(a)
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -615,7 +629,6 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "callable_extern_types")
 
 TEST_CASE_FIXTURE(ExternTypeFixture, "indexable_extern_types")
 {
-    ScopedFastFlag _{FFlag::LuauDropUnionSubtypeReasoning, true};
     // Test reading from an index
     {
         CheckResult result = check(R"(
@@ -915,6 +928,8 @@ TEST_CASE_FIXTURE(ExternTypeFixture, "cyclic_tables_are_assumed_to_be_compatible
         c.Touched:Connect(onTouch)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1028,12 +1043,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_never")
         end
     )");
 
+    ignoreMissingAnnotations(results);
+
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Bing | Foobar) -> Bing", toString(requireType("update")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_intersection")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
@@ -1048,6 +1067,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_becomes_intersection")
             return foo
         end
     )");
+
+    ignoreMissingAnnotations(results);
 
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Foobar) -> Foobar & { read IsEnabled: string }", toString(requireType("update")));
@@ -1070,6 +1091,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_superset")
         end
     )");
 
+    ignoreMissingAnnotations(results);
+
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Foobar) -> Foobar", toString(requireType("update")));
 }
@@ -1090,6 +1113,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_check_key_idempotent")
             return foo
         end
     )");
+
+    ignoreMissingAnnotations(results);
 
     LUAU_REQUIRE_NO_ERRORS(results);
     CHECK_EQ("(Foobar) -> Foobar", toString(requireType("update")));
@@ -1112,6 +1137,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersect_with_table_indexer")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(
@@ -1120,12 +1147,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_with_indexer_intersect_table")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function update(obj: Foobar)
             assert(typeof(obj.Baz) == "number")
             return obj
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(Foobar) -> Foobar & { read Baz: number }", toString(requireType("update")));
 }
@@ -1250,8 +1279,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "extern_type_intersection_with_table_type_2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_1")
 {
-    ScopedFastFlag _{FFlag::LuauAllowIntersectionOfOneTableWithExtern, true};
-
     loadDefinition(R"(
         declare extern type Frame with
         end
@@ -1272,14 +1299,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_1")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_2")
 {
-    ScopedFastFlag _{FFlag::LuauAllowIntersectionOfOneTableWithExtern, true};
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
 
     loadDefinition(R"(
         declare extern type Folder with
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local World : { [number]: { PlayerData: { Settings: { Audio: {} & Folder } } } }
 
         local function Spread(Id: number)
@@ -1287,7 +1314,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersected_against_extern_type_2")
             assert(Ownership)
             return Ownership
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(number) -> { PlayerData: { Settings: { Audio: Folder & {  } } } }", toString(requireType("Spread")));
 }

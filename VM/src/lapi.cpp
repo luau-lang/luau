@@ -19,10 +19,10 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauDirectFieldGet)
 LUAU_FASTFLAG(LuauGcTraceUdata)
-LUAU_FASTFLAGVARIABLE(LuauManagedDebugNames)
 LUAU_FASTFLAGVARIABLE(LuauNewPointerEncode)
+LUAU_FASTFLAGVARIABLE(DebugLuauCoroutineFinally)
+LUAU_FASTFLAGVARIABLE(LuauFrozenMetaButterfly)
 
 /*
  * This file contains most implementations of core Lua APIs from lua.h.
@@ -789,11 +789,7 @@ void lua_pushcclosurek(lua_State* L, lua_CFunction fn, const char* debugname, in
     Closure* cl = luaF_newCclosure(L, nup, getcurrenv(L));
     cl->c.f = fn;
     cl->c.cont = cont;
-
-    if (FFlag::LuauManagedDebugNames)
-        cl->c.debugname = debugname ? luaS_new(L, debugname) : nullptr;
-    else
-        cl->c.debugname_DEPRECATED = debugname;
+    cl->c.debugname = debugname ? luaS_new(L, debugname) : nullptr;
 
     L->top -= nup;
     while (nup--)
@@ -914,7 +910,11 @@ void lua_setreadonly(lua_State* L, int objindex, int enabled)
     api_check(L, ttistable(o));
     LuaTable* t = hvalue(o);
     api_check(L, t != hvalue(registry(L)));
-    t->readonly = bool(enabled);
+
+    if (FFlag::LuauFrozenMetaButterfly)
+        luaH_setreadonly(L, t, enabled != 0);
+    else
+        t->readonly = bool(enabled);
 }
 
 int lua_getreadonly(lua_State* L, int objindex)
@@ -922,8 +922,16 @@ int lua_getreadonly(lua_State* L, int objindex)
     const TValue* o = index2addr(L, objindex);
     api_check(L, ttistable(o));
     LuaTable* t = hvalue(o);
-    int res = t->readonly;
-    return res;
+
+    if (FFlag::LuauFrozenMetaButterfly)
+    {
+        return luaH_getreadonly(t);
+    }
+    else
+    {
+        int res = t->readonly;
+        return res;
+    }
 }
 
 void lua_setsafeenv(lua_State* L, int objindex, int enabled)
@@ -1308,6 +1316,75 @@ int lua_costatus(lua_State* L, lua_State* co)
     return LUA_COSUS; // initial state
 }
 
+int lua_hasfinalizers(lua_State* L)
+{
+    LUAU_ASSERT(FFlag::DebugLuauCoroutineFinally);
+
+    return L->finalizers ? 1 : 0;
+}
+
+static int runfinalizery(lua_State* L)
+{
+    lua_State* co = lua_tothread(L, 1);
+    api_check(L, co != nullptr && co != L);
+    api_check(L, L->global == co->global);
+    api_check(L, co->status != LUA_YIELD && co->status != LUA_BREAK);
+    api_check(L, co->finalizers != nullptr);
+
+    luaD_preparefinalize(L, co);
+    return luaD_runfinalizers(L, /* toclose */ false, /* returnstatus */ false);
+}
+
+static int runfinalizercont(lua_State* L, int status)
+{
+    if (status != LUA_OK)
+        luaD_throw(L, status);
+
+    return luaD_runfinalizers(L, /* toclose */ false, /* returnstatus */ false);
+}
+
+void lua_pushfinalizerfunction(lua_State* L)
+{
+    LUAU_ASSERT(FFlag::DebugLuauCoroutineFinally);
+
+    luaC_threadbarrier(L);
+    api_check(L, L->status == LUA_OK);
+
+    lua_pushcclosurek(L, runfinalizery, "finalize", 0, runfinalizercont);
+}
+
+void lua_addfinalizer(lua_State* L, lua_State* co, int idx)
+{
+    LUAU_ASSERT(FFlag::DebugLuauCoroutineFinally);
+
+    api_check(L, co != nullptr);
+    api_check(L, !lua_isnoneornil(L, idx));
+
+    if (co == lua_mainthread(L))
+        luaG_runerror(L, "cannot register a finalizer on the main thread");
+
+    int status = lua_costatus(L, co);
+    if (status == LUA_COFIN || status == LUA_COERR)
+        luaG_runerror(L, "cannot register a finalizer on dead coroutine");
+
+    if (LUAU_UNLIKELY(!!L->global->cb.userfinalizer))
+        L->global->cb.userfinalizer(L, co);
+
+    StkId cb = index2addr(L, idx);
+
+    // create a callback table if it's not ready
+    if (co->finalizers == nullptr)
+    {
+        co->finalizers = luaH_new(L, 1, 0);
+        luaC_objbarrier(L, co, co->finalizers);
+    }
+
+    // add a new item
+    TValue* slot = luaH_setnum(L, co->finalizers, luaH_getn(co->finalizers) + 1);
+    setobj2t(L, slot, cb);
+    luaC_barriert(L, co->finalizers, cb);
+}
+
 void* lua_getthreaddata(lua_State* L)
 {
     return L->userdata;
@@ -1591,7 +1668,7 @@ void* lua_newuserdatataggedwithmetatable(lua_State* L, size_t sz, int tag)
     return u->data;
 }
 
-void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*))
+void* lua_newuserdatadtor(lua_State* L, size_t sz, lua_Destructor dtor)
 {
     api_check(L, dtor != nullptr);
     luaC_checkGC(L);
@@ -1787,18 +1864,19 @@ uintptr_t lua_encodepointer(lua_State* L, uintptr_t p)
     }
 }
 
-static int registryref(lua_State* L, int idx, TValue* registry, int& registryfree)
+int lua_ref(lua_State* L, int idx)
 {
-    LUAU_ASSERT(FFlag::LuauGcTraceUdata);
+    api_check(L, idx != LUA_REGISTRYINDEX); // idx is a stack index for value
     int ref = LUA_REFNIL;
+    global_State* g = L->global;
     StkId p = index2addr(L, idx);
     if (!ttisnil(p))
     {
-        LuaTable* reg = hvalue(registry);
+        LuaTable* reg = hvalue(registry(L));
 
-        if (registryfree != 0)
+        if (g->registryfree != 0)
         { // reuse existing slot
-            ref = registryfree;
+            ref = g->registryfree;
         }
         else
         { // no free elements
@@ -1807,21 +1885,21 @@ static int registryref(lua_State* L, int idx, TValue* registry, int& registryfre
         }
 
         TValue* slot = luaH_setnum(L, reg, ref);
-        if (registryfree != 0)
-            registryfree = int(nvalue(slot));
+        if (g->registryfree != 0)
+            g->registryfree = int(nvalue(slot));
         setobj2t(L, slot, p);
         luaC_barriert(L, reg, p);
     }
     return ref;
 }
 
-static void registryunref(lua_State* L, int ref, TValue* registry, int& registryfree)
+int lua_unref(lua_State* L, int ref)
 {
-    LUAU_ASSERT(FFlag::LuauGcTraceUdata);
     if (ref <= LUA_REFNIL)
-        return;
+        return LUA_NOREF;
 
-    LuaTable* reg = hvalue(registry);
+    global_State* g = L->global;
+    LuaTable* reg = hvalue(registry(L));
 
     const TValue* slot = luaH_getnum(reg, ref);
     api_check(L, slot != luaO_nilobject);
@@ -1830,81 +1908,10 @@ static void registryunref(lua_State* L, int ref, TValue* registry, int& registry
     TValue* mutableSlot = (TValue*)slot;
 
     // NB: no barrier needed because value isn't collectable
-    setnvalue(mutableSlot, registryfree);
+    setnvalue(mutableSlot, g->registryfree);
 
-    registryfree = ref;
-}
-
-int lua_ref(lua_State* L, int idx)
-{
-    api_check(L, idx != LUA_REGISTRYINDEX); // idx is a stack index for value
-    if (FFlag::LuauGcTraceUdata)
-    {
-        global_State* g = L->global;
-        int registryfree = g->registryfree;
-        int ref = registryref(L, idx, registry(L), registryfree);
-        g->registryfree = registryfree;
-        return ref;
-    }
-    else
-    {
-        int ref = LUA_REFNIL;
-        global_State* g = L->global;
-        StkId p = index2addr(L, idx);
-        if (!ttisnil(p))
-        {
-            LuaTable* reg = hvalue(registry(L));
-
-            if (g->registryfree != 0)
-            { // reuse existing slot
-                ref = g->registryfree;
-            }
-            else
-            { // no free elements
-                ref = luaH_getn(reg);
-                ref++; // create new reference
-            }
-
-            TValue* slot = luaH_setnum(L, reg, ref);
-            if (g->registryfree != 0)
-                g->registryfree = int(nvalue(slot));
-            setobj2t(L, slot, p);
-            luaC_barriert(L, reg, p);
-        }
-        return ref;
-    }
-}
-
-int lua_unref(lua_State* L, int ref)
-{
-    if (FFlag::LuauGcTraceUdata)
-    {
-        global_State* g = L->global;
-        int registryfree = g->registryfree;
-        registryunref(L, ref, registry(L), registryfree);
-        g->registryfree = registryfree;
-        return LUA_NOREF;
-    }
-    else
-    {
-        if (ref <= LUA_REFNIL)
-            return LUA_NOREF;
-
-        global_State* g = L->global;
-        LuaTable* reg = hvalue(registry(L));
-
-        const TValue* slot = luaH_getnum(reg, ref);
-        api_check(L, slot != luaO_nilobject);
-
-        // similar to how 'luaH_setnum' makes non-nil slot value mutable
-        TValue* mutableSlot = (TValue*)slot;
-
-        // NB: no barrier needed because value isn't collectable
-        setnvalue(mutableSlot, g->registryfree);
-
-        g->registryfree = ref;
-        return LUA_NOREF;
-    }
+    g->registryfree = ref;
+    return LUA_NOREF;
 }
 
 void lua_setuserdatatag(lua_State* L, int idx, int tag)
@@ -1943,15 +1950,52 @@ void lua_setembeddergc(lua_State* L, lua_EmbedderGc fn)
 int lua_weakref(lua_State* L, int idx)
 {
     LUAU_ASSERT(FFlag::LuauGcTraceUdata);
+    api_check(L, idx != LUA_REGISTRYINDEX); // idx is a stack index for value
+    int ref = LUA_REFNIL;
     global_State* g = L->global;
-    return registryref(L, idx, &g->weakregistry, g->weakregistryfree);
+    StkId p = index2addr(L, idx);
+    if (!ttisnil(p))
+    {
+        LuaTable* weakregistry = hvalue(&g->weakregistry);
+        int& weakregistryfree = g->weakregistryfree;
+        TValue* slot = nullptr;
+
+        if (weakregistryfree != 0)
+        { // reuse existing slot
+            ref = weakregistryfree;
+            slot = luaH_setnum(L, weakregistry, ref);
+            weakregistryfree = int(nvalue(slot));
+        }
+        else
+        { // no free elements
+            // must use weakregistrytop here: garbage collection may have made
+            // "holes" that are unsafe to reuse until lua_weakunref is called
+            ref = ++g->weakregistrytop;
+            slot = luaH_setnum(L, weakregistry, ref);
+        }
+
+        setobj2t(L, slot, p);
+        luaC_barriert(L, weakregistry, p);
+    }
+    return ref;
 }
 
 int lua_weakunref(lua_State* L, int ref)
 {
     LUAU_ASSERT(FFlag::LuauGcTraceUdata);
+    if (ref <= LUA_REFNIL)
+        return LUA_NOREF;
+
     global_State* g = L->global;
-    registryunref(L, ref, &g->weakregistry, g->weakregistryfree);
+    api_check(L, ref <= g->weakregistrytop);
+    LuaTable* weakregistry = hvalue(&g->weakregistry);
+
+    TValue* slot = luaH_setnum(L, weakregistry, ref);
+
+    // NB: no barrier needed because value isn't collectable
+    setnvalue(slot, g->weakregistryfree);
+
+    g->weakregistryfree = ref;
     return LUA_NOREF;
 }
 
@@ -2148,9 +2192,6 @@ lua_Alloc lua_getallocf(lua_State* L, void** ud)
 
 void lua_registeruserdatadirectfieldget(lua_State* L, int tag, const char* field, lua_UserdataDirectFieldGet fn)
 {
-    if (!FFlag::LuauDirectFieldGet)
-        return;
-
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
     api_check(L, field != nullptr);
     api_check(L, fn != nullptr);
@@ -2169,7 +2210,6 @@ void lua_registeruserdatadirectfieldget(lua_State* L, int tag, const char* field
 
 void lua_userdatadirectfield_setnumber(void* result, double n)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
     TValue* slot = LUA_VECTOR_DOUBLE ? static_cast<DirectFieldResult*>(result)->slot : static_cast<TValue*>(result);
     setnvalue(slot, n);
 }
@@ -2177,8 +2217,6 @@ void lua_userdatadirectfield_setnumber(void* result, double n)
 #if LUA_VECTOR_SIZE == 4
 void lua_userdatadirectfield_setvector(void* result, LUA_VECTOR_TYPE x, LUA_VECTOR_TYPE y, LUA_VECTOR_TYPE z, LUA_VECTOR_TYPE w)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
-
     if (LUA_VECTOR_DOUBLE == 1)
     {
         DirectFieldResult* dfr = static_cast<DirectFieldResult*>(result);
@@ -2192,8 +2230,6 @@ void lua_userdatadirectfield_setvector(void* result, LUA_VECTOR_TYPE x, LUA_VECT
 #else
 void lua_userdatadirectfield_setvector(void* result, LUA_VECTOR_TYPE x, LUA_VECTOR_TYPE y, LUA_VECTOR_TYPE z)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
-
     if (LUA_VECTOR_DOUBLE == 1)
     {
         DirectFieldResult* dfr = static_cast<DirectFieldResult*>(result);
@@ -2208,21 +2244,18 @@ void lua_userdatadirectfield_setvector(void* result, LUA_VECTOR_TYPE x, LUA_VECT
 
 void lua_userdatadirectfield_setboolean(void* result, int b)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
     TValue* slot = LUA_VECTOR_DOUBLE ? static_cast<DirectFieldResult*>(result)->slot : static_cast<TValue*>(result);
     setbvalue(slot, b);
 }
 
 void lua_userdatadirectfield_setinteger64(void* result, int64_t n)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
     TValue* slot = LUA_VECTOR_DOUBLE ? static_cast<DirectFieldResult*>(result)->slot : static_cast<TValue*>(result);
     setlvalue(slot, n);
 }
 
 void lua_userdatadirectfield_setnil(void* result)
 {
-    LUAU_ASSERT(FFlag::LuauDirectFieldGet);
     TValue* slot = LUA_VECTOR_DOUBLE ? static_cast<DirectFieldResult*>(result)->slot : static_cast<TValue*>(result);
     setnilvalue(slot);
 }

@@ -220,6 +220,12 @@ typedef struct global_State
     TString* ttname[LUA_T_COUNT]; // names for basic types
     TString* tmname[TM_N]; // array with tag-method names
 
+    lua_CageAlloc cagealloc;
+    void* cageud;
+    struct lua_Page* freegcopages_cage[LUA_SIZECLASSES]; // cage GCO free pages, per size class
+    struct lua_Page* allgcopages_cage; // all cage GCO pages (sweep target)
+    struct lua_Page* sweepgcopage_cage; // sweep cursor
+
     TValue pseudotemp; // storage for temporary values used in pseudo2addr
 
     TValue registry; // registry table, used by lua_ref and LUA_REGISTRYINDEX
@@ -247,6 +253,7 @@ typedef struct global_State
 
     TValue weakregistry; // backing table for lua_weakref/lua_weakunref/lua_getweakref
     int weakregistryfree; // next free slot in weakregistry
+    int weakregistrytop; // top of the weakregistry (highest used index)
     lua_EmbedderGc embeddergc; // embedder GC callback for keeping weak references alive
 
     TString* lightuserdataname[LUA_LUTAG_LIMIT]; // names for tagged lightuserdata
@@ -307,6 +314,8 @@ struct lua_State
     GCObject* gclist;
 
     TString* namecall; // when invoked from Luau using NAMECALL, what method do we need to invoke?
+
+    LuaTable* finalizers; // optional table of all the callbacks to run when this thread completes (see coroutine.finally)
 
     void* userdata;
 };

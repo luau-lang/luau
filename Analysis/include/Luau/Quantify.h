@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/TypeFwd.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Unifiable.h"
 
 #include <vector>
@@ -22,7 +22,7 @@ template<typename K, typename V>
 struct OrderedMap
 {
     std::vector<K> keys;
-    DenseHashMap2<K, V> pairings;
+    DenseHashMap<K, V> pairings;
 
     void push(K k, V v)
     {

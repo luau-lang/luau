@@ -18,18 +18,15 @@
 
 LUAU_FASTFLAG(LuauIntegerFastcalls)
 LUAU_FASTFLAG(LuauCodegenInteger3)
-LUAU_FASTFLAG(LuauCodegenLinearNoCall)
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauCodegenBufferInteger)
 LUAU_FASTFLAG(LuauIntegerBufferFastcalls)
-LUAU_FASTFLAG(LuauCodegenVmExitSyncMultiUse)
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAG(LuauBackedgeHeapCheck)
-LUAU_FASTFLAG(LuauCodegenConstVectorBufferRead)
-LUAU_FASTFLAG(LuauCodegenStoreTagCheck)
 LUAU_FASTFLAG(LuauCodegenPropagateFallbackTags)
 LUAU_FASTFLAG(LuauCodegenIntegerCompare)
+LUAU_FASTFLAG(LuauLoadRemapOptionalUserdata)
 
 #define ensureVectorSize3() \
     if constexpr (LUA_VECTOR_SIZE != 3) \
@@ -5952,8 +5949,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "BufferVmExitSyncMultiUseSink")
 {
-    ScopedFastFlag luauCodegenVmExitSyncMultiUse{FFlag::LuauCodegenVmExitSyncMultiUse, true};
-
     // This test captures that 'a * b' is only needed for the VM exit to display the 'expected' value of 's' if buffer read throws an exception
     // If the compiler output makes this test outdated, it can be removed as we have IR builder tests covering this as well
     CHECK_EQ(
@@ -8001,7 +7996,6 @@ TEST_CASE_FIXTURE(LoweringFixture, "TableOperationTagSuggestion2")
 {
     ScopedFastFlag callFb{FFlag::LuauCallFeedback, true};
     ScopedFastFlag emitCallFb{FFlag::LuauEmitCallFeedback, true};
-    ScopedFastFlag luauCodegenLinearNoCall{FFlag::LuauCodegenLinearNoCall, true};
 
     CHECK_EQ(
         "\n" + getCodegenAssembly(
@@ -8492,8 +8486,6 @@ bb_bytecode_1:
 
 TEST_CASE_FIXTURE(LoweringFixture, "BufferWriteChecksExtraArgs")
 {
-    ScopedFastFlag luauCodegenStoreTagCheck{FFlag::LuauCodegenStoreTagCheck, true};
-
     CHECK_EQ(
         "\n" + getCodegenAssembly(
                    R"(
@@ -8644,6 +8636,88 @@ bb_bytecode_2:
   STORE_TAG R3, tnumber
   INTERRUPT 20u
   RETURN R3, 1i
+)"
+    );
+}
+
+TEST_CASE_FIXTURE(LoweringFixture, "OptionalUserdataTypeRemapping")
+{
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    ScopedFastFlag remapOptional{FFlag::LuauLoadRemapOptionalUserdata, true};
+
+    // Argument types
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo(b: vec2?)
+    return b
+end
+)",
+                   /* includeIrTypes */ true
+               ),
+        R"(
+; function foo($arg0) line 2
+; R0: vec2? [argument]
+bb_0:
+  %0 = LOAD_TAG R0
+  JUMP_EQ_TAG %0, tnil, bb_2, bb_3
+bb_3:
+  CHECK_TAG %0, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  INTERRUPT 0u
+  RETURN R0, 1i
+)"
+    );
+
+    // Upvalue types
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local up: vec2? = nil
+local function foo()
+    return up
+end
+return foo
+)",
+                   /* includeIrTypes */ true,
+                   /* debugLevel */ 2
+               ),
+        R"(
+; function foo() line 3
+; U0: vec2? ['up']
+bb_bytecode_0:
+  STORE_TAG R0, tnil
+  INTERRUPT 1u
+  RETURN R0, 1i
+)"
+    );
+
+    // Local types
+    CHECK_EQ(
+        "\n" + getCodegenAssembly(
+                   R"(
+local function foo()
+    local v: vec2? = nil
+    return v
+end
+return foo
+)",
+                   /* includeIrTypes */ true,
+                   /* debugLevel */ 2
+               ),
+        R"(
+; function foo() line 2
+; R0: vec2? from 0 to 2 [local 'v']
+bb_bytecode_0:
+  STORE_TAG R0, tnil
+  INTERRUPT 1u
+  RETURN R0, 1i
 )"
     );
 }

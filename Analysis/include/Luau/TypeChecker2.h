@@ -67,6 +67,12 @@ void check(
     Module* module
 );
 
+enum class AnnotationCheckMode {
+    Function,
+    Method,
+    Constructor,
+};
+
 struct TypeChecker2
 {
     NotNull<BuiltinTypes> builtinTypes;
@@ -81,7 +87,7 @@ struct TypeChecker2
     std::vector<NotNull<Scope>> stack;
     std::vector<TypeId> functionDeclStack;
 
-    DenseHashSet2<TypeId> seenTypeFunctionInstances;
+    DenseHashSet<TypeId> seenTypeFunctionInstances;
 
     Normalizer normalizer;
     Subtyping _subtyping;
@@ -137,6 +143,7 @@ private:
     void reportErrorsFromAssigningToNever(AstExpr* lhs, TypeId rhsType);
     void visit(AstStatAssign* assign);
     void visit(AstStatCompoundAssign* stat);
+    void checkFunctionAnnotations(AstExprFunction* func, AnnotationCheckMode mode, Location location);
     void visit(AstStatFunction* stat);
     void visit(AstStatLocalFunction* stat);
     void visit(const AstTypeList* typeList);
@@ -147,6 +154,7 @@ private:
     void visit(AstStatDeclareGlobal* stat);
     void visit(AstStatDeclareExternType* stat);
     void visit(AstStatClass* stat);
+    void visitConstructor(AstStatClass* stat, const AstClassMethod* method);
     void visit(AstStatError* stat);
     void visit(AstExpr* expr, ValueContext context);
     void visit(AstExprGroup* expr, ValueContext context);
@@ -176,6 +184,7 @@ private:
     void visit(AstExprInstantiate* explicitTypeInstantiation);
     void visit(AstExprError* expr);
     TypeId flattenPack(TypePackId pack);
+    void visitTypeArguments(const AstArray<AstTypeOrPack>& typeArguments);
     void visitGenerics(AstArray<AstGenericType*> generics, AstArray<AstGenericTypePack*> genericPacks);
     void visit(AstType* ty);
     void visit(AstTypeReference* ty);
@@ -197,6 +206,7 @@ private:
 
     bool testLiteralOrAstTypeIsSubtype(AstExpr* expr, TypeId expectedType);
 
+    std::optional<bool> testSetMetatableCallIsSubtype(AstExpr* expr, TypeId expectedType);
     bool testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedType);
 
     void maybeReportSubtypingError(TypeId subTy, TypeId superTy, const Location& location);
@@ -221,13 +231,13 @@ private:
         const std::string& prop,
         ValueContext context,
         const Location& location,
-        DenseHashSet2<TypeId>& seen,
+        DenseHashSet<TypeId>& seen,
         TypeId astIndexExprType,
         std::vector<TypeError>& errors
     );
 
     // Avoid duplicate warnings being emitted for the same global variable.
-    DenseHashSet2<std::string> warnedGlobals;
+    DenseHashSet<std::string> warnedGlobals;
 
     void suggestAnnotations(AstExprFunction* expr, TypeId ty);
 

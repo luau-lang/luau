@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "IrLoweringA64.h"
 
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 #include "Luau/LoweringStats.h"
@@ -12,7 +12,7 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenFixBufferLenCheck)
+LUAU_FASTFLAGVARIABLE(LuauCodegenA64ForgLoopArray)
 LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
@@ -279,10 +279,7 @@ static void emitDispatchLuauCall(AssemblyBuilderA64& build, ModuleHelpers& helpe
     build.ldr(rClosure, mem(x1, offsetof(CallInfo, func)));
     build.ldr(rClosure, mem(rClosure, offsetof(TValue, value.gc)));
 
-    if (FFlag::LuauCIProto)
-        build.ldr(x2, mem(x1, offsetof(CallInfo, p)));
-    else
-        build.ldr(x2, mem(rClosure, offsetof(Closure, l.p)));
+    build.ldr(x2, mem(x1, offsetof(CallInfo, p)));
 
     // Switch current code and constants
     static_assert(offsetof(Proto, code) == offsetof(Proto, k) + sizeof(Proto::k));
@@ -705,13 +702,14 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         break;
     case IrCmd::IDIV_INT64:
-        // floored division: q = a / b, then if (q < 0 && a % b != 0) q -= 1
-        inst.regA64 = regs.allocReg(KindA64::x, index); // can't reuse: both operands needed for remainder
+        // floored division: q = a / b, then if ((a ^ b) < 0 && a % b != 0) q -= 1
+        inst.regA64 = regs.allocReg(KindA64::x, index); // can't reuse: both operands needed for remainder and sign test
         {
             RegisterA64 temp1 = tempInt64(OP_A(inst));
             RegisterA64 temp2 = tempInt64(OP_B(inst));
             RegisterA64 tempRem = regs.allocTemp(KindA64::x);
             RegisterA64 tempAdj = regs.allocTemp(KindA64::x);
+            RegisterA64 tempSign = regs.allocTemp(KindA64::x);
 
             build.sdiv(inst.regA64, temp1, temp2); // result = a / b
             build.mov(tempRem, inst.regA64);       // copy quotient; rem requires dst to initially hold quotient
@@ -719,11 +717,12 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
             build.sub(tempAdj, inst.regA64, uint16_t(1)); // adjusted = result - 1
 
-            build.cmp(tempRem, uint16_t(0));
-            build.csel(tempAdj, tempAdj, inst.regA64, ConditionA64::NotEqual); // (remainder != 0) ? result-1 : result
+            build.eor(tempSign, temp1, temp2); // sign check: negative if a and b have opposite signs
+            build.cmp(tempSign, uint16_t(0));
+            build.csel(tempAdj, tempAdj, inst.regA64, ConditionA64::Less); // (opposite signs) ? result-1 : result
 
-            build.cmp(inst.regA64, uint16_t(0));
-            build.csel(inst.regA64, tempAdj, inst.regA64, ConditionA64::Less); // (result < 0) ? tempAdj : result
+            build.cmp(tempRem, uint16_t(0));
+            build.csel(inst.regA64, tempAdj, inst.regA64, ConditionA64::NotEqual); // (remainder != 0) ? tempAdj : result
         }
         break;
     case IrCmd::CHECK_DIV_INT64:
@@ -2703,8 +2702,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         else if (OP_B(inst).kind == IrOpKind::Constant)
         {
             int offset = intOp(OP_B(inst));
-            int endOffset = FFlag::LuauCodegenFixBufferLenCheck ? maxOffset : accessSize;
-            ConditionA64 failCond = FFlag::LuauCodegenFixBufferLenCheck ? ConditionA64::UnsignedLess : ConditionA64::UnsignedLessEqual;
+            int endOffset = maxOffset;
+            ConditionA64 failCond = ConditionA64::UnsignedLess;
 
             // Constant folding can take care of it, but for safety we avoid overflow/underflow cases here
             if (offset < 0 || unsigned(offset) + unsigned(endOffset) >= unsigned(INT_MAX))
@@ -3054,26 +3053,105 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         break;
     case IrCmd::FORGLOOP:
+    {
         // register layout: ra + 1 = table, ra + 2 = internal index, ra + 3 .. ra + aux = iteration variables
         regs.spill(index);
-        // clear extra variables since we might have more than two
-        if (intOp(OP_B(inst)) > 2)
+
+        if (FFlag::LuauCodegenA64ForgLoopArray)
         {
+            int ra = vmRegOp(OP_A(inst));
+            int aux = intOp(OP_B(inst));
+
+            // ipairs-style traversal is handled in IR
+            CODEGEN_ASSERT(aux >= 0);
+
+            // clear extra variables since we might have more than two
+            if (aux > 2)
+            {
+                CODEGEN_ASSERT(LUA_TNIL == 0);
+                for (int i = 2; i < aux; ++i)
+                    build.str(wzr, mem(rBase, (ra + 3 + i) * sizeof(TValue) + offsetof(TValue, tt)));
+            }
+
+            // x1 = table and w2 = index are also the second and third arguments of the node
+            // fallback below, so the array walk leaves them where the call already wants them
+            build.ldr(x1, mem(rBase, (ra + 1) * sizeof(TValue) + offsetof(TValue, value.gc)));
+            build.ldr(w2, mem(rBase, (ra + 2) * sizeof(TValue) + offsetof(TValue, value.p)));
+
+            // x4 = &array[index]
+            build.ldr(x4, mem(x1, offsetof(LuaTable, array)));
+            build.add(x4, x4, w2, kTValueSizeLog2); // implicit uxtw
+
+            Label skipArray, skipArrayNil;
+
+            // first we advance index through the array portion
+            // while (unsigned(index) < unsigned(sizearray))
+            Label arrayLoop = build.setLabel();
+            build.ldr(w6, mem(x1, offsetof(LuaTable, sizearray)));
+            build.cmp(w2, w6);
+            build.b(ConditionA64::UnsignedGreaterEqual, skipArray);
+
+            // if element is nil, we increment the index; if it's not, we still need 'index + 1' inside
+            build.add(w2, w2, uint16_t(1));
+
             CODEGEN_ASSERT(LUA_TNIL == 0);
-            for (int i = 2; i < intOp(OP_B(inst)); ++i)
-                build.str(wzr, mem(rBase, (vmRegOp(OP_A(inst)) + 3 + i) * sizeof(TValue) + offsetof(TValue, tt)));
+            build.ldr(w6, mem(x4, offsetof(TValue, tt)));
+            build.cbz(w6, skipArrayNil);
+
+            // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)), LU_TAG_ITERATOR);
+            build.str(w2, mem(rBase, (ra + 2) * sizeof(TValue) + offsetof(TValue, value.p)));
+            // Extra should already be set to LU_TAG_ITERATOR
+            // Tag should already be set to lightuserdata
+
+            // setnvalue(ra + 3, double(index + 1));
+            build.scvtf(d0, w2);
+            build.str(d0, mem(rBase, (ra + 3) * sizeof(TValue) + offsetof(TValue, value.n)));
+            build.mov(w6, LUA_TNUMBER);
+            build.str(w6, mem(rBase, (ra + 3) * sizeof(TValue) + offsetof(TValue, tt)));
+
+            // setobj2s(L, ra + 4, e);
+            build.ldr(q0, mem(x4, 0));
+            build.str(q0, mem(rBase, (ra + 4) * sizeof(TValue)));
+
+            build.b(labelOp(OP_C(inst)));
+
+            build.setLabel(skipArrayNil);
+            // index already incremented, advance to next array element
+            build.add(x4, x4, uint16_t(sizeof(TValue)));
+            build.b(arrayLoop);
+
+            build.setLabel(skipArray);
+            // the array is exhausted, so the node part is what is left
+            build.mov(x0, rState);
+            build.add(x3, rBase, uint16_t(ra * sizeof(TValue)));
+            build.ldr(x5, mem(rNativeContext, offsetof(NativeContext, forgLoopNodeIter)));
+            build.blr(x5);
+            // note: no emitUpdateBase necessary because forgLoopNodeIter does not reallocate stack
+            build.cbnz(w0, labelOp(OP_C(inst)));
         }
-        // we use full iter fallback for now; in the future it could be worthwhile to accelerate array iteration here
-        build.mov(x0, rState);
-        build.ldr(x1, mem(rBase, (vmRegOp(OP_A(inst)) + 1) * sizeof(TValue) + offsetof(TValue, value.gc)));
-        build.ldr(w2, mem(rBase, (vmRegOp(OP_A(inst)) + 2) * sizeof(TValue) + offsetof(TValue, value.p)));
-        build.add(x3, rBase, uint16_t(vmRegOp(OP_A(inst)) * sizeof(TValue)));
-        build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, forgLoopTableIter)));
-        build.blr(x4);
-        // note: no emitUpdateBase necessary because forgLoopTableIter does not reallocate stack
-        build.cbnz(w0, labelOp(OP_C(inst)));
+        else
+        {
+            // clear extra variables since we might have more than two
+            if (intOp(OP_B(inst)) > 2)
+            {
+                CODEGEN_ASSERT(LUA_TNIL == 0);
+                for (int i = 2; i < intOp(OP_B(inst)); ++i)
+                    build.str(wzr, mem(rBase, (vmRegOp(OP_A(inst)) + 3 + i) * sizeof(TValue) + offsetof(TValue, tt)));
+            }
+            // we use full iter fallback for now; in the future it could be worthwhile to accelerate array iteration here
+            build.mov(x0, rState);
+            build.ldr(x1, mem(rBase, (vmRegOp(OP_A(inst)) + 1) * sizeof(TValue) + offsetof(TValue, value.gc)));
+            build.ldr(w2, mem(rBase, (vmRegOp(OP_A(inst)) + 2) * sizeof(TValue) + offsetof(TValue, value.p)));
+            build.add(x3, rBase, uint16_t(vmRegOp(OP_A(inst)) * sizeof(TValue)));
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, forgLoopTableIter)));
+            build.blr(x4);
+            // note: no emitUpdateBase necessary because forgLoopTableIter does not reallocate stack
+            build.cbnz(w0, labelOp(OP_C(inst)));
+        }
+
         jumpOrFallthrough(blockOp(OP_D(inst)), next);
         break;
+    }
     case IrCmd::FORGLOOP_FALLBACK:
         regs.spill(index);
         build.mov(x0, rState);
@@ -3202,13 +3280,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.mov(x0, rState);
         build.mov(w1, uintOp(OP_A(inst)));
 
-        if (FFlag::LuauCIProto)
-        {
-            build.ldr(x3, mem(rState, offsetof(lua_State, ci)));
-            build.ldr(x3, mem(x3, offsetof(CallInfo, p)));
-        }
-        else
-            build.ldr(x3, mem(rClosure, offsetof(Closure, l.p)));
+        build.ldr(x3, mem(rState, offsetof(lua_State, ci)));
+        build.ldr(x3, mem(x3, offsetof(CallInfo, p)));
         build.ldr(x3, mem(x3, offsetof(Proto, p)));
 
         unsigned protoIndex = uintOp(OP_C(inst)); // 0..32767

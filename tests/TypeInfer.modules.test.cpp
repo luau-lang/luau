@@ -20,7 +20,6 @@ LUAU_FASTFLAG(LuauExportValueTypecheck)
 LUAU_FASTFLAG(LuauExportTypecheckTypepacks)
 LUAU_FASTFLAG(LuauExportAnnotationBinding)
 LUAU_FASTINT(LuauSolverConstraintLimit)
-LUAU_FASTFLAG(LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 
 using namespace Luau;
@@ -302,6 +301,8 @@ end
 
 return m
 )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -662,9 +663,11 @@ end
 return ReactShallowRenderer
     )";
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
 local ReactShallowRenderer = require(game.A);
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "untitled_segfault_number_13")
@@ -693,9 +696,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "untitled_segfault_number_13")
         return Response
     )";
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local _ = require(game.A);
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "spooky_blocked_type_laundered_by_bound_type")
@@ -754,6 +759,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "spooky_blocked_type_laundered_by_bound_type"
         local _ = require(game.A);
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -783,6 +790,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "leaky_generics")
 
         return Cache
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -851,6 +860,8 @@ return wrapper(test2, 1, "")
 
     CheckResult result = getFrontend().check("game/B");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -877,7 +888,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "internal_type_errors_are_only_reported_once"
     ScopedFastFlag sffs[] = {
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::DebugLuauMagicTypes, true},
-        {FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true},
     };
 
     fileResolver.source["game/A"] = R"(
@@ -897,7 +907,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "scrub_unsealed_tables")
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     ScopedFastInt sfi{FInt::LuauSolverConstraintLimit, 5};
-    ScopedFastFlag _{FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true};
 
     fileResolver.source["game/A"] = R"(
         type Array<T> = {T}
@@ -972,7 +981,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invalid_alias_should_export_as_error_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_194463_modify_bounds_of_visited_generic_regression")
 {
-    ScopedFastFlag _{FFlag::LuauRemovePrimitiveTypeConstraintAndSubtypingUnifier, true};
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
 
     fileResolver.source["game/Container"] = R"(
         local Container = {}
@@ -1049,6 +1058,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_basic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag _[4]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
@@ -1080,13 +1091,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs")
     std::optional<TypeId> exports = first(a->returnType);
     REQUIRE(exports);
     CHECK_EQ(
-        "{ read constAlias: { value: number }, read constDirect: { value: number }, read localAlias: { value: number }, read localDirect: { value: number } }",
+        "{ read constAlias: { value: number }, read constDirect: { value: number }, read localAlias: { value: number }, read localDirect: { value: "
+        "number } }",
         toString(*exports)
     );
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs_multi")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag _[4]{
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
@@ -1114,10 +1128,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_initializer_type_packs_multi
     CHECK_EQ("{ value: number }", toString(requireType(a, "const3")));
     std::optional<TypeId> exports = first(a->returnType);
     REQUIRE(exports);
-    CHECK_EQ(
-        "{ read const1: { value: number }, read const2: { value: number }, read const3: { value: number } }",
-        toString(*exports)
-    );
+    CHECK_EQ("{ read const1: { value: number }, read const2: { value: number }, read const3: { value: number } }", toString(*exports));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_mutual_recursive_functions")
@@ -1146,9 +1157,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_mutual_recursive_functions")
     )";
 
     CheckResult aResult = getFrontend().check("game/A");
+
+    ignoreMissingAnnotations(aResult);
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = getFrontend().check("game/B");
+
+    ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
@@ -1281,9 +1296,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_multret")
     )";
 
     CheckResult aResult = getFrontend().check("game/A");
+
+    ignoreMissingAnnotations(aResult);
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = getFrontend().check("game/B");
+
+    ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
@@ -1298,7 +1317,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_partial_multret")
 
     fileResolver.source["game/A"] = R"(
         --!strict
-        local function huh()
+        local function huh(): (string, boolean)
             return "huh", false
         end
 
@@ -1315,9 +1334,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_partial_multret")
     )";
 
     CheckResult aResult = getFrontend().check("game/A");
+
+    ignoreMissingAnnotations(aResult);
     LUAU_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = getFrontend().check("game/B");
+
+    ignoreMissingAnnotations(bResult);
     LUAU_REQUIRE_NO_ERRORS(bResult);
 
     ModulePtr b = getFrontend().moduleResolver.getModule("game/B");
@@ -1340,7 +1363,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "export_class")
             public x: number
             public y: number
 
-            function __tostring(self)
+            function __tostring(self): string
                 return `Point x={self.x} y={self.y}`
             end
         end
@@ -1371,7 +1394,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_exported_class")
             public x: number
             public y: number
 
-            function __tostring(self)
+            function __tostring(self): string
                 return `Point x={self.x} y={self.y}`
             end
         end
@@ -1397,6 +1420,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "non_exported_class")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_annotation_uses_binding_type")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag sffs[]{
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueSyntax, true},
@@ -1471,7 +1496,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_annotation_preferred_over_in
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exported_module_binding_is_readonly")
 {
-    ScopedFastFlag sffs[] ={
+    ScopedFastFlag sffs[] = {
         {FFlag::LuauExportValueSyntax, true},
         {FFlag::DebugLuauForceOldSolver, false},
         {FFlag::LuauExportValueTypecheck, true},

@@ -3,6 +3,7 @@
 
 #include "Luau/Common.h"
 
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 
 namespace Luau
 {
@@ -520,10 +521,38 @@ AstExprIfElse::AstExprIfElse(const Location& location, AstExpr* condition, bool 
 {
 }
 
+AstExprIfElse::AstExprIfElse(
+    const Location& location,
+    AstExpr* condition,
+    bool hasThen,
+    AstExpr* trueExpr,
+    bool hasElse,
+    AstExpr* falseExpr,
+    AstLocal* conditionLocal,
+    bool conditionIsConst,
+    const std::optional<Location>& conditionKeywordLocation,
+    const std::optional<Location>& conditionEqualsLocation
+)
+    : AstExpr(ClassIndex(), location)
+    , condition(condition)
+    , hasThen(hasThen)
+    , trueExpr(trueExpr)
+    , hasElse(hasElse)
+    , falseExpr(falseExpr)
+    , conditionLocal(conditionLocal)
+    , conditionIsConst(conditionIsConst)
+    , conditionKeywordLocation(conditionKeywordLocation)
+    , conditionEqualsLocation(conditionEqualsLocation)
+{
+}
+
 void AstExprIfElse::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
+        if (FFlag::LuauExperimentalIfLocalSyntax && conditionLocal && conditionLocal->annotation)
+            conditionLocal->annotation->visit(visitor);
+
         condition->visit(visitor);
         trueExpr->visit(visitor);
         falseExpr->visit(visitor);
@@ -612,10 +641,38 @@ AstStatIf::AstStatIf(
 {
 }
 
+AstStatIf::AstStatIf(
+    const Location& location,
+    AstExpr* condition,
+    AstStatBlock* thenbody,
+    AstStat* elsebody,
+    const std::optional<Location>& thenLocation,
+    const std::optional<Location>& elseLocation,
+    AstLocal* conditionLocal,
+    bool conditionIsConst,
+    const std::optional<Location>& conditionKeywordLocation,
+    const std::optional<Location>& conditionEqualsLocation
+)
+    : AstStat(ClassIndex(), location)
+    , condition(condition)
+    , thenbody(thenbody)
+    , elsebody(elsebody)
+    , thenLocation(thenLocation)
+    , elseLocation(elseLocation)
+    , conditionLocal(conditionLocal)
+    , conditionIsConst(conditionIsConst)
+    , conditionKeywordLocation(conditionKeywordLocation)
+    , conditionEqualsLocation(conditionEqualsLocation)
+{
+}
+
 void AstStatIf::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
+        if (FFlag::LuauExperimentalIfLocalSyntax && conditionLocal && conditionLocal->annotation)
+            conditionLocal->annotation->visit(visitor);
+
         condition->visit(visitor);
         thenbody->visit(visitor);
 
@@ -1153,10 +1210,11 @@ void AstTypeReference::visit(AstVisitor* visitor)
     }
 }
 
-AstTypeTable::AstTypeTable(const Location& location, const AstArray<AstTableProp>& props, AstTableIndexer* indexer)
+AstTypeTable::AstTypeTable(const Location& location, const AstArray<AstTableProp>& props, AstTableIndexer* indexer, bool isExact)
     : AstType(ClassIndex(), location)
     , props(props)
     , indexer(indexer)
+    , isExact(isExact)
 {
 }
 

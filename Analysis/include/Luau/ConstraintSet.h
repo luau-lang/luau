@@ -23,7 +23,7 @@ struct ConstraintSet
     // Map a function's signature scope back to its signature type. Once we've
     // dispatched all of the constraints pertaining to a particular free type,
     // we use this mapping to generalize that free type.
-    DenseHashMap2<Scope*, TypeId> scopeToFunction;
+    DenseHashMap<Scope*, TypeId> scopeToFunction;
 
     // It is pretty uncommon for constraint generation to itself produce errors, but it can happen.
     std::vector<TypeError> errors;

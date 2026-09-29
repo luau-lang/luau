@@ -5,7 +5,7 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Common.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/NotNull.h"
 #include "Luau/Polarity.h"
 #include "Luau/Predicate.h"
@@ -403,18 +403,28 @@ struct FunctionType
 
 enum class TableState
 {
-    // Sealed tables have an exact, known shape
+    // A sealed table type describes an inexact subset of a table.  It
+    // participates in width subtyping.
     Sealed,
 
-    // An unsealed table can have extra properties added to it
+    // An unsealed table type represents a table whose construction has been
+    // directly witnessed by the analysis engine.  Adding extra properties to an
+    // unsealed table is permitted.
     Unsealed,
 
-    // Tables which are not yet fully understood.  We are still in the process of learning its shape.
+    // Tables which are not yet fully understood.  We are still in the process
+    // of learning its shape. Only used in the old solver.
     Free,
 
-    // A table which is a generic parameter to a function.  We know that certain properties are required,
-    // but we don't care about the full shape.
+    // A table which is a generic parameter to a function.  We know that certain
+    // properties are required, but we don't care about the full shape.  Only
+    // used in the old solver.
     Generic,
+
+    // An exact table type is similar to a sealed table, but it does not
+    // participate in width subtyping.  It describes the exact exhaustive shape
+    // of the whole table.
+    Exact,
 };
 
 struct TableIndexer
@@ -643,8 +653,8 @@ struct UserDefinedFunctionData
     // References to AST elements are owned by the Module allocator which also stores this type
     AstStatTypeFunction* definition = nullptr;
 
-    DenseHashMap2<Name, std::pair<AstStatTypeFunction*, size_t>> environmentFunction;
-    DenseHashMap2<Name, std::pair<TypeFun*, size_t>> environmentAlias;
+    DenseHashMap<Name, std::pair<AstStatTypeFunction*, size_t>> environmentFunction;
+    DenseHashMap<Name, std::pair<TypeFun*, size_t>> environmentAlias;
 };
 
 enum struct TypeFunctionInstanceState
@@ -1008,7 +1018,7 @@ bool maybeGeneric(const TypeId ty);
 bool maybeSingleton(TypeId ty);
 
 // Checks if the length operator can be applied on the value of type
-bool hasLength(TypeId ty, DenseHashSet2<TypeId>& seen, int* recursionCount);
+bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount);
 
 struct BuiltinTypes
 {
@@ -1209,7 +1219,7 @@ private:
     using SavedIterInfo = std::pair<const T*, size_t>;
 
     VecDeque<SavedIterInfo> stack;
-    DenseHashSet2<const T*> seen; // Only needed to protect the iterator from hanging the thread.
+    DenseHashSet<const T*> seen; // Only needed to protect the iterator from hanging the thread.
 
     void advance()
     {

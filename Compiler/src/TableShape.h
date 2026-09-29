@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 
 namespace Luau
 {
@@ -15,7 +15,7 @@ struct TableShape
     unsigned int hashSize = 0;
 };
 
-void predictTableShapes(DenseHashMap2<AstExprTable*, TableShape>& shapes, AstNode* root);
+void predictTableShapes(DenseHashMap<AstExprTable*, TableShape>& shapes, AstNode* root);
 
 } // namespace Compile
 } // namespace Luau

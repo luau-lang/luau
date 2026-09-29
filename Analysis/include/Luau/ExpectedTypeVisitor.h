@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/NotNull.h"
 #include "Luau/Type.h"
 
@@ -13,10 +13,10 @@ struct ExpectedTypeVisitor : public AstVisitor
 {
 
     explicit ExpectedTypeVisitor(
-        NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes,
-        NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes,
-        NotNull<DenseHashMap2<const AstType*, TypeId>> astResolvedTypes,
-        NotNull<DenseHashMap2<const AstNode*, TypeId>> astOverloadResolvedTypes,
+        NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
+        NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
+        NotNull<DenseHashMap<const AstType*, TypeId>> astResolvedTypes,
+        NotNull<DenseHashMap<const AstNode*, TypeId>> astOverloadResolvedTypes,
         NotNull<TypeArena> arena,
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<Scope> rootScope
@@ -65,10 +65,10 @@ struct ExpectedTypeVisitor : public AstVisitor
     bool visit(AstExprTypeAssertion* expr) override;
 
 private:
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes;
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes;
-    NotNull<DenseHashMap2<const AstType*, TypeId>> astResolvedTypes;
-    NotNull<DenseHashMap2<const AstNode*, TypeId>> astOverloadResolvedTypes;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
+    NotNull<DenseHashMap<const AstType*, TypeId>> astResolvedTypes;
+    NotNull<DenseHashMap<const AstNode*, TypeId>> astOverloadResolvedTypes;
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<Scope> rootScope;

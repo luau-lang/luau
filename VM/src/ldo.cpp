@@ -6,6 +6,7 @@
 #include "lfunc.h"
 #include "lgc.h"
 #include "lmem.h"
+#include "ltable.h"
 #include "lvm.h"
 
 #if LUA_USE_LONGJMP
@@ -17,7 +18,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauXpcallFixMessageYieldPath)
 LUAU_FASTFLAG(LuauFastpcall)
 
 // keep max stack allocation request under 1GB
@@ -429,6 +429,73 @@ void luaD_seterrorobj(lua_State* L, int errcode, StkId oldtop)
     L->top = oldtop + 1;
 }
 
+void luaD_preparefinalizestate(lua_State* L, lua_State* co, bool resulttrue)
+{
+    LUAU_ASSERT(co->finalizers);
+
+    sethvalue(L, L->top, co->finalizers);
+    L->top++;
+    setnvalue(L->top, double(luaH_getn(co->finalizers)));
+    L->top++;
+    setbvalue(L->top, resulttrue ? 1 : 0);
+    L->top++;
+
+    co->finalizers = nullptr; // we have taken the list for processing
+}
+
+void luaD_preparefinalize(lua_State* L, lua_State* co)
+{
+    bool resulttrue = co->status == LUA_OK;
+    int nres = resulttrue ? cast_int(co->top - co->base) : 1;
+
+    if (!lua_checkstack(L, nres + 3))
+        luaG_runerror(L, "too many results to invoke finalizer");
+
+    luaD_preparefinalizestate(L, co, resulttrue);
+    lua_xmove(co, L, nres);
+}
+
+int luaD_runfinalizers(lua_State* L, bool toclose, bool returnstatus)
+{
+    int results = lua_gettop(L) - 4;
+    int position = lua_tointeger(L, 3);
+    int status = lua_toboolean(L, 4);
+
+    if (position != 0)
+    {
+        if (!lua_checkstack(L, results + 2))
+        {
+            lua_pushstring(L, "too many results to invoke finalizer");
+            lua_error(L);
+        }
+
+        // decrement the position
+        lua_pushinteger(L, position - 1);
+        lua_replace(L, 3);
+
+        // take the finalizer from the end of the table
+        lua_rawgeti(L, 2, position);
+
+        // push status string
+        lua_pushstring(L, toclose ? "cancelled" : (status == 1 ? "finished" : "error"));
+
+        // copy results over
+        for (int i = 0; i < results; i++)
+            lua_pushvalue(L, 5 + i);
+
+        // pcall with no errfunc makes ourselves the handler for any errors
+        return lua_pcallyieldable(L, results + 1, 0, 0);
+    }
+
+    if (returnstatus)
+        return results + 1;
+
+    if (status == 0)
+        lua_error(L);
+
+    return results;
+}
+
 static void resume_continue(lua_State* L, ptrdiff_t basecioffset)
 {
     // unroll Luau/C combined stack, processing continuations
@@ -612,12 +679,6 @@ static void resume_handle(lua_State* L, void* ud)
         // if errfunc fails, we fail with "error in error handling" or "not enough memory"
         int err = luaD_rawrunprotected(L, callerrfunc, ci->base + (ci->errfunc - 1));
 
-        if (!FFlag::LuauXpcallFixMessageYieldPath)
-        {
-            // restore nCcalls to base if errfunc itself errored
-            L->nCcalls = L->baseCcalls;
-        }
-
         // in general we preserve the status, except for cases when the error handler fails
         // out of memory is treated specially because it's common for it to be cascading, in which case we preserve the code
         if (err == 0)
@@ -633,11 +694,8 @@ static void resume_handle(lua_State* L, void* ud)
         ci->errfunc = 0;
     }
 
-    if (FFlag::LuauXpcallFixMessageYieldPath)
-    {
-        // restore nCcalls to base for the continuation
-        L->nCcalls = L->baseCcalls;
-    }
+    // restore nCcalls to base for the continuation
+    L->nCcalls = L->baseCcalls;
 
     // restore the stack frame to the frame with continuation
     L->ci = ci;
@@ -708,17 +766,8 @@ static int resume_finish(lua_State* L, int status, int oldnCcalls)
             }
         }
 
-        if (FFlag::LuauXpcallFixMessageYieldPath)
-        {
-            // restore the baseline we established in resume_start
-            L->baseCcalls = oldnCcalls;
-        }
-        else
-        {
-            // restore the baseline we established in resume_start
-            L->nCcalls = oldnCcalls;
-            L->baseCcalls = L->nCcalls;
-        }
+        // restore the baseline we established in resume_start
+        L->baseCcalls = oldnCcalls;
 
         L->status = cast_byte(status);
         status = luaD_rawrunprotected(L, resume_handle, ch);

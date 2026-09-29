@@ -12,7 +12,7 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 
-LUAU_FASTFLAG(LuauBidirectionalInferenceSimplifyTables)
+LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauCallErrorReportingRecoversArgumentLocationsForPacks)
 
@@ -180,7 +180,7 @@ OverloadResolution OverloadResolver::resolveOverload(
     TypeId ty,
     TypePackId argsPack,
     Location fnLocation,
-    NotNull<DenseHashSet2<TypeId>> uniqueTypes,
+    NotNull<DenseHashSet<TypeId>> uniqueTypes,
     bool useFreeTypeBounds
 )
 {
@@ -323,7 +323,7 @@ void OverloadResolver::reportErrors(
 
     // A variadic parameter has no index of its own, so the subPath stops at the tail. The
     // argument that failed against it is the one the superPath names.
-    if (!argumentIndex)
+    if (FFlag::LuauFixCallMetamethodErrorReporting && !argumentIndex)
     {
         const TypeId given = arena->addType(FunctionType{argPack, builtinTypes->anyTypePack});
         argumentIndex = getArgumentIndex(reason.superPath, given);
@@ -501,7 +501,7 @@ void OverloadResolver::testFunction(
     TypeId fnTy,
     TypePackId argsPack,
     Location fnLocation,
-    NotNull<DenseHashSet2<TypeId>> uniqueTypes
+    NotNull<DenseHashSet<TypeId>> uniqueTypes
 )
 {
     fnTy = follow(fnTy);
@@ -543,9 +543,6 @@ void OverloadResolver::testFunction(
     }
 
     TypeId prospectiveFunction = arena->addType(FunctionType{argsPack, builtinTypes->anyTypePack});
-
-    if (!FFlag::LuauBidirectionalInferenceSimplifyTables)
-        subtyping.uniqueTypes = uniqueTypes;
 
     SubtypingResult r = subtyping.isSubtype(fnTy, prospectiveFunction, scope);
 
@@ -596,7 +593,7 @@ void OverloadResolver::testFunctionOrUnion(
     TypeId fnTy,
     TypePackId argsPack,
     Location fnLocation,
-    NotNull<DenseHashSet2<TypeId>> uniqueTypes
+    NotNull<DenseHashSet<TypeId>> uniqueTypes
 )
 {
     LUAU_ASSERT(fnTy == follow(fnTy));
@@ -650,7 +647,7 @@ void OverloadResolver::testFunctionOrCallMetamethod(
     TypeId fnTy,
     TypePackId argsPack,
     Location fnLocation,
-    NotNull<DenseHashSet2<TypeId>> uniqueTypes
+    NotNull<DenseHashSet<TypeId>> uniqueTypes
 )
 {
     fnTy = follow(fnTy);

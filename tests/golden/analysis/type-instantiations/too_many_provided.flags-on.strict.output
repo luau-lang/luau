@@ -1,0 +1,1 @@
+./analysis/type-instantiations/too_many_provided.luau(5,15): TypeError: Too many type parameters passed to 'identity', which is typed as <T>(T) -> T. Expected at most 1 type parameter, but 2 provided.

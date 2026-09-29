@@ -3,10 +3,9 @@
 
 #include "Luau/Common.h"
 #include "Luau/Constraint.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Location.h"
 #include "Luau/Scope.h"
-#include "Luau/Set.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
@@ -19,6 +18,8 @@
 #include <string>
 
 LUAU_FASTFLAG(LuauIntegerType2)
+LUAU_FASTFLAG(DebugLuauParseExactTables)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
 
 /*
@@ -30,8 +31,10 @@ LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
  *
  * 0: Disabled, no changes.
  *
- * 1: Prefix free/generic types with free- and gen-, respectively. Also reveal
- * hidden variadic tails. Display block count for local types.
+ * 1: Prefix free/generic types with free- and gen-, respectively.
+ *    Reveal hidden variadic tails.
+ *    Display block count for local types.
+ *    Display contents of pending expansion types
  *
  * 2: Suffix free/generic types with their scope depth.
  *
@@ -39,6 +42,7 @@ LUAU_FASTFLAGVARIABLE(LuauBetterInferredGenericNames)
  */
 LUAU_FASTINTVARIABLE(DebugLuauVerboseTypeNames, 0)
 LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort)
+LUAU_FASTFLAGVARIABLE(LuauBetterMetatableStringification)
 
 namespace Luau
 {
@@ -57,8 +61,8 @@ struct FindCyclicTypes final : TypeVisitor
     FindCyclicTypes& operator=(const FindCyclicTypes&) = delete;
 
     bool exhaustive = false;
-    Luau::Set<TypeId> visited;
-    Luau::Set<TypePackId> visitedPacks;
+    Luau::DenseHashSet<TypeId> visited;
+    Luau::DenseHashSet<TypePackId> visitedPacks;
     std::set<TypeId> cycles;
     std::set<TypePackId> cycleTPs;
 
@@ -74,17 +78,17 @@ struct FindCyclicTypes final : TypeVisitor
 
     bool visit(TypeId ty) override
     {
-        return visited.insert(ty);
+        return visited.try_insert(ty);
     }
 
     bool visit(TypePackId tp) override
     {
-        return visitedPacks.insert(tp);
+        return visitedPacks.try_insert(tp);
     }
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
-        if (!visited.insert(ty))
+        if (!visited.try_insert(ty))
             return false;
         LUAU_ASSERT(ft.lowerBound);
         LUAU_ASSERT(ft.upperBound);
@@ -95,7 +99,7 @@ struct FindCyclicTypes final : TypeVisitor
 
     bool visit(TypeId ty, const TableType& ttv) override
     {
-        if (!visited.insert(ty))
+        if (!visited.try_insert(ty))
             return false;
 
         if (ttv.name || ttv.syntheticName)
@@ -164,12 +168,12 @@ struct StringifierState
     ToStringOptions& opts;
     ToStringResult& result;
 
-    DenseHashMap2<TypeId, std::string> cycleNames;
-    DenseHashMap2<TypePackId, std::string> cycleTpNames;
-    Set<void*> seen;
+    DenseHashMap<TypeId, std::string> cycleNames;
+    DenseHashMap<TypePackId, std::string> cycleTpNames;
+    DenseHashSet<void*> seen;
     // `$$$` was chosen as the tombstone for `usedNames` since it is not a valid name syntactically and is relatively short for string comparison
     // reasons.
-    DenseHashSet2<std::string> usedNames;
+    DenseHashSet<std::string> usedNames;
     size_t indentation = 0;
 
     bool exhaustive;
@@ -589,6 +593,44 @@ struct TypeStringifier
         state.emit("*pending-expansion-");
         state.emit(petv.index);
         state.emit("*");
+
+        if (FInt::DebugLuauVerboseTypeNames >= 1)
+        {
+            state.emit(" of ");
+
+            if (petv.prefix)
+            {
+                state.emit(petv.prefix->value);
+                state.emit(".");
+            }
+
+            state.emit(petv.name.value);
+
+            if (petv.typeArguments.size() > 0 || petv.packArguments.size() > 0)
+            {
+                state.emit("<");
+
+                bool comma = false;
+
+                for (auto ty : petv.typeArguments)
+                {
+                    if (comma)
+                        state.emit(", ");
+                    comma = true;
+                    stringify(ty);
+                }
+
+                for (auto tp : petv.packArguments)
+                {
+                    if (comma)
+                        state.emit(", ");
+                    comma = true;
+                    stringify(tp);
+                }
+
+                state.emit(">");
+            }
+        }
     }
 
     void operator()(TypeId, const PrimitiveType& ptv)
@@ -792,6 +834,10 @@ struct TypeStringifier
             openbrace = "{+";
             closedbrace = "+}";
             break;
+        case TableState::Exact:
+            openbrace = "{";
+            closedbrace = "}";
+            break;
         }
 
         // If this appears to be an array, we want to stringify it using the {T} syntax.
@@ -801,6 +847,9 @@ struct TypeStringifier
             if (ttv.indexer->isReadOnly)
                 state.emit("read ");
             stringify(ttv.indexer->indexResultType);
+
+            if (FFlag::DebugLuauExactTableTypes && ttv.state == TableState::Sealed)
+                state.emit(", ...");
             state.emit("}");
 
             state.unsee(&ttv);
@@ -851,11 +900,36 @@ struct TypeStringifier
             ++index;
         }
 
+        if (FFlag::DebugLuauParseExactTables && FFlag::DebugLuauExactTableTypes)
+        {
+            if (ttv.state == TableState::Sealed)
+            {
+                if (comma)
+                {
+                    state.emit(",");
+                    state.newline();
+                }
+                else
+                    state.emit(" ");
+                state.emit("...");
+            }
+        }
+
         state.dedent();
-        if (comma)
-            state.newline();
+        if (FFlag::DebugLuauParseExactTables && FFlag::DebugLuauExactTableTypes)
+        {
+            if (comma)
+                state.newline();
+            else
+                state.emit(" ");
+        }
         else
-            state.emit("  ");
+        {
+            if (comma)
+                state.newline();
+            else
+                state.emit("  ");
+        }
         state.emit(closedbrace);
 
         state.unsee(&ttv);
@@ -863,19 +937,33 @@ struct TypeStringifier
 
     void operator()(TypeId ty, const MetatableType& mtv)
     {
-        state.result.invalid = true;
+        if (!FFlag::LuauBetterMetatableStringification)
+            state.result.invalid = true;
+
         if (!state.exhaustive && mtv.syntheticName)
         {
             state.emitAndRecordSpan(*mtv.syntheticName, ty);
             return;
         }
 
-        state.emit("{ @metatable ");
-        stringify(mtv.metatable);
-        state.emit(",");
-        state.newline();
-        stringify(mtv.table);
-        state.emit(" }");
+        if (FFlag::LuauBetterMetatableStringification)
+        {
+            state.emit("setmetatable<");
+            stringify(mtv.table);
+            state.emit(",");
+            state.newline();
+            stringify(mtv.metatable);
+            state.emit(">");
+        }
+        else
+        {
+            state.emit("{ @metatable ");
+            stringify(mtv.metatable);
+            state.emit(",");
+            state.newline();
+            stringify(mtv.table);
+            state.emit(" }");
+        }
     }
 
     void operator()(TypeId ty, const ExternType& etv)
@@ -1406,8 +1494,8 @@ void TypeStringifier::stringify(TypePackId tpid, const std::vector<std::optional
 static void assignCycleNames(
     const std::set<TypeId>& cycles,
     const std::set<TypePackId>& cycleTPs,
-    DenseHashMap2<TypeId, std::string>& cycleNames,
-    DenseHashMap2<TypePackId, std::string>& cycleTpNames,
+    DenseHashMap<TypeId, std::string>& cycleNames,
+    DenseHashMap<TypePackId, std::string>& cycleTpNames,
     bool exhaustive
 )
 {
@@ -1888,7 +1976,7 @@ std::string dump(const std::vector<TypePackId>& typePacks)
     return toStringVector(typePacks, dumpOptions());
 }
 
-std::string dump(DenseHashMap2<TypeId, TypeId>& types)
+std::string dump(DenseHashMap<TypeId, TypeId>& types)
 {
     std::string s = "{";
     ToStringOptions& opts = dumpOptions();
@@ -1902,7 +1990,7 @@ std::string dump(DenseHashMap2<TypeId, TypeId>& types)
     return s;
 }
 
-std::string dump(DenseHashMap2<TypePackId, TypePackId>& types)
+std::string dump(DenseHashMap<TypePackId, TypePackId>& types)
 {
     std::string s = "{";
     ToStringOptions& opts = dumpOptions();
@@ -2022,13 +2110,6 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         else if constexpr (std::is_same_v<T, FunctionCheckConstraint>)
         {
             return "function_check " + tos(c.fn) + " " + tos(c.argsPack);
-        }
-        else if constexpr (std::is_same_v<T, DEPRECATED_PrimitiveTypeConstraint>)
-        {
-            if (c.expectedType)
-                return "prim " + tos(c.freeType) + "[expected: " + tos(*c.expectedType) + "] as " + tos(c.primitiveType);
-            else
-                return "prim " + tos(c.freeType) + " as " + tos(c.primitiveType);
         }
         else if constexpr (std::is_same_v<T, HasPropConstraint>)
         {

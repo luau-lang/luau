@@ -3,7 +3,7 @@
 #pragma once
 
 #include "Luau/Constraint.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/NotNull.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFwd.h"
@@ -50,15 +50,15 @@ struct Unifier2
     NotNull<InternalErrorReporter> ice;
     TypeCheckLimits limits;
 
-    DenseHashSet2<std::pair<TypeId, TypeId>, TypePairHash> seenTypePairings;
-    DenseHashSet2<std::pair<TypePackId, TypePackId>, TypePairHash> seenTypePackPairings;
+    DenseHashSet<std::pair<TypeId, TypeId>, TypePairHash> seenTypePairings;
+    DenseHashSet<std::pair<TypePackId, TypePackId>, TypePairHash> seenTypePackPairings;
 
-    DenseHashMap2<TypeId, std::vector<TypeId>> expandedFreeTypes;
+    DenseHashMap<TypeId, std::vector<TypeId>> expandedFreeTypes;
 
     // Mapping from generic types to free types to be used in instantiation.
-    DenseHashMap2<TypeId, TypeId> genericSubstitutions;
+    DenseHashMap<TypeId, TypeId> genericSubstitutions;
     // Mapping from generic type packs to `TypePack`s of free types to be used in instantiation.
-    DenseHashMap2<TypePackId, TypePackId> genericPackSubstitutions;
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions;
 
     // Unification sometimes results in the creation of new free types.
     // We collect them here so that other systems can perform necessary
@@ -72,7 +72,7 @@ struct Unifier2
 
     std::vector<ConstraintV> incompleteSubtypes;
     // null if not in a constraint solving context
-    DenseHashSet2<const void*>* uninhabitedTypeFunctions;
+    DenseHashSet<const void*>* uninhabitedTypeFunctions;
 
     Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<InternalErrorReporter> ice);
     Unifier2(
@@ -80,7 +80,7 @@ struct Unifier2
         NotNull<BuiltinTypes> builtinTypes,
         NotNull<Scope> scope,
         NotNull<InternalErrorReporter> ice,
-        DenseHashSet2<const void*>* uninhabitedTypeFunctions
+        DenseHashSet<const void*>* uninhabitedTypeFunctions
     );
 
     UnifyResult unify(TypeId subTy, TypeId superTy);

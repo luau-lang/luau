@@ -27,6 +27,20 @@ local x86_64_render = require("./x86_64_render")
 
 local sarcasm = {}
 
+-- Keys of a table in ascending order. Used wherever iteration order over a set/map would
+-- otherwise leak the VM's hash order into emitted assembly (spill reload/store ordering,
+-- callsite-thunk ordering). Handles mixed key types defensively.
+local function sortedKeys(t)
+	local out = {}
+	for k in t do out[#out + 1] = k end
+	table.sort(out, function(a, b)
+		local ta, tb = type(a), type(b)
+		if ta ~= tb then return ta < tb end
+		return a < b
+	end)
+	return out
+end
+
 -- Per-architecture backend bundle. `spillReload`/`spillStore` build the load/store IR for
 -- a spilled temp at frame offset `off`; `emitFip` renders (x86 always emits AT&T output).
 local function makeTarget(arch, syntax)
@@ -193,16 +207,16 @@ local function rewriteSpills(nodes, spilledSet, slotOf, allocTemp, spillBase, ta
 			table.insert(out, node)
 			continue
 		end
-		for t, f in remap do
+		for _, t in sortedKeys(remap) do
 			if isUse[t] then
-				table.insert(out, target.spillReload(f, spillBase + 8 * slotOf[t]))
+				table.insert(out, target.spillReload(remap[t], spillBase + 8 * slotOf[t]))
 			end
 		end
 		remapNodeTemps(node, remap)
 		table.insert(out, node)
-		for t, f in remap do
+		for _, t in sortedKeys(remap) do
 			if isDef[t] then
-				table.insert(out, target.spillStore(f, spillBase + 8 * slotOf[t]))
+				table.insert(out, target.spillStore(remap[t], spillBase + 8 * slotOf[t]))
 			end
 		end
 	end
@@ -367,9 +381,9 @@ function sarcasm.compile(stmts, fileDirective, debug, target)
 
 	-- Emit weak/hidden callsite resolver thunks for called externals (deduped, and only
 	-- when we don't define the same FI symbol locally).
-	for sigName, ext in calledExterns do
+	for _, sigName in sortedKeys(calledExterns) do
 		if not definedFI[sigName] then
-			glue.callsiteThunk(out, ext.name, ext.sigDesc)
+			glue.callsiteThunk(out, calledExterns[sigName].name, calledExterns[sigName].sigDesc)
 		end
 	end
 

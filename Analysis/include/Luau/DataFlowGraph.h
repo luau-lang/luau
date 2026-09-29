@@ -4,7 +4,7 @@
 // Do not include LValue. It should never be used here.
 #include "Luau/Ast.h"
 #include "Luau/ControlFlow.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Def.h"
 #include "Luau/NotNull.h"
 #include "Luau/Symbol.h"
@@ -57,17 +57,17 @@ private:
     NotNull<DefArena> defArena;
     NotNull<RefinementKeyArena> keyArena;
 
-    DenseHashMap2<const AstExpr*, const Def*> astDefs;
+    DenseHashMap<const AstExpr*, const Def*> astDefs;
 
     // Sometimes we don't have the AstExprLocal* but we have AstLocal*, and sometimes we need to extract that DefId.
-    DenseHashMap2<const AstLocal*, const Def*> localDefs;
+    DenseHashMap<const AstLocal*, const Def*> localDefs;
 
     // There's no AstStatDeclaration, and it feels useless to introduce it just to enforce an invariant in one place.
     // All keys in this maps are really only statements that ambiently declares a symbol.
-    DenseHashMap2<const AstStat*, const Def*> declaredDefs;
-    DenseHashMap2<const Def*, Symbol> defToSymbol;
+    DenseHashMap<const AstStat*, const Def*> declaredDefs;
+    DenseHashMap<const Def*, Symbol> defToSymbol;
 
-    DenseHashMap2<const AstExpr*, const RefinementKey*> astRefinementKeys;
+    DenseHashMap<const AstExpr*, const RefinementKey*> astRefinementKeys;
     friend struct DataFlowGraphBuilder;
 };
 
@@ -83,8 +83,8 @@ struct DfgScope
     DfgScope* parent;
     ScopeType scopeType;
 
-    using Bindings = DenseHashMap2<Symbol, const Def*>;
-    using Props = DenseHashMap2<const Def*, std::unordered_map<std::string, const Def*>>;
+    using Bindings = DenseHashMap<Symbol, const Def*>;
+    using Props = DenseHashMap<const Def*, std::unordered_map<std::string, const Def*>>;
 
     Bindings bindings;
     Props props;
@@ -140,7 +140,7 @@ private:
         size_t versionOffset = 0;
     };
 
-    DenseHashMap2<Symbol, FunctionCapture> captures;
+    DenseHashMap<Symbol, FunctionCapture> captures;
     void resolveCaptures();
 
     DfgScope* makeChildScope(DfgScope::ScopeType scopeType = DfgScope::Linear);

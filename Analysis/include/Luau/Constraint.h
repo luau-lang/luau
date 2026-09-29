@@ -2,7 +2,8 @@
 #pragma once
 
 #include "Luau/Ast.h" // Used for some of the enumerations
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
+#include "Luau/IterativeTypeVisitor.h"
 #include "Luau/NotNull.h"
 #include "Luau/Variant.h"
 #include "Luau/TypeFwd.h"
@@ -68,7 +69,7 @@ struct IterableConstraint
     std::vector<TypeId> variables;
 
     const AstNode* nextAstFragment;
-    DenseHashMap2<const AstNode*, TypeId>* astForInNextTypes;
+    DenseHashMap<const AstNode*, TypeId>* astForInNextTypes;
 };
 
 // name(namedType) = name
@@ -103,11 +104,11 @@ struct FunctionCallConstraint
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> typePackArguments;
 
-    DenseHashMap2<const AstExpr*, TypeId>* astTypes = nullptr;
+    DenseHashMap<const AstExpr*, TypeId>* astTypes = nullptr;
 
     // When we dispatch this constraint, we update the key at this map to record
     // the overload that we selected.
-    DenseHashMap2<const AstNode*, TypeId>* astOverloadResolvedTypes = nullptr;
+    DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes = nullptr;
 };
 
 // function_check fn argsPack
@@ -122,34 +123,8 @@ struct FunctionCheckConstraint
     TypePackId argsPack;
 
     class AstExprCall* callSite = nullptr;
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes;
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes;
-};
-
-// prim FreeType ExpectedType PrimitiveType
-//
-// FreeType is bounded below by the singleton type and above by PrimitiveType
-// initially. When this constraint is resolved, it will check that the bounds
-// of the free type are well-formed by subtyping.
-//
-// If they are not well-formed, then FreeType is replaced by its lower bound
-//
-// If they are well-formed and ExpectedType is potentially a singleton (an
-// actual singleton or a union that contains a singleton),
-// then FreeType is replaced by its lower bound
-//
-// else FreeType is replaced by PrimitiveType
-//
-// Clip with LuauRemovePrimitiveTypeConstraint
-struct DEPRECATED_PrimitiveTypeConstraint
-{
-    TypeId freeType;
-
-    // potentially gets used to force the lower bound?
-    std::optional<TypeId> expectedType;
-
-    // the primitive type to check against
-    TypeId primitiveType;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
 };
 
 // result ~ hasProp type "prop_name"
@@ -314,8 +289,8 @@ struct PushTypeConstraint
 {
     TypeId expectedType;
     TypeId targetType;
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astTypes;
-    NotNull<DenseHashMap2<const AstExpr*, TypeId>> astExpectedTypes;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
     NotNull<const AstExpr> expr;
 };
 
@@ -328,7 +303,6 @@ using ConstraintV = Variant<
     TypeAliasExpansionConstraint,
     FunctionCallConstraint,
     FunctionCheckConstraint,
-    DEPRECATED_PrimitiveTypeConstraint,
     HasPropConstraint,
     HasIndexerConstraint,
     AssignPropConstraint,
@@ -358,8 +332,14 @@ struct Constraint
     /**
      * Return the types and type packs that may be mutated by this constraint.
      * Currently we do not do anything with type packs.
+     * clip with LuauReferenceCountInitializerIsIterative
      */
-    std::pair<TypeIds, TypePackIds> getMaybeMutatedTypes() const;
+    std::pair<TypeIds, TypePackIds> getMaybeMutatedTypes_DEPRECATED() const;
+
+    /**
+     * Return the types and type packs that may be mutated by this constraint.
+     */
+    std::pair<TypeIds, TypePackIds> getMaybeMutatedTypesIn(NotNull<TypeArena> currentArena) const;
 };
 
 using ConstraintPtr = std::unique_ptr<Constraint>;
@@ -384,13 +364,39 @@ const T* get(const Constraint& c)
     return getMutable<T>(asMutable(c));
 }
 
-struct ReferenceCountInitializer : TypeOnceVisitor
+struct ReferenceCountInitializer_DEPRECATED : TypeOnceVisitor
 {
     NotNull<TypeIds> mutatedTypes;
     TypePackIds* mutatedTypePacks;
     bool traverseIntoTypeFunctions = true;
 
-    explicit ReferenceCountInitializer(NotNull<TypeIds> mutatedTypes, NotNull<TypePackIds> mutatedTypePacks);
+    explicit ReferenceCountInitializer_DEPRECATED(NotNull<TypeIds> mutatedTypes, NotNull<TypePackIds> mutatedTypePacks);
+
+    bool visit(TypeId ty, const FreeType&) override;
+
+    bool visit(TypeId ty, const BlockedType&) override;
+
+    bool visit(TypeId ty, const PendingExpansionType&) override;
+
+    bool visit(TypeId ty, const TableType& tt) override;
+
+    bool visit(TypeId ty, const ExternType&) override;
+
+    bool visit(TypeId, const TypeFunctionInstanceType& tfit) override;
+
+    bool visit(TypePackId tp, const BlockedTypePack&) override;
+    bool visit(TypePackId tp, const FreeTypePack&) override;
+};
+
+struct ReferenceCountInitializer : IterativeTypeVisitor
+{
+    NotNull<TypeArena> currentArena;
+    NotNull<TypeIds> mutatedTypes;
+    NotNull<TypePackIds> mutatedTypePacks;
+
+    explicit ReferenceCountInitializer(NotNull<TypeArena> currentArena, NotNull<TypeIds> mutatedTypes, NotNull<TypePackIds> mutatedTypePacks);
+
+    bool visit(TypeId ty) override;
 
     bool visit(TypeId ty, const FreeType&) override;
 

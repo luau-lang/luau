@@ -4,7 +4,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/ConstraintSolver.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
 #include "Luau/OverloadResolver.h"
@@ -36,13 +36,13 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
 namespace Luau
 {
 
-using TypeOrTypePackIdSet = DenseHashSet2<const void*>;
+using TypeOrTypePackIdSet = DenseHashSet<const void*>;
 
 struct InstanceCollector : TypeOnceVisitor
 {
-    DenseHashSet2<TypeId> recordedTys;
+    DenseHashSet<TypeId> recordedTys;
     VecDeque<TypeId> tys;
-    DenseHashSet2<TypePackId> recordedTps;
+    DenseHashSet<TypePackId> recordedTps;
     VecDeque<TypePackId> tps;
     TypeOrTypePackIdSet shouldGuess;
     std::vector<const void*> typeFunctionInstanceStack;
@@ -258,7 +258,7 @@ struct TypeFunctionReducer
     SkipTestResult testForSkippability(TypeId ty)
     {
         VecDeque<TypeId> queue;
-        DenseHashSet2<TypeId> seen;
+        DenseHashSet<TypeId> seen;
 
         queue.push_back(follow(ty));
 

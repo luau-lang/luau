@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Bytecode.h"
-#include "Luau/DenseHash2.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
 #include "Luau/RegisterX64.h"
@@ -1480,10 +1480,10 @@ struct IrFunction
     // For each instruction, an operand that can be used to recompute the value
     std::vector<ValueRestoreLocation> valueRestoreOps;
     std::vector<uint32_t> validRestoreOpBlocks;
-    DenseHashMap2<uint32_t, StoreLocationHint> storeLocationHints;
+    DenseHashMap<uint32_t, StoreLocationHint> storeLocationHints;
 
-    DenseHashMap2<uint32_t, VmExitSyncInfo> vmExitInfo;
-    DenseHashMap2<uint32_t, uint32_t> blockToVmExitMap;
+    DenseHashMap<uint32_t, VmExitSyncInfo> vmExitInfo;
+    DenseHashMap<uint32_t, uint32_t> blockToVmExitMap;
 
     BytecodeTypeInfo bcOriginalTypeInfo; // Bytecode type information as loaded
     BytecodeTypeInfo bcTypeInfo;         // Bytecode type information with additional inferences
