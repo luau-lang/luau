@@ -47,6 +47,7 @@ typedef struct lua_State lua_State;
 
 typedef int (*lua_CFunction)(lua_State* L);
 typedef int (*lua_Continuation)(lua_State* L, int status);
+typedef void (*lua_Destructor)(lua_State* L, void* userdata);
 
 /*
 ** prototype for memory-allocation functions
@@ -211,8 +212,6 @@ LUA_API void lua_pushcclosurek(lua_State* L, lua_CFunction fn, const char* debug
 LUA_API void lua_pushboolean(lua_State* L, int b);
 LUA_API int lua_pushthread(lua_State* L);
 
-typedef void (*lua_Destructor)(lua_State* L, void* userdata);
-
 LUA_API void lua_pushlightuserdatatagged(lua_State* L, void* p, int tag);
 LUA_API void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag);
 LUA_API void* lua_newuserdatataggedwithmetatable(lua_State* L, size_t sz, int tag); // metatable fetched with lua_getuserdatametatable
@@ -238,6 +237,8 @@ LUA_API void lua_setsafeenv(lua_State* L, int idx, int enabled);
 LUA_API int lua_getmetatable(lua_State* L, int objindex);
 LUA_API void lua_getfenv(lua_State* L, int idx);
 
+LUA_API lua_Destructor lua_getinlineuserdatadtor(lua_State* L, int idx);
+
 /*
 ** set functions (stack -> Lua)
 */
@@ -249,6 +250,7 @@ LUA_API void lua_rawseti(lua_State* L, int idx, int n);
 LUA_API void lua_rawsetptagged(lua_State* L, int idx, void* p, int tag);
 LUA_API int lua_setmetatable(lua_State* L, int objindex);
 LUA_API int lua_setfenv(lua_State* L, int idx);
+LUA_API void lua_setinlineuserdatadtor(lua_State* L, int idx, lua_Destructor dtor);
 
 /*
 ** `load' and `call' functions (load and run Luau bytecode)
@@ -500,7 +502,7 @@ LUA_API int lua_unref(lua_State* L, int ref);
 #define lua_tointeger(L, i) lua_tointegerx(L, i, NULL)
 #define lua_tounsigned(L, i) lua_tounsignedx(L, i, NULL)
 
-#define lua_pop(L, n) lua_settop(L, -(n)-1)
+#define lua_pop(L, n) lua_settop(L, -(n) - 1)
 
 #define lua_newtable(L) lua_createtable(L, 0, 0)
 #define lua_newuserdata(L, s) lua_newuserdatatagged(L, s, 0)
@@ -584,7 +586,7 @@ struct lua_Debug
     unsigned char nupvals; // (u) number of upvalues
     unsigned char nparams; // (a) number of parameters
     char isvararg;         // (a)
-    void* userdata; // only valid in lua_callhook
+    void* userdata;        // only valid in lua_callhook
 
     char ssbuf[LUA_IDSIZE];
 };
@@ -615,7 +617,7 @@ struct lua_Callbacks
     void (*interrupt)(lua_State* L, int gc);  // gets called at safepoints (loop back edges, call/ret, gc) if set
     void (*panic)(lua_State* L, int errcode); // gets called when an unprotected error is raised (if longjmp is used)
 
-    void (*userthread)(lua_State* LP, lua_State* L); // gets called when L is created (LP == parent) or destroyed (LP == NULL)
+    void (*userthread)(lua_State* LP, lua_State* L);            // gets called when L is created (LP == parent) or destroyed (LP == NULL)
     int16_t (*useratom)(lua_State* L, const char* s, size_t l); // gets called when a string is created to assign an atom id
 
     // NOTE: experimental API, requires a Debug flag to be called and is subject to breaking changes
