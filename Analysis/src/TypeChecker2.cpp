@@ -33,6 +33,7 @@
 #include "Luau/Simplify.h"
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAGVARIABLE(LuauSkipUnusedTypeTraversals)
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauFixCallMetamethodErrorReporting)
@@ -50,7 +51,7 @@ LUAU_FASTFLAG(LuauNormalizeGuardAgainstNonTestableNegations)
 LUAU_FASTFLAGVARIABLE(LuauStrictVisitInstantiatedType)
 
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
-LUAU_FASTFLAG(DebugLuauIfLocalAnalysis)
+LUAU_FASTFLAG(LuauExperimentalIfLocalAnalysis)
 
 namespace Luau
 {
@@ -196,9 +197,18 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
     DenseHashSet<TypePackId> internalPackFunctions;
     DenseHashSet<TypeId> mentionedFunctions;
     DenseHashSet<TypePackId> mentionedFunctionPacks;
+    const std::vector<TypeId>* unscannedDeclStack = nullptr;
 
     explicit InternalTypeFunctionFinder(std::vector<TypeId>& declStack)
         : TypeOnceVisitor("InternalTypeFunctionFinder", /* skipBoundTypes */ true)
+    {
+        if (FFlag::LuauSkipUnusedTypeTraversals)
+            unscannedDeclStack = &declStack;
+        else
+            findMentionedFunctions(declStack);
+    }
+
+    void findMentionedFunctions(const std::vector<TypeId>& declStack)
     {
         TypeFunctionFinder f;
         for (TypeId fn : declStack)
@@ -206,6 +216,23 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
 
         mentionedFunctions = std::move(f.mentionedFunctions);
         mentionedFunctionPacks = std::move(f.mentionedFunctionPacks);
+    }
+
+    // The mentioned functions are only consulted for an instance with a generic argument.
+    void ensureMentionedFunctions()
+    {
+        if (FFlag::LuauSkipUnusedTypeTraversals)
+        {
+            if (!unscannedDeclStack)
+                return;
+
+            findMentionedFunctions(*unscannedDeclStack);
+            unscannedDeclStack = nullptr;
+        }
+        else
+        {
+            LUAU_ASSERT(!unscannedDeclStack);
+        }
     }
 
     bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
@@ -232,6 +259,7 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
 
         if (hasGeneric)
         {
+            ensureMentionedFunctions();
             for (TypeId mentioned : mentionedFunctions)
             {
                 const TypeFunctionInstanceType* mentionedTfit = get<TypeFunctionInstanceType>(mentioned);
@@ -272,6 +300,7 @@ struct InternalTypeFunctionFinder : TypeOnceVisitor
 
         if (hasGeneric)
         {
+            ensureMentionedFunctions();
             for (TypePackId mentioned : mentionedFunctionPacks)
             {
                 const TypeFunctionInstanceTypePack* mentionedTfitp = get<TypeFunctionInstanceTypePack>(mentioned);
@@ -703,7 +732,7 @@ void TypeChecker2::visit(AstStatIf* ifStatement)
         visit(ifStatement->condition, ValueContext::RValue);
     }
 
-    if (FFlag::DebugLuauIfLocalAnalysis && ifStatement->conditionLocal && ifStatement->conditionLocal->annotation)
+    if (FFlag::LuauExperimentalIfLocalAnalysis && ifStatement->conditionLocal && ifStatement->conditionLocal->annotation)
     {
         TypeId annotationType = lookupAnnotation(ifStatement->conditionLocal->annotation);
         testPotentialLiteralIsSubtype(ifStatement->condition, annotationType);
@@ -3049,7 +3078,7 @@ void TypeChecker2::visit(AstExprIfElse* expr)
         visit(expr->condition, ValueContext::RValue);
     }
 
-    if (FFlag::DebugLuauIfLocalAnalysis && expr->conditionLocal && expr->conditionLocal->annotation)
+    if (FFlag::LuauExperimentalIfLocalAnalysis && expr->conditionLocal && expr->conditionLocal->annotation)
     {
         TypeId annotationType = lookupAnnotation(expr->conditionLocal->annotation);
         testPotentialLiteralIsSubtype(expr->condition, annotationType);
@@ -3852,7 +3881,7 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
         return testIsSubtype(exprType, expectedType, expr->location);
     }
 
-    Set<std::optional<std::string>> missingKeys;
+    DenseHashSet<std::optional<std::string>> missingKeys;
     for (const auto& [name, prop] : expectedTableType->props)
     {
         if (prop.readTy)
@@ -3892,7 +3921,11 @@ bool TypeChecker2::testPotentialLiteralIsSubtype(AstExpr* expr, TypeId expectedT
                     isSubtype &= testIsSubtype(inferredKeyType, expectedTableType->indexer->indexType, item.key->location);
                     isSubtype &= testPotentialLiteralIsSubtype(item.value, expectedTableType->indexer->indexResultType);
                 }
-                // If there's not an indexer, then by width subtyping we can just do nothing :)
+
+                if (expectedTableType->state == TableState::Exact)
+                    reportError(MissingProperties{expectedType, exprType, {keyStr}, MissingProperties::Extra}, item.key->location);
+
+                // If there's not an indexer and the table is not exact, by width subtyping we can just do nothing :)
             }
             else
             {

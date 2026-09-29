@@ -5,7 +5,7 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAG(LuauExperimentalIfLocalSyntax)
 
 using namespace Luau;
 
@@ -234,7 +234,7 @@ end
 
 TEST_CASE("IfLocal")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauIfLocalSyntax, true};
+    ScopedFastFlag sff{FFlag::LuauExperimentalIfLocalSyntax, true};
 
     uint64_t model = modelFunction(R"(
 function test(a)

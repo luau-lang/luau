@@ -10,6 +10,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
+LUAU_FASTFLAG(DebugLuauParseExactTables)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
 
 namespace
 {
@@ -113,6 +115,27 @@ struct SimplifyFixture : Fixture
     {
         return simplifyUnion(getBuiltins(), arena, a, b).result;
     }
+};
+
+// TODO: Delete this fixture class when clipping DebugLuauExactTableTypes and DebugLuauParseExactTables.
+struct ExactTableSimplifyFixture : SimplifyFixture
+{
+    ScopedFastFlag sff1{FFlag::DebugLuauParseExactTables, true};
+    ScopedFastFlag sff2{FFlag::DebugLuauExactTableTypes, true};
+
+    TypeId mkExactTable(std::map<Name, Property> propTypes, std::optional<TableIndexer> indexer = std::nullopt)
+    {
+        TableType::Props props;
+        for (const auto& [name, prop] : propTypes)
+            props[name] = prop;
+
+        return arena->addType(TableType{props, std::move(indexer), TypeLevel{}, TableState::Exact});
+    }
+};
+
+struct LegacySimplifyFixture : SimplifyFixture
+{
+    ScopedFastFlag sff{FFlag::DebugLuauExactTableTypes, false};
 };
 
 } // namespace
@@ -373,7 +396,7 @@ TEST_CASE_FIXTURE(SimplifyFixture, "negated_function_does_not_intersect_cleanly_
     CHECK(isIntersection(intersect(negatedFunctionTy, truthyTy)));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "tables")
+TEST_CASE_FIXTURE(LegacySimplifyFixture, "tables")
 {
     TypeId t1 = mkTable({{"tag", stringTy}});
 
@@ -391,7 +414,7 @@ TEST_CASE_FIXTURE(SimplifyFixture, "tables")
     CHECK(t1 == intersect(t3, t1));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "combine_disjoint_sealed_tables")
+TEST_CASE_FIXTURE(LegacySimplifyFixture, "combine_disjoint_sealed_tables")
 {
     TypeId t1 = mkTable({{"prop", stringTy}});
     TypeId t2 = mkTable({{"second_prop", numberTy}});
@@ -399,23 +422,31 @@ TEST_CASE_FIXTURE(SimplifyFixture, "combine_disjoint_sealed_tables")
     CHECK("{ prop: string, second_prop: number }" == toString(intersect(t1, t2)));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_do_not_simplify")
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "combine_inexact_disjoint_sealed_tables")
+{
+    TypeId t1 = mkTable({{"prop", stringTy}});
+    TypeId t2 = mkTable({{"second_prop", numberTy}});
+
+    CHECK("{ prop: string, second_prop: number, ... }" == toString(intersect(t1, t2)));
+}
+
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "non_disjoint_tables_do_not_simplify")
 {
     TypeId t1 = mkTable({{"prop", stringTy}});
     TypeId t2 = mkTable({{"prop", unknownTy}, {"second_prop", numberTy}});
 
-    CHECK("{ prop: string } & { prop: unknown, second_prop: number }" == toString(intersect(t1, t2)));
+    CHECK("{ prop: string, ... } & { prop: unknown, second_prop: number, ... }" == toString(intersect(t1, t2)));
 }
 
 // Simplification has an extra code path especially for intersections with
 // single-property tables, so it's worthwhile to separately test the case where
 // both tables have multiple properties.
-TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_do_not_simplify_2")
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "non_disjoint_tables_do_not_simplify_2")
 {
     TypeId t1 = mkTable({{"prop", stringTy}, {"third_prop", numberTy}});
     TypeId t2 = mkTable({{"prop", unknownTy}, {"second_prop", numberTy}});
 
-    CHECK("{ prop: string, third_prop: number } & { prop: unknown, second_prop: number }" == toString(intersect(t1, t2)));
+    CHECK("{ prop: string, third_prop: number, ... } & { prop: unknown, second_prop: number, ... }" == toString(intersect(t1, t2)));
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "tables_and_top_table")
@@ -438,18 +469,18 @@ TEST_CASE_FIXTURE(SimplifyFixture, "tables_and_truthy")
     CHECK(t1 == intersect(truthyTy, t1));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "table_with_a_tag")
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "table_with_a_tag")
 {
     // {tag: string, prop: number} & {tag: "hello"}
     // I think we can decline to simplify this:
     TypeId t1 = mkTable({{"tag", stringTy}, {"prop", numberTy}});
     TypeId t2 = mkTable({{"tag", helloTy}});
 
-    CHECK("{ prop: number, tag: string } & { tag: \"hello\" }" == intersectStr(t1, t2));
-    CHECK("{ prop: number, tag: string } & { tag: \"hello\" }" == intersectStr(t2, t1));
+    CHECK("{ prop: number, tag: string, ... } & { tag: \"hello\", ... }" == intersectStr(t1, t2));
+    CHECK("{ prop: number, tag: string, ... } & { tag: \"hello\", ... }" == intersectStr(t2, t1));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "nested_table_tag_test")
+TEST_CASE_FIXTURE(LegacySimplifyFixture, "nested_table_tag_test")
 {
     TypeId t1 = mkTable({
         {"subtable",
@@ -568,7 +599,7 @@ TEST_CASE_FIXTURE(SimplifyFixture, "some_tables_are_really_never")
     CHECK(neverTy == intersect(t2, t2));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "simplify_stops_at_cycles")
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "simplify_stops_at_cycles")
 {
     TypeId t = mkTable({});
     TableType* tt = getMutable<TableType>(t);
@@ -587,11 +618,11 @@ TEST_CASE_FIXTURE(SimplifyFixture, "simplify_stops_at_cycles")
     CHECK(t2 == intersect(t2, unknownTy));
     CHECK(t2 == intersect(unknownTy, t2));
 
-    CHECK("*error-type* | t1 where t1 = { cyclic: { cyclic: t1 } }" == intersectStr(t, anyTy));
-    CHECK("*error-type* | t1 where t1 = { cyclic: { cyclic: t1 } }" == intersectStr(anyTy, t));
+    CHECK("*error-type* | t1 where t1 = { cyclic: { cyclic: t1, ... }, ... }" == intersectStr(t, anyTy));
+    CHECK("*error-type* | t1 where t1 = { cyclic: { cyclic: t1, ... }, ... }" == intersectStr(anyTy, t));
 
-    CHECK("*error-type* | t1 where t1 = { cyclic: { cyclic: t1 } }" == intersectStr(t2, anyTy));
-    CHECK("*error-type* | t1 where t1 = { cyclic: { cyclic: t1 } }" == intersectStr(anyTy, t2));
+    CHECK("*error-type* | t1 where t1 = { cyclic: { cyclic: t1, ... }, ... }" == intersectStr(t2, anyTy));
+    CHECK("*error-type* | t1 where t1 = { cyclic: { cyclic: t1, ... }, ... }" == intersectStr(anyTy, t2));
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "free_type_bound_by_any_with_any")
@@ -638,7 +669,7 @@ TEST_CASE_FIXTURE(SimplifyFixture, "(error | string) & any")
     CHECK("*error-type* | string" == toString(res));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "{ x: number, y: number } & { x: unknown }")
+TEST_CASE_FIXTURE(LegacySimplifyFixture, "{ x: number, y: number } & { x: unknown }")
 {
     TypeId leftTy = mkTable({{"x", builtinTypes->numberType}, {"y", builtinTypes->numberType}});
     TypeId rightTy = mkTable({{"x", Property::rw(builtinTypes->unknownType)}});
@@ -654,7 +685,7 @@ TEST_CASE_FIXTURE(SimplifyFixture, "{ x: number, y: number } & { read x: unknown
     CHECK(leftTy == intersect(leftTy, rightTy));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "{ read x: Child } & { x: Parent }")
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "{ read x: Child } & { x: Parent }")
 {
     createSomeExternTypes(getFrontend());
 
@@ -668,10 +699,10 @@ TEST_CASE_FIXTURE(SimplifyFixture, "{ read x: Child } & { x: Parent }")
     TypeId rightTy = mkTable({{"x", parentTy}});
 
     // TODO: This could be { read x: Child, write x: Parent }
-    CHECK("{ read x: Child } & { x: Parent }" == toString(intersect(leftTy, rightTy)));
+    CHECK("{ read x: Child, ... } & { x: Parent, ... }" == toString(intersect(leftTy, rightTy)));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "intersect_parts_empty_table_non_empty")
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "intersect_parts_empty_table_non_empty")
 {
     TableType empty;
     empty.state = TableState::Sealed;
@@ -682,10 +713,10 @@ TEST_CASE_FIXTURE(SimplifyFixture, "intersect_parts_empty_table_non_empty")
     nonEmpty.state = TableState::Sealed;
     TypeId nonEmptyTable = arena->addType(std::move(nonEmpty));
 
-    CHECK("{ p: number | string }" == toString(simplifyIntersection(getBuiltins(), arena, {nonEmptyTable, emptyTable}).result));
+    CHECK("{ p: number | string, ... }" == toString(simplifyIntersection(getBuiltins(), arena, {nonEmptyTable, emptyTable}).result));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "relate_write_only_number_with_number")
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "relate_write_only_number_with_number")
 {
     TypeId leftTy = mkTable({{"x", Property::writeonly(builtinTypes->numberType)}});
     TypeId rightTy = mkTable({{"x", Property::rw(arena->addType(UnionType{{builtinTypes->nilType, builtinTypes->numberType}}))}});
@@ -693,8 +724,8 @@ TEST_CASE_FIXTURE(SimplifyFixture, "relate_write_only_number_with_number")
     // This example could be simplified to:
     //
     //  { write x: number, read x: number ? }
-    CHECK("{ write x: number } & { x: number? }" == toString(intersect(leftTy, rightTy)));
-    CHECK("{ write x: number } & { x: number? }" == toString(intersect(rightTy, leftTy)));
+    CHECK("{ write x: number, ... } & { x: number?, ... }" == toString(intersect(leftTy, rightTy)));
+    CHECK("{ write x: number, ... } & { x: number?, ... }" == toString(intersect(rightTy, leftTy)));
 
     // We could probably simplify this to...
     //
@@ -703,11 +734,11 @@ TEST_CASE_FIXTURE(SimplifyFixture, "relate_write_only_number_with_number")
     // ... as...
     //
     //  { write x: number } <: { x: number? }
-    CHECK("{ write x: number } | { x: number? }" == toString(union_(leftTy, rightTy)));
-    CHECK("{ write x: number } | { x: number? }" == toString(union_(rightTy, leftTy)));
+    CHECK("{ write x: number, ... } | { x: number?, ... }" == toString(union_(leftTy, rightTy)));
+    CHECK("{ write x: number, ... } | { x: number?, ... }" == toString(union_(rightTy, leftTy)));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "relate_read_only_number_with_number")
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "relate_read_only_number_with_number")
 {
     TypeId leftTy = mkTable({{"x", Property::readonly(builtinTypes->numberType)}});
     TypeId rightTy = mkTable({{"x", Property::rw(arena->addType(UnionType{{builtinTypes->nilType, builtinTypes->numberType}}))}});
@@ -716,15 +747,15 @@ TEST_CASE_FIXTURE(SimplifyFixture, "relate_read_only_number_with_number")
     // minting a new table ...
 
     // This could be: { read x: number, write x: number? }
-    CHECK("{ read x: number } & { x: number? }" == toString(intersect(leftTy, rightTy)));
-    CHECK("{ read x: number } & { x: number? }" == toString(intersect(rightTy, leftTy)));
+    CHECK("{ read x: number, ... } & { x: number?, ... }" == toString(intersect(leftTy, rightTy)));
+    CHECK("{ read x: number, ... } & { x: number?, ... }" == toString(intersect(rightTy, leftTy)));
 
     // This could be: { read x: number? }
-    CHECK("{ read x: number } | { x: number? }" == toString(union_(leftTy, rightTy)));
-    CHECK("{ read x: number } | { x: number? }" == toString(union_(rightTy, leftTy)));
+    CHECK("{ read x: number, ... } | { x: number?, ... }" == toString(union_(leftTy, rightTy)));
+    CHECK("{ read x: number, ... } | { x: number?, ... }" == toString(union_(rightTy, leftTy)));
 }
 
-TEST_CASE_FIXTURE(SimplifyFixture, "relate_coincident_minus_one_prop_tables")
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "relate_coincident_minus_one_prop_tables")
 {
     // { x: number, y: boolean }
     TypeId leftTy = mkTable({{"x", Property::rw(builtinTypes->numberType)}, {"y", Property::rw(builtinTypes->booleanType)}});
@@ -734,13 +765,137 @@ TEST_CASE_FIXTURE(SimplifyFixture, "relate_coincident_minus_one_prop_tables")
         {{"x", Property::rw(builtinTypes->numberType)}, {"y", Property::rw(builtinTypes->booleanType)}, {"z", Property::rw(builtinTypes->stringType)}}
     );
 
-    // By width subtyping this could be { x: number, y: boolean, z: string }
-    CHECK("{ x: number, y: boolean } & { x: number, y: boolean, z: string }" == toString(intersect(leftTy, rightTy)));
-    CHECK("{ x: number, y: boolean } & { x: number, y: boolean, z: string }" == toString(intersect(rightTy, leftTy)));
+    // By width subtyping the wider table is the intersection.
+    CHECK("{ x: number, y: boolean, z: string, ... }" == toString(intersect(leftTy, rightTy)));
+    CHECK("{ x: number, y: boolean, z: string, ... }" == toString(intersect(rightTy, leftTy)));
 
-    // By width subtyping this could be { x: number, y: boolean }
-    CHECK("{ x: number, y: boolean } | { x: number, y: boolean, z: string }" == toString(union_(leftTy, rightTy)));
-    CHECK("{ x: number, y: boolean } | { x: number, y: boolean, z: string }" == toString(union_(rightTy, leftTy)));
+    // By width subtyping the narrower table is the union.
+    CHECK("{ x: number, y: boolean, ... }" == toString(union_(leftTy, rightTy)));
+    CHECK("{ x: number, y: boolean, ... }" == toString(union_(rightTy, leftTy)));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "distinct_empty_inexact_tables_are_coincident")
+{
+    TypeId left = mkTable({});
+    TypeId right = mkTable({});
+
+    CHECK(Relation::Coincident == relate(left, right));
+}
+
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "exact_table_relations")
+{
+    TypeId exactX = mkExactTable({{"x", numberTy}});
+    TypeId equivalentExactX = mkExactTable({{"x", numberTy}});
+    TypeId exactXY = mkExactTable({{"x", numberTy}, {"y", stringTy}});
+    TypeId exactXString = mkExactTable({{"x", stringTy}});
+    TypeId exactXYHello = mkExactTable({{"x", numberTy}, {"y", Property::readonly(helloTy)}});
+    TypeId exactXYStringReadOnly = mkExactTable({{"x", numberTy}, {"y", Property::readonly(stringTy)}});
+
+    TypeId inexactX = mkTable({{"x", numberTy}});
+    TypeId inexactXY = mkTable({{"x", numberTy}, {"y", stringTy}});
+
+    TypeId exactNumberIndexer = mkExactTable({}, TableIndexer{stringTy, numberTy});
+    TypeId exactStringIndexer = mkExactTable({}, TableIndexer{stringTy, stringTy});
+    TypeId inexactNumberIndexer = arena->addType(TableType{{}, TableIndexer{stringTy, numberTy}, TypeLevel{}, TableState::Sealed});
+
+    CHECK(Relation::Coincident == relate(exactX, equivalentExactX));
+    CHECK(Relation::Subset == relate(exactX, inexactX));
+    CHECK(Relation::Superset == relate(inexactX, exactX));
+
+    CHECK(Relation::Disjoint == relate(exactX, exactXY));
+    CHECK(Relation::Disjoint == relate(exactX, inexactXY));
+    CHECK(Relation::Disjoint == relate(exactX, exactXString));
+
+    CHECK(Relation::Subset == relate(exactXY, inexactX));
+    CHECK(Relation::Superset == relate(inexactX, exactXY));
+    CHECK(Relation::Subset == relate(exactXY, inexactXY));
+    CHECK(Relation::Superset == relate(inexactXY, exactXY));
+
+    // Exactness controls the tail of the row; it does not make a directional
+    // relation between corresponding fields disappear.
+    CHECK(Relation::Subset == relate(exactXYHello, exactXYStringReadOnly));
+    CHECK(Relation::Superset == relate(exactXYStringReadOnly, exactXYHello));
+
+    // This is conservative: incompatible index result types need not be
+    // classified as disjoint, but they must never be coincident.
+    CHECK(Relation::Intersects == relate(exactNumberIndexer, exactStringIndexer));
+    CHECK(Relation::Subset == relate(exactNumberIndexer, inexactNumberIndexer));
+    CHECK(Relation::Superset == relate(inexactNumberIndexer, exactNumberIndexer));
+}
+
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "exact_table_simplification")
+{
+    TypeId exactX = mkExactTable({{"x", numberTy}});
+    TypeId exactXY = mkExactTable({{"x", numberTy}, {"y", stringTy}});
+    TypeId inexactX = mkTable({{"x", numberTy}});
+    TypeId inexactXY = mkTable({{"x", numberTy}, {"y", stringTy}});
+
+    CHECK(exactX == intersect(exactX, inexactX));
+    CHECK(exactX == intersect(inexactX, exactX));
+    CHECK(inexactX == union_(exactX, inexactX));
+    CHECK(inexactX == union_(inexactX, exactX));
+
+    CHECK(neverTy == intersect(exactX, exactXY));
+    CHECK(neverTy == intersect(exactX, inexactXY));
+    CHECK("{ x: number } | { x: number, y: string }" == toString(union_(exactX, exactXY)));
+    CHECK("{ x: number } | { x: number, y: string }" == toString(union_(exactXY, exactX)));
+}
+
+// Single-property sealed tables exercise a dedicated fast path in basicIntersect.
+
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "single_prop_disjoint_props_yield_never")
+{
+    TypeId t1 = mkTable({{"x", numberTy}});
+    TypeId t2 = mkTable({{"x", stringTy}});
+
+    CHECK(neverTy == intersect(t1, t2));
+    CHECK(neverTy == intersect(t2, t1));
+}
+
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "single_prop_coincident_returns_right")
+{
+    TypeId t1 = mkTable({{"x", numberTy}});
+    TypeId t2 = mkTable({{"x", numberTy}, {"y", stringTy}});
+
+    CHECK(t2 == intersect(t1, t2));
+}
+
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "single_prop_superset_returns_right")
+{
+    TypeId t1 = mkTable({{"x", stringTy}});
+    TypeId t2 = mkTable({{"x", helloTy}});
+
+    CHECK(t2 == intersect(t1, t2));
+}
+
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "single_prop_subset_returns_left")
+{
+    TypeId t1 = mkTable({{"x", stringTy}});
+    TypeId t2 = mkTable({{"x", unknownTy}});
+
+    CHECK(t1 == intersect(t1, t2));
+}
+
+// Multi-property left with single-property right should swap and retry the fast path.
+
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "multi_prop_with_single_prop_swaps")
+{
+    TypeId t1 = mkTable({{"x", numberTy}, {"y", stringTy}});
+    TypeId t2 = mkTable({{"x", numberTy}});
+
+    CHECK(t1 == intersect(t1, t2));
+}
+
+// Exact tables must never be merged by the disjoint-sealed fast path, even when the
+// other operand is an inexact sealed table.  They should fall through to relate().
+
+TEST_CASE_FIXTURE(ExactTableSimplifyFixture, "exact_and_inexact_disjoint_do_not_merge")
+{
+    TypeId exactX = mkExactTable({{"x", numberTy}});
+    TypeId inexactY = mkTable({{"y", stringTy}});
+
+    CHECK(neverTy == intersect(exactX, inexactY));
+    CHECK(neverTy == intersect(inexactY, exactX));
 }
 
 TEST_SUITE_END();

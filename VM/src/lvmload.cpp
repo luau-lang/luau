@@ -19,6 +19,7 @@
 
 LUAU_FASTFLAG(LuauCallFeedback)
 LUAU_FASTFLAGVARIABLE(LuauCostModel)
+LUAU_FASTFLAGVARIABLE(LuauLoadRemapOptionalUserdata)
 
 template<typename T>
 struct TempBuffer
@@ -217,6 +218,19 @@ static void resolveImportSafe(lua_State* L, LuaTable* env, TValue* k, uint32_t i
     }
 }
 
+static uint8_t remapUserdataType(uint8_t type, uint8_t* userdataRemapping, uint32_t count)
+{
+    LUAU_ASSERT(FFlag::LuauLoadRemapOptionalUserdata);
+    uint8_t tag = type & ~LBC_TYPE_OPTIONAL_BIT;
+    uint8_t optional = type & LBC_TYPE_OPTIONAL_BIT;
+    uint32_t index = uint32_t(tag - LBC_TYPE_TAGGED_USERDATA_BASE);
+
+    if (index < count)
+        return userdataRemapping[index] | optional;
+
+    return type;
+}
+
 static void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemapping, uint32_t count)
 {
     size_t offset = 0;
@@ -232,10 +246,17 @@ static void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemappi
         // Skip two bytes of function type introduction
         for (uint32_t i = 2; i < typeSize; i++)
         {
-            uint32_t index = uint32_t(types[i] - LBC_TYPE_TAGGED_USERDATA_BASE);
+            if (FFlag::LuauLoadRemapOptionalUserdata)
+            {
+                types[i] = remapUserdataType(types[i], userdataRemapping, count);
+            }
+            else
+            {
+                uint32_t index = uint32_t(types[i] - LBC_TYPE_TAGGED_USERDATA_BASE);
 
-            if (index < count)
-                types[i] = userdataRemapping[index];
+                if (index < count)
+                    types[i] = userdataRemapping[index];
+            }
         }
 
         offset += typeSize;
@@ -247,10 +268,17 @@ static void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemappi
 
         for (uint32_t i = 0; i < upvalCount; i++)
         {
-            uint32_t index = uint32_t(types[i] - LBC_TYPE_TAGGED_USERDATA_BASE);
+            if (FFlag::LuauLoadRemapOptionalUserdata)
+            {
+                types[i] = remapUserdataType(types[i], userdataRemapping, count);
+            }
+            else
+            {
+                uint32_t index = uint32_t(types[i] - LBC_TYPE_TAGGED_USERDATA_BASE);
 
-            if (index < count)
-                types[i] = userdataRemapping[index];
+                if (index < count)
+                    types[i] = userdataRemapping[index];
+            }
         }
 
         offset += upvalCount;
@@ -260,10 +288,17 @@ static void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemappi
     {
         for (uint32_t i = 0; i < localCount; i++)
         {
-            uint32_t index = uint32_t(data[offset] - LBC_TYPE_TAGGED_USERDATA_BASE);
+            if (FFlag::LuauLoadRemapOptionalUserdata)
+            {
+                data[offset] = char(remapUserdataType(uint8_t(data[offset]), userdataRemapping, count));
+            }
+            else
+            {
+                uint32_t index = uint32_t(data[offset] - LBC_TYPE_TAGGED_USERDATA_BASE);
 
-            if (index < count)
-                data[offset] = userdataRemapping[index];
+                if (index < count)
+                    data[offset] = userdataRemapping[index];
+            }
 
             offset += 2;
             readVarInt(data, size, offset);

@@ -9,8 +9,6 @@
 
 #include <regex>
 
-LUAU_FASTFLAG(LuauCodegenDseRestoreHintUpdate)
-
 using namespace Luau::CodeGen;
 
 static void stripLinesContaining(std::string& text, const char* needle)
@@ -501,8 +499,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "DseHintUpdateRedirectsLazyRestoreToLaterReg")
 {
-    ScopedFastFlag luauCodegenDseRestoreHintUpdate{FFlag::LuauCodegenDseRestoreHintUpdate, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     build.beginBlock(entry);
 

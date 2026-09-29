@@ -512,4 +512,14 @@ do
     assert(closures[3]() == 3)
 end
 
+-- backwards compatibility for context-sensitive const
+do
+    local const = 3
+    if const then
+        assert(const == 3)
+    end
+
+    assert(if const then const == 3 else false)
+end
+
 return "OK"
