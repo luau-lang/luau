@@ -1446,6 +1446,13 @@ void luaC_fullgc(lua_State* L)
 
     g->gcstats.heapgoalsizebytes = heapgoalsizebytes;
 
+    if (DFFlag::LuauGcHeapShrinkFix)
+    {
+        // full collection ends a cycle, so the heap growth is measured from this point
+        g->gcstats.endtimestamp = lua_clock();
+        g->gcstats.endtotalsizebytes = g->totalbytes;
+    }
+
 #ifdef LUAI_GCMETRICS
     finishGcCycleMetrics(g);
 #endif

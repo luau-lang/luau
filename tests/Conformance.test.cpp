@@ -3210,6 +3210,14 @@ TEST_CASE("ApiAllocationRateAfterFullGC")
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
+    // data that stays alive, so that allocating after the full collection doesn't immediately start a new cycle
+    lua_createtable(L, 0, 0);
+    for (int i = 1; i <= 10000; i++)
+    {
+        lua_createtable(L, 1, 0);
+        lua_rawseti(L, -2, i);
+    }
+
     // grow the heap so that incremental collection cycles complete
     lua_createtable(L, 0, 0);
     for (int i = 1; i <= 100000; i++)
@@ -3229,6 +3237,16 @@ TEST_CASE("ApiAllocationRateAfterFullGC")
     }
 
     CHECK(lua_allocationrate(L) >= 0);
+
+    // allocations after the full collection are measured from its end
+    lua_createtable(L, 0, 0);
+    for (int i = 1; i <= 1000; i++)
+    {
+        lua_createtable(L, 1, 0);
+        lua_rawseti(L, -2, i);
+    }
+
+    CHECK(lua_allocationrate(L) > 0);
 }
 
 TEST_CASE("ApiEncode")
