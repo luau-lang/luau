@@ -9,6 +9,7 @@
 LUAU_FASTFLAG(DebugLuauLogSolver)
 LUAU_FASTFLAG(LuauTraverseScopeToFunction)
 LUAU_FASTFLAG(LuauReferenceCountInitializerIsIterative)
+LUAU_FASTFLAG(LuauSkipUnusedTypeTraversals)
 
 namespace Luau
 {
@@ -387,6 +388,13 @@ void ConstraintGraph::shiftReferences(T source, T target)
         return;
 
     auto sourceDependencies = findDependencyList(source);
+
+    // With nothing to copy, the types reachable from the target are never used.
+    if (FFlag::LuauSkipUnusedTypeTraversals && sourceDependencies->size() == 0)
+    {
+        clearReverseDependenciesOf(source);
+        return;
+    }
 
     TypeIds mutatedTypes;
     TypePackIds mutatedTypePacks;
