@@ -55,6 +55,10 @@ struct TypeFunctionContext
     //  union<number, number>
     std::vector<TypeId> freshInstances;
 
+    // Types and packs under which a collection found no type function instance, which later collections skip. Only
+    // TypeChecker2 sets it: after solving, only instances are rebound to anything that can contain one.
+    DenseHashSet<const void*>* typesWithoutInstances = nullptr;
+
     TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint, NotNull<Subtyping> subtyping);
 
     TypeFunctionContext(

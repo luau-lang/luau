@@ -132,6 +132,8 @@ struct OverloadResolver
     NotNull<TypeCheckLimits> limits;
     Subtyping subtyping;
     Location callLoc;
+    // See TypeFunctionContext::typesWithoutInstances.
+    DenseHashSet<const void*>* typesWithoutInstances = nullptr;
 
     // Given a (potentially overloaded) function and a set of arguments, test each overload.
     OverloadResolution resolveOverload(

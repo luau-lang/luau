@@ -32,6 +32,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies)
+LUAU_FASTFLAGVARIABLE(LuauSkipTypesWithoutTypeFunctions)
 
 namespace Luau
 {
@@ -47,11 +48,22 @@ struct InstanceCollector : TypeOnceVisitor
     TypeOrTypePackIdSet shouldGuess;
     std::vector<const void*> typeFunctionInstanceStack;
     std::vector<TypeId> cyclicInstance;
+    const DenseHashSet<const void*>* typesWithoutInstances = nullptr;
 
 
     InstanceCollector()
         : TypeOnceVisitor("InstanceCollector", /* skipBoundTypes */ true)
     {
+    }
+
+    bool visit(TypeId ty) override
+    {
+        return !typesWithoutInstances || !typesWithoutInstances->contains(ty);
+    }
+
+    bool visit(TypePackId tp) override
+    {
+        return !typesWithoutInstances || !typesWithoutInstances->contains(tp);
     }
 
     bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
@@ -692,9 +704,19 @@ static FunctionGraphReductionResult reduceFunctionsInternal(
     return std::move(reducer.result);
 }
 
+static void recordTypesWithoutInstances(const InstanceCollector& collector, DenseHashSet<const void*>& typesWithoutInstances)
+{
+    LUAU_ASSERT(FFlag::LuauSkipTypesWithoutTypeFunctions);
+
+    for (void* visited : collector.seen)
+        typesWithoutInstances.insert(visited);
+}
+
 FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location location, NotNull<TypeFunctionContext> ctx, bool force)
 {
     InstanceCollector collector;
+    if (FFlag::LuauSkipTypesWithoutTypeFunctions)
+        collector.typesWithoutInstances = ctx->typesWithoutInstances;
 
     try
     {
@@ -706,7 +728,11 @@ FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location loc
     }
 
     if (collector.tys.empty() && collector.tps.empty())
+    {
+        if (FFlag::LuauSkipTypesWithoutTypeFunctions && ctx->typesWithoutInstances)
+            recordTypesWithoutInstances(collector, *ctx->typesWithoutInstances);
         return {};
+    }
 
     return reduceFunctionsInternal(
         std::move(collector.tys),
@@ -722,6 +748,8 @@ FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location loc
 FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location location, NotNull<TypeFunctionContext> ctx, bool force)
 {
     InstanceCollector collector;
+    if (FFlag::LuauSkipTypesWithoutTypeFunctions)
+        collector.typesWithoutInstances = ctx->typesWithoutInstances;
 
     try
     {
@@ -733,7 +761,11 @@ FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location
     }
 
     if (collector.tys.empty() && collector.tps.empty())
+    {
+        if (FFlag::LuauSkipTypesWithoutTypeFunctions && ctx->typesWithoutInstances)
+            recordTypesWithoutInstances(collector, *ctx->typesWithoutInstances);
         return {};
+    }
 
     return reduceFunctionsInternal(
         std::move(collector.tys),

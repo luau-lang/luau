@@ -88,6 +88,7 @@ struct TypeChecker2
     std::vector<TypeId> functionDeclStack;
 
     DenseHashSet<TypeId> seenTypeFunctionInstances;
+    DenseHashSet<const void*> typesWithoutInstances;
 
     Normalizer normalizer;
     Subtyping _subtyping;

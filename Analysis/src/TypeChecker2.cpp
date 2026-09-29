@@ -537,6 +537,7 @@ TypeId TypeChecker2::checkForTypeFunctionInhabitance(TypeId instance, Location l
     TypeFunctionContext context{
         NotNull{module->internalTypes.get()}, builtinTypes, stack.back(), NotNull{&normalizer}, typeFunctionRuntime, ice, limits, subtyping
     };
+    context.typesWithoutInstances = &typesWithoutInstances;
 
     ErrorVec errors = reduceTypeFunctions(instance, location, NotNull{&context}, true).errors;
     if (!isErrorSuppressing(location, instance))
@@ -2056,6 +2057,7 @@ void TypeChecker2::visitCall(AstExprCall* call)
         limits,
         call->location,
     };
+    resolver.typesWithoutInstances = &typesWithoutInstances;
     DenseHashSet<TypeId> uniqueTypes;
     findUniqueTypes(NotNull{&uniqueTypes}, argExprs, NotNull{&module->astTypes});
 
