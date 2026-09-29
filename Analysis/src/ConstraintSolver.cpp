@@ -48,10 +48,11 @@ LUAU_FASTFLAG(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauRemoveConstraintSolverEmplace)
 LUAU_FASTFLAGVARIABLE(LuauForceLess)
 LUAU_FASTFLAG(LuauCyclicRequireTypeInference)
-LUAU_FASTFLAGVARIABLE(LuauRelaxConstraintOrderingForFunctionCheck)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauBlockingTypeAliasExpansion)
 LUAU_FASTFLAG(LuauIterableConstraintMutatesIterator)
 LUAU_FASTFLAGVARIABLE(LuauTraverseScopeToFunction)
+LUAU_FASTFLAG(LuauReferenceCountInitializerIsIterative)
 
 namespace Luau
 {
@@ -703,74 +704,6 @@ bool ConstraintSolver::isDone() const
     return unsolvedConstraints.empty();
 }
 
-struct TypeSearcher : TypeVisitor
-{
-    TypeId needle;
-    Polarity current = Polarity::Positive;
-
-    size_t count = 0;
-    Polarity result = Polarity::None;
-
-    explicit TypeSearcher(TypeId needle)
-        : TypeSearcher(needle, Polarity::Positive)
-    {
-    }
-
-    explicit TypeSearcher(TypeId needle, Polarity initialPolarity)
-        : TypeVisitor("TypeSearcher", /* skipBoundTypes */ true)
-        , needle(needle)
-        , current(initialPolarity)
-    {
-    }
-
-    bool visit(TypeId ty) override
-    {
-        if (ty == needle)
-        {
-            ++count;
-            result = Polarity(size_t(result) | size_t(current));
-        }
-
-        return true;
-    }
-
-    void flip()
-    {
-        switch (current)
-        {
-        case Polarity::Positive:
-            current = Polarity::Negative;
-            break;
-        case Polarity::Negative:
-            current = Polarity::Positive;
-            break;
-        default:
-            break;
-        }
-    }
-
-    bool visit(TypeId ty, const FunctionType& ft) override
-    {
-        flip();
-        traverse(ft.argTypes);
-
-        flip();
-        traverse(ft.retTypes);
-
-        return false;
-    }
-
-    // bool visit(TypeId ty, const TableType& tt) override
-    // {
-
-    // }
-
-    bool visit(TypeId ty, const ExternType&) override
-    {
-        return false;
-    }
-};
-
 void ConstraintSolver::initFreeTypeTracking()
 {
     for (auto c : this->constraints)
@@ -778,20 +711,42 @@ void ConstraintSolver::initFreeTypeTracking()
         unsolvedConstraints.emplace_back(c);
         NotNull<const Constraint> borrow{c.get()};
 
-        auto [types, typePacks] = c->getMaybeMutatedTypes();
-
-        for (auto ty : types)
+        if (FFlag::LuauReferenceCountInitializerIsIterative)
         {
-            cgraph->addDependencyOf(borrow.get(), ty);
-            if (FFlag::DebugLuauLogSolver)
-                printf("Type %s depends on constraint %s\n", toString(ty, opts).c_str(), toString(*c, opts).c_str());
+            auto [types, typePacks] = c->getMaybeMutatedTypesIn(arena);
+
+            for (auto ty : types)
+            {
+                cgraph->addDependencyOf(borrow.get(), ty);
+                if (FFlag::DebugLuauLogSolver)
+                    printf("Type %s depends on constraint %s\n", toString(ty, opts).c_str(), toString(*c, opts).c_str());
+            }
+
+            for (auto tp : typePacks)
+            {
+                cgraph->addDependencyOf(borrow.get(), tp);
+                if (FFlag::DebugLuauLogSolver)
+                    printf("Type pack %s depends on constraint %s\n", toString(tp, opts).c_str(), toString(*c, opts).c_str());
+            }
         }
-
-        for (auto tp : typePacks)
+        else
         {
-            cgraph->addDependencyOf(borrow.get(), tp);
-            if (FFlag::DebugLuauLogSolver)
-                printf("Type pack %s depends on constraint %s\n", toString(tp, opts).c_str(), toString(*c, opts).c_str());
+
+            auto [types, typePacks] = c->getMaybeMutatedTypes_DEPRECATED();
+
+            for (auto ty : types)
+            {
+                cgraph->addDependencyOf(borrow.get(), ty);
+                if (FFlag::DebugLuauLogSolver)
+                    printf("Type %s depends on constraint %s\n", toString(ty, opts).c_str(), toString(*c, opts).c_str());
+            }
+
+            for (auto tp : typePacks)
+            {
+                cgraph->addDependencyOf(borrow.get(), tp);
+                if (FFlag::DebugLuauLogSolver)
+                    printf("Type pack %s depends on constraint %s\n", toString(tp, opts).c_str(), toString(*c, opts).c_str());
+            }
         }
     }
 }
@@ -1083,8 +1038,13 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
                         DEPRECATED_reportError(CodeTooComplex{}, constraint->scope->location); // FIXME: We don't have a very good location for this.
                 }
             }
-            else if (get<TableType>(ty))
-                sealTable(constraint->scope, ty);
+            else if (auto tt = get<TableType>(ty))
+            {
+                TableState targetState = TableState::Sealed;
+                if (FFlag::DebugLuauExactTableTypes && tt->state == TableState::Unsealed)
+                    targetState = TableState::Exact;
+                sealTable(constraint->scope, ty, targetState);
+            }
 
             unblock(ty, constraint->location);
         }
@@ -1905,22 +1865,6 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     if (isBlocked(argsPack))
         return true;
 
-    if (!FFlag::LuauRelaxConstraintOrderingForFunctionCheck)
-    {
-        // This is expensive as we need to traverse a (potentially large)
-        // literal up front in order to determine if there are any blocked
-        // types, otherwise we may run `matchTypeLiteral` multiple times,
-        // which right now may fail due to being non-idempotent (it
-        // destructively updates the underlying literal type).
-        auto blockedTypes = findBlockedArgTypesIn_DEPRECATED(c.callSite, c.astTypes);
-        for (TypeId ty : blockedTypes)
-        {
-            block(ty, constraint);
-        }
-        if (!blockedTypes.empty())
-            return false;
-    }
-
     // We know the type of the function and the arguments it expects to receive.
     // We also know the TypeIds of the actual arguments that will be passed.
     //
@@ -2072,7 +2016,7 @@ bool ConstraintSolver::tryDispatchHasIndexer(
     TypeId subjectType,
     TypeId indexType,
     TypeId resultType,
-    Set<TypeId>& seen
+    DenseHashSet<TypeId>& seen
 )
 {
     RecursionLimiter _rl{"ConstraintSolver::tryDispatchHasIndexer", &recursionDepth, FInt::LuauSolverRecursionLimit};
@@ -2118,9 +2062,9 @@ bool ConstraintSolver::tryDispatchHasIndexer(
             DEPRECATED_emplace<FreeType>(constraint, resultType, freeResult);
         }
 
-
+        const TableState ubState = FFlag::DebugLuauExactTableTypes ? TableState::Sealed : TableState::Unsealed;
         TypeId upperBound =
-            arena->addType(TableType{/* props */ {}, TableIndexer{indexType, resultType}, TypeLevel{}, ft->scope, TableState::Unsealed});
+            arena->addType(TableType{/* props */ {}, TableIndexer{indexType, resultType}, TypeLevel{}, ft->scope, ubState});
 
         TypeId sr = follow(simplifyIntersection(constraint->scope, constraint->location, ft->upperBound, upperBound));
 
@@ -2220,11 +2164,11 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         else
         {
 
-            Set<TypeId> parts;
+            DenseHashSet<TypeId> parts;
             for (TypeId part : it)
                 parts.insert(follow(part));
 
-            Set<TypeId> results;
+            DenseHashSet<TypeId> results;
 
             for (TypeId part : parts)
             {
@@ -2289,11 +2233,11 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         else
         {
 
-            Set<TypeId> parts;
+            DenseHashSet<TypeId> parts;
             for (TypeId part : ut)
                 parts.insert(follow(part));
 
-            Set<TypeId> results;
+            DenseHashSet<TypeId> results;
 
             for (TypeId part : parts)
             {
@@ -2374,7 +2318,7 @@ bool ConstraintSolver::tryDispatch(const HasIndexerConstraint& c, NotNull<const 
         return block(*btf.blocked, constraint);
     int recursionDepth = 0;
 
-    Set<TypeId> seen;
+    DenseHashSet<TypeId> seen;
 
     auto result = tryDispatchHasIndexer(recursionDepth, constraint, subjectType, indexType, c.resultType, seen);
 
@@ -2910,7 +2854,7 @@ struct FindAllUnionMembers : TypeOnceVisitor
 
     bool visit(TypeId ty, const TableType& tbl) override
     {
-        if (tbl.state != TableState::Sealed)
+        if (tbl.state != TableState::Sealed && tbl.state != TableState::Exact)
             blockedTys.insert(ty);
         else
             recordedTys.insert(ty);
@@ -3418,7 +3362,7 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     bool suppressSimplification
 )
 {
-    Set<TypeId> seen;
+    DenseHashSet<TypeId> seen;
     return lookupTableProp(constraint, subjectType, propName, context, inConditional, suppressSimplification, seen);
 }
 
@@ -3429,13 +3373,13 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     ValueContext context,
     bool inConditional,
     bool suppressSimplification,
-    Set<TypeId>& seen
+    DenseHashSet<TypeId>& seen
 )
 {
     if (seen.contains(subjectType))
         return {};
 
-    ScopedSeenSet<Set<TypeId>, TypeId> ss{seen, subjectType};
+    ScopedSeenSet<DenseHashSet<TypeId>, TypeId> ss{seen, subjectType};
 
     subjectType = follow(subjectType);
 
@@ -3507,11 +3451,19 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
             return {{}, result};
         }
 
-        // if we are in a conditional context, we treat the property as present and `unknown` because
-        // we may be _refining_ a table to include that property. we will want to revisit this a bit
-        // in the future once luau has support for exact tables since this only applies when inexact.
-        if (inConditional)
-            return {{}, builtinTypes->unknownType};
+        // If we are in a conditional context, we treat the property as present
+        // and `unknown` because we may be _refining_ a table to include that
+        // property.
+        if (FFlag::DebugLuauExactTableTypes)
+        {
+            if (inConditional && ttv->state != TableState::Exact)
+                return {{}, builtinTypes->unknownType};
+        }
+        else
+        {
+            if (inConditional)
+                return {{}, builtinTypes->unknownType};
+        }
     }
     else if (auto mt = get<MetatableType>(subjectType); mt && context == ValueContext::LValue)
     {
@@ -3705,9 +3657,9 @@ TablePropLookupResult ConstraintSolver::lookupTableProp(
     }
     else if (auto pt = get<PrimitiveType>(subjectType))
     {
-        // if we are in a conditional context, we treat the property as present and `unknown` because
-        // we may be _refining_ a table to include that property. we will want to revisit this a bit
-        // in the future once luau has support for exact tables since this only applies when inexact.
+        // if we are in a conditional context, we treat the property as present
+        // and `unknown` because we may be _refining_ a table to include that
+        // property.
         if (inConditional && pt->type == PrimitiveType::Table)
             return {{}, builtinTypes->unknownType};
     }

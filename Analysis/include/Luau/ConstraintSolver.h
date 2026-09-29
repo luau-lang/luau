@@ -233,7 +233,7 @@ public:
         TypeId subjectType,
         TypeId indexType,
         TypeId resultType,
-        Set<TypeId>& seen
+        DenseHashSet<TypeId>& seen
     );
     bool tryDispatch(const HasIndexerConstraint& c, NotNull<const Constraint> constraint);
 
@@ -272,7 +272,7 @@ public:
         ValueContext context,
         bool inConditional,
         bool suppressSimplification,
-        Set<TypeId>& seen
+        DenseHashSet<TypeId>& seen
     );
 
     /**

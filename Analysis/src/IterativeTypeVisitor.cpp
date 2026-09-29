@@ -536,7 +536,7 @@ bool IterativeTypeVisitor::hasSeen(const void* tv)
     if (!visitOnce)
         return false;
 
-    bool isFresh = seen.insert(tv);
+    bool isFresh = seen.try_insert(tv);
     return !isFresh;
 }
 

@@ -43,6 +43,8 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_no_table_passed")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     // This test may block CI if forced to run outside of DCR.
     if (FFlag::DebugLuauForceOldSolver)
         return;
@@ -71,6 +73,8 @@ for a, b in t do end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -92,6 +96,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967_alt")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     if (FFlag::DebugLuauForceOldSolver)
         return;
 
@@ -1284,6 +1290,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "forin_metatable_no_iter_mm")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "forin_metatable_iter_mm")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag sff{FFlag::DebugLuauForceOldSolver, false};
 
     CheckResult result = check(R"(
@@ -1355,6 +1363,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_require")
 
 TEST_CASE_FIXTURE(Fixture, "oss_1480")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     LUAU_REQUIRE_NO_ERRORS(check(R"(
         type Part = { Parent: Part? }
         type Instance = Part

@@ -183,6 +183,8 @@ TEST_CASE_FIXTURE(Fixture, "UnionTypeIterator_with_only_cyclic_union")
  */
 TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     Type ftv11{FreeType{TypeLevel{}, getBuiltins()->neverType, getBuiltins()->unknownType}};
 
     TypePackVar tp24{TypePack{{&ftv11}}};
