@@ -409,6 +409,8 @@ TEST_CASE_FIXTURE(Fixture, "interior_binding_location_is_consistent_with_exterio
         abcd(0)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     std::optional<Binding> declBinding = findBindingAtPosition(*getMainModule(), *getMainSourceModule(), {1, 26});

@@ -149,6 +149,8 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons")
         g(false, 37)
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -162,6 +164,8 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_resolution_singleton_parameters"
             return f("A"), f("B")
         end
     )");
+
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId t = requireType("foo");
     const FunctionType* fooType = get<FunctionType>(requireType("foo"));
@@ -848,24 +852,28 @@ TEST_CASE_FIXTURE(Fixture, "pass_singleton_through_to_identity")
 {
     DOES_NOT_PASS_OLD_SOLVER_GUARD();
 
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function id(x) return x end
 
         local function foobar(): "hello"
             return id("hello")
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "singleton_when_type_is_blocked")
 {
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         local function id(x: typeof("hello")) return x end
 
         local function foobar()
             return id("hello")
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 

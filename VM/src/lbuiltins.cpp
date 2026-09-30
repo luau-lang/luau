@@ -26,9 +26,6 @@
 #endif
 #endif
 
-LUAU_FASTFLAGVARIABLE(LuauMathRoundNegZero)
-LUAU_FASTFLAG(LuauCIProto)
-
 // luauF functions implement FASTCALL instruction that performs a direct execution of some builtin functions from the VM
 // The rule of thumb is that FASTCALL functions can not call user code, yield, fail, or reallocate stack.
 // If types of the arguments mismatch, luauF_* needs to return -1 and the execution will fall back to the usual call path
@@ -1141,7 +1138,7 @@ static int luauF_select(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
 {
     if (nparams == 1 && nresults == 1)
     {
-        int n = cast_int(L->base - L->ci->func) - (FFlag::LuauCIProto ? L->ci->p : clvalue(L->ci->func)->l.p)->numparams - 1;
+        int n = cast_int(L->base - L->ci->func) - L->ci->p->numparams - 1;
 
         if (ttisnumber(arg0))
         {
@@ -2421,14 +2418,11 @@ static int luauF_integeridiv(lua_State* L, StkId res, TValue* arg0, int nresults
             return -1;
 
         int64_t result = a1 / a2;
-        if ((result < 0) && (a1 % a2))
-        {
-            setlvalue(res, result - 1);
-        }
-        else
-        {
-            setlvalue(res, result);
-        }
+        // Floored division rounds toward -inf: adjust the truncated quotient down by 1
+        // when the operands have opposite signs and the division is inexact.
+        if (((a1 ^ a2) < 0) && (a1 % a2))
+            result -= 1;
+        setlvalue(res, result);
         return 1;
     }
 
@@ -2537,35 +2531,20 @@ LUAU_TARGET_SSE41 static int luauF_ceil_sse41(lua_State* L, StkId res, TValue* a
 
 LUAU_TARGET_SSE41 static int luauF_round_sse41(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (FFlag::LuauMathRoundNegZero)
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
     {
-        if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
-        {
-            double a1 = nvalue(arg0);
-            // roundsd only supports bankers rounding natively, so we need to emulate rounding by using truncation
-            // offset is prevfloat(0.5), which is important so that we round prevfloat(0.5) to 0.
-            const double offset = 0.49999999999999994;
+        double a1 = nvalue(arg0);
+        // roundsd only supports bankers rounding natively, so we need to emulate rounding by using truncation
+        // offset is prevfloat(0.5), which is important so that we round prevfloat(0.5) to 0.
+        const double offset = 0.49999999999999994;
 
-            __m128d va1 = _mm_set_sd(a1);
-            __m128d sign = _mm_and_pd(va1, _mm_set_sd(-0.0));
-            __m128d off = _mm_or_pd(_mm_set_sd(offset), sign);
-            __m128d sum = _mm_add_sd(va1, off);
-            __m128d result = _mm_round_sd(sum, sum, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC);
-            setnvalue(res, _mm_cvtsd_f64(result));
-            return 1;
-        }
-    }
-    else
-    {
-        if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
-        {
-            double a1 = nvalue(arg0);
-            // roundsd only supports bankers rounding natively, so we need to emulate rounding by using truncation
-            // offset is prevfloat(0.5), which is important so that we round prevfloat(0.5) to 0.
-            const double offset = 0.49999999999999994;
-            setnvalue(res, roundsd_sse41<_MM_FROUND_TO_ZERO>(a1 + (a1 < 0 ? -offset : offset)));
-            return 1;
-        }
+        __m128d va1 = _mm_set_sd(a1);
+        __m128d sign = _mm_and_pd(va1, _mm_set_sd(-0.0));
+        __m128d off = _mm_or_pd(_mm_set_sd(offset), sign);
+        __m128d sum = _mm_add_sd(va1, off);
+        __m128d result = _mm_round_sd(sum, sum, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC);
+        setnvalue(res, _mm_cvtsd_f64(result));
+        return 1;
     }
 
     return -1;

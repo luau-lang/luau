@@ -619,6 +619,21 @@ struct UninitializedFieldAccess
     bool operator==(const UninitializedFieldAccess& rhs) const;
 };
 
+struct TypeAnnotationRequired
+{
+    TypeId inferredTy;
+
+    bool operator==(const TypeAnnotationRequired& rhs) const;
+};
+
+struct ConstructorsShouldNotReturnAnything
+{
+    bool operator==(const ConstructorsShouldNotReturnAnything&) const
+    {
+        return true;
+    }
+};
+
 using TypeErrorData = Variant<
     TypeMismatch,
     UnknownSymbol,
@@ -684,7 +699,9 @@ using TypeErrorData = Variant<
     InstantiateGenericsOnNonFunction,
     TypeInstantiationCountMismatch,
     AmbiguousFunctionCall,
-    UninitializedFieldAccess>;
+    UninitializedFieldAccess,
+    TypeAnnotationRequired,
+    ConstructorsShouldNotReturnAnything>;
 
 struct TypeErrorSummary
 {

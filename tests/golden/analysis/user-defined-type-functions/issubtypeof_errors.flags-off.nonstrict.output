@@ -1,0 +1,5 @@
+./analysis/user-defined-type-functions/issubtypeof_errors.luau(8,7): LocalUnused: Variable 'validnil' is never used; prefix with '_' to silence
+./analysis/user-defined-type-functions/issubtypeof_errors.luau(9,7): LocalUnused: Variable 'validstring' is never used; prefix with '_' to silence
+./analysis/user-defined-type-functions/issubtypeof_errors.luau(10,7): LocalUnused: Variable 'invalidunion' is never used; prefix with '_' to silence
+./analysis/user-defined-type-functions/issubtypeof_errors.luau(11,7): LocalUnused: Variable 'invalidboolean' is never used; prefix with '_' to silence
+./analysis/user-defined-type-functions/issubtypeof_errors.luau(12,7): LocalUnused: Variable 'invalidsingleton' is never used; prefix with '_' to silence

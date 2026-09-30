@@ -15,7 +15,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/Polarity.h"
 #include "Luau/Refinement.h"
-#include "Luau/Set.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeIds.h"
@@ -201,7 +201,7 @@ private:
 
     std::vector<TypeId> unionsToSimplify;
 
-    Set<AstName> uninitializedGlobals;
+    DenseHashSet<AstName> uninitializedGlobals;
 
     Polarity polarity = Polarity::None;
 
@@ -329,13 +329,14 @@ private:
         bool generalize = true
     );
 
-    InferencePack checkPack(const ScopePtr& scope, AstExprCall* call);
+    InferencePack checkPack(const ScopePtr& scope, AstExprCall* call, std::optional<TypeId> expectedType = std::nullopt);
     InferencePack checkExprCall(
         const ScopePtr& scope,
         AstExprCall* call,
         TypeId fnType,
         Checkpoint funcBeginCheckpoint,
-        Checkpoint funcEndCheckpoint
+        Checkpoint funcEndCheckpoint,
+        std::optional<TypeId> expectedType
     );
 
     /**

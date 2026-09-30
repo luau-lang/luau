@@ -102,14 +102,13 @@ void toString(ToStringContext& ctx, BcFunction<VmConst>& function, const BcInst&
 {
     size_t start = ctx.result.size();
 
-    append(ctx.result, "  %%%u = %s ", index, getLuauOpcodeName(inst.op));
+    append(ctx.result, "  %%%u = %s", index, getLuauOpcodeName(inst.op));
 
     bool comma = false;
 
     for (const BcOp& op : inst.ops)
     {
-        if (comma)
-            append(ctx.result, ", ");
+        append(ctx.result, comma ? ", " : " ");
         comma = true;
 
         toString(ctx, function, op);

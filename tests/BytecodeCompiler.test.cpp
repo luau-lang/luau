@@ -19,7 +19,6 @@ using namespace Luau::Bytecode;
 
 LUAU_FASTFLAG(LuauEmitCallFeedback)
 LUAU_FASTFLAG(LuauCompileFastpcall)
-LUAU_FASTFLAG(LuauCompileExpandLimit)
 
 namespace
 {
@@ -864,45 +863,42 @@ K2: function __tostring
 K3: '__tostring'
 K4: function live
 K5: 'live'
-K6: 'new'
-K7: '__init'
-K8: class Animal (props: 1, methods: 4)
+K6: '__init'
+K7: class Animal (props: 1, methods: 3)
   props:
     K1 ['species']
   methods:
     K3 ['__tostring']
     K5 ['live']
-    K6 ['new']
-    K7 ['__init']
-K9: 'Cat'
-K10: 'breed'
-K11: class Cat (props: 1, methods: 3)
+    K6 ['__init']
+K8: 'Cat'
+K9: 'breed'
+K10: class Cat (props: 1, methods: 2)
   props:
-    K10 ['breed']
+    K9 ['breed']
   methods:
     K3 ['__tostring']
-    K6 ['new']
-    K7 ['__init']
-K12: 'print'
-K13: print
-K14: {['Animal'] #1, ['Cat'] #0} sizenode=2
+    K6 ['__init']
+K11: 'print'
+K12: print
+K13: {['Animal'] #1, ['Cat'] #0} sizenode=2
 LOADNIL R0
 LOADNIL R1
-NEWCLASS R0 no_base K8 1 [class Animal (props: 1, methods: 4)]
+NEWCLASS R0 no_base K7 1 [class Animal (props: 1, methods: 3)]
 DUPCLOSURE R2 K2 ['__tostring']
 NEWCLASSMEMBER R0 R2 ['__tostring']
 DUPCLOSURE R2 K4 ['live']
 NEWCLASSMEMBER R0 R2 ['live']
-NEWCLASS R1 R0 K11 0 [class Cat (props: 1, methods: 3)]
+NEWCLASS R1 R0 K10 0 [class Cat (props: 1, methods: 2)]
 NEWCLOSURE R2 P2
 CAPTURE REF R0
 NEWCLASSMEMBER R1 R2 ['__tostring']
-GETIMPORT R2 13 [print]
+GETIMPORT R2 12 [print]
 MOVE R3 R1
 CALL R2 1 0
-DUPTABLE R2 14
+DUPTABLE R2 13
 SETTABLEKS R0 R2 K0 ['Animal']
-SETTABLEKS R1 R2 K9 ['Cat']
+SETTABLEKS R1 R2 K8 ['Cat']
 CLOSEUPVALS R0
 RETURN R2 1
 )");
@@ -925,12 +921,10 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "fastpcall_roundtrip")
     )");
 }
 
-TEST_CASE_FIXTURE(BytecodeCompilerFixture, "jump_expend_limits")
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "jump_expand_limits")
 {
     // Takes too long to run without optimizations enabled
 #if !(defined(_DEBUG) || defined(_NOOPT))
-    ScopedFastFlag luauCompileExpandLimit{FFlag::LuauCompileExpandLimit, true};
-
     BytecodeBuilder bcb;
     bcb.beginFunction(0, false);
 
@@ -953,6 +947,39 @@ TEST_CASE_FIXTURE(BytecodeCompilerFixture, "jump_expend_limits")
 
     CHECK(error);
 #endif
+}
+
+TEST_CASE_FIXTURE(BytecodeCompilerFixture, "jump_expand_short_limits")
+{
+    BytecodeBuilder bcb;
+    bcb.beginFunction(0, false);
+
+    size_t jumpCount = 32767 / 3 + 1;
+
+    for (size_t i = 0; i < jumpCount; ++i)
+        bcb.emitAD(LOP_JUMP, 0, 0);
+
+    size_t nearTarget = bcb.emitLabel();
+    bcb.emitAD(LOP_JUMP, 0, 0);
+
+    for (size_t i = 0; i < 32768; ++i)
+        bcb.emitAD(LOP_LOADN, 0, 0);
+
+    size_t farTarget = bcb.emitLabel();
+    bcb.emitABC(LOP_RETURN, 0, 1, 0);
+
+    bool success = true;
+    success = success && bcb.patchJumpD(0, nearTarget);
+
+    for (size_t i = 0; i < jumpCount; ++i)
+        success = success && bcb.patchJumpD(i + 1, farTarget);
+
+    CHECK(success);
+
+    bool error = false;
+    bcb.expandJumps(error);
+
+    CHECK(!error);
 }
 
 TEST_SUITE_END();

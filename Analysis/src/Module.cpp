@@ -15,8 +15,10 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauCloneTypeFunctionFromForeignArena)
+LUAU_FASTFLAG(DebugLuauExactTableTypes)
 LUAU_FASTFLAGVARIABLE(LuauExportTypecheckTypepacks)
 LUAU_FASTFLAGVARIABLE(LuauExportAnnotationBinding)
+LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus)
 
 namespace Luau
 {
@@ -191,7 +193,13 @@ struct ClonePublicInterface : Substitution
             if (isNewSolver())
             {
                 ttv->scope = nullptr;
-                ttv->state = TableState::Sealed;
+                if (FFlag::DebugLuauExactTableTypes)
+                {
+                    if (ttv->state != TableState::Sealed && ttv->state != TableState::Exact)
+                        ttv->state = TableState::Sealed;
+                }
+                else
+                    ttv->state = TableState::Sealed;
             }
         }
 
@@ -208,8 +216,18 @@ struct ClonePublicInterface : Substitution
             }
             else if (FFlag::LuauCloneTypeFunctionFromForeignArena)
             {
-                if (auto tfit = get<TypeFunctionInstanceType>(ty); tfit && tfit->state == TypeFunctionInstanceState::Stuck)
-                    result = arena->addType(ErrorType{ty});
+                if (auto tfit = get<TypeFunctionInstanceType>(ty))
+                {
+                    if (tfit->state == TypeFunctionInstanceState::Stuck)
+                        result = arena->addType(ErrorType{ty});
+                    else if (FFlag::LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus)
+                    {
+                        auto resultTfit = getMutable<TypeFunctionInstanceType>(result);
+                        LUAU_ASSERT(resultTfit);
+                        resultTfit->state = tfit->state;
+                    }
+                }
+
             }
         }
 
@@ -500,7 +518,8 @@ void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> 
     if (props.empty())
         return;
 
-    TableType tbl{props, std::nullopt, moduleScope->level, TableState::Sealed};
+    const TableState state = FFlag::DebugLuauExactTableTypes ? TableState::Exact : TableState::Sealed;
+    TableType tbl{props, std::nullopt, moduleScope->level, state};
     tbl.definitionModuleName = module->name;
     TypeId exports = module->internalTypes->addType(std::move(tbl));
     moduleScope->returnType = module->internalTypes->addTypePack({exports});

@@ -1,15 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/AstQuery.h"
-#include "Luau/BuiltinDefinitions.h"
 #include "Luau/Error.h"
-#include "Luau/Scope.h"
 #include "Luau/Type.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/VisitType.h"
 
 #include "Fixture.h"
-#include "ClassFixture.h"
+#include "ExternTypeFixture.h"
 
 #include "doctest.h"
 
@@ -122,6 +117,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "primitive_arith_no_metatable")
         local n, s = add(2,"3")
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     const FunctionType* functionType = get<FunctionType>(requireType("add"));
@@ -153,6 +149,7 @@ TEST_CASE_FIXTURE(Fixture, "primitive_arith_possible_metatable")
         local t = add(1,2)
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("any", toString(requireType("t")));
 }
@@ -217,6 +214,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_overloaded_multiply_that_is_an_int
         local e = a * 'cabbage'
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK("Vec3" == toString(requireType("a")));
@@ -255,6 +253,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_overloaded_multiply_that_is_an_int
         local e = 'cabbage' * a
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK("Vec3" == toString(requireType("a")));
@@ -326,6 +325,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_indirectly_compare_types_that_do_not_
         local c = a < b
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -356,6 +356,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_compare_tables_that_do_not_have_the_s
         local d = b < a -- line 11
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     REQUIRE_EQ((Location{{10, 18}, {10, 23}}), result.errors[0].location);
@@ -379,6 +380,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "produce_the_correct_error_message_when_compa
         local c = a < b -- line 10
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     auto err = get<GenericError>(result.errors[0]);
@@ -534,6 +536,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_metatable_with_changing_retu
         t += 3
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
@@ -561,6 +564,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_result_must_be_compatible_wi
         x += v -- not okay: x </: number
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK(Location{{13, 8}, {13, 14}} == result.errors[0].location);
@@ -601,6 +605,7 @@ function g() return 2; end
 (f or g)()
 )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -613,6 +618,7 @@ local x = false
 (x and f or g)()
 )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -826,6 +832,7 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_in_comparison")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -836,6 +843,8 @@ TEST_CASE_FIXTURE(Fixture, "concat_op_on_free_lhs_and_string_rhs")
             return x .. "y"
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -857,6 +866,7 @@ TEST_CASE_FIXTURE(Fixture, "concat_op_on_string_lhs_and_free_rhs")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -877,6 +887,8 @@ TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
     src += "end";
 
     CheckResult result = check(src);
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -1094,6 +1106,8 @@ TEST_CASE_FIXTURE(Fixture, "operator_eq_operands_are_not_subtypes_of_each_other_
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     // This doesn't produce any errors but for the wrong reasons.
     // This unit test serves as a reminder to not try and unify the operands on `==`/`~=`.
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -1132,6 +1146,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -1149,6 +1165,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
         end
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 
     // When type inference is unified, we could add an assertion that
@@ -1163,6 +1180,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_subtraction")
             return x - y
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -1184,6 +1203,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_multiplication")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -1203,6 +1224,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_division")
             return x / y
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -1224,6 +1247,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_floor_division")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -1243,6 +1268,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_exponentiation")
             return x ^ y
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
     {
@@ -1264,6 +1291,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_modulo")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -1284,6 +1313,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_concat")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
@@ -1298,6 +1329,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_concat")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "equality_operations_succeed_if_any_union_branch_succeeds")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         local mm = {}
         type Foo = typeof(setmetatable({}, mm))
@@ -1624,6 +1657,7 @@ TEST_CASE_FIXTURE(Fixture, "add_type_function_works")
         local b = add("foo", "bar")
     )");
 
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(requireType("a")) == "number");
     CHECK(toString(requireType("b")) == "add<string, string>");
@@ -1647,6 +1681,7 @@ local function sortKeysForPrinting(a: any, b)
 	return typeofA < typeofB
 end
 )");
+    ignoreMissingAnnotations(result);
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1663,6 +1698,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compare_singleton_string_to_string")
             end
         end
 )");
+
+    ignoreMissingAnnotations(result);
 
     // There is a flag to gate turning this off, and this warning is not
     // implemented in the new solver, so assert there are no errors.
@@ -1724,6 +1761,8 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "overload_concat")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         type classData = {
             b:buffer;

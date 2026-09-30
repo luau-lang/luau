@@ -9,9 +9,6 @@
 
 #include <regex>
 
-LUAU_FASTFLAG(LuauCodegenDseRestoreHints)
-LUAU_FASTFLAG(LuauCodegenDseRestoreHintUpdate)
-
 using namespace Luau::CodeGen;
 
 static void stripLinesContaining(std::string& text, const char* needle)
@@ -268,8 +265,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "DseHintMaterializesIntIntoDeadVmReg")
 {
-    ScopedFastFlag luauCodegenDseRestoreHints{FFlag::LuauCodegenDseRestoreHints, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     build.beginBlock(entry);
 
@@ -341,8 +336,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "DseHintCorruptsTagOnPartialValueKill")
 {
-    ScopedFastFlag luauCodegenDseRestoreHints{FFlag::LuauCodegenDseRestoreHints, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     build.beginBlock(entry);
 
@@ -506,9 +499,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrAssemblyFixture, "DseHintUpdateRedirectsLazyRestoreToLaterReg")
 {
-    ScopedFastFlag luauCodegenDseRestoreHints{FFlag::LuauCodegenDseRestoreHints, true};
-    ScopedFastFlag luauCodegenDseRestoreHintUpdate{FFlag::LuauCodegenDseRestoreHintUpdate, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     build.beginBlock(entry);
 

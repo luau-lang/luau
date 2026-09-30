@@ -308,6 +308,10 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "AmbiguousFunctionCall { " << toString(err.function) << ", " << toString(err.arguments) << " }";
     else if constexpr (std::is_same_v<T, UninitializedFieldAccess>)
         stream << "UninitializedFieldAccess { " << (err.fieldName ? *err.fieldName : "self") << " }";
+    else if constexpr (std::is_same_v<T, TypeAnnotationRequired>)
+        stream << "TypeAnnotationRequired { " << toString(err.inferredTy) << " }";
+    else if constexpr (std::is_same_v<T, ConstructorsShouldNotReturnAnything>)
+        stream << "ConstructorsShouldNotReturnAnything {}";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

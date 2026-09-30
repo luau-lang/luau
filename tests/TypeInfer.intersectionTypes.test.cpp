@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauCheckFunctionStatementTypes)
 LUAU_FASTFLAG(DebugLuauForceOldSolver)
 LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
+LUAU_FASTFLAG(LuauFixNormalizeFunctionIntersections)
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -26,6 +27,8 @@ TEST_CASE_FIXTURE(Fixture, "select_correct_union_fn")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(((number) -> string) & ((string) -> number)) -> (string, number)", toString(requireType("foo")));
@@ -33,6 +36,8 @@ TEST_CASE_FIXTURE(Fixture, "select_correct_union_fn")
 
 TEST_CASE_FIXTURE(Fixture, "table_combines")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         type A={a:number}
         type B={b:string}
@@ -90,6 +95,8 @@ TEST_CASE_FIXTURE(Fixture, "fx_intersection_as_argument")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -133,6 +140,8 @@ TEST_CASE_FIXTURE(Fixture, "should_still_pick_an_overload_whose_arguments_are_un
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(((number) -> string) & ((string) -> number)) -> (string, number)", toString(requireType("foo")));
@@ -172,6 +181,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_property_guarante
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -190,6 +201,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_works_at_arbitrary_dep
             return t.x.y.z.thing
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -210,6 +223,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_mixed_types")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (!FFlag::DebugLuauForceOldSolver)
@@ -229,6 +244,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_one_part_missing_
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(A & B) -> number", toString(requireType("f")));
 }
@@ -243,6 +260,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_one_property_of_t
             return t.x
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(A & B) -> any", toString(requireType("f")));
@@ -317,6 +336,8 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write")
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         type X = { x: number }
         type Y = { y: number }
@@ -334,6 +355,8 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag _{FFlag::LuauCheckFunctionStatementTypes, true};
 
     CheckResult result = check(R"(
@@ -671,6 +694,8 @@ TEST_CASE_FIXTURE(Fixture, "union_saturate_overloaded_functions")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         function f(x: { p : number?, q : string? } & { p : number?, q : number?, r : number? })
             local y : { p : number?, q : nil, r : number? } = x -- OK
@@ -770,6 +795,8 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_never_properties")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         function f(x : ((number?) -> ({ p : number } & { q : number })) & ((string?) -> ({ p : number } & { r : number })))
             local y : (nil) -> { p : number, q : number, r : number} = x -- OK
@@ -1222,6 +1249,8 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_overlapping_results_and_
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_1")
 {
+    ScopedFastFlag sff{FFlag::LuauFixNormalizeFunctionIntersections, true};
+
     CheckResult result = check(R"(
         function f<a...,b...>()
             function g(x : (() -> a...) & (() -> b...))
@@ -1231,18 +1260,12 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_1")
         end
     )");
 
-    if (!FFlag::DebugLuauForceOldSolver)
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ(
-            toString(result.errors[0]),
-            "Expected this to be '() -> ()', but got '(() -> (a...)) & (() -> (b...))'; none of the intersection parts are compatible"
-        );
-    }
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    const TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+
+    CHECK("() -> ()" == toString(tm->wantedType));
+    CHECK("(() -> (a...)) & (() -> (b...))" == toString(tm->givenType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_2")
@@ -1421,6 +1444,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_subtypes")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         local x = setmetatable({ a = 5 }, { p = 5 })
         local y = setmetatable({ b = "hi" }, { p = 5, q = "hi" })
@@ -1442,6 +1467,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_subtypes")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables_with_properties")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         local x = setmetatable({ a = 5 }, { p = 5 })
         local y = setmetatable({ b = "hi" }, { q = "hi" })
@@ -1463,6 +1490,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables_with_properties")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with_table")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     if (!FFlag::DebugLuauForceOldSolver)
     {
         CheckResult result = check(R"(
@@ -1505,6 +1534,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with_table")
 
 TEST_CASE_FIXTURE(Fixture, "CLI-44817")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     CheckResult result = check(R"(
         type X = {x: number}
         type Y = {y: number}
@@ -1539,6 +1570,8 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     // We have one error here for the parameter being reduced to never, and
     // then three bits of extra information indicating the three upper
     // bound contributors: `{ x: number }`, `{ x: string }`, and `{ x: a }`
@@ -1559,6 +1592,8 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types_2")
         end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("({ x: number } & { x: string }) -> never", toString(requireType("f")));
@@ -1576,6 +1611,8 @@ function f(x: Foo)
 end
     )");
 
+    ignoreMissingAnnotations(result);
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -1590,6 +1627,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_property_table_intersection_2")
             return x["Bar"]
         end
     )");
+
+    ignoreMissingAnnotations(result);
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1644,6 +1683,8 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "narrow_intersection_nevers")
 {
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
     ScopedFastFlag sffs{FFlag::DebugLuauForceOldSolver, false};
 
     loadDefinition(R"(

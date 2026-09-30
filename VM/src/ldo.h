@@ -75,6 +75,9 @@ LUAI_FUNC void luaD_reallocstack(lua_State* L, int newsize, int fornewci);
 LUAI_FUNC void luaD_growstack(lua_State* L, int n);
 LUAI_FUNC void luaD_checkCstack(lua_State* L);
 LUAI_FUNC void luaD_seterrorobj(lua_State* L, int errcode, StkId oldtop);
+LUAI_FUNC void luaD_preparefinalizestate(lua_State* L, lua_State* co, bool resulttrue);
+LUAI_FUNC void luaD_preparefinalize(lua_State* L, lua_State* co);
+LUAI_FUNC int luaD_runfinalizers(lua_State* L, bool toclose, bool returnstatus);
 
 LUAI_FUNC l_noret luaD_throw(lua_State* L, int errcode);
 LUAI_FUNC int luaD_rawrunprotected(lua_State* L, Pfunc f, void* ud);

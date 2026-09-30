@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauAllowGlobalDeclarationToBeCalledClass);
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(LuauExportValueSyntax)
 LUAU_FASTFLAG(LuauExportValueTypecheck)
+LUAU_FASTFLAG(LuauFixCallMetamethodErrorReporting)
 
 namespace
 {
@@ -57,7 +58,117 @@ declare class: {
 
 } // namespace
 
-TEST_SUITE_BEGIN("ClassesConformance");
+TEST_SUITE_BEGIN("Classes");
+
+TEST_CASE_FIXTURE(Fixture, "classes_arent_in_old_solver")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, true},
+    };
+
+    CheckResult result = check(R"( class Point end )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<GenericError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("class keyword is illegal here", err->message);
+}
+
+TEST_CASE_FIXTURE(Fixture, "export_class_isnt_in_old_solver")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauUserDefinedClasses, true},
+        {FFlag::DebugLuauForceOldSolver, true},
+    };
+
+    CheckResult result = check(R"( export class Point end )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<GenericError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("class keyword is illegal here", err->message);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "empty_class")
+{
+    CheckResult result = check(R"( class Point end )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_decl")
+{
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+        end
+
+        local p = Point { x = 2, y = 3 }
+
+        local x = p.x
+        local y = p.y
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    TypeId t = requireTypeAlias("Point");
+    CHECK("Point" == toString(t));
+
+    const ExternType* point = get<ExternType>(t);
+    REQUIRE(point);
+
+    CHECK("Point" == toString(requireType("p")));
+    CHECK("number" == toString(requireType("x")));
+    CHECK("number" == toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "point_class")
+{
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+
+            function length(self): number
+                return 100
+            end
+
+            function __init(self, x: number, y: number)
+                self.x = x
+                self.y = y
+            end
+        end
+
+        local p = Point(2, 3)
+        local len = p:length()
+    )");
+
+    LUAU_CHECK_NO_ERRORS(result);
+
+    TypeId p = requireType("p");
+    const ExternType* et = get<ExternType>(p);
+    REQUIRE(et);
+
+    CHECK("Point" == toString(requireType("p")));
+    CHECK("number" == toString(requireType("len")));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "self_argument_has_self_type")
+{
+    CheckResult result = check(R"(
+        class I
+            function m(self): I
+                return self
+            end
+        end
+
+        local i = I{}
+        local i2 = i:m()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("I" == toString(requireType("i2")));
+}
 
 TEST_CASE_FIXTURE(ClassesFixture, "Point_tostring")
 {
@@ -66,12 +177,12 @@ TEST_CASE_FIXTURE(ClassesFixture, "Point_tostring")
 class Point
     public x
     public y
-    function __tostring(self)
+    function __tostring(self): string
         return `Point(x={self.x}, y={self.y})`
     end
 end
 
-local p = Point.new { x = 1, y = 2 }
+local p = Point { x = 1, y = 2 }
 local _ = tostring(p)
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -85,16 +196,16 @@ class Point
     public x
     public y
 
-    function __eq(self, other)
+    function __eq(self, other: Point): boolean
         return self.x == other.x and self.y == other.y
     end
-    function zero()
-        return Point.new { x = 0, y = 0 }
+    function zero(): Point
+        return Point { x = 0, y = 0 }
     end
 end
 
-local p1 = Point.new { x = 1, y = 2 }
-local p2 = Point.new { x = 1, y = 2 }
+local p1 = Point { x = 1, y = 2 }
+local p2 = Point { x = 1, y = 2 }
 local _ = p1 == p2
 local _ = p1 ~= Point.zero()
 )");
@@ -115,8 +226,8 @@ class Box
     public x
 end
 
-local p1 = Point.new { x = 1, y = 2 }
-local p2 = Box.new { x = 1 }
+local p1 = Point { x = 1, y = 2 }
+local p2 = Box { x = 1 }
 local _ = p1 == p1
 -- This one too
 local _ = p1 ~= p2
@@ -139,11 +250,11 @@ TEST_CASE_FIXTURE(ClassesFixture, "class_mm")
 {
     auto result = check(R"(
 class Point
-    function __add(self, other)
+    function __add(self, other: unknown)
     end
 end
 
-local p = Point.new {}
+local p = Point {}
 p:__add()
 )");
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -156,15 +267,15 @@ class Point
     public x
     public y
 
-    function magnitude(self)
+    function magnitude(self): number
         return sqrt(self.x * self.x + self.y * self.y)
     end
 
-    function zero()
-        return Point.new { x = 0, y = 0 }
+    function zero(): Point
+        return Point { x = 0, y = 0 }
     end
 
-    function __tostring(self)
+    function __tostring(self): string
         return `Point(x={self.x}, y={self.y})`
     end
 
@@ -180,7 +291,12 @@ local p = Point
     CHECK(et->parent == builtinTypes->classType);
 
     CHECK(et->props.count("zero") == 1);
-    CHECK(et->props.count("new") == 1);
+
+    std::optional<TypeId> metatable = et->metatable;
+    REQUIRE(metatable);
+    auto mt = get<TableType>(*metatable);
+    REQUIRE(mt);
+    CHECK(mt->props.count("__call") == 1);
 }
 
 TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_unknown_value")
@@ -318,7 +434,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class")
     fileResolver.source["game/B"] = R"(
         local A = require(game.A)
 
-        local x : unknown = (A.Point.new { x = 0 } ) :: any
+        local x : unknown = (A.Point { x = 0 } ) :: any
         if class.isinstance(x, A.Point) then
             local y = x
         end
@@ -343,7 +459,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "isinstance_refines_imported_class_but_not_a_c
     fileResolver.source["game/B"] = R"(
         local A = require(game.A)
 
-        local x : unknown = (A.Point.new { x = 0 } ) :: any
+        local x : unknown = (A.Point { x = 0 } ) :: any
         if class.isinstance(x, A.notAPoint) then
             local y = x
         end
@@ -405,7 +521,7 @@ end
 
 TEST_CASE_FIXTURE(ClassesFixture, "class_refers_to_later_type_alias")
 {
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    CheckResult result = check(R"(
         class Foo
             public bar: BarType
         end
@@ -415,26 +531,32 @@ TEST_CASE_FIXTURE(ClassesFixture, "class_refers_to_later_type_alias")
         local function getbar(f: Foo)
             return f.bar
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(Foo) -> number | string", toString(requireType("getbar")));
 }
 
 TEST_CASE_FIXTURE(ClassesFixture, "accept_read_only_tables")
 {
-    LUAU_REQUIRE_NO_ERRORS(check(R"(
+    DOES_NOT_PASS_WITH_EXACT_TABLES();
+
+    CheckResult result = check(R"(
         class Foo
             public bar: number | string
         end
 
         local function ofnumbertbl(tbl: { bar: number })
-            return Foo.new(tbl)
+            return Foo(tbl)
         end
 
         local function inference(tbl)
-            return Foo.new(tbl)
+            return Foo(tbl)
         end
-    )"));
+    )");
+    ignoreMissingAnnotations(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("({ bar: number }) -> Foo", toString(requireType("ofnumbertbl")));
     CHECK_EQ("({ read bar: number | string }) -> Foo", toString(requireType("inference")));
@@ -583,7 +705,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "conditional_assignment_is_not_yet_allowed")
         class Foo
             public x: number
             public y: number
-            function __init(self, b)
+            function __init(self, b: boolean)
                 if b then
                     self.x = 0
                 else
@@ -608,7 +730,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "ok_conditional_assignment")
         class Foo
             public x: number
             public y: number
-            function __init(self, b)
+            function __init(self, b: boolean)
                 self.x = if b then 0 else 2
                 self.y = self.x
             end
@@ -638,7 +760,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "all_fields_initialized_before_use")
 TEST_CASE_FIXTURE(ClassesFixture, "pass_self_before_initialization")
 {
     CheckResult result = check(R"(
-        local function doSomething(x) end
+        local function doSomething(x: unknown) end
 
         class Foo
             public x: number
@@ -658,7 +780,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "pass_self_before_initialization")
 TEST_CASE_FIXTURE(ClassesFixture, "pass_self_after_initialization")
 {
     CheckResult result = check(R"(
-        local function doSomething(x) end
+        local function doSomething(x: unknown) end
 
         class Foo
             public x: number
@@ -754,7 +876,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "shadowing_self_via_closure")
 TEST_CASE_FIXTURE(ClassesFixture, "no_fields_no_errors")
 {
     CheckResult result = check(R"(
-        local function doSomething(x) end
+        local function doSomething(x: any) end
 
         class Foo
             function __init(self)
@@ -769,7 +891,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "no_fields_no_errors")
 TEST_CASE_FIXTURE(ClassesFixture, "nilable_fields_dont_need_initialization")
 {
     CheckResult result = check(R"(
-        local function doSomething(...) end
+        local function doSomething(...: any) end
 
         class Foo
             public x: number
@@ -808,7 +930,7 @@ TEST_CASE_FIXTURE(ClassesFixture, "unannotated_field_doesnt_need_initialization"
 TEST_CASE_FIXTURE(ClassesFixture, "pass_self_with_nilable_fields_unassigned")
 {
     CheckResult result = check(R"(
-        local function doSomething(x) end
+        local function doSomething(x: unknown) end
 
         class Foo
             public x: number
@@ -915,6 +1037,8 @@ TEST_CASE_FIXTURE(ClassesFixture, "method_calls_on_fully_initialized_instances_a
 
 TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor")
 {
+    ScopedFastFlag sff{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
     CheckResult result = check(R"(
         class Foo
             public values: {number}
@@ -923,8 +1047,8 @@ TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor")
             end
         end
 
-        local f = Foo.new(3, 4, 5) -- OK
-        local g = Foo.new(3, 4, 5, "six") -- Error
+        local f = Foo(3, 4, 5) -- OK
+        local g = Foo(3, 4, 5, "six") -- Error
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -933,6 +1057,8 @@ TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor")
 
 TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor_with_leading_positional_arguments")
 {
+    ScopedFastFlag sff{FFlag::LuauFixCallMetamethodErrorReporting, true};
+
     CheckResult result = check(R"(
         class Foo
             public x: number
@@ -945,12 +1071,356 @@ TEST_CASE_FIXTURE(ClassesFixture, "variadic_constructor_with_leading_positional_
             end
         end
 
-        local f = Foo.new(3, "four", 5) -- OK
-        local g = Foo.new(3, "four", 5, "six") -- Error
+        local f = Foo(3, "four", 5) -- OK
+        local g = Foo(3, "four", 5, "six") -- Error
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(13 == result.errors[0].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_methods_should_be_annotated_except_for_self")
+{
+    CheckResult result = check(R"(
+        class Foo
+            public x: number
+
+            function __init(self, x)
+                self.x = x
+            end
+
+            function double(this)
+                return Foo(this.x * 2)
+            end
+
+            function double2(self): Foo
+                return Foo(self.x * 2)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK_ERROR_IS(result.errors.at(0), TypeAnnotationRequired);
+    // We can't figure out the multiplication
+    CHECK_ERROR_IS(result.errors.at(1), UninhabitedTypeFunction);
+    CHECK_ERROR_IS(result.errors.at(2), TypeAnnotationRequired);
+
+    CHECK(4 == result.errors.at(0).location.begin.line);
+    CHECK(9 == result.errors.at(1).location.begin.line);
+    CHECK(8 == result.errors.at(2).location.begin.line);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_duplicate_class_definition")
+{
+    CheckResult result = check(R"(
+        class l0
+        end
+        class l0
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "repeat_props")
+{
+    CheckResult result = check(
+        R"(
+class l0
+    public foo
+    public foo
+end
+)"
+    );
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("Duplicate class member 'foo'", err->message);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "repeat_class_methods")
+{
+    CheckResult result = check(
+        R"(
+class l0
+    function foo()
+    end
+    function foo()
+    end
+end
+)"
+    );
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("Duplicate class member 'foo'", err->message);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "repeat_nameless_class_methods")
+{
+    CheckResult result = check(
+        R"(
+class l0
+    function  ()
+    end
+    function ()
+    end
+end
+)"
+    );
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    auto err1 = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err1);
+    CHECK_EQ("Expected identifier when parsing method name, got '('", err1->message);
+    auto err2 = get<SyntaxError>(result.errors[1]);
+    REQUIRE(err2);
+    CHECK_EQ("Expected identifier when parsing method name, got '('", err2->message);
+    auto err3 = get<SyntaxError>(result.errors[2]);
+    REQUIRE(err3);
+    CHECK_EQ(R"(Duplicate class member '%error-id%')", err3->message);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "fuzzer_self_referential_class_definition")
+{
+    CheckResult result = check(R"(
+        class l0
+            public _:typeof(l0)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    TypeId l0 = requireType("l0");
+    CHECK(is<ExternType>(l0));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "instantiate_duplicate_class")
+{
+    CheckResult result = check(
+        R"(
+class l0
+end
+class l0
+end
+_ = l0 {  }
+)"
+    );
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("A class named 'l0' has already been declared in this module", err->message);
+    REQUIRE(get<UnknownSymbol>(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "prop_with_typeof_reassigned_class")
+{
+    ScopedFastFlag sff{FFlag::LuauExportValueSyntax, true};
+
+    // This should not assert or crash
+    CheckResult result = check(
+        R"(
+class Animal end
+Animal = nil
+class l0
+public _:typeof(Animal)
+end
+)"
+    );
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<SyntaxError>(result.errors[0]);
+    REQUIRE(err);
+    CHECK_EQ("'Animal' refers to a class and cannot be used as a variable name (defined on line 2)", err->message);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "class_that_shadows_a_type_alias")
+{
+    CheckResult result = check(R"(
+        type AAA = { x: number }
+        class AAA end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<DuplicateTypeDefinition>(result.errors[0]);
+    REQUIRE(err);
+    CHECK(err->name == "AAA");
+    CHECK(err->previousLocation.has_value());
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_class_method_field_access")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+    };
+
+    CheckResult result = check(R"(
+        class Point
+            public x: number?
+            public y: number?
+            function magnitude(self): number
+                return math.sqrt(self.x * self.x + self.y * self.y)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+
+    for (const auto& err : result.errors)
+    {
+        auto* utf = get<UninhabitedTypeFunction>(err);
+        REQUIRE(utf);
+        CHECK_EQ(toString(utf->ty), "mul<number?, number?>");
+    }
+}
+
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_class_annotations")
+{
+    ScopedFastFlag sffs[] = {
+        {FFlag::DebugLuauForceOldSolver, false},
+        {FFlag::DebugLuauUserDefinedClasses, true},
+    };
+
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+            public name: string
+            function magnitude(self): string
+                -- self.name is not a number
+                self.name = self.x
+
+                -- This function is declared to return string.
+                return math.sqrt(self.x * self.x + self.y * self.y)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR(result, TypeMismatch);
+    LUAU_REQUIRE_ERROR(result, TypePackMismatch);
+}
+
+
+TEST_CASE_FIXTURE(ClassesFixture, "read_unknown_property_from_class_object_or_instance")
+{
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+
+            function zero(): Point
+                return Point {x=0, y=0}
+            end
+        end
+
+        local p = Point.zero()
+        local a = p.z
+        local b = Point.z
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    auto* up0 = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(up0);
+    CHECK(up0->key == "z");
+
+    auto* up1 = get<UnknownProperty>(result.errors[1]);
+    REQUIRE(up1);
+    CHECK(up1->key == "z");
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "writes_to_class_object_properties_are_forbidden")
+{
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+
+            function zero(): Point
+                return Point {x=0, y=0}
+            end
+
+            function magnitude(self): number
+                return 5 -- stochastic approximation for performance
+            end
+        end
+
+        Point.magnitude = function(p: Point) return 3 end
+        Point.zero = function() return Point { x = 1, y = 1 } end
+        Point.one = function() return Point { x = 1, y = 1 } end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+
+    auto* pav0 = get<PropertyAccessViolation>(result.errors[0]);
+    REQUIRE(pav0);
+    CHECK(pav0->key == "magnitude");
+    CHECK(pav0->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav1 = get<PropertyAccessViolation>(result.errors[1]);
+    REQUIRE(pav1);
+    CHECK(pav1->key == "zero");
+    CHECK(pav1->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav2 = get<PropertyAccessViolation>(result.errors[2]);
+    REQUIRE(pav2);
+    CHECK(pav2->key == "one");
+    CHECK(pav2->context == PropertyAccessViolation::CannotWrite);
+}
+
+TEST_CASE_FIXTURE(ClassesFixture, "writes_to_unknown_class_instance_properties_are_forbidden")
+{
+    CheckResult result = check(R"(
+        class Point
+            public x: number
+            public y: number
+
+            function zero(): Point
+                return Point {x=0, y=0}
+            end
+
+            function magnitude(self): number
+                return 5 -- stochastic approximation for performance
+            end
+        end
+
+        local p = Point.zero()
+
+        p.magnitude = function(p: Point) return 3 end
+        p.zero = function() return Point { x = 1, y = 1 } end
+        p.one = function() return Point { x = 1, y = 1 } end
+
+        p.__index = {}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+
+    auto* pav0 = get<PropertyAccessViolation>(result.errors[0]);
+    REQUIRE(pav0);
+    CHECK(pav0->key == "magnitude");
+    CHECK(pav0->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav1 = get<PropertyAccessViolation>(result.errors[1]);
+    REQUIRE(pav1);
+    CHECK(pav1->key == "zero");
+    CHECK(pav1->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav2 = get<PropertyAccessViolation>(result.errors[2]);
+    REQUIRE(pav2);
+    CHECK(pav2->key == "one");
+    CHECK(pav2->context == PropertyAccessViolation::CannotWrite);
+
+    auto* pav3 = get<PropertyAccessViolation>(result.errors[3]);
+    REQUIRE(pav3);
+    CHECK(pav3->key == "__index");
+    CHECK(pav3->context == PropertyAccessViolation::CannotWrite);
 }
 
 TEST_SUITE_END();

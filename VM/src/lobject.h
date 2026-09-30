@@ -535,7 +535,7 @@ typedef struct LuaTable
     CommonHeader;
 
     uint8_t tmcache;    // 1<<p means tagmethod(p) is not present
-    uint8_t readonly;   // sandboxing feature to prohibit writes to table
+    uint8_t readonly;   // bit 0 - prohibit writes to table, bit 1 - array contains a metamethod cache
     uint8_t safeenv;    // environment doesn't share globals with other scripts
     uint8_t lsizenode;  // log2 of size of `node' array
     uint8_t nodemask8;  // (1<<lsizenode)-1, truncated to 8 bits
@@ -574,6 +574,9 @@ typedef struct LuauClass
 
     // Mapping from offset to member name. Instance member offsets are stored before static member offsets.
     TString** offsettomember;
+
+    // Metatable for this *class object*. At time of writing this only contains __call
+    LuaTable* metatable;
 
     // Metatable for instances of this class. NULL until the first metamethod
     // is added via luaR_addclassmember.
@@ -629,6 +632,8 @@ typedef struct LuauObject
 
 #define twoto(x) ((int)(1 << (x)))
 #define sizenode(t) (twoto((t)->lsizenode))
+#define hasmetacache(t) (((t)->readonly & 2) != 0)
+#define getmetacache(t, event) ((t)->array - (1 + (event)))
 
 #define luaO_nilobject (&luaO_nilobject_)
 

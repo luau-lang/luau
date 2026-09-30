@@ -13,9 +13,9 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauDirectFieldGet)
 LUAU_FASTFLAG(LuauGcTraceUdata)
 LUAU_FASTFLAGVARIABLE(LuauEasyStateInit)
+LUAU_FASTFLAGVARIABLE(LuauBufferCage)
 
 /*
 ** Main thread combines a thread state and the global state
@@ -104,6 +104,7 @@ static void preinit_state(lua_State* L, global_State* g)
     L->singlestep = false;
     L->isactive = false;
     L->activememcat = 0;
+    L->finalizers = NULL;
     L->userdata = NULL;
 }
 
@@ -119,8 +120,10 @@ static void close_state(lua_State* L)
     {
         LUAU_ASSERT(g->freepages[i] == NULL);
         LUAU_ASSERT(g->freegcopages[i] == NULL);
+        LUAU_ASSERT(g->freegcopages_cage[i] == NULL);
     }
     LUAU_ASSERT(g->allgcopages == NULL);
+    LUAU_ASSERT(g->allgcopages_cage == NULL);
     LUAU_ASSERT(g->totalbytes == sizeof(LG));
     LUAU_ASSERT(g->memcatbytes[0] == sizeof(LG));
     for (int i = 1; i < LUA_MEMORY_CATEGORIES; i++)
@@ -192,11 +195,19 @@ void lua_resetthread(lua_State* L)
         luaD_reallocstack(L, BASIC_STACK_SIZE, 0);
     for (int i = 0; i < L->stacksize; i++)
         setnilvalue(L->stack + i);
+    L->finalizers = nullptr;
 }
 
 int lua_isthreadreset(lua_State* L)
 {
     return L->ci == L->base_ci && L->base == L->top && L->status == LUA_OK;
+}
+
+void lua_setbuffercage(lua_State* L, lua_CageAlloc alloc, void* ud)
+{
+    global_State* g = L->global;
+    g->cagealloc = alloc;
+    g->cageud = ud;
 }
 
 lua_State* lua_newstate(lua_Alloc allocator, void* ud)
@@ -305,11 +316,16 @@ lua_State* lua_newstate(lua_Alloc allocator, void* ud)
         {
             g->freepages[i] = NULL;
             g->freegcopages[i] = NULL;
+            g->freegcopages_cage[i] = NULL;
         }
 
         g->allpages = NULL;
         g->allgcopages = NULL;
         g->sweepgcopage = NULL;
+        g->cagealloc = NULL;
+        g->cageud = NULL;
+        g->allgcopages_cage = NULL;
+        g->sweepgcopage_cage = NULL;
 
         for (i = 0; i < LUA_T_COUNT; i++)
             g->mt[i] = NULL;

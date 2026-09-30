@@ -735,6 +735,14 @@ struct TypeMapVisitor : AstVisitor
     bool visit(AstExprIfElse* node) override
     {
         node->condition->visit(this);
+
+        // propagate the condition's resolved type to the binding (unless annotated)
+        if (node->conditionLocal && node->conditionLocal->annotation == nullptr)
+        {
+            if (const AstType** typePtr = resolvedExprs.find(node->condition))
+                resolvedLocals[node->conditionLocal] = *typePtr;
+        }
+
         node->trueExpr->visit(this);
         node->falseExpr->visit(this);
 

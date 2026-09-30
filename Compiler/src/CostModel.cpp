@@ -203,7 +203,13 @@ struct CostVisitor : AstVisitor
         }
         else if (AstExprIfElse* expr = node->as<AstExprIfElse>())
         {
-            return model(expr->condition) + model(expr->trueExpr) + model(expr->falseExpr) + 2;
+            Cost cond = model(expr->condition);
+
+            // propagate constant mask from condition to the local variable if it exists
+            if (expr->conditionLocal && cond.constant != 0)
+                vars[expr->conditionLocal] = cond.constant;
+
+            return cond + model(expr->trueExpr) + model(expr->falseExpr) + 2;
         }
         else if (AstExprInterpString* expr = node->as<AstExprInterpString>())
         {

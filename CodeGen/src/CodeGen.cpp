@@ -59,7 +59,6 @@ LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockLimit, 32'768) // 32 K
 LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockInstructionLimit, 65'536) // 64 K
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenInteger3)
-LUAU_FASTFLAG(LuauCIProto)
 
 namespace Luau
 {
@@ -126,14 +125,9 @@ void onDisable(lua_State* L, Proto* proto)
 
             for (CallInfo* ci = th->ci; ci > th->base_ci; ci--)
             {
-                if (isLua(ci))
+                if (isLua(ci) && ci->p == proto)
                 {
-                    Proto* p = FFlag::LuauCIProto ? ci->p : clvalue(ci->func)->l.p;
-
-                    if (p == proto)
-                    {
-                        ci->flags &= ~LUA_CALLINFO_NATIVE;
-                    }
+                    ci->flags &= ~LUA_CALLINFO_NATIVE;
                 }
             }
 

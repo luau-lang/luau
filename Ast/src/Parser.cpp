@@ -6,11 +6,12 @@
 #include "Luau/TimeTrace.h"
 
 #include <algorithm>
+#include <unordered_set>
 
 #include <errno.h>
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
-#include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauTypeLengthLimit, 1000)
@@ -23,15 +24,16 @@ LUAU_FASTFLAGVARIABLE(LuauSolverV2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(DebugLuauReportReturnTypeVariadicWithTypeSuffix, false)
 LUAU_FASTFLAGVARIABLE(LuauIntegerType2)
 LUAU_FASTFLAGVARIABLE(LuauExportValueSyntax)
-LUAU_FLAGVERSION(LuauExportValueSyntax, 4)
+LUAU_FLAGVERSION(LuauExportValueSyntax, 5)
 
 LUAU_FASTFLAGVARIABLE(DebugLuauNoInline)
 LUAU_FASTFLAGVARIABLE(DebugLuauUserDefinedClasses)
 LUAU_FASTFLAGVARIABLE(LuauAllowGlobalDeclarationToBeCalledClass)
-LUAU_FASTFLAGVARIABLE(LuauTrackPrefixLocal)
 LUAU_FASTFLAGVARIABLE(LuauNoDuplicateBinaryPrefix)
 LUAU_FASTFLAGVARIABLE(LuauSingleTypeOptionalPackReturnsAttributeParens)
-LUAU_FASTFLAGVARIABLE(DebugLuauIfLocalSyntax)
+LUAU_FASTFLAGVARIABLE(DebugLuauParseExactTables)
+LUAU_FASTFLAGVARIABLE(LuauExperimentalIfLocalSyntax)
+LUAU_FLAGVERSION(LuauExperimentalIfLocalSyntax, 2)
 
 // Clip with DebugLuauReportReturnTypeVariadicWithTypeSuffix
 bool luau_telemetry_parsed_return_type_variadic_with_type_suffix = false;
@@ -580,9 +582,14 @@ AstStat* Parser::parseIf()
 
     nextLexeme(); // if / elseif
 
-    if (FFlag::DebugLuauIfLocalSyntax &&
-        (lexer.current().type == Lexeme::ReservedLocal || (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const")))
-        return parseIfLocalCondition(start);
+    if (FFlag::LuauExperimentalIfLocalSyntax)
+    {
+        if (lexer.current().type == Lexeme::ReservedLocal)
+            return parseIfLocalCondition(start);
+
+        if (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const" && lexer.lookahead().type == Lexeme::Name)
+            return parseIfLocalCondition(start);
+    }
 
     AstExpr* cond = parseExpr();
 
@@ -607,7 +614,7 @@ AstStat* Parser::parseIf()
 // consumed `if`/`elseif` keyword; the current lexeme is the `local`/`const` keyword.
 LUAU_NOINLINE AstStat* Parser::parseIfLocalCondition(const Location& start)
 {
-    LUAU_ASSERT(FFlag::DebugLuauIfLocalSyntax);
+    LUAU_ASSERT(FFlag::LuauExperimentalIfLocalSyntax);
 
     bool condIsConst = (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const");
     std::optional<Location> condKeywordLocation = lexer.current().location;
@@ -618,6 +625,9 @@ LUAU_NOINLINE AstStat* Parser::parseIfLocalCondition(const Location& start)
     if (lexer.current().type == ',')
         report(lexer.current().location, "Expected '=' after variable name in 'if local', got ','; only a single binding is allowed");
 
+    std::optional<Location> equalsPosition;
+    if (lexer.current().type == '=')
+        equalsPosition = lexer.current().location;
     expectAndConsume('=', "if local declaration");
 
     AstExpr* cond = parseExpr();
@@ -639,12 +649,21 @@ LUAU_NOINLINE AstStat* Parser::parseIfLocalCondition(const Location& start)
     std::optional<Location> elseLocation;
     AstStat* elsebody = parseElseBody(start, matchThen, thenbody, end, elseLocation);
 
-    return allocator.alloc<AstStatIf>(
-        Location(start, end), cond, thenbody, elsebody, thenLocation, elseLocation, condLocal, condIsConst, condKeywordLocation
+    AstStatIf* node = allocator.alloc<AstStatIf>(
+        Location(start, end), cond, thenbody, elsebody, thenLocation, elseLocation, condLocal, condIsConst, condKeywordLocation, equalsPosition
     );
+    if (options.storeCstData)
+        cstNodeMap[node] = allocator.alloc<CstStatIf>(binding.annotation ? binding.colonPosition : Position::missing());
+    return node;
 }
 
-AstStat* Parser::parseElseBody(const Location& start, const Lexeme& matchThen, AstStatBlock* thenbody, Location& end, std::optional<Location>& elseLocation)
+AstStat* Parser::parseElseBody(
+    const Location& start,
+    const Lexeme& matchThen,
+    AstStatBlock* thenbody,
+    Location& end,
+    std::optional<Location>& elseLocation
+)
 {
     AstStat* elsebody = nullptr;
     end = start;
@@ -1342,7 +1361,8 @@ AstStat* Parser::parseLocal(
 
         Location location{start.begin, body->location.end};
 
-        AstStatLocalFunction* node = allocator.alloc<AstStatLocalFunction>(location, var, body, isConst, isConst ? keywordPosition : Position::missing());
+        AstStatLocalFunction* node =
+            allocator.alloc<AstStatLocalFunction>(location, var, body, isConst, isConst ? keywordPosition : Position::missing());
         if (options.storeCstData)
         {
             cstNodeMap[node] = cstAttrLists != nullptr
@@ -1586,14 +1606,10 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
                 propType = parseType();
             }
 
-            if (propName->name == "new")
-                report(propName->location, "Class properties cannot be named 'new'. Define a method named '__init' to define a constructor.");
-            else if (strncmp(propName->name.value, "__", 2) == 0)
+            if (strncmp(propName->name.value, "__", 2) == 0)
                 report(propName->location, "Class properties cannot start with '__'");
             else if (classMemberNamespace.contains(propName->name))
-            {
                 report(propName->location, "Duplicate class member '%s'", propName->name.value);
-            }
             else
             {
                 classMemberNamespace.insert(propName->name);
@@ -1638,9 +1654,7 @@ LUAU_NOINLINE AstStat* Parser::parseClassStat(const Location& start, bool export
             if (body->args.size > 0 && body->args.data[0]->name == "self" && body->args.data[0]->annotation != nullptr)
                 report(body->args.data[0]->annotation->location, "The 'self' parameter cannot have a type annotation");
 
-            if (name.name == "new")
-                report(name.location, "Class methods cannot be named 'new'.  Name it '__init' to define a constructor.");
-            else if (strncmp(name.name.value, "__", 2) == 0)
+            if (strncmp(name.name.value, "__", 2) == 0)
             {
                 if (kExplicitlyDisallowedMetamethods.count(name.name.value) > 0)
                     report(name.location, "Classes cannot define '%s' as a metamethod", name.name.value);
@@ -2796,11 +2810,21 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
     expectAndConsume('{', "table type");
 
     bool isArray = false;
+    // When the flag is set, tables are exact by default unless ... is present at the end.
+    bool isExact = FFlag::DebugLuauParseExactTables;
 
     while (lexer.current().type != '}')
     {
         AstTableAccess access = AstTableAccess::ReadWrite;
         std::optional<Location> accessLocation;
+
+        if (FFlag::DebugLuauParseExactTables && lexer.current().type == Lexeme::Dot3)
+        {
+            nextLexeme();
+            isExact = false;
+            // ... is always last.
+            break;
+        }
 
         if (lexer.current().type == Lexeme::Name && lexer.lookahead().type != ':')
         {
@@ -2908,6 +2932,17 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
             Location nullTypeLocation = Location(start.begin, 0);
             AstType* index = allocator.alloc<AstTypeReference>(nullTypeLocation, std::nullopt, nameNumber, std::nullopt, nullTypeLocation);
             indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer{index, type, type->location, access, accessLocation});
+
+            if (FFlag::DebugLuauParseExactTables)
+            {
+                if (lexer.current().type == ',' && lexer.lookahead().type == Lexeme::Dot3)
+                {
+                    nextLexeme();
+                    nextLexeme();
+                    isExact = false;
+                }
+            }
+
             break;
         }
         else
@@ -2955,7 +2990,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
     if (!expectMatchAndConsume('}', matchBrace, /* searchForMissing = */ true))
         end = lexer.previousLocation();
 
-    AstTypeTable* node = allocator.alloc<AstTypeTable>(Location(start, end), copy(props), indexer);
+    AstTypeTable* node = allocator.alloc<AstTypeTable>(Location(start, end), copy(props), indexer, isExact);
     if (options.storeCstData)
         cstNodeMap[node] = allocator.alloc<CstTypeTable>(copy(cstItems), isArray);
     return node;
@@ -3352,11 +3387,8 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
             prefix = name.name;
             prefixLocation = name.location;
 
-            if (FFlag::LuauTrackPrefixLocal)
-            {
-                AstLocal* const* prefixLocalValue = localMap.find(name.name);
-                prefixLocal = (prefixLocalValue && *prefixLocalValue) ? *prefixLocalValue : nullptr;
-            }
+            AstLocal* const* prefixLocalValue = localMap.find(name.name);
+            prefixLocal = (prefixLocalValue && *prefixLocalValue) ? *prefixLocalValue : nullptr;
 
             name = parseIndexName("field name", prefixPointPosition);
         }
@@ -4408,10 +4440,18 @@ AstExpr* Parser::parseTableConstructor()
 
 AstExpr* Parser::parseIfElseExpr()
 {
-    bool hasElse = false;
     Location start = lexer.current().location;
 
     nextLexeme(); // skip if / elseif
+
+    if (FFlag::LuauExperimentalIfLocalSyntax)
+    {
+        if (lexer.current().type == Lexeme::ReservedLocal)
+            return parseIfElseExprLocalCondition(start);
+
+        if (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const" && lexer.lookahead().type == Lexeme::Name)
+            return parseIfElseExprLocalCondition(start);
+    }
 
     AstExpr* condition = parseExpr();
 
@@ -4419,10 +4459,75 @@ AstExpr* Parser::parseIfElseExpr()
     Position thenPosition = hasThen ? lexer.previousLocation().begin : Position::missing();
 
     AstExpr* trueExpr = parseExpr();
-    AstExpr* falseExpr = nullptr;
 
+    bool hasElse = false;
     Position elsePosition = lexer.current().location.begin;
     bool isElseIf = false;
+    AstExpr* falseExpr = parseIfElseExprTail(hasElse, isElseIf);
+
+    Location end = falseExpr->location;
+
+    AstExprIfElse* node = allocator.alloc<AstExprIfElse>(Location(start, end), condition, hasThen, trueExpr, hasElse, falseExpr);
+    if (options.storeCstData)
+        cstNodeMap[node] = allocator.alloc<CstExprIfElse>(thenPosition, elsePosition, isElseIf);
+    return node;
+}
+
+// (`if' | `elseif') (`local' | `const') binding `=' exp then exp {elseif exp then exp} else exp
+//
+// LUAU_NOINLINE keeps the `if local`/`if const` locals off parseIfElseExpr's frame: parseIfElseExpr recurses
+// through long elseif chains and this variant is rarely taken. `start` is the location of the already
+// consumed `if`/`elseif` keyword; the current lexeme is the `local`/`const` keyword.
+LUAU_NOINLINE AstExpr* Parser::parseIfElseExprLocalCondition(const Location& start)
+{
+    LUAU_ASSERT(FFlag::LuauExperimentalIfLocalSyntax);
+
+    bool condIsConst = (lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "const");
+    std::optional<Location> condKeywordLocation = lexer.current().location;
+    nextLexeme(); // consume 'local' or 'const'
+
+    Binding binding = parseBinding(condIsConst);
+
+    if (lexer.current().type == ',')
+        report(lexer.current().location, "Expected '=' after variable name in 'if local', got ','; only a single binding is allowed");
+
+    std::optional<Location> equalsPosition;
+    if (expectAndConsume('=', "if local declaration"))
+        equalsPosition = lexer.previousLocation();
+
+    AstExpr* condition = parseExpr();
+
+    bool hasThen = expectAndConsume(Lexeme::ReservedThen, "if then else expression");
+    Position thenPosition = hasThen ? lexer.previousLocation().begin : Position::missing();
+
+    // Push the binding after the condition so the condition cannot reference it, and restore after the
+    // true expression so it is not visible in the else/elseif branch.
+    unsigned int localsBegin = saveLocals();
+    AstLocal* condLocal = pushLocal(binding);
+
+    AstExpr* trueExpr = parseExpr();
+
+    restoreLocals(localsBegin);
+
+    bool hasElse = false;
+    Position elsePosition = lexer.current().location.begin;
+    bool isElseIf = false;
+    AstExpr* falseExpr = parseIfElseExprTail(hasElse, isElseIf);
+
+    Location end = falseExpr->location;
+
+    AstExprIfElse* node = allocator.alloc<AstExprIfElse>(
+        Location(start, end), condition, hasThen, trueExpr, hasElse, falseExpr, condLocal, condIsConst, condKeywordLocation, equalsPosition
+    );
+    if (options.storeCstData)
+        cstNodeMap[node] =
+            allocator.alloc<CstExprIfElse>(thenPosition, elsePosition, isElseIf, binding.annotation ? binding.colonPosition : Position::missing());
+    return node;
+}
+
+AstExpr* Parser::parseIfElseExprTail(bool& hasElse, bool& isElseIf)
+{
+    AstExpr* falseExpr = nullptr;
     if (lexer.current().type == Lexeme::ReservedElseif)
     {
         unsigned int oldRecursionCount = recursionCounter;
@@ -4438,12 +4543,7 @@ AstExpr* Parser::parseIfElseExpr()
         falseExpr = parseExpr();
     }
 
-    Location end = falseExpr->location;
-
-    AstExprIfElse* node = allocator.alloc<AstExprIfElse>(Location(start, end), condition, hasThen, trueExpr, hasElse, falseExpr);
-    if (options.storeCstData)
-        cstNodeMap[node] = allocator.alloc<CstExprIfElse>(thenPosition, elsePosition, isElseIf);
-    return node;
+    return falseExpr;
 }
 
 // Name

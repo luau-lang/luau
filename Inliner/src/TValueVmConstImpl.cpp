@@ -5,9 +5,7 @@
 #include "lgc.h"
 #include "lobject.h"
 #include "lvector.h"
-
-#include <algorithm>
-#include <cmath>
+#include "lvm.h"
 
 namespace Luau
 {
@@ -16,8 +14,23 @@ namespace Bytecode
 
 std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& rhsOp, LuauOpcode op) const
 {
-    TValue*& lhs = func.constOp(lhsOp);
-    TValue*& rhs = func.constOp(rhsOp);
+    if (isNumber(lhsOp) && isNumber(rhsOp))
+    {
+        if (std::optional<double> resultOpt = evaluateNumberBinaryOp(asNumber(lhsOp), asNumber(rhsOp), op))
+        {
+            TValue* tv = backing.nextTValue();
+            setnvalue(tv, *resultOpt);
+            return func.addConst(tv);
+        }
+
+        return std::nullopt;
+    }
+
+    if (lhsOp.kind != BcOpKind::VmConst || rhsOp.kind != BcOpKind::VmConst)
+        return std::nullopt;
+
+    TValue* lhs = func.constOp(lhsOp);
+    TValue* rhs = func.constOp(rhsOp);
 
     TValue* tv = backing.nextTValue();
 
@@ -25,11 +38,7 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
     {
     case LOP_ADD:
     case LOP_ADDK:
-        if (ttisnumber(lhs) && ttisnumber(rhs))
-        {
-            setnvalue(tv, nvalue(lhs) + nvalue(rhs));
-        }
-        else if (ttisvector(lhs) && ttisvector(rhs))
+        if (ttisvector(lhs) && ttisvector(rhs))
         {
             const LUA_VECTOR_TYPE* lv = vvalue(lhs);
             const LUA_VECTOR_TYPE* rv = vvalue(rhs);
@@ -42,11 +51,7 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
         break;
     case LOP_SUB:
     case LOP_SUBK:
-        if (ttisnumber(lhs) && ttisnumber(rhs))
-        {
-            setnvalue(tv, nvalue(lhs) - nvalue(rhs));
-        }
-        else if (ttisvector(lhs) && ttisvector(rhs))
+        if (ttisvector(lhs) && ttisvector(rhs))
         {
             const LUA_VECTOR_TYPE* lv = vvalue(lhs);
             const LUA_VECTOR_TYPE* rv = vvalue(rhs);
@@ -59,11 +64,7 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
         break;
     case LOP_MUL:
     case LOP_MULK:
-        if (ttisnumber(lhs) && ttisnumber(rhs))
-        {
-            setnvalue(tv, nvalue(lhs) * nvalue(rhs));
-        }
-        else if (ttisvector(lhs) && ttisnumber(rhs))
+        if (ttisvector(lhs) && ttisnumber(rhs))
         {
             const LUA_VECTOR_TYPE* vb = vvalue(lhs);
             LUA_VECTOR_TYPE vc = cast_to(LUA_VECTOR_TYPE, nvalue(rhs));
@@ -88,11 +89,7 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
         break;
     case LOP_DIV:
     case LOP_DIVK:
-        if (ttisnumber(lhs) && ttisnumber(rhs))
-        {
-            setnvalue(tv, nvalue(lhs) / nvalue(rhs));
-        }
-        else if (ttisvector(lhs) && ttisnumber(rhs))
+        if (ttisvector(lhs) && ttisnumber(rhs))
         {
             const LUA_VECTOR_TYPE* vb = vvalue(lhs);
             LUA_VECTOR_TYPE vc = cast_to(LUA_VECTOR_TYPE, nvalue(rhs));
@@ -117,11 +114,7 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
         break;
     case LOP_IDIV:
     case LOP_IDIVK:
-        if (ttisnumber(lhs) && ttisnumber(rhs))
-        {
-            setnvalue(tv, luai_numidiv(nvalue(lhs), nvalue(rhs)));
-        }
-        else if (ttisvector(lhs) && ttisnumber(rhs))
+        if (ttisvector(lhs) && ttisnumber(rhs))
         {
             const LUA_VECTOR_TYPE* vb = vvalue(lhs);
             LUA_VECTOR_TYPE vc = cast_to(LUA_VECTOR_TYPE, nvalue(rhs));
@@ -139,28 +132,6 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
             return std::nullopt;
         }
         break;
-    case LOP_MOD:
-    case LOP_MODK:
-        if (ttisnumber(lhs) && ttisnumber(rhs))
-        {
-            setnvalue(tv, luai_nummod(nvalue(lhs), nvalue(rhs)));
-        }
-        else
-        {
-            return std::nullopt;
-        }
-        break;
-    case LOP_POW:
-    case LOP_POWK:
-        if (ttisnumber(lhs) && ttisnumber(rhs))
-        {
-            setnvalue(tv, pow(nvalue(lhs), nvalue(rhs)));
-        }
-        else
-        {
-            return std::nullopt;
-        }
-        break;
     default:
         return std::nullopt;
     }
@@ -170,80 +141,39 @@ std::optional<BcOp> TValueVmConstImpl::evaluate(const BcOp& lhsOp, const BcOp& r
 
 bool TValueVmConstImpl::falsey(const BcOp& falseyOp) const
 {
-    if (falseyOp.kind == BcOpKind::VmConst)
-    {
-        TValue*& v = func.constOp(falseyOp);
-        return l_isfalse(v);
-    }
-    else if (falseyOp.kind == BcOpKind::Imm)
-    {
-        BcImm& imm = func.immOp(falseyOp);
-        return imm.kind == BcImmKind::Boolean && imm.valueBoolean == false;
-    }
+    if (isNil(falseyOp))
+        return true;
+
+    if (isBoolean(falseyOp))
+        return asBoolean(falseyOp) == false;
 
     return false;
 }
 
-int TValueVmConstImpl::cmp(const BcOp& lhsOp, const BcOp& rhsOp) const
+bool TValueVmConstImpl::compare(const BcOp& lhsOp, const BcOp& rhsOp, BcCondition condition) const
 {
-    TValue*& lhs = func.constOp(lhsOp);
-    TValue*& rhs = func.constOp(rhsOp);
+    LUAU_ASSERT(isOrderable(lhsOp));
+    LUAU_ASSERT(isOrderable(rhsOp));
 
-    if (ttisnumber(lhs) && ttisnumber(rhs))
+    if (isNumber(lhsOp) && isNumber(rhsOp))
+        return bcCompare(asNumber(lhsOp), asNumber(rhsOp), condition);
+
+    if (lhsOp.kind == BcOpKind::VmConst && rhsOp.kind == BcOpKind::VmConst)
     {
-        double l = nvalue(lhs);
-        double r = nvalue(rhs);
-        if (l < r)
-            return -1;
-        if (l > r)
-            return 1;
-        return 0;
-    }
+        TValue*& lhs = func.constOp(lhsOp);
+        TValue*& rhs = func.constOp(rhsOp);
+        LUAU_ASSERT(ttype(lhs) == ttype(rhs));
 
-    if (ttisboolean(lhs) && ttisboolean(rhs))
-        return (bvalue(lhs) == bvalue(rhs)) ? 0 : 1;
-
-    if (ttisstring(lhs) && ttisstring(rhs))
-    {
-        TString* ls = tsvalue(lhs);
-        TString* rs = tsvalue(rhs);
-        int c = memcmp(ls->data, rs->data, std::min(ls->len, rs->len));
-        if (c == 0)
-            c = (ls->len < rs->len) ? -1 : (ls->len > rs->len) ? 1 : 0;
-        if (c < 0)
-            return -1;
-        if (c > 0)
-            return 1;
-        return 0;
-    }
-
-    return 0;
-}
-
-int TValueVmConstImpl::cmp(const BcOp& lhsOp, const BcImm& rhs) const
-{
-    TValue*& lhs = func.constOp(lhsOp);
-    if (rhs.kind == BcImmKind::Int)
-    {
-        if (ttisnumber(lhs))
+        if (ttisstring(lhs))
         {
-            double l = nvalue(lhs);
-            double r = static_cast<double>(rhs.valueInt);
-            if (l < r)
-                return -1;
-            if (l > r)
-                return 1;
-            return 0;
+            TString* ls = tsvalue(lhs);
+            TString* rs = tsvalue(rhs);
+            return bcCompare(luaV_strcmp(ls, rs), 0, condition);
         }
     }
-    else if (rhs.kind == BcImmKind::Boolean)
-    {
-        if (ttisboolean(lhs))
-            return (bvalue(lhs) == static_cast<int>(rhs.valueBoolean)) ? 0 : 1;
-    }
 
-    // BcImms are only either Int, Boolean or Import, and we are not doing import comparisons, so return false
-    return 0;
+    LUAU_ASSERT(!"unsupported comparison");
+    return false;
 }
 
 BcOp TValueVmConstImpl::makeNil() const
@@ -253,20 +183,9 @@ BcOp TValueVmConstImpl::makeNil() const
     return func.addConst(tv);
 }
 
-BcImm TValueVmConstImpl::makeImm(bool value) const
+BcOp TValueVmConstImpl::makeImmBool(bool value) const
 {
-    BcImm result{};
-    result.kind = BcImmKind::Boolean;
-    result.valueBoolean = value;
-    return result;
-}
-
-BcImm TValueVmConstImpl::makeImm(int32_t value) const
-{
-    BcImm result{};
-    result.kind = BcImmKind::Int;
-    result.valueInt = value;
-    return result;
+    return func.addImmBool(value);
 }
 
 BcRef<BcImm> TValueVmConstImpl::asImm(BcOp op) const
@@ -274,82 +193,151 @@ BcRef<BcImm> TValueVmConstImpl::asImm(BcOp op) const
     return func.imm(op);
 }
 
-bool TValueVmConstImpl::isOrderable(const BcOp& vmConstOp) const
+bool TValueVmConstImpl::isOrderable(const BcOp& op) const
 {
-    TValue*& v = func.constOp(vmConstOp);
-    return ttisnumber(v) || ttisstring(v);
+    if (op.kind == BcOpKind::Imm)
+    {
+        BcImm& imm = func.immOp(op);
+        return imm.kind == BcImmKind::Int;
+    }
+
+    if (op.kind == BcOpKind::VmConst)
+    {
+        TValue*& v = func.constOp(op);
+        return ttisnumber(v) || ttisstring(v);
+    }
+
+    return false;
 }
 
 bool TValueVmConstImpl::kindEquals(const BcOp& lhsOp, const BcOp& rhsOp) const
 {
+    if (isBoolean(lhsOp) && isBoolean(rhsOp))
+        return true;
+
+    if (isNumber(lhsOp) && isNumber(rhsOp))
+        return true;
+
+    if (lhsOp.kind != BcOpKind::VmConst || rhsOp.kind != BcOpKind::VmConst)
+        return false;
+
     TValue*& lhs = func.constOp(lhsOp);
     TValue*& rhs = func.constOp(rhsOp);
+
     return ttype(lhs) == ttype(rhs);
+}
+
+bool TValueVmConstImpl::fullyequal(const BcOp& lhsOp, const BcOp& rhsOp) const
+{
+    if (lhsOp.kind != rhsOp.kind)
+        return false;
+
+    if (lhsOp.kind == BcOpKind::Imm)
+        return func.immOp(lhsOp) == func.immOp(rhsOp);
+
+    if (lhsOp.kind == BcOpKind::VmConst)
+        return lhsOp.index == rhsOp.index;
+
+    LUAU_ASSERT(!"unsupported kind");
+    return false;
 }
 
 std::optional<bool> TValueVmConstImpl::eq(const BcOp& lhsOp, const BcOp& rhsOp) const
 {
+    if (isNil(lhsOp) && isNil(rhsOp))
+        return true;
+
+    if (isBoolean(lhsOp) && isBoolean(rhsOp))
+        return asBoolean(lhsOp) == asBoolean(rhsOp);
+
+    if (isNumber(lhsOp) && isNumber(rhsOp))
+        return asNumber(lhsOp) == asNumber(rhsOp);
+
+    // Handle other VM constant types
     if (lhsOp.kind == BcOpKind::VmConst && rhsOp.kind == BcOpKind::VmConst)
     {
         TValue*& lhs = func.constOp(lhsOp);
         TValue*& rhs = func.constOp(rhsOp);
 
-        if (ttisnumber(lhs) && ttisnumber(rhs))
-            return nvalue(lhs) == nvalue(rhs);
-        if (ttisstring(lhs) && ttisstring(rhs))
-        {
-            TString* ls = tsvalue(lhs);
-            TString* rs = tsvalue(rhs);
-            return ls == rs || (ls->len == rs->len && memcmp(ls->data, rs->data, ls->len) == 0);
-        }
+        if (ttype(lhs) != ttype(rhs))
+            return false;
+
+        if (ttisinteger(lhs))
+            return lvalue(lhs) == lvalue(rhs);
+
+        if (ttisstring(lhs))
+            return tsvalue(lhs) == tsvalue(rhs); // strings are interned
     }
-    else if (lhsOp.kind == BcOpKind::VmConst && rhsOp.kind == BcOpKind::Imm)
+
+    return std::nullopt;
+}
+
+bool TValueVmConstImpl::isNil(const BcOp& op) const
+{
+    if (op.kind == BcOpKind::VmConst)
+        return ttisnil(func.constOp(op));
+
+    return false;
+}
+
+bool TValueVmConstImpl::isBoolean(const BcOp& op) const
+{
+    if (op.kind == BcOpKind::Imm)
+        return func.immOp(op).kind == BcImmKind::Boolean;
+
+    if (op.kind == BcOpKind::VmConst)
+        return ttisboolean(func.constOp(op));
+
+    return false;
+}
+
+bool TValueVmConstImpl::isNumber(const BcOp& op) const
+{
+    if (op.kind == BcOpKind::Imm)
+        return func.immOp(op).kind == BcImmKind::Int;
+
+    if (op.kind == BcOpKind::VmConst)
+        return ttisnumber(func.constOp(op));
+
+    return false;
+}
+
+bool TValueVmConstImpl::asBoolean(const BcOp& op) const
+{
+    if (op.kind == BcOpKind::Imm)
     {
-        TValue*& lhs = func.constOp(lhsOp);
-        BcImm& rhs = func.immOp(rhsOp);
-        if (ttisboolean(lhs) && rhs.kind == BcImmKind::Boolean)
-            return bvalue(lhs) == static_cast<int>(rhs.valueBoolean);
+        BcImm& imm = func.immOp(op);
+        LUAU_ASSERT(imm.kind == BcImmKind::Boolean && "use isBoolean first");
+        return imm.valueBoolean;
     }
-    else if (lhsOp.kind == BcOpKind::Imm && rhsOp.kind == BcOpKind::Imm)
+
+    if (op.kind == BcOpKind::VmConst)
     {
-        BcImm& lhs = func.immOp(lhsOp);
-        BcImm& rhs = func.immOp(rhsOp);
-        if (lhs.kind == BcImmKind::Boolean && rhs.kind == BcImmKind::Boolean)
-            return lhs.valueBoolean == rhs.valueBoolean;
-        else if (lhs.kind == BcImmKind::Int && rhs.kind == BcImmKind::Int)
-            return lhs.valueInt == rhs.valueInt;
+        LUAU_ASSERT(ttisboolean(func.constOp(op)));
+        return bvalue(func.constOp(op)) == 1;
     }
-    return std::nullopt;
+
+    LUAU_ASSERT(!"unsupported type, use isBoolean first");
+    return false;
 }
 
-std::optional<bool> TValueVmConstImpl::eq(const BcOp& lhsOp, bool rhs) const
+double TValueVmConstImpl::asNumber(const BcOp& op) const
 {
-    TValue*& lhs = func.constOp(lhsOp);
+    if (op.kind == BcOpKind::Imm)
+    {
+        BcImm& imm = func.immOp(op);
+        LUAU_ASSERT(imm.kind == BcImmKind::Int && "use isNumber first");
+        return double(imm.valueInt);
+    }
 
-    if (ttisboolean(lhs))
-        return bvalue(lhs) == static_cast<int>(rhs);
-    return std::nullopt;
-}
+    if (op.kind == BcOpKind::VmConst)
+    {
+        LUAU_ASSERT(ttisnumber(func.constOp(op)));
+        return nvalue(func.constOp(op));
+    }
 
-std::optional<bool> TValueVmConstImpl::eq(const BcOp& lhsOp, int32_t rhs) const
-{
-    TValue*& lhs = func.constOp(lhsOp);
-
-    if (ttisnumber(lhs))
-        return static_cast<double>(rhs) == nvalue(lhs);
-    return std::nullopt;
-}
-
-bool TValueVmConstImpl::isArithmeticConstant(const BcOp& vmConstOp) const
-{
-    TValue*& v = func.constOp(vmConstOp);
-    return ttisnumber(v);
-}
-
-double TValueVmConstImpl::asNumber(const BcOp& vmConstOp) const
-{
-    TValue*& v = func.constOp(vmConstOp);
-    return nvalue(v);
+    LUAU_ASSERT(!"unsupported type, use isNumber first");
+    return 0.0;
 }
 
 } // namespace Bytecode

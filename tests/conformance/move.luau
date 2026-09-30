@@ -160,6 +160,9 @@ checkerror("too many", table.move, {}, minI, maxI, 1)
 checkerror("wrap around", table.move, {}, 1, maxI, 2)
 checkerror("wrap around", table.move, {}, 1, 2, maxI)
 checkerror("wrap around", table.move, {}, minI, -2, 2)
+checkerror("table overflow", table.move, {}, 1, maxI, 1)
+checkerror("table overflow", table.move, {1}, 1, maxI, 1, {})
+checkerror("table overflow", table.move, {}, 1, maxI, 1, {[minI] = 1})
 
 checkerror("readonly", table.move, table.freeze({}), 1, 1, 1)
 

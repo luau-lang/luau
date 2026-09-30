@@ -42,8 +42,11 @@ static RequireSuggestions makeSuggestionsFromAliases(std::vector<RequireAlias> a
 static RequireSuggestions makeSuggestionsForFirstComponent(std::unique_ptr<RequireNode> node)
 {
     RequireSuggestions result = makeSuggestionsFromAliases(node->getAvailableAliases());
-    result.push_back(RequireSuggestion{"./", "./", {}});
-    result.push_back(RequireSuggestion{"../", "../", {}});
+    if (node->permitsRelativeRequirePaths())
+    {
+        result.push_back(RequireSuggestion{"./", "./", {}});
+        result.push_back(RequireSuggestion{"../", "../", {}});
+    }
     return result;
 }
 

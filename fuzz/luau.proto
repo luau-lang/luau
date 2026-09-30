@@ -320,6 +320,8 @@ message StatIf
         StatBlock else = 3;
         StatIf elseif = 4;
     }
+    optional Local condition_local = 5;
+    optional bool condition_is_const = 6 [ default = false ];
 }
 
 message StatWhile
