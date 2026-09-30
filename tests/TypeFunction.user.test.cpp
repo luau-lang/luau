@@ -23,6 +23,8 @@ LUAU_FASTFLAG(LuauNewTypePathErrorMessages)
 LUAU_FASTFLAG(LuauUdtfFixTypeNameTypo)
 LUAU_FASTFLAG(LuauClonePublicInterfaceRetainTypeFunctionSolvedStatus)
 LUAU_FASTFLAG(LuauTypeFunctionsReturnAfterAllSerialized)
+LUAU_FASTFLAG(LuauUdtfAliasCallRecursionLimit)
+LUAU_DYNAMIC_FASTINT(LuauTypeFunctionAliasCallRecursionLimit)
 
 TEST_SUITE_BEGIN("UserDefinedTypeFunctionTests");
 
@@ -3854,6 +3856,70 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_when_serializing_environment_but_not_a
     // TODO: This probably *should* error, as we cannot include `Foobar` as
     // part of the environment as an unserializable type (error).
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_recursion_is_limited")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag aliasCallRecursionLimit{FFlag::LuauUdtfAliasCallRecursionLimit, true};
+    ScopedFastInt aliasCallRecursionLimitValue{DFInt::LuauTypeFunctionAliasCallRecursionLimit, 10};
+
+    CheckResult result = check(R"(
+        type Recurse<T> = recurse<T>
+
+        type function recurse(t)
+            return Recurse(types.newtable())
+        end
+
+        local function f(): recurse<any>
+            return nil :: any
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(
+        toString(result.errors[0]),
+        R"('recurse' type function errored at runtime: [string "recurse"]:5: Recursion limit reached when calling a type alias)"
+    );
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_call_recursion_up_to_limit")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+    ScopedFastFlag aliasCallRecursionLimit{FFlag::LuauUdtfAliasCallRecursionLimit, true};
+    ScopedFastInt aliasCallRecursionLimitValue{DFInt::LuauTypeFunctionAliasCallRecursionLimit, 10};
+
+    CheckResult result = check(R"(
+        type Unwrap<T> = unwrap<T>
+
+        type function unwrap(t)
+            if t:is("table") then
+                local inner = t:readproperty(types.singleton("inner"))
+                if inner then
+                    return Unwrap(inner)
+                end
+            end
+            return t
+        end
+
+        local function ten(): unwrap<{inner: {inner: {inner: {inner: {inner: {inner: {inner: {inner: {inner: {inner: number}}}}}}}}}}>
+            return 1
+        end
+
+        local function eleven(): unwrap<{inner: {inner: {inner: {inner: {inner: {inner: {inner: {inner: {inner: {inner: {inner: number}}}}}}}}}}}>
+            return nil :: any
+        end
+    )");
+
+    // Both errors are for 'eleven': its declaration and its return annotation
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    for (const TypeError& error : result.errors)
+    {
+        CHECK_EQ(17, error.location.begin.line);
+        CHECK_EQ(
+            toString(error), R"('unwrap' type function errored at runtime: [string "unwrap"]:8: Recursion limit reached when calling a type alias)"
+        );
+    }
 }
 
 TEST_SUITE_END();

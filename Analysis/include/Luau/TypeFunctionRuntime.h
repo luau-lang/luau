@@ -328,6 +328,12 @@ struct TypeFunctionRuntime
 
     std::unique_ptr<size_t> heapSize = nullptr;
 
+    // Number of type alias calls from type functions currently being reduced
+    int aliasCallRecursionCount = 0;
+
+    // Set when a type alias call exceeds the recursion limit; reset by the next outermost type alias call
+    bool aliasCallRecursionLimitReached = false;
+
 private:
     void prepareState();
 };

@@ -4,6 +4,7 @@
 #include "Luau/ConstraintSolver.h"
 #include "Luau/IterativeTypeFunctionTypeVisitor.h"
 #include "Luau/Normalize.h"
+#include "Luau/RecursionCounter.h"
 #include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
 #include "Luau/TypeFunctionError.h"
@@ -16,6 +17,8 @@
 LUAU_FASTFLAG(LuauTypeFunctionSupportsFrozen)
 LUAU_FASTFLAG(LuauTypeFunctionStructuredErrors)
 LUAU_FASTFLAGVARIABLE(LuauTypeFunctionsReturnAfterAllSerialized)
+LUAU_FASTFLAGVARIABLE(LuauUdtfAliasCallRecursionLimit)
+LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFunctionAliasCallRecursionLimit, 50)
 
 namespace Luau
 {
@@ -173,10 +176,36 @@ static int evaluateTypeAliasCall(lua_State* L)
 
     TypeId target = follow(*maybeInstantiated);
 
-    FunctionGraphReductionResult result = reduceTypeFunctions(target, Location{}, runtimeBuilder->ctx);
+    if (FFlag::LuauUdtfAliasCallRecursionLimit)
+    {
+        // Reducing the alias can evaluate type functions that call type aliases in turn, so the nesting is bounded
+        NonExceptionalRecursionLimiter aliasCallLimiter{&runtime->aliasCallRecursionCount};
 
-    if (!result.errors.empty())
-        luaL_error(L, "failed to reduce type function with: %s", toString(result.errors.front()).c_str());
+        if (runtime->aliasCallRecursionCount == 1)
+            runtime->aliasCallRecursionLimitReached = false;
+
+        if (!aliasCallLimiter.isOk(DFInt::LuauTypeFunctionAliasCallRecursionLimit))
+        {
+            runtime->aliasCallRecursionLimitReached = true;
+            luaL_error(L, "Recursion limit reached when calling a type alias");
+        }
+
+        FunctionGraphReductionResult result = reduceTypeFunctions(target, Location{}, runtimeBuilder->ctx);
+
+        // Type functions cannot catch errors, so the limit error reaches every call on the way out; report it once instead of nesting it
+        if (runtime->aliasCallRecursionLimitReached)
+            luaL_error(L, "Recursion limit reached when calling a type alias");
+
+        if (!result.errors.empty())
+            luaL_error(L, "failed to reduce type function with: %s", toString(result.errors.front()).c_str());
+    }
+    else
+    {
+        FunctionGraphReductionResult result = reduceTypeFunctions(target, Location{}, runtimeBuilder->ctx);
+
+        if (!result.errors.empty())
+            luaL_error(L, "failed to reduce type function with: %s", toString(result.errors.front()).c_str());
+    }
 
     TypeFunctionTypeId serializedTy = serialize(follow(target), runtimeBuilder);
 
